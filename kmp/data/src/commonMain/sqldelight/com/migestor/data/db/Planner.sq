@@ -1,0 +1,398 @@
+CREATE TABLE IF NOT EXISTS schedule_slot (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    day_of_week INTEGER NOT NULL,
+    period      INTEGER NOT NULL,
+    start_time  TEXT    NOT NULL,
+    end_time    TEXT    NOT NULL,
+    group_id    INTEGER NOT NULL,
+    classroom   TEXT    DEFAULT '',
+    FOREIGN KEY (group_id) REFERENCES classes(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS planner_session (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    date        TEXT    NOT NULL,         -- ISO 8601: "2026-03-23"
+    group_id    INTEGER NOT NULL,
+    period      INTEGER NOT NULL,
+    unit_id     INTEGER,
+    objectives  TEXT    DEFAULT '',
+    activities  TEXT    DEFAULT '',
+    evaluation  TEXT    DEFAULT '',
+    linked_assessment_ids_csv TEXT NOT NULL DEFAULT '',
+    status      TEXT    DEFAULT 'PENDING',
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id   TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(date, group_id, period),        -- evita colisiones
+    FOREIGN KEY (group_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (unit_id) REFERENCES teaching_unit(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS session_journal (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    planning_session_id INTEGER NOT NULL UNIQUE,
+    teacher_name TEXT NOT NULL DEFAULT '',
+    scheduled_space TEXT NOT NULL DEFAULT '',
+    used_space TEXT NOT NULL DEFAULT '',
+    unit_label TEXT NOT NULL DEFAULT '',
+    objective_planned TEXT NOT NULL DEFAULT '',
+    planned_text TEXT NOT NULL DEFAULT '',
+    actual_text TEXT NOT NULL DEFAULT '',
+    attainment_text TEXT NOT NULL DEFAULT '',
+    adaptations_text TEXT NOT NULL DEFAULT '',
+    incidents_text TEXT NOT NULL DEFAULT '',
+    group_observations TEXT NOT NULL DEFAULT '',
+    climate_score INTEGER NOT NULL DEFAULT 0,
+    participation_score INTEGER NOT NULL DEFAULT 0,
+    useful_time_score INTEGER NOT NULL DEFAULT 0,
+    perceived_difficulty_score INTEGER NOT NULL DEFAULT 0,
+    pedagogical_decision TEXT NOT NULL DEFAULT 'NONE',
+    pending_tasks_text TEXT NOT NULL DEFAULT '',
+    material_to_prepare_text TEXT NOT NULL DEFAULT '',
+    students_to_review_text TEXT NOT NULL DEFAULT '',
+    family_communication_text TEXT NOT NULL DEFAULT '',
+    next_step_text TEXT NOT NULL DEFAULT '',
+    weather_text TEXT NOT NULL DEFAULT '',
+    material_used_text TEXT NOT NULL DEFAULT '',
+    physical_incidents_text TEXT NOT NULL DEFAULT '',
+    injuries_text TEXT NOT NULL DEFAULT '',
+    unequipped_students_text TEXT NOT NULL DEFAULT '',
+    intensity_score INTEGER NOT NULL DEFAULT 0,
+    warmup_minutes INTEGER NOT NULL DEFAULT 0,
+    main_part_minutes INTEGER NOT NULL DEFAULT 0,
+    cooldown_minutes INTEGER NOT NULL DEFAULT 0,
+    station_observations_text TEXT NOT NULL DEFAULT '',
+    incident_tags_csv TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'EMPTY',
+    FOREIGN KEY (planning_session_id) REFERENCES planner_session(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS session_journal_individual_note (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    journal_id INTEGER NOT NULL,
+    student_id INTEGER,
+    student_name TEXT NOT NULL DEFAULT '',
+    note TEXT NOT NULL DEFAULT '',
+    tag TEXT NOT NULL DEFAULT '',
+    FOREIGN KEY (journal_id) REFERENCES session_journal(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS session_journal_action (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    journal_id INTEGER NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    detail TEXT NOT NULL DEFAULT '',
+    is_completed INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (journal_id) REFERENCES session_journal(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS session_journal_media (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    journal_id INTEGER NOT NULL,
+    type TEXT NOT NULL,
+    uri TEXT NOT NULL DEFAULT '',
+    transcript TEXT NOT NULL DEFAULT '',
+    caption TEXT NOT NULL DEFAULT '',
+    FOREIGN KEY (journal_id) REFERENCES session_journal(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS session_journal_link (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    journal_id INTEGER NOT NULL,
+    type TEXT NOT NULL,
+    target_id TEXT NOT NULL DEFAULT '',
+    label TEXT NOT NULL DEFAULT '',
+    FOREIGN KEY (journal_id) REFERENCES session_journal(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS teaching_unit (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    group_id    INTEGER,                  -- NULL = transversal
+    name        TEXT    NOT NULL,
+    description TEXT    DEFAULT '',
+    color_hex   TEXT    DEFAULT '#4A90D9',
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id   TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    school_class_id INTEGER,
+    start_date  TEXT,
+    end_date    TEXT,
+    FOREIGN KEY (group_id) REFERENCES classes(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS weekly_slot_template (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    school_class_id INTEGER NOT NULL,
+    day_of_week   INTEGER NOT NULL,  -- 1-5
+    start_time    TEXT NOT NULL,
+    end_time      TEXT NOT NULL,
+    UNIQUE(school_class_id, day_of_week, start_time),
+    FOREIGN KEY (school_class_id) REFERENCES classes(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS planned_session (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    teaching_unit_id  INTEGER,           -- FK nullable → teaching_unit
+    school_class_id   INTEGER NOT NULL,
+    date              TEXT NOT NULL,     -- ISO 8601: "2026-04-07"
+    start_time        TEXT NOT NULL,
+    end_time          TEXT NOT NULL,
+    title             TEXT NOT NULL DEFAULT '',
+    objectives        TEXT NOT NULL DEFAULT '',
+    resources         TEXT NOT NULL DEFAULT '',
+    notes             TEXT NOT NULL DEFAULT '',
+    FOREIGN KEY (teaching_unit_id) REFERENCES teaching_unit(id) ON DELETE SET NULL,
+    FOREIGN KEY (school_class_id) REFERENCES classes(id) ON DELETE CASCADE
+);
+
+-- Queries
+
+selectScheduleSlots:
+SELECT * FROM schedule_slot;
+
+selectSessionsForWeek:
+SELECT 
+    s.*, 
+    u.name AS unit_name, 
+    u.color_hex AS unit_color,
+    c.name AS group_name
+FROM planner_session s
+LEFT JOIN teaching_unit u ON s.unit_id = u.id
+JOIN classes c ON s.group_id = c.id
+WHERE s.date BETWEEN :startDate AND :endDate;
+
+selectAllSessions:
+SELECT
+    s.*,
+    u.name AS unit_name,
+    u.color_hex AS unit_color,
+    c.name AS group_name
+FROM planner_session s
+LEFT JOIN teaching_unit u ON s.unit_id = u.id
+JOIN classes c ON s.group_id = c.id
+ORDER BY s.date, s.group_id, s.period;
+
+selectSessionsByDateAndGroup:
+SELECT 
+    s.*, 
+    u.name AS unit_name, 
+    u.color_hex AS unit_color,
+    c.name AS group_name
+FROM planner_session s
+LEFT JOIN teaching_unit u ON s.unit_id = u.id
+JOIN classes c ON s.group_id = c.id
+WHERE s.date = :date AND (:groupId IS NULL OR s.group_id = :groupId);
+
+selectSessionsByUnit:
+SELECT 
+    s.*, 
+    u.name AS unit_name, 
+    u.color_hex AS unit_color,
+    c.name AS group_name
+FROM planner_session s
+LEFT JOIN teaching_unit u ON s.unit_id = u.id
+JOIN classes c ON s.group_id = c.id
+WHERE s.unit_id = :unitId;
+
+selectSessionById:
+SELECT 
+    s.*, 
+    u.name AS unit_name, 
+    u.color_hex AS unit_color,
+    c.name AS group_name
+FROM planner_session s
+LEFT JOIN teaching_unit u ON s.unit_id = u.id
+JOIN classes c ON s.group_id = c.id
+WHERE s.id = :id;
+
+upsertSession:
+INSERT INTO planner_session(
+    id, date, group_id, period, unit_id, objectives, activities, evaluation, linked_assessment_ids_csv, status, 
+    updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(date, group_id, period) DO UPDATE SET
+    unit_id = excluded.unit_id,
+    objectives = excluded.objectives,
+    activities = excluded.activities,
+    evaluation = excluded.evaluation,
+    linked_assessment_ids_csv = excluded.linked_assessment_ids_csv,
+    status = excluded.status,
+    updated_at_epoch_ms = excluded.updated_at_epoch_ms,
+    device_id = excluded.device_id,
+    sync_version = excluded.sync_version;
+
+deleteSession:
+DELETE FROM planner_session WHERE id = ?;
+
+selectJournalBySession:
+SELECT * FROM session_journal WHERE planning_session_id = ?;
+
+selectJournalSummariesBySessions:
+SELECT
+    j.planning_session_id,
+    j.status,
+    j.participation_score,
+    j.climate_score,
+    j.useful_time_score,
+    j.used_space,
+    j.weather_text,
+    j.incident_tags_csv,
+    (
+        SELECT COUNT(*)
+        FROM session_journal_media m
+        WHERE m.journal_id = j.id
+    ) AS media_count
+FROM session_journal j
+WHERE j.planning_session_id IN ?;
+
+upsertJournal:
+INSERT INTO session_journal(
+    id, planning_session_id, teacher_name, scheduled_space, used_space, unit_label,
+    objective_planned, planned_text, actual_text, attainment_text, adaptations_text,
+    incidents_text, group_observations, climate_score, participation_score,
+    useful_time_score, perceived_difficulty_score, pedagogical_decision,
+    pending_tasks_text, material_to_prepare_text, students_to_review_text,
+    family_communication_text, next_step_text, weather_text, material_used_text,
+    physical_incidents_text, injuries_text, unequipped_students_text, intensity_score,
+    warmup_minutes, main_part_minutes, cooldown_minutes, station_observations_text,
+    incident_tags_csv, status
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(planning_session_id) DO UPDATE SET
+    teacher_name = excluded.teacher_name,
+    scheduled_space = excluded.scheduled_space,
+    used_space = excluded.used_space,
+    unit_label = excluded.unit_label,
+    objective_planned = excluded.objective_planned,
+    planned_text = excluded.planned_text,
+    actual_text = excluded.actual_text,
+    attainment_text = excluded.attainment_text,
+    adaptations_text = excluded.adaptations_text,
+    incidents_text = excluded.incidents_text,
+    group_observations = excluded.group_observations,
+    climate_score = excluded.climate_score,
+    participation_score = excluded.participation_score,
+    useful_time_score = excluded.useful_time_score,
+    perceived_difficulty_score = excluded.perceived_difficulty_score,
+    pedagogical_decision = excluded.pedagogical_decision,
+    pending_tasks_text = excluded.pending_tasks_text,
+    material_to_prepare_text = excluded.material_to_prepare_text,
+    students_to_review_text = excluded.students_to_review_text,
+    family_communication_text = excluded.family_communication_text,
+    next_step_text = excluded.next_step_text,
+    weather_text = excluded.weather_text,
+    material_used_text = excluded.material_used_text,
+    physical_incidents_text = excluded.physical_incidents_text,
+    injuries_text = excluded.injuries_text,
+    unequipped_students_text = excluded.unequipped_students_text,
+    intensity_score = excluded.intensity_score,
+    warmup_minutes = excluded.warmup_minutes,
+    main_part_minutes = excluded.main_part_minutes,
+    cooldown_minutes = excluded.cooldown_minutes,
+    station_observations_text = excluded.station_observations_text,
+    incident_tags_csv = excluded.incident_tags_csv,
+    status = excluded.status;
+
+deleteJournalBySession:
+DELETE FROM session_journal WHERE planning_session_id = ?;
+
+selectJournalIndividualNotes:
+SELECT * FROM session_journal_individual_note WHERE journal_id = ? ORDER BY id;
+
+deleteJournalIndividualNotes:
+DELETE FROM session_journal_individual_note WHERE journal_id = ?;
+
+insertJournalIndividualNote:
+INSERT INTO session_journal_individual_note(journal_id, student_id, student_name, note, tag)
+VALUES (?, ?, ?, ?, ?);
+
+selectJournalActions:
+SELECT * FROM session_journal_action WHERE journal_id = ? ORDER BY id;
+
+deleteJournalActions:
+DELETE FROM session_journal_action WHERE journal_id = ?;
+
+insertJournalAction:
+INSERT INTO session_journal_action(journal_id, title, detail, is_completed)
+VALUES (?, ?, ?, ?);
+
+selectJournalMedia:
+SELECT * FROM session_journal_media WHERE journal_id = ? ORDER BY id;
+
+deleteJournalMedia:
+DELETE FROM session_journal_media WHERE journal_id = ?;
+
+insertJournalMedia:
+INSERT INTO session_journal_media(journal_id, type, uri, transcript, caption)
+VALUES (?, ?, ?, ?, ?);
+
+selectJournalLinks:
+SELECT * FROM session_journal_link WHERE journal_id = ? ORDER BY id;
+
+deleteJournalLinks:
+DELETE FROM session_journal_link WHERE journal_id = ?;
+
+insertJournalLink:
+INSERT INTO session_journal_link(journal_id, type, target_id, label)
+VALUES (?, ?, ?, ?);
+
+selectTeachingUnits:
+SELECT * FROM teaching_unit 
+WHERE :groupId IS NULL OR group_id = :groupId;
+
+selectAllTeachingUnits:
+SELECT * FROM teaching_unit
+ORDER BY id;
+
+upsertTeachingUnit:
+INSERT OR REPLACE INTO teaching_unit(
+    id, group_id, school_class_id, name, description, color_hex, 
+    start_date, end_date, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteTeachingUnit:
+DELETE FROM teaching_unit WHERE id = ?;
+
+lastInsertedId:
+SELECT last_insert_rowid();
+
+-- Weekly Slot Template Queries
+selectSlotsForClass:
+SELECT * FROM weekly_slot_template WHERE school_class_id = ?;
+
+selectAllWeeklySlots:
+SELECT * FROM weekly_slot_template;
+
+upsertWeeklySlot:
+INSERT OR REPLACE INTO weekly_slot_template(id, school_class_id, day_of_week, start_time, end_time)
+VALUES (?, ?, ?, ?, ?);
+
+deleteWeeklySlot:
+DELETE FROM weekly_slot_template WHERE id = ?;
+
+-- Planned Session Queries
+selectPlannedSessionsForClass:
+SELECT * FROM planned_session WHERE school_class_id = ? AND date BETWEEN ? AND ?;
+
+selectPlannedSessionsForRange:
+SELECT * FROM planned_session WHERE date BETWEEN ? AND ?;
+
+existsPlannedSession:
+SELECT EXISTS(SELECT 1 FROM planned_session WHERE school_class_id = ? AND date = ? AND start_time = ?);
+
+insertPlannedSession:
+INSERT INTO planned_session(teaching_unit_id, school_class_id, date, start_time, end_time, title, objectives, resources, notes)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updatePlannedSession:
+UPDATE planned_session SET 
+    title = ?, 
+    objectives = ?, 
+    resources = ?, 
+    notes = ? 
+WHERE id = ?;
+
+deletePlannedSession:
+DELETE FROM planned_session WHERE id = ?;

@@ -1,0 +1,29 @@
+-- migration 4.sqm
+ALTER TABLE teaching_unit ADD COLUMN school_class_id INTEGER;
+ALTER TABLE teaching_unit ADD COLUMN start_date TEXT;
+ALTER TABLE teaching_unit ADD COLUMN end_date TEXT;
+
+CREATE TABLE IF NOT EXISTS weekly_slot_template (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    school_class_id INTEGER NOT NULL,
+    day_of_week   INTEGER NOT NULL,  -- 1-5
+    start_time    TEXT NOT NULL,
+    end_time      TEXT NOT NULL,
+    UNIQUE(school_class_id, day_of_week, start_time),
+    FOREIGN KEY (school_class_id) REFERENCES classes(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS planned_session (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    teaching_unit_id  INTEGER,           -- FK nullable → teaching_unit
+    school_class_id   INTEGER NOT NULL,
+    date              TEXT NOT NULL,     -- ISO 8601: "2026-04-07"
+    start_time        TEXT NOT NULL,
+    end_time          TEXT NOT NULL,
+    title             TEXT NOT NULL DEFAULT '',
+    objectives        TEXT NOT NULL DEFAULT '',
+    resources         TEXT NOT NULL DEFAULT '',
+    notes             TEXT NOT NULL DEFAULT '',
+    FOREIGN KEY (teaching_unit_id) REFERENCES teaching_unit(id) ON DELETE SET NULL,
+    FOREIGN KEY (school_class_id) REFERENCES classes(id) ON DELETE CASCADE
+);

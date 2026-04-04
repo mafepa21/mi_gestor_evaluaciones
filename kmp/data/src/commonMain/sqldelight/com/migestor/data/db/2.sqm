@@ -1,0 +1,73 @@
+-- Migration from version 2 to 3
+
+-- Planner tables
+CREATE TABLE IF NOT EXISTS schedule_slot (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    day_of_week INTEGER NOT NULL,
+    period      INTEGER NOT NULL,
+    start_time  TEXT    NOT NULL,
+    end_time    TEXT    NOT NULL,
+    group_id    INTEGER NOT NULL,
+    classroom   TEXT    DEFAULT '',
+    FOREIGN KEY (group_id) REFERENCES classes(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS planner_session (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    date        TEXT    NOT NULL,         -- ISO 8601: "2026-03-23"
+    group_id    INTEGER NOT NULL,
+    period      INTEGER NOT NULL,
+    unit_id     INTEGER,
+    objectives  TEXT    DEFAULT '',
+    activities  TEXT    DEFAULT '',
+    evaluation  TEXT    DEFAULT '',
+    status      TEXT    DEFAULT 'PENDING',
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id   TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(date, group_id, period),
+    FOREIGN KEY (group_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (unit_id) REFERENCES teaching_unit(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS teaching_unit (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    group_id    INTEGER,                  -- NULL = transversal
+    name        TEXT    NOT NULL,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id   TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (group_id) REFERENCES classes(id) ON DELETE CASCADE
+);
+
+-- Notebook tables (in case they were missing from previous versions)
+CREATE TABLE IF NOT EXISTS notebook_tabs (
+    id          TEXT NOT NULL PRIMARY KEY,
+    class_id    INTEGER NOT NULL,
+    title       TEXT NOT NULL,
+    sort_order  INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id   TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_tabs_class ON notebook_tabs(class_id);
+
+CREATE TABLE IF NOT EXISTS notebook_columns (
+    id              TEXT NOT NULL PRIMARY KEY,
+    class_id        INTEGER NOT NULL,
+    title           TEXT NOT NULL,
+    type            TEXT NOT NULL,
+    evaluation_id   INTEGER,
+    formula         TEXT,
+    weight          REAL NOT NULL DEFAULT 1.0,
+    tab_ids_csv     TEXT NOT NULL DEFAULT '',
+    color_hex       TEXT NOT NULL DEFAULT '#FFFFFF',
+    sort_order      INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id       TEXT,
+    sync_version    INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (evaluation_id) REFERENCES evaluations(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_columns_class ON notebook_columns(class_id);

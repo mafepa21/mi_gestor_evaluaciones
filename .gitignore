@@ -1,0 +1,37 @@
+
+# FVM Version Cache
+.fvm/
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+*.iml
+
+# Flutter / Dart
+.dart_tool/
+.packages
+.flutter-plugins
+.flutter-plugins-dependencies
+.metadata
+build/
+
+# Gradle / Kotlin
+.gradle/
+**/.gradle/
+**/build/
+
+# Xcode
+DerivedData/
+kmp/.xcode-derived/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcuserstate
+
+# Generated / local-only
+ios/Pods/
+kmp/iosApp/Frameworks/
+kmp/local.properties
+*.log
+kmp/iosApp/build_output.txt

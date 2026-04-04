@@ -1,0 +1,65 @@
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by net.rubygrapefruit.platform.internal.NativeLibraryLoader in an unnamed module (file:/Users/mariofernandez/.gradle/wrapper/dists/gradle-8.6-all/3mbtmo166bl6vumsh5k2lkq5h/gradle-8.6/lib/native-platform-0.22-milestone-25.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+
+
+> Configure project :data
+w: The Default Kotlin Hierarchy Template was not applied to 'project ':data'':
+Explicit .dependsOn() edges were configured for the following source sets:
+[iosArm64Main, iosMain, iosSimulatorArm64Main]
+
+Consider removing dependsOn-calls or disabling the default template by adding
+    'kotlin.mpp.applyDefaultHierarchyTemplate=false'
+to your gradle.properties
+
+Learn more about hierarchy templates: https://kotl.in/hierarchy-template
+
+
+> Configure project :shared
+w: The Default Kotlin Hierarchy Template was not applied to 'project ':shared'':
+Explicit .dependsOn() edges were configured for the following source sets:
+[iosArm64Main, iosMain, iosSimulatorArm64Main]
+
+Consider removing dependsOn-calls or disabling the default template by adding
+    'kotlin.mpp.applyDefaultHierarchyTemplate=false'
+to your gradle.properties
+
+Learn more about hierarchy templates: https://kotl.in/hierarchy-template
+
+
+> Task :data:checkKotlinGradlePluginConfigurationErrors
+> Task :data:generateCommonMainAppDatabaseInterface UP-TO-DATE
+> Task :shared:checkKotlinGradlePluginConfigurationErrors
+> Task :shared:compileKotlinDesktop UP-TO-DATE
+> Task :shared:desktopProcessResources NO-SOURCE
+> Task :shared:desktopMainClasses UP-TO-DATE
+> Task :shared:desktopJar UP-TO-DATE
+> Task :data:compileKotlinDesktop UP-TO-DATE
+> Task :data:desktopProcessResources NO-SOURCE
+> Task :data:desktopMainClasses UP-TO-DATE
+> Task :data:desktopJar UP-TO-DATE
+> Task :desktopApp:checkKotlinGradlePluginConfigurationErrors
+> Task :desktopApp:generateComposeResClass UP-TO-DATE
+> Task :desktopApp:convertXmlValueResourcesForMain NO-SOURCE
+> Task :desktopApp:copyNonXmlValueResourcesForMain NO-SOURCE
+> Task :desktopApp:prepareComposeResourcesTaskForMain NO-SOURCE
+> Task :desktopApp:generateResourceAccessorsForMain NO-SOURCE
+
+> Task :desktopApp:compileKotlin
+w: file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/desktopApp/src/main/kotlin/com/migestor/desktop/ui/attendance/AttendanceHistoryPanel.kt:92:17 'Divider(Modifier = ..., Dp = ..., Color = ...): Unit' is deprecated. Renamed to HorizontalDivider
+w: file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/desktopApp/src/main/kotlin/com/migestor/desktop/ui/attendance/AttendanceToolbar.kt:80:36 'ArrowBack: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowBack
+w: file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/desktopApp/src/main/kotlin/com/migestor/desktop/ui/attendance/AttendanceToolbar.kt:108:36 'ArrowForward: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForward
+w: file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/desktopApp/src/main/kotlin/com/migestor/desktop/ui/attendance/CompactStatusSelector.kt:40:17 Variable 'elevation' is never used
+w: file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/desktopApp/src/main/kotlin/com/migestor/desktop/ui/notebook/NotebookScreen.kt:90:9 Variable 'userRubrics' is never used
+w: file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/desktopApp/src/main/kotlin/com/migestor/desktop/ui/notebook/NotebookScreen.kt:396:44 'MenuBook: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.MenuBook
+w: file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/desktopApp/src/main/kotlin/com/migestor/desktop/ui/notebook/NotebookScreen.kt:416:13 Name shadowed: userRubrics
+w: file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/desktopApp/src/main/kotlin/com/migestor/desktop/ui/notebook/NotebookScreen.kt:801:36 'Undo: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Undo
+w: file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/desktopApp/src/main/kotlin/com/migestor/desktop/ui/notebook/NotebookScreen.kt:1073:47 'FactCheck: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.FactCheck
+w: file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/desktopApp/src/main/kotlin/com/migestor/desktop/ui/notebook/NotebookScreen.kt:1134:85 'Grading: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Grading
+w: file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/desktopApp/src/main/kotlin/com/migestor/desktop/ui/notebook/NotebookScreen.kt:1136:85 'Notes: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Notes
+w: file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/desktopApp/src/main/kotlin/com/migestor/desktop/ui/notebook/NotebookScreen.kt:1198:52 'ArrowForwardIos: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.ArrowForwardIos
+w: file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/desktopApp/src/main/kotlin/com/migestor/desktop/ui/notebook/NotebookScreen.kt:1285:55 'Grading: ImageVector' is deprecated. Use the AutoMirrored version at Icons.AutoMirrored.Filled.Grading
+
+BUILD SUCCESSFUL in 4s
+10 actionable tasks: 4 executed, 6 up-to-date

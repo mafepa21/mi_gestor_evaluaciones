@@ -1,0 +1,1107 @@
+CREATE TABLE IF NOT EXISTS students (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    first_name TEXT NOT NULL,
+    last_name TEXT NOT NULL,
+    email TEXT,
+    photo_path TEXT,
+    is_injured INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS classes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    course INTEGER NOT NULL,
+    description TEXT,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS class_students (
+    class_id INTEGER NOT NULL,
+    student_id INTEGER NOT NULL,
+    PRIMARY KEY (class_id, student_id),
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS periods (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    start_epoch_ms INTEGER NOT NULL,
+    end_epoch_ms INTEGER NOT NULL,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS units (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    period_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    objectives TEXT NOT NULL,
+    competences TEXT NOT NULL,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (period_id) REFERENCES periods(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    unit_id INTEGER NOT NULL,
+    date_epoch_ms INTEGER NOT NULL,
+    description TEXT NOT NULL,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (unit_id) REFERENCES units(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS rubrics (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT,
+    class_id INTEGER,
+    teaching_unit_id INTEGER,
+    competency_id INTEGER,
+    author_user_id INTEGER,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    associated_group_id INTEGER,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS rubric_criteria (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    rubric_id INTEGER NOT NULL,
+    description TEXT NOT NULL,
+    weight REAL NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    competency_id INTEGER,
+    author_user_id INTEGER,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    associated_group_id INTEGER,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (rubric_id) REFERENCES rubrics(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS rubric_levels (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    criterion_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    points INTEGER NOT NULL,
+    description TEXT,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (criterion_id) REFERENCES rubric_criteria(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS evaluations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    class_id INTEGER NOT NULL,
+    code TEXT NOT NULL,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL,
+    weight REAL NOT NULL,
+    formula TEXT,
+    rubric_id INTEGER,
+    description TEXT,
+    author_user_id INTEGER,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    associated_group_id INTEGER,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (rubric_id) REFERENCES rubrics(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS grades (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    class_id INTEGER NOT NULL,
+    student_id INTEGER NOT NULL,
+    column_id TEXT NOT NULL,
+    evaluation_id INTEGER,
+    value REAL,
+    evidence TEXT,
+    evidence_path TEXT,
+    rubric_selections TEXT,
+    created_at_epoch_ms INTEGER NOT NULL,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(student_id, column_id),
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    FOREIGN KEY (evaluation_id) REFERENCES evaluations(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS rubric_assessments (
+    student_id INTEGER NOT NULL,
+    evaluation_id INTEGER NOT NULL,
+    criterion_id INTEGER NOT NULL,
+    level_id INTEGER NOT NULL,
+    created_at_epoch_ms INTEGER NOT NULL,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (student_id, evaluation_id, criterion_id),
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    FOREIGN KEY (evaluation_id) REFERENCES evaluations(id) ON DELETE CASCADE,
+    FOREIGN KEY (criterion_id) REFERENCES rubric_criteria(id) ON DELETE CASCADE,
+    FOREIGN KEY (level_id) REFERENCES rubric_levels(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS attendance (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER NOT NULL,
+    class_id INTEGER NOT NULL,
+    date_epoch_ms INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    has_incident INTEGER NOT NULL DEFAULT 0,
+    follow_up_required INTEGER NOT NULL DEFAULT 0,
+    session_id INTEGER,
+    author_user_id INTEGER,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    associated_group_id INTEGER,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS backup_entries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    path TEXT NOT NULL,
+    created_at_epoch_ms INTEGER NOT NULL,
+    platform TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS centers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    author_user_id INTEGER,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    associated_group_id INTEGER,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS academic_years (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    center_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    start_epoch_ms INTEGER NOT NULL,
+    end_epoch_ms INTEGER NOT NULL,
+    author_user_id INTEGER,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    associated_group_id INTEGER,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (center_id) REFERENCES centers(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS stage_cycles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    center_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    level TEXT,
+    author_user_id INTEGER,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    associated_group_id INTEGER,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (center_id) REFERENCES centers(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS subjects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT NOT NULL,
+    name TEXT NOT NULL,
+    stage_cycle_id INTEGER,
+    author_user_id INTEGER,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    associated_group_id INTEGER,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (stage_cycle_id) REFERENCES stage_cycles(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS app_users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    external_id TEXT,
+    display_name TEXT NOT NULL,
+    email TEXT,
+    role TEXT NOT NULL,
+    center_id INTEGER,
+    author_user_id INTEGER,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    associated_group_id INTEGER,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (center_id) REFERENCES centers(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS teacher_schedules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner_user_id INTEGER NOT NULL,
+    academic_year_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    start_date TEXT NOT NULL,
+    end_date TEXT NOT NULL,
+    active_weekdays TEXT NOT NULL DEFAULT '1,2,3,4,5',
+    author_user_id INTEGER,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    associated_group_id INTEGER,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (owner_user_id) REFERENCES app_users(id) ON DELETE CASCADE,
+    FOREIGN KEY (academic_year_id) REFERENCES academic_years(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS teacher_schedule_slots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    teacher_schedule_id INTEGER NOT NULL,
+    school_class_id INTEGER NOT NULL,
+    subject_label TEXT NOT NULL DEFAULT '',
+    unit_label TEXT,
+    day_of_week INTEGER NOT NULL,
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    weekly_template_id INTEGER,
+    FOREIGN KEY (teacher_schedule_id) REFERENCES teacher_schedules(id) ON DELETE CASCADE,
+    FOREIGN KEY (school_class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (weekly_template_id) REFERENCES weekly_slot_template(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS planner_evaluation_periods (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    teacher_schedule_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    start_date TEXT NOT NULL,
+    end_date TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (teacher_schedule_id) REFERENCES teacher_schedules(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS competency_criteria (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    stage_cycle_id INTEGER,
+    author_user_id INTEGER,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    associated_group_id INTEGER,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (stage_cycle_id) REFERENCES stage_cycles(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS learning_activities (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    class_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    due_epoch_ms INTEGER,
+    rubric_id INTEGER,
+    competency_ids_csv TEXT,
+    author_user_id INTEGER,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    associated_group_id INTEGER,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (rubric_id) REFERENCES rubrics(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS evaluation_competency_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    evaluation_id INTEGER NOT NULL,
+    competency_id INTEGER NOT NULL,
+    weight REAL NOT NULL DEFAULT 1.0,
+    author_user_id INTEGER,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    associated_group_id INTEGER,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (evaluation_id) REFERENCES evaluations(id) ON DELETE CASCADE,
+    FOREIGN KEY (competency_id) REFERENCES competency_criteria(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS incidents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    class_id INTEGER NOT NULL,
+    student_id INTEGER,
+    title TEXT NOT NULL,
+    detail TEXT,
+    severity TEXT NOT NULL DEFAULT 'low',
+    date_epoch_ms INTEGER NOT NULL,
+    author_user_id INTEGER,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    associated_group_id INTEGER,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS calendar_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    class_id INTEGER,
+    title TEXT NOT NULL,
+    description TEXT,
+    start_epoch_ms INTEGER NOT NULL,
+    end_epoch_ms INTEGER NOT NULL,
+    external_provider TEXT,
+    external_id TEXT,
+    author_user_id INTEGER,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    associated_group_id INTEGER,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS configuration_templates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    center_id INTEGER,
+    owner_user_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    author_user_id INTEGER,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    associated_group_id INTEGER,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (center_id) REFERENCES centers(id) ON DELETE SET NULL,
+    FOREIGN KEY (owner_user_id) REFERENCES app_users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS configuration_template_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    template_id INTEGER NOT NULL,
+    version_number INTEGER NOT NULL,
+    payload_json TEXT NOT NULL,
+    based_on_version_id INTEGER,
+    source_academic_year_id INTEGER,
+    author_user_id INTEGER,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    associated_group_id INTEGER,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (template_id) REFERENCES configuration_templates(id) ON DELETE CASCADE,
+    FOREIGN KEY (based_on_version_id) REFERENCES configuration_template_versions(id) ON DELETE SET NULL,
+    FOREIGN KEY (source_academic_year_id) REFERENCES academic_years(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS notebook_cell_entries (
+    class_id INTEGER NOT NULL,
+    student_id INTEGER NOT NULL,
+    column_id TEXT NOT NULL,
+    value_text TEXT,
+    value_bool INTEGER,
+    value_icon TEXT,
+    value_ordinal TEXT,
+    display_value TEXT,
+    observed_at_epoch_ms INTEGER,
+    competency_criteria_ids_csv TEXT NOT NULL DEFAULT '',
+    effective_weight REAL,
+    counts_toward_average INTEGER,
+    note TEXT,
+    color_hex TEXT,
+    attachment_uris_csv TEXT,
+    author_user_id INTEGER,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    associated_group_id INTEGER,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (class_id, student_id, column_id),
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+);
+
+selectAllStudents:
+SELECT id, first_name, last_name, email, photo_path, is_injured, updated_at_epoch_ms, device_id, sync_version
+FROM students
+ORDER BY last_name, first_name;
+
+upsertStudent:
+INSERT OR REPLACE INTO students(id, first_name, last_name, email, photo_path, is_injured, updated_at_epoch_ms, device_id, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteStudent:
+DELETE FROM students WHERE id = ?;
+
+selectAllClasses:
+SELECT id, name, course, description, updated_at_epoch_ms, device_id, sync_version
+FROM classes
+ORDER BY course, name;
+
+upsertClass:
+INSERT OR REPLACE INTO classes(id, name, course, description, updated_at_epoch_ms, device_id, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+deleteClass:
+DELETE FROM classes WHERE id = ?;
+
+insertClassStudent:
+INSERT OR IGNORE INTO class_students(class_id, student_id)
+VALUES (?, ?);
+
+removeClassStudent:
+DELETE FROM class_students
+WHERE class_id = ? AND student_id = ?;
+
+selectStudentsByClass:
+SELECT s.id, s.first_name, s.last_name, s.email, s.photo_path, s.is_injured, s.updated_at_epoch_ms, s.device_id, s.sync_version
+FROM students s
+INNER JOIN class_students cs ON cs.student_id = s.id
+WHERE cs.class_id = ?
+ORDER BY s.last_name, s.first_name, s.id;
+
+selectEvaluationsByClass:
+SELECT id, class_id, code, name, type, weight, formula, rubric_id, description, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+FROM evaluations
+WHERE class_id = ?
+ORDER BY id;
+
+selectEvaluationById:
+SELECT id, class_id, code, name, type, weight, formula, rubric_id, description, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+FROM evaluations
+WHERE id = ?;
+
+upsertEvaluation:
+INSERT OR REPLACE INTO evaluations(id, class_id, code, name, type, weight, formula, rubric_id, description, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteEvaluation:
+DELETE FROM evaluations WHERE id = ?;
+
+upsertGrade:
+INSERT INTO grades(class_id, student_id, column_id, evaluation_id, value, evidence, evidence_path, rubric_selections, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(student_id, column_id) DO UPDATE SET
+    class_id = excluded.class_id,
+    evaluation_id = excluded.evaluation_id,
+    value = excluded.value,
+    evidence = excluded.evidence,
+    evidence_path = excluded.evidence_path,
+    rubric_selections = excluded.rubric_selections,
+    updated_at_epoch_ms = excluded.updated_at_epoch_ms,
+    device_id = excluded.device_id,
+    sync_version = excluded.sync_version;
+
+selectGradesByClass:
+SELECT id, class_id, student_id, column_id, evaluation_id, value, evidence, evidence_path, rubric_selections, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM grades
+WHERE class_id = ?;
+
+selectGradesByStudentAndClass:
+SELECT id, class_id, student_id, column_id, evaluation_id, value, evidence, evidence_path, rubric_selections, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM grades
+WHERE student_id = ? AND class_id = ?;
+
+selectGradeByStudentAndColumn:
+SELECT updated_at_epoch_ms, device_id
+FROM grades
+WHERE student_id = ? AND column_id = ?
+LIMIT 1;
+
+deleteGradesByColumnId:
+DELETE FROM grades
+WHERE column_id = ?;
+
+selectAllPeriods:
+SELECT id, name, start_epoch_ms, end_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM periods
+ORDER BY start_epoch_ms;
+
+upsertPeriod:
+INSERT OR REPLACE INTO periods(id, name, start_epoch_ms, end_epoch_ms, updated_at_epoch_ms, device_id, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+deletePeriod:
+DELETE FROM periods WHERE id = ?;
+
+selectUnitsByPeriod:
+SELECT id, period_id, title, objectives, competences, updated_at_epoch_ms, device_id, sync_version
+FROM units
+WHERE period_id = ?
+ORDER BY id;
+
+selectAllUnits:
+SELECT id, period_id, title, objectives, competences, updated_at_epoch_ms, device_id, sync_version
+FROM units
+ORDER BY period_id, id;
+
+upsertUnit:
+INSERT OR REPLACE INTO units(id, period_id, title, objectives, competences, updated_at_epoch_ms, device_id, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteUnit:
+DELETE FROM units WHERE id = ?;
+
+selectSessionsByUnit:
+SELECT id, unit_id, date_epoch_ms, description, updated_at_epoch_ms, device_id, sync_version
+FROM sessions
+WHERE unit_id = ?
+ORDER BY date_epoch_ms;
+
+selectAllSessions:
+SELECT id, unit_id, date_epoch_ms, description, updated_at_epoch_ms, device_id, sync_version
+FROM sessions
+ORDER BY unit_id, date_epoch_ms;
+
+upsertSession:
+INSERT OR REPLACE INTO sessions(id, unit_id, date_epoch_ms, description, updated_at_epoch_ms, device_id, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+deleteSession:
+DELETE FROM sessions WHERE id = ?;
+
+selectAllRubrics:
+SELECT id, name, description, class_id, teaching_unit_id, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM rubrics
+ORDER BY name;
+
+upsertRubric:
+INSERT OR REPLACE INTO rubrics(id, name, description, class_id, teaching_unit_id, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteRubric:
+DELETE FROM rubrics WHERE id = ?;
+
+selectCriteriaByRubric:
+SELECT id, rubric_id, description, weight, sort_order, updated_at_epoch_ms, device_id, sync_version
+FROM rubric_criteria
+WHERE rubric_id = ?
+ORDER BY sort_order, id;
+
+selectAllCriteria:
+SELECT id, rubric_id, description, weight, sort_order, updated_at_epoch_ms, device_id, sync_version
+FROM rubric_criteria
+ORDER BY rubric_id, sort_order, id;
+
+upsertCriterion:
+INSERT OR REPLACE INTO rubric_criteria(id, rubric_id, description, weight, sort_order, updated_at_epoch_ms, device_id, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteCriterion:
+DELETE FROM rubric_criteria WHERE id = ?;
+
+selectLevelsByCriterion:
+SELECT id, criterion_id, name, points, description, sort_order, updated_at_epoch_ms, device_id, sync_version
+FROM rubric_levels
+WHERE criterion_id = ?
+ORDER BY sort_order, id;
+
+selectAllLevels:
+SELECT id, criterion_id, name, points, description, sort_order, updated_at_epoch_ms, device_id, sync_version
+FROM rubric_levels
+ORDER BY criterion_id, sort_order, id;
+
+upsertLevel:
+INSERT OR REPLACE INTO rubric_levels(id, criterion_id, name, points, description, sort_order, updated_at_epoch_ms, device_id, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteLevel:
+DELETE FROM rubric_levels WHERE id = ?;
+
+upsertRubricAssessment:
+INSERT OR REPLACE INTO rubric_assessments(student_id, evaluation_id, criterion_id, level_id, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+selectRubricAssessments:
+SELECT student_id, evaluation_id, criterion_id, level_id, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM rubric_assessments
+WHERE student_id = ? AND evaluation_id = ?;
+
+selectRubricAssessmentByKey:
+SELECT updated_at_epoch_ms, device_id
+FROM rubric_assessments
+WHERE student_id = ? AND evaluation_id = ? AND criterion_id = ?
+LIMIT 1;
+
+selectWeightedRubricScore:
+SELECT SUM(rl.points * rc.weight) / SUM(rc.weight) AS score
+FROM rubric_assessments ra
+INNER JOIN rubric_criteria rc ON rc.id = ra.criterion_id
+INNER JOIN rubric_levels rl ON rl.id = ra.level_id
+WHERE ra.student_id = ? AND ra.evaluation_id = ?;
+
+selectStudentEvaluation:
+SELECT ra.criterion_id, ra.level_id 
+FROM rubric_assessments ra
+JOIN rubric_criteria rc ON ra.criterion_id = rc.id
+WHERE ra.student_id = ? AND rc.rubric_id = ? AND ra.evaluation_id = ?;
+
+selectAttendanceByClass:
+SELECT id, student_id, class_id, date_epoch_ms, status, note, has_incident, follow_up_required, session_id, updated_at_epoch_ms, device_id, sync_version
+FROM attendance
+WHERE class_id = ?
+ORDER BY date_epoch_ms DESC;
+
+upsertAttendance:
+INSERT OR REPLACE INTO attendance(id, student_id, class_id, date_epoch_ms, status, note, has_incident, follow_up_required, session_id, updated_at_epoch_ms, device_id, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectAttendanceByClassAndDate:
+SELECT id, student_id, class_id, date_epoch_ms, status, note, has_incident, follow_up_required, session_id, updated_at_epoch_ms, device_id, sync_version
+FROM attendance
+WHERE class_id = ? AND date_epoch_ms = ?;
+
+selectAttendanceForClassBetweenDates:
+SELECT id, student_id, class_id, date_epoch_ms, status, note, has_incident, follow_up_required, session_id, updated_at_epoch_ms, device_id, sync_version
+FROM attendance
+WHERE class_id = ? AND date_epoch_ms BETWEEN ? AND ?
+ORDER BY date_epoch_ms DESC, student_id ASC;
+
+selectBackupEntries:
+SELECT id, path, created_at_epoch_ms, platform, size_bytes
+FROM backup_entries
+ORDER BY created_at_epoch_ms DESC;
+
+insertBackupEntry:
+INSERT INTO backup_entries(path, created_at_epoch_ms, platform, size_bytes)
+VALUES (?, ?, ?, ?);
+
+deleteBackupEntry:
+DELETE FROM backup_entries WHERE id = ?;
+
+selectDashboardStats:
+SELECT
+  (SELECT COUNT(*) FROM students) AS total_students,
+  (SELECT COUNT(*) FROM classes) AS total_classes,
+  (SELECT COUNT(*) FROM evaluations) AS total_evaluations,
+  (SELECT COUNT(*) FROM rubrics) AS total_rubrics,
+  (SELECT COUNT(*) FROM sessions) AS total_sessions;
+
+upsertCenter:
+INSERT OR REPLACE INTO centers(
+    id, code, name, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+upsertAppUser:
+INSERT OR REPLACE INTO app_users(
+    id, external_id, display_name, email, role, center_id, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+upsertAcademicYear:
+INSERT OR REPLACE INTO academic_years(
+    id, center_id, name, start_epoch_ms, end_epoch_ms, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectAllAppUsers:
+SELECT id, external_id, display_name, email, role, center_id, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+FROM app_users
+ORDER BY id;
+
+selectAllAcademicYears:
+SELECT id, center_id, name, start_epoch_ms, end_epoch_ms, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+FROM academic_years
+ORDER BY start_epoch_ms DESC, id DESC;
+
+selectAllCenters:
+SELECT id, code, name, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+FROM centers
+ORDER BY id;
+
+selectAllTeacherSchedules:
+SELECT id, owner_user_id, academic_year_id, name, start_date, end_date, active_weekdays, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+FROM teacher_schedules
+ORDER BY updated_at_epoch_ms DESC, id DESC;
+
+upsertTeacherSchedule:
+INSERT OR REPLACE INTO teacher_schedules(
+    id, owner_user_id, academic_year_id, name, start_date, end_date, active_weekdays, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectTeacherScheduleSlots:
+SELECT id, teacher_schedule_id, school_class_id, subject_label, unit_label, day_of_week, start_time, end_time, weekly_template_id
+FROM teacher_schedule_slots
+WHERE teacher_schedule_id = ?
+ORDER BY day_of_week, start_time, id;
+
+selectTeacherScheduleSlotById:
+SELECT id, teacher_schedule_id, school_class_id, subject_label, unit_label, day_of_week, start_time, end_time, weekly_template_id
+FROM teacher_schedule_slots
+WHERE id = ?;
+
+upsertTeacherScheduleSlot:
+INSERT OR REPLACE INTO teacher_schedule_slots(
+    id, teacher_schedule_id, school_class_id, subject_label, unit_label, day_of_week, start_time, end_time, weekly_template_id
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteTeacherScheduleSlot:
+DELETE FROM teacher_schedule_slots WHERE id = ?;
+
+selectPlannerEvaluationPeriods:
+SELECT id, teacher_schedule_id, name, start_date, end_date, sort_order
+FROM planner_evaluation_periods
+WHERE teacher_schedule_id = ?
+ORDER BY sort_order, start_date, id;
+
+upsertPlannerEvaluationPeriod:
+INSERT OR REPLACE INTO planner_evaluation_periods(
+    id, teacher_schedule_id, name, start_date, end_date, sort_order
+)
+VALUES (?, ?, ?, ?, ?, ?);
+
+deletePlannerEvaluationPeriod:
+DELETE FROM planner_evaluation_periods WHERE id = ?;
+
+selectAllCompetencies:
+SELECT id, code, name, description, stage_cycle_id, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+FROM competency_criteria
+ORDER BY code, name;
+
+upsertCompetency:
+INSERT OR REPLACE INTO competency_criteria(
+    id, code, name, description, stage_cycle_id, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+upsertEvaluationCompetencyLink:
+INSERT OR REPLACE INTO evaluation_competency_links(
+    id, evaluation_id, competency_id, weight, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectEvaluationCompetencyLinks:
+SELECT id, evaluation_id, competency_id, weight, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+FROM evaluation_competency_links
+WHERE evaluation_id = ?
+ORDER BY id;
+
+selectIncidentsByClass:
+SELECT id, class_id, student_id, title, detail, severity, date_epoch_ms, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+FROM incidents
+WHERE class_id = ?
+ORDER BY date_epoch_ms DESC, id DESC;
+
+upsertIncident:
+INSERT OR REPLACE INTO incidents(
+    id, class_id, student_id, title, detail, severity, date_epoch_ms, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectEventsByClass:
+SELECT id, class_id, title, description, start_epoch_ms, end_epoch_ms, external_provider, external_id, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+FROM calendar_events
+WHERE class_id = ?
+ORDER BY start_epoch_ms, id;
+
+selectAllEvents:
+SELECT id, class_id, title, description, start_epoch_ms, end_epoch_ms, external_provider, external_id, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+FROM calendar_events
+ORDER BY start_epoch_ms, id;
+
+upsertEvent:
+INSERT OR REPLACE INTO calendar_events(
+    id, class_id, title, description, start_epoch_ms, end_epoch_ms, external_provider, external_id, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectAllConfigTemplates:
+SELECT id, center_id, owner_user_id, name, kind, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+FROM configuration_templates
+ORDER BY kind, name;
+
+selectTemplatesByKind:
+SELECT id, center_id, owner_user_id, name, kind, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+FROM configuration_templates
+WHERE kind = ?
+ORDER BY name;
+
+upsertConfigTemplate:
+INSERT OR REPLACE INTO configuration_templates(
+    id, center_id, owner_user_id, name, kind, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+nextConfigTemplateVersion:
+SELECT COALESCE(MAX(version_number), 0) + 1 AS next_version
+FROM configuration_template_versions
+WHERE template_id = ?;
+
+upsertConfigTemplateVersion:
+INSERT OR REPLACE INTO configuration_template_versions(
+    id, template_id, version_number, payload_json, based_on_version_id, source_academic_year_id, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectConfigTemplateVersions:
+SELECT id, template_id, version_number, payload_json, based_on_version_id, source_academic_year_id, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+FROM configuration_template_versions
+WHERE template_id = ?
+ORDER BY version_number DESC;
+
+selectLatestConfigTemplateVersion:
+SELECT id, template_id, version_number, payload_json, based_on_version_id, source_academic_year_id, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+FROM configuration_template_versions
+WHERE template_id = ?
+ORDER BY version_number DESC
+LIMIT 1;
+
+selectNotebookCellsByClass:
+SELECT class_id, student_id, column_id, value_text, value_bool, value_icon, value_ordinal, display_value, observed_at_epoch_ms, competency_criteria_ids_csv, effective_weight, counts_toward_average, note, color_hex, attachment_uris_csv, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+FROM notebook_cell_entries
+WHERE class_id = ?
+ORDER BY student_id, column_id;
+
+deleteNotebookCellsByColumnId:
+DELETE FROM notebook_cell_entries
+WHERE column_id = ?;
+
+upsertNotebookCellEntry:
+INSERT OR REPLACE INTO notebook_cell_entries(
+    class_id, student_id, column_id, value_text, value_bool, value_icon, value_ordinal, display_value, observed_at_epoch_ms, competency_criteria_ids_csv, effective_weight, counts_toward_average, note, color_hex, attachment_uris_csv, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+CREATE TABLE IF NOT EXISTS notebook_tabs (
+    id          TEXT NOT NULL PRIMARY KEY,
+    class_id    INTEGER NOT NULL,
+    title       TEXT NOT NULL,
+    parent_tab_id TEXT,
+    sort_order  INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id   TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_tab_id) REFERENCES notebook_tabs(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_tabs_class ON notebook_tabs(class_id);
+CREATE INDEX IF NOT EXISTS idx_tabs_parent ON notebook_tabs(parent_tab_id, sort_order, id);
+
+CREATE TABLE IF NOT EXISTS notebook_columns (
+    id              TEXT NOT NULL PRIMARY KEY,
+    class_id        INTEGER NOT NULL,
+    title           TEXT NOT NULL,
+    type            TEXT NOT NULL,         -- NotebookColumnType enum
+    category_kind   TEXT NOT NULL DEFAULT 'CUSTOM',
+    instrument_kind TEXT NOT NULL DEFAULT 'CUSTOM',
+    input_kind      TEXT NOT NULL DEFAULT 'TEXT',
+    evaluation_id   INTEGER,
+    formula         TEXT,
+    weight          REAL NOT NULL DEFAULT 1.0,
+    date_epoch_ms   INTEGER,
+    unit_name       TEXT,
+    competency_criteria_ids_csv TEXT NOT NULL DEFAULT '',
+    scale_kind      TEXT NOT NULL DEFAULT 'CUSTOM',
+    tab_ids_csv     TEXT NOT NULL DEFAULT '',
+    shared_across_tabs INTEGER NOT NULL DEFAULT 0,
+    color_hex       TEXT NOT NULL DEFAULT '#FFFFFF',
+    icon_name       TEXT,
+    sort_order      INTEGER NOT NULL DEFAULT 0,
+    width_dp        REAL NOT NULL DEFAULT 132.0,
+    category_id     TEXT,
+    visibility      TEXT NOT NULL DEFAULT 'VISIBLE',
+    is_locked       INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id       TEXT,
+    sync_version    INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (evaluation_id) REFERENCES evaluations(id) ON DELETE SET NULL,
+    FOREIGN KEY (category_id) REFERENCES notebook_column_categories(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_columns_class ON notebook_columns(class_id);
+CREATE INDEX IF NOT EXISTS idx_columns_class_category ON notebook_columns(class_id, category_id, sort_order, id);
+
+CREATE TABLE IF NOT EXISTS notebook_column_categories (
+    id                  TEXT NOT NULL PRIMARY KEY,
+    class_id            INTEGER NOT NULL,
+    tab_id              TEXT NOT NULL,
+    name                TEXT NOT NULL,
+    sort_order          INTEGER NOT NULL DEFAULT 0,
+    is_collapsed        INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id           TEXT,
+    sync_version        INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (tab_id) REFERENCES notebook_tabs(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_column_categories_class_tab ON notebook_column_categories(class_id, tab_id, sort_order, id);
+
+CREATE TABLE IF NOT EXISTS notebook_work_groups (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    class_id        INTEGER NOT NULL,
+    tab_id          TEXT NOT NULL,
+    name            TEXT NOT NULL,
+    sort_order      INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id       TEXT,
+    sync_version    INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (tab_id) REFERENCES notebook_tabs(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_work_groups_class_tab ON notebook_work_groups(class_id, tab_id, sort_order, id);
+
+CREATE TABLE IF NOT EXISTS notebook_work_group_members (
+    class_id        INTEGER NOT NULL,
+    tab_id          TEXT NOT NULL,
+    group_id        INTEGER NOT NULL,
+    student_id      INTEGER NOT NULL,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id       TEXT,
+    sync_version    INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (class_id, tab_id, student_id),
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (tab_id) REFERENCES notebook_tabs(id) ON DELETE CASCADE,
+    FOREIGN KEY (group_id) REFERENCES notebook_work_groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_work_group_members_class_tab ON notebook_work_group_members(class_id, tab_id, group_id, student_id);
+
+selectTabsByClass:
+SELECT id, class_id, title, parent_tab_id, sort_order, updated_at_epoch_ms, device_id, sync_version
+FROM notebook_tabs
+WHERE class_id = ?
+ORDER BY sort_order, id;
+
+upsertTab:
+INSERT OR REPLACE INTO notebook_tabs(id, class_id, title, parent_tab_id, sort_order, updated_at_epoch_ms, device_id, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteTab:
+DELETE FROM notebook_tabs WHERE id = ?;
+
+selectColumnsByClass:
+SELECT id, class_id, title, type, category_kind, instrument_kind, input_kind, evaluation_id, formula, weight, date_epoch_ms, unit_name, competency_criteria_ids_csv, scale_kind, tab_ids_csv, shared_across_tabs, color_hex, icon_name, sort_order, width_dp, category_id, visibility, is_locked, updated_at_epoch_ms, device_id, sync_version
+FROM notebook_columns
+WHERE class_id = ?
+ORDER BY sort_order, id;
+
+selectColumnById:
+SELECT id, class_id, title, type, category_kind, instrument_kind, input_kind, evaluation_id, formula, weight, date_epoch_ms, unit_name, competency_criteria_ids_csv, scale_kind, tab_ids_csv, shared_across_tabs, color_hex, icon_name, sort_order, width_dp, category_id, visibility, is_locked, updated_at_epoch_ms, device_id, sync_version
+FROM notebook_columns
+WHERE id = ?;
+
+selectColumnsByEvaluation:
+SELECT id, class_id, title, type, category_kind, instrument_kind, input_kind, evaluation_id, formula, weight, date_epoch_ms, unit_name, competency_criteria_ids_csv, scale_kind, tab_ids_csv, shared_across_tabs, color_hex, icon_name, sort_order, width_dp, category_id, visibility, is_locked, updated_at_epoch_ms, device_id, sync_version
+FROM notebook_columns
+WHERE evaluation_id = ?;
+
+selectColumnCategoriesByClass:
+SELECT id, class_id, tab_id, name, sort_order, is_collapsed, updated_at_epoch_ms, device_id, sync_version
+FROM notebook_column_categories
+WHERE class_id = ?
+ORDER BY tab_id, sort_order, id;
+
+selectColumnCategoriesByClassAndTab:
+SELECT id, class_id, tab_id, name, sort_order, is_collapsed, updated_at_epoch_ms, device_id, sync_version
+FROM notebook_column_categories
+WHERE class_id = ? AND tab_id = ?
+ORDER BY sort_order, id;
+
+upsertColumnCategory:
+INSERT OR REPLACE INTO notebook_column_categories(
+    id, class_id, tab_id, name, sort_order, is_collapsed, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteColumnCategory:
+DELETE FROM notebook_column_categories
+WHERE class_id = ? AND id = ?;
+
+selectWorkGroupsByClass:
+SELECT id, class_id, tab_id, name, sort_order, updated_at_epoch_ms, device_id, sync_version
+FROM notebook_work_groups
+WHERE class_id = ?
+ORDER BY tab_id, sort_order, id;
+
+selectWorkGroupsByClassAndTab:
+SELECT id, class_id, tab_id, name, sort_order, updated_at_epoch_ms, device_id, sync_version
+FROM notebook_work_groups
+WHERE class_id = ? AND tab_id = ?
+ORDER BY sort_order, id;
+
+insertWorkGroup:
+INSERT INTO notebook_work_groups(
+    class_id, tab_id, name, sort_order, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+updateWorkGroup:
+UPDATE notebook_work_groups
+SET class_id = ?,
+    tab_id = ?,
+    name = ?,
+    sort_order = ?,
+    updated_at_epoch_ms = ?,
+    device_id = ?,
+    sync_version = ?
+WHERE id = ?;
+
+deleteWorkGroup:
+DELETE FROM notebook_work_groups WHERE id = ?;
+
+selectWorkGroupMembersByClass:
+SELECT class_id, tab_id, group_id, student_id, updated_at_epoch_ms, device_id, sync_version
+FROM notebook_work_group_members
+WHERE class_id = ?
+ORDER BY tab_id, group_id, student_id;
+
+selectWorkGroupMembersByClassAndTab:
+SELECT class_id, tab_id, group_id, student_id, updated_at_epoch_ms, device_id, sync_version
+FROM notebook_work_group_members
+WHERE class_id = ? AND tab_id = ?
+ORDER BY group_id, student_id;
+
+upsertWorkGroupMember:
+INSERT OR REPLACE INTO notebook_work_group_members(
+    class_id, tab_id, group_id, student_id, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+deleteWorkGroupMember:
+DELETE FROM notebook_work_group_members
+WHERE class_id = ? AND tab_id = ? AND student_id = ?;
+
+upsertColumn:
+INSERT OR REPLACE INTO notebook_columns(
+    id, class_id, title, type, category_kind, instrument_kind, input_kind, evaluation_id, formula, weight,
+    date_epoch_ms, unit_name, competency_criteria_ids_csv, scale_kind, tab_ids_csv, shared_across_tabs,
+    color_hex, icon_name, sort_order, width_dp, category_id, visibility, is_locked, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteColumn:
+DELETE FROM notebook_columns WHERE id = ?;
+
+lastInsertedId:
+SELECT last_insert_rowid();

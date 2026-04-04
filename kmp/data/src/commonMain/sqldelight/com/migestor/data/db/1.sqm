@@ -1,0 +1,12 @@
+-- Migration from version 1 to 2
+ALTER TABLE grades ADD COLUMN class_id INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE grades ADD COLUMN column_id TEXT NOT NULL DEFAULT '';
+
+-- Populate data from evaluations if possible
+UPDATE grades SET 
+    column_id = 'eval_' || evaluation_id,
+    class_id = (SELECT class_id FROM evaluations WHERE evaluations.id = grades.evaluation_id)
+WHERE (column_id = '' OR class_id = 0) AND evaluation_id IS NOT NULL;
+
+-- Index for supporting the new UNIQUE constraint logic in upsert
+CREATE UNIQUE INDEX IF NOT EXISTS idx_grades_student_column ON grades(student_id, column_id);

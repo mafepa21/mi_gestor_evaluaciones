@@ -1,0 +1,3 @@
+ALTER TABLE rubrics ADD COLUMN class_id INTEGER;
+ALTER TABLE rubrics ADD COLUMN teaching_unit_id INTEGER;
+ALTER TABLE planner_session ADD COLUMN linked_assessment_ids_csv TEXT NOT NULL DEFAULT '';

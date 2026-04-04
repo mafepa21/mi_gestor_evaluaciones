@@ -1,0 +1,17 @@
+-- Enrich notebook columns and cell entries for the iPad-first notebook redesign.
+ALTER TABLE notebook_columns ADD COLUMN category_kind TEXT NOT NULL DEFAULT 'CUSTOM';
+ALTER TABLE notebook_columns ADD COLUMN instrument_kind TEXT NOT NULL DEFAULT 'CUSTOM';
+ALTER TABLE notebook_columns ADD COLUMN input_kind TEXT NOT NULL DEFAULT 'TEXT';
+ALTER TABLE notebook_columns ADD COLUMN date_epoch_ms INTEGER;
+ALTER TABLE notebook_columns ADD COLUMN unit_name TEXT;
+ALTER TABLE notebook_columns ADD COLUMN competency_criteria_ids_csv TEXT NOT NULL DEFAULT '';
+ALTER TABLE notebook_columns ADD COLUMN scale_kind TEXT NOT NULL DEFAULT 'CUSTOM';
+ALTER TABLE notebook_columns ADD COLUMN icon_name TEXT;
+ALTER TABLE notebook_columns ADD COLUMN visibility TEXT NOT NULL DEFAULT 'VISIBLE';
+ALTER TABLE notebook_columns ADD COLUMN is_locked INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE notebook_cell_entries ADD COLUMN display_value TEXT;
+ALTER TABLE notebook_cell_entries ADD COLUMN observed_at_epoch_ms INTEGER;
+ALTER TABLE notebook_cell_entries ADD COLUMN competency_criteria_ids_csv TEXT NOT NULL DEFAULT '';
+ALTER TABLE notebook_cell_entries ADD COLUMN effective_weight REAL;
+ALTER TABLE notebook_cell_entries ADD COLUMN counts_toward_average INTEGER;

@@ -1,0 +1,4 @@
+-- Migration from version 3 to 4
+
+ALTER TABLE teaching_unit ADD COLUMN description TEXT DEFAULT '';
+ALTER TABLE teaching_unit ADD COLUMN color_hex TEXT DEFAULT '#4A90D9';

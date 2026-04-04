@@ -1,0 +1,32 @@
+-- migration 6.sqm
+
+CREATE TABLE IF NOT EXISTS notebook_work_groups (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    class_id        INTEGER NOT NULL,
+    tab_id          TEXT NOT NULL,
+    name            TEXT NOT NULL,
+    sort_order      INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id       TEXT,
+    sync_version    INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (tab_id) REFERENCES notebook_tabs(id) ON DELETE CASCADE,
+    UNIQUE(class_id, tab_id, name)
+);
+CREATE INDEX IF NOT EXISTS idx_work_groups_class_tab ON notebook_work_groups(class_id, tab_id, sort_order, id);
+
+CREATE TABLE IF NOT EXISTS notebook_work_group_members (
+    class_id        INTEGER NOT NULL,
+    tab_id          TEXT NOT NULL,
+    group_id        INTEGER NOT NULL,
+    student_id      INTEGER NOT NULL,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id       TEXT,
+    sync_version    INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (class_id, tab_id, student_id),
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (tab_id) REFERENCES notebook_tabs(id) ON DELETE CASCADE,
+    FOREIGN KEY (group_id) REFERENCES notebook_work_groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_work_group_members_class_tab ON notebook_work_group_members(class_id, tab_id, group_id, student_id);

@@ -1,0 +1,25 @@
+-- Migration from version 8 to 9
+-- Add persisted column categories and per-column category assignment.
+
+PRAGMA foreign_keys = OFF;
+
+ALTER TABLE notebook_columns ADD COLUMN category_id TEXT;
+
+CREATE TABLE IF NOT EXISTS notebook_column_categories (
+    id                  TEXT NOT NULL PRIMARY KEY,
+    class_id            INTEGER NOT NULL,
+    tab_id              TEXT NOT NULL,
+    name                TEXT NOT NULL,
+    sort_order          INTEGER NOT NULL DEFAULT 0,
+    is_collapsed        INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id           TEXT,
+    sync_version        INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (tab_id) REFERENCES notebook_tabs(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_column_categories_class_tab ON notebook_column_categories(class_id, tab_id, sort_order, id);
+CREATE INDEX IF NOT EXISTS idx_columns_class_category ON notebook_columns(class_id, category_id, sort_order, id);
+
+PRAGMA foreign_keys = ON;

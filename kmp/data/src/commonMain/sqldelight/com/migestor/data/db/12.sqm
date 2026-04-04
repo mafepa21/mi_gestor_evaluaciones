@@ -1,0 +1,7 @@
+-- Migration from version 11 to 12
+-- Extend attendance with roll call metadata for notes, incidents, follow-up, and session linkage.
+
+ALTER TABLE attendance ADD COLUMN note TEXT NOT NULL DEFAULT '';
+ALTER TABLE attendance ADD COLUMN has_incident INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE attendance ADD COLUMN follow_up_required INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE attendance ADD COLUMN session_id INTEGER;

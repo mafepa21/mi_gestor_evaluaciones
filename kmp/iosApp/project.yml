@@ -1,0 +1,56 @@
+name: MiGestorKMPiOS
+options:
+  minimumXcodeGenVersion: 2.45.0
+  deploymentTarget:
+    iOS: "16.0"
+targets:
+  MiGestorKMPiOS:
+    type: application
+    platform: iOS
+    sources:
+      - App
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.migestor.ios
+        PRODUCT_NAME: MiGestorKMPiOS
+        SWIFT_VERSION: "5.0"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: C8JCMT4298
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: MiGestorKMPiOS
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: MiGestor usa el micrófono para adjuntar audios breves al diario de aula.
+        INFOPLIST_KEY_NSCameraUsageDescription: MiGestor usa la cámara para escanear el código QR de vinculación con la app de escritorio.
+        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: MiGestor usa la fototeca para adjuntar evidencias visuales a la sesión.
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        FRAMEWORK_SEARCH_PATHS:
+          - "$(inherited)"
+          - "$(SRCROOT)/Frameworks"
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/Frameworks"
+        OTHER_LDFLAGS:
+          - "$(inherited)"
+          - "-lsqlite3"
+        EXCLUDED_ARCHS[sdk=iphonesimulator*]: x86_64
+    dependencies:
+      - framework: Frameworks/MiGestorKit.framework
+    preBuildScripts:
+      - name: Build KMP Framework
+        script: |
+          set -euo pipefail
+          cd "${SRCROOT}/.."
+          ./scripts/build_ios_framework.sh
+        outputFiles:
+          - "$(SRCROOT)/Frameworks/MiGestorKit.framework/MiGestorKit"

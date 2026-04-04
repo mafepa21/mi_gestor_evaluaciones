@@ -1,0 +1,45 @@
+-- Migration from version 13 to 14
+-- Add persistent planner schedule tables used by the iPad planner workspace.
+
+CREATE TABLE IF NOT EXISTS teacher_schedules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner_user_id INTEGER NOT NULL,
+    academic_year_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    start_date TEXT NOT NULL,
+    end_date TEXT NOT NULL,
+    active_weekdays TEXT NOT NULL DEFAULT '1,2,3,4,5',
+    author_user_id INTEGER,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    associated_group_id INTEGER,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (owner_user_id) REFERENCES app_users(id) ON DELETE CASCADE,
+    FOREIGN KEY (academic_year_id) REFERENCES academic_years(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS teacher_schedule_slots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    teacher_schedule_id INTEGER NOT NULL,
+    school_class_id INTEGER NOT NULL,
+    subject_label TEXT NOT NULL DEFAULT '',
+    unit_label TEXT,
+    day_of_week INTEGER NOT NULL,
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    weekly_template_id INTEGER,
+    FOREIGN KEY (teacher_schedule_id) REFERENCES teacher_schedules(id) ON DELETE CASCADE,
+    FOREIGN KEY (school_class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (weekly_template_id) REFERENCES weekly_slot_template(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS planner_evaluation_periods (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    teacher_schedule_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    start_date TEXT NOT NULL,
+    end_date TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (teacher_schedule_id) REFERENCES teacher_schedules(id) ON DELETE CASCADE
+);

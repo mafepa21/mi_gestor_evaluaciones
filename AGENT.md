@@ -172,6 +172,14 @@ MiGestor es una aplicación educativa multiplataforma (KMP) centrada en la gesti
                 - **Rediseño Nativo**: `NotebookGroupManagerSheet` reimplementado con una arquitectura de **2 pasos** (Lista -> Detalle) usando `NavigationStack`, `swipeActions` para borrado rápido y guardado automático al cerrar el detalle (`.onDisappear`).
                 - **Sincronización de Grupos**: Las operaciones de grupos se persisten localmente y se encolan automáticamente para sincronización bidireccional con el Desktop.
 
+#### Estabilización KMP iOS (Abril 2026)
+- **Correcciones de Compilación**:
+    - **Puente KMP (KmpBridge.swift)**: Ajustado el constructor de `NotebookColumnDefinition` para soportar parámetros adicionales del API generado. Implementado casting explícito de tipos (`Int` -> `Int32`/`Int64`) en llamadas a repositorios para evitar ambigüedades en Swift.
+    - **Planner (SwiftUI)**: Refactorización de inicializaciones complejas de `Set` en `PlannerWorkspaceIOS.swift` para mitigar el timeout del compilador Swift en expresiones de tipo diferido.
+    - **Sintaxis de Estilo**: Corregido uso de `.foregroundStyle(.secondary)` en tipos `ShapeStyle` no conformes.
+    - **Teacher Schedule**: Ajustada la visibilidad de componentes internos y operadores de comparación (`==`) entre `KotlinLong` e `Int64`.
+- **Robustez de Tipos**: Añadida extensión `nilIfBlank` para gestión segura de opcionales en formularios de configuración.
+
 #### Archivos Afectados
 - `kmp/shared/.../sync/SyncCoordinator.kt` — contratos `SyncChange`, `SyncAck`
 - `kmp/desktopApp/.../sync/SqlDelightSyncAdapter.kt` — collect & apply 25 entidades + delete handler

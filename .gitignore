@@ -26,8 +26,9 @@ build/
 DerivedData/
 kmp/.xcode-derived/
 *.xcworkspace/xcuserdata/
-*.xcodeproj/xcuserdata/
+**/xcuserdata/
 *.xcuserstate
+
 
 # Generated / local-only
 ios/Pods/

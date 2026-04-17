@@ -36,3 +36,11 @@ kmp/iosApp/Frameworks/
 kmp/local.properties
 *.log
 kmp/iosApp/build_output.txt
+
+.gradle/
+**/.gradle/
+*.lck
+*.part
+build/
+DerivedData/
+.DS_Store

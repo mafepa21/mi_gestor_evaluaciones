@@ -183,8 +183,15 @@ class NotebookRepositorySqlDelight(
         notebookConfigRepository.saveColumnCategory(classId, category)
     }
 
-    override suspend fun deleteColumnCategory(classId: Long, categoryId: String) {
-        notebookConfigRepository.deleteColumnCategory(classId, categoryId)
+    override suspend fun deleteColumnCategory(classId: Long, categoryId: String, preserveColumns: Boolean) {
+        if (!preserveColumns) {
+            db.appDatabaseQueries.selectColumnsByClass(classId).executeAsList()
+                .filter { it.category_id == categoryId }
+                .forEach { row ->
+                    deleteColumn(row.id)
+                }
+        }
+        notebookConfigRepository.deleteColumnCategory(classId, categoryId, preserveColumns = true)
     }
 
     override suspend fun toggleCategoryCollapsed(classId: Long, categoryId: String, isCollapsed: Boolean) {

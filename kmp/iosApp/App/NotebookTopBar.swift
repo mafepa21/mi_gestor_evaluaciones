@@ -19,10 +19,10 @@ enum NotebookStyle {
     static let primaryTint = EvaluationDesign.accent
     static let successTint = EvaluationDesign.success
     static let warningTint = Color(red: 0.86, green: 0.52, blue: 0.12)
-    static let surface = Color(.secondarySystemBackground).opacity(0.92)
-    static let surfaceMuted = Color(.tertiarySystemBackground).opacity(0.88)
-    static let surfaceSoft = Color(.secondarySystemBackground).opacity(0.78)
-    static let track = Color(.tertiarySystemFill).opacity(0.55)
+    static let surface = appSecondarySystemBackgroundColor().opacity(0.92)
+    static let surfaceMuted = appTertiarySystemBackgroundColor().opacity(0.88)
+    static let surfaceSoft = appSecondarySystemBackgroundColor().opacity(0.78)
+    static let track = appTertiarySystemFillColor().opacity(0.55)
 }
 
 struct NotebookSurface<Content: View>: View {

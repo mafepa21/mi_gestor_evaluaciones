@@ -4,6 +4,7 @@ import com.migestor.shared.domain.Evaluation
 import com.migestor.shared.domain.Grade
 import com.migestor.shared.domain.NotebookColumnDefinition
 import com.migestor.shared.domain.NotebookColumnType
+import com.migestor.shared.domain.NotebookCellAnnotation
 import com.migestor.shared.domain.NotebookTab
 import com.migestor.shared.domain.SchoolClass
 import com.migestor.shared.domain.Student
@@ -20,6 +21,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 class BuildNotebookSheetUseCaseTest {
     @Test
@@ -156,6 +158,99 @@ class BuildNotebookSheetUseCaseTest {
 
         assertEquals(8.0, sheet.rows.first().weightedAverage)
     }
+
+    @Test
+    fun `uses configured column weights for manual average`() = runTest {
+        val classId = 1L
+        val student = Student(id = 1, firstName = "Ana", lastName = "Lopez")
+        val evaluations = listOf(
+            Evaluation(id = 11, classId = classId, code = "EX1", name = "Examen", type = "EX", weight = 0.5),
+            Evaluation(id = 12, classId = classId, code = "TA1", name = "Tarea", type = "HW", weight = 0.5),
+        )
+        val grades = listOf(
+            Grade(id = 1, classId = classId, studentId = 1, columnId = "eval_11", evaluationId = 11, value = 6.0),
+            Grade(id = 2, classId = classId, studentId = 1, columnId = "eval_12", evaluationId = 12, value = 8.0),
+        )
+
+        val useCase = BuildNotebookSheetUseCase(
+            getNotebookUseCase = GetNotebookUseCase(
+                classesRepository = FakeClassesRepository2(student, classId),
+                evaluationsRepository = FakeEvaluationsRepository2(evaluations),
+                gradesRepository = FakeGradesRepository2(grades),
+                notebookCellsRepository = FakeNotebookCellsRepository2()
+            )
+        )
+
+        val sheet = useCase.build(
+            classId = classId,
+            evaluations = evaluations,
+            students = listOf(student),
+            tabs = listOf(NotebookTab(id = "eval", title = "Evaluación", order = 0)),
+            configuredColumns = listOf(
+                NotebookColumnDefinition(id = "eval_11", title = "Examen", type = NotebookColumnType.NUMERIC, evaluationId = 11L, tabIds = listOf("eval"), weight = 60.0),
+                NotebookColumnDefinition(id = "eval_12", title = "Tarea", type = NotebookColumnType.NUMERIC, evaluationId = 12L, tabIds = listOf("eval"), weight = 40.0),
+            )
+        )
+
+        assertEquals(6.8, sheet.rows.first().weightedAverage)
+    }
+
+    @Test
+    fun `builds notebook insights from evidence and linked competencies`() = runTest {
+        val classId = 1L
+        val student = Student(id = 1, firstName = "Ana", lastName = "Lopez")
+        val evaluations = listOf(
+            Evaluation(id = 11, classId = classId, code = "EX1", name = "Examen", type = "EX", weight = 1.0),
+        )
+        val grades = listOf(
+            Grade(id = 1, classId = classId, studentId = 1, columnId = "eval_11", evaluationId = 11, value = 7.0, evidencePath = "/tmp/exam.jpg"),
+        )
+        val cellsRepository = FakeNotebookCellsRepository2(
+            listOf(
+                PersistedNotebookCell(
+                    classId = classId,
+                    studentId = 1,
+                    columnId = "obs_1",
+                    annotation = NotebookCellAnnotation(
+                        note = "Seguimiento",
+                        attachmentUris = listOf("/tmp/note.png")
+                    ),
+                    competencyCriteriaIds = listOf(101L)
+                )
+            )
+        )
+
+        val useCase = BuildNotebookSheetUseCase(
+            getNotebookUseCase = GetNotebookUseCase(
+                classesRepository = FakeClassesRepository2(student, classId),
+                evaluationsRepository = FakeEvaluationsRepository2(evaluations),
+                gradesRepository = FakeGradesRepository2(grades),
+                notebookCellsRepository = cellsRepository
+            )
+        )
+
+        val sheet = useCase.build(
+            classId = classId,
+            evaluations = evaluations,
+            students = listOf(student),
+            tabs = listOf(NotebookTab(id = "eval", title = "Evaluación", order = 0)),
+            configuredColumns = listOf(
+                NotebookColumnDefinition(
+                    id = "eval_11",
+                    title = "Examen",
+                    type = NotebookColumnType.NUMERIC,
+                    evaluationId = 11L,
+                    tabIds = listOf("eval"),
+                    competencyCriteriaIds = listOf(101L),
+                )
+            )
+        )
+
+        val insight = sheet.insights.single()
+        assertEquals(2, insight.evidenceCount)
+        assertEquals(listOf(101L), insight.linkedCompetencyIds)
+        assertTrue(insight.averageScore != null)
+    }
 }
 
 private class FakeClassesRepository2(
@@ -250,9 +345,11 @@ private class FakeGradesRepository2(
     ) = Unit
 }
 
-private class FakeNotebookCellsRepository2 : NotebookCellsRepository {
-    override fun observeClassCells(classId: Long): Flow<List<PersistedNotebookCell>> = flowOf(emptyList())
-    override suspend fun listClassCells(classId: Long): List<PersistedNotebookCell> = emptyList()
+private class FakeNotebookCellsRepository2(
+    private val cells: List<PersistedNotebookCell> = emptyList(),
+) : NotebookCellsRepository {
+    override fun observeClassCells(classId: Long): Flow<List<PersistedNotebookCell>> = flowOf(cells)
+    override suspend fun listClassCells(classId: Long): List<PersistedNotebookCell> = cells
     override suspend fun saveCell(
         classId: Long,
         studentId: Long,

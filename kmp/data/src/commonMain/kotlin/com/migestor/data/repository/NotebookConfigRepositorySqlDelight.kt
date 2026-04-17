@@ -314,11 +314,13 @@ class NotebookConfigRepositorySqlDelight(
         NotebookRefreshBus.emitRefresh()
     }
 
-    override suspend fun deleteColumnCategory(classId: Long, categoryId: String) {
+    override suspend fun deleteColumnCategory(classId: Long, categoryId: String, preserveColumns: Boolean) {
         db.transaction {
-            db.appDatabaseQueries.selectColumnsByClass(classId).executeAsList()
+            val categoryColumns = db.appDatabaseQueries.selectColumnsByClass(classId).executeAsList()
                 .filter { it.category_id == categoryId }
-                .forEach { row ->
+
+            if (preserveColumns) {
+                categoryColumns.forEach { row ->
                     db.appDatabaseQueries.upsertColumn(
                         id = row.id,
                         class_id = row.class_id,
@@ -348,6 +350,11 @@ class NotebookConfigRepositorySqlDelight(
                         sync_version = row.sync_version
                     )
                 }
+            } else {
+                categoryColumns.forEach { row ->
+                    db.appDatabaseQueries.deleteColumn(row.id)
+                }
+            }
             db.appDatabaseQueries.deleteColumnCategory(classId, categoryId)
         }
         NotebookRefreshBus.emitRefresh()

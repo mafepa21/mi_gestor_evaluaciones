@@ -78,6 +78,19 @@ struct PlannerSessionSaveResult {
 
 @MainActor
 final class KmpBridge: ObservableObject {
+    private static let plannerCoursePalette: [String] = [
+        "#2563EB",
+        "#0F766E",
+        "#DC2626",
+        "#7C3AED",
+        "#EA580C",
+        "#0891B2",
+        "#65A30D",
+        "#BE185D",
+        "#4F46E5",
+        "#B45309"
+    ]
+
     @Published var status: String = "Inicializando..."
     @Published var statsText: String = "-"
     @Published var classes: [SchoolClass] = []
@@ -218,6 +231,343 @@ final class KmpBridge: ObservableObject {
         let generatedAt: Date
     }
 
+    enum ReportKind: String, CaseIterable, Identifiable {
+        case groupOverview
+        case studentSummary
+        case evaluationDigest
+        case operationsSnapshot
+        case lomloeEvaluationComment
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .groupOverview: return "Informe de grupo"
+            case .studentSummary: return "Informe individual"
+            case .evaluationDigest: return "Resumen de evaluación"
+            case .operationsSnapshot: return "Resumen operativo"
+            case .lomloeEvaluationComment: return "Comentario LOMLOE"
+            }
+        }
+
+        var subtitle: String {
+            switch self {
+            case .groupOverview: return "Medias y pulso general del grupo"
+            case .studentSummary: return "Seguimiento sintético para tutoría"
+            case .evaluationDigest: return "Instrumentos, rúbricas y carga activa"
+            case .operationsSnapshot: return "Asistencia, incidencias y estado docente"
+            case .lomloeEvaluationComment: return "Comentario trimestral de EF listo para informe"
+            }
+        }
+
+        var systemImage: String {
+            switch self {
+            case .groupOverview: return "person.3.sequence.fill"
+            case .studentSummary: return "person.text.rectangle.fill"
+            case .evaluationDigest: return "chart.bar.doc.horizontal"
+            case .operationsSnapshot: return "bolt.badge.clock.fill"
+            case .lomloeEvaluationComment: return "text.badge.star"
+            }
+        }
+
+        var requiresStudentSelection: Bool {
+            self == .studentSummary || self == .lomloeEvaluationComment
+        }
+    }
+
+    struct ReportMetric: Identifiable {
+        let title: String
+        let value: String
+        let systemImage: String
+
+        var id: String { title }
+    }
+
+    struct ReportGenerationContext {
+        let classId: Int64
+        let className: String
+        let studentId: Int64?
+        let studentName: String?
+        let kind: ReportKind
+        let reportTitle: String
+        let courseLabel: String?
+        let termLabel: String?
+        let numericScore: Double?
+        let curriculumReferences: [String]
+        let promptDirectives: [String]
+        let audienceHint: String
+        let summary: String
+        let metrics: [ReportMetric]
+        let factLines: [String]
+        let strengths: [String]
+        let needsAttention: [String]
+        let recommendedActions: [String]
+        let supportNotes: [String]
+        let classicReportText: String
+        let hasEnoughData: Bool
+        let dataQualityNote: String?
+    }
+
+    enum AnalyticsTimeRange: String, CaseIterable, Identifiable {
+        case last14Days
+        case last30Days
+        case last90Days
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .last14Days: return "Últimos 14 días"
+            case .last30Days: return "Últimos 30 días"
+            case .last90Days: return "Últimos 90 días"
+            }
+        }
+
+        var dayCount: Int {
+            switch self {
+            case .last14Days: return 14
+            case .last30Days: return 30
+            case .last90Days: return 90
+            }
+        }
+    }
+
+    enum ChartKind: String, CaseIterable, Identifiable {
+        case attendanceTrend
+        case attendanceComparison
+        case incidentHeatmap
+        case uniformComparison
+        case groupAveragesRanking
+        case sameCourseComparison
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .attendanceTrend: return "Evolución de asistencia"
+            case .attendanceComparison: return "Comparativa de asistencia"
+            case .incidentHeatmap: return "Heatmap de incidencias"
+            case .uniformComparison: return "Faltas de equipación"
+            case .groupAveragesRanking: return "Ranking de medias"
+            case .sameCourseComparison: return "Comparativa global"
+            }
+        }
+
+        var subtitle: String {
+            switch self {
+            case .attendanceTrend: return "Pulso temporal del grupo"
+            case .attendanceComparison: return "Comparación entre grupos del mismo curso"
+            case .incidentHeatmap: return "Patrones por día de la semana"
+            case .uniformComparison: return "Alertas operativas en EF"
+            case .groupAveragesRanking: return "Medias registradas por grupo"
+            case .sameCourseComparison: return "Asistencia, evaluación y rendimiento"
+            }
+        }
+
+        var systemImage: String {
+            switch self {
+            case .attendanceTrend: return "waveform.path.ecg"
+            case .attendanceComparison: return "person.3.sequence.fill"
+            case .incidentHeatmap: return "square.grid.3x3.topleft.filled"
+            case .uniformComparison: return "figure.run.square.stack"
+            case .groupAveragesRanking: return "chart.bar.xaxis"
+            case .sameCourseComparison: return "chart.xyaxis.line"
+            }
+        }
+
+        var chartTypeLabel: String {
+            switch self {
+            case .attendanceTrend: return "Línea"
+            case .attendanceComparison: return "Barras agrupadas"
+            case .incidentHeatmap: return "Heatmap"
+            case .uniformComparison: return "Barras agrupadas"
+            case .groupAveragesRanking: return "Ranking horizontal"
+            case .sameCourseComparison: return "Barras comparativas"
+            }
+        }
+
+        var groupingLabel: String {
+            switch self {
+            case .attendanceTrend: return "Día"
+            case .incidentHeatmap: return "Semana y día"
+            default: return "Grupo"
+            }
+        }
+    }
+
+    struct ChartPoint: Identifiable, Hashable {
+        let id = UUID()
+        let label: String
+        let value: Double
+        let note: String?
+    }
+
+    struct ChartSeries: Identifiable, Hashable {
+        let id = UUID()
+        let name: String
+        let colorToken: String
+        let points: [ChartPoint]
+    }
+
+    struct HeatmapCell: Identifiable, Hashable {
+        let id = UUID()
+        let rowLabel: String
+        let columnLabel: String
+        let value: Double
+    }
+
+    struct ChartFacts: Identifiable {
+        let chartKind: ChartKind
+        let title: String
+        let subtitle: String
+        let chartType: String
+        let timeRange: String
+        let grouping: String
+        let metrics: [ReportMetric]
+        let factLines: [String]
+        let highlights: [String]
+        let warnings: [String]
+        let series: [ChartSeries]
+        let heatmapCells: [HeatmapCell]
+        let hasEnoughData: Bool
+        let emptyStateMessage: String?
+        let teacherDigest: String
+        let insertableSummary: String
+
+        var id: String { chartKind.rawValue }
+    }
+
+    struct AnalyticsRequest {
+        let chartKind: ChartKind
+        let timeRange: AnalyticsTimeRange
+        let selectedClassIds: [Int64]
+        let selectedClassNames: [String]
+        let prompt: String?
+        let querySummary: String
+    }
+
+    enum ScreenAIContextKind: String, Identifiable {
+        case dashboard
+        case courses
+        case students
+        case notebook
+        case attendance
+        case diary
+        case evaluation
+        case reports
+        case pe
+
+        var id: String { rawValue }
+    }
+
+    struct ContextualAIAction: Identifiable, Hashable {
+        enum ActionID: String {
+            case operationalSummary
+            case prioritizedAlerts
+            case weeklyDigest
+            case classSnapshot
+            case studentFollowUp
+            case familyComment
+            case attendancePatterns
+            case followUpList
+            case diarySummary
+            case nextSteps
+            case evaluationDigest
+            case progressReadout
+            case notebookGroupSummary
+            case notebookStudentComment
+            case observationProposal
+            case reportBridge
+            case peOperationalSummary
+            case peEquipmentSummary
+            case peComparison
+        }
+
+        let actionId: ActionID
+        let title: String
+        let subtitle: String
+        let systemImage: String
+        let promptHint: String
+
+        var id: String { actionId.rawValue }
+    }
+
+    struct ScreenAIContext {
+        let kind: ScreenAIContextKind
+        let title: String
+        let subtitle: String
+        let classId: Int64?
+        let className: String?
+        let studentId: Int64?
+        let studentName: String?
+        let summary: String
+        let metrics: [ReportMetric]
+        let factLines: [String]
+        let supportNotes: [String]
+        let suggestedActions: [ContextualAIAction]
+        let hasEnoughData: Bool
+        let dataQualityNote: String?
+
+        func copy(
+            kind: ScreenAIContextKind? = nil,
+            title: String? = nil,
+            subtitle: String? = nil,
+            classId: Int64? = nil,
+            className: String? = nil,
+            studentId: Int64? = nil,
+            studentName: String? = nil,
+            summary: String? = nil,
+            metrics: [ReportMetric]? = nil,
+            factLines: [String]? = nil,
+            supportNotes: [String]? = nil,
+            suggestedActions: [ContextualAIAction]? = nil,
+            hasEnoughData: Bool? = nil,
+            dataQualityNote: String? = nil
+        ) -> ScreenAIContext {
+            ScreenAIContext(
+                kind: kind ?? self.kind,
+                title: title ?? self.title,
+                subtitle: subtitle ?? self.subtitle,
+                classId: classId ?? self.classId,
+                className: className ?? self.className,
+                studentId: studentId ?? self.studentId,
+                studentName: studentName ?? self.studentName,
+                summary: summary ?? self.summary,
+                metrics: metrics ?? self.metrics,
+                factLines: factLines ?? self.factLines,
+                supportNotes: supportNotes ?? self.supportNotes,
+                suggestedActions: suggestedActions ?? self.suggestedActions,
+                hasEnoughData: hasEnoughData ?? self.hasEnoughData,
+                dataQualityNote: dataQualityNote ?? self.dataQualityNote
+            )
+        }
+    }
+
+    struct NotebookAIColumnValue: Identifiable {
+        let id = UUID()
+        let title: String
+        let value: String
+        let categoryLabel: String
+    }
+
+    struct NotebookAICommentContext {
+        let classId: Int64
+        let className: String
+        let studentId: Int64
+        let studentName: String
+        let averageScore: Double?
+        let attendanceStatus: String?
+        let followUpCount: Int
+        let incidentCount: Int
+        let evidenceCount: Int
+        let competencyLabels: [String]
+        let relevantValues: [NotebookAIColumnValue]
+        let existingComment: String?
+        let summary: String
+        let hasEnoughData: Bool
+        let dataQualityNote: String?
+    }
+
     struct RubricUsageSnapshot {
         struct EvaluationUsage: Identifiable {
             let id = UUID()
@@ -265,6 +615,7 @@ final class KmpBridge: ObservableObject {
     }
 
     private let container: KmpContainer
+    private let appleBootstrap: AppleBridgeBootstrap
     let notebookViewModel: NotebookViewModel
     let plannerViewModel: PlannerViewModel
     let rubricEvaluationViewModel: RubricEvaluationViewModel
@@ -333,7 +684,8 @@ final class KmpBridge: ObservableObject {
     }
 
     init() {
-        self.container = KmpContainer(driver: IosDriverKt.createIosDriver())
+        self.appleBootstrap = AppleBridgeBootstrap.current()
+        self.container = appleBootstrap.container
         
         // Initialize Shared ViewModels
         self.notebookViewModel = NotebookViewModel(
@@ -496,11 +848,15 @@ final class KmpBridge: ObservableObject {
             try await refreshPlanning()
             try await refreshStudentsDirectory()
             await syncNow(reason: "bootstrap", forceFullPull: true, silent: true)
-            status = "KMP conectado en iOS Simulator"
+            status = appleBootstrap.connectedStatusText
         } catch {
             didBootstrap = false
             status = "Error: \(error.localizedDescription)"
         }
+    }
+
+    var appDatabasePath: String {
+        appleBootstrap.databasePath
     }
 
     private func seedIfNeeded() async throws {
@@ -948,7 +1304,7 @@ final class KmpBridge: ObservableObject {
            let normalized = normalizeHexColor(stored) {
             return normalized
         }
-        let palette = EvaluationDesign.plannerCoursePalette
+        let palette = Self.plannerCoursePalette
         let index = Int(abs(classId) % Int64(palette.count))
         return palette[index]
     }
@@ -1034,7 +1390,7 @@ final class KmpBridge: ObservableObject {
         }
 
         let weeklyTemplateId = try await {
-            try await plannerSaveWeeklySlot(
+            _ = try await plannerSaveWeeklySlot(
                 classId: classId,
                 dayOfWeek: dayOfWeek,
                 startTime: normalizedStart,
@@ -1100,7 +1456,7 @@ final class KmpBridge: ObservableObject {
         startTime: String,
         endTime: String,
         editingSlotId: Int64? = nil
-    ) async throws {
+    ) async throws -> Int64 {
         let existing = container.weeklyTemplateRepository.getSlotsForClass(schoolClassId: classId)
         let normalizedStart = startTime.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedEnd = endTime.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1123,10 +1479,20 @@ final class KmpBridge: ObservableObject {
         }
 
         if let editingSlotId {
+            enqueueLocalChange(
+                entity: "weekly_slot",
+                id: "\(editingSlotId)",
+                updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+                payload: [
+                    "id": editingSlotId,
+                    "schoolClassId": classId
+                ],
+                op: "delete"
+            )
             try await container.weeklyTemplateRepository.delete(slotId: editingSlotId)
         }
 
-        _ = try await container.weeklyTemplateRepository.insert(
+        let insertedId = try await container.weeklyTemplateRepository.insert(
             slot: WeeklySlotTemplate(
                 id: 0,
                 schoolClassId: classId,
@@ -1135,10 +1501,35 @@ final class KmpBridge: ObservableObject {
                 endTime: normalizedEnd
             )
         )
+        let updatedAtEpochMs = Int64(Date().timeIntervalSince1970 * 1000)
+        enqueueLocalChange(
+            entity: "weekly_slot",
+            id: "\(insertedId.int64Value)",
+            updatedAtEpochMs: updatedAtEpochMs,
+            payload: [
+                "id": insertedId.int64Value,
+                "schoolClassId": classId,
+                "dayOfWeek": dayOfWeek,
+                "startTime": normalizedStart,
+                "endTime": normalizedEnd
+            ]
+        )
+        return insertedId.int64Value
     }
 
     func plannerDeleteWeeklySlot(slotId: Int64) async throws {
+        let existingSlot = plannerWeeklySlots(classId: nil).first(where: { $0.id == slotId })
         try await container.weeklyTemplateRepository.delete(slotId: slotId)
+        enqueueLocalChange(
+            entity: "weekly_slot",
+            id: "\(slotId)",
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+            payload: [
+                "id": slotId,
+                "schoolClassId": existingSlot?.schoolClassId ?? 0
+            ],
+            op: "delete"
+        )
     }
 
     func plannerUpsertSession(
@@ -1783,13 +2174,38 @@ final class KmpBridge: ObservableObject {
         )
     }
 
-    func buildReportPreview(classId: Int64) async throws -> ReportPreviewPayload {
+    func buildReportPreview(
+        classId: Int64,
+        studentId: Int64? = nil,
+        kind: ReportKind = .groupOverview,
+        termLabel: String? = nil
+    ) async throws -> ReportPreviewPayload {
+        let context = try await buildReportGenerationContext(classId: classId, studentId: studentId, kind: kind, termLabel: termLabel)
+        return ReportPreviewPayload(
+            classId: context.classId,
+            className: context.className,
+            previewText: context.classicReportText,
+            generatedAt: Date()
+        )
+    }
+
+    func buildReportGenerationContext(
+        classId: Int64,
+        studentId: Int64? = nil,
+        kind: ReportKind,
+        termLabel: String? = nil
+    ) async throws -> ReportGenerationContext {
         guard let schoolClass = try await container.classesRepository.listClasses().first(where: { $0.id == classId }) else {
             throw NSError(domain: "KmpBridge", code: 404, userInfo: [NSLocalizedDescriptionKey: "No se encontró la clase \(classId)."])
         }
+
+        let resolvedCourseLabel = courseLabel(for: schoolClass)
+
         let students = try await container.classesRepository.listStudentsInClass(classId: classId)
+        let evaluations = try await evaluations(for: classId)
         let grades = try await container.gradesRepository.listGradesForClass(classId: classId)
         let groupedGrades = Dictionary(grouping: grades, by: \.studentId)
+        let rubricCount = Set(evaluations.compactMap { $0.rubricId?.int64Value }).count
         let rows = students.map { student -> String in
             let values = groupedGrades[student.id, default: []].compactMap { $0.value?.doubleValue }
             let average = values.isEmpty ? 0.0 : values.reduce(0, +) / Double(values.count)
@@ -1798,13 +2214,402 @@ final class KmpBridge: ObservableObject {
         let bytes = try await container.reportService.exportNotebookReport(
             request: NotebookReportRequest(className: schoolClass.name, rows: rows)
         )
-        let previewText = String(data: data(from: bytes), encoding: .utf8) ?? "Vista previa no disponible para este informe."
-        return ReportPreviewPayload(
-            classId: classId,
-            className: schoolClass.name,
-            previewText: previewText,
-            generatedAt: Date()
-        )
+        let classicText = String(data: data(from: bytes), encoding: .utf8) ?? "Vista previa no disponible para este informe."
+
+        switch kind {
+        case .groupOverview:
+            let summary = try await loadCourseSummary(classId: classId)
+            let strengths = compactSuggestions(
+                summary.averageScore >= 7.0 ? "El grupo mantiene una media global sólida en el cuaderno." : nil,
+                summary.attendanceRate >= 90 ? "La asistencia reciente sostiene una dinámica estable." : nil,
+                summary.severeIncidentCount == 0 && summary.incidentCount <= 2 ? "La convivencia está contenida y sin alertas graves." : nil,
+                summary.evaluationCount >= 3 ? "Hay variedad suficiente de instrumentos para argumentar el informe." : nil
+            )
+            let needsAttention = compactSuggestions(
+                summary.studentCount == 0 ? "Todavía no hay alumnado asociado al grupo." : nil,
+                summary.averageScore > 0 && summary.averageScore < 5.0 ? "La media del grupo pide refuerzo pedagógico." : nil,
+                (1..<85).contains(summary.attendanceRate) ? "La asistencia reciente está por debajo del umbral deseable." : nil,
+                summary.severeIncidentCount > 0 ? "Existen incidencias graves que conviene contextualizar con cuidado." : nil
+            )
+            let actions = compactSuggestions(
+                (1..<85).contains(summary.attendanceRate) ? "Planificar seguimiento específico de asistencia para el alumnado con más ausencias." : nil,
+                summary.averageScore > 0 && summary.averageScore < 5.0 ? "Revisar instrumentos y preparar refuerzo para la próxima unidad." : nil,
+                summary.evaluationCount < 2 ? "Añadir más evidencias evaluativas antes de emitir conclusiones firmes." : nil
+            )
+            let facts = [
+                "Alumnado total: \(summary.studentCount).",
+                "Media global registrada: \(IosFormatting.decimal(from: summary.averageScore)).",
+                "Asistencia reciente estimada: \(summary.attendanceRate)%.",
+                "Evaluaciones activas: \(summary.evaluationCount) y rúbricas vinculadas: \(rubricCount).",
+                "Incidencias registradas: \(summary.incidentCount), graves: \(summary.severeIncidentCount).",
+                summary.activeEvaluationNames.isEmpty ? "No hay instrumentos activos destacados." : "Instrumentos activos destacados: \(summary.activeEvaluationNames.joined(separator: ", "))."
+            ]
+            return ReportGenerationContext(
+                classId: classId,
+                className: schoolClass.name,
+                studentId: nil,
+                studentName: nil,
+                kind: kind,
+                reportTitle: kind.title,
+                courseLabel: resolvedCourseLabel,
+                termLabel: termLabel,
+                numericScore: summary.averageScore,
+                curriculumReferences: [],
+                promptDirectives: [],
+                audienceHint: "docente",
+                summary: "Síntesis global del grupo con foco en rendimiento, asistencia y clima.",
+                metrics: [
+                    ReportMetric(title: "Alumnado", value: "\(summary.studentCount)", systemImage: "person.3.fill"),
+                    ReportMetric(title: "Media", value: IosFormatting.decimal(from: summary.averageScore), systemImage: "sum"),
+                    ReportMetric(title: "Asistencia", value: "\(summary.attendanceRate)%", systemImage: "checklist.checked"),
+                    ReportMetric(title: "Incidencias", value: "\(summary.incidentCount)", systemImage: "exclamationmark.bubble.fill")
+                ],
+                factLines: facts,
+                strengths: strengths,
+                needsAttention: needsAttention,
+                recommendedActions: actions,
+                supportNotes: summary.rosterPreview.isEmpty ? [] : ["Muestra de roster: \(summary.rosterPreview.map(\.fullName).joined(separator: ", "))."],
+                classicReportText: classicText,
+                hasEnoughData: summary.studentCount > 0,
+                dataQualityNote: summary.evaluationCount == 0 ? "No hay evaluaciones registradas todavía; el relato debe ser prudente." : nil
+            )
+
+        case .studentSummary:
+            guard let studentId else {
+                return ReportGenerationContext(
+                    classId: classId,
+                    className: schoolClass.name,
+                    studentId: nil,
+                    studentName: nil,
+                    kind: kind,
+                    reportTitle: kind.title,
+                    courseLabel: resolvedCourseLabel,
+                    termLabel: termLabel,
+                    numericScore: nil,
+                    curriculumReferences: [],
+                    promptDirectives: [],
+                    audienceHint: "tutoria",
+                    summary: "Hace falta seleccionar un alumno para construir este informe.",
+                    metrics: [],
+                    factLines: ["No se ha seleccionado alumnado para el informe individual."],
+                    strengths: [],
+                    needsAttention: ["Selecciona un alumno antes de generar el borrador con IA."],
+                    recommendedActions: [],
+                    supportNotes: [],
+                    classicReportText: classicText,
+                    hasEnoughData: false,
+                    dataQualityNote: "El informe individual requiere selección de alumno."
+                )
+            }
+            let profile = try await loadStudentProfile(studentId: studentId, classId: classId)
+            let strengths = compactSuggestions(
+                profile.averageScore >= 7.0 ? "Mantiene un rendimiento medio sólido en los instrumentos registrados." : nil,
+                profile.attendanceRate >= 90 ? "Sostiene una asistencia alta en el periodo analizado." : nil,
+                profile.incidentCount == 0 ? "No presenta incidencias registradas en el grupo." : nil,
+                profile.evidenceCount > 0 ? "Cuenta con evidencias adjuntas que apoyan la valoración." : nil
+            )
+            let needsAttention = compactSuggestions(
+                profile.instrumentsCount == 0 ? "No hay todavía instrumentos suficientes para una valoración cerrada." : nil,
+                profile.averageScore > 0 && profile.averageScore < 5.0 ? "El rendimiento registrado está por debajo del nivel esperado." : nil,
+                (1..<85).contains(profile.attendanceRate) ? "La asistencia necesita seguimiento." : nil,
+                profile.incidentCount > 0 ? "Existen incidencias registradas que conviene contextualizar pedagógicamente." : nil,
+                profile.followUpCount > 0 ? "Hay registros de seguimiento en asistencia que requieren continuidad." : nil
+            )
+            let actions = compactSuggestions(
+                profile.averageScore > 0 && profile.averageScore < 5.0 ? "Proponer refuerzo específico en los instrumentos con peor resultado." : nil,
+                (1..<85).contains(profile.attendanceRate) ? "Acordar rutina de seguimiento de asistencia con tutoría y familia." : nil,
+                profile.familyCommunicationCount == 0 ? "Preparar una comunicación breve a familia si el caso lo requiere." : nil,
+                profile.evaluationTitles.isEmpty ? "Recoger nuevas evidencias antes del siguiente informe." : nil
+            )
+            let facts = compactSuggestions(
+                "Alumno: \(profile.student.fullName).",
+                "Asistencia estimada: \(profile.attendanceRate)%.",
+                profile.averageScore > 0 ? "Media registrada: \(IosFormatting.decimal(from: profile.averageScore))." : "Sin media consolidada todavía.",
+                "Incidencias registradas: \(profile.incidentCount).",
+                "Seguimientos activos: \(profile.followUpCount).",
+                profile.latestAttendanceStatus == nil ? nil : "Último estado de asistencia: \(profile.latestAttendanceStatus ?? "").",
+                profile.evaluationTitles.isEmpty ? "No hay evaluaciones vinculadas todavía." : "Instrumentos presentes: \(profile.evaluationTitles.joined(separator: ", "))."
+            )
+            return ReportGenerationContext(
+                classId: classId,
+                className: schoolClass.name,
+                studentId: studentId,
+                studentName: profile.student.fullName,
+                kind: kind,
+                reportTitle: kind.title,
+                courseLabel: resolvedCourseLabel,
+                termLabel: termLabel,
+                numericScore: profile.averageScore > 0 ? profile.averageScore : nil,
+                curriculumReferences: [],
+                promptDirectives: [],
+                audienceHint: "tutoria",
+                summary: "Síntesis individual centrada en seguimiento, evidencias y próximos pasos.",
+                metrics: [
+                    ReportMetric(title: "Asistencia", value: "\(profile.attendanceRate)%", systemImage: "checklist.checked"),
+                    ReportMetric(title: "Media", value: IosFormatting.decimal(from: profile.averageScore), systemImage: "sum"),
+                    ReportMetric(title: "Incidencias", value: "\(profile.incidentCount)", systemImage: "exclamationmark.bubble.fill"),
+                    ReportMetric(title: "Evidencias", value: "\(profile.evidenceCount)", systemImage: "paperclip")
+                ],
+                factLines: facts,
+                strengths: strengths,
+                needsAttention: needsAttention,
+                recommendedActions: actions,
+                supportNotes: compactSuggestions(
+                    profile.adaptationsSummary,
+                    profile.familyCommunicationSummary,
+                    profile.timeline.first.map { "Último hito registrado: \($0.title). \($0.subtitle)" }
+                ),
+                classicReportText: classicText,
+                hasEnoughData: profile.instrumentsCount > 0 || profile.journalNoteCount > 0 || profile.incidentCount > 0,
+                dataQualityNote: profile.instrumentsCount == 0 ? "Hay poca evidencia evaluativa registrada; conviene evitar conclusiones fuertes." : nil
+            )
+
+        case .evaluationDigest:
+            let values = grades.compactMap { $0.value?.doubleValue }
+            let average = values.isEmpty ? 0.0 : values.reduce(0, +) / Double(values.count)
+            let evaluationsWithRubric = evaluations.filter { $0.rubricId != nil }.count
+            let strengths = compactSuggestions(
+                evaluations.count >= 3 ? "Existe una base suficiente de instrumentos activos para describir el proceso evaluativo." : nil,
+                evaluationsWithRubric > 0 ? "Hay rúbricas vinculadas que ayudan a justificar criterios y niveles." : nil,
+                !values.isEmpty ? "Ya existen calificaciones registradas sobre las que redactar el digest." : nil
+            )
+            let needsAttention = compactSuggestions(
+                evaluations.isEmpty ? "No hay instrumentos evaluativos creados en este grupo." : nil,
+                evaluationsWithRubric == 0 && !evaluations.isEmpty ? "Ninguna evaluación está enlazada a una rúbrica." : nil,
+                values.isEmpty ? "Todavía no hay calificaciones registradas para sintetizar resultados." : nil
+            )
+            let actions = compactSuggestions(
+                evaluationsWithRubric == 0 && !evaluations.isEmpty ? "Valorar vincular rúbricas a los instrumentos más relevantes." : nil,
+                values.isEmpty ? "Registrar evidencias antes de compartir un resumen valorativo." : nil,
+                evaluations.count < 2 ? "Diversificar instrumentos si se necesita una foto más completa del aprendizaje." : nil
+            )
+            let factLines = [
+                "Instrumentos activos: \(evaluations.count).",
+                "Rúbricas vinculadas: \(evaluationsWithRubric) de \(evaluations.count).",
+                values.isEmpty ? "No hay notas registradas todavía." : "Media agregada de calificaciones: \(IosFormatting.decimal(from: average)).",
+                evaluations.isEmpty ? "Sin nombres de instrumentos disponibles." : "Instrumentos destacados: \(evaluations.prefix(6).map(\.name).joined(separator: ", "))."
+            ]
+            return ReportGenerationContext(
+                classId: classId,
+                className: schoolClass.name,
+                studentId: nil,
+                studentName: nil,
+                kind: kind,
+                reportTitle: kind.title,
+                courseLabel: resolvedCourseLabel,
+                termLabel: termLabel,
+                numericScore: average > 0 ? average : nil,
+                curriculumReferences: [],
+                promptDirectives: [],
+                audienceHint: "docente",
+                summary: "Lectura narrativa de instrumentos, pesos, rúbricas y evidencias disponibles.",
+                metrics: [
+                    ReportMetric(title: "Instrumentos", value: "\(evaluations.count)", systemImage: "chart.bar.doc.horizontal"),
+                    ReportMetric(title: "Rúbricas", value: "\(evaluationsWithRubric)", systemImage: "checklist"),
+                    ReportMetric(title: "Notas", value: "\(values.count)", systemImage: "number"),
+                    ReportMetric(title: "Media", value: IosFormatting.decimal(from: average), systemImage: "sum")
+                ],
+                factLines: factLines,
+                strengths: strengths,
+                needsAttention: needsAttention,
+                recommendedActions: actions,
+                supportNotes: evaluations.prefix(4).map { "\($0.name) · peso \(IosFormatting.decimal(from: $0.weight)) · tipo \($0.type)" },
+                classicReportText: classicText,
+                hasEnoughData: !evaluations.isEmpty,
+                dataQualityNote: values.isEmpty ? "Hay estructura evaluativa, pero faltan calificaciones para una síntesis más sólida." : nil
+            )
+
+        case .operationsSnapshot:
+            let attendance = try await attendanceHistory(for: classId, days: 14)
+            let incidents = try await incidents(for: classId)
+            let sessions = try await container.plannerRepository.listAllSessions()
+                .filter { $0.groupId == classId }
+                .sorted { lhs, rhs in
+                    if lhs.year == rhs.year, lhs.weekNumber == rhs.weekNumber {
+                        if lhs.dayOfWeek == rhs.dayOfWeek { return lhs.period > rhs.period }
+                        return lhs.dayOfWeek > rhs.dayOfWeek
+                    }
+                    if lhs.year == rhs.year { return lhs.weekNumber > rhs.weekNumber }
+                    return lhs.year > rhs.year
+                }
+            var journalSummaries: [SessionJournalSummary] = []
+            if !sessions.isEmpty {
+                journalSummaries = try await plannerJournalSummaries(sessionIds: Array(sessions.prefix(8).map(\.id)))
+            }
+            let presentCount = attendance.filter { $0.status.uppercased().contains("PRESENT") }.count
+            let attendanceRate = attendance.isEmpty ? 0 : Int((Double(presentCount) / Double(attendance.count)) * 100.0)
+            let climateValues = journalSummaries.map(\.climateScore).filter { $0 > 0 }
+            let climateAverage = climateValues.isEmpty ? 0.0 : Double(climateValues.reduce(0, +)) / Double(climateValues.count)
+            let strengths = compactSuggestions(
+                attendanceRate >= 90 ? "La asistencia reciente favorece una operativa estable." : nil,
+                incidents.prefix(5).isEmpty ? "No hay incidencias recientes relevantes en el grupo." : nil,
+                climateAverage >= 4.0 ? "El clima de aula registrado en diarios es positivo." : nil
+            )
+            let needsAttention = compactSuggestions(
+                (1..<85).contains(attendanceRate) ? "La asistencia reciente pide vigilancia operativa." : nil,
+                incidents.prefix(5).count >= 3 ? "Se acumulan varias incidencias recientes." : nil,
+                climateAverage > 0 && climateAverage < 3.0 ? "El clima de aula reportado es frágil." : nil,
+                journalSummaries.isEmpty ? "No hay diarios recientes suficientes para sostener el resumen operativo." : nil
+            )
+            let actions = compactSuggestions(
+                (1..<85).contains(attendanceRate) ? "Revisar alumnado con ausencias o retrasos repetidos." : nil,
+                incidents.prefix(5).count >= 3 ? "Agrupar incidencias por patrón y definir seguimiento corto." : nil,
+                journalSummaries.isEmpty ? "Completar diarios de sesión para enriquecer el seguimiento semanal." : nil
+            )
+            let factLines = compactSuggestions(
+                "Asistencia reciente estimada: \(attendanceRate)%.",
+                "Incidencias en histórico reciente: \(incidents.prefix(8).count).",
+                journalSummaries.isEmpty ? "Sin diarios recientes disponibles." : "Diarios recientes consultados: \(journalSummaries.count).",
+                climateAverage > 0 ? "Clima medio registrado: \(IosFormatting.decimal(from: climateAverage))." : "Sin puntuación media de clima disponible.",
+                incidents.first.map { "Última incidencia: \($0.title)." }
+            )
+            let supportNotes = compactSuggestions(
+                incidents.first?.detail,
+                journalSummaries.first.map { "Última sesión con incidencia: etiquetas \($0.incidentTags.joined(separator: ", "))" }
+            )
+            return ReportGenerationContext(
+                classId: classId,
+                className: schoolClass.name,
+                studentId: nil,
+                studentName: nil,
+                kind: kind,
+                reportTitle: kind.title,
+                courseLabel: resolvedCourseLabel,
+                termLabel: termLabel,
+                numericScore: climateAverage > 0 ? climateAverage : nil,
+                curriculumReferences: [],
+                promptDirectives: [],
+                audienceHint: "docente",
+                summary: "Resumen semanal de operativa, asistencia, incidencias y señales del diario.",
+                metrics: [
+                    ReportMetric(title: "Asistencia", value: "\(attendanceRate)%", systemImage: "checklist.checked"),
+                    ReportMetric(title: "Incidencias", value: "\(incidents.prefix(8).count)", systemImage: "exclamationmark.bubble.fill"),
+                    ReportMetric(title: "Diarios", value: "\(journalSummaries.count)", systemImage: "doc.text.fill"),
+                    ReportMetric(title: "Clima", value: IosFormatting.decimal(from: climateAverage), systemImage: "sun.max.fill")
+                ],
+                factLines: factLines,
+                strengths: strengths,
+                needsAttention: needsAttention,
+                recommendedActions: actions,
+                supportNotes: supportNotes,
+                classicReportText: classicText,
+                hasEnoughData: !attendance.isEmpty || !incidents.isEmpty || !journalSummaries.isEmpty,
+                dataQualityNote: journalSummaries.isEmpty ? "El resumen operativo se apoya más en asistencia e incidencias que en diarios completos." : nil
+            )
+
+        case .lomloeEvaluationComment:
+            guard let studentId else {
+                return ReportGenerationContext(
+                    classId: classId,
+                    className: schoolClass.name,
+                    studentId: nil,
+                    studentName: nil,
+                    kind: kind,
+                    reportTitle: kind.title,
+                    courseLabel: resolvedCourseLabel,
+                    termLabel: termLabel,
+                    numericScore: nil,
+                    curriculumReferences: ["CE1", "CE2", "CE3", "CE4", "CE5"],
+                    promptDirectives: ["Comentario breve, personalizado, competencial y listo para informe trimestral."],
+                    audienceHint: "familia",
+                    summary: "Hace falta seleccionar un alumno para generar el comentario LOMLOE.",
+                    metrics: [],
+                    factLines: ["Selecciona un alumno para generar el comentario de evaluación."],
+                    strengths: [],
+                    needsAttention: ["El comentario LOMLOE requiere un alumno concreto."],
+                    recommendedActions: [],
+                    supportNotes: [],
+                    classicReportText: "Selecciona un alumno para generar el comentario LOMLOE.",
+                    hasEnoughData: false,
+                    dataQualityNote: "El comentario LOMLOE es individual y requiere selección de alumno."
+                )
+            }
+            let profile = try await loadStudentProfile(studentId: studentId, classId: classId)
+            let numericScore = profile.averageScore > 0 ? profile.averageScore : nil
+            let performanceBand: String = {
+                guard let numericScore else { return "Sin calificación consolidada" }
+                switch numericScore {
+                case ..<5: return "Insuficiente"
+                case 5..<6: return "Suficiente"
+                case 6..<7: return "Bien"
+                case 7..<9: return "Notable"
+                default: return "Sobresaliente"
+                }
+            }()
+            let curriculumReferences = inferredCurriculumReferences(for: profile)
+            let strengths = compactSuggestions(
+                profile.averageScore >= 7.0 ? "Ha alcanzado satisfactoriamente buena parte de los criterios trabajados." : nil,
+                profile.attendanceRate >= 90 ? "Mantiene una asistencia que favorece la continuidad del aprendizaje." : nil,
+                profile.incidentCount == 0 ? "Participa sin incidencias relevantes en el periodo observado." : nil,
+                profile.evidenceCount > 0 ? "Existen evidencias registradas que respaldan su progreso." : nil
+            )
+            let needsAttention = compactSuggestions(
+                numericScore == nil ? "La valoración debe ser prudente porque la evidencia numérica todavía es limitada." : nil,
+                numericScore != nil && numericScore! < 5.0 ? "Varios criterios siguen en desarrollo y requieren refuerzo guiado." : nil,
+                (1..<85).contains(profile.attendanceRate) ? "La continuidad en la asistencia condiciona parte del progreso." : nil,
+                profile.evaluationTitles.isEmpty ? "Conviene ampliar instrumentos y evidencias antes del siguiente informe." : nil
+            )
+            let recommendedActions = compactSuggestions(
+                numericScore != nil && numericScore! < 5.0 ? "Reforzar de forma progresiva los criterios prioritarios del siguiente periodo." : nil,
+                profile.adaptationsSummary == nil && profile.followUpCount > 0 ? "Mantener seguimiento cercano y propuestas de mejora concretas." : nil,
+                "Se recomienda seguir consolidando hábitos de participación, autonomía y transferencia a nuevas situaciones motrices."
+            )
+            let facts = compactSuggestions(
+                "Alumno: \(profile.student.fullName).",
+                "Curso: \(resolvedCourseLabel).",
+                termLabel.map { "Trimestre: \($0)." },
+                numericScore.map { "Calificación orientativa interna: \(IosFormatting.decimal(from: $0)) (\(performanceBand))." },
+                "Asistencia estimada: \(profile.attendanceRate)%.",
+                profile.evaluationTitles.isEmpty ? "No hay instrumentos específicos nombrados." : "Instrumentos trabajados: \(profile.evaluationTitles.joined(separator: ", ")).",
+                "Referencias curriculares sugeridas: \(curriculumReferences.joined(separator: ", "))."
+            )
+            let supportNotes = compactSuggestions(
+                profile.adaptationsSummary.map { "Adaptaciones o apoyos: \($0)" },
+                profile.familyCommunicationSummary.map { "Comunicación familia: \($0)" },
+                profile.timeline.first.map { "Última evidencia relevante: \($0.title). \($0.subtitle)" }
+            )
+            let classicCommentShell = """
+            ---
+            COMENTARIO DE EVALUACIÓN — \(profile.student.fullName) | \(resolvedCourseLabel) | \(termLabel ?? "Trimestre")
+
+            Comentario pendiente de generación IA local. Usa el botón “Generar borrador” para crear el texto final en formato LOMLOE.
+            ---
+            """
+            return ReportGenerationContext(
+                classId: classId,
+                className: schoolClass.name,
+                studentId: studentId,
+                studentName: profile.student.fullName,
+                kind: kind,
+                reportTitle: kind.title,
+                courseLabel: resolvedCourseLabel,
+                termLabel: termLabel,
+                numericScore: numericScore,
+                curriculumReferences: curriculumReferences,
+                promptDirectives: [
+                    "Aplicar estructura de 4 bloques breve para comentario trimestral LOMLOE.",
+                    "No mencionar la nota numérica en el texto final.",
+                    "Mencionar al menos una competencia específica CE1-CE5.",
+                    "Tono positivo, específico y listo para copiar en el informe."
+                ],
+                audienceHint: "familia",
+                summary: "Comentario cualitativo trimestral de Educación Física, breve, competencial y listo para informe.",
+                metrics: [
+                    ReportMetric(title: "Curso", value: resolvedCourseLabel, systemImage: "graduationcap.fill"),
+                    ReportMetric(title: "Trimestre", value: termLabel ?? "Sin definir", systemImage: "calendar"),
+                    ReportMetric(title: "Nota guía", value: numericScore.map { IosFormatting.decimal(from: $0) } ?? "Sin nota", systemImage: "number"),
+                    ReportMetric(title: "CE", value: curriculumReferences.joined(separator: ", "), systemImage: "list.bullet.clipboard")
+                ],
+                factLines: facts,
+                strengths: strengths,
+                needsAttention: needsAttention,
+                recommendedActions: recommendedActions,
+                supportNotes: supportNotes,
+                classicReportText: classicCommentShell,
+                hasEnoughData: numericScore != nil || !profile.evaluationTitles.isEmpty || !profile.timeline.isEmpty,
+                dataQualityNote: numericScore == nil ? "Si hay poca nota numérica, el comentario debe apoyarse en evidencias, actitud y progreso observado." : nil
+            )
+        }
     }
 
     func loadTemplates(kind: ConfigTemplateKind? = nil) async throws -> [ConfigTemplate] {
@@ -1963,6 +2768,46 @@ final class KmpBridge: ObservableObject {
         )
     }
 
+    private func compactSuggestions(_ values: String?...) -> [String] {
+        values.compactMap {
+            guard let value = $0?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
+            return value
+        }
+    }
+
+    private func courseLabel(for schoolClass: SchoolClass) -> String {
+        let lowercasedName = schoolClass.name.lowercased()
+        if lowercasedName.contains("bach") {
+            return "\(schoolClass.course)º Bachillerato"
+        }
+        if lowercasedName.contains("eso") || (1...4).contains(schoolClass.course) {
+            return "\(schoolClass.course)º ESO"
+        }
+        return "\(schoolClass.course)º"
+    }
+
+    private func inferredCurriculumReferences(for profile: StudentProfileSnapshot) -> [String] {
+        var references: [String] = []
+        if profile.attendanceRate > 0 {
+            references.append("CE1")
+        }
+        if !profile.evaluationTitles.isEmpty || profile.averageScore > 0 {
+            references.append("CE2")
+        }
+        if profile.evidenceCount > 0 {
+            references.append("CE3")
+        }
+        if profile.timeline.contains(where: { $0.title.localizedCaseInsensitiveContains("salida") || $0.title.localizedCaseInsensitiveContains("entorno") }) {
+            references.append("CE4")
+        }
+        if profile.incidentCount == 0 || profile.followUpCount > 0 {
+            references.append("CE5")
+        }
+        let source = references.isEmpty ? ["CE1", "CE2", "CE5"] : references
+        var seen = Set<String>()
+        return source.filter { seen.insert($0).inserted }
+    }
+
     private func data(from byteArray: KotlinByteArray) -> Data {
         var buffer = Data(capacity: Int(byteArray.size))
         for index in 0..<Int(byteArray.size) {
@@ -2058,6 +2903,14 @@ final class KmpBridge: ObservableObject {
         } catch {
             syncStatusMessage = "Pull manual fallido: \(error.localizedDescription)"
         }
+    }
+
+    func createLocalBackup(fileName: String = "mi_gestor_backup.sqlite") async throws -> BackupResult {
+        try await container.backupService.createBackup(fileName: fileName)
+    }
+
+    func restoreLocalBackup(from path: String) async throws -> Bool {
+        try await container.backupService.restoreBackup(backupPath: path).boolValue
     }
 
     func runLanPushSync() async throws {
@@ -2672,8 +3525,20 @@ final class KmpBridge: ObservableObject {
         }
     }
 
-    func saveNotebookCellAnnotation(studentId: Int64, columnId: String, note: String, attachmentUris: [String] = []) {
-        notebookViewModel.saveCellAnnotation(studentId: studentId, columnId: columnId, note: note.nilIfEmpty, attachmentUris: attachmentUris)
+    func saveNotebookCellAnnotation(
+        studentId: Int64,
+        columnId: String,
+        note: String,
+        iconValue: String? = nil,
+        attachmentUris: [String] = []
+    ) {
+        notebookViewModel.saveCellAnnotation(
+            studentId: studentId,
+            columnId: columnId,
+            note: note.nilIfEmpty,
+            iconValue: iconValue?.nilIfEmpty,
+            attachmentUris: attachmentUris
+        )
         invalidateNotebookCellValueIndexCache()
         if let classId = notebookViewModel.currentClassId?.int64Value {
             scheduleNotebookSnapshotSync(forClassId: classId)
@@ -2687,15 +3552,33 @@ final class KmpBridge: ObservableObject {
         }
     }
 
-    func deleteColumnCategory(id: String) {
+    func deleteColumnCategory(id: String, preserveColumns: Bool = true) {
         enqueueLocalChange(
             entity: "notebook_column_category",
             id: id,
             updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
-            payload: ["id": id, "classId": notebookViewModel.currentClassId?.int64Value ?? 0],
+            payload: [
+                "id": id,
+                "classId": notebookViewModel.currentClassId?.int64Value ?? 0,
+                "preserveColumns": preserveColumns
+            ],
             op: "delete"
         )
-        notebookViewModel.deleteColumnCategory(categoryId: id)
+
+        if !preserveColumns, let data = notebookState as? NotebookUiStateData {
+            let categoryColumns = data.sheet.columns.filter { $0.categoryId == id }
+            for column in categoryColumns {
+                enqueueLocalChange(
+                    entity: "notebook_column",
+                    id: column.id,
+                    updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+                    payload: ["id": column.id],
+                    op: "delete"
+                )
+            }
+        }
+
+        notebookViewModel.deleteColumnCategory(categoryId: id, preserveColumns: preserveColumns)
         if let classId = notebookViewModel.currentClassId?.int64Value {
             scheduleNotebookSnapshotSync(forClassId: classId)
         }
@@ -3832,6 +4715,23 @@ final class KmpBridge: ObservableObject {
                     )
                 }
 
+            case "weekly_slot":
+                guard
+                    let classId = int64Value(payloadObject["schoolClassId"] ?? payloadObject["classId"]),
+                    let dayOfWeek = int64Value(payloadObject["dayOfWeek"]).map(Int.init),
+                    let startTime = payloadObject["startTime"] as? String,
+                    let endTime = payloadObject["endTime"] as? String
+                else { continue }
+                _ = try await container.weeklyTemplateRepository.insert(
+                    slot: WeeklySlotTemplate(
+                        id: int64Value(payloadObject["id"]) ?? 0,
+                        schoolClassId: classId,
+                        dayOfWeek: Int32(dayOfWeek),
+                        startTime: startTime,
+                        endTime: endTime
+                    )
+                )
+
             case "notebook_tab":
                 guard
                     let classId = int64Value(payloadObject["classId"]),
@@ -4313,6 +5213,11 @@ final class KmpBridge: ObservableObject {
             if evaluationId > 0 {
                 try await container.evaluationsRepository.deleteEvaluation(evaluationId: evaluationId)
             }
+        case "weekly_slot":
+            let slotId = int64Value(payloadObject["id"]) ?? Int64(change.id) ?? 0
+            if slotId > 0 {
+                try await container.weeklyTemplateRepository.delete(slotId: slotId)
+            }
         case "notebook_tab":
             let tabId = (payloadObject["id"] as? String) ?? change.id
             if !tabId.isEmpty {
@@ -4344,7 +5249,8 @@ final class KmpBridge: ObservableObject {
             let categoryId = (payloadObject["id"] as? String) ?? change.id
             let classId = int64Value(payloadObject["classId"]) ?? notebookViewModel.currentClassId?.int64Value ?? 0
             if classId > 0 && !categoryId.isEmpty {
-                try await container.notebookRepository.deleteColumnCategory(classId: classId, categoryId: categoryId)
+                let preserveColumns = (payloadObject["preserveColumns"] as? Bool) ?? true
+                try await container.notebookRepository.deleteColumnCategory(classId: classId, categoryId: categoryId, preserveColumns: preserveColumns)
             }
         case "rubric_bundle":
             let rubricId = int64Value(payloadObject["rubricId"]) ?? Int64(change.id) ?? 0
@@ -4426,7 +5332,7 @@ final class KmpBridge: ObservableObject {
         switch entity {
         case "class", "student", "rubric_bundle", "teaching_unit", "calendar_event":
             return 0
-        case "evaluation", "notebook_tab", "notebook_column", "notebook_column_category", "notebook_group", "notebook_group_member":
+        case "evaluation", "weekly_slot", "notebook_tab", "notebook_column", "notebook_column_category", "notebook_group", "notebook_group_member":
             return 1
         case "class_roster", "attendance", "incident":
             return 2
@@ -5333,6 +6239,1083 @@ final class LanSyncClient {
             session.invalidateAndCancel()
             throw error
         }
+    }
+}
+
+extension KmpBridge {
+    func buildDashboardAIContext(classId: Int64?) async throws -> ScreenAIContext {
+        let snapshot = try await container.getOperationalDashboardSnapshot.invoke(
+            mode: .office,
+            filters: DashboardFilters(classId: classId.map { KotlinLong(value: $0) }, severity: nil, priority: nil, sessionStatus: nil)
+        )
+        let selectedSummary = classId.flatMap { id in snapshot.groupSummaries.first(where: { $0.classId == id }) }
+        return ScreenAIContext(
+            kind: .dashboard,
+            title: "Dashboard docente",
+            subtitle: selectedSummary?.groupName ?? "Visión operativa del día",
+            classId: classId,
+            className: selectedSummary?.groupName,
+            studentId: nil,
+            studentName: nil,
+            summary: "Resumen operativo con alertas, agenda y grupos que conviene revisar.",
+            metrics: [
+                ReportMetric(title: "Hoy", value: "\(snapshot.todayCount)", systemImage: "calendar"),
+                ReportMetric(title: "Alertas", value: "\(snapshot.alertsCount)", systemImage: "exclamationmark.bubble.fill"),
+                ReportMetric(title: "Pendientes", value: "\(snapshot.pendingCount)", systemImage: "clock.badge.exclamationmark"),
+                ReportMetric(title: "Grupos", value: "\(snapshot.groupSummaries.count)", systemImage: "rectangle.3.group")
+            ],
+            factLines: compactSuggestions(
+                "Sesiones previstas hoy: \(snapshot.todayCount).",
+                "Alertas visibles: \(snapshot.alertsCount).",
+                "Pendientes operativos: \(snapshot.pendingCount).",
+                snapshot.nextSessionLabel == "Sin próxima sesión" ? nil : "Próxima sesión: \(snapshot.nextSessionLabel).",
+                selectedSummary.map { "Grupo destacado: \($0.groupName) con asistencia \($0.attendancePct)% y media \(IosFormatting.decimal(from: $0.averageScore))." }
+            ),
+            supportNotes: compactSuggestions(
+                snapshot.alerts.first.map { "\($0.title): \($0.detail)" },
+                snapshot.agendaItems.first.map { "\($0.title) · \($0.subtitle)" }
+            ),
+            suggestedActions: [
+                ContextualAIAction(actionId: .operationalSummary, title: "Resumen operativo", subtitle: "Prioriza lo importante del día", systemImage: "bolt.badge.clock.fill", promptHint: "Resume el estado operativo y lo urgente."),
+                ContextualAIAction(actionId: .prioritizedAlerts, title: "Alertas priorizadas", subtitle: "Ordena incidencias y seguimiento", systemImage: "exclamationmark.triangle.fill", promptHint: "Ordena alertas y explica por qué conviene revisarlas."),
+                ContextualAIAction(actionId: .weeklyDigest, title: "Digest semanal", subtitle: "Texto breve para seguimiento docente", systemImage: "doc.text.fill", promptHint: "Crea un digest semanal breve y accionable.")
+            ],
+            hasEnoughData: snapshot.todayCount > 0 || snapshot.alertsCount > 0 || !snapshot.groupSummaries.isEmpty,
+            dataQualityNote: snapshot.groupSummaries.isEmpty ? "No hay resúmenes de grupo cargados todavía en el dashboard." : nil
+        )
+    }
+
+    func buildCoursesAIContext(classId: Int64?) async throws -> ScreenAIContext {
+        let classes = try await container.classesRepository.listClasses()
+        let selectedClass = classId.flatMap { id in classes.first(where: { $0.id == id }) }
+        let summary: CourseInspectorSnapshot? = if let selectedClass {
+            try? await loadCourseSummary(classId: selectedClass.id)
+        } else {
+            nil
+        }
+        return ScreenAIContext(
+            kind: .courses,
+            title: "Cursos",
+            subtitle: selectedClass?.name ?? "Panorámica de grupos",
+            classId: selectedClass?.id,
+            className: selectedClass?.name,
+            studentId: nil,
+            studentName: nil,
+            summary: selectedClass == nil ? "Contexto docente del conjunto de grupos." : "Resumen rápido del grupo activo para decidir próximos pasos.",
+            metrics: [
+                ReportMetric(title: "Grupos", value: "\(classes.count)", systemImage: "rectangle.3.group"),
+                ReportMetric(title: "Curso", value: selectedClass.map { courseLabel(for: $0) } ?? "General", systemImage: "graduationcap.fill"),
+                ReportMetric(title: "Alumnado", value: summary.map { "\($0.studentCount)" } ?? "--", systemImage: "person.3.fill"),
+                ReportMetric(title: "Asistencia", value: summary.map { "\($0.attendanceRate)%" } ?? "--", systemImage: "checklist.checked")
+            ],
+            factLines: compactSuggestions(
+                "Clases registradas: \(classes.count).",
+                selectedClass.map { "Grupo activo: \($0.name)." },
+                summary.map { "Evaluaciones activas: \($0.evaluationCount)." },
+                summary.map { "Incidencias registradas: \($0.incidentCount)." }
+            ),
+            supportNotes: compactSuggestions(
+                summary?.activeEvaluationNames.first.map { "Instrumento destacado: \($0)" }
+            ),
+            suggestedActions: [
+                ContextualAIAction(actionId: .classSnapshot, title: "Foto del grupo", subtitle: "Resumen del grupo activo", systemImage: "rectangle.3.group.bubble.left.fill", promptHint: "Resume lo importante del grupo activo."),
+                ContextualAIAction(actionId: .observationProposal, title: "Observaciones", subtitle: "Propuesta breve de observación docente", systemImage: "note.text.badge.plus", promptHint: "Sugiere observaciones breves y prudentes para este grupo.")
+            ],
+            hasEnoughData: !classes.isEmpty,
+            dataQualityNote: selectedClass == nil ? "No hay grupo seleccionado; la salida será general." : nil
+        )
+    }
+
+    func buildStudentsAIContext(classId: Int64?, studentId: Int64?) async throws -> ScreenAIContext {
+        if let studentId {
+            let profile = try await loadStudentProfile(studentId: studentId, classId: classId)
+            return ScreenAIContext(
+                kind: .students,
+                title: "Ficha del alumno",
+                subtitle: profile.student.fullName,
+                classId: classId,
+                className: profile.schoolClass?.name,
+                studentId: studentId,
+                studentName: profile.student.fullName,
+                summary: "Síntesis individual para seguimiento, tutoría o comunicación con familia.",
+                metrics: [
+                    ReportMetric(title: "Asistencia", value: "\(profile.attendanceRate)%", systemImage: "checklist.checked"),
+                    ReportMetric(title: "Media", value: IosFormatting.decimal(from: profile.averageScore), systemImage: "sum"),
+                    ReportMetric(title: "Incidencias", value: "\(profile.incidentCount)", systemImage: "exclamationmark.bubble.fill"),
+                    ReportMetric(title: "Evidencias", value: "\(profile.evidenceCount)", systemImage: "paperclip")
+                ],
+                factLines: compactSuggestions(
+                    "Alumno: \(profile.student.fullName).",
+                    "Asistencia estimada: \(profile.attendanceRate)%.",
+                    profile.averageScore > 0 ? "Media registrada: \(IosFormatting.decimal(from: profile.averageScore))." : "Sin media consolidada todavía.",
+                    "Seguimientos activos: \(profile.followUpCount).",
+                    profile.latestAttendanceStatus.map { "Último estado de asistencia: \($0)." }
+                ),
+                supportNotes: compactSuggestions(
+                    profile.adaptationsSummary,
+                    profile.familyCommunicationSummary,
+                    profile.timeline.first.map { "\($0.title) · \($0.subtitle)" }
+                ),
+                suggestedActions: [
+                    ContextualAIAction(actionId: .studentFollowUp, title: "Resumen de seguimiento", subtitle: "Lectura docente breve", systemImage: "person.text.rectangle.fill", promptHint: "Resume el seguimiento del alumno de forma accionable."),
+                    ContextualAIAction(actionId: .familyComment, title: "Comentario para familia", subtitle: "Versión clara y respetuosa", systemImage: "person.2.badge.gearshape.fill", promptHint: "Redacta un comentario claro para familia."),
+                    ContextualAIAction(actionId: .observationProposal, title: "Propuesta de observación", subtitle: "Texto corto editable", systemImage: "text.badge.plus", promptHint: "Genera una observación breve y prudente.")
+                ],
+                hasEnoughData: profile.instrumentsCount > 0 || profile.incidentCount > 0 || profile.journalNoteCount > 0,
+                dataQualityNote: profile.instrumentsCount == 0 ? "Hay poca evidencia evaluativa registrada para este alumno." : nil
+            )
+        }
+
+        return try await buildCoursesAIContext(classId: classId).copy(kind: .students, title: "Alumnado", summary: "Selecciona un alumno para un contexto más preciso.")
+    }
+
+    func buildAttendanceAIContext(classId: Int64?) async throws -> ScreenAIContext {
+        guard let classId else {
+            return ScreenAIContext(
+                kind: .attendance,
+                title: "Asistencia",
+                subtitle: "Sin clase activa",
+                classId: nil,
+                className: nil,
+                studentId: nil,
+                studentName: nil,
+                summary: "Selecciona una clase para analizar patrones de asistencia.",
+                metrics: [],
+                factLines: ["No hay grupo seleccionado."],
+                supportNotes: [],
+                suggestedActions: [],
+                hasEnoughData: false,
+                dataQualityNote: "La asistencia necesita un grupo activo."
+            )
+        }
+        let summary = try await loadCourseSummary(classId: classId)
+        let history = try await attendanceHistory(for: classId, days: 21)
+        let absent = history.filter { normalizedAnalyticsText($0.status).contains("aus") }.count
+        let late = history.filter { normalizedAnalyticsText($0.status).contains("tard") || normalizedAnalyticsText($0.status).contains("retr") }.count
+        return ScreenAIContext(
+            kind: .attendance,
+            title: "Asistencia",
+            subtitle: summary.schoolClass.name,
+            classId: classId,
+            className: summary.schoolClass.name,
+            studentId: nil,
+            studentName: nil,
+            summary: "Lectura de asistencia reciente con foco en ausencias, retrasos y seguimiento.",
+            metrics: [
+                ReportMetric(title: "Asistencia", value: "\(summary.attendanceRate)%", systemImage: "checklist.checked"),
+                ReportMetric(title: "Ausencias", value: "\(absent)", systemImage: "xmark.circle.fill"),
+                ReportMetric(title: "Retrasos", value: "\(late)", systemImage: "clock.badge.exclamationmark"),
+                ReportMetric(title: "Registros", value: "\(history.count)", systemImage: "calendar")
+            ],
+            factLines: compactSuggestions(
+                "Grupo: \(summary.schoolClass.name).",
+                "Asistencia reciente estimada: \(summary.attendanceRate)%.",
+                "Ausencias en el periodo: \(absent).",
+                "Retrasos en el periodo: \(late)."
+            ),
+            supportNotes: compactSuggestions(
+                late > 0 ? "Hay retrasos suficientes como para revisar patrones horarios." : nil
+            ),
+            suggestedActions: [
+                ContextualAIAction(actionId: .attendancePatterns, title: "Patrones de asistencia", subtitle: "Detecta señales y brechas", systemImage: "waveform.path.ecg", promptHint: "Explica los patrones recientes de asistencia."),
+                ContextualAIAction(actionId: .followUpList, title: "Lista de seguimiento", subtitle: "Quién conviene revisar primero", systemImage: "list.bullet.clipboard.fill", promptHint: "Prioriza seguimiento por asistencia e incidencias.")
+            ],
+            hasEnoughData: !history.isEmpty,
+            dataQualityNote: history.isEmpty ? "Todavía no hay suficientes registros de asistencia." : nil
+        )
+    }
+
+    func buildDiaryAIContext(classId: Int64?) async throws -> ScreenAIContext {
+        let calendar = Calendar(identifier: .iso8601)
+        let week = calendar.component(.weekOfYear, from: Date())
+        let year = calendar.component(.yearForWeekOfYear, from: Date())
+        let sessions = try await diarySessions(weekNumber: week, year: year, classId: classId)
+        let withIncidents = sessions.filter(\.hasIncidents).count
+        let className = classId.flatMap { id in classes.first(where: { $0.id == id })?.name }
+        return ScreenAIContext(
+            kind: .diary,
+            title: "Diario de aula",
+            subtitle: className ?? "Semana actual",
+            classId: classId,
+            className: className,
+            studentId: nil,
+            studentName: nil,
+            summary: "Resumen semanal del diario con incidencias, trazabilidad y próximos pasos.",
+            metrics: [
+                ReportMetric(title: "Sesiones", value: "\(sessions.count)", systemImage: "doc.text.fill"),
+                ReportMetric(title: "Con incidencias", value: "\(withIncidents)", systemImage: "exclamationmark.bubble.fill")
+            ],
+            factLines: compactSuggestions(
+                "Sesiones revisadas esta semana: \(sessions.count).",
+                "Sesiones con incidencias: \(withIncidents).",
+                sessions.first.map { "Última sesión: \(fallbackString($0.session.teachingUnitName, fallback: "Sin unidad"))." }
+            ),
+            supportNotes: compactSuggestions(
+                sessions.first?.journalSummary?.incidentTags.isEmpty == false ? "Etiquetas recientes: \(sessions.first?.journalSummary?.incidentTags.joined(separator: ", ") ?? "")" : nil
+            ),
+            suggestedActions: [
+                ContextualAIAction(actionId: .diarySummary, title: "Síntesis semanal", subtitle: "Resumen docente breve", systemImage: "doc.plaintext.fill", promptHint: "Resume la semana lectiva con foco en lo relevante."),
+                ContextualAIAction(actionId: .nextSteps, title: "Próximos pasos", subtitle: "Acciones sugeridas para la siguiente sesión", systemImage: "arrowshape.right.fill", promptHint: "Propón próximos pasos realistas y prudentes.")
+            ],
+            hasEnoughData: !sessions.isEmpty,
+            dataQualityNote: sessions.isEmpty ? "No hay sesiones de diario registradas esta semana." : nil
+        )
+    }
+
+    func buildEvaluationAIContext(classId: Int64?) async throws -> ScreenAIContext {
+        guard let classId else {
+            return ScreenAIContext(kind: .evaluation, title: "Evaluación", subtitle: "Sin clase activa", classId: nil, className: nil, studentId: nil, studentName: nil, summary: "Selecciona una clase para leer instrumentos y progreso.", metrics: [], factLines: ["No hay clase activa."], supportNotes: [], suggestedActions: [], hasEnoughData: false, dataQualityNote: "La evaluación necesita un grupo activo.")
+        }
+        let schoolClass = try await container.classesRepository.listClasses().first(where: { $0.id == classId })
+        let evaluations = try await evaluations(for: classId)
+        let values = try await container.gradesRepository.listGradesForClass(classId: classId).compactMap { $0.value?.doubleValue }
+        let average = values.isEmpty ? 0.0 : values.reduce(0, +) / Double(values.count)
+        let rubrics = evaluations.filter { $0.rubricId != nil }.count
+        return ScreenAIContext(
+            kind: .evaluation,
+            title: "Evaluación",
+            subtitle: schoolClass?.name ?? "Grupo activo",
+            classId: classId,
+            className: schoolClass?.name,
+            studentId: nil,
+            studentName: nil,
+            summary: "Digest breve de instrumentos, rúbricas y progreso evaluativo del grupo.",
+            metrics: [
+                ReportMetric(title: "Instrumentos", value: "\(evaluations.count)", systemImage: "chart.bar.doc.horizontal"),
+                ReportMetric(title: "Rúbricas", value: "\(rubrics)", systemImage: "checklist"),
+                ReportMetric(title: "Notas", value: "\(values.count)", systemImage: "number"),
+                ReportMetric(title: "Media", value: IosFormatting.decimal(from: average), systemImage: "sum")
+            ],
+            factLines: compactSuggestions(
+                "Instrumentos activos: \(evaluations.count).",
+                "Rúbricas vinculadas: \(rubrics).",
+                values.isEmpty ? "Todavía no hay calificaciones registradas." : "Media agregada: \(IosFormatting.decimal(from: average))."
+            ),
+            supportNotes: evaluations.prefix(4).map { "\($0.name) · peso \(IosFormatting.decimal(from: $0.weight))" },
+            suggestedActions: [
+                ContextualAIAction(actionId: .evaluationDigest, title: "Digest de evaluación", subtitle: "Lectura narrativa de los instrumentos", systemImage: "chart.bar.doc.horizontal.fill", promptHint: "Resume instrumentos, pesos y progreso."),
+                ContextualAIAction(actionId: .progressReadout, title: "Lectura de progreso", subtitle: "Explica el avance del grupo", systemImage: "chart.line.uptrend.xyaxis", promptHint: "Explica el estado de progreso del grupo con prudencia.")
+            ],
+            hasEnoughData: !evaluations.isEmpty,
+            dataQualityNote: values.isEmpty ? "Hay estructura evaluativa pero faltan calificaciones para una lectura más sólida." : nil
+        )
+    }
+
+    func buildReportsAIContext(classId: Int64?, studentId: Int64?) async throws -> ScreenAIContext {
+        guard let classId else {
+            return ScreenAIContext(kind: .reports, title: "Informes", subtitle: "Sin clase activa", classId: nil, className: nil, studentId: nil, studentName: nil, summary: "Selecciona una clase para generar apoyo contextual al informe.", metrics: [], factLines: ["No hay clase activa."], supportNotes: [], suggestedActions: [], hasEnoughData: false, dataQualityNote: "Los informes necesitan un grupo activo.")
+        }
+        let context = try await buildReportGenerationContext(
+            classId: classId,
+            studentId: studentId,
+            kind: studentId == nil ? .groupOverview : .studentSummary,
+            termLabel: nil
+        )
+        return ScreenAIContext(
+            kind: .reports,
+            title: "Informes",
+            subtitle: context.studentName ?? context.className,
+            classId: classId,
+            className: context.className,
+            studentId: studentId,
+            studentName: context.studentName,
+            summary: context.summary,
+            metrics: context.metrics,
+            factLines: context.factLines,
+            supportNotes: context.supportNotes,
+            suggestedActions: [
+                ContextualAIAction(actionId: .reportBridge, title: "Puente a informe", subtitle: "Preparar texto base para informe", systemImage: "doc.richtext.fill", promptHint: "Resume este contexto con formato listo para informe."),
+                ContextualAIAction(actionId: .familyComment, title: "Versión para familia", subtitle: "Lenguaje más claro y cercano", systemImage: "person.2.badge.gearshape.fill", promptHint: "Reescribe el resumen con lenguaje para familia.")
+            ],
+            hasEnoughData: context.hasEnoughData,
+            dataQualityNote: context.dataQualityNote
+        )
+    }
+
+    func buildPEAIContext(classId: Int64?) async throws -> ScreenAIContext {
+        let calendar = Calendar(identifier: .iso8601)
+        let week = calendar.component(.weekOfYear, from: Date())
+        let year = calendar.component(.yearForWeekOfYear, from: Date())
+        let sessions = try await loadPESessions(weekNumber: week, year: year, classId: classId)
+        let unequippedCount = sessions.reduce(0) { $0 + tokenCount(in: $1.unequippedStudentsText) }
+        let injuriesCount = sessions.filter { !$0.injuriesText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.count
+        let className = classId.flatMap { id in classes.first(where: { $0.id == id })?.name }
+        return ScreenAIContext(
+            kind: .pe,
+            title: "Educación Física",
+            subtitle: className ?? "Operativa EF",
+            classId: classId,
+            className: className,
+            studentId: nil,
+            studentName: nil,
+            summary: "Resumen de operativa EF con equipación, incidencias físicas y clima de sesión.",
+            metrics: [
+                ReportMetric(title: "Sesiones", value: "\(sessions.count)", systemImage: "figure.run"),
+                ReportMetric(title: "Sin equipación", value: "\(unequippedCount)", systemImage: "figure.run.square.stack"),
+                ReportMetric(title: "Lesiones", value: "\(injuriesCount)", systemImage: "cross.case.fill")
+            ],
+            factLines: compactSuggestions(
+                "Sesiones EF revisadas: \(sessions.count).",
+                "Registros de alumnado sin equipación: \(unequippedCount).",
+                "Sesiones con lesiones registradas: \(injuriesCount)."
+            ),
+            supportNotes: compactSuggestions(
+                sessions.first.map { "Última sesión: \(fallbackString($0.session.teachingUnitName, fallback: "Sin unidad"))." },
+                sessions.first.map { fallbackString($0.physicalIncidentsText, fallback: "") }.flatMap { $0.isEmpty ? nil : $0 }
+            ),
+            suggestedActions: [
+                ContextualAIAction(actionId: .peOperationalSummary, title: "Resumen EF", subtitle: "Síntesis operativa de la semana", systemImage: "figure.run.circle.fill", promptHint: "Resume la operativa EF de la semana."),
+                ContextualAIAction(actionId: .peEquipmentSummary, title: "Equipación", subtitle: "Lectura breve de incidencias de material y ropa", systemImage: "figure.run.square.stack.fill", promptHint: "Explica las señales sobre equipación y seguimiento.")
+            ],
+            hasEnoughData: !sessions.isEmpty,
+            dataQualityNote: sessions.isEmpty ? "No hay sesiones EF registradas esta semana." : nil
+        )
+    }
+
+    func buildNotebookAIContext(classId: Int64?) -> ScreenAIContext {
+        guard let data = notebookState as? NotebookUiStateData else {
+            return ScreenAIContext(kind: .notebook, title: "Cuaderno", subtitle: "Sin datos", classId: classId, className: nil, studentId: nil, studentName: nil, summary: "Selecciona una clase para trabajar con el cuaderno.", metrics: [], factLines: ["No hay datos del cuaderno cargados todavía."], supportNotes: [], suggestedActions: [], hasEnoughData: false, dataQualityNote: "El cuaderno necesita estado cargado.")
+        }
+        let className = classId.flatMap { id in classes.first(where: { $0.id == id })?.name }
+        let rows = data.sheet.rows
+        let averages = rows.compactMap { $0.weightedAverage?.doubleValue }
+        let avg = averages.isEmpty ? 0.0 : averages.reduce(0, +) / Double(averages.count)
+        let commentColumns = data.sheet.columns.filter { isNotebookAICommentColumn($0) }
+        return ScreenAIContext(
+            kind: .notebook,
+            title: "Cuaderno",
+            subtitle: className ?? "Grupo activo",
+            classId: classId,
+            className: className,
+            studentId: nil,
+            studentName: nil,
+            summary: "Lectura del cuaderno con foco en medias, señales de seguimiento y comentarios IA por alumno.",
+            metrics: [
+                ReportMetric(title: "Alumnado", value: "\(rows.count)", systemImage: "person.3.fill"),
+                ReportMetric(title: "Columnas", value: "\(data.sheet.columns.count)", systemImage: "tablecells"),
+                ReportMetric(title: "Media grupo", value: IosFormatting.decimal(from: avg), systemImage: "sum"),
+                ReportMetric(title: "Comentarios IA", value: "\(commentColumns.count)", systemImage: "apple.intelligence")
+            ],
+            factLines: compactSuggestions(
+                "Filas del cuaderno: \(rows.count).",
+                "Columnas visibles/configuradas: \(data.sheet.columns.count).",
+                "Media aproximada del grupo: \(IosFormatting.decimal(from: avg)).",
+                commentColumns.isEmpty ? "Todavía no hay columnas de comentario IA." : "Columnas de comentario IA detectadas: \(commentColumns.map(\.title).joined(separator: ", "))."
+            ),
+            supportNotes: [],
+            suggestedActions: [
+                ContextualAIAction(actionId: .notebookGroupSummary, title: "Resumen del cuaderno", subtitle: "Lectura global del grupo", systemImage: "tablecells.badge.ellipsis", promptHint: "Resume el estado general del cuaderno del grupo."),
+                ContextualAIAction(actionId: .notebookStudentComment, title: "Comentario por alumno", subtitle: "Texto breve editable", systemImage: "person.text.rectangle.fill", promptHint: "Genera comentario breve por alumno usando columnas visibles."),
+                ContextualAIAction(actionId: .observationProposal, title: "Observaciones", subtitle: "Propón observaciones accionables", systemImage: "note.text.badge.plus", promptHint: "Sugiere observaciones breves para el grupo.")
+            ],
+            hasEnoughData: !rows.isEmpty && !data.sheet.columns.isEmpty,
+            dataQualityNote: rows.isEmpty ? "El cuaderno no tiene alumnado o filas visibles." : nil
+        )
+    }
+
+    func generateNotebookAICommentContexts(
+        includedColumnIds: [String],
+        studentIds: [Int64]? = nil
+    ) -> [NotebookAICommentContext] {
+        guard let data = notebookState as? NotebookUiStateData,
+              let classId = notebookViewModel.currentClassId?.int64Value,
+              let schoolClass = classes.first(where: { $0.id == classId })
+        else { return [] }
+
+        let selectedColumns = data.sheet.columns.filter { includedColumnIds.contains($0.id) }
+        let columnCategoryNames = Dictionary(uniqueKeysWithValues: data.sheet.columnCategories.map { ($0.id, $0.name) })
+        let filteredRows = data.sheet.rows.filter { row in
+            guard let studentIds else { return true }
+            return studentIds.contains(row.student.id)
+        }
+
+        return filteredRows.map { row in
+            let insight = data.sheet.insights.first(where: { $0.studentId == row.student.id })
+            let values = selectedColumns.compactMap { column -> NotebookAIColumnValue? in
+                let value = notebookDisplayValue(for: row, column: column)
+                guard !value.isEmpty else { return nil }
+                return NotebookAIColumnValue(
+                    title: column.title,
+                    value: value,
+                    categoryLabel: column.categoryId.flatMap { columnCategoryNames[$0] } ?? notebookCategoryLabel(column.categoryKind)
+                )
+            }
+            let existingCommentColumn = data.sheet.columns.first(where: isNotebookAICommentColumn)
+            let existingComment = existingCommentColumn.map { cellText(studentId: row.student.id, columnId: $0.id) }.flatMap { $0.nilIfBlank }
+            let averageValue = row.weightedAverage?.doubleValue
+            let averageText = averageValue.map { IosFormatting.decimal(from: $0) } ?? "Sin media"
+            return NotebookAICommentContext(
+                classId: classId,
+                className: schoolClass.name,
+                studentId: row.student.id,
+                studentName: row.student.fullName,
+                averageScore: averageValue,
+                attendanceStatus: insight?.latestAttendanceStatus,
+                followUpCount: Int(insight?.followUpCount ?? 0),
+                incidentCount: Int(insight?.incidentCount ?? 0),
+                evidenceCount: Int(insight?.evidenceCount ?? 0),
+                competencyLabels: insight?.linkedCompetencyLabels ?? [],
+                relevantValues: values,
+                existingComment: existingComment,
+                summary: "Alumno \(row.student.fullName) con media \(averageText), \(values.count) evidencias de cuaderno y seguimiento complementario.",
+                hasEnoughData: averageValue != nil || !values.isEmpty || Int(insight?.incidentCount ?? 0) > 0 || Int(insight?.evidenceCount ?? 0) > 0,
+                dataQualityNote: values.isEmpty ? "Hay pocas columnas con dato visible para este alumno." : nil
+            )
+        }
+    }
+
+    func createNotebookAICommentColumn(
+        name: String,
+        categoryKind: NotebookColumnCategoryKind = .followUp
+    ) -> String? {
+        guard let classId = notebookViewModel.currentClassId?.int64Value else { return nil }
+        let normalized = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return nil }
+        let nowMillis = Int64(Date().timeIntervalSince1970 * 1000)
+        let columnId = "COL_AI_\(nowMillis)"
+        let nowMs = KotlinLong(value: nowMillis)
+        let nowInstant = Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMillis)
+        let trace = AuditTrace(
+            authorUserId: nil,
+            createdAt: nowInstant,
+            updatedAt: nowInstant,
+            associatedGroupId: KotlinLong(value: classId),
+            deviceId: localDeviceId,
+            syncVersion: 0
+        )
+        let column = NotebookColumnDefinition(
+            id: columnId,
+            title: normalized,
+            type: .text,
+            categoryKind: categoryKind,
+            instrumentKind: .privateComment,
+            inputKind: .text,
+            evaluationId: nil,
+            rubricId: nil,
+            formula: nil,
+            weight: 0,
+            dateEpochMs: nowMs,
+            unitOrSituation: "Comentario IA",
+            competencyCriteriaIds: [],
+            scaleKind: .custom,
+            tabIds: selectedNotebookTabId.map { [$0] } ?? [],
+            sessions: [],
+            sharedAcrossTabs: false,
+            colorHex: "3D7DFF",
+            iconName: "apple.intelligence",
+            order: -1,
+            widthDp: 220,
+            categoryId: nil,
+            ordinalLevels: [],
+            availableIcons: [],
+            countsTowardAverage: false,
+            isPinned: false,
+            isHidden: false,
+            visibility: .visible,
+            isLocked: false,
+            isTemplate: false,
+            trace: trace
+        )
+        saveColumn(column: column)
+        return columnId
+    }
+
+    func saveNotebookAIComment(studentId: Int64, columnId: String, text: String) {
+        guard let data = notebookState as? NotebookUiStateData,
+              let column = data.sheet.columns.first(where: { $0.id == columnId }) else { return }
+        saveColumnGrade(studentId: studentId, column: column, value: text)
+    }
+
+    func isNotebookAICommentColumn(_ column: NotebookColumnDefinition) -> Bool {
+        column.type == .text &&
+        column.instrumentKind == .privateComment &&
+        column.inputKind == .text &&
+        !column.countsTowardAverage &&
+        column.iconName == "apple.intelligence"
+    }
+
+    func buildPrebuiltAnalyticsCharts(
+        classId: Int64,
+        timeRange: AnalyticsTimeRange = .last30Days
+    ) async throws -> [ChartFacts] {
+        let attendanceTrend = try await buildChartFacts(
+            classId: classId,
+            request: AnalyticsRequest(
+                chartKind: .attendanceTrend,
+                timeRange: timeRange,
+                selectedClassIds: [classId],
+                selectedClassNames: [],
+                prompt: nil,
+                querySummary: "Evolución reciente de asistencia del grupo."
+            )
+        )
+        let attendanceComparison = try await buildChartFacts(
+            classId: classId,
+            request: AnalyticsRequest(
+                chartKind: .attendanceComparison,
+                timeRange: timeRange,
+                selectedClassIds: [classId],
+                selectedClassNames: [],
+                prompt: nil,
+                querySummary: "Comparativa de asistencia entre grupos del mismo curso."
+            )
+        )
+        let incidentHeatmap = try await buildChartFacts(
+            classId: classId,
+            request: AnalyticsRequest(
+                chartKind: .incidentHeatmap,
+                timeRange: timeRange,
+                selectedClassIds: [classId],
+                selectedClassNames: [],
+                prompt: nil,
+                querySummary: "Patrones de incidencias por día de la semana."
+            )
+        )
+        let uniformComparison = try await buildChartFacts(
+            classId: classId,
+            request: AnalyticsRequest(
+                chartKind: .uniformComparison,
+                timeRange: timeRange,
+                selectedClassIds: [classId],
+                selectedClassNames: [],
+                prompt: nil,
+                querySummary: "Comparativa de faltas de equipación entre grupos."
+            )
+        )
+        let averagesRanking = try await buildChartFacts(
+            classId: classId,
+            request: AnalyticsRequest(
+                chartKind: .groupAveragesRanking,
+                timeRange: timeRange,
+                selectedClassIds: [classId],
+                selectedClassNames: [],
+                prompt: nil,
+                querySummary: "Ranking de medias entre grupos del mismo curso."
+            )
+        )
+        let sameCourseComparison = try await buildChartFacts(
+            classId: classId,
+            request: AnalyticsRequest(
+                chartKind: .sameCourseComparison,
+                timeRange: timeRange,
+                selectedClassIds: [classId],
+                selectedClassNames: [],
+                prompt: nil,
+                querySummary: "Comparativa global del mismo curso."
+            )
+        )
+        return [
+            attendanceTrend,
+            attendanceComparison,
+            incidentHeatmap,
+            uniformComparison,
+            averagesRanking,
+            sameCourseComparison,
+        ]
+    }
+
+    func resolveAnalyticsRequest(
+        classId: Int64,
+        prompt: String,
+        timeRange: AnalyticsTimeRange = .last30Days,
+        selectedClassIds: [Int64] = []
+    ) async throws -> AnalyticsRequest {
+        guard let schoolClass = try await container.classesRepository.listClasses().first(where: { $0.id == classId }) else {
+            throw NSError(domain: "KmpBridge", code: 404, userInfo: [NSLocalizedDescriptionKey: "No se encontró la clase \(classId)."])
+        }
+
+        let allClasses = try await container.classesRepository.listClasses()
+        let relatedClasses = relatedClasses(for: schoolClass, allClasses: allClasses)
+        let normalizedPrompt = normalizedAnalyticsText(prompt)
+        let resolvedChartKind: ChartKind
+
+        if normalizedPrompt.contains("equip") || normalizedPrompt.contains("uniform") {
+            resolvedChartKind = .uniformComparison
+        } else if normalizedPrompt.contains("inciden") || normalizedPrompt.contains("conviven") || normalizedPrompt.contains("alerta") {
+            resolvedChartKind = .incidentHeatmap
+        } else if normalizedPrompt.contains("media") || normalizedPrompt.contains("nota") || normalizedPrompt.contains("promedio") || normalizedPrompt.contains("rendimiento") {
+            resolvedChartKind = normalizedPrompt.contains("compar") ? .sameCourseComparison : .groupAveragesRanking
+        } else if normalizedPrompt.contains("compar") || normalizedPrompt.contains("grupo") || normalizedPrompt.contains("curso") {
+            resolvedChartKind = .attendanceComparison
+        } else {
+            resolvedChartKind = .attendanceTrend
+        }
+
+        let requestedIds = Array(Set(selectedClassIds + relatedClasses
+            .filter { candidate in
+                let normalizedName = normalizedAnalyticsText(candidate.name)
+                return normalizedPrompt.contains(normalizedName)
+            }
+            .map(\.id)
+        )).sorted()
+        let finalIds = requestedIds.isEmpty ? [classId] : requestedIds
+        let finalNames = relatedClasses
+            .filter { finalIds.contains($0.id) }
+            .map(\.name)
+
+        return AnalyticsRequest(
+            chartKind: resolvedChartKind,
+            timeRange: timeRange,
+            selectedClassIds: finalIds,
+            selectedClassNames: finalNames,
+            prompt: prompt.nilIfBlank,
+            querySummary: prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+    }
+
+    func buildChartFacts(
+        classId: Int64,
+        request: AnalyticsRequest
+    ) async throws -> ChartFacts {
+        guard let primaryClass = try await container.classesRepository.listClasses().first(where: { $0.id == classId }) else {
+            throw NSError(domain: "KmpBridge", code: 404, userInfo: [NSLocalizedDescriptionKey: "No se encontró la clase \(classId)."])
+        }
+
+        let allClasses = try await container.classesRepository.listClasses()
+        let relatedClasses = relatedClasses(for: primaryClass, allClasses: allClasses)
+        let comparisonClasses = relatedClasses.filter { schoolClass in
+            request.selectedClassIds.isEmpty || request.selectedClassIds.contains(schoolClass.id)
+        }
+
+        switch request.chartKind {
+        case .attendanceTrend:
+            return try await buildAttendanceTrendFacts(for: primaryClass, timeRange: request.timeRange, prompt: request.prompt)
+        case .attendanceComparison:
+            return try await buildAttendanceComparisonFacts(for: primaryClass, comparisonClasses: comparisonClasses, timeRange: request.timeRange, prompt: request.prompt)
+        case .incidentHeatmap:
+            return try await buildIncidentHeatmapFacts(for: primaryClass, timeRange: request.timeRange, prompt: request.prompt)
+        case .uniformComparison:
+            return try await buildUniformComparisonFacts(for: primaryClass, comparisonClasses: comparisonClasses, timeRange: request.timeRange, prompt: request.prompt)
+        case .groupAveragesRanking:
+            return try await buildGroupAveragesRankingFacts(for: primaryClass, comparisonClasses: comparisonClasses, prompt: request.prompt)
+        case .sameCourseComparison:
+            return try await buildSameCourseComparisonFacts(for: primaryClass, comparisonClasses: comparisonClasses, prompt: request.prompt)
+        }
+    }
+
+    private func buildAttendanceTrendFacts(
+        for schoolClass: SchoolClass,
+        timeRange: AnalyticsTimeRange,
+        prompt: String?
+    ) async throws -> ChartFacts {
+        let history = try await attendanceHistory(for: schoolClass.id, days: timeRange.dayCount)
+        let grouped = Dictionary(grouping: history) { record in
+            Calendar.current.startOfDay(for: record.date)
+        }
+        let dates = grouped.keys.sorted()
+        let points = dates.map { day -> ChartPoint in
+            let records = grouped[day, default: []]
+            let present = records.filter { isPresentStatus($0.status) }.count
+            let rate = records.isEmpty ? 0.0 : (Double(present) / Double(records.count)) * 100.0
+            return ChartPoint(
+                label: shortDateLabel(day),
+                value: rate,
+                note: records.isEmpty ? "Sin marcaje" : "\(present)/\(records.count) presentes"
+            )
+        }
+        let average = points.isEmpty ? 0.0 : points.map(\.value).reduce(0, +) / Double(points.count)
+        let lowDays = points.filter { $0.value > 0 && $0.value < 85 }.count
+        let digest = lowDays > 0
+            ? "La asistencia del grupo muestra \(lowDays) jornadas por debajo del umbral del 85%."
+            : "La asistencia del grupo mantiene un patrón estable en el periodo analizado."
+        return ChartFacts(
+            chartKind: .attendanceTrend,
+            title: schoolClass.name,
+            subtitle: prompt ?? "Evolución diaria de la asistencia registrada.",
+            chartType: ChartKind.attendanceTrend.chartTypeLabel,
+            timeRange: timeRange.title,
+            grouping: ChartKind.attendanceTrend.groupingLabel,
+            metrics: [
+                ReportMetric(title: "Sesiones con registro", value: "\(points.count)", systemImage: "calendar"),
+                ReportMetric(title: "Asistencia media", value: "\(Int(average.rounded()))%", systemImage: "checklist.checked"),
+                ReportMetric(title: "Días frágiles", value: "\(lowDays)", systemImage: "exclamationmark.triangle.fill"),
+            ],
+            factLines: compactSuggestions(
+                "Grupo analizado: \(schoolClass.name).",
+                "Serie temporal calculada a partir de \(history.count) registros de asistencia.",
+                points.last.map { "Último valor: \(Int($0.value.rounded()))% el \($0.label)." }
+            ),
+            highlights: compactSuggestions(
+                average >= 90 ? "La asistencia media del periodo es sólida." : nil,
+                points.last.map { $0.value > average ? "La última sesión mejora la media del periodo." : nil } ?? nil
+            ),
+            warnings: compactSuggestions(
+                points.isEmpty ? "No hay datos de asistencia suficientes para dibujar una serie temporal." : nil,
+                lowDays > 1 ? "Hay varias jornadas con asistencia claramente baja." : nil
+            ),
+            series: [
+                ChartSeries(name: "Asistencia", colorToken: "blue", points: points)
+            ],
+            heatmapCells: [],
+            hasEnoughData: !points.isEmpty,
+            emptyStateMessage: "Todavía no hay marcajes suficientes para construir la evolución de asistencia.",
+            teacherDigest: digest,
+            insertableSummary: "Asistencia media del periodo: \(Int(average.rounded()))%."
+        )
+    }
+
+    private func buildAttendanceComparisonFacts(
+        for schoolClass: SchoolClass,
+        comparisonClasses: [SchoolClass],
+        timeRange: AnalyticsTimeRange,
+        prompt: String?
+    ) async throws -> ChartFacts {
+        let classesToCompare = comparisonClasses.isEmpty ? [schoolClass] : comparisonClasses
+        var points: [ChartPoint] = []
+        for item in classesToCompare {
+            let history = try await attendanceHistory(for: item.id, days: timeRange.dayCount)
+            let present = history.filter { isPresentStatus($0.status) }.count
+            let rate = history.isEmpty ? 0.0 : (Double(present) / Double(history.count)) * 100.0
+            points.append(ChartPoint(label: item.name, value: rate, note: "\(history.count) registros"))
+        }
+        let sorted = points.sorted { $0.value > $1.value }
+        let spread = (sorted.first?.value ?? 0) - (sorted.last?.value ?? 0)
+        return ChartFacts(
+            chartKind: .attendanceComparison,
+            title: "Curso \(courseLabel(for: schoolClass))",
+            subtitle: prompt ?? "Comparativa de asistencia entre grupos equivalentes.",
+            chartType: ChartKind.attendanceComparison.chartTypeLabel,
+            timeRange: timeRange.title,
+            grouping: ChartKind.attendanceComparison.groupingLabel,
+            metrics: [
+                ReportMetric(title: "Grupos", value: "\(sorted.count)", systemImage: "rectangle.3.group"),
+                ReportMetric(title: "Mejor tasa", value: "\(Int((sorted.first?.value ?? 0).rounded()))%", systemImage: "arrow.up.right"),
+                ReportMetric(title: "Brecha", value: "\(Int(spread.rounded())) pt", systemImage: "arrow.left.and.right")
+            ],
+            factLines: compactSuggestions(
+                "Se comparan grupos del mismo curso: \(sorted.map(\.label).joined(separator: ", ")).",
+                sorted.first.map { "Mejor dato de asistencia: \($0.label) con \(Int($0.value.rounded()))%." },
+                sorted.last.map { "Dato más bajo: \($0.label) con \(Int($0.value.rounded()))%." }
+            ),
+            highlights: compactSuggestions(
+                spread < 5 ? "Las diferencias entre grupos son reducidas." : nil,
+                sorted.first.map { "\($0.label) destaca en regularidad de asistencia." }
+            ),
+            warnings: compactSuggestions(
+                sorted.count < 2 ? "Solo hay un grupo comparable en este curso." : nil,
+                spread >= 10 ? "La brecha entre grupos ya merece seguimiento docente." : nil
+            ),
+            series: [
+                ChartSeries(name: "Asistencia", colorToken: "green", points: sorted)
+            ],
+            heatmapCells: [],
+            hasEnoughData: !sorted.isEmpty,
+            emptyStateMessage: "No hay grupos comparables con datos de asistencia suficientes.",
+            teacherDigest: spread >= 10
+                ? "La asistencia presenta diferencias significativas entre grupos del mismo curso."
+                : "La asistencia entre grupos del mismo curso se mueve en una franja relativamente estable.",
+            insertableSummary: "Comparativa de asistencia entre grupos del mismo curso con una brecha de \(Int(spread.rounded())) puntos."
+        )
+    }
+
+    private func buildIncidentHeatmapFacts(
+        for schoolClass: SchoolClass,
+        timeRange: AnalyticsTimeRange,
+        prompt: String?
+    ) async throws -> ChartFacts {
+        let incidents = try await incidents(for: schoolClass.id)
+        let cutoff = Calendar.current.date(byAdding: .day, value: -timeRange.dayCount, to: Date()) ?? Date.distantPast
+        let filtered = incidents.filter { Date(timeIntervalSince1970: TimeInterval($0.date.epochSeconds)) >= cutoff }
+        let weekdaySymbols = ["L", "M", "X", "J", "V", "S", "D"]
+        let weeksBack = max(2, min(6, timeRange.dayCount / 14 + 1))
+        var cells: [HeatmapCell] = []
+        for offset in 0..<weeksBack {
+            let weekLabel = "S-\(weeksBack - offset)"
+            for weekday in 2...8 {
+                let count = filtered.filter { incident in
+                    let date = Date(timeIntervalSince1970: TimeInterval(incident.date.epochSeconds))
+                    let weeksDifference = Calendar.current.dateComponents([.weekOfYear], from: date, to: Date()).weekOfYear ?? 0
+                    let weekdayValue = Calendar.current.component(.weekday, from: date)
+                    return weeksDifference == offset && weekdayValue == weekday
+                }.count
+                cells.append(
+                    HeatmapCell(
+                        rowLabel: weekLabel,
+                        columnLabel: weekdaySymbols[max(0, min(weekdaySymbols.count - 1, weekday - 2))],
+                        value: Double(count)
+                    )
+                )
+            }
+        }
+        let total = filtered.count
+        let maxCell = cells.max(by: { $0.value < $1.value })
+        return ChartFacts(
+            chartKind: .incidentHeatmap,
+            title: schoolClass.name,
+            subtitle: prompt ?? "Concentración de incidencias por semana y día lectivo.",
+            chartType: ChartKind.incidentHeatmap.chartTypeLabel,
+            timeRange: timeRange.title,
+            grouping: ChartKind.incidentHeatmap.groupingLabel,
+            metrics: [
+                ReportMetric(title: "Incidencias", value: "\(total)", systemImage: "exclamationmark.bubble.fill"),
+                ReportMetric(title: "Pico", value: "\(Int(maxCell?.value ?? 0))", systemImage: "flame.fill"),
+                ReportMetric(title: "Semanas", value: "\(weeksBack)", systemImage: "calendar.badge.clock")
+            ],
+            factLines: compactSuggestions(
+                "Se han revisado \(total) incidencias en el periodo seleccionado.",
+                maxCell.map { "Mayor concentración: \($0.rowLabel) · \($0.columnLabel) con \(Int($0.value)) incidencias." }
+            ),
+            highlights: compactSuggestions(
+                total == 0 ? "No hay incidencias registradas en el periodo." : nil,
+                maxCell.map { $0.value <= 1 ? "Las incidencias aparecen dispersas y sin patrón fuerte." : nil } ?? nil
+            ),
+            warnings: compactSuggestions(
+                total >= 5 ? "Ya hay una masa crítica de incidencias como para revisar patrones de grupo." : nil
+            ),
+            series: [],
+            heatmapCells: cells,
+            hasEnoughData: !cells.isEmpty,
+            emptyStateMessage: "No hay datos suficientes para construir el heatmap de incidencias.",
+            teacherDigest: total == 0
+                ? "No se observan incidencias recientes en el grupo."
+                : "El heatmap permite localizar los días con mayor concentración de incidencias.",
+            insertableSummary: total == 0
+                ? "Sin incidencias registradas en el periodo analizado."
+                : "Heatmap de incidencias con \(total) registros en el periodo."
+        )
+    }
+
+    private func buildUniformComparisonFacts(
+        for schoolClass: SchoolClass,
+        comparisonClasses: [SchoolClass],
+        timeRange: AnalyticsTimeRange,
+        prompt: String?
+    ) async throws -> ChartFacts {
+        let classesToCompare = comparisonClasses.isEmpty ? [schoolClass] : comparisonClasses
+        var points: [ChartPoint] = []
+        for item in classesToCompare {
+            let count = try await unequippedEventsCount(for: item.id, sinceDays: timeRange.dayCount)
+            points.append(ChartPoint(label: item.name, value: Double(count), note: "Sesiones con alumnado sin equipación"))
+        }
+        let sorted = points.sorted { $0.value > $1.value }
+        return ChartFacts(
+            chartKind: .uniformComparison,
+            title: "Operativa EF · \(courseLabel(for: schoolClass))",
+            subtitle: prompt ?? "Comparativa de faltas de equipación o registros equivalentes en diarios.",
+            chartType: ChartKind.uniformComparison.chartTypeLabel,
+            timeRange: timeRange.title,
+            grouping: ChartKind.uniformComparison.groupingLabel,
+            metrics: [
+                ReportMetric(title: "Grupos", value: "\(sorted.count)", systemImage: "rectangle.3.group"),
+                ReportMetric(title: "Máximo", value: "\(Int(sorted.first?.value ?? 0))", systemImage: "arrow.up.right"),
+                ReportMetric(title: "Total", value: "\(Int(sorted.map(\.value).reduce(0, +)))", systemImage: "sum")
+            ],
+            factLines: compactSuggestions(
+                "Se han usado los diarios de sesión y el campo de alumnado sin equipación.",
+                sorted.first.map { "Mayor carga operativa: \($0.label) con \(Int($0.value)) registros." }
+            ),
+            highlights: compactSuggestions(
+                sorted.allSatisfy { $0.value == 0 } ? "No constan faltas de equipación recientes en los grupos comparados." : nil
+            ),
+            warnings: compactSuggestions(
+                "Esta vista depende de que el diario de EF se complete con regularidad."
+            ),
+            series: [
+                ChartSeries(name: "Sin equipación", colorToken: "orange", points: sorted)
+            ],
+            heatmapCells: [],
+            hasEnoughData: !sorted.isEmpty,
+            emptyStateMessage: "No hay grupos o diarios suficientes para comparar faltas de equipación.",
+            teacherDigest: sorted.allSatisfy { $0.value == 0 }
+                ? "No aparecen faltas de equipación en el periodo analizado."
+                : "Las faltas de equipación se concentran en algunos grupos concretos y pueden tratarse como señal operativa.",
+            insertableSummary: "Comparativa de faltas de equipación entre grupos del mismo curso."
+        )
+    }
+
+    private func buildGroupAveragesRankingFacts(
+        for schoolClass: SchoolClass,
+        comparisonClasses: [SchoolClass],
+        prompt: String?
+    ) async throws -> ChartFacts {
+        let classesToCompare = comparisonClasses.isEmpty ? [schoolClass] : comparisonClasses
+        var points: [ChartPoint] = []
+        for item in classesToCompare {
+            let summary = try await loadCourseSummary(classId: item.id)
+            points.append(ChartPoint(label: item.name, value: summary.averageScore, note: "Media del grupo"))
+        }
+        let sorted = points.sorted { $0.value > $1.value }
+        let gap = (sorted.first?.value ?? 0) - (sorted.last?.value ?? 0)
+        return ChartFacts(
+            chartKind: .groupAveragesRanking,
+            title: "Ranking · \(courseLabel(for: schoolClass))",
+            subtitle: prompt ?? "Ordenación de medias registradas por grupo.",
+            chartType: ChartKind.groupAveragesRanking.chartTypeLabel,
+            timeRange: "Curso actual",
+            grouping: ChartKind.groupAveragesRanking.groupingLabel,
+            metrics: [
+                ReportMetric(title: "Grupos", value: "\(sorted.count)", systemImage: "rectangle.3.group"),
+                ReportMetric(title: "Mejor media", value: IosFormatting.decimal(from: sorted.first?.value), systemImage: "arrow.up.right"),
+                ReportMetric(title: "Brecha", value: IosFormatting.decimal(from: gap), systemImage: "arrow.left.and.right")
+            ],
+            factLines: compactSuggestions(
+                sorted.first.map { "Media más alta: \($0.label) con \(IosFormatting.decimal(from: $0.value))." },
+                sorted.last.map { "Media más baja: \($0.label) con \(IosFormatting.decimal(from: $0.value))." }
+            ),
+            highlights: compactSuggestions(
+                gap < 1.0 ? "Las medias entre grupos son bastante homogéneas." : nil,
+                sorted.first.map { "\($0.label) lidera el ranking de rendimiento registrado." }
+            ),
+            warnings: compactSuggestions(
+                sorted.contains(where: { $0.value == 0 }) ? "Algún grupo todavía no tiene media consolidada." : nil
+            ),
+            series: [
+                ChartSeries(name: "Media", colorToken: "purple", points: sorted)
+            ],
+            heatmapCells: [],
+            hasEnoughData: !sorted.isEmpty,
+            emptyStateMessage: "No hay datos suficientes para construir el ranking de medias.",
+            teacherDigest: gap >= 1.5
+                ? "Las medias entre grupos muestran una brecha relevante."
+                : "Las medias entre grupos del mismo curso son relativamente cercanas.",
+            insertableSummary: "Ranking de medias entre grupos del mismo curso."
+        )
+    }
+
+    private func buildSameCourseComparisonFacts(
+        for schoolClass: SchoolClass,
+        comparisonClasses: [SchoolClass],
+        prompt: String?
+    ) async throws -> ChartFacts {
+        let snapshot = try await container.getOperationalDashboardSnapshot.invoke(
+            mode: .office,
+            filters: DashboardFilters(classId: nil, severity: nil, priority: nil, sessionStatus: nil)
+        )
+        let allowedIds = Set((comparisonClasses.isEmpty ? [schoolClass] : comparisonClasses).map(\.id))
+        let summaries = snapshot.groupSummaries.filter { allowedIds.contains($0.classId) }
+        let attendancePoints = summaries.map {
+            ChartPoint(label: $0.groupName, value: Double($0.attendancePct), note: "Asistencia")
+        }
+        let evaluationPoints = summaries.map {
+            ChartPoint(label: $0.groupName, value: Double($0.evaluationCompletedPct), note: "Evaluación completada")
+        }
+        let averagePoints = summaries.map {
+            ChartPoint(label: $0.groupName, value: $0.averageScore * 10.0, note: "Media normalizada x10")
+        }
+        return ChartFacts(
+            chartKind: .sameCourseComparison,
+            title: "Comparativa global · \(courseLabel(for: schoolClass))",
+            subtitle: prompt ?? "Asistencia, evaluación completada y media normalizada por grupo.",
+            chartType: ChartKind.sameCourseComparison.chartTypeLabel,
+            timeRange: "Curso actual",
+            grouping: ChartKind.sameCourseComparison.groupingLabel,
+            metrics: [
+                ReportMetric(title: "Grupos", value: "\(summaries.count)", systemImage: "rectangle.3.group"),
+                ReportMetric(title: "Seguimiento", value: "\(summaries.map(\.studentsInFollowUp).reduce(0, +))", systemImage: "arrow.triangle.branch"),
+                ReportMetric(title: "Media curso", value: IosFormatting.decimal(from: summaries.isEmpty ? nil : summaries.map(\.averageScore).reduce(0, +) / Double(summaries.count)), systemImage: "sum")
+            ],
+            factLines: compactSuggestions(
+                summaries.isEmpty ? "No hay resúmenes operativos de grupo disponibles." : "Se comparan \(summaries.count) grupos del mismo curso.",
+                summaries.max(by: { $0.attendancePct < $1.attendancePct }).map { "Mayor asistencia: \($0.groupName) con \($0.attendancePct)%." },
+                summaries.max(by: { $0.averageScore < $1.averageScore }).map { "Mejor media: \($0.groupName) con \(IosFormatting.decimal(from: $0.averageScore))." }
+            ),
+            highlights: compactSuggestions(
+                summaries.filter { $0.studentsInFollowUp == 0 }.isEmpty ? nil : "Hay grupos sin alumnado en seguimiento activo."
+            ),
+            warnings: compactSuggestions(
+                summaries.isEmpty ? "No hay suficientes datos agregados para una comparativa global." : nil
+            ),
+            series: [
+                ChartSeries(name: "Asistencia %", colorToken: "green", points: attendancePoints),
+                ChartSeries(name: "Evaluación %", colorToken: "blue", points: evaluationPoints),
+                ChartSeries(name: "Media x10", colorToken: "purple", points: averagePoints)
+            ],
+            heatmapCells: [],
+            hasEnoughData: !summaries.isEmpty,
+            emptyStateMessage: "Faltan resúmenes de grupo para construir la comparativa global.",
+            teacherDigest: summaries.isEmpty
+                ? "La comparativa global necesita más datos agregados."
+                : "La comparativa global permite ver de un vistazo la relación entre asistencia, avance evaluativo y media del grupo.",
+            insertableSummary: "Comparativa global entre grupos del mismo curso."
+        )
+    }
+
+    private func relatedClasses(for schoolClass: SchoolClass, allClasses: [SchoolClass]) -> [SchoolClass] {
+        let filtered = allClasses.filter { $0.course == schoolClass.course }
+        return filtered.isEmpty ? [schoolClass] : filtered.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    private func unequippedEventsCount(for classId: Int64, sinceDays days: Int) async throws -> Int {
+        let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date.distantPast
+        let sessions = try await container.plannerRepository.listAllSessions()
+            .filter { $0.groupId == classId && date(from: $0) >= cutoff }
+        var count = 0
+        for session in sessions {
+            guard let aggregate = try? await container.sessionJournalRepository.getJournalForSession(planningSessionId: session.id) else {
+                continue
+            }
+            let text = aggregate.journal.unequippedStudentsText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty {
+                count += max(1, tokenCount(in: text))
+            }
+        }
+        return count
+    }
+
+    private func tokenCount(in text: String) -> Int {
+        let separators = CharacterSet(charactersIn: ",;\n")
+        return text.components(separatedBy: separators)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .count
+    }
+
+    private func isPresentStatus(_ status: String) -> Bool {
+        let normalized = normalizedAnalyticsText(status)
+        return normalized.contains("present")
+    }
+
+    private func normalizedAnalyticsText(_ text: String) -> String {
+        text.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .replacingOccurrences(of: " ", with: "")
+    }
+
+    private func shortDateLabel(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "es_ES")
+        formatter.dateFormat = "d MMM"
+        return formatter.string(from: date)
+    }
+
+    private func notebookDisplayValue(for row: NotebookRow, column: NotebookColumnDefinition) -> String {
+        switch column.type {
+        case .numeric:
+            if let persisted = row.persistedGrades.first(where: { $0.columnId == column.id })?.value?.doubleValue {
+                return IosFormatting.decimal(from: persisted)
+            }
+            if let evaluationId = column.evaluationId?.int64Value,
+               let cellValue = row.cells.first(where: { $0.evaluationId == evaluationId })?.value?.doubleValue {
+                return IosFormatting.decimal(from: cellValue)
+            }
+            return ""
+        case .rubric:
+            if let persisted = row.persistedGrades.first(where: { $0.columnId == column.id })?.value?.doubleValue {
+                return IosFormatting.decimal(from: persisted)
+            }
+            return ""
+        case .check:
+            if let boolValue = row.persistedCells.first(where: { $0.columnId == column.id })?.boolValue?.boolValue {
+                return boolValue ? "Sí" : "No"
+            }
+            return ""
+        case .ordinal:
+            return row.persistedCells.first(where: { $0.columnId == column.id })?.ordinalValue ?? ""
+        default:
+            return row.persistedCells.first(where: { $0.columnId == column.id })?.textValue ?? ""
+        }
+    }
+
+    private func notebookCategoryLabel(_ kind: NotebookColumnCategoryKind) -> String {
+        if kind == .evaluation { return "Evaluación" }
+        if kind == .followUp { return "Seguimiento" }
+        if kind == .attendance { return "Asistencia" }
+        if kind == .extras { return "Extras" }
+        if kind == .physicalEducation { return "Educación Física" }
+        return "Personalizada"
+    }
+
+    private func fallbackString(_ value: String?, fallback: String) -> String {
+        value?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfBlank ?? fallback
     }
 }
 

@@ -11,9 +11,9 @@ enum EvaluationDesign {
     static let accentSoft = Color(red: 0.09, green: 0.32, blue: 0.92).opacity(0.12)
     static let success = Color(red: 0.12, green: 0.65, blue: 0.46)
     static let danger = Color(red: 0.90, green: 0.20, blue: 0.22)
-    static let surface = Color(.secondarySystemBackground)
-    static let surfaceMuted = Color(.secondarySystemBackground)
-    static let surfaceSoft = Color(.tertiarySystemBackground)
+    static let surface = appSecondarySystemBackgroundColor()
+    static let surfaceMuted = appSecondarySystemBackgroundColor()
+    static let surfaceSoft = appTertiarySystemBackgroundColor()
     static let border = Color.black.opacity(0.06)
     static let shadow = Color.black.opacity(0.08)
     static let plannerCoursePalette: [String] = [

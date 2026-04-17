@@ -883,6 +883,12 @@ FROM notebook_cell_entries
 WHERE class_id = ?
 ORDER BY student_id, column_id;
 
+selectNotebookCellEntry:
+SELECT class_id, student_id, column_id, value_text, value_bool, value_icon, value_ordinal, display_value, observed_at_epoch_ms, competency_criteria_ids_csv, effective_weight, counts_toward_average, note, color_hex, attachment_uris_csv, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+FROM notebook_cell_entries
+WHERE class_id = ? AND student_id = ? AND column_id = ?
+LIMIT 1;
+
 deleteNotebookCellsByColumnId:
 DELETE FROM notebook_cell_entries
 WHERE column_id = ?;

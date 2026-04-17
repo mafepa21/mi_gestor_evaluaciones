@@ -24,6 +24,20 @@ kotlin {
             export("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
         }
     }
+    macosArm64 {
+        binaries.framework {
+            baseName = "MiGestorKit"
+            export("org.jetbrains.kotlinx:kotlinx-datetime:0.6.1")
+            export("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
+        }
+    }
+    macosX64 {
+        binaries.framework {
+            baseName = "MiGestorKit"
+            export("org.jetbrains.kotlinx:kotlinx-datetime:0.6.1")
+            export("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
+        }
+    }
 
     sourceSets {
         val commonMain by getting {
@@ -38,14 +52,26 @@ kotlin {
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
             }
         }
-        val iosMain by creating {
+        val appleMain by creating {
             dependsOn(commonMain)
+        }
+        val iosMain by creating {
+            dependsOn(appleMain)
+        }
+        val macosMain by creating {
+            dependsOn(appleMain)
         }
         val iosArm64Main by getting {
             dependsOn(iosMain)
         }
         val iosSimulatorArm64Main by getting {
             dependsOn(iosMain)
+        }
+        val macosArm64Main by getting {
+            dependsOn(macosMain)
+        }
+        val macosX64Main by getting {
+            dependsOn(macosMain)
         }
     }
     

@@ -20,7 +20,7 @@ struct ContentView: View {
                 
                 RubricEvaluationView()
                     .frame(height: 650)
-                    .cornerRadius(32, corners: [.topLeft, .topRight])
+                    .appCornerRadius(32, corners: [.topLeft, .topRight])
                     .transition(.move(edge: .bottom))
                     .shadow(radius: 20)
             }
@@ -68,7 +68,9 @@ struct DashboardView: View {
     @EnvironmentObject var bridge: KmpBridge
     @EnvironmentObject private var layoutState: WorkspaceLayoutState
     @Environment(\.colorScheme) private var colorScheme
+#if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+#endif
     @Binding var selectedClassId: Int64?
     @AppStorage("dashboard_operational_mode") private var modeRawValue: String = OperationalDashboardMode.office.rawValue
     @State private var severityFilter: String = ""
@@ -79,6 +81,18 @@ struct DashboardView: View {
 
     private var mode: OperationalDashboardMode {
         OperationalDashboardMode(rawValue: modeRawValue) ?? .office
+    }
+
+    private var isCompactWidth: Bool {
+#if os(iOS)
+        horizontalSizeClass == .compact
+#else
+        false
+#endif
+    }
+
+    private var showsWideSummary: Bool {
+        !isCompactWidth
     }
 
     var body: some View {
@@ -104,21 +118,21 @@ struct DashboardView: View {
             await applyFiltersAndReload()
         }
         .onAppear(perform: syncToolbarState)
-        .onChange(of: selectedClassId) { _ in Task { await applyFiltersAndReload() } }
-        .onChange(of: modeRawValue) { _ in Task { await applyFiltersAndReload() } }
-        .onChange(of: severityFilter) { _ in Task { await applyFiltersAndReload() } }
-        .onChange(of: priorityFilter) { _ in Task { await applyFiltersAndReload() } }
-        .onChange(of: sessionStatusFilter) { _ in Task { await applyFiltersAndReload() } }
-        .onChange(of: inspectorSelection) { _ in
+        .onChange(of: selectedClassId) { _, _ in Task { await applyFiltersAndReload() } }
+        .onChange(of: modeRawValue) { _, _ in Task { await applyFiltersAndReload() } }
+        .onChange(of: severityFilter) { _, _ in Task { await applyFiltersAndReload() } }
+        .onChange(of: priorityFilter) { _, _ in Task { await applyFiltersAndReload() } }
+        .onChange(of: sessionStatusFilter) { _, _ in Task { await applyFiltersAndReload() } }
+        .onChange(of: inspectorSelection) { _, _ in
             if inspectorSelection == nil {
                 isInspectorPresented = false
             }
             syncToolbarState()
         }
-        .onChange(of: isInspectorPresented) { _ in
+        .onChange(of: isInspectorPresented) { _, _ in
             syncToolbarState()
         }
-        .onChange(of: toolbarStateKey) { _ in
+        .onChange(of: toolbarStateKey) { _, _ in
             syncToolbarState()
         }
         .onDisappear {
@@ -151,7 +165,7 @@ struct DashboardView: View {
                 .frame(maxWidth: 240)
             }
 
-            if horizontalSizeClass == .compact {
+            if isCompactWidth {
                 VStack(spacing: 10) {
                     dashboardFilterField(title: "Severidad", placeholder: "high / medium / low", text: $severityFilter)
                     dashboardFilterField(title: "Prioridad", placeholder: "high / medium / low", text: $priorityFilter)
@@ -422,7 +436,7 @@ struct DashboardView: View {
                 ShareLink("Exportar CSV", item: csvGroups(rows))
                     .font(.caption)
             }
-            if horizontalSizeClass == .regular {
+            if showsWideSummary {
                 Table(rows) {
                     TableColumn("Grupo") { Text($0.groupName) }
                     TableColumn("Asist") { Text("\($0.attendancePct)%") }
@@ -518,7 +532,7 @@ struct DashboardView: View {
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.secondary)
             TextField(placeholder, text: text)
-                .textFieldStyle(.roundedBorder)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -658,19 +672,26 @@ struct DashboardView: View {
 struct SettingsModuleView: View {
     @EnvironmentObject var bridge: KmpBridge
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.appleCommandCenterState) private var commandCenterState
     @AppStorage("theme_mode") private var themeModeRawValue: String = AppThemeMode.system.rawValue
     @Binding var selectedClassId: Int64?
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 24) {
                 Text("Ajustes")
                     .font(.system(size: 32, weight: .black, design: .rounded))
                     .padding(.top, 8)
 
+#if os(macOS)
+                if commandCenterState.isAvailable {
+                    MacCommandCenterPairingCard(commandCenterState: commandCenterState)
+                }
+#else
                 SyncLanCard()
+#endif
 
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 8) {
                     Text("Apariencia")
                         .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(.secondary)
@@ -681,31 +702,14 @@ struct SettingsModuleView: View {
                     }
                     .pickerStyle(.segmented)
                 }
-                .padding(14)
-                .background(appCardBackground(for: colorScheme))
-                .cornerRadius(16)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Estado")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(.secondary)
-                    Text(bridge.syncStatusMessage)
-                        .font(.system(size: 14, weight: .medium))
-                    Text("Última sync: \(bridge.syncLastRunAt?.formatted(date: .abbreviated, time: .shortened) ?? "—")")
-                        .font(.system(size: 12, weight: .regular))
-                        .foregroundStyle(.secondary)
-                    Text("Pendientes locales: \(bridge.syncPendingChanges)")
-                        .font(.system(size: 12, weight: .regular))
-                        .foregroundStyle(.secondary)
-                }
-                .padding(14)
+                .padding(16)
                 .background(appCardBackground(for: colorScheme))
                 .cornerRadius(16)
 
                 TeacherScheduleSettingsPanel(selectedClassId: $selectedClassId)
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 24)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 32)
         }
         .background(appPageBackground(for: colorScheme).ignoresSafeArea())
         .refreshable {
@@ -713,6 +717,83 @@ struct SettingsModuleView: View {
         }
     }
 }
+
+#if os(macOS)
+fileprivate struct MacCommandCenterPairingCard: View {
+    @Environment(\.colorScheme) private var colorScheme
+    let commandCenterState: AppleCommandCenterState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Enlazar iPhone o iPad")
+                    .font(.system(size: 28, weight: .black, design: .rounded))
+                Text("Escanea este QR desde la app iOS. Este Mac sigue siendo el centro de mando y el origen de la sincronización LAN.")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack(alignment: .center, spacing: 24) {
+                if let image = qrImage(from: commandCenterState.pairingPayload) {
+                    Image(nsImage: image)
+                        .interpolation(.none)
+                        .resizable()
+                        .frame(width: 176, height: 176)
+                        .padding(16)
+                        .background(Color.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                }
+
+                VStack(alignment: .leading, spacing: 16) {
+                    if let host = commandCenterState.pairingHost {
+                        commandMetric(title: "Host", value: host)
+                    }
+                    if let pin = commandCenterState.pairingPin {
+                        commandMetric(title: "PIN", value: pin)
+                    }
+                    Text(commandCenterState.statusMessage)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(24)
+        .background(appCardBackground(for: colorScheme))
+        .cornerRadius(24)
+    }
+
+    @ViewBuilder
+    private func commandMetric(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .textSelection(.enabled)
+        }
+    }
+
+    private func qrImage(from payload: String?) -> NSImage? {
+        guard
+            let payload,
+            let data = payload.data(using: .utf8),
+            let filter = CIFilter(name: "CIQRCodeGenerator")
+        else { return nil }
+
+        filter.setValue(data, forKey: "inputMessage")
+        filter.setValue("M", forKey: "inputCorrectionLevel")
+        guard let outputImage = filter.outputImage else { return nil }
+
+        let transformed = outputImage.transformed(by: CGAffineTransform(scaleX: 8, y: 8))
+        let rep = NSCIImageRep(ciImage: transformed)
+        let image = NSImage(size: rep.size)
+        image.addRepresentation(rep)
+        return image
+    }
+}
+#endif
 
 fileprivate struct SyncLanCard: View {
     @EnvironmentObject var bridge: KmpBridge
@@ -748,9 +829,9 @@ fileprivate struct SyncLanCard: View {
             } else {
                 HStack(spacing: 10) {
                     TextField("Host desktop (ej. migestor.local)", text: $selectedHost)
-                        .textFieldStyle(.roundedBorder)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
                     TextField("PIN", text: $pin)
-                        .textFieldStyle(.roundedBorder)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
                         .frame(width: 90)
                     Button {
                         showingQrScanner = true
@@ -900,7 +981,7 @@ struct LanQrScannerSheet: View {
     var body: some View {
         NavigationStack {
             Group {
-#if canImport(VisionKit)
+#if os(iOS) && canImport(VisionKit)
                 if DataScannerViewController.isSupported && DataScannerViewController.isAvailable {
                     LanQrScannerView { payload in
                         onPayload(payload)
@@ -927,7 +1008,7 @@ struct LanQrScannerSheet: View {
     }
 }
 
-#if canImport(VisionKit)
+#if os(iOS) && canImport(VisionKit)
 struct LanQrScannerView: UIViewControllerRepresentable {
     let onFoundCode: (String) -> Void
 
@@ -1087,7 +1168,7 @@ struct WeightEditorSheet: View {
                         settingCard(title: "Peso (%)") {
                             TextField("0.0", text: $weight)
                                 .font(.system(size: 32, weight: .black, design: .rounded))
-                                .keyboardType(.decimalPad)
+                                .appKeyboardType(.decimalPad)
                                 .multilineTextAlignment(.center)
                                 .padding(.vertical, 16)
                         }
@@ -1107,7 +1188,7 @@ struct WeightEditorSheet: View {
                         settingCard(title: "Orden") {
                             TextField("0", text: $order)
                                 .font(.system(size: 24, weight: .bold, design: .rounded))
-                                .keyboardType(.numberPad)
+                                .appKeyboardType(.numberPad)
                                 .multilineTextAlignment(.center)
                                 .padding(.vertical, 16)
                         }
@@ -1143,7 +1224,7 @@ struct WeightEditorSheet: View {
                     }
                 }
             }
-            .navigationBarTitleDisplayMode(.inline)
+            .appInlineNavigationBarTitleDisplayMode()
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) { Button("Hecho") { saveWeight() }.fontWeight(.bold) }
                 ToolbarItem(placement: .navigationBarLeading) { Button("Cancelar") { dismiss() } }
@@ -1305,7 +1386,7 @@ struct RubricDetailView: View {
             }.padding(.vertical, 24)
         }
         .background(appPageBackground(for: colorScheme))
-        .navigationBarTitleDisplayMode(.inline)
+        .appInlineNavigationBarTitleDisplayMode()
     }
 }
 
@@ -1348,7 +1429,7 @@ struct RubricEvaluationView: View {
                             .padding(EvaluationDesign.screenPadding)
                         }
                     }
-                    .onChange(of: state.isSaveSuccessful) { saved in
+                    .onChange(of: state.isSaveSuccessful) { _, saved in
                         guard saved else { return }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                             closeRubric()
@@ -1589,10 +1670,10 @@ struct StudentsModuleView: View {
                         .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(.secondary)
                     TextField("Nombre de clase", text: $className)
-                        .textFieldStyle(.roundedBorder)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
                     TextField("Curso (1-6)", text: $classCourse)
-                        .keyboardType(.numberPad)
-                        .textFieldStyle(.roundedBorder)
+                        .appKeyboardType(.numberPad)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
                     Button("Guardar clase") {
                         Task {
                             guard let course = Int32(classCourse), !className.isEmpty else { return }
@@ -1615,8 +1696,8 @@ struct StudentsModuleView: View {
                         .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(.secondary)
                     HStack {
-                        TextField("Nombre", text: $firstName).textFieldStyle(.roundedBorder)
-                        TextField("Apellido", text: $lastName).textFieldStyle(.roundedBorder)
+                        TextField("Nombre", text: $firstName).textFieldStyle(RoundedBorderTextFieldStyle())
+                        TextField("Apellido", text: $lastName).textFieldStyle(RoundedBorderTextFieldStyle())
                     }
                     Button("Añadir a clase") {
                         Task {
@@ -1637,7 +1718,7 @@ struct StudentsModuleView: View {
                 .cornerRadius(16)
 
                 TextField("Buscar alumno...", text: $search)
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
 
                 VStack(spacing: 10) {
                     ForEach(filteredStudents, id: \.id) { student in
@@ -1711,12 +1792,12 @@ struct PlanningModuleView: View {
                         .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(.secondary)
                     TextField("Semana/Periodo", text: $periodName)
-                        .textFieldStyle(.roundedBorder)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
                     TextField("Unidad didáctica", text: $unitTitle)
-                        .textFieldStyle(.roundedBorder)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
                     TextField("Descripción de sesión", text: $sessionDescription, axis: .vertical)
                         .lineLimit(3...5)
-                        .textFieldStyle(.roundedBorder)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
                     Button("Guardar sesión") {
                         Task {
                             guard !unitTitle.isEmpty, !sessionDescription.isEmpty else { return }
@@ -1789,18 +1870,6 @@ extension RubricLevel: @retroactive Identifiable {}
 
 // MARK: - Helpers & Styles
 // Helpers moved to specific component files where appropriate
-
-extension View {
-    func cornerRadius(_ radius: CGFloat, corners: UIRectCorner) -> some View { clipShape(RoundedCorner(radius: radius, corners: corners)) }
-}
-
-struct RoundedCorner: Shape {
-    var radius: CGFloat = .infinity; var corners: UIRectCorner = .allCorners
-    func path(in rect: CGRect) -> Path {
-        let path = UIBezierPath(roundedRect: rect, byRoundingCorners: corners, cornerRadii: CGSize(width: radius, height: radius))
-        return Path(path.cgPath)
-    }
-}
 
 // MARK: - Organic Precision Rubrics Screen
 
@@ -1941,7 +2010,7 @@ struct RubricsScreen: View {
                 }
             }
         }
-        .fullScreenCover(isPresented: $showingBuilder) {
+        .appFullScreenCover(isPresented: $showingBuilder) {
             RubricsBuilderScreen()
                 .environmentObject(bridge)
         }
@@ -2049,7 +2118,7 @@ struct FilterChip: View {
     private var chipBackground: Color {
         colorScheme == .dark
             ? appCardBackground(for: colorScheme).opacity(0.92)
-            : Color(.secondarySystemBackground)
+            : appSecondarySystemBackgroundColor()
     }
 
     private var chipBorder: Color {
@@ -2513,7 +2582,7 @@ struct RubricsBuilderScreen: View {
                 }
             }
             .background(appPageBackground(for: colorScheme).ignoresSafeArea())
-            .navigationBarTitleDisplayMode(.inline)
+            .appInlineNavigationBarTitleDisplayMode()
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cerrar") { dismiss() }
@@ -2670,7 +2739,7 @@ private struct RubricBuilderGridView: View {
                             get: { level.name },
                             set: { bridge.updateRubricLevelName(at: index, name: $0) }
                         ))
-                        .textFieldStyle(.roundedBorder)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
 
                         Button(role: .destructive) {
                             bridge.removeRubricLevel(at: index)
@@ -2711,7 +2780,7 @@ private struct RubricBuilderGridView: View {
                     set: { bridge.updateRubricCriterionDescription(at: index, description: $0) }
                 ), axis: .vertical)
                 .lineLimit(2...3)
-                .textFieldStyle(.roundedBorder)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
 
                 Slider(value: Binding(
                     get: { criterion.weight },
@@ -2982,7 +3051,7 @@ final class PlannerIOSViewModel: ObservableObject {
 
     func saveWeeklySlot(classId: Int64, dayOfWeek: Int, startTime: String, endTime: String, editingSlotId: Int64?) async throws {
         guard let bridge else { return }
-        try await bridge.plannerSaveWeeklySlot(
+        _ = try await bridge.plannerSaveWeeklySlot(
             classId: classId,
             dayOfWeek: dayOfWeek,
             startTime: startTime,

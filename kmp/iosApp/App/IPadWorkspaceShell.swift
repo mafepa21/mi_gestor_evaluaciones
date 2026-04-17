@@ -1,6 +1,12 @@
 import SwiftUI
 import MiGestorKit
 
+struct NotebookToolbarGroupOption: Identifiable, Equatable {
+    let id: Int64
+    let name: String
+    let studentCount: Int
+}
+
 @MainActor
 final class WorkspaceLayoutState: ObservableObject {
     @Published var isSidebarVisible: Bool = true
@@ -8,6 +14,11 @@ final class WorkspaceLayoutState: ObservableObject {
     @Published var notebookInspectorAvailable: Bool = false
     @Published var isNotebookInspectorPresented: Bool = false
     @Published var notebookAddColumnAvailable: Bool = false
+    @Published var notebookOrganizationMenuAvailable: Bool = false
+    @Published var notebookSearchText: String = ""
+    @Published var notebookSurfaceMode: String = "grid"
+    @Published var notebookSelectedGroupId: Int64? = nil
+    @Published var notebookAvailableGroups: [NotebookToolbarGroupOption] = []
     @Published var dashboardInspectorAvailable: Bool = false
     @Published var isDashboardInspectorPresented: Bool = false
     @Published var dashboardActionsAvailable: Bool = false
@@ -23,6 +34,10 @@ final class WorkspaceLayoutState: ObservableObject {
 
     private var notebookInspectorAction: (() -> Void)?
     private var notebookAddColumnAction: (() -> Void)?
+    private var notebookSearchAction: ((String) -> Void)?
+    private var notebookSurfaceModeAction: ((String) -> Void)?
+    private var notebookGroupFilterAction: ((Int64?) -> Void)?
+    private var notebookOrganizationMenuAction: (() -> Void)?
     private var dashboardInspectorAction: (() -> Void)?
     private var dashboardRefreshAction: (() -> Void)?
     private var dashboardPassListAction: (() -> Void)?
@@ -38,6 +53,12 @@ final class WorkspaceLayoutState: ObservableObject {
     private var attendanceRepeatPatternAction: (() -> Void)?
     private var attendanceClearSelectionAction: (() -> Void)?
 
+    private func publishDeferred(_ mutation: @escaping @MainActor () -> Void) {
+        Task { @MainActor in
+            mutation()
+        }
+    }
+
     func toggleFocusMode() {
         isFocusModeEnabled.toggle()
         isSidebarVisible = !isFocusModeEnabled
@@ -47,28 +68,75 @@ final class WorkspaceLayoutState: ObservableObject {
         inspectorAvailable: Bool,
         isInspectorPresented: Bool,
         addColumnAvailable: Bool,
+        searchText: String,
+        surfaceMode: String,
+        selectedGroupId: Int64?,
+        availableGroups: [NotebookToolbarGroupOption],
+        organizationMenuAvailable: Bool,
         onToggleInspector: @escaping () -> Void,
-        onAddColumn: @escaping () -> Void
+        onAddColumn: @escaping () -> Void,
+        onSearchChange: @escaping (String) -> Void,
+        onSurfaceModeChange: @escaping (String) -> Void,
+        onGroupFilterChange: @escaping (Int64?) -> Void,
+        onOpenOrganizationMenu: @escaping () -> Void
     ) {
-        notebookInspectorAvailable = inspectorAvailable
-        isNotebookInspectorPresented = isInspectorPresented
-        notebookAddColumnAvailable = addColumnAvailable
-        notebookInspectorAction = onToggleInspector
-        notebookAddColumnAction = onAddColumn
+        publishDeferred {
+            self.notebookInspectorAvailable = inspectorAvailable
+            self.isNotebookInspectorPresented = isInspectorPresented
+            self.notebookAddColumnAvailable = addColumnAvailable
+            self.notebookSearchText = searchText
+            self.notebookSurfaceMode = surfaceMode
+            self.notebookSelectedGroupId = selectedGroupId
+            self.notebookAvailableGroups = availableGroups
+            self.notebookOrganizationMenuAvailable = organizationMenuAvailable
+            self.notebookInspectorAction = onToggleInspector
+            self.notebookAddColumnAction = onAddColumn
+            self.notebookSearchAction = onSearchChange
+            self.notebookSurfaceModeAction = onSurfaceModeChange
+            self.notebookGroupFilterAction = onGroupFilterChange
+            self.notebookOrganizationMenuAction = onOpenOrganizationMenu
+        }
     }
 
-    func updateNotebookToolbar(inspectorAvailable: Bool, isInspectorPresented: Bool, addColumnAvailable: Bool) {
-        notebookInspectorAvailable = inspectorAvailable
-        isNotebookInspectorPresented = isInspectorPresented
-        notebookAddColumnAvailable = addColumnAvailable
+    func updateNotebookToolbar(
+        inspectorAvailable: Bool,
+        isInspectorPresented: Bool,
+        addColumnAvailable: Bool,
+        searchText: String,
+        surfaceMode: String,
+        selectedGroupId: Int64?,
+        availableGroups: [NotebookToolbarGroupOption],
+        organizationMenuAvailable: Bool
+    ) {
+        publishDeferred {
+            self.notebookInspectorAvailable = inspectorAvailable
+            self.isNotebookInspectorPresented = isInspectorPresented
+            self.notebookAddColumnAvailable = addColumnAvailable
+            self.notebookSearchText = searchText
+            self.notebookSurfaceMode = surfaceMode
+            self.notebookSelectedGroupId = selectedGroupId
+            self.notebookAvailableGroups = availableGroups
+            self.notebookOrganizationMenuAvailable = organizationMenuAvailable
+        }
     }
 
     func clearNotebookToolbar() {
-        notebookInspectorAvailable = false
-        isNotebookInspectorPresented = false
-        notebookAddColumnAvailable = false
-        notebookInspectorAction = nil
-        notebookAddColumnAction = nil
+        publishDeferred {
+            self.notebookInspectorAvailable = false
+            self.isNotebookInspectorPresented = false
+            self.notebookAddColumnAvailable = false
+            self.notebookOrganizationMenuAvailable = false
+            self.notebookSearchText = ""
+            self.notebookSurfaceMode = "grid"
+            self.notebookSelectedGroupId = nil
+            self.notebookAvailableGroups = []
+            self.notebookInspectorAction = nil
+            self.notebookAddColumnAction = nil
+            self.notebookSearchAction = nil
+            self.notebookSurfaceModeAction = nil
+            self.notebookGroupFilterAction = nil
+            self.notebookOrganizationMenuAction = nil
+        }
     }
 
     func toggleNotebookInspector() {
@@ -77,6 +145,25 @@ final class WorkspaceLayoutState: ObservableObject {
 
     func showNotebookAddColumn() {
         notebookAddColumnAction?()
+    }
+
+    func setNotebookSearchText(_ value: String) {
+        notebookSearchText = value
+        notebookSearchAction?(value)
+    }
+
+    func setNotebookSurfaceMode(_ value: String) {
+        notebookSurfaceMode = value
+        notebookSurfaceModeAction?(value)
+    }
+
+    func setNotebookGroupFilter(_ value: Int64?) {
+        notebookSelectedGroupId = value
+        notebookGroupFilterAction?(value)
+    }
+
+    func openNotebookOrganizationMenu() {
+        notebookOrganizationMenuAction?()
     }
 
     func configureDashboardToolbar(
@@ -89,25 +176,29 @@ final class WorkspaceLayoutState: ObservableObject {
         onObservation: @escaping () -> Void,
         onQuickEvaluation: @escaping () -> Void
     ) {
-        dashboardInspectorAvailable = inspectorAvailable
-        isDashboardInspectorPresented = isInspectorPresented
-        dashboardActionsAvailable = actionsAvailable
-        dashboardInspectorAction = onToggleInspector
-        dashboardRefreshAction = onRefresh
-        dashboardPassListAction = onPassList
-        dashboardObservationAction = onObservation
-        dashboardQuickEvaluationAction = onQuickEvaluation
+        publishDeferred {
+            self.dashboardInspectorAvailable = inspectorAvailable
+            self.isDashboardInspectorPresented = isInspectorPresented
+            self.dashboardActionsAvailable = actionsAvailable
+            self.dashboardInspectorAction = onToggleInspector
+            self.dashboardRefreshAction = onRefresh
+            self.dashboardPassListAction = onPassList
+            self.dashboardObservationAction = onObservation
+            self.dashboardQuickEvaluationAction = onQuickEvaluation
+        }
     }
 
     func clearDashboardToolbar() {
-        dashboardInspectorAvailable = false
-        isDashboardInspectorPresented = false
-        dashboardActionsAvailable = false
-        dashboardInspectorAction = nil
-        dashboardRefreshAction = nil
-        dashboardPassListAction = nil
-        dashboardObservationAction = nil
-        dashboardQuickEvaluationAction = nil
+        publishDeferred {
+            self.dashboardInspectorAvailable = false
+            self.isDashboardInspectorPresented = false
+            self.dashboardActionsAvailable = false
+            self.dashboardInspectorAction = nil
+            self.dashboardRefreshAction = nil
+            self.dashboardPassListAction = nil
+            self.dashboardObservationAction = nil
+            self.dashboardQuickEvaluationAction = nil
+        }
     }
 
     func toggleDashboardInspector() {
@@ -119,20 +210,26 @@ final class WorkspaceLayoutState: ObservableObject {
         isInspectorPresented: Bool,
         onToggleInspector: @escaping () -> Void
     ) {
-        diaryInspectorAvailable = inspectorAvailable
-        isDiaryInspectorPresented = isInspectorPresented
-        diaryInspectorAction = onToggleInspector
+        publishDeferred {
+            self.diaryInspectorAvailable = inspectorAvailable
+            self.isDiaryInspectorPresented = isInspectorPresented
+            self.diaryInspectorAction = onToggleInspector
+        }
     }
 
     func updateDiaryToolbar(inspectorAvailable: Bool, isInspectorPresented: Bool) {
-        diaryInspectorAvailable = inspectorAvailable
-        isDiaryInspectorPresented = isInspectorPresented
+        publishDeferred {
+            self.diaryInspectorAvailable = inspectorAvailable
+            self.isDiaryInspectorPresented = isInspectorPresented
+        }
     }
 
     func clearDiaryToolbar() {
-        diaryInspectorAvailable = false
-        isDiaryInspectorPresented = false
-        diaryInspectorAction = nil
+        publishDeferred {
+            self.diaryInspectorAvailable = false
+            self.isDiaryInspectorPresented = false
+            self.diaryInspectorAction = nil
+        }
     }
 
     func toggleDiaryInspector() {
@@ -143,13 +240,17 @@ final class WorkspaceLayoutState: ObservableObject {
         addSessionAvailable: Bool,
         onAddSession: @escaping () -> Void
     ) {
-        plannerAddSessionAvailable = addSessionAvailable
-        plannerAddSessionAction = onAddSession
+        publishDeferred {
+            self.plannerAddSessionAvailable = addSessionAvailable
+            self.plannerAddSessionAction = onAddSession
+        }
     }
 
     func clearPlannerToolbar() {
-        plannerAddSessionAvailable = false
-        plannerAddSessionAction = nil
+        publishDeferred {
+            self.plannerAddSessionAvailable = false
+            self.plannerAddSessionAction = nil
+        }
     }
 
     func openPlannerComposer() {
@@ -186,19 +287,21 @@ final class WorkspaceLayoutState: ObservableObject {
         onRepeatPattern: @escaping () -> Void,
         onClearSelection: @escaping () -> Void
     ) {
-        attendanceToolbarAvailable = true
-        attendanceSearchText = searchText
-        attendanceSelectedDate = selectedDate
-        attendanceBoardMode = boardMode
-        attendanceSelectedStatusFilter = selectedStatusFilter
-        attendanceHasSelection = hasSelection
-        attendanceSearchAction = onSearchTextChange
-        attendanceDateAction = onDateChange
-        attendanceBoardModeAction = onBoardModeChange
-        attendanceStatusFilterAction = onStatusFilterChange
-        attendanceMarkAllPresentAction = onMarkAllPresent
-        attendanceRepeatPatternAction = onRepeatPattern
-        attendanceClearSelectionAction = onClearSelection
+        publishDeferred {
+            self.attendanceToolbarAvailable = true
+            self.attendanceSearchText = searchText
+            self.attendanceSelectedDate = selectedDate
+            self.attendanceBoardMode = boardMode
+            self.attendanceSelectedStatusFilter = selectedStatusFilter
+            self.attendanceHasSelection = hasSelection
+            self.attendanceSearchAction = onSearchTextChange
+            self.attendanceDateAction = onDateChange
+            self.attendanceBoardModeAction = onBoardModeChange
+            self.attendanceStatusFilterAction = onStatusFilterChange
+            self.attendanceMarkAllPresentAction = onMarkAllPresent
+            self.attendanceRepeatPatternAction = onRepeatPattern
+            self.attendanceClearSelectionAction = onClearSelection
+        }
     }
 
     func updateAttendanceToolbar(
@@ -208,28 +311,32 @@ final class WorkspaceLayoutState: ObservableObject {
         selectedStatusFilter: String,
         hasSelection: Bool
     ) {
-        attendanceToolbarAvailable = true
-        attendanceSearchText = searchText
-        attendanceSelectedDate = selectedDate
-        attendanceBoardMode = boardMode
-        attendanceSelectedStatusFilter = selectedStatusFilter
-        attendanceHasSelection = hasSelection
+        publishDeferred {
+            self.attendanceToolbarAvailable = true
+            self.attendanceSearchText = searchText
+            self.attendanceSelectedDate = selectedDate
+            self.attendanceBoardMode = boardMode
+            self.attendanceSelectedStatusFilter = selectedStatusFilter
+            self.attendanceHasSelection = hasSelection
+        }
     }
 
     func clearAttendanceToolbar() {
-        attendanceToolbarAvailable = false
-        attendanceSearchText = ""
-        attendanceSelectedDate = Date()
-        attendanceBoardMode = "Día"
-        attendanceSelectedStatusFilter = "TODOS"
-        attendanceHasSelection = false
-        attendanceSearchAction = nil
-        attendanceDateAction = nil
-        attendanceBoardModeAction = nil
-        attendanceStatusFilterAction = nil
-        attendanceMarkAllPresentAction = nil
-        attendanceRepeatPatternAction = nil
-        attendanceClearSelectionAction = nil
+        publishDeferred {
+            self.attendanceToolbarAvailable = false
+            self.attendanceSearchText = ""
+            self.attendanceSelectedDate = Date()
+            self.attendanceBoardMode = "Día"
+            self.attendanceSelectedStatusFilter = "TODOS"
+            self.attendanceHasSelection = false
+            self.attendanceSearchAction = nil
+            self.attendanceDateAction = nil
+            self.attendanceBoardModeAction = nil
+            self.attendanceStatusFilterAction = nil
+            self.attendanceMarkAllPresentAction = nil
+            self.attendanceRepeatPatternAction = nil
+            self.attendanceClearSelectionAction = nil
+        }
     }
 
     func setAttendanceSearchText(_ value: String) {
@@ -404,6 +511,15 @@ private struct WorkspaceSearchResult: Identifiable {
     let kind: Kind
 }
 
+private struct ContextualAISheetState: Identifiable {
+    let module: AppWorkspaceModule
+    let context: KmpBridge.ScreenAIContext
+
+    var id: String {
+        "\(module.rawValue)|\(context.kind.rawValue)|\(context.classId ?? -1)|\(context.studentId ?? -1)"
+    }
+}
+
 struct AppWorkspaceShell: View {
     @EnvironmentObject private var bridge: KmpBridge
     @Environment(\.colorScheme) private var colorScheme
@@ -419,6 +535,8 @@ struct AppWorkspaceShell: View {
     @State private var showingRubricBuilder = false
     @StateObject private var layoutState = WorkspaceLayoutState()
     @State private var rootSplitVisibility: NavigationSplitViewVisibility = .all
+    @State private var contextualAISheetState: ContextualAISheetState?
+    @State private var isLoadingContextualAI = false
 
     private var searchResults: [WorkspaceSearchResult] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -484,9 +602,15 @@ struct AppWorkspaceShell: View {
                 .environmentObject(bridge)
             }
         }
-        .fullScreenCover(isPresented: $showingRubricBuilder) {
+        .appFullScreenCover(isPresented: $showingRubricBuilder) {
             RubricsBuilderScreen()
                 .environmentObject(bridge)
+        }
+        .sheet(item: $contextualAISheetState) { sheet in
+            ContextualAIAssistantSheet(
+                module: sheet.module,
+                context: sheet.context
+            )
         }
         .task {
             await bridge.ensureClassesLoaded()
@@ -505,12 +629,12 @@ struct AppWorkspaceShell: View {
                 await bridge.selectStudentsClass(classId: selectedClassId)
             }
         }
-        .onChange(of: activeModule) { persistedActiveModule = $0.rawValue }
-        .onChange(of: selectedClassId) { persistedSelectedClassId = Int($0 ?? 0) }
-        .onChange(of: selectedStudentId) { persistedSelectedStudentId = Int($0 ?? 0) }
+        .onChange(of: activeModule) { _, newValue in persistedActiveModule = newValue.rawValue }
+        .onChange(of: selectedClassId) { _, newValue in persistedSelectedClassId = Int(newValue ?? 0) }
+        .onChange(of: selectedStudentId) { _, newValue in persistedSelectedStudentId = Int(newValue ?? 0) }
         .onAppear(perform: syncRootSplitVisibility)
-        .onChange(of: layoutState.isSidebarVisible) { _ in syncRootSplitVisibility() }
-        .onChange(of: layoutState.isFocusModeEnabled) { _ in syncRootSplitVisibility() }
+        .onChange(of: layoutState.isSidebarVisible) { _, _ in syncRootSplitVisibility() }
+        .onChange(of: layoutState.isFocusModeEnabled) { _, _ in syncRootSplitVisibility() }
     }
 
     private var workspaceSidebar: some View {
@@ -557,9 +681,7 @@ struct AppWorkspaceShell: View {
 
                 Spacer()
 
-                if activeModule == .notebook {
-                    notebookToolbarActions
-                } else if activeModule == .dashboard {
+                if activeModule == .dashboard {
                     dashboardToolbarActions
                 } else if activeModule == .planner {
                     plannerToolbarActions
@@ -569,6 +691,22 @@ struct AppWorkspaceShell: View {
                     focusToggleButton
                 } else {
                     focusToggleButton
+
+                    if shouldShowGlobalContextualAIButton {
+                        Button {
+                            presentContextualAI()
+                        } label: {
+                            if isLoadingContextualAI {
+                                ProgressView()
+                                    .controlSize(.small)
+                                    .frame(minWidth: 18)
+                            } else {
+                                Label("IA", systemImage: "apple.intelligence")
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(isLoadingContextualAI)
+                    }
 
                     Menu {
                         Button("Recargar dashboard") { Task { await bridge.refreshDashboard(mode: .office) } }
@@ -598,6 +736,8 @@ struct AppWorkspaceShell: View {
                 attendanceGlobalToolbarRow
             } else if activeModule == .planner || activeModule == .diary {
                 moduleContextToolbarRow
+            } else if activeModule == .notebook {
+                notebookGlobalToolbarRow
             } else {
                 HStack(spacing: 12) {
                     Menu {
@@ -625,11 +765,29 @@ struct AppWorkspaceShell: View {
                     HStack(spacing: 10) {
                         Image(systemName: "magnifyingglass")
                             .foregroundStyle(.secondary)
-                        TextField("Buscar módulos, grupos o alumnado…", text: $searchText)
+                        TextField(
+                            activeModule == .notebook ? "Buscar alumno…" : "Buscar módulos, grupos o alumnado…",
+                            text: Binding(
+                                get: {
+                                    activeModule == .notebook ? layoutState.notebookSearchText : searchText
+                                },
+                                set: { newValue in
+                                    if activeModule == .notebook {
+                                        layoutState.setNotebookSearchText(newValue)
+                                    } else {
+                                        searchText = newValue
+                                    }
+                                }
+                            )
+                        )
                             .textFieldStyle(.plain)
-                        if !searchText.isEmpty {
+                        if !(activeModule == .notebook ? layoutState.notebookSearchText : searchText).isEmpty {
                             Button {
-                                searchText = ""
+                                if activeModule == .notebook {
+                                    layoutState.setNotebookSearchText("")
+                                } else {
+                                    searchText = ""
+                                }
                             } label: {
                                 Image(systemName: "xmark.circle.fill")
                                     .foregroundStyle(.secondary)
@@ -640,16 +798,6 @@ struct AppWorkspaceShell: View {
                     .padding(.horizontal, 14)
                     .padding(.vertical, 12)
                     .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-
-                    Button {
-                        Task {
-                            await bridge.pullMissingSyncChanges()
-                            try? await bridge.refreshStudentsDirectory()
-                        }
-                    } label: {
-                        Label("Sync", systemImage: "arrow.triangle.2.circlepath")
-                    }
-                    .buttonStyle(.bordered)
                 }
             }
 
@@ -877,6 +1025,55 @@ struct AppWorkspaceShell: View {
 
     private var notebookToolbarActions: some View {
         HStack(spacing: 12) {
+            Picker(
+                "Vista del cuaderno",
+                selection: Binding(
+                    get: { layoutState.notebookSurfaceMode },
+                    set: { layoutState.setNotebookSurfaceMode($0) }
+                )
+            ) {
+                Label("Rejilla", systemImage: "tablecells").tag("grid")
+                Label("Plano", systemImage: "square.grid.3x3.square").tag("seatingPlan")
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 220)
+
+            if !layoutState.notebookAvailableGroups.isEmpty {
+                Menu {
+                    Button("Todo el grupo") {
+                        layoutState.setNotebookGroupFilter(nil)
+                    }
+
+                    ForEach(layoutState.notebookAvailableGroups) { group in
+                        Button {
+                            layoutState.setNotebookGroupFilter(group.id)
+                        } label: {
+                            HStack {
+                                Text(group.name)
+                                Spacer()
+                                Text("\(group.studentCount)")
+                                    .foregroundStyle(.secondary)
+                                if layoutState.notebookSelectedGroupId == group.id {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    Label(notebookGroupFilterLabel, systemImage: "line.3.horizontal.decrease.circle")
+                }
+                .buttonStyle(.bordered)
+            }
+
+            if layoutState.notebookOrganizationMenuAvailable {
+                Button {
+                    layoutState.openNotebookOrganizationMenu()
+                } label: {
+                    Label("Columnas", systemImage: "slider.horizontal.3")
+                }
+                .buttonStyle(.bordered)
+            }
+
             if layoutState.isNotebookInspectorPresented {
                 Button {
                     layoutState.toggleNotebookInspector()
@@ -905,6 +1102,69 @@ struct AppWorkspaceShell: View {
             .buttonStyle(.borderedProminent)
             .disabled(!layoutState.notebookAddColumnAvailable)
         }
+    }
+
+    private var notebookGlobalToolbarRow: some View {
+        HStack(spacing: 12) {
+            Menu {
+                Button("Sin clase activa") {
+                    updateGlobalClassContext(nil)
+                }
+                ForEach(bridge.classes, id: \.id) { schoolClass in
+                    Button {
+                        updateGlobalClassContext(schoolClass.id)
+                    } label: {
+                        HStack {
+                            Text(schoolClass.name)
+                            if selectedClassId == schoolClass.id {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                Label(activeClassLabel, systemImage: "rectangle.3.group")
+                    .frame(minWidth: 220, alignment: .leading)
+            }
+            .buttonStyle(.bordered)
+
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField(
+                    "Buscar alumno…",
+                    text: Binding(
+                        get: { layoutState.notebookSearchText },
+                        set: { layoutState.setNotebookSearchText($0) }
+                    )
+                )
+                .textFieldStyle(.plain)
+                if !layoutState.notebookSearchText.isEmpty {
+                    Button {
+                        layoutState.setNotebookSearchText("")
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+            Spacer(minLength: 0)
+
+            notebookToolbarActions
+        }
+    }
+
+    private var notebookGroupFilterLabel: String {
+        guard let selectedId = layoutState.notebookSelectedGroupId,
+              let group = layoutState.notebookAvailableGroups.first(where: { $0.id == selectedId }) else {
+            return "Grupo completo"
+        }
+        return group.name
     }
 
     private var dashboardToolbarActions: some View {
@@ -1176,6 +1436,92 @@ struct AppWorkspaceShell: View {
         case .settings:
             SettingsModuleView(selectedClassId: $selectedClassId)
         }
+    }
+
+    private var shouldShowGlobalContextualAIButton: Bool {
+        switch activeModule {
+        case .notebook, .planner, .rubrics, .library, .settings:
+            return false
+        default:
+            return true
+        }
+    }
+
+    private func presentContextualAI() {
+        guard !isLoadingContextualAI else { return }
+        isLoadingContextualAI = true
+        Task {
+            let module = activeModule
+            let resolvedClassId = selectedClassId
+            let resolvedStudentId = selectedStudentId
+            let context: KmpBridge.ScreenAIContext
+            do {
+                context = try await loadContextualAIContext(
+                    for: module,
+                    classId: resolvedClassId,
+                    studentId: resolvedStudentId
+                )
+            } catch {
+                context = fallbackContext(for: module, classId: resolvedClassId, studentId: resolvedStudentId, message: error.localizedDescription)
+            }
+            await MainActor.run {
+                contextualAISheetState = ContextualAISheetState(module: module, context: context)
+                isLoadingContextualAI = false
+            }
+        }
+    }
+
+    private func loadContextualAIContext(
+        for module: AppWorkspaceModule,
+        classId: Int64?,
+        studentId: Int64?
+    ) async throws -> KmpBridge.ScreenAIContext {
+        switch module {
+        case .dashboard:
+            return try await bridge.buildDashboardAIContext(classId: classId)
+        case .courses:
+            return try await bridge.buildCoursesAIContext(classId: classId)
+        case .students:
+            return try await bridge.buildStudentsAIContext(classId: classId, studentId: studentId)
+        case .attendance:
+            return try await bridge.buildAttendanceAIContext(classId: classId)
+        case .diary, .planner:
+            return try await bridge.buildDiaryAIContext(classId: classId)
+        case .evaluationHub:
+            return try await bridge.buildEvaluationAIContext(classId: classId)
+        case .reports:
+            return try await bridge.buildReportsAIContext(classId: classId, studentId: studentId)
+        case .peSessions, .peTests, .peRubrics, .peIncidents, .peMaterial, .peTournaments:
+            return try await bridge.buildPEAIContext(classId: classId)
+        case .notebook:
+            return bridge.buildNotebookAIContext(classId: classId)
+        case .rubrics, .library, .settings:
+            return fallbackContext(for: module, classId: classId, studentId: studentId, message: "Esta pantalla todavía no ofrece acciones IA contextuales.")
+        }
+    }
+
+    private func fallbackContext(
+        for module: AppWorkspaceModule,
+        classId: Int64?,
+        studentId: Int64?,
+        message: String
+    ) -> KmpBridge.ScreenAIContext {
+        KmpBridge.ScreenAIContext(
+            kind: module == .reports ? .reports : module.section == .physicalEducation ? .pe : .courses,
+            title: module.title,
+            subtitle: module.subtitle,
+            classId: classId,
+            className: bridge.classes.first(where: { $0.id == classId })?.name,
+            studentId: studentId,
+            studentName: bridge.allStudents.first(where: { $0.id == studentId }).map { "\($0.firstName) \($0.lastName)" },
+            summary: message,
+            metrics: [],
+            factLines: [message],
+            supportNotes: [],
+            suggestedActions: [],
+            hasEnoughData: false,
+            dataQualityNote: message
+        )
     }
 
     private var primaryActionLabel: String {
@@ -1705,20 +2051,20 @@ private struct AttendanceWorkspaceView: View {
                 self.preselectedStudentId = nil
             }
         }
-        .onChange(of: selectedClassId) { _ in
+        .onChange(of: selectedClassId) { _, _ in
             Task { await syncClassSelection() }
         }
-        .onChange(of: selectedDate) { _ in
+        .onChange(of: selectedDate) { _, _ in
             Task { await reloadAttendance() }
         }
-        .onChange(of: boardMode) { _ in
+        .onChange(of: boardMode) { _, _ in
             selectedStudentId = nil
         }
-        .onChange(of: selectedStudentId) { _ in
+        .onChange(of: selectedStudentId) { _, _ in
             noteDraft = selectedAttendance?.note ?? ""
         }
         .onAppear(perform: syncAttendanceToolbar)
-        .onChange(of: toolbarStateKey) { _ in
+        .onChange(of: toolbarStateKey) { _, _ in
             syncAttendanceToolbar()
         }
         .onDisappear {
@@ -1875,7 +2221,7 @@ private struct AttendanceWorkspaceView: View {
                         Text("Nota de asistencia")
                             .font(.headline)
                         TextField("Observación rápida de la sesión…", text: $noteDraft, axis: .vertical)
-                            .textFieldStyle(.roundedBorder)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
                             .lineLimit(3, reservesSpace: true)
 
                         Button("Guardar nota") {
@@ -2326,7 +2672,7 @@ private struct EvaluationHubView: View {
             .background(appPageBackground(for: colorScheme))
         }
         .task { await reload() }
-        .onChange(of: selectedClassId) { _ in
+        .onChange(of: selectedClassId) { _, _ in
             Task { await reload() }
         }
     }
@@ -2512,7 +2858,7 @@ private struct DiaryWorkspaceView: View {
             configureDiaryToolbar()
             syncNavigationContext()
         }
-        .onChange(of: selectedClassId) { _ in
+        .onChange(of: selectedClassId) { _, _ in
             Task {
                 await vm.applyExternalContext(
                     week: navigationContext.week ?? vm.week,
@@ -2524,7 +2870,7 @@ private struct DiaryWorkspaceView: View {
                 syncNavigationContext()
             }
         }
-        .onChange(of: navigationContext) { newValue in
+        .onChange(of: navigationContext) { _, newValue in
             Task {
                 await vm.applyExternalContext(
                     week: newValue.week,
@@ -2536,18 +2882,18 @@ private struct DiaryWorkspaceView: View {
                 syncNavigationContext()
             }
         }
-        .onChange(of: vm.searchText) { _ in
+        .onChange(of: vm.searchText) { _, _ in
             vm.applySearch()
         }
-        .onChange(of: diaryToolbarKey) { _ in
+        .onChange(of: diaryToolbarKey) { _, _ in
             configureDiaryToolbar()
         }
-        .onChange(of: diarySessions.map(\.id)) { _ in
+        .onChange(of: diarySessions.map(\.id)) { _, _ in
             syncSelection()
         }
-        .onChange(of: vm.week) { _ in syncNavigationContext() }
-        .onChange(of: vm.year) { _ in syncNavigationContext() }
-        .onChange(of: vm.selectedSession?.id) { _ in
+        .onChange(of: vm.week) { _, _ in syncNavigationContext() }
+        .onChange(of: vm.year) { _, _ in syncNavigationContext() }
+        .onChange(of: vm.selectedSession?.id) { _, _ in
             syncSelection()
             syncNavigationContext()
         }
@@ -3136,25 +3482,25 @@ private struct RubricsWorkspaceView: View {
             }
             await reloadUsageSummary()
         }
-        .onChange(of: selectedClassId) { _ in
+        .onChange(of: selectedClassId) { _, _ in
             if selectedRubricId == nil || !filteredRubrics.contains(where: { $0.rubric.id == selectedRubricId }) {
                 selectedRubricId = filteredRubrics.first?.rubric.id
             }
             Task { await reloadUsageSummary() }
         }
-        .onChange(of: selectedFilter) { _ in
+        .onChange(of: selectedFilter) { _, _ in
             if selectedRubricId == nil || !filteredRubrics.contains(where: { $0.rubric.id == selectedRubricId }) {
                 selectedRubricId = filteredRubrics.first?.rubric.id
             }
             Task { await reloadUsageSummary() }
         }
-        .onChange(of: searchText) { _ in
+        .onChange(of: searchText) { _, _ in
             if selectedRubricId == nil || !filteredRubrics.contains(where: { $0.rubric.id == selectedRubricId }) {
                 selectedRubricId = filteredRubrics.first?.rubric.id
             }
             Task { await reloadUsageSummary() }
         }
-        .onChange(of: selectedRubricId) { _ in
+        .onChange(of: selectedRubricId) { _, _ in
             Task { await reloadUsageSummary() }
         }
     }
@@ -3174,48 +3520,67 @@ private struct RubricsWorkspaceView: View {
 }
 
 private struct ReportsWorkspaceView: View {
-    @EnvironmentObject private var bridge: KmpBridge
-    @Environment(\.colorScheme) private var colorScheme
-    @Binding var selectedClassId: Int64?
-    @Binding var selectedStudentId: Int64?
-    @State private var preview: KmpBridge.ReportPreviewPayload?
-    @State private var selectedReportKind: WorkspaceReportKind = .groupOverview
+    private enum ReportTerm: String, CaseIterable, Identifiable {
+        case first = "1er Trimestre"
+        case second = "2º Trimestre"
+        case third = "3er Trimestre"
 
-    private enum WorkspaceReportKind: String, CaseIterable, Identifiable {
-        case groupOverview
-        case studentSummary
-        case evaluationDigest
-        case operationsSnapshot
+        var id: String { rawValue }
+    }
+
+    private enum WorkspaceSurface: String, CaseIterable, Identifiable {
+        case reports
+        case analytics
+
+        var id: String { rawValue }
+    }
+
+    private enum AnalyticsMode: String, CaseIterable, Identifiable {
+        case dashboards
+        case askAI
 
         var id: String { rawValue }
 
         var title: String {
             switch self {
-            case .groupOverview: return "Informe de grupo"
-            case .studentSummary: return "Informe individual"
-            case .evaluationDigest: return "Resumen de evaluación"
-            case .operationsSnapshot: return "Resumen operativo"
-            }
-        }
-
-        var subtitle: String {
-            switch self {
-            case .groupOverview: return "Medias y pulso general del grupo"
-            case .studentSummary: return "Seguimiento sintético para tutoría"
-            case .evaluationDigest: return "Instrumentos, rúbricas y carga activa"
-            case .operationsSnapshot: return "Asistencia, incidencias y estado docente"
-            }
-        }
-
-        var systemImage: String {
-            switch self {
-            case .groupOverview: return "person.3.sequence.fill"
-            case .studentSummary: return "person.text.rectangle.fill"
-            case .evaluationDigest: return "chart.bar.doc.horizontal"
-            case .operationsSnapshot: return "bolt.badge.clock.fill"
+            case .dashboards: return "Dashboards"
+            case .askAI: return "Pregunta a la IA"
             }
         }
     }
+
+    @EnvironmentObject private var bridge: KmpBridge
+    @Environment(\.colorScheme) private var colorScheme
+    @Binding var selectedClassId: Int64?
+    @Binding var selectedStudentId: Int64?
+
+    @State private var activeSurface: WorkspaceSurface = .reports
+    @State private var preview: KmpBridge.ReportPreviewPayload?
+    @State private var reportContext: KmpBridge.ReportGenerationContext?
+    @State private var selectedReportKind: KmpBridge.ReportKind = .groupOverview
+    @State private var selectedReportTerm: ReportTerm = .first
+    @State private var aiAudience: AIReportAudience = .docente
+    @State private var aiTone: AIReportTone = .claro
+    @State private var aiAvailability: AIReportAvailabilityState = .unavailable("Comprobando disponibilidad…")
+    @State private var aiDraft: AIReportDraft?
+    @State private var editableDraftText = ""
+    @State private var aiFeedbackMessage: String?
+    @State private var isGeneratingAIDraft = false
+
+    @State private var analyticsMode: AnalyticsMode = .dashboards
+    @State private var analyticsAvailability: AIAnalyticsAvailabilityState = .unavailable("Comprobando disponibilidad…")
+    @State private var selectedAnalyticsRange: KmpBridge.AnalyticsTimeRange = .last30Days
+    @State private var selectedChartKind: KmpBridge.ChartKind = .attendanceTrend
+    @State private var analyticsDashboards: [KmpBridge.ChartFacts] = []
+    @State private var queriedAnalyticsFacts: KmpBridge.ChartFacts?
+    @State private var analyticsInsight: AIChartInsight?
+    @State private var analyticsPrompt = ""
+    @State private var analyticsFeedbackMessage: String?
+    @State private var isGeneratingAnalyticsInsight = false
+    @State private var isResolvingAnalyticsPrompt = false
+
+    private let aiReportService = AppleFoundationReportService()
+    private let aiAnalyticsService = AppleFoundationAnalyticsService()
 
     private var selectedClass: SchoolClass? {
         guard let selectedClassId else { return nil }
@@ -3235,114 +3600,499 @@ private struct ReportsWorkspaceView: View {
         return (studentCount, evaluations, rubricIds.count)
     }
 
+    private var shareableReportText: String {
+        let trimmedDraft = editableDraftText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedDraft.isEmpty {
+            return trimmedDraft
+        }
+        return preview?.previewText ?? "Sin informe disponible."
+    }
+
+    private var canGenerateAIDraft: Bool {
+        guard !isGeneratingAIDraft else { return false }
+        guard aiAvailability.isAvailable else { return false }
+        guard let reportContext, reportContext.hasEnoughData else { return false }
+        return !selectedReportKind.requiresStudentSelection || selectedStudent != nil
+    }
+
+    private var currentAnalyticsFacts: KmpBridge.ChartFacts? {
+        if analyticsMode == .askAI, let queriedAnalyticsFacts {
+            return queriedAnalyticsFacts
+        }
+        return analyticsDashboards.first(where: { $0.chartKind == selectedChartKind })
+    }
+
+    private var canAskAnalyticsAI: Bool {
+        analyticsAvailability.isAvailable && !(analyticsPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    }
+
     var body: some View {
         HStack(spacing: 0) {
-            VStack(spacing: 0) {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack(spacing: 10) {
-                        WorkspaceCompactStat(title: "Alumnado", value: "\(reportMetrics.students)", tint: .blue)
-                        WorkspaceCompactStat(title: "Evaluaciones", value: "\(reportMetrics.evaluations)", tint: .orange)
-                        WorkspaceCompactStat(title: "Rúbricas", value: "\(reportMetrics.rubrics)", tint: .green)
-                    }
-                }
-                .padding(16)
-
-                List {
-                    Section("Informes disponibles") {
-                        ForEach(WorkspaceReportKind.allCases) { kind in
-                            reportButton(kind: kind)
-                        }
-                    }
-
-                    Section("Contexto actual") {
-                        if let selectedClass {
-                            LabeledContent("Clase") {
-                                Text(selectedClass.name)
-                            }
-                        } else {
-                            Text("Selecciona una clase para generar la vista previa.")
-                                .foregroundStyle(.secondary)
-                        }
-
-                        if let selectedStudent {
-                            LabeledContent("Alumno") {
-                                Text("\(selectedStudent.firstName) \(selectedStudent.lastName)")
-                            }
-                        } else {
-                            LabeledContent("Alumno") {
-                                Text("Sin selección")
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                }
-                .listStyle(.plain)
-            }
-            .frame(minWidth: 320, maxWidth: 360)
+            sidebar
 
             Divider().opacity(0.2)
 
-            Group {
-                if let preview {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 20) {
-                            WorkspaceInspectorHero(title: selectedReportKind.title, subtitle: preview.className)
+            detail
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(appPageBackground(for: colorScheme))
+        }
+        .task {
+            refreshAvailability()
+            await refreshWorkspaceContext()
+        }
+        .onChange(of: selectedClassId) { _, _ in
+            Task { await refreshWorkspaceContext() }
+        }
+        .onChange(of: selectedStudentId) { _, _ in
+            Task { await reloadPreview() }
+        }
+        .onChange(of: selectedReportKind) { _, _ in
+            if selectedReportKind == .lomloeEvaluationComment {
+                aiAudience = .familia
+                aiTone = .formal
+            }
+            Task { await reloadPreview() }
+        }
+        .onChange(of: selectedReportTerm) { _, _ in
+            Task { await reloadPreview() }
+        }
+        .onChange(of: selectedAnalyticsRange) { _, _ in
+            Task { await reloadAnalyticsDashboards() }
+        }
+        .onChange(of: analyticsMode) { _, _ in
+            analyticsInsight = nil
+            analyticsFeedbackMessage = nil
+        }
+        .onChange(of: selectedChartKind) { _, _ in
+            analyticsInsight = nil
+        }
+    }
 
-                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 16)], spacing: 16) {
-                                WorkspaceMetricCard(
-                                    title: "Tipo",
-                                    value: selectedReportKind.title,
-                                    systemImage: selectedReportKind.systemImage
-                                )
-                                WorkspaceMetricCard(
-                                    title: "Generado",
-                                    value: preview.generatedAt.formatted(date: .abbreviated, time: .shortened),
-                                    systemImage: "clock.badge.checkmark"
-                                )
-                                WorkspaceMetricCard(
-                                    title: "Destino",
-                                    value: selectedStudent.map { "\($0.firstName) \($0.lastName)" } ?? preview.className,
-                                    systemImage: selectedStudent == nil ? "rectangle.3.group" : "person.fill"
-                                )
-                            }
+    private var sidebar: some View {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 12) {
+                Picker("Superficie", selection: $activeSurface) {
+                    Text("Informes").tag(WorkspaceSurface.reports)
+                    Text("Analítica IA").tag(WorkspaceSurface.analytics)
+                }
+                .pickerStyle(.segmented)
 
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text("Parámetros")
-                                    .font(.headline)
-                                WorkspaceDetailBlock(title: "Descripción", content: selectedReportKind.subtitle)
-                                WorkspaceDetailBlock(
-                                    title: "Contexto",
-                                    content: reportContextDescription
-                                )
-                            }
-
-                            ShareLink(item: preview.previewText) {
-                                Label("Compartir informe", systemImage: "square.and.arrow.up")
-                            }
-                            .buttonStyle(.borderedProminent)
-
-                            Text(preview.previewText)
-                                .font(.system(.body, design: .monospaced))
-                                .padding(18)
-                                .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                        }
-                        .padding(24)
-                    }
-                } else {
-                    WorkspaceEmptyState(
-                        title: "Genera una vista previa",
-                        subtitle: "El módulo de informes reutiliza el `ReportService` y lo eleva a una superficie iPad propia."
+                HStack(spacing: 10) {
+                    WorkspaceCompactStat(title: "Alumnado", value: "\(reportMetrics.students)", tint: .blue)
+                    WorkspaceCompactStat(
+                        title: activeSurface == .reports ? "Evaluaciones" : "Gráficos",
+                        value: activeSurface == .reports ? "\(reportMetrics.evaluations)" : "\(analyticsDashboards.count)",
+                        tint: .orange
+                    )
+                    WorkspaceCompactStat(
+                        title: activeSurface == .reports ? "Rúbricas" : "IA",
+                        value: activeSurface == .reports ? "\(reportMetrics.rubrics)" : (analyticsAvailability.isAvailable ? "On" : "Off"),
+                        tint: .green
                     )
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(appPageBackground(for: colorScheme))
+            .padding(16)
+
+            List {
+                if activeSurface == .reports {
+                    reportsSidebarSections
+                } else {
+                    analyticsSidebarSections
+                }
+            }
+            .listStyle(.plain)
         }
-        .task {
-            await refreshReportContext()
+        .frame(minWidth: 320, maxWidth: 360)
+    }
+
+    @ViewBuilder
+    private var reportsSidebarSections: some View {
+        Section("Informes disponibles") {
+            ForEach(KmpBridge.ReportKind.allCases) { kind in
+                reportButton(kind: kind)
+            }
         }
-        .onChange(of: selectedClassId) { _ in
-            Task { await refreshReportContext() }
+
+        Section("Contexto actual") {
+            currentContextSection
+        }
+
+        Section("Redacción IA") {
+            LabeledContent("Estado") {
+                Text(aiAvailabilityLabel)
+                    .foregroundStyle(aiAvailabilityColor)
+            }
+
+            if selectedReportKind == .lomloeEvaluationComment {
+                Picker("Trimestre", selection: $selectedReportTerm) {
+                    ForEach(ReportTerm.allCases) { term in
+                        Text(term.rawValue).tag(term)
+                    }
+                }
+            }
+
+            Picker("Audiencia", selection: $aiAudience) {
+                ForEach(AIReportAudience.allCases) { audience in
+                    Text(audience.title).tag(audience)
+                }
+            }
+
+            Picker("Tono", selection: $aiTone) {
+                ForEach(AIReportTone.allCases) { tone in
+                    Text(tone.title).tag(tone)
+                }
+            }
+
+            if let reportContext {
+                LabeledContent("Datos") {
+                    Text(reportContext.hasEnoughData ? "Suficientes" : "Insuficientes")
+                        .foregroundStyle(reportContext.hasEnoughData ? .green : .secondary)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var analyticsSidebarSections: some View {
+        Section("Analítica visual") {
+            Picker("Modo", selection: $analyticsMode) {
+                ForEach(AnalyticsMode.allCases) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            Picker("Periodo", selection: $selectedAnalyticsRange) {
+                ForEach(KmpBridge.AnalyticsTimeRange.allCases) { range in
+                    Text(range.title).tag(range)
+                }
+            }
+        }
+
+        Section("Contexto actual") {
+            currentContextSection
+        }
+
+        Section("Dashboards") {
+            ForEach(KmpBridge.ChartKind.allCases) { kind in
+                Button {
+                    analyticsMode = .dashboards
+                    selectedChartKind = kind
+                    analyticsInsight = nil
+                    queriedAnalyticsFacts = nil
+                } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Label(kind.title, systemImage: kind.systemImage)
+                                .font(.headline)
+                            Spacer()
+                            if selectedChartKind == kind && analyticsMode == .dashboards {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(Color.accentColor)
+                            }
+                        }
+                        Text(kind.subtitle)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+
+        Section("IA local") {
+            LabeledContent("Estado") {
+                Text(analyticsAvailabilityLabel)
+                    .foregroundStyle(analyticsAvailabilityColor)
+            }
+            Text(analyticsAvailability.message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var currentContextSection: some View {
+        if let selectedClass {
+            LabeledContent("Clase") {
+                Text(selectedClass.name)
+            }
+        } else {
+            Text("Selecciona una clase para trabajar con informes o analítica.")
+                .foregroundStyle(.secondary)
+        }
+
+        if let selectedStudent {
+            LabeledContent("Alumno") {
+                Text("\(selectedStudent.firstName) \(selectedStudent.lastName)")
+            }
+        } else {
+            LabeledContent("Alumno") {
+                Text("Sin selección")
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var detail: some View {
+        if activeSurface == .reports {
+            reportsDetail
+        } else {
+            analyticsDetail
+        }
+    }
+
+    @ViewBuilder
+    private var reportsDetail: some View {
+        if let preview {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    WorkspaceInspectorHero(title: selectedReportKind.title, subtitle: preview.className)
+
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 16)], spacing: 16) {
+                        WorkspaceMetricCard(title: "Tipo", value: selectedReportKind.title, systemImage: selectedReportKind.systemImage)
+                        WorkspaceMetricCard(
+                            title: "Generado",
+                            value: preview.generatedAt.formatted(date: .abbreviated, time: .shortened),
+                            systemImage: "clock.badge.checkmark"
+                        )
+                        WorkspaceMetricCard(
+                            title: "Destino",
+                            value: selectedStudent.map { "\($0.firstName) \($0.lastName)" } ?? preview.className,
+                            systemImage: selectedStudent == nil ? "rectangle.3.group" : "person.fill"
+                        )
+                        ForEach(reportContext?.metrics ?? []) { metric in
+                            WorkspaceMetricCard(title: metric.title, value: metric.value, systemImage: metric.systemImage)
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Parámetros")
+                            .font(.headline)
+                        WorkspaceDetailBlock(title: "Descripción", content: selectedReportKind.subtitle)
+                        WorkspaceDetailBlock(title: "Contexto", content: reportContextDescription)
+                        if let reportContext, !reportContext.curriculumReferences.isEmpty {
+                            WorkspaceDetailBlock(title: "Referencias curriculares", content: reportContext.curriculumReferences.joined(separator: ", "))
+                        }
+                        if let dataQualityNote = reportContext?.dataQualityNote {
+                            WorkspaceDetailBlock(title: "Calidad de datos", content: dataQualityNote)
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack(alignment: .top) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Redacción IA")
+                                    .font(.headline)
+                                Text("Borrador generado en local. Revisión docente obligatoria antes de compartir.")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Button {
+                                Task { await generateAIDraft() }
+                            } label: {
+                                if isGeneratingAIDraft {
+                                    ProgressView()
+                                } else {
+                                    Label("Generar borrador", systemImage: "apple.intelligence")
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(!canGenerateAIDraft)
+                        }
+
+                        WorkspaceDetailBlock(title: "Disponibilidad", content: aiAvailability.message)
+
+                        if let aiFeedbackMessage {
+                            WorkspaceDetailBlock(title: "Estado de la generación", content: aiFeedbackMessage)
+                        }
+
+                        if let aiDraft {
+                            WorkspaceDetailBlock(title: "Resumen IA", content: aiDraft.summary)
+                        } else if selectedReportKind.requiresStudentSelection && selectedStudent == nil {
+                            WorkspaceDetailBlock(title: "IA pendiente", content: "Selecciona un alumno para generar un borrador individual con Foundation Models.")
+                        } else {
+                            WorkspaceDetailBlock(title: "IA pendiente", content: "Configura audiencia y tono, luego genera un borrador editable.")
+                        }
+
+                        TextEditor(text: $editableDraftText)
+                            .font(.system(.body, design: .default))
+                            .frame(minHeight: 260)
+                            .padding(12)
+                            .scrollContentBackground(.hidden)
+                            .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    }
+
+                    ShareLink(item: shareableReportText) {
+                        Label("Compartir informe revisado", systemImage: "square.and.arrow.up")
+                    }
+                    .buttonStyle(.borderedProminent)
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Vista clásica")
+                            .font(.headline)
+                        Text(preview.previewText)
+                            .font(.system(.body, design: .monospaced))
+                            .padding(18)
+                            .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    }
+                }
+                .padding(24)
+            }
+        } else {
+            WorkspaceEmptyState(
+                title: "Genera una vista previa",
+                subtitle: "El módulo de informes reutiliza el `ReportService` y lo eleva a una superficie iPad propia."
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var analyticsDetail: some View {
+        if selectedClassId == nil {
+            WorkspaceEmptyState(
+                title: "Selecciona una clase",
+                subtitle: "La analítica visual necesita un grupo activo para comparar asistencia, incidencias y medias."
+            )
+        } else {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            WorkspaceInspectorHero(
+                                title: analyticsMode == .dashboards ? "Dashboards" : "Pregunta a la IA",
+                                subtitle: selectedClass?.name ?? "Sin clase"
+                            )
+                            Text("La app calcula y dibuja los gráficos; la IA local los interpreta y ayuda a elegir la vista cuando está disponible.")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if let facts = currentAnalyticsFacts {
+                            Button {
+                                Task { await generateAnalyticsInsight(for: facts) }
+                            } label: {
+                                if isGeneratingAnalyticsInsight {
+                                    ProgressView()
+                                } else {
+                                    Label("Generar insight IA", systemImage: "apple.intelligence")
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(!analyticsAvailability.isAvailable || !facts.hasEnoughData || isGeneratingAnalyticsInsight)
+                        }
+                    }
+
+                    if analyticsMode == .askAI {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Consulta libre")
+                                .font(.headline)
+                            TextField("Ej.: compárame 2º ESO A y B en asistencia y faltas de equipación este trimestre", text: $analyticsPrompt, axis: .vertical)
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                                .lineLimit(3, reservesSpace: true)
+
+                            HStack(spacing: 10) {
+                                ForEach([
+                                    "Comparar grupos del mismo curso",
+                                    "Detectar alertas de asistencia",
+                                    "Ver incidencias por semana",
+                                    "Ranking de medias"
+                                ], id: \.self) { suggestion in
+                                    Button(suggestion) {
+                                        analyticsPrompt = suggestion
+                                    }
+                                    .buttonStyle(.bordered)
+                                }
+                            }
+
+                            HStack {
+                                Button {
+                                    Task { await runAnalyticsQuery() }
+                                } label: {
+                                    if isResolvingAnalyticsPrompt {
+                                        ProgressView()
+                                    } else {
+                                        Label("Generar gráfico", systemImage: "wand.and.stars")
+                                    }
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(!canAskAnalyticsAI || isResolvingAnalyticsPrompt)
+
+                                Text(analyticsAvailability.message)
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(18)
+                        .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    }
+
+                    if let facts = currentAnalyticsFacts {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 16)], spacing: 16) {
+                            WorkspaceMetricCard(title: "Gráfico", value: facts.chartKind.title, systemImage: facts.chartKind.systemImage)
+                            WorkspaceMetricCard(title: "Tipo", value: facts.chartType, systemImage: "chart.bar.fill")
+                            WorkspaceMetricCard(title: "Periodo", value: facts.timeRange, systemImage: "calendar")
+                            WorkspaceMetricCard(title: "Agrupación", value: facts.grouping, systemImage: "square.grid.2x2")
+                            ForEach(facts.metrics) { metric in
+                                WorkspaceMetricCard(title: metric.title, value: metric.value, systemImage: metric.systemImage)
+                            }
+                        }
+
+                        AnalyticsChartPanel(facts: facts, colorScheme: colorScheme)
+
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Lectura docente")
+                                .font(.headline)
+                            WorkspaceDetailBlock(title: "Resumen base", content: facts.teacherDigest)
+                            if let analyticsInsight {
+                                WorkspaceDetailBlock(title: analyticsInsight.title, content: analyticsInsight.insight)
+                                if !analyticsInsight.warnings.isEmpty {
+                                    WorkspaceDetailBlock(title: "Advertencias IA", content: analyticsInsight.warnings.joined(separator: "\n"))
+                                }
+                                if !analyticsInsight.recommendedActions.isEmpty {
+                                    WorkspaceDetailBlock(title: "Acciones sugeridas", content: analyticsInsight.recommendedActions.joined(separator: "\n"))
+                                }
+                            } else {
+                                WorkspaceDetailBlock(title: "Insight IA", content: analyticsAvailability.isAvailable ? "Genera un insight para obtener lectura comparativa y sugerencias." : "La consulta libre y la narrativa IA solo están disponibles cuando Apple Foundation Models está activo.")
+                            }
+                            if let analyticsFeedbackMessage {
+                                WorkspaceDetailBlock(title: "Estado", content: analyticsFeedbackMessage)
+                            }
+                        }
+
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Hechos verificables")
+                                .font(.headline)
+                            ForEach(facts.factLines, id: \.self) { line in
+                                Text("• \(line)")
+                                    .font(.subheadline)
+                            }
+                            if !facts.warnings.isEmpty {
+                                ForEach(facts.warnings, id: \.self) { warning in
+                                    Text("• \(warning)")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        .padding(18)
+                        .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+                        ShareLink(item: analyticsInsight?.insertableSummary ?? facts.insertableSummary) {
+                            Label("Compartir resumen visual", systemImage: "square.and.arrow.up")
+                        }
+                        .buttonStyle(.borderedProminent)
+                    } else {
+                        WorkspaceEmptyState(
+                            title: analyticsMode == .dashboards ? "Selecciona un dashboard" : "Formula una pregunta",
+                            subtitle: analyticsMode == .dashboards ? "Elige una vista de la barra lateral para comparar grupos y detectar patrones." : "La IA local elegirá el gráfico más útil y luego te devolverá una lectura breve."
+                        )
+                    }
+                }
+                .padding(24)
+            }
         }
     }
 
@@ -3359,13 +4109,46 @@ private struct ReportsWorkspaceView: View {
             return "Panorámica de instrumentos activos, rúbricas vinculadas y carga evaluativa del grupo."
         case .operationsSnapshot:
             return "Salida operativa para asistencia, incidencias y estado del trabajo reciente."
+        case .lomloeEvaluationComment:
+            return "Comentario trimestral breve y competencial de Educación Física, alineado con CE1-CE5 y listo para informe."
         }
     }
 
-    private func reportButton(kind: WorkspaceReportKind) -> some View {
+    private var aiAvailabilityLabel: String {
+        switch aiAvailability {
+        case .available: return "Disponible"
+        case .disabled: return "Desactivada"
+        case .unavailable: return "No disponible"
+        }
+    }
+
+    private var aiAvailabilityColor: Color {
+        switch aiAvailability {
+        case .available: return .green
+        case .disabled: return .secondary
+        case .unavailable: return .orange
+        }
+    }
+
+    private var analyticsAvailabilityLabel: String {
+        switch analyticsAvailability {
+        case .available: return "Disponible"
+        case .disabled: return "Desactivada"
+        case .unavailable: return "No disponible"
+        }
+    }
+
+    private var analyticsAvailabilityColor: Color {
+        switch analyticsAvailability {
+        case .available: return .green
+        case .disabled: return .secondary
+        case .unavailable: return .orange
+        }
+    }
+
+    private func reportButton(kind: KmpBridge.ReportKind) -> some View {
         Button {
             selectedReportKind = kind
-            Task { await reloadPreview() }
         } label: {
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
@@ -3377,39 +4160,62 @@ private struct ReportsWorkspaceView: View {
                             .foregroundStyle(Color.accentColor)
                     }
                 }
-                Text(kind.subtitle).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                Text(kind.subtitle)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
             }
         }
         .buttonStyle(.plain)
     }
 
     @MainActor
-    private func refreshReportContext() async {
+    private func refreshWorkspaceContext() async {
         guard let selectedClassId else { return }
+        refreshAvailability()
         bridge.selectClass(id: selectedClassId)
         bridge.evaluationsInClass = (try? await bridge.evaluations(for: selectedClassId)) ?? []
         await bridge.selectStudentsClass(classId: selectedClassId)
-        if preview != nil {
-            await reloadPreview()
-        }
+        await reloadPreview()
+        await reloadAnalyticsDashboards()
     }
 
     @MainActor
     private func reloadPreview() async {
         guard let selectedClassId else { return }
-        let basePreview = try? await bridge.buildReportPreview(classId: selectedClassId)
+        aiDraft = nil
+        editableDraftText = ""
+        aiFeedbackMessage = nil
+
+        guard let context = try? await bridge.buildReportGenerationContext(
+            classId: selectedClassId,
+            studentId: selectedStudentId,
+            kind: selectedReportKind,
+            termLabel: selectedReportKind == .lomloeEvaluationComment ? selectedReportTerm.rawValue : nil
+        ) else {
+            reportContext = nil
+            preview = nil
+            return
+        }
+        reportContext = context
+        let basePreview = try? await bridge.buildReportPreview(
+            classId: selectedClassId,
+            studentId: selectedStudentId,
+            kind: selectedReportKind,
+            termLabel: selectedReportKind == .lomloeEvaluationComment ? selectedReportTerm.rawValue : nil
+        )
         guard let basePreview else {
             preview = nil
             return
         }
 
-        let header = reportContextDescription
         let decoratedText = """
         \(selectedReportKind.title)
         \(selectedClass?.name ?? basePreview.className)
         \(selectedStudent.map { "Alumno: \($0.firstName) \($0.lastName)" } ?? "Ámbito: grupo completo")
 
-        \(header)
+        \(reportContextDescription)
+
+        \(context.summary)
 
         \(basePreview.previewText)
         """
@@ -3420,6 +4226,330 @@ private struct ReportsWorkspaceView: View {
             previewText: decoratedText,
             generatedAt: Date()
         )
+    }
+
+    @MainActor
+    private func reloadAnalyticsDashboards() async {
+        guard let selectedClassId else { return }
+        analyticsFeedbackMessage = nil
+        analyticsInsight = nil
+        queriedAnalyticsFacts = nil
+        analyticsDashboards = (try? await bridge.buildPrebuiltAnalyticsCharts(
+            classId: selectedClassId,
+            timeRange: selectedAnalyticsRange
+        )) ?? []
+        if !analyticsDashboards.contains(where: { $0.chartKind == selectedChartKind }) {
+            selectedChartKind = analyticsDashboards.first?.chartKind ?? .attendanceTrend
+        }
+    }
+
+    @MainActor
+    private func generateAIDraft() async {
+        guard let reportContext else { return }
+        isGeneratingAIDraft = true
+        aiFeedbackMessage = nil
+        defer { isGeneratingAIDraft = false }
+
+        do {
+            let draft = try await aiReportService.generateDraft(
+                from: reportContext,
+                audience: aiAudience,
+                tone: aiTone
+            )
+            aiDraft = draft
+            editableDraftText = draft.editableText(for: reportContext)
+            aiFeedbackMessage = "Borrador generado. Revísalo y edítalo antes de compartir."
+        } catch {
+            aiFeedbackMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func generateAnalyticsInsight(for facts: KmpBridge.ChartFacts) async {
+        isGeneratingAnalyticsInsight = true
+        analyticsFeedbackMessage = nil
+        defer { isGeneratingAnalyticsInsight = false }
+
+        do {
+            analyticsInsight = try await aiAnalyticsService.generateInsight(from: facts)
+            analyticsFeedbackMessage = "Insight generado en local. Revísalo antes de compartirlo o insertarlo en un informe."
+        } catch {
+            analyticsFeedbackMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func runAnalyticsQuery() async {
+        guard let selectedClassId else { return }
+        isResolvingAnalyticsPrompt = true
+        analyticsFeedbackMessage = nil
+        analyticsInsight = nil
+        defer { isResolvingAnalyticsPrompt = false }
+
+        do {
+            let fallbackRequest = try await bridge.resolveAnalyticsRequest(
+                classId: selectedClassId,
+                prompt: analyticsPrompt,
+                timeRange: selectedAnalyticsRange
+            )
+            let interpreted: AIAnalyticsInterpretation?
+            if analyticsAvailability.isAvailable {
+                interpreted = try? await aiAnalyticsService.interpret(
+                    prompt: analyticsPrompt,
+                    availableCharts: KmpBridge.ChartKind.allCases
+                )
+            } else {
+                interpreted = nil
+            }
+
+            let request = KmpBridge.AnalyticsRequest(
+                chartKind: interpreted?.chartKind ?? fallbackRequest.chartKind,
+                timeRange: fallbackRequest.timeRange,
+                selectedClassIds: fallbackRequest.selectedClassIds,
+                selectedClassNames: fallbackRequest.selectedClassNames,
+                prompt: fallbackRequest.prompt,
+                querySummary: interpreted?.querySummary ?? fallbackRequest.querySummary
+            )
+            let facts = try await bridge.buildChartFacts(classId: selectedClassId, request: request)
+            queriedAnalyticsFacts = facts
+            selectedChartKind = facts.chartKind
+            analyticsFeedbackMessage = ([interpreted?.querySummary] + (interpreted?.warnings ?? [])).compactMap { $0 }.joined(separator: "\n")
+
+            if analyticsAvailability.isAvailable && facts.hasEnoughData {
+                analyticsInsight = try? await aiAnalyticsService.generateInsight(from: facts)
+            }
+        } catch {
+            analyticsFeedbackMessage = error.localizedDescription
+        }
+    }
+
+    private func refreshAvailability() {
+        aiAvailability = aiReportService.currentAvailability()
+        analyticsAvailability = aiAnalyticsService.currentAvailability()
+    }
+}
+
+private struct AnalyticsChartPanel: View {
+    let facts: KmpBridge.ChartFacts
+    let colorScheme: ColorScheme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(facts.chartKind.title)
+                        .font(.headline)
+                    Text(facts.subtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text(facts.chartType)
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.accentColor.opacity(0.12), in: Capsule())
+            }
+
+            if !facts.hasEnoughData {
+                WorkspaceDetailBlock(title: "Sin datos suficientes", content: facts.emptyStateMessage ?? "Todavía no hay datos suficientes para construir el gráfico.")
+            } else if facts.chartKind == .incidentHeatmap {
+                AnalyticsHeatmapView(cells: facts.heatmapCells)
+                    .frame(minHeight: 220)
+            } else if facts.chartKind == .attendanceTrend {
+                AnalyticsLineChartView(series: facts.series.first)
+                    .frame(height: 220)
+            } else if facts.chartKind == .groupAveragesRanking {
+                AnalyticsHorizontalBarsView(series: facts.series.first)
+            } else {
+                AnalyticsGroupedBarsView(series: facts.series)
+            }
+        }
+        .padding(20)
+        .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+}
+
+private struct AnalyticsLineChartView: View {
+    let series: KmpBridge.ChartSeries?
+
+    var body: some View {
+        GeometryReader { geometry in
+            let points = series?.points ?? []
+            let maxValue = max(points.map(\.value).max() ?? 1, 1)
+
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color.accentColor.opacity(0.05))
+
+                if points.count > 1 {
+                    Path { path in
+                        for (index, point) in points.enumerated() {
+                            let x = CGFloat(index) / CGFloat(max(points.count - 1, 1)) * geometry.size.width
+                            let y = geometry.size.height - (CGFloat(point.value) / CGFloat(maxValue)) * geometry.size.height
+                            if index == 0 {
+                                path.move(to: CGPoint(x: x, y: y))
+                            } else {
+                                path.addLine(to: CGPoint(x: x, y: y))
+                            }
+                        }
+                    }
+                    .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 3, lineJoin: .round))
+
+                    ForEach(Array(points.enumerated()), id: \.element.id) { index, point in
+                        let x = CGFloat(index) / CGFloat(max(points.count - 1, 1)) * geometry.size.width
+                        let y = geometry.size.height - (CGFloat(point.value) / CGFloat(maxValue)) * geometry.size.height
+                        Circle()
+                            .fill(Color.accentColor)
+                            .frame(width: 10, height: 10)
+                            .position(x: x, y: y)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct AnalyticsGroupedBarsView: View {
+    let series: [KmpBridge.ChartSeries]
+
+    private var labels: [String] {
+        Array(Set(series.flatMap { $0.points.map(\.label) })).sorted()
+    }
+
+    private var maxValue: Double {
+        max(series.flatMap { $0.points.map(\.value) }.max() ?? 1, 1)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                ForEach(series) { item in
+                    Label(item.name, systemImage: "circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(analyticsColor(item.colorToken))
+                }
+            }
+
+            ForEach(labels, id: \.self) { label in
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(label)
+                        .font(.subheadline.weight(.semibold))
+                    HStack(alignment: .bottom, spacing: 10) {
+                        ForEach(series) { item in
+                            let point = item.points.first(where: { $0.label == label })
+                            VStack(spacing: 4) {
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(analyticsColor(item.colorToken).gradient)
+                                    .frame(width: 30, height: max(8, CGFloat((point?.value ?? 0) / maxValue) * 90))
+                                Text(point.map { valueLabel(for: $0.value) } ?? "--")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .frame(height: 120, alignment: .bottom)
+                }
+                .padding(12)
+                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+        }
+    }
+
+    private func valueLabel(for value: Double) -> String {
+        value >= 10 ? "\(Int(value.rounded()))" : IosFormatting.decimal(from: value)
+    }
+}
+
+private struct AnalyticsHorizontalBarsView: View {
+    let series: KmpBridge.ChartSeries?
+
+    var body: some View {
+        let points = series?.points ?? []
+        let maxValue = max(points.map(\.value).max() ?? 1, 1)
+
+        return VStack(spacing: 10) {
+            ForEach(points) { point in
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text(point.label)
+                            .font(.subheadline.weight(.semibold))
+                        Spacer()
+                        Text(IosFormatting.decimal(from: point.value))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    GeometryReader { geometry in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color.primary.opacity(0.08))
+                            Capsule()
+                                .fill(Color.accentColor.gradient)
+                                .frame(width: max(16, CGFloat(point.value / maxValue) * geometry.size.width))
+                        }
+                    }
+                    .frame(height: 12)
+                }
+            }
+        }
+    }
+}
+
+private struct AnalyticsHeatmapView: View {
+    let cells: [KmpBridge.HeatmapCell]
+
+    private var rows: [String] {
+        Array(Set(cells.map(\.rowLabel))).sorted()
+    }
+
+    private var columns: [String] {
+        Array(Set(cells.map(\.columnLabel))).sorted()
+    }
+
+    private var maxValue: Double {
+        max(cells.map(\.value).max() ?? 1, 1)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Spacer().frame(width: 44)
+                ForEach(columns, id: \.self) { column in
+                    Text(column)
+                        .font(.caption.weight(.bold))
+                        .frame(maxWidth: .infinity)
+                }
+            }
+
+            ForEach(rows, id: \.self) { row in
+                HStack(spacing: 8) {
+                    Text(row)
+                        .font(.caption.weight(.bold))
+                        .frame(width: 44, alignment: .leading)
+                    ForEach(columns, id: \.self) { column in
+                        let value = cells.first(where: { $0.rowLabel == row && $0.columnLabel == column })?.value ?? 0
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color.orange.opacity(0.12 + (value / maxValue) * 0.76))
+                            .frame(height: 28)
+                            .overlay {
+                                Text("\(Int(value))")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(value > maxValue * 0.5 ? .white : .primary)
+                            }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private func analyticsColor(_ token: String) -> Color {
+    switch token {
+    case "green": return .green
+    case "orange": return .orange
+    case "purple": return .purple
+    case "blue": return .blue
+    default: return .accentColor
     }
 }
 
@@ -3588,12 +4718,12 @@ private struct LibraryWorkspaceView: View {
             .background(appPageBackground(for: colorScheme))
         }
         .task { await reloadTemplates() }
-        .onChange(of: selectedKindFilter) { _ in
+        .onChange(of: selectedKindFilter) { _, _ in
             if selectedTemplateId == nil || !filteredTemplates.contains(where: { $0.id == selectedTemplateId }) {
                 selectedTemplateId = filteredTemplates.first?.id
             }
         }
-        .onChange(of: searchText) { _ in
+        .onChange(of: searchText) { _, _ in
             if selectedTemplateId == nil || !filteredTemplates.contains(where: { $0.id == selectedTemplateId }) {
                 selectedTemplateId = filteredTemplates.first?.id
             }
@@ -3920,15 +5050,15 @@ private struct EFIncidentsWorkspaceView: View {
             }
             .environmentObject(bridge)
         }
-        .onChange(of: selectedClassId) { _ in
+        .onChange(of: selectedClassId) { _, _ in
             Task { await reload() }
         }
-        .onChange(of: selectedFilter) { _ in
+        .onChange(of: selectedFilter) { _, _ in
             if selectedIncidentId == nil || !filteredIncidents.contains(where: { $0.id == selectedIncidentId }) {
                 selectedIncidentId = filteredIncidents.first?.id
             }
         }
-        .onChange(of: searchText) { _ in
+        .onChange(of: searchText) { _, _ in
             if selectedIncidentId == nil || !filteredIncidents.contains(where: { $0.id == selectedIncidentId }) {
                 selectedIncidentId = filteredIncidents.first?.id
             }
@@ -4202,8 +5332,8 @@ private struct EFPhysicalTestsWorkspaceView: View {
                                 Text("Registrar marca")
                                     .font(.headline)
                                 TextField("Ej. 12.40", text: $scoreDraft)
-                                    .textFieldStyle(.roundedBorder)
-                                    .keyboardType(.decimalPad)
+                                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                                    .appKeyboardType(.decimalPad)
 
                                 Button("Guardar resultado") {
                                     Task { await savePhysicalTestResult(test: test, result: result) }
@@ -4247,10 +5377,10 @@ private struct EFPhysicalTestsWorkspaceView: View {
             }
             .environmentObject(bridge)
         }
-        .onChange(of: selectedClassId) { _ in
+        .onChange(of: selectedClassId) { _, _ in
             Task { await reload() }
         }
-        .onChange(of: selectedStudentId) { _ in
+        .onChange(of: selectedStudentId) { _, _ in
             scoreDraft = displayScore(selectedResult?.value)
         }
     }
@@ -4449,7 +5579,7 @@ private struct PESessionsWorkspaceView: View {
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { tick in
             now = tick
         }
-        .onChange(of: selectedClassId) { _ in
+        .onChange(of: selectedClassId) { _, _ in
             Task { await reload() }
         }
     }
@@ -4621,7 +5751,7 @@ private struct PEMaterialWorkspaceView: View {
             }
             .environmentObject(bridge)
         }
-        .onChange(of: selectedClassId) { _ in
+        .onChange(of: selectedClassId) { _, _ in
             Task { await reload() }
         }
     }
@@ -4881,7 +6011,7 @@ private struct PETournamentsWorkspaceView: View {
             }
             .environmentObject(bridge)
         }
-        .fullScreenCover(isPresented: $showingBoardScreen) {
+        .appFullScreenCover(isPresented: $showingBoardScreen) {
             if let selectedTournament, let binding = tournamentBinding(for: selectedTournament.id) {
                 TournamentBoardScreen(
                     tournament: binding,
@@ -4892,7 +6022,7 @@ private struct PETournamentsWorkspaceView: View {
                 EmptyView()
             }
         }
-        .onChange(of: selectedClassId) { _ in
+        .onChange(of: selectedClassId) { _, _ in
             Task { await reloadTeams() }
         }
     }
@@ -5261,7 +6391,7 @@ private struct StudentProfilesWorkspaceView: View {
             }
             await reloadProfile()
         }
-        .onChange(of: selectedClassId) { _ in
+        .onChange(of: selectedClassId) { _, _ in
             Task {
                 await bridge.selectStudentsClass(classId: selectedClassId)
                 if selectedStudentId == nil {
@@ -5270,7 +6400,7 @@ private struct StudentProfilesWorkspaceView: View {
                 await reloadProfile()
             }
         }
-        .onChange(of: selectedStudentId) { _ in
+        .onChange(of: selectedStudentId) { _, _ in
             Task { await reloadProfile() }
         }
     }
@@ -6057,7 +7187,7 @@ private struct CreateCourseSheet: View {
             Form {
                 TextField("Nombre del curso", text: $name)
                 TextField("Curso", text: $course)
-                    .keyboardType(.numberPad)
+                    .appKeyboardType(.numberPad)
             }
             .navigationTitle("Nueva clase")
             .toolbar {
@@ -6142,7 +7272,7 @@ private struct CreateEvaluationSheet: View {
                 TextField("Nombre", text: $name)
                 TextField("Tipo", text: $type)
                 TextField("Peso", text: $weight)
-                    .keyboardType(.decimalPad)
+                    .appKeyboardType(.decimalPad)
             }
             .navigationTitle("Nueva evaluación")
             .toolbar {
@@ -6342,7 +7472,7 @@ private struct CreatePhysicalTestSheet: View {
                 TextField("Código", text: $code)
                 TextField("Nombre", text: $name)
                 TextField("Peso", text: $weight)
-                    .keyboardType(.decimalPad)
+                    .appKeyboardType(.decimalPad)
                 TextField("Descripción", text: $description, axis: .vertical)
             }
             .navigationTitle("Nueva prueba física")
@@ -6862,8 +7992,8 @@ private struct TournamentBoardScreen: View {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
                         TextField("Nombre del equipo", text: $team.name)
-                            .textFieldStyle(.roundedBorder)
-                            .onChange(of: team.name) { _ in
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .onChange(of: team.name) { _, _ in
                                 syncTournamentMatchLabels(&tournament)
                             }
                         Text("Miembros: \(team.studentIds.count)")
@@ -7121,6 +8251,235 @@ private struct TournamentAutoBalanceSheet: View {
 private extension Date {
     var stripTime: Date {
         Calendar.current.startOfDay(for: self)
+    }
+}
+
+private struct ContextualAIAssistantSheet: View {
+    let module: AppWorkspaceModule
+    let context: KmpBridge.ScreenAIContext
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedAction: KmpBridge.ContextualAIAction?
+    @State private var audience: AIReportAudience = .docente
+    @State private var tone: AIReportTone = .claro
+    @State private var customPrompt = ""
+    @State private var result: ContextualAIResult?
+    @State private var editableText = ""
+    @State private var isGenerating = false
+    @State private var feedbackMessage: String?
+
+    private let aiService = AppleFoundationContextualAIService()
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    availabilityCard
+                    actionCard
+                    resultCard
+                }
+                .padding(24)
+            }
+            .background(EvaluationBackdrop())
+            .navigationTitle("IA contextual")
+            .appInlineNavigationBarTitleDisplayMode()
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Cerrar") { dismiss() }
+                }
+            }
+            .onAppear {
+                selectedAction = context.suggestedActions.first
+            }
+        }
+    }
+
+    private var availabilityCard: some View {
+        let availability = aiService.currentAvailability()
+        return EvaluationGlassCard {
+            VStack(alignment: .leading, spacing: 12) {
+                Label(module.title, systemImage: module.systemImage)
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(.secondary)
+                Text(context.title)
+                    .font(.system(size: 24, weight: .black, design: .rounded))
+                Text(context.subtitle)
+                    .font(.system(size: 15, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
+                Text(context.summary)
+                    .font(.system(size: 14, weight: .medium, design: .rounded))
+                Text(availability.message)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(availability.isAvailable ? NotebookStyle.successTint : NotebookStyle.warningTint)
+
+                if !context.metrics.isEmpty {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 12)], spacing: 12) {
+                        ForEach(context.metrics) { metric in
+                            VStack(alignment: .leading, spacing: 6) {
+                                Label(metric.title, systemImage: metric.systemImage)
+                                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                                    .foregroundStyle(.secondary)
+                                Text(metric.value)
+                                    .font(.system(size: 18, weight: .black, design: .rounded))
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(12)
+                            .background(NotebookStyle.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var actionCard: some View {
+        EvaluationGlassCard {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Acciones sugeridas")
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+
+                if context.suggestedActions.isEmpty {
+                    Text(context.dataQualityNote ?? "Esta pantalla todavía no tiene acciones IA disponibles.")
+                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(context.suggestedActions) { action in
+                        Button {
+                            selectedAction = action
+                        } label: {
+                            HStack(alignment: .top, spacing: 12) {
+                                Image(systemName: action.systemImage)
+                                    .foregroundStyle(selectedAction == action ? NotebookStyle.primaryTint : .secondary)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(action.title)
+                                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                                        .foregroundStyle(.primary)
+                                    Text(action.subtitle)
+                                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if selectedAction == action {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(NotebookStyle.primaryTint)
+                                }
+                            }
+                            .padding(12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .fill(selectedAction == action ? NotebookStyle.primaryTint.opacity(0.10) : NotebookStyle.surface)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    Picker("Audiencia", selection: $audience) {
+                        ForEach(AIReportAudience.allCases) { item in
+                            Text(item.title).tag(item)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    Picker("Tono", selection: $tone) {
+                        ForEach(AIReportTone.allCases) { item in
+                            Text(item.title).tag(item)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Variación opcional")
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .foregroundStyle(.secondary)
+                        TextField("Ej. más breve, más orientado a familia, foco en próximos pasos…", text: $customPrompt, axis: .vertical)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                    }
+
+                    if let feedbackMessage {
+                        Text(feedbackMessage)
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .foregroundStyle(NotebookStyle.warningTint)
+                    }
+
+                    Button {
+                        generate()
+                    } label: {
+                        if isGenerating {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                        } else {
+                            Label("Generar ayuda contextual", systemImage: "apple.intelligence")
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!context.hasEnoughData || selectedAction == nil || isGenerating || !aiService.currentAvailability().isAvailable)
+                }
+            }
+        }
+    }
+
+    private var resultCard: some View {
+        EvaluationGlassCard {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Text("Resultado")
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                    Spacer()
+                    if !editableText.isEmpty {
+                        ShareLink(item: editableText) {
+                            Label("Compartir", systemImage: "square.and.arrow.up")
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+
+                Text("Borrador generado por IA. Revisión docente obligatoria.")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+
+                if editableText.isEmpty {
+                    Text("Selecciona una acción y genera un borrador contextual para esta pantalla.")
+                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                } else {
+                    TextEditor(text: $editableText)
+                        .frame(minHeight: 220)
+                        .padding(8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .fill(NotebookStyle.surface)
+                        )
+                }
+            }
+        }
+    }
+
+    private func generate() {
+        guard let selectedAction else { return }
+        isGenerating = true
+        feedbackMessage = nil
+        Task {
+            do {
+                let generated = try await aiService.generateResult(
+                    from: context,
+                    action: selectedAction,
+                    audience: audience,
+                    tone: tone,
+                    customPrompt: customPrompt.nilIfBlank
+                )
+                await MainActor.run {
+                    result = generated
+                    editableText = generated.editableText
+                    isGenerating = false
+                }
+            } catch {
+                await MainActor.run {
+                    feedbackMessage = error.localizedDescription
+                    isGenerating = false
+                }
+            }
+        }
     }
 }
 

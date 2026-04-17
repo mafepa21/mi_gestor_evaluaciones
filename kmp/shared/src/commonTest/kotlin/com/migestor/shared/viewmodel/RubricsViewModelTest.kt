@@ -65,6 +65,8 @@ private class RubricsTestFakeRubricsRepository : RubricsRepository {
         id: Long?,
         name: String,
         description: String?,
+        classId: Long?,
+        teachingUnitId: Long?,
         createdAtEpochMs: Long,
         updatedAtEpochMs: Long,
         deviceId: String?,
@@ -180,7 +182,7 @@ private class RubricsTestFakeNotebookRepository : NotebookRepository {
     override suspend fun deleteColumn(columnId: String) = Unit
     override suspend fun listColumnCategories(classId: Long, tabId: String?): List<NotebookColumnCategory> = emptyList()
     override suspend fun saveColumnCategory(classId: Long, category: NotebookColumnCategory) = Unit
-    override suspend fun deleteColumnCategory(classId: Long, categoryId: String) = Unit
+    override suspend fun deleteColumnCategory(classId: Long, categoryId: String, preserveColumns: Boolean) = Unit
     override suspend fun toggleCategoryCollapsed(classId: Long, categoryId: String, isCollapsed: Boolean) = Unit
     override suspend fun reorderCategory(classId: Long, tabId: String, categoryId: String, targetCategoryId: String) = Unit
     override suspend fun assignColumnToCategory(classId: Long, columnId: String, categoryId: String?) = Unit

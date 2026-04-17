@@ -5,6 +5,7 @@ import MiGestorKit
 final class TeacherScheduleSettingsViewModel: ObservableObject {
     @Published var groups: [SchoolClass] = []
     @Published var classColorHexById: [Int64: String] = [:]
+    @Published var weeklySlots: [WeeklySlotTemplate] = []
     @Published var teacherSchedule: TeacherSchedule?
     @Published var teacherScheduleSlots: [TeacherScheduleSlot] = []
     @Published var evaluationPeriods: [PlannerEvaluationPeriod] = []
@@ -60,6 +61,31 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
             }
     }
 
+    var effectiveScheduleSlots: [TeacherScheduleSlot] {
+        if !teacherScheduleSlots.isEmpty {
+            return teacherScheduleSlots.sorted(by: { ($0.dayOfWeek, $0.startTime) < ($1.dayOfWeek, $1.startTime) })
+        }
+
+        return weeklySlots.map {
+            TeacherScheduleSlot(
+                id: $0.id,
+                teacherScheduleId: teacherSchedule?.id ?? 0,
+                schoolClassId: $0.schoolClassId,
+                subjectLabel: "",
+                unitLabel: nil,
+                dayOfWeek: Int32($0.dayOfWeek),
+                startTime: $0.startTime,
+                endTime: $0.endTime,
+                weeklyTemplateId: KotlinLong(value: $0.id)
+            )
+        }
+        .sorted(by: { ($0.dayOfWeek, $0.startTime) < ($1.dayOfWeek, $1.startTime) })
+    }
+
+    var usingLegacyWeeklySlots: Bool {
+        teacherScheduleSlots.isEmpty && !weeklySlots.isEmpty
+    }
+
     func bind(bridge: KmpBridge, selectedClassId: Int64?) async {
         self.bridge = bridge
         self.selectedClassId = selectedClassId
@@ -84,6 +110,7 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
         await bridge.ensureClassesLoaded()
         groups = bridge.classes.sorted { $0.name < $1.name }
         classColorHexById = bridge.plannerCourseColors(for: groups.map(\.id))
+        weeklySlots = bridge.plannerWeeklySlots(classId: nil)
         if scheduleFormGroupId == nil {
             scheduleFormGroupId = selectedClassId ?? groups.first?.id
         }
@@ -327,7 +354,7 @@ struct TeacherScheduleSettingsPanel: View {
                     )
 
                     TextField("Nombre de agenda", text: $vm.scheduleName)
-                        .textFieldStyle(.roundedBorder)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
 
                     Text("Marca aquí el inicio y el fin reales del curso. Planner usará este rango para calcular semanas, no lectivos y previsiones por evaluación.")
                         .font(.caption)
@@ -429,9 +456,9 @@ struct TeacherScheduleSettingsPanel: View {
 
                     HStack(spacing: 12) {
                         TextField("Materia o bloque", text: $vm.scheduleFormSubject)
-                            .textFieldStyle(.roundedBorder)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
                         TextField("Unidad de referencia", text: $vm.scheduleFormUnit)
-                            .textFieldStyle(.roundedBorder)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
                     }
 
                     Text("Define una franja tal y como ocurre en el centro. Si eliges una hora distinta a las franjas clásicas, el planner la mostrará igualmente en su hueco real.")
@@ -470,11 +497,17 @@ struct TeacherScheduleSettingsPanel: View {
                     }
 
                     if vm.teacherScheduleSlots.isEmpty {
-                        Text("Todavía no hay franjas definidas.")
+                    Text("Todavía no hay franjas definidas.")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.secondary)
                     } else {
-                        ForEach(vm.teacherScheduleSlots.sorted(by: { ($0.dayOfWeek, $0.startTime) < ($1.dayOfWeek, $1.startTime) }), id: \.id) { slot in
+                        if vm.usingLegacyWeeklySlots {
+                            Text("Mostrando franjas heredadas del horario original de KMP Desktop. Puedes seguir viéndolas aquí aunque todavía no se hayan guardado en la agenda persistente.")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+
+                        ForEach(vm.effectiveScheduleSlots, id: \.id) { slot in
                             HStack {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text("\(vm.dayLabel(for: Int(slot.dayOfWeek))) · \(slot.startTime)-\(slot.endTime)")
@@ -496,10 +529,12 @@ struct TeacherScheduleSettingsPanel: View {
                                     .foregroundStyle(.secondary)
                                 }
                                 Spacer()
-                                Button(role: .destructive) {
-                                    Task { await vm.deleteScheduleSlot(slot.id) }
-                                } label: {
-                                    Image(systemName: "trash")
+                                if !vm.usingLegacyWeeklySlots {
+                                    Button(role: .destructive) {
+                                        Task { await vm.deleteScheduleSlot(slot.id) }
+                                    } label: {
+                                        Image(systemName: "trash")
+                                    }
                                 }
                             }
                             .padding(.vertical, 6)
@@ -603,7 +638,7 @@ struct TeacherScheduleSettingsPanel: View {
 
                     HStack(spacing: 12) {
                         TextField("Nombre de la evaluación", text: $vm.evaluationFormName)
-                            .textFieldStyle(.roundedBorder)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Inicio")
                                 .font(.caption.weight(.bold))
@@ -685,7 +720,7 @@ struct TeacherScheduleSettingsPanel: View {
         .task {
             await vm.bind(bridge: bridge, selectedClassId: selectedClassId)
         }
-        .onChange(of: selectedClassId) { newValue in
+        .onChange(of: selectedClassId) { _, newValue in
             Task { await vm.updateSelectedClass(newValue) }
         }
     }

@@ -234,6 +234,10 @@ private final class PlannerAudioRecorder: NSObject, ObservableObject, AVAudioRec
     private var recordedURL: URL?
 
     func start() {
+#if os(macOS)
+        isRecording = false
+        recordedURL = nil
+#else
         let session = AVAudioSession.sharedInstance()
         do {
             try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
@@ -257,9 +261,14 @@ private final class PlannerAudioRecorder: NSObject, ObservableObject, AVAudioRec
         } catch {
             _ = stop(discard: true)
         }
+#endif
     }
 
     func stop(discard: Bool = false) -> URL? {
+#if os(macOS)
+        isRecording = false
+        return nil
+#else
         recorder?.stop()
         recorder = nil
         isRecording = false
@@ -271,6 +280,7 @@ private final class PlannerAudioRecorder: NSObject, ObservableObject, AVAudioRec
         }
         defer { recordedURL = nil }
         return recordedURL
+#endif
     }
 }
 
@@ -337,6 +347,35 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     var activeWeekdaySummary: String {
         let labels = activeWeekdays.sorted().map(dayLabel(for:))
         return labels.isEmpty ? "Sin días lectivos" : labels.joined(separator: " · ")
+    }
+
+    var effectiveScheduleSlots: [TeacherScheduleSlot] {
+        if !teacherScheduleSlots.isEmpty {
+            return teacherScheduleSlots.sorted(by: { ($0.dayOfWeek, $0.startTime) < ($1.dayOfWeek, $1.startTime) })
+        }
+
+        return weeklySlots.map {
+            TeacherScheduleSlot(
+                id: $0.id,
+                teacherScheduleId: teacherSchedule?.id ?? 0,
+                schoolClassId: $0.schoolClassId,
+                subjectLabel: "",
+                unitLabel: nil,
+                dayOfWeek: Int32($0.dayOfWeek),
+                startTime: $0.startTime,
+                endTime: $0.endTime,
+                weeklyTemplateId: KotlinLong(value: $0.id)
+            )
+        }
+        .sorted(by: { ($0.dayOfWeek, $0.startTime) < ($1.dayOfWeek, $1.startTime) })
+    }
+
+    var visibleScheduleSlotsSummaryCount: Int {
+        effectiveScheduleSlots.count
+    }
+
+    var isUsingLegacyWeeklySlots: Bool {
+        teacherScheduleSlots.isEmpty && !weeklySlots.isEmpty
     }
 
     func bind(bridge: KmpBridge) async {
@@ -1150,7 +1189,7 @@ struct PlannerWorkspaceIOS: View {
             syncNavigationContext()
         }
         .onAppear(perform: configurePlannerToolbar)
-        .onChange(of: context) { newValue in
+        .onChange(of: context) { _, newValue in
             Task {
                 await vm.applyExternalContext(
                     week: newValue.week,
@@ -1161,12 +1200,12 @@ struct PlannerWorkspaceIOS: View {
                 syncNavigationContext()
             }
         }
-        .onChange(of: vm.selectedSession?.id) { _ in configurePlannerToolbar() }
-        .onChange(of: vm.activeSection) { _ in configurePlannerToolbar() }
-        .onChange(of: vm.week) { _ in syncNavigationContext() }
-        .onChange(of: vm.year) { _ in syncNavigationContext() }
-        .onChange(of: vm.selectedGroupId) { _ in syncNavigationContext() }
-        .onChange(of: vm.selectedSession?.id) { _ in syncNavigationContext() }
+        .onChange(of: vm.selectedSession?.id) { _, _ in configurePlannerToolbar() }
+        .onChange(of: vm.activeSection) { _, _ in configurePlannerToolbar() }
+        .onChange(of: vm.week) { _, _ in syncNavigationContext() }
+        .onChange(of: vm.year) { _, _ in syncNavigationContext() }
+        .onChange(of: vm.selectedGroupId) { _, _ in syncNavigationContext() }
+        .onChange(of: vm.selectedSession?.id) { _, _ in syncNavigationContext() }
         .sheet(isPresented: $vm.showingComposer) {
             PlannerSessionComposerSheet(vm: vm)
         }
@@ -1271,7 +1310,7 @@ private struct PlannerToolbar: View {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .fill(EvaluationDesign.surfaceSoft)
                 )
-                .onChange(of: vm.searchText) { _ in vm.applySearch() }
+                .onChange(of: vm.searchText) { _, _ in vm.applySearch() }
 
                 Menu {
                     Button(vm.selectionMode ? "Salir de selección" : "Seleccionar sesiones") {
@@ -1634,7 +1673,7 @@ private struct PlannerScheduleBoard: View {
                         HStack(spacing: 12) {
                             PlannerSummaryMetric(title: "Agenda", value: vm.scheduleName, tint: .blue)
                             PlannerSummaryMetric(title: "Curso", value: "\(vm.scheduleStartDate) · \(vm.scheduleEndDate)", tint: .indigo)
-                            PlannerSummaryMetric(title: "Franjas", value: "\(vm.teacherScheduleSlots.count)", tint: .teal)
+                            PlannerSummaryMetric(title: "Franjas", value: "\(vm.visibleScheduleSlotsSummaryCount)", tint: .teal)
                             PlannerSummaryMetric(title: "Evaluaciones", value: "\(vm.evaluationPeriods.count)", tint: .orange)
                         }
 
@@ -1659,13 +1698,19 @@ private struct PlannerScheduleBoard: View {
                             subtitle: "Resumen de las franjas que ya están alimentando el tablero semanal actual."
                         )
 
-                        if vm.teacherScheduleSlots.isEmpty {
+                        if vm.effectiveScheduleSlots.isEmpty {
                             Text("Todavía no hay franjas definidas para esta agenda.")
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(.secondary)
                         }
 
-                        ForEach(vm.teacherScheduleSlots.sorted(by: { ($0.dayOfWeek, $0.startTime) < ($1.dayOfWeek, $1.startTime) }), id: \.id) { slot in
+                        if vm.isUsingLegacyWeeklySlots {
+                            Text("Mostrando franjas heredadas del horario original de KMP Desktop.")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+
+                        ForEach(vm.effectiveScheduleSlots, id: \.id) { slot in
                             HStack {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text("\(vm.dayLabel(for: Int(slot.dayOfWeek))) · \(slot.startTime)-\(slot.endTime)")
@@ -1821,10 +1866,10 @@ struct PlannerJournalDetailPane: View {
                     }
                     .padding(EvaluationDesign.screenPadding)
                 }
-                .onChange(of: vm.journalDraft) { _ in
+                .onChange(of: vm.journalDraft) { _, _ in
                     vm.scheduleAutosave()
                 }
-                .onChange(of: selectedPhoto) { item in
+                .onChange(of: selectedPhoto) { _, item in
                     guard let item else { return }
                     Task {
                         if let data = try? await item.loadTransferable(type: Data.self),
@@ -1936,7 +1981,7 @@ private struct SessionJournalHeaderCard: View {
                         .font(.caption.bold())
                         .foregroundStyle(.secondary)
                     TextField("Pase y juego sin balón", text: $vm.journalDraft.objectivePlanned)
-                        .textFieldStyle(.roundedBorder)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
                 }
             }
         }
@@ -1955,7 +2000,7 @@ private struct SessionJournalHeaderCard: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title).font(.caption.bold()).foregroundStyle(.secondary)
             TextField(title, text: text)
-                .textFieldStyle(.roundedBorder)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
         }
     }
 }
@@ -2091,7 +2136,7 @@ private struct SessionJournalEFCard: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title).font(.caption.bold()).foregroundStyle(.secondary)
             TextField(title, text: text)
-                .textFieldStyle(.roundedBorder)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
         }
     }
 
@@ -2120,13 +2165,13 @@ private struct JournalIndividualNotesList: View {
                             get: { vm.journalDraft.notes[index].studentName },
                             set: { vm.journalDraft.notes[index].studentName = $0 }
                         ))
-                        .textFieldStyle(.roundedBorder)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
 
                         TextField("Tag", text: Binding(
                             get: { vm.journalDraft.notes[index].tag },
                             set: { vm.journalDraft.notes[index].tag = $0 }
                         ))
-                        .textFieldStyle(.roundedBorder)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
 
                         Button(role: .destructive) {
                             vm.journalDraft.notes.remove(at: index)
@@ -2140,7 +2185,7 @@ private struct JournalIndividualNotesList: View {
                         set: { vm.journalDraft.notes[index].note = $0 }
                     ), axis: .vertical)
                     .lineLimit(2...4)
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
                 }
                 .padding(.vertical, 4)
             }
@@ -2215,7 +2260,7 @@ private struct JournalMediaDock: View {
                         get: { vm.journalDraft.media[index].caption },
                         set: { vm.journalDraft.media[index].caption = $0 }
                     ))
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
 
                     if !vm.journalDraft.media[index].uri.isEmpty {
                         Text(vm.journalDraft.media[index].uri)
@@ -2229,7 +2274,7 @@ private struct JournalMediaDock: View {
                         set: { vm.journalDraft.media[index].transcript = $0 }
                     ), axis: .vertical)
                     .lineLimit(2...5)
-                    .textFieldStyle(.roundedBorder)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
                 }
                 .padding(.vertical, 4)
             }
@@ -2330,7 +2375,7 @@ private struct JournalTextBlock: View {
                 .foregroundStyle(.secondary)
             TextField(title, text: $text, axis: .vertical)
                 .lineLimit(3...6)
-                .textFieldStyle(.roundedBorder)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
         }
     }
 }
@@ -2446,7 +2491,7 @@ private struct PlannerSessionComposerSheet: View {
 
                             TextField("Nueva Unidad / SA", text: $vm.composerDraft.unitTitle, axis: .vertical)
                                 .lineLimit(1...3)
-                                .textFieldStyle(.roundedBorder)
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
 
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("Objetivos")
@@ -2546,11 +2591,11 @@ private struct PlannerSessionComposerSheet: View {
             .task {
                 await vm.refreshComposerContext()
             }
-            .onChange(of: vm.composerDraft.groupId) { _ in
+            .onChange(of: vm.composerDraft.groupId) { _, _ in
                 vm.composerDraft.teachingUnitId = nil
                 Task { await vm.refreshComposerContext() }
             }
-            .onChange(of: vm.composerDraft.teachingUnitId) { newValue in
+            .onChange(of: vm.composerDraft.teachingUnitId) { _, newValue in
                 if let newValue,
                    let unit = vm.composerTeachingUnits.first(where: { $0.id == newValue }) {
                     vm.composerDraft.unitTitle = unit.name

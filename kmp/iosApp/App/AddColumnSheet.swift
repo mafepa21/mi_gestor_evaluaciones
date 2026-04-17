@@ -55,6 +55,8 @@ private struct ColumnBlueprintCard: View {
 
 struct AddColumnSheet: View {
     @ObservedObject var bridge: KmpBridge
+    var initialCategoryId: String? = nil
+    var startsCreatingCategory: Bool = false
     @Environment(\.dismiss) private var dismiss
 
     @State private var columnName: String = ""
@@ -64,6 +66,7 @@ struct AddColumnSheet: View {
     @State private var selectedRubricId: Int64? = nil
     @State private var selectedCategoryId: String? = nil
     @State private var newCategoryName: String = ""
+    @State private var categoryPlacementMode: CategoryPlacementMode = .existing
     @State private var unitOrSituation: String = ""
     @State private var selectedDate: Date = .now
     @State private var countsTowardAverage = true
@@ -87,6 +90,20 @@ struct AddColumnSheet: View {
         blueprints.first(where: { $0.id == selectedBlueprintId }) ?? blueprints[0]
     }
 
+    private enum CategoryPlacementMode: String, CaseIterable, Identifiable {
+        case existing
+        case createNew
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .existing: return "Añadir a categoría existente"
+            case .createNew: return "Crear categoría nueva"
+            }
+        }
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -101,14 +118,21 @@ struct AddColumnSheet: View {
             }
             .background(EvaluationBackdrop())
             .navigationTitle("Nueva columna")
-            .navigationBarTitleDisplayMode(.inline)
+            .appInlineNavigationBarTitleDisplayMode()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancelar") { dismiss() }
                 }
             }
-            .onChange(of: selectedBlueprintId) { _ in
+            .onAppear {
+                selectedCategoryId = initialCategoryId ?? selectedCategoryId ?? suggestedCategoryId
+                categoryPlacementMode = startsCreatingCategory ? .createNew : .existing
+            }
+            .onChange(of: selectedBlueprintId) { _, _ in
                 weight = String(Int(selectedBlueprint.defaultWeight))
+                if categoryPlacementMode == .existing, selectedCategoryId == nil {
+                    selectedCategoryId = suggestedCategoryId
+                }
             }
         }
     }
@@ -169,8 +193,8 @@ struct AddColumnSheet: View {
                         Text("Peso")
                             .font(.system(size: 13, weight: .semibold, design: .rounded))
                         TextField("0", text: $weight)
-                            .keyboardType(.decimalPad)
-                            .textFieldStyle(.roundedBorder)
+                            .appKeyboardType(.decimalPad)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
                     }
 
                     VStack(alignment: .leading, spacing: 8) {
@@ -184,7 +208,7 @@ struct AddColumnSheet: View {
 
                 if selectedBlueprint.type == .calculated {
                     TextField("Fórmula", text: $formula)
-                        .textFieldStyle(.roundedBorder)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
                 }
 
                 if selectedBlueprint.type == .rubric {
@@ -224,19 +248,86 @@ struct AddColumnSheet: View {
 
     private var categorySelector: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Picker("Categoría visual", selection: Binding<String>(
-                get: { selectedCategoryId ?? "__none__" },
-                set: { selectedCategoryId = $0 == "__none__" ? nil : $0 }
-            )) {
-                Text("Crear en categoría sugerida").tag("__none__")
-                ForEach(availableCategories, id: \.id) { category in
-                    Text(category.name).tag(category.id)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Ubicación de la columna")
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                Text("La categoría agrupa columnas relacionadas en el cuaderno.")
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+
+            Picker("Ubicación", selection: $categoryPlacementMode) {
+                ForEach(CategoryPlacementMode.allCases) { mode in
+                    Text(mode.title).tag(mode)
                 }
             }
-            .pickerStyle(.menu)
+            .pickerStyle(.segmented)
 
-            TextField("Nueva categoría (opcional)", text: $newCategoryName)
-                .textFieldStyle(.roundedBorder)
+            if categoryPlacementMode == .existing {
+                if availableCategories.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Aún no hay categorías")
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                        Text("Puedes crear una nueva categoría o continuar con una columna sin categoría.")
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundStyle(.secondary)
+                        HStack(spacing: 10) {
+                            Button("Crear categoría") {
+                                categoryPlacementMode = .createNew
+                                newCategoryName = defaultSuggestedCategoryName()
+                            }
+                            .buttonStyle(.borderedProminent)
+
+                            Button("Columna sin categoría") {
+                                selectedCategoryId = nil
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                    .padding(14)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(NotebookStyle.surfaceSoft)
+                    )
+                } else {
+                    Picker("Categoría existente", selection: Binding<String>(
+                        get: { selectedCategoryId ?? "__none__" },
+                        set: { selectedCategoryId = $0 == "__none__" ? nil : $0 }
+                    )) {
+                        Text("Sin categoría").tag("__none__")
+                        ForEach(availableCategories, id: \.id) { category in
+                            Text(category.name).tag(category.id)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
+                    TextField("Nombre de la categoría", text: $newCategoryName)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+
+                    HStack(spacing: 8) {
+                        Image(systemName: "folder.fill.badge.plus")
+                            .foregroundStyle(color(for: selectedBlueprint.categoryKind))
+                        Text(newCategoryName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? defaultSuggestedCategoryName() : newCategoryName.trimmingCharacters(in: .whitespacesAndNewlines))
+                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                        Spacer()
+                        Capsule(style: .continuous)
+                            .fill(color(for: selectedBlueprint.categoryKind).opacity(0.16))
+                            .frame(width: 42, height: 18)
+                            .overlay(
+                                Capsule(style: .continuous)
+                                    .stroke(color(for: selectedBlueprint.categoryKind).opacity(0.4), lineWidth: 1)
+                            )
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(color(for: selectedBlueprint.categoryKind).opacity(0.08))
+                    )
+                }
+            }
         }
     }
 
@@ -249,15 +340,15 @@ struct AddColumnSheet: View {
         if columnName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return false }
         if selectedBlueprint.type == .rubric && selectedRubricId == nil { return false }
         if selectedBlueprint.type == .calculated && formula.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return false }
+        if categoryPlacementMode == .createNew && resolvedNewCategoryName.isEmpty { return false }
         return true
     }
 
     private func saveColumn() {
-        let trimmedCategory = newCategoryName.trimmingCharacters(in: .whitespacesAndNewlines)
-        var resolvedCategoryId = selectedCategoryId
-        if !trimmedCategory.isEmpty {
+        var resolvedCategoryId = categoryPlacementMode == .existing ? selectedCategoryId : nil
+        if categoryPlacementMode == .createNew {
             let generatedCategoryId = "cat_\(Int64(Date().timeIntervalSince1970 * 1000))"
-            bridge.saveColumnCategory(name: trimmedCategory, categoryId: generatedCategoryId)
+            bridge.saveColumnCategory(name: resolvedNewCategoryName, categoryId: generatedCategoryId)
             resolvedCategoryId = generatedCategoryId
         }
 
@@ -348,5 +439,27 @@ struct AddColumnSheet: View {
     private func trimmedOrNil(_ value: String) -> String? {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private var resolvedNewCategoryName: String {
+        let trimmed = newCategoryName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? defaultSuggestedCategoryName() : trimmed
+    }
+
+    private var suggestedCategoryId: String? {
+        availableCategories.first(where: { $0.name.localizedCaseInsensitiveContains(defaultSuggestedCategoryName()) })?.id
+            ?? availableCategories.first(where: { $0.name.localizedCaseInsensitiveContains(label(for: selectedBlueprint.categoryKind)) })?.id
+    }
+
+    private func defaultSuggestedCategoryName() -> String {
+        switch selectedBlueprint.categoryKind {
+        case .evaluation: return "Evaluación"
+        case .followUp: return "Seguimiento"
+        case .attendance: return "Asistencia"
+        case .extras: return "Extras"
+        case .physicalEducation: return "EF"
+        case .custom: return "Categoría"
+        default: return "Categoría"
+        }
     }
 }

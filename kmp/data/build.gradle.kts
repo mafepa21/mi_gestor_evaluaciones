@@ -13,6 +13,8 @@ kotlin {
     jvm("desktop")
     iosArm64()
     iosSimulatorArm64()
+    macosArm64()
+    macosX64()
 
     targets.withType(org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget::class.java).configureEach {
         binaries.framework {
@@ -46,17 +48,29 @@ kotlin {
                 implementation("com.github.librepdf:openpdf:1.3.39")
             }
         }
-        val iosMain by creating {
+        val appleMain by creating {
             dependsOn(commonMain)
             dependencies {
                 implementation("app.cash.sqldelight:native-driver:2.0.2")
             }
+        }
+        val iosMain by creating {
+            dependsOn(appleMain)
+        }
+        val macosMain by creating {
+            dependsOn(appleMain)
         }
         val iosArm64Main by getting {
             dependsOn(iosMain)
         }
         val iosSimulatorArm64Main by getting {
             dependsOn(iosMain)
+        }
+        val macosArm64Main by getting {
+            dependsOn(macosMain)
+        }
+        val macosX64Main by getting {
+            dependsOn(macosMain)
         }
         val desktopTest by getting {
             dependencies {

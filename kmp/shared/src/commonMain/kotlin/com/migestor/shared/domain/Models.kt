@@ -625,6 +625,40 @@ data class NotebookCellAnnotation(
     val attachmentUris: List<String> = emptyList(),
 )
 
+data class NotebookStudentInsight(
+    val studentId: Long,
+    val averageScore: Double? = null,
+    val latestAttendanceStatus: String? = null,
+    val followUpCount: Int = 0,
+    val incidentCount: Int = 0,
+    val evidenceCount: Int = 0,
+    val linkedCompetencyIds: List<Long> = emptyList(),
+    val linkedCompetencyLabels: List<String> = emptyList(),
+)
+
+data class NotebookSeatAssignment(
+    val classId: Long,
+    val studentId: Long,
+    val tabId: String? = null,
+    val normalizedX: Double = 0.5,
+    val normalizedY: Double = 0.5,
+    val zIndex: Int = 0,
+    val trace: AuditTrace = AuditTrace(),
+)
+
+data class SeatingPlan(
+    val classId: Long,
+    val tabId: String? = null,
+    val assignments: List<NotebookSeatAssignment> = emptyList(),
+)
+
+data class SeatActionState(
+    val studentId: Long,
+    val attendanceStatus: String? = null,
+    val followUpRequired: Boolean = false,
+    val incidentCount: Int = 0,
+)
+
 data class NotebookTypedCell(
     val studentId: Long,
     val columnId: String,
@@ -685,6 +719,7 @@ data class NotebookSheet(
     val rows: List<NotebookRow>,
     val workGroups: List<NotebookWorkGroup> = emptyList(),
     val workGroupMembers: List<NotebookWorkGroupMember> = emptyList(),
+    val insights: List<NotebookStudentInsight> = emptyList(),
 )
 
 data class NotebookGroupedRows(

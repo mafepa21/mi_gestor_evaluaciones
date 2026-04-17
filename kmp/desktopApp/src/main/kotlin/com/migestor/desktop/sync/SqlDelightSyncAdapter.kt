@@ -8,6 +8,7 @@ import com.migestor.shared.domain.NotebookTab
 import com.migestor.shared.domain.PlanningSession
 import com.migestor.shared.domain.SessionStatus
 import com.migestor.shared.domain.TeachingUnit
+import com.migestor.shared.domain.WeeklySlotTemplate
 import com.migestor.shared.sync.SyncAck
 import com.migestor.shared.sync.SyncChange
 import com.migestor.shared.sync.SyncStoreAdapter
@@ -36,6 +37,7 @@ class SqlDelightSyncAdapter(
     private val json = Json { ignoreUnknownKeys = true }
     private val syncIdSnapshotByScope = mutableMapOf<String, Set<String>>()
     private val rosterSnapshotByClass = mutableMapOf<Long, Set<Long>>()
+    private val weeklySlotSnapshotByClass = mutableMapOf<Long, Map<Long, String>>()
 
     // ---------------------------------------------------------------------------
     // COLLECT LOCAL CHANGES
@@ -92,6 +94,45 @@ class SqlDelightSyncAdapter(
                 )
             }
             rosterSnapshotByClass[schoolClass.id] = currentRosterIds
+
+            val weeklySlots = container.weeklyTemplateRepository.getSlotsForClass(schoolClass.id)
+            val currentWeeklySlotIds = weeklySlots.map { it.id.toString() }.toSet()
+            val currentWeeklySlotSignatures = weeklySlots.associate { slot ->
+                slot.id to "${slot.schoolClassId}|${slot.dayOfWeek}|${slot.startTime}|${slot.endTime}"
+            }
+            val previousWeeklySlotSignatures = weeklySlotSnapshotByClass[schoolClass.id]
+            weeklySlots.forEach { slot ->
+                val signature = currentWeeklySlotSignatures[slot.id]
+                val previousSignature = previousWeeklySlotSignatures?.get(slot.id)
+                val shouldSendWeeklySlot = sinceEpochMs == 0L || previousSignature == null || previousSignature != signature
+                if (shouldSendWeeklySlot) {
+                    changes += SyncChange(
+                        entity = "weekly_slot",
+                        id = slot.id.toString(),
+                        updatedAtEpochMs = Clock.System.now().toEpochMilliseconds(),
+                        deviceId = localDeviceId,
+                        payload = buildJsonObject {
+                            put("id", JsonPrimitive(slot.id))
+                            put("schoolClassId", JsonPrimitive(slot.schoolClassId))
+                            put("dayOfWeek", JsonPrimitive(slot.dayOfWeek))
+                            put("startTime", JsonPrimitive(slot.startTime))
+                            put("endTime", JsonPrimitive(slot.endTime))
+                        }.toString(),
+                    )
+                }
+            }
+            appendDeletesByScope(
+                changes = changes,
+                scope = "class:${schoolClass.id}:weekly_slot",
+                entity = "weekly_slot",
+                currentIds = currentWeeklySlotIds,
+            ) { deletedId ->
+                buildJsonObject {
+                    put("id", JsonPrimitive(deletedId.toLongOrNull() ?: 0L))
+                    put("schoolClassId", JsonPrimitive(schoolClass.id))
+                }
+            }
+            weeklySlotSnapshotByClass[schoolClass.id] = currentWeeklySlotSignatures
 
             // evaluations
             container.evaluationsRepository.listClassEvaluations(schoolClass.id)
@@ -715,6 +756,24 @@ class SqlDelightSyncAdapter(
                         applied++
                     }
 
+                    "weekly_slot" -> {
+                        val classId = payload.long("schoolClassId") ?: payload.long("classId") ?: return@forEach
+                        val dayOfWeek = payload.int("dayOfWeek") ?: return@forEach
+                        val startTime = payload.string("startTime") ?: return@forEach
+                        val endTime = payload.string("endTime") ?: return@forEach
+                        val id = payload.long("id")
+                        container.weeklyTemplateRepository.insert(
+                            WeeklySlotTemplate(
+                                id = id ?: 0L,
+                                schoolClassId = classId,
+                                dayOfWeek = dayOfWeek,
+                                startTime = startTime,
+                                endTime = endTime,
+                            ),
+                        )
+                        applied++
+                    }
+
                     "notebook_tab" -> {
                         val classId = payload.long("classId") ?: return@forEach
                         val tabId = payload.string("id") ?: return@forEach
@@ -1030,6 +1089,9 @@ class SqlDelightSyncAdapter(
             }
             "evaluation" -> {
                 payload.long("id")?.let { container.evaluationsRepository.deleteEvaluation(it); true } ?: false
+            }
+            "weekly_slot" -> {
+                payload.long("id")?.let { container.weeklyTemplateRepository.delete(it); true } ?: false
             }
             "notebook_tab" -> {
                 (payload.string("id") ?: change.id).takeIf { it.isNotBlank() }?.let {

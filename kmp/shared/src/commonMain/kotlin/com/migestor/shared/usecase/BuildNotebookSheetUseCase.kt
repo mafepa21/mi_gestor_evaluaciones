@@ -12,6 +12,7 @@ import com.migestor.shared.domain.NotebookWorkGroup
 import com.migestor.shared.domain.NotebookWorkGroupMember
 import com.migestor.shared.domain.NotebookRow
 import com.migestor.shared.domain.NotebookSheet
+import com.migestor.shared.domain.NotebookStudentInsight
 import com.migestor.shared.domain.NotebookTab
 import com.migestor.shared.domain.Student
 import com.migestor.shared.formula.FormulaEvaluator
@@ -19,6 +20,7 @@ import com.migestor.shared.formula.FormulaEvaluator
 class BuildNotebookSheetUseCase(
     private val getNotebookUseCase: GetNotebookUseCase,
     private val formulaEvaluator: FormulaEvaluator = FormulaEvaluator(),
+    private val buildNotebookInsightsUseCase: BuildNotebookInsightsUseCase = BuildNotebookInsightsUseCase(),
 ) {
     suspend fun build(
         classId: Long,
@@ -29,11 +31,12 @@ class BuildNotebookSheetUseCase(
         columnCategories: List<NotebookColumnCategory> = emptyList(),
         workGroups: List<NotebookWorkGroup> = emptyList(),
         workGroupMembers: List<NotebookWorkGroupMember> = emptyList(),
+        insights: List<NotebookStudentInsight> = emptyList(),
     ): NotebookSheet {
         val base = getNotebookUseCase(classId, providedStudents = students, providedEvaluations = evaluations)
         val columns = mergeColumns(evaluations, tabs, configuredColumns)
         val rows = applyCalculatedColumns(base.rows, columns, evaluations)
-        return NotebookSheet(
+        val resolvedSheet = NotebookSheet(
             classId = classId,
             tabs = tabs,
             columns = columns,
@@ -41,6 +44,17 @@ class BuildNotebookSheetUseCase(
             rows = rows,
             workGroups = workGroups,
             workGroupMembers = workGroupMembers,
+            insights = insights,
+        )
+        return NotebookSheet(
+            classId = resolvedSheet.classId,
+            tabs = resolvedSheet.tabs,
+            columns = resolvedSheet.columns,
+            columnCategories = resolvedSheet.columnCategories,
+            rows = resolvedSheet.rows,
+            workGroups = resolvedSheet.workGroups,
+            workGroupMembers = resolvedSheet.workGroupMembers,
+            insights = if (insights.isEmpty()) buildNotebookInsightsUseCase.build(resolvedSheet) else insights,
         )
     }
 
@@ -121,16 +135,17 @@ class BuildNotebookSheetUseCase(
 
         return rows.map { row ->
             val baseAverage = runCatching {
-                val relevantEvaluations = evaluations.filter { evaluation ->
-                    evaluableColumnsByEvalId[evaluation.id]?.countsTowardAverage != false
+                val relevantColumns = evaluations.mapNotNull { evaluation ->
+                    evaluableColumnsByEvalId[evaluation.id]?.let { column -> evaluation to column }
                 }
-                if (relevantEvaluations.isEmpty()) return@runCatching row.weightedAverage
+                if (relevantColumns.isEmpty()) return@runCatching row.weightedAverage
 
-                val weightedSum = relevantEvaluations.sumOf { evaluation ->
+                val weightedSum = relevantColumns.sumOf { (evaluation, column) ->
                     val grade = row.cells.firstOrNull { it.evaluationId == evaluation.id }?.value ?: 0.0
-                    grade * evaluation.weight
+                    grade * column.weight
                 }
-                val totalWeight = relevantEvaluations.sumOf { it.weight }.takeIf { it > 0.0 } ?: return@runCatching row.weightedAverage
+                val totalWeight = relevantColumns.sumOf { (_, column) -> column.weight }
+                    .takeIf { it > 0.0 } ?: return@runCatching row.weightedAverage
                 weightedSum / totalWeight
             }.getOrNull() ?: row.weightedAverage
             if (calculated.isEmpty()) {

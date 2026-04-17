@@ -68,7 +68,7 @@ struct RubricBulkEvaluationSheet: View {
                             }
                             .padding(EvaluationDesign.screenPadding)
                         }
-                        .onChange(of: state.isSaveSuccessful) { saved in
+                        .onChange(of: state.isSaveSuccessful) { _, saved in
                             guard saved else { return }
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                                 bridge.refreshCurrentNotebook()
@@ -88,7 +88,7 @@ struct RubricBulkEvaluationSheet: View {
                     }
                 }
             }
-            .navigationBarHidden(true)
+            .appNavigationBarHidden(true)
             .onAppear {
                 // Si existía una evaluación individual previa, la cerramos antes de mostrar la masiva.
                 bridge.closeRubricEvaluation()
@@ -413,7 +413,7 @@ struct RubricBulkEvaluationSheet: View {
                     )
                 }
                 .buttonStyle(.plain)
-                .hoverEffect(.lift)
+                .appHoverLiftEffect()
                 .zIndex(hoveredLevelKey == levelKey ? 100 : 0)
                 .onHover { isHovering in
                     guard hasDescription else { return }

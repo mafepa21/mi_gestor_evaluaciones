@@ -22,7 +22,7 @@ interface NotebookConfigRepository {
     fun observeColumnCategories(classId: Long, tabId: String? = null): Flow<List<NotebookColumnCategory>>
     suspend fun listColumnCategories(classId: Long, tabId: String? = null): List<NotebookColumnCategory>
     suspend fun saveColumnCategory(classId: Long, category: NotebookColumnCategory)
-    suspend fun deleteColumnCategory(classId: Long, categoryId: String)
+    suspend fun deleteColumnCategory(classId: Long, categoryId: String, preserveColumns: Boolean = true)
     suspend fun toggleCategoryCollapsed(classId: Long, categoryId: String, isCollapsed: Boolean)
     suspend fun reorderCategory(classId: Long, tabId: String, categoryId: String, targetCategoryId: String)
     suspend fun assignColumnToCategory(classId: Long, columnId: String, categoryId: String?)

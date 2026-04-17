@@ -3,12 +3,14 @@ options:
   minimumXcodeGenVersion: 2.45.0
   deploymentTarget:
     iOS: "16.0"
+    macOS: "26.0"
 targets:
   MiGestorKMPiOS:
     type: application
     platform: iOS
     sources:
       - App
+      - AppleShared
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.migestor.ios
@@ -43,6 +45,7 @@ targets:
         OTHER_LDFLAGS:
           - "$(inherited)"
           - "-lsqlite3"
+          - "-Wl,-undefined,dynamic_lookup"
         EXCLUDED_ARCHS[sdk=iphonesimulator*]: x86_64
     dependencies:
       - framework: Frameworks/MiGestorKit.framework
@@ -51,6 +54,62 @@ targets:
         script: |
           set -euo pipefail
           cd "${SRCROOT}/.."
-          ./scripts/build_ios_framework.sh
+          export GRADLE_USER_HOME="${SRCROOT}/../.gradle"
+          mkdir -p "${GRADLE_USER_HOME}"
+          ./scripts/build_apple_framework.sh
         outputFiles:
           - "$(SRCROOT)/Frameworks/MiGestorKit.framework/MiGestorKit"
+  MiGestorKMPMac:
+    type: application
+    platform: macOS
+    sources:
+      - path: AppleShared
+      - path: MacApp
+        excludes:
+          - MacRootView.swift
+          - MacAppSessionController.swift
+          - MacFeatureRegistry.swift
+          - MacSettingsView.swift
+      - path: App
+        excludes:
+          - MiGestorKMPiOSApp.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.migestor.mac
+        PRODUCT_NAME: MiGestorKMPMac
+        SWIFT_VERSION: "5.0"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: C8JCMT4298
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: MiGestorKMPMac
+        FRAMEWORK_SEARCH_PATHS:
+          - "$(inherited)"
+          - "$(SRCROOT)/Frameworks"
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/../Frameworks"
+        OTHER_LDFLAGS:
+          - "$(inherited)"
+          - "-lsqlite3"
+    dependencies:
+      - framework: Frameworks/MiGestorKit.framework
+    preBuildScripts:
+      - name: Build KMP Framework
+        script: |
+          set -euo pipefail
+          cd "${SRCROOT}/.."
+          export GRADLE_USER_HOME="${SRCROOT}/../.gradle"
+          mkdir -p "${GRADLE_USER_HOME}"
+          ./scripts/build_apple_framework.sh
+        outputFiles:
+          - "$(SRCROOT)/Frameworks/MiGestorKit.framework/MiGestorKit"
+      - name: Build Command Center Helper
+        script: |
+          set -euo pipefail
+          cd "${SRCROOT}/.."
+          export GRADLE_USER_HOME="${SRCROOT}/../.gradle"
+          mkdir -p "${GRADLE_USER_HOME}"
+          ./scripts/build_command_center_helper.sh
+        outputFiles:
+          - "$(SRCROOT)/../commandCenterHelper/build/compose/binaries/main/app/MiGestorCommandCenter.app/Contents/MacOS/MiGestorCommandCenter"

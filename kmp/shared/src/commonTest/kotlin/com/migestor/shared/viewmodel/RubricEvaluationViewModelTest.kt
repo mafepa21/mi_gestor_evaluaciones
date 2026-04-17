@@ -97,7 +97,7 @@ class RubricEvaluationViewModelTest {
     private class FakeRubricsRepository(val rubrics: List<RubricDetail> = emptyList()) : RubricsRepository {
         override fun observeRubrics(): Flow<List<RubricDetail>> = flowOf(rubrics)
         override suspend fun listRubrics(): List<RubricDetail> = rubrics
-        override suspend fun saveRubric(id: Long?, name: String, description: String?, createdAtEpochMs: Long, updatedAtEpochMs: Long, deviceId: String?, syncVersion: Long): Long = 1
+        override suspend fun saveRubric(id: Long?, name: String, description: String?, classId: Long?, teachingUnitId: Long?, createdAtEpochMs: Long, updatedAtEpochMs: Long, deviceId: String?, syncVersion: Long): Long = 1
         override suspend fun deleteRubric(rubricId: Long) = Unit
         override suspend fun saveCriterion(id: Long?, rubricId: Long, description: String, weight: Double, order: Int, updatedAtEpochMs: Long, deviceId: String?, syncVersion: Long): Long = 1
         override suspend fun deleteCriterion(criterionId: Long) = Unit
@@ -181,7 +181,7 @@ class RubricEvaluationViewModelTest {
         override suspend fun deleteColumn(columnId: String) = Unit
         override suspend fun listColumnCategories(classId: Long, tabId: String?): List<NotebookColumnCategory> = emptyList()
         override suspend fun saveColumnCategory(classId: Long, category: NotebookColumnCategory) = Unit
-        override suspend fun deleteColumnCategory(classId: Long, categoryId: String) = Unit
+        override suspend fun deleteColumnCategory(classId: Long, categoryId: String, preserveColumns: Boolean) = Unit
         override suspend fun toggleCategoryCollapsed(classId: Long, categoryId: String, isCollapsed: Boolean) = Unit
         override suspend fun reorderCategory(classId: Long, tabId: String, categoryId: String, targetCategoryId: String) = Unit
         override suspend fun assignColumnToCategory(classId: Long, columnId: String, categoryId: String?) = Unit

@@ -1009,6 +1009,7 @@ class NotebookViewModel(
         studentId: Long,
         columnId: String,
         note: String?,
+        iconValue: String? = null,
         attachmentUris: List<String> = emptyList(),
     ) {
         val classId = activeClassId ?: return
@@ -1019,6 +1020,7 @@ class NotebookViewModel(
                     studentId = studentId,
                     columnId = columnId,
                     note = note,
+                    iconValue = iconValue,
                     attachmentUris = attachmentUris
                 )
                 selectClass(classId, force = true)
@@ -1039,13 +1041,19 @@ class NotebookViewModel(
                 .maxOfOrNull { it.order }?.plus(1) ?: 0
             val resolvedId = existing?.id ?: "cat_${Clock.System.now().toEpochMilliseconds()}"
             val baseName = name.trim().ifBlank { existing?.name ?: "Categoría ${nextOrder + 1}" }
+            val resolvedName = resolveUniqueCategoryName(
+                proposed = baseName,
+                currentState = currentState,
+                tabId = tabId,
+                editingCategoryId = existing?.id
+            )
             notebookRepository.saveColumnCategory(
                 classId = classId,
                 category = NotebookColumnCategory(
                     id = resolvedId,
                     classId = classId,
                     tabId = tabId,
-                    name = baseName,
+                    name = resolvedName,
                     order = existing?.order ?: nextOrder,
                     isCollapsed = existing?.isCollapsed ?: false,
                     trace = existing?.trace ?: AuditTrace()
@@ -1055,10 +1063,10 @@ class NotebookViewModel(
         }
     }
 
-    fun deleteColumnCategory(categoryId: String) {
+    fun deleteColumnCategory(categoryId: String, preserveColumns: Boolean = true) {
         val classId = activeClassId ?: return
         scope.launch {
-            notebookRepository.deleteColumnCategory(classId, categoryId)
+            notebookRepository.deleteColumnCategory(classId, categoryId, preserveColumns)
             selectClass(classId, force = true)
         }
     }
@@ -1179,6 +1187,28 @@ class NotebookViewModel(
             } catch (e: Exception) {
                 println("Error updating column weight: ${e.message}")
             }
+        }
+    }
+
+    private fun resolveUniqueCategoryName(
+        proposed: String,
+        currentState: NotebookUiState.Data,
+        tabId: String,
+        editingCategoryId: String?
+    ): String {
+        val normalized = proposed.trim()
+        if (normalized.isEmpty()) return proposed
+        val siblingNames = currentState.sheet.columnCategories
+            .filter { it.tabId == tabId && it.id != editingCategoryId }
+            .map { it.name.trim().lowercase() }
+            .toSet()
+        if (normalized.lowercase() !in siblingNames) return normalized
+
+        var suffix = 2
+        while (true) {
+            val candidate = "$normalized $suffix"
+            if (candidate.lowercase() !in siblingNames) return candidate
+            suffix += 1
         }
     }
 

@@ -1,30 +1,62 @@
 package com.migestor.data.platform
 
+import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
-import app.cash.sqldelight.db.SqlDriver
 import com.migestor.data.db.AppDatabase
 import java.io.File
 import java.io.RandomAccessFile
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 import java.nio.channels.FileChannel
 import java.nio.channels.FileLock
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
-fun createDesktopDriver(dbName: String = "desktop_mi_gestor_kmp.db"): JdbcSqliteDriver {
-    val primaryDbFile = File(getAppDataPath(dbName))
-    ensureParentDirectory(primaryDbFile)
-    migrateLegacyDatabaseIfNeeded(dbName, primaryDbFile)
-    acquireDesktopDatabaseLock(primaryDbFile)
+private const val DEFAULT_DESKTOP_DB_NAME = "desktop_mi_gestor_kmp.db"
+private const val SQLITE_BUSY_TIMEOUT_MS = 5_000
+
+fun createDesktopDriver(
+    dbPath: String? = null,
+    dbName: String = DEFAULT_DESKTOP_DB_NAME,
+): JdbcSqliteDriver {
+    return openDesktopDriver(
+        dbFile = resolveDesktopDatabaseFile(dbPath = dbPath, dbName = dbName),
+        legacyDbName = dbName,
+        acquireExclusiveLock = true,
+    )
+}
+
+fun createSharedDesktopDriver(
+    dbPath: String? = null,
+    dbName: String = DEFAULT_DESKTOP_DB_NAME,
+): JdbcSqliteDriver {
+    return openDesktopDriver(
+        dbFile = resolveDesktopDatabaseFile(dbPath = dbPath, dbName = dbName),
+        legacyDbName = dbName,
+        acquireExclusiveLock = false,
+    )
+}
+
+private fun openDesktopDriver(
+    dbFile: File,
+    legacyDbName: String,
+    acquireExclusiveLock: Boolean,
+): JdbcSqliteDriver {
+    ensureParentDirectory(dbFile)
+    migrateLegacyDatabaseIfNeeded(legacyDbName, dbFile)
+    if (acquireExclusiveLock) {
+        acquireDesktopDatabaseLock(dbFile)
+    }
 
     val driver = runCatching {
-        JdbcSqliteDriver("jdbc:sqlite:${primaryDbFile.absolutePath}")
+        JdbcSqliteDriver("jdbc:sqlite:${dbFile.absolutePath}")
     }.getOrElse { cause ->
         throw IllegalStateException(
-            "No se pudo abrir la base de datos SQLite en ${primaryDbFile.absolutePath}",
+            "No se pudo abrir la base de datos SQLite en ${dbFile.absolutePath}",
             cause
         )
     }
+
+    configureDesktopSqlite(driver)
 
     val currentVersion = getVersion(driver)
     val latestVersion = AppDatabase.Schema.version
@@ -40,6 +72,19 @@ fun createDesktopDriver(dbName: String = "desktop_mi_gestor_kmp.db"): JdbcSqlite
     ensurePlannerScheduleTables(driver)
 
     return driver
+}
+
+private fun resolveDesktopDatabaseFile(
+    dbPath: String? = null,
+    dbName: String = DEFAULT_DESKTOP_DB_NAME,
+): File {
+    val normalizedPath = dbPath?.trim()?.takeIf { it.isNotEmpty() }
+    return if (normalizedPath != null) File(normalizedPath) else File(getAppDataPath(dbName))
+}
+
+private fun configureDesktopSqlite(driver: JdbcSqliteDriver) {
+    driver.execute(null, "PRAGMA journal_mode = WAL", 0)
+    driver.execute(null, "PRAGMA busy_timeout = $SQLITE_BUSY_TIMEOUT_MS", 0)
 }
 
 private var desktopDbLockChannel: FileChannel? = null

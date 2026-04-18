@@ -739,8 +739,9 @@ final class KmpBridge: ObservableObject {
         self.lanSyncDiscovery.onPeersChanged = { [weak self] peers in
             Task { @MainActor in
                 guard let self else { return }
-                self.discoveredPeersByHost = Dictionary(uniqueKeysWithValues: peers.map { ($0.host, $0) })
-                self.discoveredSyncHosts = peers.map(\.host).sorted()
+                let uniquePeers = Self.deduplicateDiscoveredPeers(peers)
+                self.discoveredPeersByHost = Dictionary(uniqueKeysWithValues: uniquePeers.map { ($0.host, $0) })
+                self.discoveredSyncHosts = uniquePeers.map(\.host).sorted()
                 self.rebindPairedHostIfNeeded()
             }
         }
@@ -5747,6 +5748,33 @@ final class KmpBridge: ObservableObject {
         return nil
     }
 
+    nonisolated fileprivate static func deduplicateDiscoveredPeers(_ peers: [LanDiscoveredPeer]) -> [LanDiscoveredPeer] {
+        var peersByHost: [String: LanDiscoveredPeer] = [:]
+        for peer in peers {
+            if let existing = peersByHost[peer.host] {
+                peersByHost[peer.host] = preferredDiscoveredPeer(existing, peer)
+            } else {
+                peersByHost[peer.host] = peer
+            }
+        }
+        return peersByHost.values.sorted { lhs, rhs in
+            if lhs.host == rhs.host {
+                return lhs.identityScore > rhs.identityScore
+            }
+            return lhs.host < rhs.host
+        }
+    }
+
+    nonisolated fileprivate static func preferredDiscoveredPeer(_ lhs: LanDiscoveredPeer, _ rhs: LanDiscoveredPeer) -> LanDiscoveredPeer {
+        if lhs.identityScore != rhs.identityScore {
+            return lhs.identityScore >= rhs.identityScore ? lhs : rhs
+        }
+        if lhs.scheme != rhs.scheme {
+            return lhs.scheme == "https" ? lhs : rhs
+        }
+        return lhs
+    }
+
     private func startAutoSyncLoop() {
         autoSyncLoopTask?.cancel()
         autoSyncLoopTask = Task { [weak self] in
@@ -7331,7 +7359,13 @@ final class LanSyncDiscovery: NSObject, NetServiceBrowserDelegate, NetServiceDel
 
     func netServiceBrowser(_ browser: NetServiceBrowser, didFind service: NetService, moreComing: Bool) {
         service.delegate = self
-        services.append(service)
+        if let existingIndex = services.firstIndex(where: { existing in
+            existing.name == service.name && existing.type == service.type && existing.domain == service.domain
+        }) {
+            services[existingIndex] = service
+        } else {
+            services.append(service)
+        }
         service.resolve(withTimeout: 3)
         if !moreComing {
             emitHosts()
@@ -7360,7 +7394,7 @@ final class LanSyncDiscovery: NSObject, NetServiceBrowserDelegate, NetServiceDel
             let proto = txt["proto"].flatMap { String(data: $0, encoding: .utf8) } ?? "https"
             return LanDiscoveredPeer(host: host, serverId: sid, fingerprint: fp, scheme: proto)
         }
-        let unique = Dictionary(uniqueKeysWithValues: peers.map { ($0.host, $0) }).map(\.value)
+        let unique = KmpBridge.deduplicateDiscoveredPeers(peers)
         onPeersChanged?(unique.sorted { $0.host < $1.host })
     }
 }
@@ -7370,6 +7404,14 @@ struct LanDiscoveredPeer: Equatable {
     let serverId: String
     let fingerprint: String
     let scheme: String
+
+    var identityScore: Int {
+        var score = 0
+        if !serverId.isEmpty { score += 2 }
+        if !fingerprint.isEmpty { score += 2 }
+        if scheme == "https" { score += 1 }
+        return score
+    }
 }
 
 private final class IosKeychainStore {

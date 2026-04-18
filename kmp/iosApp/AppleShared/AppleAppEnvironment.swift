@@ -43,12 +43,107 @@ struct UiFeatureFlags {
     )
 }
 
+enum ApplePairingServiceState: Equatable {
+    case stopped
+    case starting
+    case running(host: String, port: Int, pin: String, sessionId: String, fingerprint: String?)
+    case networkError(message: String)
+    case connected(host: String, port: Int, pin: String, sessionId: String, fingerprint: String?, deviceName: String?)
+    case failed(message: String)
+
+    var showsPairingCode: Bool {
+        switch self {
+        case .running, .connected:
+            return true
+        case .stopped, .starting, .networkError, .failed:
+            return false
+        }
+    }
+
+    var pairingHost: String? {
+        switch self {
+        case let .running(host, _, _, _, _), let .connected(host, _, _, _, _, _):
+            return host
+        case .stopped, .starting, .networkError, .failed:
+            return nil
+        }
+    }
+
+    var pairingPort: Int? {
+        switch self {
+        case let .running(_, port, _, _, _), let .connected(_, port, _, _, _, _):
+            return port
+        case .stopped, .starting, .networkError, .failed:
+            return nil
+        }
+    }
+
+    var pairingPin: String? {
+        switch self {
+        case let .running(_, _, pin, _, _), let .connected(_, _, pin, _, _, _):
+            return pin
+        case .stopped, .starting, .networkError, .failed:
+            return nil
+        }
+    }
+
+    var sessionId: String? {
+        switch self {
+        case let .running(_, _, _, sessionId, _), let .connected(_, _, _, sessionId, _, _):
+            return sessionId
+        case .stopped, .starting, .networkError, .failed:
+            return nil
+        }
+    }
+
+    var fingerprint: String? {
+        switch self {
+        case let .running(_, _, _, _, fingerprint), let .connected(_, _, _, _, fingerprint, _):
+            return fingerprint
+        case .stopped, .starting, .networkError, .failed:
+            return nil
+        }
+    }
+
+    var pairingPayload: String? {
+        guard let host = pairingHost,
+              let port = pairingPort,
+              let pin = pairingPin,
+              let sessionId = sessionId,
+              !host.isEmpty,
+              !pin.isEmpty,
+              !sessionId.isEmpty else {
+            return nil
+        }
+
+        var components = URLComponents()
+        components.scheme = "migestor"
+        components.host = "pair"
+        var queryItems = [
+            URLQueryItem(name: "host", value: host),
+            URLQueryItem(name: "port", value: "\(port)"),
+            URLQueryItem(name: "pin", value: pin),
+            URLQueryItem(name: "sid", value: sessionId),
+        ]
+        if let fingerprint, !fingerprint.isEmpty {
+            queryItems.append(URLQueryItem(name: "fp", value: fingerprint))
+        }
+        components.queryItems = queryItems
+
+        return components.url?.absoluteString
+            ?? "migestor://pair?host=\(host)&port=\(port)&pin=\(pin)&sid=\(sessionId)"
+    }
+}
+
 struct AppleCommandCenterState: Equatable {
     var statusMessage: String = ""
-    var pairingPayload: String? = nil
-    var pairingHost: String? = nil
-    var pairingPin: String? = nil
+    var serviceState: ApplePairingServiceState = .stopped
     var isAvailable: Bool = false
+
+    var pairingPayload: String? { serviceState.pairingPayload }
+    var pairingHost: String? { serviceState.pairingHost }
+    var pairingPort: Int? { serviceState.pairingPort }
+    var pairingPin: String? { serviceState.pairingPin }
 
     static let unavailable = AppleCommandCenterState()
 }

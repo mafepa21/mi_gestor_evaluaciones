@@ -606,12 +606,7 @@ struct AppWorkspaceShell: View {
             RubricsBuilderScreen()
                 .environmentObject(bridge)
         }
-        .sheet(item: $contextualAISheetState) { sheet in
-            ContextualAIAssistantSheet(
-                module: sheet.module,
-                context: sheet.context
-            )
-        }
+        .sheet(item: $contextualAISheetState, content: contextualAISheet)
         .task {
             await bridge.ensureClassesLoaded()
             try? await bridge.refreshStudentsDirectory()
@@ -629,12 +624,12 @@ struct AppWorkspaceShell: View {
                 await bridge.selectStudentsClass(classId: selectedClassId)
             }
         }
-        .onChange(of: activeModule) { _, newValue in persistedActiveModule = newValue.rawValue }
-        .onChange(of: selectedClassId) { _, newValue in persistedSelectedClassId = Int(newValue ?? 0) }
-        .onChange(of: selectedStudentId) { _, newValue in persistedSelectedStudentId = Int(newValue ?? 0) }
+        .onChange(of: activeModule) { newValue in persistedActiveModule = newValue.rawValue }
+        .onChange(of: selectedClassId) { newValue in persistedSelectedClassId = Int(newValue ?? 0) }
+        .onChange(of: selectedStudentId) { newValue in persistedSelectedStudentId = Int(newValue ?? 0) }
         .onAppear(perform: syncRootSplitVisibility)
-        .onChange(of: layoutState.isSidebarVisible) { _, _ in syncRootSplitVisibility() }
-        .onChange(of: layoutState.isFocusModeEnabled) { _, _ in syncRootSplitVisibility() }
+        .onChange(of: layoutState.isSidebarVisible) { _ in syncRootSplitVisibility() }
+        .onChange(of: layoutState.isFocusModeEnabled) { _ in syncRootSplitVisibility() }
     }
 
     private var workspaceSidebar: some View {
@@ -665,6 +660,13 @@ struct AppWorkspaceShell: View {
         }
         .listStyle(.sidebar)
         .navigationTitle("Workspace")
+    }
+
+    private func contextualAISheet(_ sheet: ContextualAISheetState) -> some View {
+        ContextualAIAssistantSheet(
+            module: sheet.module,
+            context: sheet.context
+        )
     }
 
     private var workspaceToolbar: some View {
@@ -2015,11 +2017,7 @@ private struct AttendanceWorkspaceView: View {
 
                                     ForEach(weekDates, id: \.self) { date in
                                         let status = weekStatus(for: student.id, date: date)
-                                        Text(status.shortLabel)
-                                            .font(.caption.bold())
-                                            .frame(width: 120, height: 54)
-                                            .background(status.color.opacity(0.18))
-                                            .overlay(Rectangle().stroke(Color.white.opacity(0.08), lineWidth: 0.5))
+                                        attendanceWeekStatusCell(status)
                                     }
                                 }
                             }
@@ -2051,20 +2049,20 @@ private struct AttendanceWorkspaceView: View {
                 self.preselectedStudentId = nil
             }
         }
-        .onChange(of: selectedClassId) { _, _ in
+        .onChange(of: selectedClassId) { _ in
             Task { await syncClassSelection() }
         }
-        .onChange(of: selectedDate) { _, _ in
+        .onChange(of: selectedDate) { _ in
             Task { await reloadAttendance() }
         }
-        .onChange(of: boardMode) { _, _ in
+        .onChange(of: boardMode) { _ in
             selectedStudentId = nil
         }
-        .onChange(of: selectedStudentId) { _, _ in
+        .onChange(of: selectedStudentId) { _ in
             noteDraft = selectedAttendance?.note ?? ""
         }
         .onAppear(perform: syncAttendanceToolbar)
-        .onChange(of: toolbarStateKey) { _, _ in
+        .onChange(of: toolbarStateKey) { _ in
             syncAttendanceToolbar()
         }
         .onDisappear {
@@ -2424,6 +2422,15 @@ private struct AttendanceWorkspaceView: View {
         return AttendanceStatusOption.all.first(where: { $0.id == record?.status }) ?? .init(id: "--", label: "Sin dato", shortLabel: "-", color: .clear)
     }
 
+    private func attendanceWeekStatusCell(_ status: AttendanceStatusOption) -> some View {
+        let borderColor = Color.white.opacity(0.08)
+        return Text(status.shortLabel)
+            .font(.caption.bold())
+            .frame(width: 120, height: 54)
+            .background(status.color.opacity(0.18))
+            .overlay(Rectangle().stroke(borderColor, lineWidth: 0.5))
+    }
+
     private func weekCellHeader(_ title: String, width: CGFloat) -> some View {
         Text(title)
             .font(.caption.bold())
@@ -2672,7 +2679,7 @@ private struct EvaluationHubView: View {
             .background(appPageBackground(for: colorScheme))
         }
         .task { await reload() }
-        .onChange(of: selectedClassId) { _, _ in
+        .onChange(of: selectedClassId) { _ in
             Task { await reload() }
         }
     }
@@ -2781,11 +2788,14 @@ private struct DiaryWorkspaceView: View {
                 ScrollView {
                     LazyVStack(spacing: 12) {
                         ForEach(diarySessions, id: \.id) { session in
+                            let sessionSummary = vm.summary(for: session.id)
+                            let isSessionSelected = session.id == selectedSession?.id
+                            let sessionTimeLabel = vm.timeLabel(for: Int(session.period))
                             DiarySessionRailCard(
                                 session: session,
-                                summary: vm.summary(for: session.id),
-                                isSelected: session.id == selectedSession?.id,
-                                timeLabel: vm.timeLabel(for: Int(session.period)),
+                                summary: sessionSummary,
+                                isSelected: isSessionSelected,
+                                timeLabel: sessionTimeLabel,
                                 onTap: {
                                     Task { await vm.select(session: session) }
                                 }
@@ -2858,7 +2868,7 @@ private struct DiaryWorkspaceView: View {
             configureDiaryToolbar()
             syncNavigationContext()
         }
-        .onChange(of: selectedClassId) { _, _ in
+        .onChange(of: selectedClassId) { _ in
             Task {
                 await vm.applyExternalContext(
                     week: navigationContext.week ?? vm.week,
@@ -2870,7 +2880,7 @@ private struct DiaryWorkspaceView: View {
                 syncNavigationContext()
             }
         }
-        .onChange(of: navigationContext) { _, newValue in
+        .onChange(of: navigationContext) { newValue in
             Task {
                 await vm.applyExternalContext(
                     week: newValue.week,
@@ -2882,18 +2892,18 @@ private struct DiaryWorkspaceView: View {
                 syncNavigationContext()
             }
         }
-        .onChange(of: vm.searchText) { _, _ in
+        .onChange(of: vm.searchText) { _ in
             vm.applySearch()
         }
-        .onChange(of: diaryToolbarKey) { _, _ in
+        .onChange(of: diaryToolbarKey) { _ in
             configureDiaryToolbar()
         }
-        .onChange(of: diarySessions.map(\.id)) { _, _ in
+        .onChange(of: diarySessions.map(\.id)) { _ in
             syncSelection()
         }
-        .onChange(of: vm.week) { _, _ in syncNavigationContext() }
-        .onChange(of: vm.year) { _, _ in syncNavigationContext() }
-        .onChange(of: vm.selectedSession?.id) { _, _ in
+        .onChange(of: vm.week) { _ in syncNavigationContext() }
+        .onChange(of: vm.year) { _ in syncNavigationContext() }
+        .onChange(of: vm.selectedSession?.id) { _ in
             syncSelection()
             syncNavigationContext()
         }
@@ -3374,21 +3384,7 @@ private struct RubricsWorkspaceView: View {
                                 Text("Criterios y niveles")
                                     .font(.headline)
                                 ForEach(presentation.criteria) { item in
-                                    VStack(alignment: .leading, spacing: 8) {
-                                        HStack {
-                                            Text(item.title)
-                                                .font(.subheadline.weight(.bold))
-                                            Spacer()
-                                            WorkspaceTag(text: "Peso \(item.weightText)", systemImage: "scalemass")
-                                        }
-                                        FlowLayout(spacing: 8) {
-                                            ForEach(item.levels, id: \.self) { level in
-                                                WorkspaceTag(text: level, systemImage: "checkmark.circle")
-                                            }
-                                        }
-                                    }
-                                    .padding(12)
-                                    .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                    rubricCriterionCard(item)
                                 }
                             }
 
@@ -3482,27 +3478,46 @@ private struct RubricsWorkspaceView: View {
             }
             await reloadUsageSummary()
         }
-        .onChange(of: selectedClassId) { _, _ in
+        .onChange(of: selectedClassId) { _ in
             if selectedRubricId == nil || !filteredRubrics.contains(where: { $0.rubric.id == selectedRubricId }) {
                 selectedRubricId = filteredRubrics.first?.rubric.id
             }
             Task { await reloadUsageSummary() }
         }
-        .onChange(of: selectedFilter) { _, _ in
+        .onChange(of: selectedFilter) { _ in
             if selectedRubricId == nil || !filteredRubrics.contains(where: { $0.rubric.id == selectedRubricId }) {
                 selectedRubricId = filteredRubrics.first?.rubric.id
             }
             Task { await reloadUsageSummary() }
         }
-        .onChange(of: searchText) { _, _ in
+        .onChange(of: searchText) { _ in
             if selectedRubricId == nil || !filteredRubrics.contains(where: { $0.rubric.id == selectedRubricId }) {
                 selectedRubricId = filteredRubrics.first?.rubric.id
             }
             Task { await reloadUsageSummary() }
         }
-        .onChange(of: selectedRubricId) { _, _ in
+        .onChange(of: selectedRubricId) { _ in
             Task { await reloadUsageSummary() }
         }
+    }
+
+    private func rubricCriterionCard(_ item: RubricInspectorModel.CriterionModel) -> some View {
+        let background = appCardBackground(for: colorScheme)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(item.title)
+                    .font(.subheadline.weight(.bold))
+                Spacer()
+                WorkspaceTag(text: "Peso \(item.weightText)", systemImage: "scalemass")
+            }
+            FlowLayout(spacing: 8) {
+                ForEach(item.levels, id: \.self) { level in
+                    WorkspaceTag(text: level, systemImage: "checkmark.circle")
+                }
+            }
+        }
+        .padding(12)
+        .background(background, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private func fallback(_ value: String, empty placeholder: String) -> String {
@@ -3640,30 +3655,30 @@ private struct ReportsWorkspaceView: View {
             refreshAvailability()
             await refreshWorkspaceContext()
         }
-        .onChange(of: selectedClassId) { _, _ in
+        .onChange(of: selectedClassId) { _ in
             Task { await refreshWorkspaceContext() }
         }
-        .onChange(of: selectedStudentId) { _, _ in
+        .onChange(of: selectedStudentId) { _ in
             Task { await reloadPreview() }
         }
-        .onChange(of: selectedReportKind) { _, _ in
+        .onChange(of: selectedReportKind) { _ in
             if selectedReportKind == .lomloeEvaluationComment {
                 aiAudience = .familia
                 aiTone = .formal
             }
             Task { await reloadPreview() }
         }
-        .onChange(of: selectedReportTerm) { _, _ in
+        .onChange(of: selectedReportTerm) { _ in
             Task { await reloadPreview() }
         }
-        .onChange(of: selectedAnalyticsRange) { _, _ in
+        .onChange(of: selectedAnalyticsRange) { _ in
             Task { await reloadAnalyticsDashboards() }
         }
-        .onChange(of: analyticsMode) { _, _ in
+        .onChange(of: analyticsMode) { _ in
             analyticsInsight = nil
             analyticsFeedbackMessage = nil
         }
-        .onChange(of: selectedChartKind) { _, _ in
+        .onChange(of: selectedChartKind) { _ in
             analyticsInsight = nil
         }
     }
@@ -3834,12 +3849,11 @@ private struct ReportsWorkspaceView: View {
         }
     }
 
-    @ViewBuilder
-    private var detail: some View {
+    private var detail: AnyView {
         if activeSurface == .reports {
-            reportsDetail
+            return AnyView(reportsDetail)
         } else {
-            analyticsDetail
+            return AnyView(analyticsDetail)
         }
     }
 
@@ -4691,16 +4705,7 @@ private struct LibraryWorkspaceView: View {
                                         .foregroundStyle(.secondary)
                                 } else {
                                     ForEach(selectedTemplateVersions, id: \.id) { version in
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text("Versión \(version.versionNumber)")
-                                                .font(.subheadline.weight(.bold))
-                                            Text(version.payloadJson)
-                                                .font(.caption.monospaced())
-                                                .foregroundStyle(.secondary)
-                                                .lineLimit(4)
-                                        }
-                                        .padding(12)
-                                        .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                        templateVersionCard(version)
                                     }
                                 }
                             }
@@ -4718,12 +4723,12 @@ private struct LibraryWorkspaceView: View {
             .background(appPageBackground(for: colorScheme))
         }
         .task { await reloadTemplates() }
-        .onChange(of: selectedKindFilter) { _, _ in
+        .onChange(of: selectedKindFilter) { _ in
             if selectedTemplateId == nil || !filteredTemplates.contains(where: { $0.id == selectedTemplateId }) {
                 selectedTemplateId = filteredTemplates.first?.id
             }
         }
-        .onChange(of: searchText) { _, _ in
+        .onChange(of: searchText) { _ in
             if selectedTemplateId == nil || !filteredTemplates.contains(where: { $0.id == selectedTemplateId }) {
                 selectedTemplateId = filteredTemplates.first?.id
             }
@@ -4804,6 +4809,20 @@ private struct LibraryWorkspaceView: View {
         default:
             return "Abrir módulo"
         }
+    }
+
+    private func templateVersionCard(_ version: ConfigTemplateVersion) -> some View {
+        let background = appCardBackground(for: colorScheme)
+        return VStack(alignment: .leading, spacing: 4) {
+            Text("Versión \(version.versionNumber)")
+                .font(.subheadline.weight(.bold))
+            Text(version.payloadJson)
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+                .lineLimit(4)
+        }
+        .padding(12)
+        .background(background, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 
@@ -5050,15 +5069,15 @@ private struct EFIncidentsWorkspaceView: View {
             }
             .environmentObject(bridge)
         }
-        .onChange(of: selectedClassId) { _, _ in
+        .onChange(of: selectedClassId) { _ in
             Task { await reload() }
         }
-        .onChange(of: selectedFilter) { _, _ in
+        .onChange(of: selectedFilter) { _ in
             if selectedIncidentId == nil || !filteredIncidents.contains(where: { $0.id == selectedIncidentId }) {
                 selectedIncidentId = filteredIncidents.first?.id
             }
         }
-        .onChange(of: searchText) { _, _ in
+        .onChange(of: searchText) { _ in
             if selectedIncidentId == nil || !filteredIncidents.contains(where: { $0.id == selectedIncidentId }) {
                 selectedIncidentId = filteredIncidents.first?.id
             }
@@ -5377,10 +5396,10 @@ private struct EFPhysicalTestsWorkspaceView: View {
             }
             .environmentObject(bridge)
         }
-        .onChange(of: selectedClassId) { _, _ in
+        .onChange(of: selectedClassId) { _ in
             Task { await reload() }
         }
-        .onChange(of: selectedStudentId) { _, _ in
+        .onChange(of: selectedStudentId) { _ in
             scoreDraft = displayScore(selectedResult?.value)
         }
     }
@@ -5579,7 +5598,7 @@ private struct PESessionsWorkspaceView: View {
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { tick in
             now = tick
         }
-        .onChange(of: selectedClassId) { _, _ in
+        .onChange(of: selectedClassId) { _ in
             Task { await reload() }
         }
     }
@@ -5751,7 +5770,7 @@ private struct PEMaterialWorkspaceView: View {
             }
             .environmentObject(bridge)
         }
-        .onChange(of: selectedClassId) { _, _ in
+        .onChange(of: selectedClassId) { _ in
             Task { await reload() }
         }
     }
@@ -5962,9 +5981,7 @@ private struct PETournamentsWorkspaceView: View {
                                         Text(group)
                                             .font(.subheadline.bold())
                                         ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
-                                            Text("#\(index + 1) · \(row.team.name) · \(row.points) pts")
-                                                .font(.caption.weight(.semibold))
-                                                .foregroundStyle(.secondary)
+                                            groupStandingRow(index: index, row: row)
                                         }
                                     }
                                     .padding(12)
@@ -6022,7 +6039,7 @@ private struct PETournamentsWorkspaceView: View {
                 EmptyView()
             }
         }
-        .onChange(of: selectedClassId) { _, _ in
+        .onChange(of: selectedClassId) { _ in
             Task { await reloadTeams() }
         }
     }
@@ -6124,6 +6141,16 @@ private struct PETournamentsWorkspaceView: View {
         guard !names.isEmpty else { return "Sin participantes asignados" }
         return "\(names.count) participante(s)\n" + names.joined(separator: ", ")
     }
+
+    private func groupStandingRow(
+        index: Int,
+        row: (team: TournamentTeam, points: Int, scored: Int, conceded: Int)
+    ) -> some View {
+        let description = "#\(index + 1) · \(row.team.name) · \(row.points) pts"
+        return Text(description)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+    }
 }
 
 private struct StudentProfilesWorkspaceView: View {
@@ -6218,25 +6245,12 @@ private struct StudentProfilesWorkspaceView: View {
                             }
 
                             if !profile.recentAttendance.isEmpty {
+                                let recentAttendance = Array(profile.recentAttendance.prefix(4))
                                 VStack(alignment: .leading, spacing: 10) {
                                     Text("Asistencia reciente")
                                         .font(.headline)
-                                    ForEach(profile.recentAttendance.prefix(4)) { attendance in
-                                        HStack {
-                                            VStack(alignment: .leading, spacing: 4) {
-                                                Text(attendance.status)
-                                                    .font(.subheadline.weight(.bold))
-                                                Text(attendance.note.isEmpty ? "Registro diario" : attendance.note)
-                                                    .font(.caption)
-                                                    .foregroundStyle(.secondary)
-                                            }
-                                            Spacer()
-                                            Text(attendance.date.formatted(date: .abbreviated, time: .omitted))
-                                                .font(.caption.weight(.bold))
-                                                .foregroundStyle(.secondary)
-                                        }
-                                        .padding(12)
-                                        .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                    ForEach(recentAttendance, id: \.id) { attendance in
+                                        recentAttendanceCard(attendance)
                                     }
                                 }
                             }
@@ -6391,7 +6405,7 @@ private struct StudentProfilesWorkspaceView: View {
             }
             await reloadProfile()
         }
-        .onChange(of: selectedClassId) { _, _ in
+        .onChange(of: selectedClassId) { _ in
             Task {
                 await bridge.selectStudentsClass(classId: selectedClassId)
                 if selectedStudentId == nil {
@@ -6400,9 +6414,29 @@ private struct StudentProfilesWorkspaceView: View {
                 await reloadProfile()
             }
         }
-        .onChange(of: selectedStudentId) { _, _ in
+        .onChange(of: selectedStudentId) { _ in
             Task { await reloadProfile() }
         }
+    }
+
+    private func recentAttendanceCard(_ attendance: KmpBridge.AttendanceRecordSnapshot) -> some View {
+        let note = attendance.note.isEmpty ? "Registro diario" : attendance.note
+        let background = appCardBackground(for: colorScheme)
+        return HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(attendance.status)
+                    .font(.subheadline.weight(.bold))
+                Text(note)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text(attendance.date.formatted(date: .abbreviated, time: .omitted))
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .background(background, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     @MainActor
@@ -7993,7 +8027,7 @@ private struct TournamentBoardScreen: View {
                     HStack {
                         TextField("Nombre del equipo", text: $team.name)
                             .textFieldStyle(RoundedBorderTextFieldStyle())
-                            .onChange(of: team.name) { _, _ in
+                            .onChange(of: team.name) { _ in
                                 syncTournamentMatchLabels(&tournament)
                             }
                         Text("Miembros: \(team.studentIds.count)")

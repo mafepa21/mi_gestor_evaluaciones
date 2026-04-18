@@ -103,10 +103,7 @@ struct DashboardView: View {
             }
 
             if isInspectorPresented {
-                Divider().opacity(0.18)
-                dashboardInspector
-                    .frame(width: 320)
-                    .background(appCardBackground(for: colorScheme))
+                inspectorPane
             }
         }
         .background(appPageBackground(for: colorScheme).ignoresSafeArea())
@@ -118,23 +115,14 @@ struct DashboardView: View {
             await applyFiltersAndReload()
         }
         .onAppear(perform: syncToolbarState)
-        .onChange(of: selectedClassId) { _, _ in Task { await applyFiltersAndReload() } }
-        .onChange(of: modeRawValue) { _, _ in Task { await applyFiltersAndReload() } }
-        .onChange(of: severityFilter) { _, _ in Task { await applyFiltersAndReload() } }
-        .onChange(of: priorityFilter) { _, _ in Task { await applyFiltersAndReload() } }
-        .onChange(of: sessionStatusFilter) { _, _ in Task { await applyFiltersAndReload() } }
-        .onChange(of: inspectorSelection) { _, _ in
-            if inspectorSelection == nil {
-                isInspectorPresented = false
-            }
-            syncToolbarState()
-        }
-        .onChange(of: isInspectorPresented) { _, _ in
-            syncToolbarState()
-        }
-        .onChange(of: toolbarStateKey) { _, _ in
-            syncToolbarState()
-        }
+        .onChange(of: selectedClassId) { _ in triggerDashboardReload() }
+        .onChange(of: modeRawValue) { _ in triggerDashboardReload() }
+        .onChange(of: severityFilter) { _ in triggerDashboardReload() }
+        .onChange(of: priorityFilter) { _ in triggerDashboardReload() }
+        .onChange(of: sessionStatusFilter) { _ in triggerDashboardReload() }
+        .onChange(of: inspectorSelection) { _ in handleInspectorSelectionChange() }
+        .onChange(of: isInspectorPresented) { _ in syncToolbarState() }
+        .onChange(of: toolbarStateKey) { _ in syncToolbarState() }
         .onDisappear {
             layoutState.clearDashboardToolbar()
         }
@@ -142,6 +130,28 @@ struct DashboardView: View {
             await applyFiltersAndReload()
             await bridge.pullMissingSyncChanges()
         }
+    }
+
+    private var inspectorPane: some View {
+        Group {
+            Divider().opacity(0.18)
+            dashboardInspector
+                .frame(width: 320)
+                .background(appCardBackground(for: colorScheme))
+        }
+    }
+
+    private func triggerDashboardReload() {
+        Task {
+            await applyFiltersAndReload()
+        }
+    }
+
+    private func handleInspectorSelectionChange() {
+        if inspectorSelection == nil {
+            isInspectorPresented = false
+        }
+        syncToolbarState()
     }
 
     private var dashboardHeader: some View {
@@ -728,32 +738,76 @@ fileprivate struct MacCommandCenterPairingCard: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Enlazar iPhone o iPad")
                     .font(.system(size: 28, weight: .black, design: .rounded))
-                Text("Escanea este QR desde la app iOS. Este Mac sigue siendo el centro de mando y el origen de la sincronización LAN.")
+                Text(headlineText)
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(.secondary)
             }
 
             HStack(alignment: .center, spacing: 24) {
-                if let image = qrImage(from: commandCenterState.pairingPayload) {
-                    Image(nsImage: image)
-                        .interpolation(.none)
-                        .resizable()
-                        .frame(width: 176, height: 176)
-                        .padding(16)
-                        .background(Color.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                Group {
+                    if commandCenterState.serviceState.showsPairingCode,
+                       let payload = commandCenterState.pairingPayload,
+                       !payload.isEmpty {
+                        QRCodeView(payload: payload, size: 176, padding: 16)
+                    } else {
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .fill(.quaternary)
+                            .frame(width: 208, height: 208)
+                            .overlay {
+                                VStack(spacing: 8) {
+                                    Image(systemName: placeholderSymbol)
+                                        .font(.system(size: 30, weight: .semibold))
+                                        .foregroundStyle(.tertiary)
+                                    Text(placeholderText)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                    }
                 }
 
                 VStack(alignment: .leading, spacing: 16) {
-                    if let host = commandCenterState.pairingHost {
+                    statusBadge
+
+                    if let host = commandCenterState.pairingHost,
+                       commandCenterState.serviceState.showsPairingCode {
                         commandMetric(title: "Host", value: host)
                     }
-                    if let pin = commandCenterState.pairingPin {
+                    if let port = commandCenterState.pairingPort,
+                       commandCenterState.serviceState.showsPairingCode {
+                        commandMetric(title: "Puerto", value: "\(port)")
+                    }
+                    if let pin = commandCenterState.pairingPin,
+                       commandCenterState.serviceState.showsPairingCode {
                         commandMetric(title: "PIN", value: pin)
+                    }
+                    if let payload = commandCenterState.pairingPayload,
+                       !payload.isEmpty,
+                       commandCenterState.serviceState.showsPairingCode {
+                        commandMetric(title: "Payload", value: payload)
                     }
                     Text(commandCenterState.statusMessage)
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(.secondary)
+
+                    HStack(spacing: 12) {
+                        Button(primaryActionTitle) {
+                            NotificationCenter.default.post(
+                                name: primaryActionNotification,
+                                object: nil
+                            )
+                        }
+                        .buttonStyle(.borderedProminent)
+
+                        Button("Regenerar PIN") {
+                            NotificationCenter.default.post(
+                                name: .appleCommandCenterRegeneratePinRequested,
+                                object: nil
+                            )
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(commandCenterState.serviceState == .starting)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -772,25 +826,107 @@ fileprivate struct MacCommandCenterPairingCard: View {
             Text(value)
                 .font(.system(size: 18, weight: .bold, design: .rounded))
                 .textSelection(.enabled)
+                .lineLimit(3)
         }
     }
 
-    private func qrImage(from payload: String?) -> NSImage? {
-        guard
-            let payload,
-            let data = payload.data(using: .utf8),
-            let filter = CIFilter(name: "CIQRCodeGenerator")
-        else { return nil }
+    private var headlineText: String {
+        switch commandCenterState.serviceState {
+        case .stopped:
+            return "La sincronización LAN no está activa en este Mac."
+        case .starting:
+            return "Arrancando servicio de enlace en la red local."
+        case .running:
+            return "Escanea este QR desde el iPad para enlazar."
+        case .networkError:
+            return "Error de red local. Revisa la red de este Mac antes de enlazar."
+        case .connected:
+            return "iPad conectado a este Mac. Puedes volver a escanear el QR si necesitas reconectar."
+        case .failed:
+            return "No se pudo preparar el servicio de enlace en este Mac."
+        }
+    }
 
-        filter.setValue(data, forKey: "inputMessage")
-        filter.setValue("M", forKey: "inputCorrectionLevel")
-        guard let outputImage = filter.outputImage else { return nil }
+    private var placeholderText: String {
+        switch commandCenterState.serviceState {
+        case .starting:
+            return "Arrancando servicio"
+        case .networkError:
+            return "Error de red local"
+        case .failed:
+            return "Servicio no disponible"
+        case .connected, .running, .stopped:
+            return "Sin código disponible"
+        }
+    }
 
-        let transformed = outputImage.transformed(by: CGAffineTransform(scaleX: 8, y: 8))
-        let rep = NSCIImageRep(ciImage: transformed)
-        let image = NSImage(size: rep.size)
-        image.addRepresentation(rep)
-        return image
+    private var placeholderSymbol: String {
+        switch commandCenterState.serviceState {
+        case .networkError, .failed:
+            return "wifi.exclamationmark"
+        case .starting:
+            return "bolt.horizontal.circle"
+        case .connected, .running, .stopped:
+            return "qrcode"
+        }
+    }
+
+    @ViewBuilder
+    private var statusBadge: some View {
+        Text(badgeText)
+            .font(.system(size: 12, weight: .bold))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(badgeColor.opacity(0.16), in: Capsule())
+            .foregroundStyle(badgeColor)
+    }
+
+    private var badgeText: String {
+        switch commandCenterState.serviceState {
+        case .stopped:
+            return "Servicio detenido"
+        case .starting:
+            return "Arrancando servicio"
+        case .running:
+            return "Listo para enlazar"
+        case .networkError:
+            return "Error de red local"
+        case .connected:
+            return "Conectado a iPad"
+        case .failed:
+            return "Servicio no disponible"
+        }
+    }
+
+    private var badgeColor: Color {
+        switch commandCenterState.serviceState {
+        case .running, .connected:
+            return .green
+        case .starting:
+            return .orange
+        case .networkError, .failed:
+            return .red
+        case .stopped:
+            return .secondary
+        }
+    }
+
+    private var primaryActionTitle: String {
+        switch commandCenterState.serviceState {
+        case .stopped, .failed:
+            return "Activar enlace"
+        case .starting, .running, .networkError, .connected:
+            return "Detener enlace"
+        }
+    }
+
+    private var primaryActionNotification: Notification.Name {
+        switch commandCenterState.serviceState {
+        case .stopped, .failed:
+            return .appleCommandCenterStartRequested
+        case .starting, .running, .networkError, .connected:
+            return .appleCommandCenterStopRequested
+        }
     }
 }
 #endif
@@ -799,6 +935,7 @@ fileprivate struct SyncLanCard: View {
     @EnvironmentObject var bridge: KmpBridge
     @Environment(\.colorScheme) private var colorScheme
     @State private var selectedHost: String = ""
+    @State private var selectedPort: String = "8765"
     @State private var pin: String = ""
     @State private var showingQrScanner = false
 
@@ -830,6 +967,9 @@ fileprivate struct SyncLanCard: View {
                 HStack(spacing: 10) {
                     TextField("Host desktop (ej. migestor.local)", text: $selectedHost)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
+                    TextField("Puerto", text: $selectedPort)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .frame(width: 80)
                     TextField("PIN", text: $pin)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
                         .frame(width: 90)
@@ -841,12 +981,31 @@ fileprivate struct SyncLanCard: View {
                     .buttonStyle(.bordered)
                     Button("Emparejar") {
                         Task {
+                            let normalizedHost = selectedHost.trimmingCharacters(in: .whitespacesAndNewlines)
+                            let normalizedPin = pin.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard !normalizedHost.isEmpty else {
+                                bridge.syncStatusMessage = "Introduce un host LAN válido del Mac."
+                                return
+                            }
+                            guard let port = Int(selectedPort), (1...65535).contains(port) else {
+                                bridge.syncStatusMessage = "El puerto de enlace no es válido."
+                                return
+                            }
+                            guard port == 8765 else {
+                                bridge.syncStatusMessage = "Esta compilación del iPad usa el puerto 8765 para enlazar con el Mac."
+                                return
+                            }
+                            guard !normalizedPin.isEmpty else {
+                                bridge.syncStatusMessage = "Introduce el PIN de enlace."
+                                return
+                            }
+
                             do {
-                                let hostToUse = selectedHost.isEmpty ? bridge.discoveredSyncHosts.first ?? "" : selectedHost
+                                let hostToUse = normalizedHost.isEmpty ? bridge.discoveredSyncHosts.first ?? "" : normalizedHost
                                 let peer = bridge.discoveredPeer(forHost: hostToUse)
                                 try await bridge.pairLanSync(
                                     host: hostToUse,
-                                    pin: pin,
+                                    pin: normalizedPin,
                                     expectedServerId: peer?.serverId,
                                     expectedFingerprint: peer?.fingerprint
                                 )
@@ -857,6 +1016,7 @@ fileprivate struct SyncLanCard: View {
                         }
                     }
                     .buttonStyle(.borderedProminent)
+                    .disabled(!canAttemptPairing)
                 }
             }
 
@@ -911,9 +1071,14 @@ fileprivate struct SyncLanCard: View {
                     return
                 }
                 selectedHost = parsed.host
+                selectedPort = "\(parsed.port)"
                 pin = parsed.pin
                 Task {
                     do {
+                        guard parsed.port == 8765 else {
+                            bridge.syncStatusMessage = "Este QR usa un puerto no compatible con esta compilación del iPad."
+                            return
+                        }
                         try await bridge.pairLanSync(
                             host: parsed.host,
                             pin: parsed.pin,
@@ -928,45 +1093,57 @@ fileprivate struct SyncLanCard: View {
         }
     }
 
-    private func parseSyncPayload(_ payload: String) -> (host: String, pin: String, serverId: String?, fingerprint: String?)? {
+    private var canAttemptPairing: Bool {
+        let normalizedHost = selectedHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedPin = pin.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedHost.isEmpty,
+              let port = Int(selectedPort),
+              (1...65535).contains(port),
+              !normalizedPin.isEmpty else {
+            return false
+        }
+        return true
+    }
+
+    private func parseSyncPayload(_ payload: String) -> (host: String, port: Int, pin: String, serverId: String?, fingerprint: String?)? {
         let text = payload.trimmingCharacters(in: .whitespacesAndNewlines)
         if text.isEmpty { return nil }
 
         if let components = URLComponents(string: text),
            let queryItems = components.queryItems,
            let host = queryItems.first(where: { $0.name.lowercased() == "host" })?.value,
+           let portValue = queryItems.first(where: { $0.name.lowercased() == "port" })?.value,
+           let port = Int(portValue),
            let pin = queryItems.first(where: { $0.name.lowercased() == "pin" })?.value,
-           !host.isEmpty, !pin.isEmpty {
+           !host.isEmpty, !pin.isEmpty, (1...65535).contains(port) {
             let sid = queryItems.first(where: { $0.name.lowercased() == "sid" })?.value
             let fp = queryItems.first(where: { $0.name.lowercased() == "fp" })?.value
-            return (host, pin, sid, fp)
+            return (host, port, pin, sid, fp)
         }
 
         if text.hasPrefix("{"),
            let data = text.data(using: .utf8),
            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let host = object["host"] as? String,
+           let port = (object["port"] as? Int) ?? ((object["port"] as? String).flatMap(Int.init)),
            let pin = object["pin"] as? String,
-           !host.isEmpty, !pin.isEmpty {
-            return (host, pin, object["sid"] as? String, object["fp"] as? String)
+           !host.isEmpty, !pin.isEmpty, (1...65535).contains(port) {
+            return (host, port, pin, object["sid"] as? String, object["fp"] as? String)
         }
 
-        for separator in ["|", ";", ","] {
-            let parts = text.split(separator: Character(separator), maxSplits: 1).map(String.init)
-            if parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty {
-                return (parts[0], parts[1], nil, nil)
-            }
-        }
-
-        if text.contains("host="), text.contains("pin=") {
+        if text.contains("host="), text.contains("port="), text.contains("pin=") {
             let normalized = text.replacingOccurrences(of: " ", with: "&")
             if let components = URLComponents(string: "migestor://sync?\(normalized)"),
                let queryItems = components.queryItems,
                let host = queryItems.first(where: { $0.name.lowercased() == "host" })?.value,
+               let portValue = queryItems.first(where: { $0.name.lowercased() == "port" })?.value,
+               let port = Int(portValue),
                let pin = queryItems.first(where: { $0.name.lowercased() == "pin" })?.value {
                 let sid = queryItems.first(where: { $0.name.lowercased() == "sid" })?.value
                 let fp = queryItems.first(where: { $0.name.lowercased() == "fp" })?.value
-                return (host, pin, sid, fp)
+                if !host.isEmpty, !pin.isEmpty, (1...65535).contains(port) {
+                    return (host, port, pin, sid, fp)
+                }
             }
         }
 
@@ -1429,7 +1606,7 @@ struct RubricEvaluationView: View {
                             .padding(EvaluationDesign.screenPadding)
                         }
                     }
-                    .onChange(of: state.isSaveSuccessful) { _, saved in
+                    .onChange(of: state.isSaveSuccessful) { saved in
                         guard saved else { return }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                             closeRubric()

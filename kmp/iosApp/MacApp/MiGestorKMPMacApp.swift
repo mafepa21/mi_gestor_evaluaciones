@@ -16,9 +16,6 @@ struct MiGestorKMPMacApp: App {
                 themeMode: themeMode,
                 commandCenterState: commandCenter.environmentState
             )
-                .task {
-                    commandCenter.startIfNeeded()
-                }
                 .onChange(of: scenePhase) { _, newPhase in
                     handleScenePhase(newPhase)
                 }

@@ -128,7 +128,7 @@ struct AddColumnSheet: View {
                 selectedCategoryId = initialCategoryId ?? selectedCategoryId ?? suggestedCategoryId
                 categoryPlacementMode = startsCreatingCategory ? .createNew : .existing
             }
-            .onChange(of: selectedBlueprintId) { _, _ in
+            .onChange(of: selectedBlueprintId) { _ in
                 weight = String(Int(selectedBlueprint.defaultWeight))
                 if categoryPlacementMode == .existing, selectedCategoryId == nil {
                     selectedCategoryId = suggestedCategoryId

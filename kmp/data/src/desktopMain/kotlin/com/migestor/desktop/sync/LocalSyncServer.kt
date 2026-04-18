@@ -93,6 +93,7 @@ class InMemorySyncAdapter : SyncStoreAdapter {
 class LocalSyncServer(
     private val port: Int = 8765,
     private val syncCoordinator: SyncCoordinator = SyncCoordinator(InMemorySyncAdapter()),
+    private val stateListener: ((CommandCenterSnapshot) -> Unit)? = null,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
     private var server: HttpsServer? = null
@@ -110,6 +111,8 @@ class LocalSyncServer(
     @Volatile
     private var hostHint: String = "localhost"
     @Volatile
+    private var networkErrorMessage: String? = "No se pudo resolver una IP LAN válida para este Mac."
+    @Volatile
     private var pairedDeviceId: String? = secureStore.get("paired-device-id")
     @Volatile
     private var activeToken: String? = secureStore.get("paired-token")
@@ -125,17 +128,21 @@ class LocalSyncServer(
     private val _status = MutableStateFlow(createStatus())
     val status: StateFlow<SyncServerStatus> = _status.asStateFlow()
 
-    private fun createStatus() = SyncServerStatus(
-        isPaired = isPaired(),
-        pairedDeviceId = pairedDeviceId,
-        pin = pairingPin,
-        serverId = serverId,
-        pairingPayload = currentPairingPayload(),
-        host = hostHint
-    )
+    private fun createStatus(): SyncServerStatus {
+        val snapshot = currentSnapshot()
+        return SyncServerStatus(
+            isPaired = isPaired(),
+            pairedDeviceId = pairedDeviceId,
+            pin = pairingPin,
+            serverId = serverId,
+            pairingPayload = snapshot.pairingPayload.orEmpty(),
+            host = snapshot.host ?: "",
+        )
+    }
 
     private fun notifyStatusChanged() {
         _status.value = createStatus()
+        stateListener?.invoke(currentSnapshot())
     }
 
 
@@ -146,7 +153,25 @@ class LocalSyncServer(
     fun isPaired(): Boolean = !pairedDeviceId.isNullOrBlank() && !activeToken.isNullOrBlank()
 
     fun currentPairingPayload(): String {
-        return "migestor://sync?host=$hostHint&pin=$pairingPin&scheme=https&sid=$serverId&fp=$certFingerprintSha256"
+        return currentSnapshot().pairingPayload.orEmpty()
+    }
+
+    fun currentSnapshot(): CommandCenterSnapshot {
+        val validHost = sanitizeLanHost(hostHint)
+        return CommandCenterSnapshot(
+            host = validHost,
+            port = port,
+            pin = pairingPin,
+            serverId = serverId,
+            fingerprint = certFingerprintSha256,
+            pairedDeviceId = pairedDeviceId,
+            isPaired = isPaired(),
+            networkErrorMessage = if (validHost == null) {
+                networkErrorMessage ?: "No se pudo resolver una IP LAN válida para este Mac."
+            } else {
+                null
+            },
+        )
     }
 
     fun start() {
@@ -187,7 +212,7 @@ class LocalSyncServer(
             }
             pairedDeviceId = deviceId
             secureStore.put("paired-device-id", deviceId)
-            
+
             println("✅ Handshake exitoso para '$deviceId'. Token emitido.")
             notifyStatusChanged()
             refreshBonjourService()
@@ -250,6 +275,7 @@ class LocalSyncServer(
         server = https
         publishBonjour()
         startNetworkMonitor()
+        notifyStatusChanged()
     }
 
     fun revokePairing() {
@@ -265,6 +291,8 @@ class LocalSyncServer(
         jmDns?.close()
         jmDns = null
         advertisedLanAddress = null
+        networkErrorMessage = null
+        notifyStatusChanged()
     }
 
     private fun revokePairingInternal() {
@@ -278,10 +306,19 @@ class LocalSyncServer(
     }
 
     private fun publishBonjour() {
+        val localAddress = resolveLanAddressOrNull()
+        if (localAddress == null) {
+            advertisedLanAddress = null
+            hostHint = "localhost"
+            networkErrorMessage = "No se pudo resolver una IP LAN válida para este Mac."
+            notifyStatusChanged()
+            return
+        }
+
         runCatching {
-            val localAddress = resolveLanAddress()
             hostHint = localAddress.hostAddress ?: hostHint
             advertisedLanAddress = localAddress
+            networkErrorMessage = null
             notifyStatusChanged()
             jmDns = JmDNS.create(localAddress)
             serviceInfo = ServiceInfo.create(
@@ -293,6 +330,10 @@ class LocalSyncServer(
                 buildBonjourTxtMap()
             )
             jmDns?.registerService(serviceInfo)
+        }.onFailure {
+            advertisedLanAddress = null
+            networkErrorMessage = "No se pudo publicar el servicio LAN en esta red."
+            notifyStatusChanged()
         }
     }
 
@@ -314,15 +355,32 @@ class LocalSyncServer(
     }
 
     private fun refreshNetworkBindingIfNeeded() {
+        val resolved = resolveLanAddressOrNull()
+        if (resolved == null) {
+            advertisedLanAddress = null
+            hostHint = "localhost"
+            networkErrorMessage = "No se pudo resolver una IP LAN válida para este Mac."
+            notifyStatusChanged()
+            return
+        }
+
         runCatching {
-            val resolved = resolveLanAddress()
             val previousHost = advertisedLanAddress?.hostAddress
             val currentHost = resolved.hostAddress
-            if (currentHost.isNullOrBlank() || currentHost == previousHost) return
+            if (currentHost.isNullOrBlank()) {
+                networkErrorMessage = "No se pudo resolver una IP LAN válida para este Mac."
+                notifyStatusChanged()
+                return
+            }
+            if (currentHost == previousHost) return
 
             hostHint = currentHost
+            networkErrorMessage = null
             notifyStatusChanged()
             republishBonjourOn(resolved)
+        }.onFailure {
+            networkErrorMessage = "No se pudo republicar el servicio LAN en esta red."
+            notifyStatusChanged()
         }
     }
 
@@ -342,6 +400,11 @@ class LocalSyncServer(
                 buildBonjourTxtMap()
             )
             serviceInfo?.let { jmDns?.registerService(it) }
+            networkErrorMessage = null
+            notifyStatusChanged()
+        }.onFailure {
+            networkErrorMessage = "No se pudo republicar el servicio LAN en esta red."
+            notifyStatusChanged()
         }
     }
 
@@ -374,14 +437,20 @@ class LocalSyncServer(
         )
     }
 
-    private fun resolveLanAddress(): InetAddress {
-        val fromInterface = NetworkInterface.getNetworkInterfaces()
+    private fun resolveLanAddressOrNull(): InetAddress? {
+        return NetworkInterface.getNetworkInterfaces()
             ?.toList()
             ?.asSequence()
             ?.filter { it.isUp && !it.isLoopback && !it.isVirtual }
             ?.flatMap { it.inetAddresses.toList().asSequence() }
             ?.firstOrNull { !it.isLoopbackAddress && !it.isLinkLocalAddress && it.hostAddress?.contains(":") == false }
-        return fromInterface ?: InetAddress.getLocalHost()
+    }
+
+    private fun sanitizeLanHost(host: String?): String? {
+        val normalized = host?.trim().orEmpty()
+        if (normalized.isEmpty()) return null
+        if (normalized == "localhost" || normalized == "127.0.0.1") return null
+        return normalized
     }
 
     private fun isAuthorized(ex: HttpExchange): Boolean {
@@ -471,15 +540,8 @@ private class DesktopTlsIdentity(
     }
 
     fun sslContext(): SSLContext {
-        val password = secureStore.get(keystorePasswordKey) ?: randomSecret().also {
-            secureStore.put(keystorePasswordKey, it)
-        }
-        ensureIdentity(password)
-
-        val keyStore = KeyStore.getInstance("PKCS12")
-        keystoreFile.inputStream().use { input ->
-            keyStore.load(input, password.toCharArray())
-        }
+        val password = ensureIdentityReady()
+        val keyStore = loadKeyStore(password)
 
         val kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm())
         kmf.init(keyStore, password.toCharArray())
@@ -499,11 +561,8 @@ private class DesktopTlsIdentity(
     }
 
     private fun loadCertificate(): X509Certificate {
-        val password = secureStore.get(keystorePasswordKey) ?: error("Keystore password missing")
-        val keyStore = KeyStore.getInstance("PKCS12")
-        keystoreFile.inputStream().use { input ->
-            keyStore.load(input, password.toCharArray())
-        }
+        val password = ensureIdentityReady()
+        val keyStore = loadKeyStore(password)
         return keyStore.getCertificate(keyAlias) as X509Certificate
     }
 
@@ -560,6 +619,36 @@ private class DesktopTlsIdentity(
         val random = ByteArray(24)
         SecureRandom().nextBytes(random)
         return Base64.getUrlEncoder().withoutPadding().encodeToString(random)
+    }
+
+    private fun ensureKeystorePassword(): String {
+        return secureStore.get(keystorePasswordKey) ?: randomSecret().also {
+            secureStore.put(keystorePasswordKey, it)
+        }
+    }
+
+    private fun ensureIdentityReady(): String {
+        var password = ensureKeystorePassword()
+        ensureIdentity(password)
+
+        val isReadable = runCatching {
+            loadKeyStore(password)
+        }.isSuccess
+        if (isReadable) {
+            return password
+        }
+
+        runCatching { keystoreFile.delete() }
+        ensureIdentity(password)
+        return password
+    }
+
+    private fun loadKeyStore(password: String): KeyStore {
+        val keyStore = KeyStore.getInstance("PKCS12")
+        keystoreFile.inputStream().use { input ->
+            keyStore.load(input, password.toCharArray())
+        }
+        return keyStore
     }
 }
 
@@ -643,3 +732,20 @@ data class SyncServerStatus(
     val pairingPayload: String,
     val host: String
 )
+
+data class CommandCenterSnapshot(
+    val host: String?,
+    val port: Int,
+    val pin: String,
+    val serverId: String,
+    val fingerprint: String,
+    val pairedDeviceId: String?,
+    val isPaired: Boolean,
+    val networkErrorMessage: String?,
+) {
+    val pairingPayload: String?
+        get() {
+            val resolvedHost = host ?: return null
+            return "migestor://pair?host=$resolvedHost&port=$port&pin=$pin&sid=$serverId&fp=$fingerprint"
+        }
+}

@@ -243,35 +243,17 @@ struct NotebookModuleView: View {
     @State private var notebookAISheetRequest: NotebookAISheetRequest? = nil
 
     var body: some View {
+        notebookLifecycleCleanup(
+            notebookObservationModifiers(
+                notebookSheetAndTaskModifiers(notebookContentWithDialogs)
+            )
+        )
+    }
+
+    private var notebookContentWithDialogs: some View {
         Group {
             if let data = bridge.notebookState as? NotebookUiStateData {
-                centerPanel(data: data)
-                    .sheet(item: $addColumnContext) { context in
-                        AddColumnSheet(
-                            bridge: bridge,
-                            initialCategoryId: context.categoryId,
-                            startsCreatingCategory: context.startsCreatingCategory
-                        )
-                    }
-                    .sheet(item: $notebookAISheetRequest) { request in
-                        NotebookAICommentSheet(
-                            bridge: bridge,
-                            data: data,
-                            managedColumns: notebookSourceColumns(data: data),
-                            visibleColumns: visibleNotebookSourceColumns(data: data),
-                            selectedStudentIds: request.studentIds,
-                            targetColumnId: request.targetColumnId,
-                            mode: request.mode
-                        ) { message, style in
-                            showToast(message, style: style)
-                        }
-                    }
-                    .onAppear {
-                        syncToolbarState(data: data)
-                    }
-                    .onChange(of: toolbarStateKey(data: data)) { _, _ in
-                        syncToolbarState(data: data)
-                    }
+                notebookLoadedContent(data: data)
             } else if bridge.notebookState is NotebookUiStateLoading {
                 NotebookStateCard(
                     systemImage: "tablecells",
@@ -343,93 +325,96 @@ struct NotebookModuleView: View {
             }
         } message: {
             if let column = pendingDeleteColumn {
-                Text("Se eliminará “\(column.title)” y su vínculo asociado si pertenece a una evaluación.")
+                deleteColumnDialogMessage(for: column)
             }
         }
         .confirmationDialog(
             "Eliminar categoría",
-            isPresented: Binding(
-                get: { pendingDeleteCategory != nil },
-                set: { if !$0 { pendingDeleteCategory = nil } }
-            ),
+            isPresented: isDeleteCategoryDialogPresented,
             titleVisibility: .visible
         ) {
-            if let category = pendingDeleteCategory {
-                Button("Eliminar solo la categoría", role: .destructive) {
-                    bridge.deleteColumnCategory(id: category.id, preserveColumns: true)
-                    showToast("Categoría eliminada; las columnas se han conservado")
-                    pendingDeleteCategory = nil
-                }
-                Button("Eliminar categoría y columnas", role: .destructive) {
-                    bridge.deleteColumnCategory(id: category.id, preserveColumns: false)
-                    showToast("Categoría y columnas eliminadas", style: .warning)
-                    pendingDeleteCategory = nil
-                }
-                Button("Cancelar", role: .cancel) {
-                    pendingDeleteCategory = nil
-                }
-            }
+            deleteCategoryDialogActions()
         } message: {
-            if let category = pendingDeleteCategory {
-                Text(deleteCategoryMessage(for: category, data: bridge.notebookState as? NotebookUiStateData))
+            deleteCategoryDialogMessageContent()
+        }
+    }
+
+    private func notebookSheetAndTaskModifiers<Content: View>(_ content: Content) -> some View {
+        content
+            .sheet(isPresented: $isOrganizationMenuPresented) {
+                notebookOrganizationSheet(data: bridge.notebookState as? NotebookUiStateData)
             }
-        }
-        .sheet(isPresented: $isOrganizationMenuPresented) {
-            notebookOrganizationSheet(data: bridge.notebookState as? NotebookUiStateData)
-        }
-        .task {
-            if let selectedClassId,
-               bridge.notebookViewModel.currentClassId?.int64Value != selectedClassId {
-                bridge.selectClass(id: selectedClassId)
-            } else if selectedClassId == nil,
-                      let notebookClassId = bridge.notebookViewModel.currentClassId?.int64Value {
-                self.selectedClassId = notebookClassId
+            .task {
+                if let selectedClassId,
+                   bridge.notebookViewModel.currentClassId?.int64Value != selectedClassId {
+                    bridge.selectClass(id: selectedClassId)
+                } else if selectedClassId == nil,
+                          let notebookClassId = bridge.notebookViewModel.currentClassId?.int64Value {
+                    self.selectedClassId = notebookClassId
+                }
             }
-        }
-        .onChange(of: selectedClassId) { _, newValue in
-            guard let newValue else { return }
-            guard bridge.notebookViewModel.currentClassId?.int64Value != newValue else { return }
-            selectNotebookClass(newValue)
-        }
-        .onChange(of: bridge.selectedNotebookTabId) { _, _ in
-            restoreSeatPositions()
-            Task { await refreshNotebookSignals() }
-        }
-        .onChange(of: inspectorSelection) { _, _ in
-            syncInspectorDraft()
-            if inspectorSelection == nil {
-                isInspectorPresented = false
+            .task(id: notebookSupportRefreshKey) {
+                restoreSeatPositions()
+                await refreshNotebookSignals()
             }
-        }
-        .onChange(of: selectedAttachmentPhoto) { _, newValue in
-            guard let newValue else { return }
-            Task { await importSelectedAttachment(from: newValue) }
-        }
-        .onChange(of: isInspectorPresented) { _, _ in
-            if let data = bridge.notebookState as? NotebookUiStateData {
-                syncToolbarState(data: data)
+    }
+
+    private func notebookObservationModifiers<Content: View>(_ content: Content) -> some View {
+        notebookToolbarObservationModifiers(
+            notebookSelectionObservationModifiers(content)
+        )
+    }
+
+    private func notebookSelectionObservationModifiers<Content: View>(_ content: Content) -> some View {
+        content
+            .onChange(of: selectedClassId) { newValue in
+                guard let newValue else { return }
+                guard bridge.notebookViewModel.currentClassId?.int64Value != newValue else { return }
+                selectNotebookClass(newValue)
             }
-        }
-        .onChange(of: surfaceMode) { _, _ in
-            if let data = bridge.notebookState as? NotebookUiStateData {
-                syncToolbarState(data: data)
+            .onChange(of: bridge.selectedNotebookTabId) { _ in
+                restoreSeatPositions()
+                Task { await refreshNotebookSignals() }
             }
-        }
-        .onChange(of: selectedGroupId) { _, _ in
-            if let data = bridge.notebookState as? NotebookUiStateData {
-                syncToolbarState(data: data)
+            .onChange(of: inspectorSelection) { _ in
+                syncInspectorDraft()
+                if inspectorSelection == nil {
+                    isInspectorPresented = false
+                }
             }
-        }
-        .onChange(of: bridge.notebookState is NotebookUiStateData) { _, _ in
-            restoreSeatPositions()
-        }
-        .task(id: notebookSupportRefreshKey) {
-            restoreSeatPositions()
-            await refreshNotebookSignals()
-        }
-        .onDisappear {
-            layoutState.clearNotebookToolbar()
-        }
+            .onChange(of: selectedAttachmentPhoto) { newValue in
+                guard let newValue else { return }
+                Task { await importSelectedAttachment(from: newValue) }
+            }
+    }
+
+    private func notebookToolbarObservationModifiers<Content: View>(_ content: Content) -> some View {
+        content
+            .onChange(of: isInspectorPresented) { _ in
+                if let data = bridge.notebookState as? NotebookUiStateData {
+                    syncToolbarState(data: data)
+                }
+            }
+            .onChange(of: surfaceMode) { _ in
+                if let data = bridge.notebookState as? NotebookUiStateData {
+                    syncToolbarState(data: data)
+                }
+            }
+            .onChange(of: selectedGroupId) { _ in
+                if let data = bridge.notebookState as? NotebookUiStateData {
+                    syncToolbarState(data: data)
+                }
+            }
+            .onChange(of: bridge.notebookState is NotebookUiStateData) { _ in
+                restoreSeatPositions()
+            }
+    }
+
+    private func notebookLifecycleCleanup<Content: View>(_ content: Content) -> some View {
+        content
+            .onDisappear {
+                layoutState.clearNotebookToolbar()
+            }
     }
 
     private func centerPanel(data: NotebookUiStateData) -> some View {
@@ -448,6 +433,51 @@ struct NotebookModuleView: View {
             }
         }
         .background(EvaluationBackdrop())
+    }
+
+    @ViewBuilder
+    private func deleteColumnDialogMessage(for column: NotebookColumnDefinition) -> some View {
+        let message = "Se eliminará “\(column.title)” y su vínculo asociado si pertenece a una evaluación."
+        Text(message)
+    }
+
+    @ViewBuilder
+    private func deleteCategoryDialogMessage(for category: NotebookColumnCategory) -> some View {
+        let notebookData = bridge.notebookState as? NotebookUiStateData
+        Text(deleteCategoryMessage(for: category, data: notebookData))
+    }
+
+    private var isDeleteCategoryDialogPresented: Binding<Bool> {
+        Binding(
+            get: { pendingDeleteCategory != nil },
+            set: { if !$0 { pendingDeleteCategory = nil } }
+        )
+    }
+
+    @ViewBuilder
+    private func deleteCategoryDialogActions() -> some View {
+        if let category = pendingDeleteCategory {
+            Button("Eliminar solo la categoría", role: .destructive) {
+                bridge.deleteColumnCategory(id: category.id, preserveColumns: true)
+                showToast("Categoría eliminada; las columnas se han conservado")
+                pendingDeleteCategory = nil
+            }
+            Button("Eliminar categoría y columnas", role: .destructive) {
+                bridge.deleteColumnCategory(id: category.id, preserveColumns: false)
+                showToast("Categoría y columnas eliminadas", style: .warning)
+                pendingDeleteCategory = nil
+            }
+            Button("Cancelar", role: .cancel) {
+                pendingDeleteCategory = nil
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func deleteCategoryDialogMessageContent() -> some View {
+        if let category = pendingDeleteCategory {
+            deleteCategoryDialogMessage(for: category)
+        }
     }
 
     private func notebookContextBar(data: NotebookUiStateData) -> some View {
@@ -561,6 +591,40 @@ struct NotebookModuleView: View {
                 }
                 .padding(.top, 4)
             }
+        }
+    }
+
+    private func notebookLoadedContent(data: NotebookUiStateData) -> some View {
+        centerPanel(data: data)
+            .sheet(item: $addColumnContext) { context in
+                AddColumnSheet(
+                    bridge: bridge,
+                    initialCategoryId: context.categoryId,
+                    startsCreatingCategory: context.startsCreatingCategory
+                )
+            }
+            .sheet(item: $notebookAISheetRequest) { request in
+                notebookAISheet(request: request, data: data)
+            }
+            .onAppear {
+                syncToolbarState(data: data)
+            }
+            .onChange(of: toolbarStateKey(data: data)) { _ in
+                syncToolbarState(data: data)
+            }
+    }
+
+    private func notebookAISheet(request: NotebookAISheetRequest, data: NotebookUiStateData) -> some View {
+        NotebookAICommentSheet(
+            bridge: bridge,
+            data: data,
+            managedColumns: notebookSourceColumns(data: data),
+            visibleColumns: visibleNotebookSourceColumns(data: data),
+            selectedStudentIds: request.studentIds,
+            targetColumnId: request.targetColumnId,
+            mode: request.mode
+        ) { message, style in
+            showToast(message, style: style)
         }
     }
 
@@ -2195,7 +2259,7 @@ private struct NotebookEditableTableCell: View {
             Toggle("", isOn: $checkDraft)
                 .labelsHidden()
                 .tint(tint)
-                .onChange(of: checkDraft) { _, newValue in
+                .onChange(of: checkDraft) { newValue in
                     onSelect()
                     bridge.saveColumnGrade(studentId: item.student.id, column: column, value: newValue ? "true" : "false")
                 }

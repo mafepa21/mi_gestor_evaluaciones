@@ -16,6 +16,7 @@
 		233E4313DEDDC02CD056C9CA /* AppleFoundationContextualAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14C238867D14FCB6C59390D5 /* AppleFoundationContextualAIService.swift */; };
 		2E0C1B67E85317A3147416FF /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2BAD893EC7E90121671F7BDB /* Assets.xcassets */; };
 		304A3E3E0D133E436DD668CB /* AppleLifecycleNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CA5E3F32F725E60EF71507B /* AppleLifecycleNotifications.swift */; };
+		31A2A5BC1C8F4D3A9E1C0011 /* QRCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31A2A5BC1C8F4D3A9E1C0010 /* QRCodeView.swift */; };
 		3CB4C3CA98572F18CC5D1DA7 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2BAD893EC7E90121671F7BDB /* Assets.xcassets */; };
 		48055DD8105D96F8A70C7436 /* NotebookTopBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 553BE9C8F245950E744D692A /* NotebookTopBar.swift */; };
 		4A94FBA079B366485372AFC6 /* AppleFoundationAnalyticsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2EB53505ACE7B6CA23A520F /* AppleFoundationAnalyticsService.swift */; };
@@ -39,6 +40,7 @@
 		86BC90A2A4604BC6B4545E27 /* IPadWorkspaceShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74BD0F6DDCBB48B737A44D3C /* IPadWorkspaceShell.swift */; };
 		878FB204389D94BB6A912BF6 /* NotebookModuleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BA9E95BA74B4D7D8AC2D362 /* NotebookModuleView.swift */; };
 		89A42DAB37443B7552C21222 /* AppleAppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 996E1D0739D88B5507B110B6 /* AppleAppEnvironment.swift */; };
+		89A42DAB37443B7552C21223 /* QRCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31A2A5BC1C8F4D3A9E1C0010 /* QRCodeView.swift */; };
 		9A31C548996D137897FA1C75 /* AppleBridgeBootstrap.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4DF051FC8473FCD24BCC26C /* AppleBridgeBootstrap.swift */; };
 		9D01F457DE02D070677CF7CC /* AppleSharedBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = B43394FF80D6A97B38599A52 /* AppleSharedBridge.swift */; };
 		A891426FA79E3A7AB4670107 /* KmpBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = B819027ADD26559CC96B1BDB /* KmpBridge.swift */; };
@@ -91,6 +93,7 @@
 /* Begin PBXFileReference section */
 		14C238867D14FCB6C59390D5 /* AppleFoundationContextualAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleFoundationContextualAIService.swift; sourceTree = "<group>"; };
 		27176C9EB76172D41191833D /* AppleFoundationReportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleFoundationReportService.swift; sourceTree = "<group>"; };
+		31A2A5BC1C8F4D3A9E1C0010 /* QRCodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRCodeView.swift; sourceTree = "<group>"; };
 		2BAD893EC7E90121671F7BDB /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		466A6EE8F4E0ABF4D24AEDDD /* AppleViewCompatibility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleViewCompatibility.swift; sourceTree = "<group>"; };
 		467B02D2576A83946B6237BA /* MiGestorKMPiOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = MiGestorKMPiOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -158,6 +161,7 @@
 				4BE36C2FC3CA10A0D5E7F322 /* AppleAppRootView.swift */,
 				C4DF051FC8473FCD24BCC26C /* AppleBridgeBootstrap.swift */,
 				6CA5E3F32F725E60EF71507B /* AppleLifecycleNotifications.swift */,
+				31A2A5BC1C8F4D3A9E1C0010 /* QRCodeView.swift */,
 				EC0359FA7FD3BF06A0E300F5 /* AppleRoundedCorner.swift */,
 				B43394FF80D6A97B38599A52 /* AppleSharedBridge.swift */,
 				466A6EE8F4E0ABF4D24AEDDD /* AppleViewCompatibility.swift */,
@@ -394,6 +398,7 @@
 				233E4313DEDDC02CD056C9CA /* AppleFoundationContextualAIService.swift in Sources */,
 				78A071A272E2BC12FABF66B2 /* AppleFoundationReportService.swift in Sources */,
 				56234DAACC18188F7C681066 /* AppleLifecycleNotifications.swift in Sources */,
+				31A2A5BC1C8F4D3A9E1C0011 /* QRCodeView.swift in Sources */,
 				BC651399795A9BCF20664187 /* AppleRoundedCorner.swift in Sources */,
 				7B200C717CDA9324BBC303F3 /* AppleSharedBridge.swift in Sources */,
 				BEE09F01DFABE9A8498C8B0E /* AppleViewCompatibility.swift in Sources */,
@@ -426,6 +431,7 @@
 				738EEEE78B67FE32320DC5E1 /* AppleFoundationContextualAIService.swift in Sources */,
 				EBDC0553FE5545D4E7C33846 /* AppleFoundationReportService.swift in Sources */,
 				304A3E3E0D133E436DD668CB /* AppleLifecycleNotifications.swift in Sources */,
+				89A42DAB37443B7552C21223 /* QRCodeView.swift in Sources */,
 				6BE839B846E6739DA1A6885C /* AppleRoundedCorner.swift in Sources */,
 				9D01F457DE02D070677CF7CC /* AppleSharedBridge.swift in Sources */,
 				BEE5A4B10ED6EF26DC223E17 /* AppleViewCompatibility.swift in Sources */,

@@ -19,10 +19,6 @@ val jbrHome = jbrHomeCandidates.firstOrNull {
 
 kotlin {
     jvmToolchain(17)
-
-    sourceSets.named("main") {
-        kotlin.srcDir("../desktopApp/src/main/kotlin/com/migestor/desktop/sync")
-    }
 }
 
 dependencies {

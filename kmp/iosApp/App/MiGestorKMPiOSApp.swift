@@ -12,7 +12,7 @@ struct MiGestorKMPiOSApp: App {
     var body: some Scene {
         WindowGroup {
             AppleAppRootView(themeMode: themeMode)
-                .onChange(of: scenePhase) { _, newPhase in
+                .onChange(of: scenePhase) { newPhase in
                     handleScenePhase(newPhase)
                 }
         }

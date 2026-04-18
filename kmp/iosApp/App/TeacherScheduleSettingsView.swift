@@ -720,7 +720,7 @@ struct TeacherScheduleSettingsPanel: View {
         .task {
             await vm.bind(bridge: bridge, selectedClassId: selectedClassId)
         }
-        .onChange(of: selectedClassId) { _, newValue in
+        .onChange(of: selectedClassId) { newValue in
             Task { await vm.updateSelectedClass(newValue) }
         }
     }

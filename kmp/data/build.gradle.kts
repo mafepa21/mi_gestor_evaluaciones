@@ -46,6 +46,10 @@ kotlin {
                 implementation("app.cash.sqldelight:sqlite-driver:2.0.2")
                 implementation("org.apache.poi:poi-ooxml:5.3.0")
                 implementation("com.github.librepdf:openpdf:1.3.39")
+                implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+                implementation("org.jmdns:jmdns:3.5.9")
+                implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")
+                implementation("org.bouncycastle:bcpkix-jdk18on:1.78.1")
             }
         }
         val appleMain by creating {

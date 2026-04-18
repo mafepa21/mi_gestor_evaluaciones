@@ -639,6 +639,7 @@ final class KmpBridge: ObservableObject {
     private var lastLocalMutationAt: Date = .distantPast
     private var lastSuccessfulSyncAt: Date = .distantPast
     private var lastFullPullAt: Date = .distantPast
+    private var lastSilentSyncAttemptAt: Date = .distantPast
     private var lastSyncCursorEpochMs: Int64 = UserDefaults.standard.object(forKey: "sync.last.cursor") as? Int64 ?? 0
     private var selectedNotebookTabByClassId: [String: String] = {
         guard let raw = UserDefaults.standard.dictionary(forKey: "notebook.selected.tab.by.class.v1") as? [String: String] else {
@@ -2864,6 +2865,9 @@ final class KmpBridge: ObservableObject {
         do {
             try await performPullSync(silent: true, sinceEpochMsOverride: 0)
             persistSyncSecrets()
+            let now = Date()
+            lastSuccessfulSyncAt = now
+            lastFullPullAt = now
             syncStatusMessage = "Emparejado con \(normalizedHost)"
         } catch {
             syncToken = previousToken
@@ -2878,8 +2882,6 @@ final class KmpBridge: ObservableObject {
                 ]
             )
         }
-
-        await syncNow(reason: "pairing", forceFullPull: false, silent: true)
     }
 
     func unpairLanSync() async {
@@ -4592,7 +4594,11 @@ final class KmpBridge: ObservableObject {
     }
 
     private func applyPulledChanges(_ changes: [LanSyncChange]) async throws {
-        for change in orderedPulledChanges(changes) {
+        let orderedChanges = orderedPulledChanges(changes)
+        for (index, change) in orderedChanges.enumerated() {
+            if index.isMultiple(of: 25) {
+                await Task.yield()
+            }
             do {
             let payloadData = change.payload.data(using: .utf8) ?? Data()
             let payloadObject = (try? JSONSerialization.jsonObject(with: payloadData)) as? [String: Any] ?? [:]
@@ -5825,6 +5831,19 @@ final class KmpBridge: ObservableObject {
 
     private func syncNow(reason: String, forceFullPull: Bool, silent: Bool) async {
         guard pairedSyncHost != nil, syncToken != nil else { return }
+        let now = Date()
+
+        if silent,
+           !forceFullPull,
+           pendingOutboundChanges.isEmpty,
+           now.timeIntervalSince(lastSuccessfulSyncAt) < 1.5,
+           now.timeIntervalSince(lastSilentSyncAttemptAt) < 1.5 {
+            return
+        }
+
+        if silent {
+            lastSilentSyncAttemptAt = now
+        }
 
         if isSyncInFlight {
             syncNeedsAnotherPass = true

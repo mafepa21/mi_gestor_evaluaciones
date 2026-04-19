@@ -633,6 +633,7 @@ final class KmpBridge: ObservableObject {
     private var notebookSnapshotDebounceTask: Task<Void, Never>? = nil
     private var pendingDebouncedGradeSaves: [String: Task<Void, Never>] = [:]
     private var pendingGradeSnapshotTask: Task<Void, Never>? = nil
+    private var isPairingInFlight = false
     private var isSyncInFlight = false
     private var syncNeedsAnotherPass = false
     private var isAppInForeground = true
@@ -746,8 +747,11 @@ final class KmpBridge: ObservableObject {
                 self.rebindPairedHostIfNeeded()
             }
         }
-        self.lanSyncDiscovery.start()
-        startAutoSyncLoop()
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.lanSyncDiscovery.start()
+            self.startAutoSyncLoop()
+        }
 
         setupObservers()
     }
@@ -783,7 +787,8 @@ final class KmpBridge: ObservableObject {
         
         notebookStateSubject
             .debounce(for: .milliseconds(150), scheduler: RunLoop.main)
-            .sink { [unowned self] state in
+            .sink { [weak self] state in
+                guard let self else { return }
                 self.notebookState = state
                 self.invalidateNotebookCellValueIndexCache()
             }
@@ -2842,12 +2847,22 @@ final class KmpBridge: ObservableObject {
             )
         }
 
-        let result = try await lanSyncClient.handshake(
-            host: normalizedHost,
-            pin: pin,
-            deviceId: localDeviceId,
-            pinnedFingerprint: expectedFingerprint
-        )
+        isPairingInFlight = true
+        autoSyncLoopTask?.cancel()
+        autoSyncDebounceTask?.cancel()
+        defer {
+            isPairingInFlight = false
+            startAutoSyncLoop()
+        }
+
+        let result = try await runSyncOperationWithTimeout(seconds: 12) {
+            try await self.lanSyncClient.handshake(
+                host: normalizedHost,
+                pin: pin,
+                deviceId: self.localDeviceId,
+                pinnedFingerprint: expectedFingerprint
+            )
+        }
         if let expectedServerId, expectedServerId != result.serverId {
             throw NSError(domain: "Sync", code: -203, userInfo: [NSLocalizedDescriptionKey: "Server ID no coincide con el esperado"])
         }
@@ -2863,7 +2878,13 @@ final class KmpBridge: ObservableObject {
         pairedServerFingerprint = result.certificateFingerprint
 
         do {
-            try await performPullSync(silent: true, sinceEpochMsOverride: 0)
+            try await runSyncOperationWithTimeout(seconds: 12) {
+                try await self.performPullSync(
+                    silent: true,
+                    sinceEpochMsOverride: 0,
+                    refreshAfterApply: false
+                )
+            }
             persistSyncSecrets()
             let now = Date()
             lastSuccessfulSyncAt = now
@@ -2921,6 +2942,18 @@ final class KmpBridge: ObservableObject {
     }
 
     private func performPullSync(silent: Bool, sinceEpochMsOverride: Int64? = nil) async throws {
+        try await performPullSync(
+            silent: silent,
+            sinceEpochMsOverride: sinceEpochMsOverride,
+            refreshAfterApply: true
+        )
+    }
+
+    private func performPullSync(
+        silent: Bool,
+        sinceEpochMsOverride: Int64? = nil,
+        refreshAfterApply: Bool
+    ) async throws {
         guard let host = pairedSyncHost, let token = syncToken else {
             throw NSError(domain: "Sync", code: -40, userInfo: [NSLocalizedDescriptionKey: "No hay emparejamiento activo"])
         }
@@ -2962,6 +2995,8 @@ final class KmpBridge: ObservableObject {
         if !silent {
             syncStatusMessage = "Pull OK (\(pull.changeCount) cambios)"
         }
+
+        guard refreshAfterApply else { return }
 
         try await refreshDashboard()
         try await refreshClasses()
@@ -5831,6 +5866,7 @@ final class KmpBridge: ObservableObject {
 
     private func syncNow(reason: String, forceFullPull: Bool, silent: Bool) async {
         guard pairedSyncHost != nil, syncToken != nil else { return }
+        guard !isPairingInFlight else { return }
         let now = Date()
 
         if silent,
@@ -5903,6 +5939,31 @@ final class KmpBridge: ObservableObject {
             return 2_500_000_000
         }
         return 4_500_000_000
+    }
+
+    private func runSyncOperationWithTimeout<T>(
+        seconds: UInt64,
+        operation: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask {
+                try await operation()
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: seconds * 1_000_000_000)
+                throw NSError(
+                    domain: "Sync",
+                    code: -206,
+                    userInfo: [
+                        NSLocalizedDescriptionKey: "Tiempo de espera agotado. Comprueba que la app macOS esté abierta y en la misma red."
+                    ]
+                )
+            }
+
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
+        }
     }
 }
 

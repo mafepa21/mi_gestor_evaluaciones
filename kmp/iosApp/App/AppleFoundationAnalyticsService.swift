@@ -83,52 +83,63 @@ private enum AIAnalyticsTelemetry {
     }
 }
 
+@MainActor
 final class AppleFoundationAnalyticsService {
-#if os(macOS)
+    private let availabilityMessages = AppleFoundationModelMessages(
+        disabled: "La analítica IA está desactivada por feature flag local.",
+        available: "Apple Foundation Models disponible para analítica local.",
+        frameworkUnavailable: "Este build no incluye el framework Foundation Models.",
+        unsupportedOS: "La analítica IA requiere una versión del sistema compatible con Apple Foundation Models.",
+        unsupportedDevice: "Apple Intelligence no está disponible en este dispositivo compatible con la app.",
+        notEnabled: "Apple Intelligence está desactivado en el dispositivo. Actívalo en Ajustes para usar la analítica IA.",
+        modelLoading: "Apple Intelligence se está preparando en este dispositivo. Vuelve a intentarlo en unos segundos."
+    )
+    private var availabilityRetryTask: Task<Void, Never>?
+
+    #if canImport(FoundationModels)
+    @available(iOS 26.0, macOS 26.0, *)
+    private lazy var insightSession: LanguageModelSession = {
+        LanguageModelSession(
+            instructions: """
+            Actúas como asistente de analítica docente local-first.
+            Usa exclusivamente los hechos proporcionados.
+            No inventes causas, diagnósticos ni comparaciones no presentes en los datos.
+            Si los datos son insuficientes, dilo con prudencia.
+            Redacta en español de España.
+            """
+        )
+    }()
+
+    @available(iOS 26.0, macOS 26.0, *)
+    private lazy var interpretationSession: LanguageModelSession = {
+        LanguageModelSession(
+            instructions: """
+            Actúas como selector de visualizaciones docentes.
+            Elige solo uno de los tipos de gráfico disponibles.
+            No inventes nuevos tipos.
+            Resume la intención del docente en una frase breve y accionable.
+            """
+        )
+    }()
+    #endif
+
     func currentAvailability() -> AIAnalyticsAvailabilityState {
-        let state: AIAnalyticsAvailabilityState = .unavailable("La analítica IA local todavía no está disponible en esta build macOS.")
+        let resolved = AppleFoundationModelSupport.resolveAvailability(isEnabled: AIAnalyticsFeatureFlags.isEnabled)
+        let state = mapAvailability(resolved)
         AIAnalyticsTelemetry.recordAvailability(state)
+        scheduleAvailabilityRetryIfNeeded(for: resolved)
         return state
     }
 
-    func generateInsight(from facts: KmpBridge.ChartFacts) async throws -> AIChartInsight {
-        throw AIAnalyticsServiceError.unavailable(currentAvailability().message)
-    }
-
-    func interpret(prompt: String, availableCharts: [KmpBridge.ChartKind]) async throws -> AIAnalyticsInterpretation {
-        throw AIAnalyticsServiceError.unavailable(currentAvailability().message)
-    }
-#else
-    func currentAvailability() -> AIAnalyticsAvailabilityState {
-        guard AIAnalyticsFeatureFlags.isEnabled else {
-            let state: AIAnalyticsAvailabilityState = .disabled
-            AIAnalyticsTelemetry.recordAvailability(state)
-            return state
-        }
+    func prewarm() {
+        let resolved = AppleFoundationModelSupport.resolveAvailability(isEnabled: AIAnalyticsFeatureFlags.isEnabled)
+        scheduleAvailabilityRetryIfNeeded(for: resolved)
 
         #if canImport(FoundationModels)
-        if #available(iOS 26.0, *) {
-            let model = SystemLanguageModel.default
-            let state: AIAnalyticsAvailabilityState
-            switch model.availability {
-            case .available:
-                state = .available
-            case .unavailable(let reason):
-                state = .unavailable("Apple Intelligence no está disponible: \(reason)")
-            @unknown default:
-                state = .unavailable("No se pudo determinar la disponibilidad del modelo local.")
-            }
-            AIAnalyticsTelemetry.recordAvailability(state)
-            return state
-        } else {
-            let state: AIAnalyticsAvailabilityState = .unavailable("La analítica IA requiere una versión del sistema compatible con Apple Foundation Models.")
-            AIAnalyticsTelemetry.recordAvailability(state)
-            return state
+        if #available(iOS 26.0, macOS 26.0, *), resolved == .available || resolved == .modelLoading {
+            _ = insightSession
+            _ = interpretationSession
         }
-        #else
-        let state: AIAnalyticsAvailabilityState = .unavailable("Este build no incluye el framework Foundation Models.")
-        AIAnalyticsTelemetry.recordAvailability(state)
-        return state
         #endif
     }
 
@@ -144,7 +155,7 @@ final class AppleFoundationAnalyticsService {
         }
 
         #if canImport(FoundationModels)
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.0, macOS 26.0, *) {
             let result = try await generateLocalInsight(from: facts)
             AIAnalyticsTelemetry.recordInsight(kind: facts.chartKind)
             return result
@@ -164,7 +175,7 @@ final class AppleFoundationAnalyticsService {
         }
 
         #if canImport(FoundationModels)
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.0, macOS 26.0, *) {
             let result = try await interpretLocally(prompt: cleaned, availableCharts: availableCharts)
             AIAnalyticsTelemetry.recordInterpretation()
             return result
@@ -174,22 +185,13 @@ final class AppleFoundationAnalyticsService {
     }
 
     #if canImport(FoundationModels)
-    @available(iOS 26.0, *)
+    @available(iOS 26.0, macOS 26.0, *)
     private func generateLocalInsight(from facts: KmpBridge.ChartFacts) async throws -> AIChartInsight {
-        let session = LanguageModelSession(
-            instructions: """
-            Actúas como asistente de analítica docente local-first.
-            Usa exclusivamente los hechos proporcionados.
-            No inventes causas, diagnósticos ni comparaciones no presentes en los datos.
-            Si los datos son insuficientes, dilo con prudencia.
-            Redacta en español de España.
-            """
-        )
-        let response = try await session.respond(
+        let response = try await insightSession.respond(
             to: insightPrompt(from: facts),
             generating: GeneratedAnalyticsInsight.self,
             includeSchemaInPrompt: true,
-            options: GenerationOptions(temperature: 0.25)
+            options: AppleFoundationModelSupport.generationOptions(temperature: 0.25)
         )
         return AIChartInsight(
             title: response.content.title,
@@ -201,21 +203,13 @@ final class AppleFoundationAnalyticsService {
         )
     }
 
-    @available(iOS 26.0, *)
+    @available(iOS 26.0, macOS 26.0, *)
     private func interpretLocally(
         prompt: String,
         availableCharts: [KmpBridge.ChartKind]
     ) async throws -> AIAnalyticsInterpretation {
         let options = availableCharts.map { "- \($0.rawValue): \($0.title)" }.joined(separator: "\n")
-        let session = LanguageModelSession(
-            instructions: """
-            Actúas como selector de visualizaciones docentes.
-            Elige solo uno de los tipos de gráfico disponibles.
-            No inventes nuevos tipos.
-            Resume la intención del docente en una frase breve y accionable.
-            """
-        )
-        let response = try await session.respond(
+        let response = try await interpretationSession.respond(
             to: """
             Consulta del docente: \(prompt)
 
@@ -224,7 +218,7 @@ final class AppleFoundationAnalyticsService {
             """,
             generating: GeneratedAnalyticsInterpretation.self,
             includeSchemaInPrompt: true,
-            options: GenerationOptions(temperature: 0.1)
+            options: AppleFoundationModelSupport.generationOptions(temperature: 0.1)
         )
         let kind = availableCharts.first(where: { $0.rawValue == response.content.chartKind }) ?? .attendanceTrend
         return AIAnalyticsInterpretation(
@@ -234,7 +228,7 @@ final class AppleFoundationAnalyticsService {
         )
     }
 
-    @available(iOS 26.0, *)
+    @available(iOS 26.0, macOS 26.0, *)
     private func insightPrompt(from facts: KmpBridge.ChartFacts) -> String {
         let metrics = facts.metrics.map { "- \($0.title): \($0.value)" }.joined(separator: "\n")
         let factLines = facts.factLines.map { "- \($0)" }.joined(separator: "\n")
@@ -277,7 +271,44 @@ final class AppleFoundationAnalyticsService {
         """
     }
 
-    @available(iOS 26.0, *)
+    private func mapAvailability(_ availability: AppleFoundationModelAvailability) -> AIAnalyticsAvailabilityState {
+        switch availability {
+        case .disabled:
+            return .disabled
+        case .available:
+            return .available
+        case .frameworkUnavailable,
+                .unsupportedOS,
+                .unsupportedDevice,
+                .notEnabled,
+                .modelLoading,
+                .unavailable(_):
+            return .unavailable(availabilityMessages.message(for: availability))
+        }
+    }
+
+    private func scheduleAvailabilityRetryIfNeeded(for availability: AppleFoundationModelAvailability) {
+        guard availability == .modelLoading else {
+            availabilityRetryTask?.cancel()
+            availabilityRetryTask = nil
+            return
+        }
+
+        guard availabilityRetryTask == nil else { return }
+        availabilityRetryTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 15_000_000_000)
+            guard let self, !Task.isCancelled else { return }
+            self.retryAvailabilityAfterDelay()
+        }
+    }
+
+    private func retryAvailabilityAfterDelay() {
+        availabilityRetryTask = nil
+        prewarm()
+        _ = currentAvailability()
+    }
+
+    @available(iOS 26.0, macOS 26.0, *)
     @Generable
     struct GeneratedAnalyticsInsight {
         let title: String
@@ -288,7 +319,7 @@ final class AppleFoundationAnalyticsService {
         let insertableSummary: String
     }
 
-    @available(iOS 26.0, *)
+    @available(iOS 26.0, macOS 26.0, *)
     @Generable
     struct GeneratedAnalyticsInterpretation {
         let chartKind: String
@@ -296,5 +327,4 @@ final class AppleFoundationAnalyticsService {
         let warnings: [String]
     }
     #endif
-#endif
 }

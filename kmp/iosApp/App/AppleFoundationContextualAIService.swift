@@ -4,6 +4,89 @@ import Foundation
 import FoundationModels
 #endif
 
+enum AppleFoundationModelAvailability: Equatable {
+    case disabled
+    case frameworkUnavailable
+    case unsupportedOS
+    case unsupportedDevice
+    case notEnabled
+    case modelLoading
+    case available
+    case unavailable(String)
+}
+
+struct AppleFoundationModelMessages {
+    let disabled: String
+    let available: String
+    let frameworkUnavailable: String
+    let unsupportedOS: String
+    let unsupportedDevice: String
+    let notEnabled: String
+    let modelLoading: String
+
+    func message(for availability: AppleFoundationModelAvailability) -> String {
+        switch availability {
+        case .disabled:
+            return disabled
+        case .available:
+            return available
+        case .frameworkUnavailable:
+            return frameworkUnavailable
+        case .unsupportedOS:
+            return unsupportedOS
+        case .unsupportedDevice:
+            return unsupportedDevice
+        case .notEnabled:
+            return notEnabled
+        case .modelLoading:
+            return modelLoading
+        case .unavailable(let message):
+            return message
+        }
+    }
+}
+
+enum AppleFoundationModelSupport {
+    static func resolveAvailability(isEnabled: Bool) -> AppleFoundationModelAvailability {
+        guard isEnabled else {
+            return .disabled
+        }
+
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, macOS 26.0, *) {
+            switch SystemLanguageModel.default.availability {
+            case .available:
+                return .available
+            case .unavailable(let reason):
+                switch reason {
+                case .deviceNotEligible:
+                    return .unsupportedDevice
+                case .appleIntelligenceNotEnabled:
+                    return .notEnabled
+                case .modelNotReady:
+                    return .modelLoading
+                @unknown default:
+                    return .unavailable("No se pudo determinar la disponibilidad del modelo local.")
+                }
+            @unknown default:
+                return .unavailable("No se pudo determinar la disponibilidad del modelo local.")
+            }
+        } else {
+            return .unsupportedOS
+        }
+        #else
+        return .frameworkUnavailable
+        #endif
+    }
+
+    #if canImport(FoundationModels)
+    @available(iOS 26.0, macOS 26.0, *)
+    static func generationOptions(temperature: Double) -> GenerationOptions {
+        GenerationOptions(temperature: temperature)
+    }
+    #endif
+}
+
 enum AIContextualAvailabilityState: Equatable {
     case disabled
     case available
@@ -87,62 +170,65 @@ private enum AIContextualTelemetry {
     }
 }
 
+@MainActor
 final class AppleFoundationContextualAIService {
-#if os(macOS)
+    private let availabilityMessages = AppleFoundationModelMessages(
+        disabled: "La IA contextual está desactivada por feature flag local.",
+        available: "Apple Foundation Models disponible para ayuda contextual.",
+        frameworkUnavailable: "Este build no incluye el framework Foundation Models.",
+        unsupportedOS: "La IA contextual requiere una versión del sistema compatible con Apple Foundation Models.",
+        unsupportedDevice: "Apple Intelligence no está disponible en este dispositivo compatible con la app.",
+        notEnabled: "Apple Intelligence está desactivado en el dispositivo. Actívalo en Ajustes para usar la IA contextual.",
+        modelLoading: "Apple Intelligence se está preparando en este dispositivo. Vuelve a intentarlo en unos segundos."
+    )
+    private var availabilityRetryTask: Task<Void, Never>?
+
+    #if canImport(FoundationModels)
+    @available(iOS 26.0, macOS 26.0, *)
+    private lazy var contextualSession: LanguageModelSession = {
+        LanguageModelSession(
+            instructions: """
+            Actúas como asistente contextual docente local-first.
+            Usa exclusivamente los hechos proporcionados.
+            No inventes causas, diagnósticos, sanciones ni comparaciones que no estén en el contexto.
+            Si faltan datos, dilo con prudencia.
+            Redacta en español de España.
+            """
+        )
+    }()
+
+    @available(iOS 26.0, macOS 26.0, *)
+    private lazy var notebookSession: LanguageModelSession = {
+        LanguageModelSession(
+            instructions: """
+            Actúas como asistente de comentarios docentes para el cuaderno.
+            Usa exclusivamente los hechos del contexto.
+            No inventes diagnósticos, causas ni notas oficiales.
+            Si faltan datos, reconoce la limitación con prudencia.
+            El comentario debe ser breve, útil y editable por el profesorado.
+            Redacta en español de España.
+            """
+        )
+    }()
+    #endif
+
     func currentAvailability() -> AIContextualAvailabilityState {
-        let state: AIContextualAvailabilityState = .unavailable("La IA contextual local todavía no está disponible en esta build macOS.")
+        let resolved = AppleFoundationModelSupport.resolveAvailability(isEnabled: AIContextualFeatureFlags.isEnabled)
+        let state = mapAvailability(resolved)
         AIContextualTelemetry.recordAvailability(state)
+        scheduleAvailabilityRetryIfNeeded(for: resolved)
         return state
     }
 
-    func generateResult(
-        from context: KmpBridge.ScreenAIContext,
-        action: KmpBridge.ContextualAIAction,
-        audience: AIReportAudience,
-        tone: AIReportTone,
-        customPrompt: String?
-    ) async throws -> ContextualAIResult {
-        throw AIContextualServiceError.unavailable(currentAvailability().message)
-    }
-
-    func generateNotebookComment(
-        from context: KmpBridge.NotebookAICommentContext,
-        audience: AIReportAudience,
-        tone: AIReportTone
-    ) async throws -> NotebookAICommentDraft {
-        throw AIContextualServiceError.unavailable(currentAvailability().message)
-    }
-#else
-    func currentAvailability() -> AIContextualAvailabilityState {
-        guard AIContextualFeatureFlags.isEnabled else {
-            let state: AIContextualAvailabilityState = .disabled
-            AIContextualTelemetry.recordAvailability(state)
-            return state
-        }
+    func prewarm() {
+        let resolved = AppleFoundationModelSupport.resolveAvailability(isEnabled: AIContextualFeatureFlags.isEnabled)
+        scheduleAvailabilityRetryIfNeeded(for: resolved)
 
         #if canImport(FoundationModels)
-        if #available(iOS 26.0, *) {
-            let model = SystemLanguageModel.default
-            let state: AIContextualAvailabilityState
-            switch model.availability {
-            case .available:
-                state = .available
-            case .unavailable(let reason):
-                state = .unavailable("Apple Intelligence no está disponible: \(reason)")
-            @unknown default:
-                state = .unavailable("No se pudo determinar la disponibilidad del modelo local.")
-            }
-            AIContextualTelemetry.recordAvailability(state)
-            return state
-        } else {
-            let state: AIContextualAvailabilityState = .unavailable("La IA contextual requiere una versión del sistema compatible con Apple Foundation Models.")
-            AIContextualTelemetry.recordAvailability(state)
-            return state
+        if #available(iOS 26.0, macOS 26.0, *), resolved == .available || resolved == .modelLoading {
+            _ = contextualSession
+            _ = notebookSession
         }
-        #else
-        let state: AIContextualAvailabilityState = .unavailable("Este build no incluye el framework Foundation Models.")
-        AIContextualTelemetry.recordAvailability(state)
-        return state
         #endif
     }
 
@@ -164,7 +250,7 @@ final class AppleFoundationContextualAIService {
         }
 
         #if canImport(FoundationModels)
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.0, macOS 26.0, *) {
             let result = try await generateLocalResult(
                 from: context,
                 action: action,
@@ -195,7 +281,7 @@ final class AppleFoundationContextualAIService {
         }
 
         #if canImport(FoundationModels)
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.0, macOS 26.0, *) {
             let result = try await generateLocalNotebookComment(from: context, audience: audience, tone: tone)
             AIContextualTelemetry.recordNotebookGeneration()
             return result
@@ -205,7 +291,7 @@ final class AppleFoundationContextualAIService {
     }
 
     #if canImport(FoundationModels)
-    @available(iOS 26.0, *)
+    @available(iOS 26.0, macOS 26.0, *)
     private func generateLocalResult(
         from context: KmpBridge.ScreenAIContext,
         action: KmpBridge.ContextualAIAction,
@@ -213,20 +299,11 @@ final class AppleFoundationContextualAIService {
         tone: AIReportTone,
         customPrompt: String?
     ) async throws -> ContextualAIResult {
-        let session = LanguageModelSession(
-            instructions: """
-            Actúas como asistente contextual docente local-first.
-            Usa exclusivamente los hechos proporcionados.
-            No inventes causas, diagnósticos, sanciones ni comparaciones que no estén en el contexto.
-            Si faltan datos, dilo con prudencia.
-            Redacta en español de España.
-            """
-        )
-        let response = try await session.respond(
+        let response = try await contextualSession.respond(
             to: contextualPrompt(from: context, action: action, audience: audience, tone: tone, customPrompt: customPrompt),
             generating: GeneratedContextualAIResult.self,
             includeSchemaInPrompt: true,
-            options: GenerationOptions(temperature: 0.25)
+            options: AppleFoundationModelSupport.generationOptions(temperature: 0.25)
         )
         let content = response.content
         let bulletBlock = content.bullets.map { "• \($0)" }.joined(separator: "\n")
@@ -253,27 +330,17 @@ final class AppleFoundationContextualAIService {
         )
     }
 
-    @available(iOS 26.0, *)
+    @available(iOS 26.0, macOS 26.0, *)
     private func generateLocalNotebookComment(
         from context: KmpBridge.NotebookAICommentContext,
         audience: AIReportAudience,
         tone: AIReportTone
     ) async throws -> NotebookAICommentDraft {
-        let session = LanguageModelSession(
-            instructions: """
-            Actúas como asistente de comentarios docentes para el cuaderno.
-            Usa exclusivamente los hechos del contexto.
-            No inventes diagnósticos, causas ni notas oficiales.
-            Si faltan datos, reconoce la limitación con prudencia.
-            El comentario debe ser breve, útil y editable por el profesorado.
-            Redacta en español de España.
-            """
-        )
-        let response = try await session.respond(
+        let response = try await notebookSession.respond(
             to: notebookPrompt(from: context, audience: audience, tone: tone),
             generating: GeneratedNotebookCommentDraft.self,
             includeSchemaInPrompt: true,
-            options: GenerationOptions(temperature: 0.3)
+            options: AppleFoundationModelSupport.generationOptions(temperature: 0.3)
         )
         let content = response.content
         return NotebookAICommentDraft(
@@ -285,7 +352,7 @@ final class AppleFoundationContextualAIService {
         )
     }
 
-    @available(iOS 26.0, *)
+    @available(iOS 26.0, macOS 26.0, *)
     private func contextualPrompt(
         from context: KmpBridge.ScreenAIContext,
         action: KmpBridge.ContextualAIAction,
@@ -334,7 +401,7 @@ final class AppleFoundationContextualAIService {
         """
     }
 
-    @available(iOS 26.0, *)
+    @available(iOS 26.0, macOS 26.0, *)
     private func notebookPrompt(
         from context: KmpBridge.NotebookAICommentContext,
         audience: AIReportAudience,
@@ -383,7 +450,44 @@ final class AppleFoundationContextualAIService {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    @available(iOS 26.0, *)
+    private func mapAvailability(_ availability: AppleFoundationModelAvailability) -> AIContextualAvailabilityState {
+        switch availability {
+        case .disabled:
+            return .disabled
+        case .available:
+            return .available
+        case .frameworkUnavailable,
+                .unsupportedOS,
+                .unsupportedDevice,
+                .notEnabled,
+                .modelLoading,
+                .unavailable(_):
+            return .unavailable(availabilityMessages.message(for: availability))
+        }
+    }
+
+    private func scheduleAvailabilityRetryIfNeeded(for availability: AppleFoundationModelAvailability) {
+        guard availability == .modelLoading else {
+            availabilityRetryTask?.cancel()
+            availabilityRetryTask = nil
+            return
+        }
+
+        guard availabilityRetryTask == nil else { return }
+        availabilityRetryTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 15_000_000_000)
+            guard let self, !Task.isCancelled else { return }
+            self.retryAvailabilityAfterDelay()
+        }
+    }
+
+    private func retryAvailabilityAfterDelay() {
+        availabilityRetryTask = nil
+        prewarm()
+        _ = currentAvailability()
+    }
+
+    @available(iOS 26.0, macOS 26.0, *)
     @Generable
     struct GeneratedContextualAIResult {
         let title: String
@@ -393,7 +497,7 @@ final class AppleFoundationContextualAIService {
         let recommendedActions: [String]
     }
 
-    @available(iOS 26.0, *)
+    @available(iOS 26.0, macOS 26.0, *)
     @Generable
     struct GeneratedNotebookCommentDraft {
         let summary: String
@@ -403,5 +507,4 @@ final class AppleFoundationContextualAIService {
         let commentText: String
     }
     #endif
-#endif
 }

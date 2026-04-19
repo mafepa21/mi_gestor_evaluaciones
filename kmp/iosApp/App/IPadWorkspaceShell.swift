@@ -8323,6 +8323,7 @@ private struct ContextualAIAssistantSheet: View {
                 }
             }
             .onAppear {
+                aiService.prewarm()
                 selectedAction = context.suggestedActions.first
             }
         }

@@ -153,52 +153,51 @@ private enum AIReportTelemetry {
     }
 }
 
+@MainActor
 final class AppleFoundationReportService {
-#if os(macOS)
+    private let availabilityMessages = AppleFoundationModelMessages(
+        disabled: "La redacción IA está desactivada por feature flag local.",
+        available: "Apple Foundation Models disponible en este dispositivo.",
+        frameworkUnavailable: "Este build no incluye el framework Foundation Models.",
+        unsupportedOS: "La redacción IA requiere una versión del sistema compatible con Apple Foundation Models.",
+        unsupportedDevice: "Apple Intelligence no está disponible en este dispositivo compatible con la app.",
+        notEnabled: "Apple Intelligence está desactivado en el dispositivo. Actívalo en Ajustes para redactar con IA.",
+        modelLoading: "Apple Intelligence se está preparando en este dispositivo. Vuelve a intentarlo en unos segundos."
+    )
+    private var availabilityRetryTask: Task<Void, Never>?
+
+    #if canImport(FoundationModels)
+    @available(iOS 26.0, macOS 26.0, *)
+    private lazy var reportSession: LanguageModelSession = {
+        LanguageModelSession(
+            instructions: """
+            Actúas como asistente de redacción docente dentro de una app escolar local-first.
+            Usa exclusivamente los hechos proporcionados.
+            No inventes notas, diagnósticos, sanciones ni causas.
+            Si faltan datos, dilo con prudencia.
+            No emitas juicios clínicos ni etiquetas sensibles.
+            Redacta en español de España.
+            """
+        )
+    }()
+    #endif
+
     func currentAvailability() -> AIReportAvailabilityState {
-        let state: AIReportAvailabilityState = .unavailable("La redacción IA local todavía no está disponible en esta build macOS.")
+        let resolved = AppleFoundationModelSupport.resolveAvailability(isEnabled: AIReportFeatureFlags.isEnabled)
+        let state = mapAvailability(resolved)
         AIReportTelemetry.recordAvailability(state)
+        scheduleAvailabilityRetryIfNeeded(for: resolved)
         return state
     }
 
-    func generateDraft(
-        from context: KmpBridge.ReportGenerationContext,
-        audience: AIReportAudience,
-        tone: AIReportTone
-    ) async throws -> AIReportDraft {
-        throw AIReportServiceError.unavailable(currentAvailability().message)
-    }
-#else
-    func currentAvailability() -> AIReportAvailabilityState {
-        guard AIReportFeatureFlags.isEnabled else {
-            let state: AIReportAvailabilityState = .disabled
-            AIReportTelemetry.recordAvailability(state)
-            return state
-        }
+    func prewarm() {
+        let resolved = AppleFoundationModelSupport.resolveAvailability(isEnabled: AIReportFeatureFlags.isEnabled)
+        scheduleAvailabilityRetryIfNeeded(for: resolved)
 
         #if canImport(FoundationModels)
-        if #available(iOS 26.0, *) {
-            let model = SystemLanguageModel.default
-            let state: AIReportAvailabilityState
-            switch model.availability {
-            case .available:
-                state = .available
-            case .unavailable(let reason):
-                state = .unavailable("Apple Intelligence no está disponible: \(reason)")
-            @unknown default:
-                state = .unavailable("No se pudo determinar la disponibilidad del modelo local.")
-            }
-            AIReportTelemetry.recordAvailability(state)
-            return state
-        } else {
-            let state: AIReportAvailabilityState = .unavailable("La redacción IA requiere una versión del sistema compatible con Apple Foundation Models.")
-            AIReportTelemetry.recordAvailability(state)
-            return state
+        if #available(iOS 26.0, macOS 26.0, *), resolved == .available || resolved == .modelLoading {
+            _ = reportSession
         }
-        #else
-        let state: AIReportAvailabilityState = .unavailable("Este build no incluye el framework Foundation Models.")
-        AIReportTelemetry.recordAvailability(state)
-        return state
         #endif
     }
 
@@ -220,7 +219,7 @@ final class AppleFoundationReportService {
 
         do {
             #if canImport(FoundationModels)
-            if #available(iOS 26.0, *) {
+            if #available(iOS 26.0, macOS 26.0, *) {
                 let draft = try await generateLocalDraft(from: context, audience: audience, tone: tone)
                 AIReportTelemetry.recordGeneration(kind: context.kind)
                 return draft
@@ -234,28 +233,17 @@ final class AppleFoundationReportService {
     }
 
     #if canImport(FoundationModels)
-    @available(iOS 26.0, *)
+    @available(iOS 26.0, macOS 26.0, *)
     private func generateLocalDraft(
         from context: KmpBridge.ReportGenerationContext,
         audience: AIReportAudience,
         tone: AIReportTone
     ) async throws -> AIReportDraft {
-        let instructions = """
-        Actúas como asistente de redacción docente dentro de una app escolar local-first.
-        Usa exclusivamente los hechos proporcionados.
-        No inventes notas, diagnósticos, sanciones ni causas.
-        Si faltan datos, dilo con prudencia.
-        No emitas juicios clínicos ni etiquetas sensibles.
-        Redacta en español de España.
-        """
-
-        let session = LanguageModelSession(instructions: instructions)
-        let options = GenerationOptions(temperature: 0.3)
-        let response = try await session.respond(
+        let response = try await reportSession.respond(
             to: reportPrompt(from: context, audience: audience, tone: tone),
             generating: GeneratedAIReportDraft.self,
             includeSchemaInPrompt: true,
-            options: options
+            options: AppleFoundationModelSupport.generationOptions(temperature: 0.3)
         )
         let content = response.content
         return AIReportDraft(
@@ -269,7 +257,7 @@ final class AppleFoundationReportService {
         )
     }
 
-    @available(iOS 26.0, *)
+    @available(iOS 26.0, macOS 26.0, *)
     private func reportPrompt(
         from context: KmpBridge.ReportGenerationContext,
         audience: AIReportAudience,
@@ -339,7 +327,44 @@ final class AppleFoundationReportService {
         """
     }
 
-    @available(iOS 26.0, *)
+    private func mapAvailability(_ availability: AppleFoundationModelAvailability) -> AIReportAvailabilityState {
+        switch availability {
+        case .disabled:
+            return .disabled
+        case .available:
+            return .available
+        case .frameworkUnavailable,
+                .unsupportedOS,
+                .unsupportedDevice,
+                .notEnabled,
+                .modelLoading,
+                .unavailable(_):
+            return .unavailable(availabilityMessages.message(for: availability))
+        }
+    }
+
+    private func scheduleAvailabilityRetryIfNeeded(for availability: AppleFoundationModelAvailability) {
+        guard availability == .modelLoading else {
+            availabilityRetryTask?.cancel()
+            availabilityRetryTask = nil
+            return
+        }
+
+        guard availabilityRetryTask == nil else { return }
+        availabilityRetryTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 15_000_000_000)
+            guard let self, !Task.isCancelled else { return }
+            self.retryAvailabilityAfterDelay()
+        }
+    }
+
+    private func retryAvailabilityAfterDelay() {
+        availabilityRetryTask = nil
+        prewarm()
+        _ = currentAvailability()
+    }
+
+    @available(iOS 26.0, macOS 26.0, *)
     @Generable
     struct GeneratedAIReportDraft {
         let title: String
@@ -350,14 +375,5 @@ final class AppleFoundationReportService {
         let familyFacingVersion: String
         let teacherNotesVersion: String
     }
-    #else
-    private func generateLocalDraft(
-        from context: KmpBridge.ReportGenerationContext,
-        audience: AIReportAudience,
-        tone: AIReportTone
-    ) async throws -> AIReportDraft {
-        throw AIReportServiceError.unavailable("Este build no incluye Apple Foundation Models.")
-    }
     #endif
-#endif
 }

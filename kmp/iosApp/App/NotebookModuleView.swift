@@ -2543,6 +2543,7 @@ private struct NotebookAICommentSheet: View {
                 }
             }
             .onAppear {
+                aiService.prewarm()
                 if let targetColumnId {
                     selectedExistingColumnId = targetColumnId
                 } else if let first = existingAIColumns.first {

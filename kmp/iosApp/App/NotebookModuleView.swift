@@ -1,6 +1,9 @@
 import SwiftUI
 import PhotosUI
 import MiGestorKit
+#if canImport(UIKit)
+import UIKit
+#endif
 
 private struct NotebookInspectorSelection: Identifiable, Hashable {
     let studentId: Int64
@@ -248,6 +251,10 @@ struct NotebookModuleView: View {
     @State private var highlightedCategoryId: String? = nil
     @State private var notebookAISheetRequest: NotebookAISheetRequest? = nil
     @State private var notebookSummarySheetRequest: NotebookSummarySheetRequest? = nil
+    @AppStorage("notebook.fixedZoneWidth") private var fixedZoneWidthStored = 460.0
+    @State private var isDraggingFixedZoneDivider = false
+    @State private var fixedZoneDragStartWidth: CGFloat = 0
+    @State private var columnWidths: [String: CGFloat] = [:]
 
     var body: some View {
         notebookLifecycleCleanup(
@@ -519,7 +526,7 @@ struct NotebookModuleView: View {
     private func spreadsheetContent(data: NotebookUiStateData) -> some View {
         let rows = filteredRows(data: data)
         let segments = displaySegments(data: data)
-        let fixedSegments = segments.filter(isFixedSegment)
+        let fixedSegments = visibleFixedSegments(in: segments)
         let scrollableSegments = segments.filter { !isFixedSegment($0) }
         let laneItems = headerLaneItems(data: data, segments: scrollableSegments)
         let hasFolders = laneItems.contains {
@@ -537,10 +544,22 @@ struct NotebookModuleView: View {
             seatingPlanContent(data: data, rows: rows)
         } else {
             NotebookDataGrid(
-                fixedColumnWidth: gridSectionWidth(fixedSegments)
+                fixedColumnWidth: fixedZoneWidth
             ) {
                 Color.clear
                     .frame(height: hasFolders ? 64 : 0)
+            } dividerHandle: {
+                NotebookDividerHandle(isDragging: isDraggingFixedZoneDivider) { translationWidth in
+                    if !isDraggingFixedZoneDivider {
+                        isDraggingFixedZoneDivider = true
+                        fixedZoneDragStartWidth = fixedZoneWidth
+                    }
+                    let newWidth = fixedZoneDragStartWidth + translationWidth
+                    fixedZoneWidthStored = Double(min(maxFixedZoneWidth, max(minFixedZoneWidth, newWidth)))
+                } onDragEnded: {
+                    isDraggingFixedZoneDivider = false
+                    snapFixedZoneWidth()
+                }
             } scrollTopAccessory: {
                 if hasFolders {
                     HStack(alignment: .top, spacing: 12) {
@@ -559,7 +578,7 @@ struct NotebookModuleView: View {
                     .padding(.bottom, 8)
                 }
             } fixedHeader: {
-                headerRow(segments: fixedSegments, data: data)
+                fixedHeaderRow(segments: fixedSegments, data: data)
             } scrollHeader: {
                 headerRow(segments: scrollableSegments, data: data)
             } fixedRows: {
@@ -605,6 +624,25 @@ struct NotebookModuleView: View {
         )
     }
 
+    @ViewBuilder
+    private func fixedHeaderRow(segments: [NotebookDisplaySegment], data: NotebookUiStateData) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            ForEach(segments, id: \.id) { segment in
+                headerChip(for: segment, data: data)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(
+            NotebookStyle.surfaceSoft.opacity(0.9)
+                .overlay(alignment: .bottom) {
+                    Rectangle()
+                        .fill(NotebookStyle.softBorder)
+                        .frame(height: 1)
+                }
+        )
+    }
+
     private func isFixedSegment(_ segment: NotebookDisplaySegment) -> Bool {
         if case .fixed = segment {
             return true
@@ -612,23 +650,84 @@ struct NotebookModuleView: View {
         return false
     }
 
-    private func gridSectionWidth(_ segments: [NotebookDisplaySegment]) -> CGFloat {
-        let contentWidth = segments.reduce(CGFloat.zero) { partial, segment in
-            partial + segmentWidth(segment)
+    private func visibleFixedSegments(in segments: [NotebookDisplaySegment]) -> [NotebookDisplaySegment] {
+        let allowedColumns = visibleFixedColumns
+        return segments.filter { segment in
+            guard case .fixed(let fixed) = segment else { return false }
+            return allowedColumns.contains(fixed)
         }
-        let spacing = CGFloat(max(segments.count - 1, 0)) * 12
-        return contentWidth + spacing + 32
+    }
+
+    private var fixedZoneWidth: CGFloat {
+        min(maxFixedZoneWidth, max(minFixedZoneWidth, CGFloat(fixedZoneWidthStored)))
+    }
+
+    private var minFixedZoneWidth: CGFloat { 220 }
+    private var maxFixedZoneWidth: CGFloat { 700 }
+
+    private var visibleFixedColumns: [NotebookFixedColumn] {
+        var columns: [NotebookFixedColumn] = [.photo, .name]
+        if fixedZoneWidth > 290 { columns.append(.followUp) }
+        if fixedZoneWidth > 400 { columns.append(.attendance) }
+        if fixedZoneWidth > 490 { columns.append(.average) }
+        if fixedZoneWidth > 610 { columns.append(.group) }
+        return columns
+    }
+
+    private func snapFixedZoneWidth() {
+        let snapPoints: [CGFloat] = [220, 360, 460, 580]
+        let current = fixedZoneWidth
+        guard let nearest = snapPoints.min(by: { abs($0 - current) < abs($1 - current) }) else { return }
+        if abs(nearest - current) < 30 {
+            withAnimation(.spring(duration: 0.2, bounce: 0.15)) {
+                fixedZoneWidthStored = Double(nearest)
+            }
+        }
     }
 
     private func segmentWidth(_ segment: NotebookDisplaySegment) -> CGFloat {
         switch segment {
         case .fixed(let fixed):
-            return fixed.width
+            return resolvedFixedWidth(for: fixed)
         case .column(let column):
-            return CGFloat(max(column.widthDp, 120))
+            return resolvedColumnWidth(for: column)
         case .collapsedCategory:
             return 150
         }
+    }
+
+    private func resolvedFixedWidth(for fixed: NotebookFixedColumn) -> CGFloat {
+        let visibleColumns = visibleFixedColumns
+        let trailingColumns = visibleColumns.filter { $0 != .photo && $0 != .name }
+        let trailingWidth = trailingColumns.reduce(CGFloat.zero) { partial, column in
+            partial + defaultFixedWidth(for: column)
+        }
+        let spacing = CGFloat(max(visibleColumns.count - 1, 0)) * 12
+        let horizontalPadding: CGFloat = 32
+
+        switch fixed {
+        case .photo:
+            return 52
+        case .name:
+            return max(156, fixedZoneWidth - trailingWidth - spacing - horizontalPadding - 52)
+        default:
+            return defaultFixedWidth(for: fixed)
+        }
+    }
+
+    private func defaultFixedWidth(for fixed: NotebookFixedColumn) -> CGFloat {
+        switch fixed {
+        case .photo: return 52
+        case .name: return 180
+        case .group: return 90
+        case .followUp: return 100
+        case .attendance: return 90
+        case .average: return 90
+        }
+    }
+
+    private func resolvedColumnWidth(for column: NotebookColumnDefinition) -> CGFloat {
+        columnWidths[column.id] ?? CGFloat(max(column.widthDp, 140))
     }
 
     private func notebookLoadedContent(data: NotebookUiStateData) -> some View {
@@ -1690,20 +1789,28 @@ struct NotebookModuleView: View {
                 headerChip(
                     title: fixed.title,
                     subtitle: fixed.subtitle,
-                    width: fixed.width,
+                    width: resolvedFixedWidth(for: fixed),
                     tint: tint(for: fixed)
                 )
             )
         case .column(let column):
             return AnyView(
-                headerChip(
-                    title: column.title,
-                    subtitle: categoryTitle(for: column, data: data),
-                    width: CGFloat(max(column.widthDp, 120)),
-                    tint: tint(for: column),
-                    folderStyle: column.categoryId != nil,
-                    isHighlighted: highlightedCategoryId == column.categoryId
-                )
+                NotebookResizableHeader(
+                    width: resolvedColumnWidth(for: column),
+                    minWidth: 80,
+                    maxWidth: 400
+                ) { newWidth in
+                    columnWidths[column.id] = newWidth
+                } content: {
+                    headerChip(
+                        title: column.title,
+                        subtitle: categoryTitle(for: column, data: data),
+                        width: resolvedColumnWidth(for: column),
+                        tint: tint(for: column),
+                        folderStyle: column.categoryId != nil,
+                        isHighlighted: highlightedCategoryId == column.categoryId
+                    )
+                }
                 .contextMenu {
                     columnContextMenu(column, data: data)
                 }
@@ -1748,6 +1855,7 @@ struct NotebookModuleView: View {
                     bridge: bridge,
                     item: item,
                     column: column,
+                    width: resolvedColumnWidth(for: column),
                     tint: tint(for: column),
                     categoryTint: column.categoryId.flatMap { id in
                         data.sheet.columnCategories.first(where: { $0.id == id }).map { tint(for: $0) }
@@ -1757,7 +1865,7 @@ struct NotebookModuleView: View {
                         inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
                     }
                 )
-                .frame(width: max(column.widthDp, 120))
+                .frame(width: resolvedColumnWidth(for: column))
             )
         case .collapsedCategory(let category, let columns):
             return AnyView(
@@ -2188,7 +2296,7 @@ struct NotebookModuleView: View {
             switch fixed {
             case .photo:
                 studentAvatar(for: item.student)
-                    .frame(width: fixed.width, alignment: .center)
+                    .frame(width: resolvedFixedWidth(for: fixed), alignment: .center)
             case .name:
                 Button {
                     openInspectorForStudent(item.student.id, data: data)
@@ -2204,7 +2312,7 @@ struct NotebookModuleView: View {
                                 .foregroundStyle(.orange)
                         }
                     }
-                    .frame(width: fixed.width, alignment: .leading)
+                    .frame(width: resolvedFixedWidth(for: fixed), alignment: .leading)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -2213,20 +2321,20 @@ struct NotebookModuleView: View {
                     .font(.system(size: 13, weight: .medium, design: .rounded))
                     .foregroundStyle(.primary)
                     .lineLimit(2)
-                    .frame(width: fixed.width, alignment: .leading)
+                    .frame(width: resolvedFixedWidth(for: fixed), alignment: .leading)
             case .followUp:
                 followUpBadge(for: item.student)
-                    .frame(width: fixed.width, alignment: .leading)
+                    .frame(width: resolvedFixedWidth(for: fixed), alignment: .leading)
             case .attendance:
                 Text(attendanceSummary(for: item))
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(.primary)
-                    .frame(width: fixed.width, alignment: .leading)
+                    .frame(width: resolvedFixedWidth(for: fixed), alignment: .leading)
             case .average:
                 Text(averageText(for: item))
                     .font(.system(size: 14, weight: .bold, design: .rounded))
                     .foregroundStyle(.primary)
-                    .frame(width: fixed.width, alignment: .leading)
+                    .frame(width: resolvedFixedWidth(for: fixed), alignment: .leading)
             }
         }
     }
@@ -2246,6 +2354,7 @@ private struct NotebookEditableTableCell: View {
     @ObservedObject var bridge: KmpBridge
     let item: NotebookTableRow
     let column: NotebookColumnDefinition
+    let width: CGFloat
     let tint: Color
     let categoryTint: Color?
     let isSelected: Bool
@@ -2254,6 +2363,7 @@ private struct NotebookEditableTableCell: View {
     @State private var numericDraft = ""
     @State private var textDraft = ""
     @State private var checkDraft = false
+    @State private var showTextPopover = false
 
     var body: some View {
         let persistedCell = item.row.persistedCells.first(where: { $0.columnId == column.id })
@@ -2352,10 +2462,34 @@ private struct NotebookEditableTableCell: View {
             }
             .buttonStyle(.plain)
         default:
-            TextField("", text: $textDraft)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
-                .foregroundStyle(.primary)
-                .onSubmit(saveText)
+            HStack(spacing: 6) {
+                TextField("", text: $textDraft)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .foregroundStyle(.primary)
+                    .onSubmit(saveText)
+
+                if shouldOfferTextPopover {
+                    Button {
+                        showTextPopover = true
+                    } label: {
+                        Image(systemName: "text.alignleft")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .popover(isPresented: $showTextPopover, arrowEdge: .bottom) {
+                        ScrollView {
+                            Text(textDraft)
+                                .font(.callout)
+                                .foregroundStyle(.primary)
+                                .frame(maxWidth: 320, alignment: .leading)
+                                .padding(14)
+                                .textSelection(.enabled)
+                        }
+                        .frame(maxWidth: 340, maxHeight: 260)
+                    }
+                }
+            }
         }
     }
 
@@ -2399,6 +2533,18 @@ private struct NotebookEditableTableCell: View {
             !((cell.annotation?.icon ?? cell.iconValue ?? "").isEmpty) ||
             !(cell.annotation?.attachmentUris.isEmpty ?? true)
     }
+
+    private var shouldOfferTextPopover: Bool {
+        !textDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && estimatedTextWidth > max(80, width - 56)
+    }
+
+    private var estimatedTextWidth: CGFloat {
+        #if canImport(UIKit)
+        return (textDraft as NSString).size(withAttributes: [.font: UIFont.systemFont(ofSize: 13)]).width
+        #else
+        return CGFloat(textDraft.count) * 7
+        #endif
+    }
 }
 
 private struct NotebookDynamicCellsRow: View {
@@ -2419,6 +2565,7 @@ private struct NotebookDynamicCellsRow: View {
                         bridge: bridge,
                         item: item,
                         column: column,
+                        width: max(column.widthDp, 120),
                         tint: column.colorHex.map { Color(hex: $0) } ?? NotebookStyle.primaryTint,
                         categoryTint: nil,
                         isSelected: inspectorSelection == NotebookInspectorSelection(studentId: item.student.id, columnId: column.id),

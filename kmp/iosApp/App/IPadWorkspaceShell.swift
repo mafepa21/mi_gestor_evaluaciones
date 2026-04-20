@@ -680,13 +680,15 @@ struct AppWorkspaceShell: View {
     private var workspaceToolbar: some View {
         VStack(spacing: 14) {
             HStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(activeModule.subtitle.uppercased())
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                        .tracking(0.8)
-                        .foregroundStyle(.secondary)
-                    Text(activeModule.title)
-                        .font(.system(size: 30, weight: .black, design: .rounded))
+                if activeModule != .notebook {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(activeModule.subtitle.uppercased())
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .tracking(0.8)
+                            .foregroundStyle(.secondary)
+                        Text(activeModule.title)
+                            .font(.system(size: 30, weight: .black, design: .rounded))
+                    }
                 }
 
                 Spacer()
@@ -699,7 +701,7 @@ struct AppWorkspaceShell: View {
                     diaryToolbarActions
                 } else if activeModule == .attendance {
                     focusToggleButton
-                } else {
+                } else if activeModule != .notebook {
                     focusToggleButton
 
                     if shouldShowGlobalContextualAIButton {
@@ -746,8 +748,6 @@ struct AppWorkspaceShell: View {
                 attendanceGlobalToolbarRow
             } else if activeModule == .planner || activeModule == .diary {
                 moduleContextToolbarRow
-            } else if activeModule == .notebook {
-                notebookGlobalToolbarRow
             } else {
                 HStack(spacing: 12) {
                     Menu {
@@ -817,7 +817,7 @@ struct AppWorkspaceShell: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .opacity(0)
                 .overlay(
-                    Text(statusLineText)
+                    Text(activeModule == .notebook ? "" : statusLineText)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1030,142 +1030,6 @@ struct AppWorkspaceShell: View {
             }
             .buttonStyle(.bordered)
             .accessibilityLabel("Entrar en modo foco")
-        }
-    }
-
-    private var notebookToolbarActions: some View {
-        HStack(spacing: 12) {
-            Picker(
-                "Vista del cuaderno",
-                selection: Binding(
-                    get: { layoutState.notebookSurfaceMode },
-                    set: { layoutState.setNotebookSurfaceMode($0) }
-                )
-            ) {
-                Label("Rejilla", systemImage: "tablecells").tag("grid")
-                Label("Plano", systemImage: "square.grid.3x3.square").tag("seatingPlan")
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 220)
-
-            if !layoutState.notebookAvailableGroups.isEmpty {
-                Menu {
-                    Button("Todo el grupo") {
-                        layoutState.setNotebookGroupFilter(nil)
-                    }
-
-                    ForEach(layoutState.notebookAvailableGroups) { group in
-                        Button {
-                            layoutState.setNotebookGroupFilter(group.id)
-                        } label: {
-                            HStack {
-                                Text(group.name)
-                                Spacer()
-                                Text("\(group.studentCount)")
-                                    .foregroundStyle(.secondary)
-                                if layoutState.notebookSelectedGroupId == group.id {
-                                    Image(systemName: "checkmark")
-                                }
-                            }
-                        }
-                    }
-                } label: {
-                    Label(notebookGroupFilterLabel, systemImage: "line.3.horizontal.decrease.circle")
-                }
-                .buttonStyle(.bordered)
-            }
-
-            if layoutState.notebookOrganizationMenuAvailable {
-                Button {
-                    layoutState.openNotebookOrganizationMenu()
-                } label: {
-                    Label("Columnas", systemImage: "slider.horizontal.3")
-                }
-                .buttonStyle(.bordered)
-            }
-
-            if layoutState.isNotebookInspectorPresented {
-                Button {
-                    layoutState.toggleNotebookInspector()
-                } label: {
-                    Label("Inspector", systemImage: "sidebar.right")
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(!layoutState.notebookInspectorAvailable)
-            } else {
-                Button {
-                    layoutState.toggleNotebookInspector()
-                } label: {
-                    Label("Inspector", systemImage: "sidebar.right")
-                }
-                .buttonStyle(.bordered)
-                .disabled(!layoutState.notebookInspectorAvailable)
-            }
-
-            focusToggleButton
-
-            Button {
-                layoutState.showNotebookAddColumn()
-            } label: {
-                Label("Nueva columna", systemImage: "plus")
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(!layoutState.notebookAddColumnAvailable)
-        }
-    }
-
-    private var notebookGlobalToolbarRow: some View {
-        HStack(spacing: 12) {
-            Menu {
-                Button("Sin clase activa") {
-                    updateGlobalClassContext(nil)
-                }
-                ForEach(bridge.classes, id: \.id) { schoolClass in
-                    Button {
-                        updateGlobalClassContext(schoolClass.id)
-                    } label: {
-                        HStack {
-                            Text(schoolClass.name)
-                            if selectedClassId == schoolClass.id {
-                                Image(systemName: "checkmark")
-                            }
-                        }
-                    }
-                }
-            } label: {
-                Label(activeClassLabel, systemImage: "rectangle.3.group")
-                    .frame(minWidth: 220, alignment: .leading)
-            }
-            .buttonStyle(.bordered)
-
-            HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                TextField(
-                    "Buscar alumno…",
-                    text: Binding(
-                        get: { layoutState.notebookSearchText },
-                        set: { layoutState.setNotebookSearchText($0) }
-                    )
-                )
-                .textFieldStyle(.plain)
-                if !layoutState.notebookSearchText.isEmpty {
-                    Button {
-                        layoutState.setNotebookSearchText("")
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-
-            Spacer(minLength: 0)
-
-            notebookToolbarActions
         }
     }
 

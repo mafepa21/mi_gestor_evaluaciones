@@ -54,8 +54,10 @@ final class WorkspaceLayoutState: ObservableObject {
     private var attendanceClearSelectionAction: (() -> Void)?
 
     private func publishDeferred(_ mutation: @escaping @MainActor () -> Void) {
-        Task { @MainActor in
-            mutation()
+        DispatchQueue.main.async {
+            Task { @MainActor in
+                mutation()
+            }
         }
     }
 
@@ -148,18 +150,24 @@ final class WorkspaceLayoutState: ObservableObject {
     }
 
     func setNotebookSearchText(_ value: String) {
-        notebookSearchText = value
-        notebookSearchAction?(value)
+        publishDeferred {
+            self.notebookSearchText = value
+            self.notebookSearchAction?(value)
+            }
     }
 
     func setNotebookSurfaceMode(_ value: String) {
-        notebookSurfaceMode = value
-        notebookSurfaceModeAction?(value)
+        publishDeferred {
+            self.notebookSurfaceMode = value
+            self.notebookSurfaceModeAction?(value)
+        }
     }
 
     func setNotebookGroupFilter(_ value: Int64?) {
-        notebookSelectedGroupId = value
-        notebookGroupFilterAction?(value)
+        publishDeferred {
+            self.notebookSelectedGroupId = value
+            self.notebookGroupFilterAction?(value)
+        }
     }
 
     func openNotebookOrganizationMenu() {

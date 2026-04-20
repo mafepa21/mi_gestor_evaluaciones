@@ -111,7 +111,7 @@ private enum NotebookViewPreset: String, CaseIterable, Identifiable {
     }
 }
 
-private enum NotebookSurfaceMode: String, CaseIterable, Identifiable {
+enum NotebookSurfaceMode: String, CaseIterable, Identifiable {
     case grid
     case seatingPlan
 
@@ -146,7 +146,7 @@ private struct NotebookAddColumnContext: Identifiable {
     }
 }
 
-private enum NotebookToastStyle: Equatable {
+enum NotebookToastStyle: Equatable {
     case success
     case warning
 
@@ -208,6 +208,12 @@ private struct NotebookAISheetRequest: Identifiable {
     }
 }
 
+private struct NotebookSummarySheetRequest: Identifiable {
+    let targetColumnId: String?
+
+    var id: String { targetColumnId ?? "summary" }
+}
+
 struct NotebookModuleView: View {
     @EnvironmentObject private var layoutState: WorkspaceLayoutState
     @ObservedObject var bridge: KmpBridge
@@ -241,6 +247,7 @@ struct NotebookModuleView: View {
     @State private var toast: NotebookToast? = nil
     @State private var highlightedCategoryId: String? = nil
     @State private var notebookAISheetRequest: NotebookAISheetRequest? = nil
+    @State private var notebookSummarySheetRequest: NotebookSummarySheetRequest? = nil
 
     var body: some View {
         notebookLifecycleCleanup(
@@ -420,7 +427,35 @@ struct NotebookModuleView: View {
     private func centerPanel(data: NotebookUiStateData) -> some View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 0) {
-                notebookContextBar(data: data)
+                NotebookTopBar(
+                    bridge: bridge,
+                    searchText: $searchText,
+                    surfaceMode: $surfaceMode,
+                    isInspectorPresented: isInspectorPresented,
+                    onSelectClass: selectNotebookClass,
+                    onOpenOrganizationMenu: {
+                        isOrganizationMenuPresented = true
+                    },
+                    onToggleInspector: {
+                        if inspectorSelection == nil {
+                            openInspectorForSelection(data)
+                        }
+                        if inspectorSelection != nil {
+                            isInspectorPresented.toggle()
+                        }
+                    },
+                    onOpenAdvancedMenu: {
+                        isOrganizationMenuPresented = true
+                    },
+                    onOpenAddColumn: {
+                        addColumnContext = NotebookAddColumnContext(categoryId: nil, startsCreatingCategory: false)
+                    },
+                    onGenerateSummaryFallback: {
+                        notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: nil)
+                    },
+                    exportText: exportText(data: data)
+                )
+                Divider()
                 spreadsheetContent(data: data)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -480,46 +515,17 @@ struct NotebookModuleView: View {
         }
     }
 
-    private func notebookContextBar(data: NotebookUiStateData) -> some View {
-        let rowCount = filteredRows(data: data).count
-        let visibleColumnCount = displaySegments(data: data).count
-        let categoryCount = visibleCategories(data: data).count
-
-        return HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(headerContextLine(in: data))
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundStyle(.primary)
-                Text("\(rowCount) alumnos visibles · \(visibleColumnCount) columnas · \(categoryCount) categorías")
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer(minLength: 0)
-
-            Button {
-                isOrganizationMenuPresented = true
-            } label: {
-                Label("Columnas", systemImage: "slider.horizontal.3")
-            }
-            .buttonStyle(.bordered)
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
-        .background(
-            NotebookStyle.surfaceMuted
-                .overlay(alignment: .bottom) {
-                    Rectangle()
-                        .fill(Color.white.opacity(0.08))
-                        .frame(height: 1)
-                }
-        )
-    }
-
     @ViewBuilder
     private func spreadsheetContent(data: NotebookUiStateData) -> some View {
         let rows = filteredRows(data: data)
         let segments = displaySegments(data: data)
+        let fixedSegments = segments.filter(isFixedSegment)
+        let scrollableSegments = segments.filter { !isFixedSegment($0) }
+        let laneItems = headerLaneItems(data: data, segments: scrollableSegments)
+        let hasFolders = laneItems.contains {
+            if case .folder = $0 { return true }
+            return false
+        }
 
         if rows.isEmpty {
             NotebookStateCard(
@@ -530,67 +536,98 @@ struct NotebookModuleView: View {
         } else if surfaceMode == .seatingPlan {
             seatingPlanContent(data: data, rows: rows)
         } else {
-            ScrollView([.horizontal, .vertical], showsIndicators: true) {
-                VStack(alignment: .leading, spacing: 0) {
-                    let laneItems = headerLaneItems(data: data, segments: segments)
-                    let hasFolders = laneItems.contains {
-                        if case .folder = $0 { return true }
-                        return false
-                    }
-
-                    if hasFolders {
-                        HStack(alignment: .top, spacing: 12) {
-                            ForEach(laneItems, id: \.id) { item in
-                                switch item {
-                                case .spacer(_, let width):
-                                    Color.clear
-                                        .frame(width: width, height: 1)
-                                case .folder(let category, let columns, let width):
-                                    categoryFolderHeader(category: category, columns: columns, width: width)
-                                }
+            NotebookDataGrid(
+                fixedColumnWidth: gridSectionWidth(fixedSegments)
+            ) {
+                Color.clear
+                    .frame(height: hasFolders ? 64 : 0)
+            } scrollTopAccessory: {
+                if hasFolders {
+                    HStack(alignment: .top, spacing: 12) {
+                        ForEach(laneItems, id: \.id) { item in
+                            switch item {
+                            case .spacer(_, let width):
+                                Color.clear
+                                    .frame(width: width, height: 1)
+                            case .folder(let category, let columns, let width):
+                                categoryFolderHeader(category: category, columns: columns, width: width)
                             }
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 10)
-                        .padding(.bottom, 8)
-                    }
-
-                    if visibleCategories(data: data).isEmpty {
-                        Text("Sin categorías visibles. Organiza columnas desde el menú Columnas.")
-                            .font(.system(size: 12, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 16)
-                            .padding(.bottom, 8)
-                    }
-
-                    HStack(spacing: 12) {
-                        ForEach(segments, id: \.id) { segment in
-                            headerChip(for: segment, data: data)
                         }
                     }
                     .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(
-                        NotebookStyle.surface.opacity(0.96)
-                            .overlay(alignment: .bottom) {
-                                Rectangle()
-                                    .fill(Color.white.opacity(0.10))
-                                    .frame(height: 1)
-                            }
-                    )
-
-                    LazyVStack(spacing: 0) {
-                        ForEach(Array(rows.enumerated()), id: \.element.id) { index, item in
-                            notebookRowView(item: item, data: data, segments: segments, rowIndex: index)
-                            Divider()
-                                .overlay(Color.white.opacity(0.08))
-                                .padding(.horizontal, 16)
-                        }
-                    }
-                    .padding(.bottom, 16)
+                    .padding(.top, 10)
+                    .padding(.bottom, 8)
                 }
-                .padding(.top, 4)
+            } fixedHeader: {
+                headerRow(segments: fixedSegments, data: data)
+            } scrollHeader: {
+                headerRow(segments: scrollableSegments, data: data)
+            } fixedRows: {
+                LazyVStack(spacing: 0) {
+                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, item in
+                        notebookRowView(item: item, data: data, segments: fixedSegments, rowIndex: index)
+                        Divider()
+                            .overlay(NotebookStyle.softBorder)
+                            .padding(.horizontal, 16)
+                    }
+                }
+                .padding(.bottom, 16)
+            } scrollRows: {
+                LazyVStack(spacing: 0) {
+                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, item in
+                        notebookRowView(item: item, data: data, segments: scrollableSegments, rowIndex: index)
+                        Divider()
+                            .overlay(NotebookStyle.softBorder)
+                            .padding(.horizontal, 16)
+                    }
+                }
+                .padding(.bottom, 16)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func headerRow(segments: [NotebookDisplaySegment], data: NotebookUiStateData) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            ForEach(segments, id: \.id) { segment in
+                headerChip(for: segment, data: data)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(
+            NotebookStyle.surfaceSoft.opacity(0.9)
+                .overlay(alignment: .bottom) {
+                    Rectangle()
+                        .fill(NotebookStyle.softBorder)
+                        .frame(height: 1)
+                }
+        )
+    }
+
+    private func isFixedSegment(_ segment: NotebookDisplaySegment) -> Bool {
+        if case .fixed = segment {
+            return true
+        }
+        return false
+    }
+
+    private func gridSectionWidth(_ segments: [NotebookDisplaySegment]) -> CGFloat {
+        let contentWidth = segments.reduce(CGFloat.zero) { partial, segment in
+            partial + segmentWidth(segment)
+        }
+        let spacing = CGFloat(max(segments.count - 1, 0)) * 12
+        return contentWidth + spacing + 32
+    }
+
+    private func segmentWidth(_ segment: NotebookDisplaySegment) -> CGFloat {
+        switch segment {
+        case .fixed(let fixed):
+            return fixed.width
+        case .column(let column):
+            return CGFloat(max(column.widthDp, 120))
+        case .collapsedCategory:
+            return 150
         }
     }
 
@@ -606,12 +643,28 @@ struct NotebookModuleView: View {
             .sheet(item: $notebookAISheetRequest) { request in
                 notebookAISheet(request: request, data: data)
             }
+            .sheet(item: $notebookSummarySheetRequest) { request in
+                NotebookSummaryGenerationSheet(
+                    bridge: bridge,
+                    initialTargetColumnId: request.targetColumnId
+                ) { message, style in
+                    showToast(message, style: style)
+                }
+            }
+            .navigationTitle("Cuaderno")
+            .navigationSubtitle(notebookNavigationSubtitle(data: data))
             .onAppear {
                 syncToolbarState(data: data)
             }
             .onChange(of: toolbarStateKey(data: data)) { _ in
                 syncToolbarState(data: data)
             }
+    }
+
+    private func notebookNavigationSubtitle(data: NotebookUiStateData) -> String {
+        let context = headerContextLine(in: data)
+        let studentCount = filteredRows(data: data).count
+        return "\(context) · \(studentCount) alumnos"
     }
 
     private func notebookAISheet(request: NotebookAISheetRequest, data: NotebookUiStateData) -> some View {
@@ -653,16 +706,25 @@ struct NotebookModuleView: View {
 
                         if isNotebookAICommentColumn(column) {
                             VStack(alignment: .leading, spacing: 10) {
-                                Text("Comentario IA")
+                                Text(isNotebookIndividualSummaryColumn(column) ? "Síntesis pedagógica" : "Comentario IA")
                                     .font(.system(size: 13, weight: .semibold, design: .rounded))
-                                inspectorInfoRow("Origen", value: "Columna de comentario IA editable")
+                                inspectorInfoRow(
+                                    "Origen",
+                                    value: isNotebookIndividualSummaryColumn(column)
+                                        ? "Columna de síntesis pedagógica editable"
+                                        : "Columna de comentario IA editable"
+                                )
                                 inspectorInfoRow("Regeneración", value: "Disponible desde este inspector o por lote")
-                                Button("Regenerar comentario IA") {
-                                    notebookAISheetRequest = NotebookAISheetRequest(
-                                        mode: .selection,
-                                        studentIds: [item.student.id],
-                                        targetColumnId: column.id
-                                    )
+                                Button(isNotebookIndividualSummaryColumn(column) ? "Regenerar síntesis pedagógica" : "Regenerar comentario IA") {
+                                    if isNotebookIndividualSummaryColumn(column) {
+                                        notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: column.id)
+                                    } else {
+                                        notebookAISheetRequest = NotebookAISheetRequest(
+                                            mode: .selection,
+                                            studentIds: [item.student.id],
+                                            targetColumnId: column.id
+                                        )
+                                    }
                                 }
                                 .buttonStyle(.borderedProminent)
                             }
@@ -1031,26 +1093,21 @@ struct NotebookModuleView: View {
     }
 
     private func notebookRowView(item: NotebookTableRow, data: NotebookUiStateData, segments: [NotebookDisplaySegment], rowIndex: Int) -> some View {
-        HStack(spacing: 0) {
-            ForEach(Array(segments.enumerated()), id: \.element.id) { index, segment in
+        HStack(alignment: .top, spacing: 12) {
+            ForEach(segments, id: \.id) { segment in
                 rowCell(for: segment, item: item, data: data)
-
-                if index < segments.count - 1 {
-                    Rectangle()
-                        .fill(Color.white.opacity(0.06))
-                        .frame(width: 1)
-                        .padding(.vertical, 10)
-                        .padding(.horizontal, 6)
-                }
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(
-            (rowIndex.isMultiple(of: 2) ? Color.white.opacity(0.018) : Color.clear)
+            (rowIndex.isMultiple(of: 2) ? NotebookStyle.surfaceSoft.opacity(0.38) : Color.clear)
                 .overlay(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(Color.white.opacity(inspectorSelection?.studentId == item.student.id ? 0.08 : 0), lineWidth: 1)
+                        .stroke(
+                            inspectorSelection?.studentId == item.student.id ? NotebookStyle.primaryTint.opacity(0.18) : .clear,
+                            lineWidth: 1
+                        )
                 )
         )
     }
@@ -1590,39 +1647,36 @@ struct NotebookModuleView: View {
     }
 
     private func headerChip(title: String, subtitle: String, width: CGFloat, tint: Color, folderStyle: Bool = false, isHighlighted: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Rectangle()
-                .fill(tint.opacity(folderStyle ? 0.70 : 0.52))
-                .frame(height: folderStyle ? 4 : 3)
-                .clipShape(RoundedRectangle(cornerRadius: 999, style: .continuous))
-                .padding(.bottom, 8)
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption2.weight(.medium))
+                .tracking(0.3)
+                .textCase(.uppercase)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(tint.opacity(folderStyle ? 0.8 : 0.5))
+                    .frame(width: 6, height: 6)
+
                 Text(subtitle)
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.secondary)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
                     .lineLimit(1)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 10)
-        .padding(.top, 8)
-        .padding(.bottom, 10)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 8)
         .frame(width: width)
-        .frame(minHeight: 64, alignment: .topLeading)
+        .frame(minHeight: 52, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.white.opacity(folderStyle ? 0.040 : 0.024))
+                .fill(folderStyle ? NotebookStyle.surfaceSoft.opacity(0.55) : Color.clear)
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .stroke(
-                            isHighlighted ? tint.opacity(0.48) : Color.white.opacity(folderStyle ? 0.10 : 0.06),
+                            isHighlighted ? tint.opacity(0.32) : (folderStyle ? NotebookStyle.softBorder : Color.clear),
                             lineWidth: isHighlighted ? 1.5 : 1
                         )
                 )
@@ -1802,6 +1856,11 @@ struct NotebookModuleView: View {
 
     @ViewBuilder
     private func columnContextMenu(_ column: NotebookColumnDefinition, data: NotebookUiStateData) -> some View {
+        if isNotebookIndividualSummaryColumn(column) {
+            Button(summaryActionTitle(for: column, data: data)) {
+                notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: column.id)
+            }
+        }
         Button("Renombrar") {
             editingColumnId = column.id
             columnDraft = column.title
@@ -1835,6 +1894,15 @@ struct NotebookModuleView: View {
         Button("Eliminar columna", role: .destructive) {
             pendingDeleteColumn = column
         }
+    }
+
+    private func summaryActionTitle(for column: NotebookColumnDefinition, data: NotebookUiStateData) -> String {
+        let hasExistingText = filteredRows(data: data).contains { row in
+            !bridge.cellText(studentId: row.student.id, columnId: column.id)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .isEmpty
+        }
+        return hasExistingText ? "Regenerar síntesis…" : "Generar síntesis…"
     }
 
     @ViewBuilder
@@ -1932,28 +2000,21 @@ struct NotebookModuleView: View {
                 if let data {
                     Section("IA y exportación") {
                         Button {
-                            notebookAISheetRequest = NotebookAISheetRequest(
-                                mode: .createColumn,
-                                studentIds: filteredRows(data: data).map(\.student.id),
-                                targetColumnId: nil
-                            )
+                            addColumnContext = NotebookAddColumnContext(categoryId: nil, startsCreatingCategory: false)
                         } label: {
-                            Label("Crear columna de comentario IA", systemImage: "plus.bubble")
+                            Label("Crear síntesis pedagógica", systemImage: "plus.bubble")
                         }
 
                         Button {
-                            let ids = selectedNotebookAIStudentIds(in: data)
-                            notebookAISheetRequest = NotebookAISheetRequest(
-                                mode: .selection,
-                                studentIds: ids,
+                            notebookSummarySheetRequest = NotebookSummarySheetRequest(
                                 targetColumnId: inspectorSelection.flatMap { selection in
-                                    data.sheet.columns.first(where: { $0.id == selection.columnId && isNotebookAICommentColumn($0) })?.id
+                                    data.sheet.columns.first(where: { $0.id == selection.columnId && isNotebookIndividualSummaryColumn($0) })?.id
                                 }
                             )
                         } label: {
-                            Label("Generar comentario para selección", systemImage: "apple.intelligence")
+                            Label("Generar síntesis pedagógica", systemImage: "apple.intelligence")
                         }
-                        .disabled(selectedNotebookAIStudentIds(in: data).isEmpty)
+                        .disabled(data.sheet.columns.filter(isNotebookIndividualSummaryColumn).isEmpty)
 
                         ShareLink(item: exportText(data: data)) {
                             Label("Exportar cuaderno", systemImage: "square.and.arrow.up")
@@ -2198,11 +2259,11 @@ private struct NotebookEditableTableCell: View {
         let persistedCell = item.row.persistedCells.first(where: { $0.columnId == column.id })
         ZStack {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(isSelected ? tint.opacity(0.16) : (categoryTint ?? tint).opacity(column.categoryId == nil ? 0.02 : 0.05))
+                .fill(isSelected ? tint.opacity(0.14) : NotebookStyle.surfaceSoft.opacity(column.categoryId == nil ? 0.16 : 0.28))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .stroke(
-                            isSelected ? tint.opacity(0.55) : (categoryTint ?? tint).opacity(column.categoryId == nil ? 0.08 : 0.16),
+                            isSelected ? tint.opacity(0.55) : (categoryTint ?? tint).opacity(column.categoryId == nil ? 0.05 : 0.12),
                             lineWidth: isSelected ? 1.5 : (column.categoryId == nil ? 0.8 : 1)
                         )
                 )
@@ -2278,15 +2339,16 @@ private struct NotebookEditableTableCell: View {
                     .foregroundStyle(.primary)
             }
         case .rubric:
+            let rubricText = displayRubricText()
             Button {
                 onSelect()
                 if let rubricId = column.rubricId?.int64Value, let evaluationId = column.evaluationId?.int64Value {
                     bridge.loadForNotebookCell(studentId: item.student.id, columnId: column.id, rubricId: rubricId, evaluationId: evaluationId)
                 }
             } label: {
-                Text(displayRubricText())
+                Text(rubricText)
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(rubricText == "—" ? .tertiary : .primary)
             }
             .buttonStyle(.plain)
         default:
@@ -2329,7 +2391,7 @@ private struct NotebookEditableTableCell: View {
 
     private func displayRubricText() -> String {
         let value = bridge.rubricGradeOnTenText(studentId: item.student.id, column: column).trimmingCharacters(in: .whitespacesAndNewlines)
-        return value.isEmpty ? "Abrir rúbrica" : value
+        return value.isEmpty ? "—" : value
     }
 
     private func hasContextualSignal(in cell: PersistedNotebookCell) -> Bool {

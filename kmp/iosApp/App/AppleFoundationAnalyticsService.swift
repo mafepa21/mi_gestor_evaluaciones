@@ -98,7 +98,7 @@ final class AppleFoundationAnalyticsService {
 
     #if canImport(FoundationModels)
     @available(iOS 26.0, macOS 26.0, *)
-    private lazy var insightSession: LanguageModelSession = {
+    private var insightSession: LanguageModelSession {
         LanguageModelSession(
             instructions: """
             Actúas como asistente de analítica docente local-first.
@@ -108,10 +108,10 @@ final class AppleFoundationAnalyticsService {
             Redacta en español de España.
             """
         )
-    }()
+    }
 
     @available(iOS 26.0, macOS 26.0, *)
-    private lazy var interpretationSession: LanguageModelSession = {
+    private var interpretationSession: LanguageModelSession {
         LanguageModelSession(
             instructions: """
             Actúas como selector de visualizaciones docentes.
@@ -120,7 +120,7 @@ final class AppleFoundationAnalyticsService {
             Resume la intención del docente en una frase breve y accionable.
             """
         )
-    }()
+    }
     #endif
 
     func currentAvailability() -> AIAnalyticsAvailabilityState {

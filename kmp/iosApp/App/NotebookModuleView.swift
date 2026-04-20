@@ -733,11 +733,7 @@ struct NotebookModuleView: View {
     private func notebookLoadedContent(data: NotebookUiStateData) -> some View {
         centerPanel(data: data)
             .sheet(item: $addColumnContext) { context in
-                AddColumnSheet(
-                    bridge: bridge,
-                    initialCategoryId: context.categoryId,
-                    startsCreatingCategory: context.startsCreatingCategory
-                )
+                addColumnSheetPresentation(for: context)
             }
             .sheet(item: $notebookAISheetRequest) { request in
                 notebookAISheet(request: request, data: data)
@@ -751,13 +747,30 @@ struct NotebookModuleView: View {
                 }
             }
             .navigationTitle("Cuaderno")
-            .navigationSubtitle(notebookNavigationSubtitle(data: data))
+            .notebookNavigationSubtitle(notebookNavigationSubtitle(data: data))
             .onAppear {
                 syncToolbarState(data: data)
             }
             .onChange(of: toolbarStateKey(data: data)) { _ in
                 syncToolbarState(data: data)
             }
+    }
+
+    @ViewBuilder
+    private func addColumnSheetPresentation(for context: NotebookAddColumnContext) -> some View {
+        let content = AddColumnSheet(
+            bridge: bridge,
+            initialCategoryId: context.categoryId,
+            startsCreatingCategory: context.startsCreatingCategory
+        )
+
+        #if os(macOS)
+        content
+            .frame(width: 560, height: 620)
+        #else
+        content
+            .presentationDetents([.large])
+        #endif
     }
 
     private func notebookNavigationSubtitle(data: NotebookUiStateData) -> String {
@@ -1293,12 +1306,12 @@ struct NotebookModuleView: View {
     }
 
     private func notebookSourceColumns(data: NotebookUiStateData) -> [NotebookColumnDefinition] {
-        managedColumns(data: data).filter { !isNotebookAICommentColumn($0) }
+        managedColumns(data: data)
     }
 
     private func visibleNotebookSourceColumns(data: NotebookUiStateData) -> [NotebookColumnDefinition] {
         displaySegments(data: data).compactMap { segment in
-            guard case .column(let column) = segment, !isNotebookAICommentColumn(column) else { return nil }
+            guard case .column(let column) = segment else { return nil }
             return column
         }
     }
@@ -2347,6 +2360,24 @@ struct NotebookModuleView: View {
             Text(value.isEmpty ? "Sin valor" : value)
                 .font(.system(size: 15, weight: .semibold, design: .rounded))
         }
+    }
+}
+
+private struct NotebookNavigationSubtitleModifier: ViewModifier {
+    let subtitle: String
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, macOS 26.0, *) {
+            content.navigationSubtitle(subtitle)
+        } else {
+            content
+        }
+    }
+}
+
+private extension View {
+    func notebookNavigationSubtitle(_ subtitle: String) -> some View {
+        modifier(NotebookNavigationSubtitleModifier(subtitle: subtitle))
     }
 }
 

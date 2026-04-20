@@ -651,8 +651,7 @@ struct NotebookTopBar: View {
 
     private var saveStatusChip: some View {
         HStack(spacing: 6) {
-            Image(systemName: saveBadge.icon)
-                .symbolEffect(.rotate, isActive: bridge.notebookSaveState == .saving)
+            saveStatusIcon
             Text(saveBadge.text)
         }
         .font(.caption.weight(.medium))
@@ -668,5 +667,22 @@ struct NotebookTopBar: View {
                 .stroke(saveBadge.color.opacity(0.14), lineWidth: 1)
         )
         .animation(.easeInOut(duration: 0.2), value: bridge.notebookSaveState)
+    }
+
+    @ViewBuilder
+    private var saveStatusIcon: some View {
+        if #available(iOS 18.0, macOS 15.0, *) {
+            Image(systemName: saveBadge.icon)
+                .symbolEffect(.rotate, isActive: bridge.notebookSaveState == .saving)
+        } else {
+            Image(systemName: saveBadge.icon)
+                .rotationEffect(.degrees(bridge.notebookSaveState == .saving ? 360 : 0))
+                .animation(
+                    bridge.notebookSaveState == .saving
+                        ? .linear(duration: 0.9).repeatForever(autoreverses: false)
+                        : .easeOut(duration: 0.2),
+                    value: bridge.notebookSaveState
+                )
+        }
     }
 }

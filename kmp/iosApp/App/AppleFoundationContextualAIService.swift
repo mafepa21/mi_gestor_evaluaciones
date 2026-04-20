@@ -185,7 +185,7 @@ final class AppleFoundationContextualAIService {
 
     #if canImport(FoundationModels)
     @available(iOS 26.0, macOS 26.0, *)
-    private lazy var contextualSession: LanguageModelSession = {
+    private var contextualSession: LanguageModelSession {
         LanguageModelSession(
             instructions: """
             Actúas como asistente contextual docente local-first.
@@ -195,10 +195,10 @@ final class AppleFoundationContextualAIService {
             Redacta en español de España.
             """
         )
-    }()
+    }
 
     @available(iOS 26.0, macOS 26.0, *)
-    private lazy var notebookSession: LanguageModelSession = {
+    private var notebookSession: LanguageModelSession {
         LanguageModelSession(
             instructions: """
             Actúas como asistente de comentarios docentes para el cuaderno.
@@ -209,7 +209,7 @@ final class AppleFoundationContextualAIService {
             Redacta en español de España.
             """
         )
-    }()
+    }
     #endif
 
     func currentAvailability() -> AIContextualAvailabilityState {

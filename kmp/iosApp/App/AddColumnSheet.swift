@@ -409,15 +409,20 @@ struct AddColumnSheet: View {
                         selectedBlueprintId = blueprints.first?.id
                     }
                 }
-                .onChange(of: selectedBlueprintId) {
+                .onChange(of: selectedBlueprintId) { _ in
                     syncBlueprintDefaults()
                     if categoryPlacementMode == .existing, selectedCategoryId == nil {
                         selectedCategoryId = suggestedCategoryId
                     }
                 }
             }
-            .frame(minWidth: 520, idealWidth: 560, maxWidth: 640, minHeight: 560, idealHeight: 620)
+            .frame(width: 560, height: 620)
+            #if os(iOS)
+            .presentationDetents([.large])
+            .presentationDragIndicator(.hidden)
+            #endif
         }
+        .frame(minWidth: 520, idealWidth: 560, maxWidth: 640, minHeight: 560, idealHeight: 620)
     }
 
     @ViewBuilder

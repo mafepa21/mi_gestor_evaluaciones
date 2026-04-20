@@ -3705,6 +3705,24 @@ final class KmpBridge: ObservableObject {
         )
         showingBulkRubricEvaluation = true
     }
+
+    func startBulkRubricEvaluation(
+        classId: Int64,
+        evaluationId: Int64,
+        rubricId: Int64,
+        columnId: String? = nil,
+        tabId: String? = nil
+    ) {
+        rubricEvaluationState = RubricEvaluationUiState.companion.default()
+        rubricBulkEvaluationViewModel.load(
+            classId: classId,
+            evaluationId: evaluationId,
+            rubricId: rubricId,
+            columnId: columnId,
+            tabId: tabId
+        )
+        showingBulkRubricEvaluation = true
+    }
     
     func closeBulkRubricEvaluation() {
         showingBulkRubricEvaluation = false

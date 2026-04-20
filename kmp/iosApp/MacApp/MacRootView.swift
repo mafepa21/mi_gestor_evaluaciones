@@ -38,6 +38,15 @@ struct MacRootView: View {
         .task {
             session.start()
         }
+        .sheet(
+            isPresented: Binding(
+                get: { session.bridge.showingBulkRubricEvaluation },
+                set: { session.bridge.showingBulkRubricEvaluation = $0 }
+            )
+        ) {
+            RubricBulkEvaluationSheet(bridge: session.bridge)
+                .frame(minWidth: 1200, minHeight: 820)
+        }
     }
 
     private var macSidebar: some View {

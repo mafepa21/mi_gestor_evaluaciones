@@ -2196,6 +2196,8 @@ final class KmpBridge: ObservableObject {
         )
     }
 
+    // Audit debt: this aggregates business data for the Mac roster. Keep it as a bridge shim
+    // until an equivalent KMP use case can own the query and row-shaping logic.
     func loadMacStudentRows(classId: Int64?) async throws -> [MacStudentRowSnapshot] {
         let allClasses = try await container.classesRepository.listClasses()
         let students: [Student]
@@ -2268,6 +2270,7 @@ final class KmpBridge: ObservableObject {
         return rows
     }
 
+    // Audit debt: quick-note persistence belongs in shared domain logic once a KMP use case exists.
     func saveQuickStudentNote(studentId: Int64, classId: Int64?, note: String) async throws {
         let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -2305,6 +2308,7 @@ final class KmpBridge: ObservableObject {
         status = "Nota rápida guardada para \(student.fullName)"
     }
 
+    // Audit debt: presentation summary rules should move beside StudentProfileSnapshot creation in KMP.
     private func latestObservationText(from profile: StudentProfileSnapshot?) -> String {
         guard let profile else { return "Sin observaciones" }
         if let attendanceNote = profile.recentAttendance.first(where: { !$0.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })?.note {
@@ -2978,6 +2982,14 @@ final class KmpBridge: ObservableObject {
         expectedServerId: String? = nil,
         expectedFingerprint: String? = nil
     ) async throws {
+        guard !isPairingInFlight else {
+            throw NSError(
+                domain: "Sync",
+                code: -207,
+                userInfo: [NSLocalizedDescriptionKey: "Ya hay un emparejamiento LAN en curso."]
+            )
+        }
+
         let normalizedHost = LanSyncClient.normalizeHost(host)
         guard !normalizedHost.isEmpty else {
             throw NSError(
@@ -2987,30 +2999,38 @@ final class KmpBridge: ObservableObject {
             )
         }
 
-        isPairingInFlight = true
-        autoSyncLoopTask?.cancel()
-        autoSyncDebounceTask?.cancel()
-        defer {
-            isPairingInFlight = false
-            startAutoSyncLoop()
-        }
-
-        let result = try await runSyncOperationWithTimeout(seconds: 12) {
-            try await self.lanSyncClient.handshake(
-                host: normalizedHost,
-                pin: pin,
-                deviceId: self.localDeviceId,
-                pinnedFingerprint: expectedFingerprint
-            )
-        }
-        if let expectedServerId, expectedServerId != result.serverId {
-            throw NSError(domain: "Sync", code: -203, userInfo: [NSLocalizedDescriptionKey: "Server ID no coincide con el esperado"])
-        }
-
         let previousToken = syncToken
         let previousHost = pairedSyncHost
         let previousServerId = pairedServerId
         let previousFingerprint = pairedServerFingerprint
+
+        isPairingInFlight = true
+        autoSyncLoopTask?.cancel()
+        autoSyncLoopTask = nil
+        autoSyncDebounceTask?.cancel()
+        autoSyncDebounceTask = nil
+        defer {
+            isPairingInFlight = false
+        }
+
+        let result: LanHandshakeResult
+        do {
+            result = try await runSyncOperationWithTimeout(seconds: 12) {
+                try await self.lanSyncClient.handshake(
+                    host: normalizedHost,
+                    pin: pin,
+                    deviceId: self.localDeviceId,
+                    pinnedFingerprint: expectedFingerprint
+                )
+            }
+        } catch {
+            restartAutoSyncLoopIfPaired()
+            throw error
+        }
+        if let expectedServerId, expectedServerId != result.serverId {
+            restartAutoSyncLoopIfPaired()
+            throw NSError(domain: "Sync", code: -203, userInfo: [NSLocalizedDescriptionKey: "Server ID no coincide con el esperado"])
+        }
 
         syncToken = result.token
         pairedSyncHost = normalizedHost
@@ -3030,11 +3050,19 @@ final class KmpBridge: ObservableObject {
             lastSuccessfulSyncAt = now
             lastFullPullAt = now
             syncStatusMessage = "Emparejado con \(normalizedHost)"
+            isPairingInFlight = false
+            startAutoSyncLoop()
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                await self.syncNow(reason: "pairing_refresh", forceFullPull: false, silent: true)
+            }
         } catch {
             syncToken = previousToken
             pairedSyncHost = previousHost
             pairedServerId = previousServerId
             pairedServerFingerprint = previousFingerprint
+            isPairingInFlight = false
+            restartAutoSyncLoopIfPaired()
             throw NSError(
                 domain: "Sync",
                 code: -205,
@@ -4179,6 +4207,8 @@ final class KmpBridge: ObservableObject {
         rubricsViewModel.updateLevelDescription(criterionIndex: Int32(criterionIndex), levelUid: levelUid, description: description)
     }
 
+    // Audit debt: this mirrors RubricsViewModel save/edit logic in Swift. Keep changes minimal
+    // here and move persistence orchestration back to KMP with dedicated tests in a later pass.
     func saveRubricFromBuilder(onComplete: @escaping (Bool) -> Void) {
         guard let state = rubricsUiState else {
             onComplete(false)
@@ -5328,7 +5358,12 @@ final class KmpBridge: ObservableObject {
                     linkedAssessmentIdsCsv: payloadObject["linkedAssessmentIdsCsv"] as? String ?? "",
                     status: status
                 )
-                _ = try await container.plannerRepository.upsertSession(session: session)
+                do {
+                    _ = try await container.plannerRepository.upsertSession(session: session)
+                } catch {
+                    print("LAN Sync: upsertSession failed for planning_session \(change.id): \(error)")
+                    continue
+                }
 
             case "rubric_bundle":
                 guard let rubricName = payloadObject["name"] as? String else { continue }
@@ -5989,6 +6024,10 @@ final class KmpBridge: ObservableObject {
         pairedSyncHost = nil
         pairedServerId = nil
         pairedServerFingerprint = nil
+        autoSyncLoopTask?.cancel()
+        autoSyncLoopTask = nil
+        autoSyncDebounceTask?.cancel()
+        autoSyncDebounceTask = nil
         syncSecureStore.delete(key: "sync.token")
         syncSecureStore.delete(key: "sync.host")
         syncSecureStore.delete(key: "sync.server.id")
@@ -6065,9 +6104,24 @@ final class KmpBridge: ObservableObject {
     }
 
     private func startAutoSyncLoop() {
-        autoSyncLoopTask?.cancel()
+        guard pairedSyncHost != nil, syncToken != nil else {
+            autoSyncLoopTask?.cancel()
+            autoSyncLoopTask = nil
+            return
+        }
+        if let autoSyncLoopTask, !autoSyncLoopTask.isCancelled {
+            return
+        }
         autoSyncLoopTask = Task { [weak self] in
             guard let self else { return }
+            defer {
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    if self.autoSyncLoopTask?.isCancelled ?? true {
+                        self.autoSyncLoopTask = nil
+                    }
+                }
+            }
             while !Task.isCancelled {
                 do {
                     try await Task.sleep(nanoseconds: self.nextAutoSyncIntervalNanoseconds())
@@ -6078,6 +6132,15 @@ final class KmpBridge: ObservableObject {
                 }
             }
         }
+    }
+
+    private func restartAutoSyncLoopIfPaired() {
+        guard pairedSyncHost != nil, syncToken != nil else {
+            autoSyncLoopTask?.cancel()
+            autoSyncLoopTask = nil
+            return
+        }
+        startAutoSyncLoop()
     }
 
     private func triggerAutoSyncSoon() {

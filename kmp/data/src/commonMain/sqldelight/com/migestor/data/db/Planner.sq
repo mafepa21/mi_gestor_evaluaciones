@@ -205,12 +205,38 @@ LEFT JOIN teaching_unit u ON s.unit_id = u.id
 JOIN classes c ON s.group_id = c.id
 WHERE s.id = :id;
 
+selectSessionByNaturalKey:
+SELECT
+    s.*,
+    u.name AS unit_name,
+    u.color_hex AS unit_color,
+    c.name AS group_name
+FROM planner_session s
+LEFT JOIN teaching_unit u ON s.unit_id = u.id
+JOIN classes c ON s.group_id = c.id
+WHERE s.date = :date
+  AND s.group_id = :groupId
+  AND s.period = :period;
+
 upsertSession:
 INSERT INTO planner_session(
     id, date, group_id, period, unit_id, objectives, activities, evaluation, linked_assessment_ids_csv, status, 
     updated_at_epoch_ms, device_id, sync_version
 )
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+    date = excluded.date,
+    group_id = excluded.group_id,
+    period = excluded.period,
+    unit_id = excluded.unit_id,
+    objectives = excluded.objectives,
+    activities = excluded.activities,
+    evaluation = excluded.evaluation,
+    linked_assessment_ids_csv = excluded.linked_assessment_ids_csv,
+    status = excluded.status,
+    updated_at_epoch_ms = excluded.updated_at_epoch_ms,
+    device_id = excluded.device_id,
+    sync_version = excluded.sync_version
 ON CONFLICT(date, group_id, period) DO UPDATE SET
     unit_id = excluded.unit_id,
     objectives = excluded.objectives,

@@ -365,12 +365,12 @@ struct TeacherScheduleSettingsPanel: View {
                                 .foregroundStyle(.secondary)
                             Picker(
                                 "Grupo en foco",
-                                selection: Binding(
-                                    get: { selectedClassId ?? -1 },
-                                    set: { selectedClassId = $0 > 0 ? $0 : nil }
+                                selection: Binding<Int64?>(
+                                    get: { selectedClassId },
+                                    set: { selectedClassId = $0 }
                                 )
                             ) {
-                                Text("Todos").tag(Int64(-1) as Int64?)
+                                Text("Todos").tag(nil as Int64?)
                                 ForEach(vm.groups, id: \.id) { group in
                                     Text(group.name).tag(group.id as Int64?)
                                 }
@@ -481,9 +481,9 @@ struct TeacherScheduleSettingsPanel: View {
                     HStack(spacing: 12) {
                         Picker(
                             "Grupo",
-                            selection: Binding(
-                                get: { vm.scheduleFormGroupId ?? -1 },
-                                set: { vm.scheduleFormGroupId = $0 > 0 ? $0 : nil }
+                            selection: Binding<Int64?>(
+                                get: { vm.scheduleFormGroupId },
+                                set: { vm.scheduleFormGroupId = $0 }
                             )
                         ) {
                             ForEach(vm.groups, id: \.id) { group in

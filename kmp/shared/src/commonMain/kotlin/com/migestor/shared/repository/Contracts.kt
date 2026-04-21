@@ -206,6 +206,7 @@ interface PlannerRepository {
     suspend fun listSessions(weekNumber: Int, year: Int): List<PlanningSession>
     suspend fun listAllSessions(): List<PlanningSession> = emptyList()
     suspend fun listSessionsInRange(groupId: Long? = null, fromDate: LocalDate, toDate: LocalDate): List<PlanningSession> = emptyList()
+    @Throws(Exception::class)
     suspend fun upsertSession(session: PlanningSession): Long
     suspend fun bulkUpsertSessions(sessions: List<PlanningSession>): List<Long> = sessions.map { upsertSession(it) }
     suspend fun deleteSession(sessionId: Long)

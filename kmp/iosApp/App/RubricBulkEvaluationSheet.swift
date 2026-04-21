@@ -1,6 +1,45 @@
 import SwiftUI
 import MiGestorKit
 
+private enum BulkEvaluationFilterMode: String, CaseIterable, Identifiable {
+    case all
+    case pending
+    case injured
+    case failing
+    case incomplete
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all: return "Todos"
+        case .pending: return "Pendientes"
+        case .injured: return "Lesionados"
+        case .failing: return "Suspensos"
+        case .incomplete: return "Incompletos"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .all: return "person.3.fill"
+        case .pending: return "hourglass"
+        case .injured: return "cross.case.fill"
+        case .failing: return "exclamationmark.triangle.fill"
+        case .incomplete: return "checklist.unchecked"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .all: return EvaluationDesign.accent
+        case .pending, .incomplete: return .orange
+        case .injured: return EvaluationDesign.danger
+        case .failing: return EvaluationDesign.danger
+        }
+    }
+}
+
 struct RubricBulkEvaluationSheet: View {
     @ObservedObject var bridge: KmpBridge
     @Environment(\.dismiss) private var dismiss
@@ -10,6 +49,10 @@ struct RubricBulkEvaluationSheet: View {
     @State private var hoverAnchorPoint: CGPoint?
     @State private var suppressedLevelKey: HoveredLevelKey?
     @State private var horizontalScrollOffset: CGFloat = 0
+    @State private var filterMode: BulkEvaluationFilterMode = .all
+    @State private var isSaveConfirmationPresented = false
+    @State private var recentlyPastedStudentId: Int64?
+    @State private var copiedAssessmentSourceName: String?
 
     private struct HoveredLevelKey: Hashable {
         let studentId: Int64
@@ -97,6 +140,18 @@ struct RubricBulkEvaluationSheet: View {
                 }
             }
             .appNavigationBarHidden(true)
+            .confirmationDialog(
+                "Guardar todas las evaluaciones",
+                isPresented: $isSaveConfirmationPresented,
+                titleVisibility: .visible
+            ) {
+                Button("Guardar todo", role: .destructive) {
+                    bridge.bulkSaveAll()
+                }
+                Button("Cancelar", role: .cancel) {}
+            } message: {
+                Text("Se guardarán las selecciones de todos los alumnos de esta rúbrica.")
+            }
             .onAppear {
                 // Si existía una evaluación individual previa, la cerramos antes de mostrar la masiva.
                 bridge.closeRubricEvaluation()
@@ -126,7 +181,7 @@ struct RubricBulkEvaluationSheet: View {
             HStack(spacing: 16) {
                 VStack(alignment: .trailing, spacing: 4) {
                     EvaluationPrimaryButton(label: "Guardar Todo", systemImage: "square.and.arrow.down.fill") {
-                        bridge.bulkSaveAll()
+                        isSaveConfirmationPresented = true
                     }
                     .frame(width: 180)
 
@@ -147,28 +202,41 @@ struct RubricBulkEvaluationSheet: View {
         let criterionWidth: CGFloat = 180
         let scoreWidth: CGFloat = 88
         let actionsWidth: CGFloat = 92
-        let studentWidth: CGFloat = 220
+        let studentWidth: CGFloat = 240
+        let visibleStudents = filteredStudents(state: state, rubric: rubric)
 
         return EvaluationGlassCard(cornerRadius: EvaluationDesign.cardRadius, fillOpacity: 0.92) {
             VStack(alignment: .leading, spacing: 24) {
-                HStack(spacing: 16) {
-                    EvaluationChip(
-                        label: "\(state.students.count) alumnos",
-                        systemImage: "person.3.fill"
-                    )
-                    EvaluationChip(
-                        label: "\(rubric.criteria.count) criterios",
-                        systemImage: "checklist"
-                    )
-
-                    if !state.injuredStudents.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 16) {
                         EvaluationChip(
-                            label: "\(state.injuredStudents.count) lesionados",
-                            systemImage: "cross.case.fill",
-                            tint: EvaluationDesign.danger,
-                            isDestructive: true
+                            label: "\(visibleStudents.count)/\(state.students.count) alumnos",
+                            systemImage: "person.3.fill"
+                        )
+                        EvaluationChip(
+                            label: "\(rubric.criteria.count) criterios",
+                            systemImage: "checklist"
+                        )
+
+                        if !state.injuredStudents.isEmpty {
+                            EvaluationChip(
+                                label: "\(state.injuredStudents.count) lesionados",
+                                systemImage: "cross.case.fill",
+                                tint: EvaluationDesign.danger,
+                                isDestructive: true
+                            )
+                        }
+                    }
+
+                    if let copiedAssessmentSourceName {
+                        EvaluationChip(
+                            label: "Copiado: \(copiedAssessmentSourceName)",
+                            systemImage: "doc.on.clipboard",
+                            tint: EvaluationDesign.success
                         )
                     }
+
+                    filterChips(state: state, rubric: rubric)
                 }
 
                 ScrollView([.horizontal, .vertical], showsIndicators: true) {
@@ -183,7 +251,7 @@ struct RubricBulkEvaluationSheet: View {
 
                         LazyVStack(spacing: 12, pinnedViews: [.sectionHeaders]) {
                             Section {
-                                ForEach(state.students, id: \.id) { student in
+                                ForEach(visibleStudents, id: \.id) { student in
                                     studentRow(
                                         student: student,
                                         state: state,
@@ -192,7 +260,8 @@ struct RubricBulkEvaluationSheet: View {
                                         criterionWidth: criterionWidth,
                                         scoreWidth: scoreWidth,
                                         actionsWidth: actionsWidth,
-                                        horizontalOffset: horizontalScrollOffset
+                                        horizontalOffset: horizontalScrollOffset,
+                                        isRecentlyPasted: recentlyPastedStudentId == student.id
                                     )
                                 }
                             } header: {
@@ -271,6 +340,29 @@ struct RubricBulkEvaluationSheet: View {
         .background(appCardBackground(for: colorScheme).opacity(0.95))
     }
 
+    private func filterChips(state: BulkRubricEvaluationUiState, rubric: RubricDetail) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                ForEach(BulkEvaluationFilterMode.allCases) { mode in
+                    Button {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                            filterMode = mode
+                        }
+                    } label: {
+                        EvaluationChip(
+                            label: "\(mode.title) \(filterCount(for: mode, state: state, rubric: rubric))",
+                            systemImage: mode.systemImage,
+                            active: filterMode == mode,
+                            tint: mode.tint,
+                            isDestructive: mode == .injured || mode == .failing
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
     private func studentRow(
         student: Student,
         state: BulkRubricEvaluationUiState,
@@ -279,15 +371,18 @@ struct RubricBulkEvaluationSheet: View {
         criterionWidth: CGFloat,
         scoreWidth: CGFloat,
         actionsWidth: CGFloat,
-        horizontalOffset: CGFloat
+        horizontalOffset: CGFloat,
+        isRecentlyPasted: Bool
     ) -> some View {
         let isInjured = state.injuredStudents.contains(where: { $0.id == student.id })
+        let completedCriteria = completedCriteriaCount(studentId: student.id, rubric: rubric)
+        let isComplete = completedCriteria == rubric.criteria.count && rubric.criteria.isEmpty == false
 
         return HStack(spacing: 0) {
             HStack(spacing: 16) {
                 EvaluationAvatar(initials: initials(for: student))
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 5) {
                     Text(student.firstName + " " + student.lastName)
                         .font(.system(size: 14, weight: .bold, design: .rounded))
                         .foregroundStyle(.primary)
@@ -302,6 +397,12 @@ struct RubricBulkEvaluationSheet: View {
                             .font(.system(size: 10, weight: .medium))
                             .foregroundStyle(EvaluationDesign.success.opacity(0.8))
                     }
+
+                    EvaluationChip(
+                        label: "\(completedCriteria)/\(rubric.criteria.count) criterios",
+                        systemImage: isComplete ? "checkmark.circle.fill" : "circle.dashed",
+                        tint: isComplete ? EvaluationDesign.success : .orange
+                    )
                 }
             }
             .frame(width: studentWidth, alignment: .leading)
@@ -344,6 +445,7 @@ struct RubricBulkEvaluationSheet: View {
                         tint: EvaluationDesign.accent
                     ) {
                         bridge.bulkCopyAssessment(studentId: student.id)
+                        copiedAssessmentSourceName = "\(student.firstName) \(student.lastName)"
                     }
 
                     rowActionButton(
@@ -353,6 +455,7 @@ struct RubricBulkEvaluationSheet: View {
                         isEnabled: state.copiedAssessment != nil
                     ) {
                         bridge.bulkPasteAssessment(studentId: student.id)
+                        markRecentlyPasted(studentId: student.id)
                     }
                 }
                 .frame(width: actionsWidth, alignment: .center)
@@ -365,10 +468,19 @@ struct RubricBulkEvaluationSheet: View {
                 .fill(appCardBackground(for: colorScheme))
                 .overlay(
                     RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
-                        .stroke(isInjured ? EvaluationDesign.danger.opacity(0.08) : EvaluationDesign.border, lineWidth: 1)
+                        .stroke(
+                            isRecentlyPasted ? EvaluationDesign.success.opacity(0.70) : (isInjured ? EvaluationDesign.danger.opacity(0.08) : EvaluationDesign.border),
+                            lineWidth: isRecentlyPasted ? 2 : 1
+                        )
                 )
-                .shadow(color: EvaluationDesign.shadow.opacity(0.06), radius: 8, x: 0, y: 4)
+                .shadow(
+                    color: isRecentlyPasted ? EvaluationDesign.success.opacity(0.18) : EvaluationDesign.shadow.opacity(0.06),
+                    radius: isRecentlyPasted ? 14 : 8,
+                    x: 0,
+                    y: 4
+                )
         )
+        .animation(.spring(response: 0.3, dampingFraction: 0.78), value: isRecentlyPasted)
     }
 
     private func criterionCell(
@@ -492,7 +604,7 @@ struct RubricBulkEvaluationSheet: View {
     private func scorePill(for studentId: Int64, width: CGFloat) -> some View {
         let score = bridge.bulkScore(studentId: studentId)
         let scoreText = score.map { String(format: "%.1f", $0) } ?? "—"
-        let tint = (score ?? 0) >= 5 ? EvaluationDesign.success : EvaluationDesign.danger
+        let tint = isPassing(score: score) ? EvaluationDesign.success : EvaluationDesign.danger
 
         return VStack(alignment: .leading, spacing: 4) {
             Text("Nota")
@@ -634,6 +746,69 @@ struct RubricBulkEvaluationSheet: View {
         bridge.classes.first(where: { $0.id == state.classId })?.name ?? "Clase"
     }
 
+    private func filteredStudents(state: BulkRubricEvaluationUiState, rubric: RubricDetail) -> [Student] {
+        state.students.filter { student in
+            matchesFilter(student: student, state: state, rubric: rubric)
+        }
+    }
+
+    private func filterCount(for mode: BulkEvaluationFilterMode, state: BulkRubricEvaluationUiState, rubric: RubricDetail) -> Int {
+        state.students.filter { student in
+            matchesFilter(student: student, mode: mode, state: state, rubric: rubric)
+        }.count
+    }
+
+    private func matchesFilter(student: Student, state: BulkRubricEvaluationUiState, rubric: RubricDetail) -> Bool {
+        matchesFilter(student: student, mode: filterMode, state: state, rubric: rubric)
+    }
+
+    private func matchesFilter(student: Student, mode: BulkEvaluationFilterMode, state: BulkRubricEvaluationUiState, rubric: RubricDetail) -> Bool {
+        switch mode {
+        case .all:
+            return true
+        case .pending, .incomplete:
+            return missingCriteriaCount(studentId: student.id, rubric: rubric) > 0
+        case .injured:
+            return state.injuredStudents.contains(where: { $0.id == student.id })
+        case .failing:
+            guard let score = bridge.bulkScore(studentId: student.id) else { return true }
+            return !isPassing(score: score)
+        }
+    }
+
+    private func completedCriteriaCount(studentId: Int64, rubric: RubricDetail) -> Int {
+        rubric.criteria.count - missingCriteriaCount(studentId: studentId, rubric: rubric)
+    }
+
+    private func missingCriteriaCount(studentId: Int64, rubric: RubricDetail) -> Int {
+        rubric.criteria.reduce(into: 0) { partial, criterion in
+            if bridge.bulkSelectedLevelId(studentId: studentId, criterionId: criterion.criterion.id) == nil {
+                partial += 1
+            }
+        }
+    }
+
+    private func isPassing(score: Double?) -> Bool {
+        (score ?? 0) >= (state?.passingThreshold ?? 5.0)
+    }
+
+    private func markRecentlyPasted(studentId: Int64) {
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+            recentlyPastedStudentId = studentId
+        }
+        Task {
+            try? await Task.sleep(nanoseconds: 1_400_000_000)
+            if Task.isCancelled { return }
+            await MainActor.run {
+                if recentlyPastedStudentId == studentId {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                        recentlyPastedStudentId = nil
+                    }
+                }
+            }
+        }
+    }
+
     private func initials(for student: Student) -> String {
         let first = student.firstName.prefix(1)
         let last = student.lastName.prefix(1)
@@ -697,34 +872,17 @@ struct RubricBulkEvaluationSheet: View {
 }
 
 #if os(macOS)
-private enum BulkEvaluationMacFilterMode: String, CaseIterable, Identifiable {
-    case all
-    case pending
-    case injured
-    case failing
-    case incomplete
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .all: return "Todos"
-        case .pending: return "Pendientes"
-        case .injured: return "Lesionados"
-        case .failing: return "Suspensos"
-        case .incomplete: return "Incompletos"
-        }
-    }
-}
-
 private struct RubricBulkEvaluationMacView: View {
     @ObservedObject var bridge: KmpBridge
     @Environment(\.dismiss) private var dismiss
     @State private var searchText = ""
-    @State private var filterMode: BulkEvaluationMacFilterMode = .all
+    @State private var filterMode: BulkEvaluationFilterMode = .all
     @State private var selectedStudentId: Int64?
     @State private var selectedCriterionId: Int64?
     @State private var showsInjuredInspector = true
+    @State private var isSaveConfirmationPresented = false
+    @State private var recentlyPastedStudentId: Int64?
+    @State private var copiedAssessmentSourceName: String?
 
     private var state: BulkRubricEvaluationUiState? { bridge.bulkRubricEvaluationState }
 
@@ -759,7 +917,8 @@ private struct RubricBulkEvaluationMacView: View {
                         selectedCriterionId: Binding(
                             get: { selectedCriterion?.criterion.id },
                             set: { selectedCriterionId = $0 }
-                        )
+                        ),
+                        recentlyPastedStudentId: recentlyPastedStudentId
                     )
                     .frame(minWidth: 760, maxWidth: .infinity, maxHeight: .infinity)
 
@@ -773,6 +932,15 @@ private struct RubricBulkEvaluationMacView: View {
                         } ?? false,
                         injuredStudents: showsInjuredInspector ? state.injuredStudents : [],
                         missingCriteriaCount: selectedStudent.map { missingCriteriaCount(studentId: $0.id, rubric: rubric) } ?? 0,
+                        copiedAssessmentSourceName: copiedAssessmentSourceName,
+                        onCopy: { student in
+                            bridge.bulkCopyAssessment(studentId: student.id)
+                            copiedAssessmentSourceName = "\(student.firstName) \(student.lastName)"
+                        },
+                        onPaste: { student in
+                            bridge.bulkPasteAssessment(studentId: student.id)
+                            markRecentlyPasted(studentId: student.id)
+                        },
                         onClose: close
                     )
                     .frame(minWidth: 280, idealWidth: 320, maxWidth: 360)
@@ -787,8 +955,21 @@ private struct RubricBulkEvaluationMacView: View {
                         filterMode: $filterMode,
                         searchText: $searchText,
                         showsInjuredInspector: $showsInjuredInspector,
+                        onSaveRequest: { isSaveConfirmationPresented = true },
                         onClose: close
                     )
+                }
+                .confirmationDialog(
+                    "Guardar todas las evaluaciones",
+                    isPresented: $isSaveConfirmationPresented,
+                    titleVisibility: .visible
+                ) {
+                    Button("Guardar todo", role: .destructive) {
+                        bridge.bulkSaveAll()
+                    }
+                    Button("Cancelar", role: .cancel) {}
+                } message: {
+                    Text("Se guardarán las selecciones de todos los alumnos de esta rúbrica.")
                 }
                 .onAppear {
                     bridge.closeRubricEvaluation()
@@ -864,7 +1045,7 @@ private struct RubricBulkEvaluationMacView: View {
             return student.isInjured
         case .failing:
             guard let score = bridge.bulkScore(studentId: student.id) else { return true }
-            return score < 5
+            return score < (state?.passingThreshold ?? 5.0)
         }
     }
 
@@ -879,15 +1060,33 @@ private struct RubricBulkEvaluationMacView: View {
     private func className(for state: BulkRubricEvaluationUiState) -> String {
         bridge.classes.first(where: { $0.id == state.classId })?.name ?? "Clase"
     }
+
+    private func markRecentlyPasted(studentId: Int64) {
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+            recentlyPastedStudentId = studentId
+        }
+        Task {
+            try? await Task.sleep(nanoseconds: 1_400_000_000)
+            if Task.isCancelled { return }
+            await MainActor.run {
+                if recentlyPastedStudentId == studentId {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                        recentlyPastedStudentId = nil
+                    }
+                }
+            }
+        }
+    }
 }
 
 private struct BulkEvaluationMacToolbar: ToolbarContent {
     let bridge: KmpBridge
     let title: String
     let className: String
-    @Binding var filterMode: BulkEvaluationMacFilterMode
+    @Binding var filterMode: BulkEvaluationFilterMode
     @Binding var searchText: String
     @Binding var showsInjuredInspector: Bool
+    let onSaveRequest: () -> Void
     let onClose: () -> Void
 
     var body: some ToolbarContent {
@@ -903,7 +1102,7 @@ private struct BulkEvaluationMacToolbar: ToolbarContent {
 
         ToolbarItem(placement: .principal) {
             Picker("Filtro", selection: $filterMode) {
-                ForEach(BulkEvaluationMacFilterMode.allCases) { mode in
+                ForEach(BulkEvaluationFilterMode.allCases) { mode in
                     Text(mode.title).tag(mode)
                 }
             }
@@ -922,9 +1121,7 @@ private struct BulkEvaluationMacToolbar: ToolbarContent {
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 220)
 
-            Button("Guardar") {
-                bridge.bulkSaveAll()
-            }
+            Button("Guardar", action: onSaveRequest)
             .keyboardShortcut("s", modifiers: [.command])
 
             Button("Cerrar") {
@@ -942,6 +1139,7 @@ private struct BulkEvaluationMacSynchronizedTable: View {
     let students: [Student]
     @Binding var selectedStudentId: Int64?
     @Binding var selectedCriterionId: Int64?
+    let recentlyPastedStudentId: Int64?
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
@@ -989,7 +1187,7 @@ private struct BulkEvaluationMacSynchronizedTable: View {
 
     private let criterionColumnWidth: CGFloat = 152
     private let scoreColumnWidth: CGFloat = 96
-    private let rowHeight: CGFloat = 56
+    private let rowHeight: CGFloat = 72
     private let headerHeight: CGFloat = 72
     private let rowSpacing: CGFloat = 8
 
@@ -1042,6 +1240,8 @@ private struct BulkEvaluationMacSynchronizedTable: View {
 
     private func sidebarRow(_ student: Student) -> some View {
         let isInjured = state.injuredStudents.contains(where: { $0.id == student.id })
+        let completedCriteria = rubric.criteria.count - missingCriteriaCount(student.id)
+        let isComplete = completedCriteria == rubric.criteria.count && rubric.criteria.isEmpty == false
         return Button {
             selectedStudentId = student.id
         } label: {
@@ -1069,6 +1269,9 @@ private struct BulkEvaluationMacSynchronizedTable: View {
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(.orange)
                         }
+                        Text("\(completedCriteria)/\(rubric.criteria.count) criterios")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(isComplete ? .green : .secondary)
                     }
                 }
 
@@ -1091,6 +1294,7 @@ private struct BulkEvaluationMacSynchronizedTable: View {
 
     private func gridRow(_ student: Student) -> some View {
         let isSelected = selectedStudentId == student.id
+        let isRecentlyPasted = recentlyPastedStudentId == student.id
 
         return HStack(spacing: 12) {
             ForEach(rubric.criteria, id: \.criterion.id) { criterion in
@@ -1105,12 +1309,16 @@ private struct BulkEvaluationMacSynchronizedTable: View {
         .frame(height: rowHeight)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(isSelected ? Color.accentColor.opacity(0.10) : Color(nsColor: .controlBackgroundColor).opacity(0.55))
+                .fill(isRecentlyPasted ? Color.green.opacity(0.12) : (isSelected ? Color.accentColor.opacity(0.10) : Color(nsColor: .controlBackgroundColor).opacity(0.55)))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(isSelected ? Color.accentColor.opacity(0.28) : Color.black.opacity(0.05), lineWidth: 1)
+                .stroke(
+                    isRecentlyPasted ? Color.green.opacity(0.65) : (isSelected ? Color.accentColor.opacity(0.28) : Color.black.opacity(0.05)),
+                    lineWidth: isRecentlyPasted ? 2 : 1
+                )
         )
+        .animation(.spring(response: 0.3, dampingFraction: 0.78), value: isRecentlyPasted)
         .onTapGesture {
             selectedStudentId = student.id
         }
@@ -1156,7 +1364,7 @@ private struct BulkEvaluationMacSynchronizedTable: View {
 
     private func scorePill(for studentId: Int64) -> some View {
         let score = bridge.bulkScore(studentId: studentId)
-        let color: Color = (score ?? 0) >= 5 ? .green : .red
+        let color: Color = (score ?? 0) >= state.passingThreshold ? .green : .red
         return Text(score.map { String(format: "%.1f", $0) } ?? "—")
             .font(.system(size: 14, weight: .bold, design: .rounded))
             .foregroundStyle(color)
@@ -1200,6 +1408,9 @@ private struct BulkEvaluationMacInspector: View {
     let isInjured: Bool
     let injuredStudents: [Student]
     let missingCriteriaCount: Int
+    let copiedAssessmentSourceName: String?
+    let onCopy: (Student) -> Void
+    let onPaste: (Student) -> Void
     let onClose: () -> Void
 
     var body: some View {
@@ -1232,15 +1443,25 @@ private struct BulkEvaluationMacInspector: View {
                 if let student {
                     HStack(spacing: 10) {
                         Button("Copiar") {
-                            bridge.bulkCopyAssessment(studentId: student.id)
+                            onCopy(student)
                         }
                         .buttonStyle(.bordered)
 
                         Button("Pegar") {
-                            bridge.bulkPasteAssessment(studentId: student.id)
+                            onPaste(student)
                         }
                         .buttonStyle(.borderedProminent)
                         .disabled(bridge.bulkRubricEvaluationState?.copiedAssessment == nil)
+                    }
+
+                    if let copiedAssessmentSourceName {
+                        Label("Portapapeles: \(copiedAssessmentSourceName)", systemImage: "doc.on.clipboard")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.green)
+                    } else {
+                        Label("Copia una fila antes de pegar", systemImage: "clipboard")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
                     }
 
                     metricBlock(title: "Progreso", value: "\(rubric.criteria.count - missingCriteriaCount)/\(rubric.criteria.count) criterios")

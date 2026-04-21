@@ -1118,7 +1118,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
             }
 
         let existingClassIds = Set(sessionEntries.map(\.classId))
-        let scheduledEntries = teacherScheduleSlots
+        let scheduledEntries = effectiveScheduleSlots
             .filter { slot in
                 guard Int(slot.dayOfWeek) == day else { return false }
                 if let groupFilterId, slot.schoolClassId != groupFilterId { return false }

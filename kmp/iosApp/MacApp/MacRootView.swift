@@ -38,15 +38,6 @@ struct MacRootView: View {
         .task {
             session.start()
         }
-        .sheet(
-            isPresented: Binding(
-                get: { session.bridge.showingBulkRubricEvaluation },
-                set: { session.bridge.showingBulkRubricEvaluation = $0 }
-            )
-        ) {
-            RubricBulkEvaluationSheet(bridge: session.bridge)
-                .frame(minWidth: 1200, minHeight: 820)
-        }
     }
 
     private var macSidebar: some View {
@@ -82,14 +73,23 @@ struct MacRootView: View {
                 bridge: session.bridge,
                 selectedClassId: $selectedClassId,
                 selectedStudentId: $selectedStudentId,
-                onOpenModule: { _, _, _ in }
+                onOpenModule: open(module:classId:studentId:)
             )
         case .students:
-            MacStudentsView(bridge: session.bridge, selectedClassId: $selectedClassId)
+            MacStudentsView(
+                bridge: session.bridge,
+                selectedClassId: $selectedClassId,
+                selectedStudentId: $selectedStudentId,
+                onOpenModule: open(module:classId:studentId:)
+            )
         case .rubrics:
             MacRubricsView(bridge: session.bridge)
         case .reports:
-            MacReportsView(bridge: session.bridge)
+            MacReportsView(
+                bridge: session.bridge,
+                selectedClassId: $selectedClassId,
+                selectedStudentId: $selectedStudentId
+            )
         case .planner:
             MacPlannerView(bridge: session.bridge)
         case .sync:
@@ -154,6 +154,28 @@ struct MacRootView: View {
         case .backups: return .gray
         case .reports: return .indigo
         case .settings: return .secondary
+        }
+    }
+
+    private func open(module: AppWorkspaceModule, classId: Int64?, studentId: Int64?) {
+        if let classId {
+            selectedClassId = classId
+        }
+        if let studentId {
+            selectedStudentId = studentId
+        }
+
+        switch module {
+        case .notebook:
+            session.selectedFeature = .notebook
+        case .students:
+            session.selectedFeature = .students
+        case .reports:
+            session.selectedFeature = .reports
+        case .attendance:
+            session.bridge.status = "Contexto de asistencia preparado para el alumno seleccionado."
+        default:
+            session.bridge.status = "El módulo \(module.title) todavía no está disponible en la shell Mac."
         }
     }
 }

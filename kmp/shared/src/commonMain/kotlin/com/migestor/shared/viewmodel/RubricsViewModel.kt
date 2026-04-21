@@ -50,6 +50,7 @@ data class RubricUiState(
     val isSaving: Boolean = false,
     val savedRubrics: List<RubricDetail> = emptyList(),
     val selectedWorkspaceRubricId: Long? = null,
+    val editingRubricId: Long? = null,
     val usageSummaries: Map<Long, RubricUsageSummary> = emptyMap(),
     val isUsageLoading: Boolean = false,
     val bulkEvaluationContextDialog: BulkEvaluationContextDialogState? = null,
@@ -148,7 +149,8 @@ class RubricsViewModel(
             criteria = defaultCriteria,
             totalWeight = 1.0,
             instructions = "",
-            selectedClassId = null
+            selectedClassId = null,
+            editingRubricId = null
         ) }
     }
 
@@ -431,8 +433,9 @@ class RubricsViewModel(
                         levels = stateLevels,
                         criteria = stateCriteria,
                         totalWeight = stateCriteria.sumOf { it.weight },
-                        selectedClassId = null,
+                        selectedClassId = rubric.classId,
                         selectedWorkspaceRubricId = rubric.id,
+                        editingRubricId = rubric.id,
                         mode = RubricMode.BUILDER
                     )
                 }
@@ -487,8 +490,9 @@ class RubricsViewModel(
                 levels = stateLevels,
                 criteria = stateCriteria,
                 totalWeight = stateCriteria.sumOf { it.weight },
-                selectedClassId = null,
+                selectedClassId = rubric.classId,
                 selectedWorkspaceRubricId = rubric.id,
+                editingRubricId = rubric.id,
                 mode = RubricMode.BUILDER
             )
         }
@@ -520,13 +524,32 @@ class RubricsViewModel(
         scope.launch {
             try {
                 val rubricId = rubricsRepository.saveRubric(
+                    id = state.editingRubricId,
                     name = state.rubricName,
                     description = state.instructions.takeIf { it.isNotBlank() },
                     classId = state.selectedClassId?.toLong()
                 )
-                
+
+                state.editingRubricId?.let { editingId ->
+                    val retainedCriterionIds = state.criteria.mapNotNull { it.id }.toSet()
+                    rubricsRepository.listCriteriaByRubric(editingId)
+                        .filterNot { it.id in retainedCriterionIds }
+                        .forEach { rubricsRepository.deleteCriterion(it.id) }
+                }
+
+                val retainedLevelOrders = state.levels.map { it.order }.toSet()
                 state.criteria.forEach { c ->
+                    val existingLevelsByOrder = c.id
+                        ?.let { rubricsRepository.listLevelsByCriterion(it) }
+                        ?.also { levels ->
+                            levels.filterNot { it.order in retainedLevelOrders }
+                                .forEach { rubricsRepository.deleteLevel(it.id) }
+                        }
+                        ?.associateBy { it.order }
+                        .orEmpty()
+
                     val criterionId = rubricsRepository.saveCriterion(
+                        id = c.id,
                         rubricId = rubricId,
                         description = c.description,
                         weight = c.weight,
@@ -535,6 +558,7 @@ class RubricsViewModel(
                     
                     state.levels.forEach { levelDef ->
                         rubricsRepository.saveLevel(
+                            id = existingLevelsByOrder[levelDef.order]?.id,
                             criterionId = criterionId,
                             name = levelDef.name,
                             points = levelDef.points,
@@ -550,7 +574,8 @@ class RubricsViewModel(
                 _uiState.update {
                     it.copy(
                         savedRubrics = freshRubrics,
-                        selectedWorkspaceRubricId = rubricId
+                        selectedWorkspaceRubricId = rubricId,
+                        editingRubricId = rubricId
                     )
                 }
 
@@ -591,6 +616,19 @@ class RubricsViewModel(
     }
 
     fun onAssignClassSelected(classId: Long) {
+        if (classId <= 0L) {
+            _uiState.update { state ->
+                state.copy(
+                    assignDialogState = state.assignDialogState?.copy(
+                        selectedClassId = null,
+                        availableTabs = emptyList(),
+                        selectedTab = null,
+                        createNewTab = false
+                    )
+                )
+            }
+            return
+        }
         scope.launch {
             try {
                 val tabs = notebookRepository.getTabNamesForClass(classId)
@@ -598,7 +636,9 @@ class RubricsViewModel(
                     assignDialogState = it.assignDialogState?.copy(
                         selectedClassId = classId,
                         availableTabs = tabs,
-                        selectedTab = tabs.firstOrNull()
+                        selectedTab = tabs.firstOrNull(),
+                        createNewTab = tabs.isEmpty(),
+                        newTabName = if (tabs.isEmpty()) "Rúbricas" else it.assignDialogState.newTabName
                     )
                 ) }
             } catch (e: Exception) {
@@ -610,7 +650,7 @@ class RubricsViewModel(
     fun onAssignTabSelected(tabName: String) {
         _uiState.update { it.copy(
             assignDialogState = it.assignDialogState?.copy(
-                selectedTab = tabName,
+                selectedTab = tabName.takeIf { name -> name.isNotBlank() },
                 createNewTab = false
             )
         ) }

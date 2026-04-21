@@ -102,6 +102,7 @@ final class KmpBridge: ObservableObject {
     @Published var rubricClassLinks: [Int64: Set<Int64>] = [:]
     @Published var rubricBuilderTeachingUnits: [TeachingUnit] = []
     @Published var selectedRubricTeachingUnitId: Int64? = nil
+    @Published var editingRubricBuilderId: Int64? = nil
     
     // Notebook State (Bridged from NotebookViewModel)
     @Published var notebookState: NotebookUiState = NotebookUiStateLoading()
@@ -222,6 +223,20 @@ final class KmpBridge: ObservableObject {
         let incidents: [Incident]
         let evaluations: [Evaluation]
         let timeline: [StudentTimelineEntry]
+    }
+
+    struct MacStudentRowSnapshot: Identifiable {
+        let id: Int64
+        let student: Student
+        let className: String
+        let followUpLabel: String
+        let recentAttendanceLabel: String
+        let averageText: String
+        let incidentCount: Int
+        let lastObservationText: String
+        let isInjured: Bool
+        let isFollowUp: Bool
+        let workGroupName: String
     }
 
     struct ReportPreviewPayload {
@@ -2181,6 +2196,131 @@ final class KmpBridge: ObservableObject {
         )
     }
 
+    func loadMacStudentRows(classId: Int64?) async throws -> [MacStudentRowSnapshot] {
+        let allClasses = try await container.classesRepository.listClasses()
+        let students: [Student]
+        if let classId {
+            students = try await container.classesRepository.listStudentsInClass(classId: classId)
+        } else {
+            students = try await container.studentsRepository.listStudents()
+        }
+
+        var classNameByStudentId: [Int64: String] = [:]
+        if let classId, let schoolClass = allClasses.first(where: { $0.id == classId }) {
+            students.forEach { classNameByStudentId[$0.id] = schoolClass.name }
+        } else {
+            for schoolClass in allClasses {
+                let roster = try await container.classesRepository.listStudentsInClass(classId: schoolClass.id)
+                for student in roster where classNameByStudentId[student.id] == nil {
+                    classNameByStudentId[student.id] = schoolClass.name
+                }
+            }
+        }
+
+        var workGroupByStudentId: [Int64: String] = [:]
+        if let classId {
+            let groups = try await container.notebookRepository.listWorkGroups(classId: classId, tabId: nil)
+            let groupNames = Dictionary(uniqueKeysWithValues: groups.map { ($0.id, $0.name) })
+            let members = try await container.notebookRepository.listWorkGroupMembers(classId: classId, tabId: nil)
+            for member in members where workGroupByStudentId[member.studentId] == nil {
+                workGroupByStudentId[member.studentId] = groupNames[member.groupId]
+            }
+        }
+
+        var rows: [MacStudentRowSnapshot] = []
+        for student in students.sorted(by: { lhs, rhs in
+            let lhsName = "\(lhs.lastName) \(lhs.firstName)"
+            let rhsName = "\(rhs.lastName) \(rhs.firstName)"
+            return lhsName.localizedCaseInsensitiveCompare(rhsName) == .orderedAscending
+        }) {
+            let profile = try? await loadStudentProfile(studentId: student.id, classId: classId)
+            let followUpCount = profile?.followUpCount ?? 0
+            let incidentCount = profile?.incidentCount ?? 0
+            let isFollowUp = student.isInjured || followUpCount > 0 || incidentCount > 0
+            let followUpLabel: String
+            if student.isInjured {
+                followUpLabel = "Lesión"
+            } else if followUpCount > 0 {
+                followUpLabel = "Seguimiento"
+            } else if incidentCount > 0 {
+                followUpLabel = "Incidencias"
+            } else {
+                followUpLabel = "Normal"
+            }
+
+            let latestObservation = latestObservationText(from: profile)
+            rows.append(
+                MacStudentRowSnapshot(
+                    id: student.id,
+                    student: student,
+                    className: classNameByStudentId[student.id] ?? "Sin clase",
+                    followUpLabel: followUpLabel,
+                    recentAttendanceLabel: profile?.latestAttendanceStatus ?? "Sin registro",
+                    averageText: (profile?.averageScore ?? 0) > 0 ? IosFormatting.decimal(profile?.averageScore) : "--",
+                    incidentCount: incidentCount,
+                    lastObservationText: latestObservation,
+                    isInjured: student.isInjured,
+                    isFollowUp: isFollowUp,
+                    workGroupName: workGroupByStudentId[student.id] ?? "Sin grupo"
+                )
+            )
+        }
+        return rows
+    }
+
+    func saveQuickStudentNote(studentId: Int64, classId: Int64?, note: String) async throws {
+        let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard let classId else {
+            throw NSError(domain: "KmpBridge", code: -4101, userInfo: [NSLocalizedDescriptionKey: "Selecciona una clase para guardar notas rápidas."])
+        }
+        guard let student = try await container.studentsRepository.listStudents().first(where: { $0.id == studentId }) else {
+            throw NSError(domain: "KmpBridge", code: 404, userInfo: [NSLocalizedDescriptionKey: "No se encontró el alumno \(studentId)."])
+        }
+        let sessions = try await container.plannerRepository.listAllSessions()
+            .filter { $0.groupId == classId }
+            .sorted { date(from: $0) > date(from: $1) }
+        guard let session = sessions.first else {
+            throw NSError(domain: "KmpBridge", code: -4102, userInfo: [NSLocalizedDescriptionKey: "No hay sesiones del grupo donde guardar la nota rápida."])
+        }
+
+        let aggregate = try await container.sessionJournalRepository.getOrCreateJournal(session: session)
+        let journalId = aggregate.journal.id
+        let quickNote = SessionJournalIndividualNote(
+            id: 0,
+            journalId: journalId,
+            studentId: KotlinLong(value: studentId),
+            studentName: student.fullName,
+            note: trimmed,
+            tag: "nota rápida"
+        )
+        let updatedAggregate = SessionJournalAggregate(
+            journal: aggregate.journal,
+            individualNotes: aggregate.individualNotes + [quickNote],
+            actions: aggregate.actions,
+            media: aggregate.media,
+            links: aggregate.links
+        )
+        _ = try await container.sessionJournalRepository.saveJournalAggregate(aggregate: updatedAggregate)
+        status = "Nota rápida guardada para \(student.fullName)"
+    }
+
+    private func latestObservationText(from profile: StudentProfileSnapshot?) -> String {
+        guard let profile else { return "Sin observaciones" }
+        if let attendanceNote = profile.recentAttendance.first(where: { !$0.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })?.note {
+            return attendanceNote
+        }
+        if let incident = profile.incidents.first {
+            return incident.detail?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+                ? incident.detail ?? incident.title
+                : incident.title
+        }
+        if let timelineEntry = profile.timeline.first, timelineEntry.subtitle != "Registro diario" {
+            return timelineEntry.subtitle
+        }
+        return "Sin observaciones"
+    }
+
     func buildReportPreview(
         classId: Int64,
         studentId: Int64? = nil,
@@ -3723,6 +3863,70 @@ final class KmpBridge: ObservableObject {
         )
         showingBulkRubricEvaluation = true
     }
+
+    @MainActor
+    func launchBulkRubricEvaluationFromRubric(
+        rubricId: Int64,
+        preferredClassId: Int64? = nil
+    ) async -> Bool {
+        do {
+            let usage = try await loadRubricUsage(rubricId: rubricId)
+            let sortedUsages = usage.evaluationUsages.sorted { lhs, rhs in
+                if let preferredClassId {
+                    if lhs.classId == preferredClassId && rhs.classId != preferredClassId { return true }
+                    if rhs.classId == preferredClassId && lhs.classId != preferredClassId { return false }
+                }
+                if lhs.className == rhs.className {
+                    return lhs.evaluationName.localizedCaseInsensitiveCompare(rhs.evaluationName) == .orderedAscending
+                }
+                return lhs.className.localizedCaseInsensitiveCompare(rhs.className) == .orderedAscending
+            }
+
+            guard let target = sortedUsages.first else {
+                status = "Esta rúbrica no está vinculada a ninguna evaluación."
+                return false
+            }
+
+            return await launchBulkRubricEvaluationFromUsage(
+                rubricId: rubricId,
+                classId: target.classId,
+                evaluationId: target.evaluationId
+            )
+        } catch {
+            status = "Error abriendo evaluación masiva: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    @MainActor
+    func launchBulkRubricEvaluationFromUsage(
+        rubricId: Int64,
+        classId: Int64,
+        evaluationId: Int64
+    ) async -> Bool {
+        do {
+            let columns = try await container.notebookConfigRepository.listColumns(classId: classId)
+            let column = columns.first { $0.evaluationId?.int64Value == evaluationId }
+
+            rubricEvaluationState = RubricEvaluationUiState.companion.default()
+            rubricBulkEvaluationViewModel.load(
+                classId: classId,
+                evaluationId: evaluationId,
+                rubricId: rubricId,
+                columnId: column?.id,
+                tabId: column?.tabIds.first
+            )
+            showingBulkRubricEvaluation = true
+
+            if column == nil {
+                status = "Abriendo evaluación masiva sin columna vinculada del cuaderno."
+            }
+            return true
+        } catch {
+            status = "Error abriendo evaluación masiva: \(error.localizedDescription)"
+            return false
+        }
+    }
     
     func closeBulkRubricEvaluation() {
         showingBulkRubricEvaluation = false
@@ -3839,12 +4043,14 @@ final class KmpBridge: ObservableObject {
 
     // Proxy Methods for RubricsViewModel
     func resetRubricBuilder() {
+        editingRubricBuilderId = nil
         selectedRubricTeachingUnitId = nil
         rubricBuilderTeachingUnits = []
         rubricsViewModel.resetBuilder()
     }
 
     func loadRubricForEditing(_ rubric: RubricDetail) {
+        editingRubricBuilderId = rubric.rubric.id
         rubricsViewModel.loadRubric(rubricDetail: rubric)
         let classId = rubric.rubric.classId?.int64Value
         let teachingUnitId = rubric.rubric.teachingUnitId?.int64Value
@@ -3982,8 +4188,9 @@ final class KmpBridge: ObservableObject {
         Task { @MainActor in
             let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
             do {
+                let editingRubricId = editingRubricBuilderId
                 let rubricId = try await container.rubricsRepository.saveRubric(
-                    id: nil,
+                    id: editingRubricId.map { KotlinLong(value: $0) },
                     name: state.rubricName,
                     description: state.instructions.nilIfBlank,
                     classId: state.selectedClassId,
@@ -3991,24 +4198,45 @@ final class KmpBridge: ObservableObject {
                     createdAtEpochMs: nowMs,
                     updatedAtEpochMs: nowMs,
                     deviceId: localDeviceId,
-                    syncVersion: 1
+                    syncVersion: editingRubricId == nil ? 1 : 2
                 ).int64Value
 
+                if let editingRubricId {
+                    let retainedCriterionIds = Set(state.criteria.compactMap { $0.id?.int64Value })
+                    let existingCriteria = try await container.rubricsRepository.listCriteriaByRubric(rubricId: editingRubricId)
+                    for existingCriterion in existingCriteria where !retainedCriterionIds.contains(existingCriterion.id) {
+                        try await container.rubricsRepository.deleteCriterion(criterionId: existingCriterion.id)
+                    }
+                }
+
+                let retainedLevelOrders = Set(state.levels.map { Int32($0.order) })
                 for criterion in state.criteria {
+                    let existingLevelsByOrder: [Int32: RubricLevel]
+                    if let existingCriterionId = criterion.id?.int64Value {
+                        let existingLevels = try await container.rubricsRepository.listLevelsByCriterion(criterionId: existingCriterionId)
+                        for existingLevel in existingLevels where !retainedLevelOrders.contains(Int32(existingLevel.order)) {
+                            try await container.rubricsRepository.deleteLevel(levelId: existingLevel.id)
+                        }
+                        existingLevelsByOrder = Dictionary(uniqueKeysWithValues: existingLevels.map { (Int32($0.order), $0) })
+                    } else {
+                        existingLevelsByOrder = [:]
+                    }
+
                     let criterionId = try await container.rubricsRepository.saveCriterion(
-                        id: nil,
+                        id: criterion.id,
                         rubricId: rubricId,
                         description: criterion.description_,
                         weight: criterion.weight,
                         order: Int32(criterion.order),
                         updatedAtEpochMs: nowMs,
                         deviceId: localDeviceId,
-                        syncVersion: 1
+                        syncVersion: criterion.id == nil ? 1 : 2
                     ).int64Value
 
                     for level in state.levels {
+                        let reusableLevelId = existingLevelsByOrder[Int32(level.order)]?.id
                         _ = try await container.rubricsRepository.saveLevel(
-                            id: nil,
+                            id: reusableLevelId.map { KotlinLong(value: $0) },
                             criterionId: criterionId,
                             name: level.name,
                             points: Int32(level.points),
@@ -4016,7 +4244,7 @@ final class KmpBridge: ObservableObject {
                             order: Int32(level.order),
                             updatedAtEpochMs: nowMs,
                             deviceId: localDeviceId,
-                            syncVersion: 1
+                            syncVersion: reusableLevelId == nil ? 1 : 2
                         )
                     }
                 }
@@ -4027,6 +4255,7 @@ final class KmpBridge: ObservableObject {
                     updatedAtEpochMs: nowMs,
                     payload: [
                         "rubricId": rubricId,
+                        "editingRubricId": editingRubricId ?? NSNull(),
                         "name": state.rubricName,
                         "description": state.instructions.nilIfBlank ?? NSNull(),
                         "classId": state.selectedClassId?.int64Value ?? NSNull(),
@@ -4054,6 +4283,7 @@ final class KmpBridge: ObservableObject {
                 if let classId = state.selectedClassId?.int64Value {
                     try? await refreshRubricBuilderTeachingUnits(for: classId)
                 }
+                editingRubricBuilderId = rubricId
                 onComplete(true)
             } catch {
                 onComplete(false)

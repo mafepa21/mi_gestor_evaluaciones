@@ -218,6 +218,9 @@ private struct NotebookSummarySheetRequest: Identifiable {
 }
 
 struct NotebookModuleView: View {
+    private let notebookGridRowHeight: CGFloat = 72
+    private let notebookGridHeaderHeight: CGFloat = 68
+
     @EnvironmentObject private var layoutState: WorkspaceLayoutState
     @ObservedObject var bridge: KmpBridge
     @Binding var selectedClassId: Int64?
@@ -614,6 +617,7 @@ struct NotebookModuleView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+        .frame(height: notebookGridHeaderHeight, alignment: .topLeading)
         .background(
             NotebookStyle.surfaceSoft.opacity(0.9)
                 .overlay(alignment: .bottom) {
@@ -633,6 +637,7 @@ struct NotebookModuleView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+        .frame(height: notebookGridHeaderHeight, alignment: .topLeading)
         .background(
             NotebookStyle.surfaceSoft.opacity(0.9)
                 .overlay(alignment: .bottom) {
@@ -1205,13 +1210,13 @@ struct NotebookModuleView: View {
     }
 
     private func notebookRowView(item: NotebookTableRow, data: NotebookUiStateData, segments: [NotebookDisplaySegment], rowIndex: Int) -> some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .center, spacing: 12) {
             ForEach(segments, id: \.id) { segment in
                 rowCell(for: segment, item: item, data: data)
             }
         }
+        .frame(height: notebookGridRowHeight, alignment: .center)
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
         .background(
             (rowIndex.isMultiple(of: 2) ? NotebookStyle.surfaceSoft.opacity(0.38) : Color.clear)
                 .overlay(
@@ -2318,7 +2323,7 @@ struct NotebookModuleView: View {
                         Text("\(item.student.firstName) \(item.student.lastName)")
                             .font(.system(size: 14, weight: .semibold, design: .rounded))
                             .foregroundStyle(.primary)
-                            .lineLimit(2)
+                            .lineLimit(1)
                         if item.student.isInjured {
                             Text("Seguimiento físico")
                                 .font(.system(size: 11, weight: .medium, design: .rounded))
@@ -2439,6 +2444,7 @@ private struct NotebookEditableTableCell: View {
                 .padding(6)
             }
         }
+        .frame(height: 44)
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)
         .onAppear(perform: loadDrafts)

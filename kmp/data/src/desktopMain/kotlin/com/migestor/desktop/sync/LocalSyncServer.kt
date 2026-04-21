@@ -50,9 +50,11 @@ import java.time.temporal.ChronoUnit
 import java.util.Base64
 import java.util.Date
 import java.util.UUID
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 import java.util.prefs.Preferences
 import javax.jmdns.JmDNS
 import javax.jmdns.ServiceInfo
@@ -100,6 +102,9 @@ class LocalSyncServer(
     private var jmDns: JmDNS? = null
     private var serviceInfo: ServiceInfo? = null
     private var networkMonitor: ScheduledExecutorService? = null
+    private var desktopChangeScanner: ScheduledExecutorService? = null
+    private val sseClients = CopyOnWriteArrayList<HttpExchange>()
+    private val lastDesktopChangeCursorMs = AtomicLong(0L)
     @Volatile
     private var advertisedLanAddress: InetAddress? = null
 
@@ -211,6 +216,7 @@ class LocalSyncServer(
                 secureStore.put("paired-token", newToken)
             }
             pairedDeviceId = deviceId
+            lastDesktopChangeCursorMs.set(0L)
             secureStore.put("paired-device-id", deviceId)
 
             println("✅ Handshake exitoso para '$deviceId'. Token emitido.")
@@ -261,6 +267,21 @@ class LocalSyncServer(
             ex.respond(200, encodeAck(ack))
         }
 
+        https.createContext("/sync/events") { ex ->
+            if (ex.requestMethod != "GET") {
+                ex.respond(405, """{"error":"method_not_allowed"}""")
+                return@createContext
+            }
+            if (!isAuthorized(ex)) return@createContext
+
+            ex.responseHeaders.add("Content-Type", "text/event-stream; charset=utf-8")
+            ex.responseHeaders.add("Cache-Control", "no-cache")
+            ex.responseHeaders.add("Connection", "keep-alive")
+            ex.sendResponseHeaders(200, 0)
+            sseClients.add(ex)
+            writeSseFrame(ex, ": connected\n\n")
+        }
+
         https.createContext("/sync/unpair") { ex ->
             if (ex.requestMethod != "POST") {
                 ex.respond(405, """{"error":"method_not_allowed"}""")
@@ -275,6 +296,7 @@ class LocalSyncServer(
         server = https
         publishBonjour()
         startNetworkMonitor()
+        startDesktopChangeScanner()
         notifyStatusChanged()
     }
 
@@ -284,6 +306,8 @@ class LocalSyncServer(
 
     fun stop() {
         stopNetworkMonitor()
+        stopDesktopChangeScanner()
+        closeSseClients()
         server?.stop(0)
         server = null
         serviceInfo?.let { jmDns?.unregisterService(it) }
@@ -301,6 +325,8 @@ class LocalSyncServer(
         secureStore.delete("paired-device-id")
         secureStore.delete("paired-token")
         pairingPin = (100000..999999).random().toString()
+        lastDesktopChangeCursorMs.set(0L)
+        closeSseClients()
         notifyStatusChanged()
         refreshBonjourService()
     }
@@ -352,6 +378,97 @@ class LocalSyncServer(
     private fun stopNetworkMonitor() {
         networkMonitor?.shutdownNow()
         networkMonitor = null
+    }
+
+    private fun startDesktopChangeScanner() {
+        if (desktopChangeScanner != null) return
+        desktopChangeScanner = Executors.newSingleThreadScheduledExecutor().also { scheduler ->
+            scheduler.execute {
+                scanDesktopChanges(notifyClients = false)
+            }
+            scheduler.scheduleAtFixedRate(
+                { scanDesktopChanges(notifyClients = true) },
+                1L,
+                1L,
+                TimeUnit.SECONDS
+            )
+            scheduler.scheduleAtFixedRate(
+                { broadcastSseKeepAlive() },
+                15L,
+                15L,
+                TimeUnit.SECONDS
+            )
+        }
+    }
+
+    private fun stopDesktopChangeScanner() {
+        desktopChangeScanner?.shutdownNow()
+        desktopChangeScanner = null
+    }
+
+    private fun scanDesktopChanges(notifyClients: Boolean) {
+        if (!isPaired()) return
+        val cursor = lastDesktopChangeCursorMs.get()
+        runCatching {
+            kotlinx.coroutines.runBlocking {
+                syncCoordinator.pullChanges(
+                    sinceEpochMs = cursor,
+                    serverNowEpochMs = System.currentTimeMillis(),
+                )
+            }
+        }.onSuccess { response ->
+            lastDesktopChangeCursorMs.set(response.serverEpochMs)
+            val iosDeviceId = pairedDeviceId
+            val desktopChanges = response.changes.filter { change ->
+                iosDeviceId.isNullOrBlank() || change.deviceId != iosDeviceId
+            }
+            if (notifyClients && cursor > 0L && desktopChanges.isNotEmpty()) {
+                notifyDataChanged(
+                    entities = desktopChanges.map { it.entity }.distinct(),
+                    serverEpochMs = response.serverEpochMs,
+                )
+            }
+        }.onFailure { error ->
+            println("⚠️ No se pudieron escanear cambios locales para SSE: ${error.message}")
+        }
+    }
+
+    private fun notifyDataChanged(entities: List<String>, serverEpochMs: Long = System.currentTimeMillis()) {
+        if (entities.isEmpty()) return
+        val payload = buildJsonObject {
+            put("serverEpochMs", JsonPrimitive(serverEpochMs))
+            put("entities", JsonArray(entities.map { JsonPrimitive(it) }))
+        }.toString()
+        val frame = "event: syncChanged\nid: $serverEpochMs\ndata: $payload\n\n"
+        broadcastSseFrame(frame)
+    }
+
+    private fun broadcastSseKeepAlive() {
+        broadcastSseFrame(": keepalive\n\n")
+    }
+
+    private fun broadcastSseFrame(frame: String) {
+        sseClients.removeIf { client ->
+            !writeSseFrame(client, frame)
+        }
+    }
+
+    private fun writeSseFrame(client: HttpExchange, frame: String): Boolean {
+        return runCatching {
+            client.responseBody.write(frame.toByteArray(Charsets.UTF_8))
+            client.responseBody.flush()
+            true
+        }.getOrElse {
+            runCatching { client.close() }
+            false
+        }
+    }
+
+    private fun closeSseClients() {
+        sseClients.forEach { client ->
+            runCatching { client.close() }
+        }
+        sseClients.clear()
     }
 
     private fun refreshNetworkBindingIfNeeded() {

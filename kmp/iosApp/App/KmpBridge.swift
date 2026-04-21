@@ -637,6 +637,7 @@ final class KmpBridge: ObservableObject {
     let rubricBulkEvaluationViewModel: RubricBulkEvaluationViewModel
     let rubricsViewModel: RubricsViewModel
     private let lanSyncClient = LanSyncClient()
+    private let syncEventListener = SyncEventListener()
     private let lanSyncDiscovery = LanSyncDiscovery()
     private let syncSecureStore = IosKeychainStore(service: "com.migestor.sync.ios")
     private var syncToken: String? = nil
@@ -766,6 +767,7 @@ final class KmpBridge: ObservableObject {
             guard let self else { return }
             self.lanSyncDiscovery.start()
             self.startAutoSyncLoop()
+            self.startSyncEventListenerIfPaired()
         }
 
         setupObservers()
@@ -774,6 +776,7 @@ final class KmpBridge: ObservableObject {
     deinit {
         autoSyncLoopTask?.cancel()
         autoSyncDebounceTask?.cancel()
+        syncEventListener.stop()
         notebookSnapshotDebounceTask?.cancel()
         pendingGradeSnapshotTask?.cancel()
         pendingDebouncedGradeSaves.values.forEach { $0.cancel() }
@@ -1373,7 +1376,7 @@ final class KmpBridge: ObservableObject {
         activeWeekdaysCsv: String,
         trace: AuditTrace
     ) async throws -> Int64 {
-        try await container.teacherScheduleRepository.saveSchedule(
+        let savedId = try await container.teacherScheduleRepository.saveSchedule(
             schedule: TeacherSchedule(
                 id: scheduleId,
                 ownerUserId: ownerUserId,
@@ -1385,6 +1388,26 @@ final class KmpBridge: ObservableObject {
                 trace: trace
             )
         ).int64Value
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        enqueueLocalChange(
+            entity: "teacher_schedule",
+            id: "\(savedId)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "id": savedId,
+                "ownerUserId": ownerUserId,
+                "academicYearId": academicYearId,
+                "name": name,
+                "startDateIso": startDateIso,
+                "endDateIso": endDateIso,
+                "activeWeekdaysCsv": activeWeekdaysCsv,
+                "authorUserId": trace.authorUserId?.int64Value ?? 0,
+                "createdAtEpochMs": trace.createdAt.toEpochMilliseconds(),
+                "updatedAtEpochMs": nowMs,
+                "associatedGroupId": trace.associatedGroupId?.int64Value ?? 0
+            ]
+        )
+        return savedId
     }
 
     func plannerSaveTeacherScheduleSlot(
@@ -1425,7 +1448,7 @@ final class KmpBridge: ObservableObject {
             }?.id ?? existingWeeklyTemplateId ?? 0
         }()
 
-        return try await container.teacherScheduleRepository.saveScheduleSlot(
+        let savedId = try await container.teacherScheduleRepository.saveScheduleSlot(
             slot: TeacherScheduleSlot(
                 id: editingSlotId ?? 0,
                 teacherScheduleId: scheduleId,
@@ -1438,14 +1461,42 @@ final class KmpBridge: ObservableObject {
                 weeklyTemplateId: weeklyTemplateId == 0 ? nil : KotlinLong(value: weeklyTemplateId)
             )
         ).int64Value
+        enqueueLocalChange(
+            entity: "teacher_schedule_slot",
+            id: "\(savedId)",
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+            payload: [
+                "id": savedId,
+                "teacherScheduleId": scheduleId,
+                "schoolClassId": classId,
+                "subjectLabel": subjectLabel,
+                "unitLabel": unitLabel ?? "",
+                "dayOfWeek": dayOfWeek,
+                "startTime": normalizedStart,
+                "endTime": normalizedEnd,
+                "weeklyTemplateId": weeklyTemplateId
+            ]
+        )
+        return savedId
     }
 
     func plannerDeleteTeacherScheduleSlot(slotId: Int64) async throws {
+        let existingSlot = try await container.teacherScheduleRepository.getScheduleSlot(slotId: slotId)
         if let slot = try await container.teacherScheduleRepository.getScheduleSlot(slotId: slotId),
            let weeklyTemplateId = slot.weeklyTemplateId {
             try? await container.weeklyTemplateRepository.delete(slotId: weeklyTemplateId.int64Value)
         }
         try await container.teacherScheduleRepository.deleteScheduleSlot(slotId: slotId)
+        enqueueLocalChange(
+            entity: "teacher_schedule_slot",
+            id: "\(slotId)",
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+            payload: [
+                "id": slotId,
+                "teacherScheduleId": existingSlot?.teacherScheduleId ?? 0
+            ],
+            op: "delete"
+        )
     }
 
     func plannerSaveEvaluationPeriod(
@@ -1456,7 +1507,7 @@ final class KmpBridge: ObservableObject {
         endDateIso: String,
         sortOrder: Int
     ) async throws -> Int64 {
-        try await container.teacherScheduleRepository.saveEvaluationPeriod(
+        let savedId = try await container.teacherScheduleRepository.saveEvaluationPeriod(
             period: PlannerEvaluationPeriod(
                 id: periodId,
                 teacherScheduleId: scheduleId,
@@ -1466,10 +1517,33 @@ final class KmpBridge: ObservableObject {
                 sortOrder: Int32(sortOrder)
             )
         ).int64Value
+        enqueueLocalChange(
+            entity: "planner_evaluation_period",
+            id: "\(savedId)",
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+            payload: [
+                "id": savedId,
+                "teacherScheduleId": scheduleId,
+                "name": name,
+                "startDateIso": startDateIso,
+                "endDateIso": endDateIso,
+                "sortOrder": sortOrder
+            ]
+        )
+        return savedId
     }
 
     func plannerDeleteEvaluationPeriod(periodId: Int64) async throws {
         try await container.teacherScheduleRepository.deleteEvaluationPeriod(periodId: periodId)
+        enqueueLocalChange(
+            entity: "planner_evaluation_period",
+            id: "\(periodId)",
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+            payload: [
+                "id": periodId
+            ],
+            op: "delete"
+        )
     }
 
     func plannerSaveWeeklySlot(
@@ -1617,6 +1691,15 @@ final class KmpBridge: ObservableObject {
 
     func plannerDeleteSession(sessionId: Int64) async throws {
         try await container.plannerRepository.deleteSession(sessionId: sessionId)
+        enqueueLocalChange(
+            entity: "planning_session",
+            id: "\(sessionId)",
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+            payload: [
+                "id": sessionId
+            ],
+            op: "delete"
+        )
     }
 
     func plannerJournal(for session: PlanningSession) async throws -> SessionJournalAggregate {
@@ -3052,6 +3135,7 @@ final class KmpBridge: ObservableObject {
             syncStatusMessage = "Emparejado con \(normalizedHost)"
             isPairingInFlight = false
             startAutoSyncLoop()
+            startSyncEventListenerIfPaired()
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 await self.syncNow(reason: "pairing_refresh", forceFullPull: false, silent: true)
@@ -5365,6 +5449,65 @@ final class KmpBridge: ObservableObject {
                     continue
                 }
 
+            case "teacher_schedule":
+                let updatedAt = Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs)
+                let schedule = TeacherSchedule(
+                    id: int64Value(payloadObject["id"]) ?? 0,
+                    ownerUserId: int64Value(payloadObject["ownerUserId"]) ?? 1,
+                    academicYearId: int64Value(payloadObject["academicYearId"]) ?? 1,
+                    name: payloadObject["name"] as? String ?? "Agenda docente",
+                    startDateIso: payloadObject["startDateIso"] as? String ?? "",
+                    endDateIso: payloadObject["endDateIso"] as? String ?? "",
+                    activeWeekdaysCsv: payloadObject["activeWeekdaysCsv"] as? String ?? "1,2,3,4,5",
+                    trace: AuditTrace(
+                        authorUserId: kotlinLong(int64Value(payloadObject["authorUserId"])),
+                        createdAt: Instant.companion.fromEpochMilliseconds(
+                            epochMilliseconds: int64Value(payloadObject["createdAtEpochMs"]) ?? change.updatedAtEpochMs
+                        ),
+                        updatedAt: updatedAt,
+                        associatedGroupId: kotlinLong(int64Value(payloadObject["associatedGroupId"])),
+                        deviceId: change.deviceId,
+                        syncVersion: 1
+                    )
+                )
+                _ = try await container.teacherScheduleRepository.saveSchedule(schedule: schedule)
+
+            case "teacher_schedule_slot":
+                guard
+                    let teacherScheduleId = int64Value(payloadObject["teacherScheduleId"]),
+                    let schoolClassId = int64Value(payloadObject["schoolClassId"]),
+                    let startTime = payloadObject["startTime"] as? String,
+                    let endTime = payloadObject["endTime"] as? String
+                else { continue }
+                _ = try await container.teacherScheduleRepository.saveScheduleSlot(
+                    slot: TeacherScheduleSlot(
+                        id: int64Value(payloadObject["id"]) ?? 0,
+                        teacherScheduleId: teacherScheduleId,
+                        schoolClassId: schoolClassId,
+                        subjectLabel: payloadObject["subjectLabel"] as? String ?? "",
+                        unitLabel: (payloadObject["unitLabel"] as? String)?.nilIfEmpty,
+                        dayOfWeek: Int32(int64Value(payloadObject["dayOfWeek"]) ?? 1),
+                        startTime: startTime,
+                        endTime: endTime,
+                        weeklyTemplateId: kotlinLong(int64Value(payloadObject["weeklyTemplateId"]))
+                    )
+                )
+
+            case "planner_evaluation_period":
+                guard
+                    let teacherScheduleId = int64Value(payloadObject["teacherScheduleId"])
+                else { continue }
+                _ = try await container.teacherScheduleRepository.saveEvaluationPeriod(
+                    period: PlannerEvaluationPeriod(
+                        id: int64Value(payloadObject["id"]) ?? 0,
+                        teacherScheduleId: teacherScheduleId,
+                        name: payloadObject["name"] as? String ?? "",
+                        startDateIso: payloadObject["startDateIso"] as? String ?? "",
+                        endDateIso: payloadObject["endDateIso"] as? String ?? "",
+                        sortOrder: Int32(int64Value(payloadObject["sortOrder"]) ?? 0)
+                    )
+                )
+
             case "rubric_bundle":
                 guard let rubricName = payloadObject["name"] as? String else { continue }
                 let rubricId = int64Value(payloadObject["rubricId"])
@@ -5582,6 +5725,26 @@ final class KmpBridge: ObservableObject {
             if rubricId > 0 {
                 try await container.rubricsRepository.deleteRubric(rubricId: rubricId)
             }
+        case "planning_session":
+            let sessionId = int64Value(payloadObject["id"]) ?? Int64(change.id) ?? 0
+            if sessionId > 0 {
+                try await container.plannerRepository.deleteSession(sessionId: sessionId)
+            }
+        case "teaching_unit":
+            let unitId = int64Value(payloadObject["id"]) ?? Int64(change.id) ?? 0
+            if unitId > 0 {
+                _ = try await container.plannerRepository.deleteTeachingUnit(unitId: unitId)
+            }
+        case "teacher_schedule_slot":
+            let slotId = int64Value(payloadObject["id"]) ?? Int64(change.id) ?? 0
+            if slotId > 0 {
+                try await container.teacherScheduleRepository.deleteScheduleSlot(slotId: slotId)
+            }
+        case "planner_evaluation_period":
+            let periodId = int64Value(payloadObject["id"]) ?? Int64(change.id) ?? 0
+            if periodId > 0 {
+                try await container.teacherScheduleRepository.deleteEvaluationPeriod(periodId: periodId)
+            }
         default:
             break
         }
@@ -5655,9 +5818,9 @@ final class KmpBridge: ObservableObject {
 
     private func syncApplyPriority(for entity: String) -> Int {
         switch entity {
-        case "class", "student", "rubric_bundle", "teaching_unit", "calendar_event":
+        case "class", "student", "rubric_bundle", "teaching_unit", "calendar_event", "teacher_schedule":
             return 0
-        case "evaluation", "weekly_slot", "notebook_tab", "notebook_column", "notebook_column_category", "notebook_group", "notebook_group_member":
+        case "evaluation", "weekly_slot", "teacher_schedule_slot", "planner_evaluation_period", "notebook_tab", "notebook_column", "notebook_column_category", "notebook_group", "notebook_group_member":
             return 1
         case "class_roster", "attendance", "incident":
             return 2
@@ -6028,6 +6191,7 @@ final class KmpBridge: ObservableObject {
         autoSyncLoopTask = nil
         autoSyncDebounceTask?.cancel()
         autoSyncDebounceTask = nil
+        syncEventListener.stop()
         syncSecureStore.delete(key: "sync.token")
         syncSecureStore.delete(key: "sync.host")
         syncSecureStore.delete(key: "sync.server.id")
@@ -6059,6 +6223,7 @@ final class KmpBridge: ObservableObject {
 
         if changed {
             persistSyncSecrets()
+            startSyncEventListenerIfPaired()
         }
 
         return changed && previous != matched.host
@@ -6138,9 +6303,26 @@ final class KmpBridge: ObservableObject {
         guard pairedSyncHost != nil, syncToken != nil else {
             autoSyncLoopTask?.cancel()
             autoSyncLoopTask = nil
+            syncEventListener.stop()
             return
         }
         startAutoSyncLoop()
+        startSyncEventListenerIfPaired()
+    }
+
+    private func startSyncEventListenerIfPaired() {
+        guard let host = pairedSyncHost, let token = syncToken else {
+            syncEventListener.stop()
+            return
+        }
+        syncEventListener.start(
+            host: host,
+            token: token,
+            pinnedFingerprint: pairedServerFingerprint
+        ) { [weak self] in
+            guard let self else { return }
+            await self.syncNow(reason: "sse_event", forceFullPull: false, silent: true)
+        }
     }
 
     private func triggerAutoSyncSoon() {
@@ -6160,6 +6342,7 @@ final class KmpBridge: ObservableObject {
 
     func onAppDidBecomeActive() {
         isAppInForeground = true
+        startSyncEventListenerIfPaired()
         Task { @MainActor [weak self] in
             guard let self else { return }
             await self.syncNow(reason: "foreground", forceFullPull: true, silent: true)
@@ -7855,7 +8038,7 @@ private final class IosKeychainStore {
     }
 }
 
-private final class PinnedTLSDelegate: NSObject, URLSessionDelegate {
+final class PinnedTLSDelegate: NSObject, URLSessionDelegate {
     private let pinnedFingerprint: String?
 
     init(pinnedFingerprint: String?) {

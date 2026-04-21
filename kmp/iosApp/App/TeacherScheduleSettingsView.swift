@@ -1327,31 +1327,38 @@ private struct MacClassPicker: View {
         }
         .buttonStyle(.plain)
         .popover(isPresented: $isPresented) {
-            VStack(alignment: .leading, spacing: 12) {
-                TextField("Buscar...", text: $query)
-                    .textFieldStyle(.roundedBorder)
+            VStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 12) {
+                    TextField("Buscar...", text: $query)
+                        .textFieldStyle(.roundedBorder)
 
-                ScrollView(.vertical, showsIndicators: true) {
-                    LazyVStack(alignment: .leading, spacing: 6) {
-                        if includesAll {
-                            optionRow(title: "Todos", isSelected: selection == nil) {
-                                selection = nil
-                                isPresented = false
+                    ScrollView(.vertical, showsIndicators: true) {
+                        LazyVStack(alignment: .leading, spacing: 6) {
+                            if includesAll {
+                                optionRow(title: "Todos", isSelected: selection == nil) {
+                                    selection = nil
+                                    isPresented = false
+                                }
+                            }
+
+                            ForEach(filteredGroups, id: \.id) { group in
+                                optionRow(title: group.name, isSelected: selection == group.id) {
+                                    selection = group.id
+                                    isPresented = false
+                                }
                             }
                         }
-
-                        ForEach(filteredGroups, id: \.id) { group in
-                            optionRow(title: group.name, isSelected: selection == group.id) {
-                                selection = group.id
-                                isPresented = false
-                            }
-                        }
+                        .padding(.vertical, 2)
                     }
-                    .padding(.vertical, 2)
+                    .frame(width: 320, height: 280)
                 }
-                .frame(width: 320, height: 280)
+                .padding(16)
+
+                MacPopupActionBar(
+                    title: nil,
+                    onClose: { isPresented = false }
+                )
             }
-            .padding(16)
         }
     }
 
@@ -1506,25 +1513,32 @@ private struct MacCourseColorRow: View {
             }
             .buttonStyle(.bordered)
             .popover(isPresented: $showPalette) {
-                LazyVGrid(columns: Array(repeating: GridItem(.fixed(32), spacing: 10), count: 4), spacing: 10) {
-                    ForEach(EvaluationDesign.plannerCoursePalette, id: \.self) { hex in
-                        Button {
-                            onSelect(hex)
-                            showPalette = false
-                        } label: {
-                            Circle()
-                                .fill(Color(hex: hex))
-                                .frame(width: 28, height: 28)
-                                .overlay {
-                                    Circle()
-                                        .stroke(selectedHex == hex ? Color.primary : Color.clear, lineWidth: 3)
-                                }
+                VStack(spacing: 0) {
+                    LazyVGrid(columns: Array(repeating: GridItem(.fixed(32), spacing: 10), count: 4), spacing: 10) {
+                        ForEach(EvaluationDesign.plannerCoursePalette, id: \.self) { hex in
+                            Button {
+                                onSelect(hex)
+                                showPalette = false
+                            } label: {
+                                Circle()
+                                    .fill(Color(hex: hex))
+                                    .frame(width: 28, height: 28)
+                                    .overlay {
+                                        Circle()
+                                            .stroke(selectedHex == hex ? Color.primary : Color.clear, lineWidth: 3)
+                                    }
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
+                    .padding(16)
+                    .frame(width: 184)
+
+                    MacPopupActionBar(
+                        title: nil,
+                        onClose: { showPalette = false }
+                    )
                 }
-                .padding(16)
-                .frame(width: 184)
             }
         }
         .padding(12)

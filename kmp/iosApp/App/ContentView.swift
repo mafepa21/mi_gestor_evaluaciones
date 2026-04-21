@@ -2612,6 +2612,18 @@ struct AssignRubricToTabView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 if let state = dialog {
+                    #if os(macOS)
+                    MacPopupActionBar(
+                        title: "Asignar rúbrica",
+                        subtitle: state.rubricName,
+                        saveTitle: isAssigning ? "Asignando…" : "Asignar",
+                        saveSystemImage: "square.and.arrow.down",
+                        canSave: canAssign && !isAssigning,
+                        onClose: closeAssignDialog,
+                        onSave: confirmAssignDialog
+                    )
+                    #endif
+
                     VStack(alignment: .leading, spacing: 18) {
                         HStack(alignment: .top, spacing: 16) {
                             VStack(alignment: .leading, spacing: 4) {
@@ -2622,13 +2634,14 @@ struct AssignRubricToTabView: View {
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
+                            #if !os(macOS)
                             Button {
-                                bridge.dismissAssignRubricDialog()
-                                dismiss()
+                                closeAssignDialog()
                             } label: {
                                 Label("Cerrar", systemImage: "xmark")
                             }
                             .buttonStyle(.bordered)
+                            #endif
                         }
 
                         assignmentStepCard(number: "1", title: "Clase") {
@@ -2696,29 +2709,22 @@ struct AssignRubricToTabView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(appPageBackground(for: colorScheme).ignoresSafeArea())
+            #if !os(macOS)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancelar") {
-                        bridge.dismissAssignRubricDialog()
-                        dismiss()
+                        closeAssignDialog()
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(isAssigning ? "Asignando…" : "Asignar") {
-                        guard canAssign else { return }
-                        isAssigning = true
-                        bridge.confirmAssignRubric()
-                        Task { @MainActor in
-                            try? await Task.sleep(nanoseconds: 1_200_000_000)
-                            if dialog != nil {
-                                isAssigning = false
-                            }
-                        }
+                        confirmAssignDialog()
                     }
                     .fontWeight(.bold)
                     .disabled(!canAssign || isAssigning)
                 }
             }
+            #endif
         }
     }
 
@@ -2757,6 +2763,23 @@ struct AssignRubricToTabView: View {
         }
         return state.selectedTab != nil
     }
+
+    private func closeAssignDialog() {
+        bridge.dismissAssignRubricDialog()
+        dismiss()
+    }
+
+    private func confirmAssignDialog() {
+        guard canAssign else { return }
+        isAssigning = true
+        bridge.confirmAssignRubric()
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            if dialog != nil {
+                isAssigning = false
+            }
+        }
+    }
 }
 
 struct RubricsBuilderScreen: View {
@@ -2774,6 +2797,18 @@ struct RubricsBuilderScreen: View {
             Group {
                 if let state {
                     VStack(alignment: .leading, spacing: 16) {
+                        #if os(macOS)
+                        MacPopupActionBar(
+                            title: "Editor de rúbricas",
+                            subtitle: state.rubricName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Nueva rúbrica" : state.rubricName,
+                            saveTitle: "Guardar Rúbrica",
+                            canSave: !state.rubricName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !state.isSaving,
+                            onClose: { dismiss() },
+                            onSave: saveRubricAndDismiss
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        #endif
+
                         HStack(alignment: .top, spacing: 16) {
                             RubricBuilderHeader(
                                 state: state,
@@ -2785,12 +2820,14 @@ struct RubricsBuilderScreen: View {
 
                             Spacer()
 
+                            #if !os(macOS)
                             Button {
                                 dismiss()
                             } label: {
                                 Label("Cerrar", systemImage: "xmark")
                             }
                             .buttonStyle(.bordered)
+                            #endif
                         }
 
                         TextEditor(text: instructionsBinding)
@@ -2840,13 +2877,9 @@ struct RubricsBuilderScreen: View {
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
+                            #if !os(macOS)
                             Button {
-                                bridge.saveRubricFromBuilder { success in
-                                    saveFeedback = success ? "Rúbrica guardada correctamente" : "Error al guardar"
-                                    if success {
-                                        dismiss()
-                                    }
-                                }
+                                saveRubricAndDismiss()
                             } label: {
                             Label("Guardar Rúbrica", systemImage: "square.and.arrow.down")
                                 .font(.system(size: 15, weight: .bold))
@@ -2857,6 +2890,7 @@ struct RubricsBuilderScreen: View {
                             }
                             .buttonStyle(.plain)
                             .disabled(state.rubricName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || state.isSaving)
+                            #endif
                         }
                     }
                     .padding(20)
@@ -2867,10 +2901,21 @@ struct RubricsBuilderScreen: View {
             }
             .background(appPageBackground(for: colorScheme).ignoresSafeArea())
             .appInlineNavigationBarTitleDisplayMode()
+            #if !os(macOS)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cerrar") { dismiss() }
                 }
+            }
+            #endif
+        }
+    }
+
+    private func saveRubricAndDismiss() {
+        bridge.saveRubricFromBuilder { success in
+            saveFeedback = success ? "Rúbrica guardada correctamente" : "Error al guardar"
+            if success {
+                dismiss()
             }
         }
     }

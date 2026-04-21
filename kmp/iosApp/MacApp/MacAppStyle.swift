@@ -103,3 +103,62 @@ struct MacStatusPill: View {
             }
     }
 }
+
+struct MacPopupActionBar: View {
+    let title: String?
+    var subtitle: String? = nil
+    var saveTitle: String? = nil
+    var saveSystemImage: String = "square.and.arrow.down"
+    var canSave: Bool = true
+    let onClose: () -> Void
+    var onSave: (() -> Void)? = nil
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            if title != nil || subtitle != nil {
+                VStack(alignment: .leading, spacing: 2) {
+                    if let title {
+                        Text(title)
+                            .font(.headline)
+                            .lineLimit(1)
+                    }
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+            }
+
+            Spacer(minLength: 12)
+
+            Button {
+                onClose()
+            } label: {
+                Label("Cerrar", systemImage: "xmark")
+            }
+            .buttonStyle(.bordered)
+            .keyboardShortcut(.cancelAction)
+
+            if let saveTitle, let onSave {
+                Button {
+                    onSave()
+                } label: {
+                    Label(saveTitle, systemImage: saveSystemImage)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!canSave)
+                .keyboardShortcut("s", modifiers: [.command])
+            }
+        }
+        .padding(.horizontal, MacAppStyle.innerPadding)
+        .padding(.vertical, 12)
+        .background(MacAppStyle.cardBackground)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(MacAppStyle.divider.opacity(0.8))
+                .frame(height: 0.5)
+        }
+    }
+}

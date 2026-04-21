@@ -2515,6 +2515,24 @@ private struct NotebookEditableTableCell: View {
                     }
                     .buttonStyle(.plain)
                     .popover(isPresented: $showTextPopover, arrowEdge: .bottom) {
+                        #if os(macOS)
+                        VStack(spacing: 0) {
+                            ScrollView {
+                                Text(textDraft)
+                                    .font(.callout)
+                                    .foregroundStyle(.primary)
+                                    .frame(maxWidth: 320, alignment: .leading)
+                                    .padding(14)
+                                    .textSelection(.enabled)
+                            }
+                            .frame(maxWidth: 340, maxHeight: 260)
+
+                            MacPopupActionBar(
+                                title: nil,
+                                onClose: { showTextPopover = false }
+                            )
+                        }
+                        #else
                         ScrollView {
                             Text(textDraft)
                                 .font(.callout)
@@ -2524,6 +2542,7 @@ private struct NotebookEditableTableCell: View {
                                 .textSelection(.enabled)
                         }
                         .frame(maxWidth: 340, maxHeight: 260)
+                        #endif
                     }
                 }
             }

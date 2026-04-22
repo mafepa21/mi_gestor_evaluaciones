@@ -41,6 +41,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontStyle
@@ -120,6 +121,7 @@ fun main() = application {
         mutableStateOf<DesktopInitState>(DesktopInitState.Loading("Abriendo base de datos local…"))
     }
     var syncServer by remember { mutableStateOf<LocalSyncServer?>(null) }
+    var syncRefreshTick by remember { mutableStateOf(0L) }
     val syncStatus = syncServer?.status?.collectAsState()?.value
 
     LaunchedEffect(Unit) {
@@ -140,7 +142,15 @@ fun main() = application {
             launch(Dispatchers.IO) {
                 runCatching {
                     val adapter = SqlDelightSyncAdapter(createdContainer)
-                    LocalSyncServer(syncCoordinator = SyncCoordinator(adapter)).also { server ->
+                    LocalSyncServer(
+                        syncCoordinator = SyncCoordinator(adapter),
+                        dataChangeListener = { entities ->
+                            CoroutineScope(Dispatchers.Main).launch {
+                                syncRefreshTick++
+                                println("[desktop] Sync remoto aplicado: ${entities.joinToString(",")}")
+                            }
+                        },
+                    ).also { server ->
                         server.start()
                     }
                 }.onSuccess { server ->
@@ -193,6 +203,7 @@ fun main() = application {
                             syncPin = syncStatus?.pin,
                             syncServerId = syncStatus?.serverId,
                             syncIsPaired = syncStatus?.isPaired ?: false,
+                            syncRefreshTick = syncRefreshTick,
                             onRevokeSyncPairing = {
                                 syncServer?.revokePairing()
                             }
@@ -252,6 +263,7 @@ private fun DesktopApp(
     syncPin: String?,
     syncServerId: String?,
     syncIsPaired: Boolean,
+    syncRefreshTick: Long,
     onRevokeSyncPairing: () -> Unit,
 ) {
     val scope = remember { CoroutineScope(Dispatchers.Main) }
@@ -503,7 +515,9 @@ private fun DesktopApp(
                             },
                             content = {
                                 Column(modifier = Modifier.fillMaxSize()) {
-                                    Box(modifier = Modifier.weight(1f)) { screenContent() }
+                                    Box(modifier = Modifier.weight(1f)) {
+                                        key(currentTab, syncRefreshTick) { screenContent() }
+                                    }
                                     Text(
                                         text = "Estado: $status",
                                         style = MaterialTheme.typography.bodySmall,
@@ -531,7 +545,9 @@ private fun DesktopApp(
                                     title = currentTab.title,
                                     subtitle = currentTab.sectionLabel()
                                 )
-                                Box(modifier = Modifier.weight(1f)) { screenContent() }
+                                Box(modifier = Modifier.weight(1f)) {
+                                    key(currentTab, syncRefreshTick) { screenContent() }
+                                }
                             }
                         }
                     }

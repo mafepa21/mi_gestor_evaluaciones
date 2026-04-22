@@ -515,12 +515,14 @@ struct NotebookTopBar: View {
     @ObservedObject var bridge: KmpBridge
     @Binding var searchText: String
     @Binding var surfaceMode: NotebookSurfaceMode
+    let navigationDirection: NotebookNavigationDirection
     let isInspectorPresented: Bool
     let onSelectClass: (Int64) -> Void
     let onOpenOrganizationMenu: () -> Void
     let onToggleInspector: () -> Void
     let onOpenAdvancedMenu: () -> Void
     let onOpenAddColumn: () -> Void
+    let onNavigationDirectionChange: (NotebookNavigationDirection) -> Void
     var onGenerateSummaryFallback: (() -> Void)? = nil
     var exportText: String? = nil
 
@@ -560,6 +562,7 @@ struct NotebookTopBar: View {
             Spacer(minLength: 0)
 
             saveStatusChip
+            navigationDirectionMenu
 
             Button(action: onOpenOrganizationMenu) {
                 Image(systemName: "rectangle.3.group")
@@ -609,6 +612,27 @@ struct NotebookTopBar: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(.bar)
+    }
+
+    private var navigationDirectionMenu: some View {
+        Menu {
+            ForEach(NotebookNavigationDirection.allCases) { direction in
+                Button {
+                    onNavigationDirectionChange(direction)
+                } label: {
+                    Label(direction.title, systemImage: direction.systemImage)
+                    if direction == navigationDirection {
+                        Image(systemName: "checkmark")
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: navigationDirection.systemImage)
+                .frame(width: 28, height: 28)
+        }
+        .menuStyle(.borderlessButton)
+        .foregroundStyle(.secondary)
+        .help("Dirección al guardar")
     }
 
     private var classPicker: some View {

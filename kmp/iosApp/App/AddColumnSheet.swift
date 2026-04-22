@@ -344,7 +344,7 @@ struct AddColumnSheet: View {
         .init(id: "attendance", title: "Asistencia", subtitle: "Presente, ausente o retraso", icon: "person.badge.clock", type: .attendance, categoryKind: .attendance, instrumentKind: .systematicObservation, inputKind: .attendanceStatus, scaleKind: .custom, defaultWeight: 0),
         .init(id: "physical_test", title: "Prueba física", subtitle: "Tiempo, distancia o repeticiones", icon: "figure.run", type: .numeric, categoryKind: .physicalEducation, instrumentKind: .physicalTest, inputKind: .distance, scaleKind: .distance, defaultWeight: 10),
         .init(id: "evidence", title: "Evidencia", subtitle: "Archivo o multimedia", icon: "paperclip.circle", type: .text, categoryKind: .extras, instrumentKind: .multimediaEvidence, inputKind: .evidence, scaleKind: .custom, defaultWeight: 0),
-        .init(id: "calculated", title: "Cálculo automático", subtitle: "Media o fórmula", icon: "function", type: .calculated, categoryKind: .evaluation, instrumentKind: .custom, inputKind: .calculated, scaleKind: .tenPoint, defaultWeight: 0),
+        .init(id: "calculated", title: "Cálculo / Fórmula", subtitle: "Fórmula con referencias a columnas", icon: "function", type: .calculated, categoryKind: .evaluation, instrumentKind: .custom, inputKind: .calculated, scaleKind: .tenPoint, defaultWeight: 0),
         .init(id: "individual_summary", title: "Síntesis pedagógica", subtitle: "Columna IA editable y regenerable por alumno", icon: "apple.intelligence", type: .text, categoryKind: .followUp, instrumentKind: .privateComment, inputKind: .text, scaleKind: .custom, defaultWeight: 0),
     ]
 
@@ -526,8 +526,10 @@ struct AddColumnSheet: View {
             }
 
             if selectedBlueprint?.type == .calculated {
-                TextField("Fórmula", text: $formula)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                NotebookFormulaKeyboard(
+                    formula: $formula,
+                    availableColumns: availableFormulaColumns
+                )
             }
 
             if selectedBlueprint?.type == .rubric {
@@ -734,6 +736,22 @@ struct AddColumnSheet: View {
     private var availableCategories: [NotebookColumnCategory] {
         guard let data = bridge.notebookState as? NotebookUiStateData else { return [] }
         return data.sheet.columnCategories.sorted { $0.order < $1.order }
+    }
+
+    private var availableFormulaColumns: [NotebookColumnDefinition] {
+        guard let data = bridge.notebookState as? NotebookUiStateData else { return [] }
+        let activeTabId = bridge.selectedNotebookTabId ?? data.sheet.tabs.first?.id
+        return data.sheet.columns
+            .filter { !$0.isHidden }
+            .filter { $0.type != .calculated }
+            .filter { column in
+                guard let activeTabId else { return true }
+                return column.tabIds.contains(activeTabId) || (column.sharedAcrossTabs && column.tabIds.isEmpty)
+            }
+            .sorted {
+                if $0.order != $1.order { return $0.order < $1.order }
+                return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+            }
     }
 
     private var canSave: Bool {

@@ -3282,9 +3282,9 @@ final class KmpBridge: ObservableObject {
             return
         }
 
-        let applied: Int
+        let ack: LanPushResult
         do {
-            applied = try await lanSyncClient.push(
+            ack = try await lanSyncClient.push(
                 host: host,
                 token: token,
                 deviceId: localDeviceId,
@@ -3296,7 +3296,7 @@ final class KmpBridge: ObservableObject {
             guard recoverHostAfterNetworkChange(previousHost: host), let reboundHost = pairedSyncHost else {
                 throw error
             }
-            applied = try await lanSyncClient.push(
+            ack = try await lanSyncClient.push(
                 host: reboundHost,
                 token: token,
                 deviceId: localDeviceId,
@@ -3305,14 +3305,16 @@ final class KmpBridge: ObservableObject {
                 pinnedFingerprint: pairedServerFingerprint
             )
         }
-        if applied > 0 {
+        if ack.applied > 0 || ack.desktopAuthoritative {
             pendingOutboundChanges.removeAll()
             UserDefaults.standard.removeObject(forKey: "sync.pending.changes.v2")
         }
         syncPendingChanges = pendingOutboundChanges.count
         syncLastRunAt = Date()
         if !silent {
-            syncStatusMessage = "Push OK (\(applied) aplicados)"
+            syncStatusMessage = ack.desktopAuthoritative
+                ? "macOS prevalece; cambios locales descartados"
+                : "Push OK (\(ack.applied) aplicados)"
         }
     }
 
@@ -6362,9 +6364,11 @@ final class KmpBridge: ObservableObject {
         guard pairedSyncHost != nil, syncToken != nil else { return }
         guard !isPairingInFlight else { return }
         let now = Date()
+        let latencyCriticalReason = reason == "sse_event" || reason == "debounced_local_change" || reason == "background_flush"
 
         if silent,
            !forceFullPull,
+           !latencyCriticalReason,
            pendingOutboundChanges.isEmpty,
            now.timeIntervalSince(lastSuccessfulSyncAt) < 1.5,
            now.timeIntervalSince(lastSilentSyncAttemptAt) < 1.5 {
@@ -6546,6 +6550,14 @@ struct LanPullResult {
     var changeCount: Int { changes.count }
 }
 
+struct LanPushResult {
+    let applied: Int
+    let ignored: Int
+    let failed: Int
+    let serverEpochMs: Int64?
+    let desktopAuthoritative: Bool
+}
+
 struct LanHandshakeResult {
     let token: String
     let serverId: String
@@ -6579,6 +6591,9 @@ private struct LanPushResponse: Codable {
     let applied: Int
     let conflictsResolvedByLww: Int?
     let serverEpochMs: Int64?
+    let ignored: Int?
+    let failed: Int?
+    let desktopAuthoritative: Bool?
 }
 
 final class LanSyncClient {
@@ -6694,7 +6709,7 @@ final class LanSyncClient {
         changes: [LanSyncChange],
         lastKnownServerEpochMs: Int64,
         pinnedFingerprint: String?
-    ) async throws -> Int {
+    ) async throws -> LanPushResult {
         let normalizedHost = Self.normalizeHost(host)
         let url = try buildURL(host: normalizedHost, path: "/sync/push")
         var request = URLRequest(url: url)
@@ -6724,7 +6739,14 @@ final class LanSyncClient {
                 NSLocalizedDescriptionKey: "Push LAN fallido (\(http.statusCode)): \(body)"
             ])
         }
-        return try JSONDecoder().decode(LanPushResponse.self, from: data).applied
+        let decoded = try JSONDecoder().decode(LanPushResponse.self, from: data)
+        return LanPushResult(
+            applied: decoded.applied,
+            ignored: decoded.ignored ?? 0,
+            failed: decoded.failed ?? 0,
+            serverEpochMs: decoded.serverEpochMs,
+            desktopAuthoritative: decoded.desktopAuthoritative ?? false
+        )
     }
 
     func unpair(host: String, token: String, pinnedFingerprint: String?) async throws -> Bool {

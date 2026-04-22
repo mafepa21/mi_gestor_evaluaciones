@@ -217,6 +217,44 @@ private struct NotebookSummarySheetRequest: Identifiable {
     var id: String { targetColumnId ?? "summary" }
 }
 
+enum NotebookNavigationDirection: String, CaseIterable, Identifiable {
+    case up
+    case down
+    case left
+    case right
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .up: return "Arriba"
+        case .down: return "Abajo"
+        case .left: return "Izquierda"
+        case .right: return "Derecha"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .up: return "arrow.up"
+        case .down: return "arrow.down"
+        case .left: return "arrow.left"
+        case .right: return "arrow.right"
+        }
+    }
+}
+
+private struct NotebookFormulaEditRequest: Identifiable {
+    let columnId: String
+
+    var id: String { columnId }
+}
+
+private struct NotebookFormulaCellDisplay {
+    let text: String
+    let isError: Bool
+}
+
 struct NotebookModuleView: View {
     private let notebookGridRowHeight: CGFloat = 72
     private let notebookGridHeaderHeight: CGFloat = 68
@@ -244,6 +282,10 @@ struct NotebookModuleView: View {
     @State private var isCreateCategoryAlertPresented = false
     @State private var categoryDraft = ""
     @State private var editingCategoryId: String? = nil
+    @State private var isNotebookTabAlertPresented = false
+    @State private var notebookTabDraft = ""
+    @State private var editingNotebookTabId: String? = nil
+    @State private var pendingDeleteNotebookTab: NotebookTab? = nil
     @State private var isRenameColumnAlertPresented = false
     @State private var columnDraft = ""
     @State private var editingColumnId: String? = nil
@@ -258,6 +300,20 @@ struct NotebookModuleView: View {
     @State private var isDraggingFixedZoneDivider = false
     @State private var fixedZoneDragStartWidth: CGFloat = 0
     @State private var columnWidths: [String: CGFloat] = [:]
+    @State private var formulaEditRequest: NotebookFormulaEditRequest? = nil
+    @State private var formulaDraft = ""
+    @State private var formulaAIPrompt = ""
+    @State private var formulaAIMessage: String? = nil
+    @State private var isFormulaAIGenerating = false
+    @State private var activeChoiceCellId: String? = nil
+    @AppStorage("notebook.navigationDirection") private var navigationDirectionRaw = NotebookNavigationDirection.down.rawValue
+    @FocusState private var focusedCellId: String?
+    private let formulaAIService = AppleFoundationFormulaService()
+
+    private var navigationDirection: NotebookNavigationDirection {
+        get { NotebookNavigationDirection(rawValue: navigationDirectionRaw) ?? .down }
+        nonmutating set { navigationDirectionRaw = newValue.rawValue }
+    }
 
     var body: some View {
         notebookLifecycleCleanup(
@@ -314,6 +370,18 @@ struct NotebookModuleView: View {
         } message: {
             Text("La categoría agrupa columnas relacionadas en el cuaderno.")
         }
+        .alert(editingNotebookTabId == nil ? "Nueva pestaña" : "Renombrar pestaña", isPresented: $isNotebookTabAlertPresented) {
+            TextField("Nombre", text: $notebookTabDraft)
+            Button("Cancelar", role: .cancel) {
+                resetNotebookTabDraft()
+            }
+            Button(editingNotebookTabId == nil ? "Crear" : "Guardar") {
+                saveNotebookTabDraft()
+            }
+            .disabled(notebookTabDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        } message: {
+            Text("Cada pestaña funciona como un cuaderno temático independiente dentro de la clase.")
+        }
         .alert("Renombrar columna", isPresented: $isRenameColumnAlertPresented) {
             TextField("Título", text: $columnDraft)
             Button("Cancelar", role: .cancel) {
@@ -353,6 +421,27 @@ struct NotebookModuleView: View {
             deleteCategoryDialogActions()
         } message: {
             deleteCategoryDialogMessageContent()
+        }
+        .confirmationDialog(
+            "Eliminar pestaña",
+            isPresented: Binding(
+                get: { pendingDeleteNotebookTab != nil },
+                set: { if !$0 { pendingDeleteNotebookTab = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let tab = pendingDeleteNotebookTab {
+                Button("Eliminar “\(tab.title)”", role: .destructive) {
+                    deleteNotebookTab(tab)
+                }
+                Button("Cancelar", role: .cancel) {
+                    pendingDeleteNotebookTab = nil
+                }
+            }
+        } message: {
+            if let tab = pendingDeleteNotebookTab {
+                Text("Se eliminará la pestaña “\(tab.title)” y las columnas que solo pertenezcan a ella.")
+            }
         }
     }
 
@@ -441,6 +530,7 @@ struct NotebookModuleView: View {
                     bridge: bridge,
                     searchText: $searchText,
                     surfaceMode: $surfaceMode,
+                    navigationDirection: navigationDirection,
                     isInspectorPresented: isInspectorPresented,
                     onSelectClass: selectNotebookClass,
                     onOpenOrganizationMenu: {
@@ -460,11 +550,16 @@ struct NotebookModuleView: View {
                     onOpenAddColumn: {
                         addColumnContext = NotebookAddColumnContext(categoryId: nil, startsCreatingCategory: false)
                     },
+                    onNavigationDirectionChange: { direction in
+                        navigationDirection = direction
+                    },
                     onGenerateSummaryFallback: {
                         notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: nil)
                     },
                     exportText: exportText(data: data)
                 )
+                Divider()
+                notebookTabStrip(data: data)
                 Divider()
                 spreadsheetContent(data: data)
             }
@@ -478,6 +573,84 @@ struct NotebookModuleView: View {
             }
         }
         .background(EvaluationBackdrop())
+    }
+
+    private func notebookTabStrip(data: NotebookUiStateData) -> some View {
+        let tabs = orderedNotebookTabs(data: data)
+        let activeTabId = activeNotebookTabId(data: data)
+
+        return HStack(spacing: 10) {
+            if tabs.isEmpty {
+                Label("Organiza el cuaderno por temas", systemImage: "rectangle.on.rectangle")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 12)
+                Button {
+                    presentCreateNotebookTab()
+                } label: {
+                    Label("Crear primera pestaña", systemImage: "plus")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(tabs, id: \.id) { tab in
+                            notebookTabButton(tab: tab, isSelected: tab.id == activeTabId)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+
+                Button {
+                    presentCreateNotebookTab()
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 12, weight: .bold))
+                        .frame(width: 26, height: 26)
+                }
+                .buttonStyle(.borderless)
+                .help("Nueva pestaña")
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(.bar)
+    }
+
+    private func notebookTabButton(tab: NotebookTab, isSelected: Bool) -> some View {
+        Button {
+            selectNotebookTab(tab.id)
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: isSelected ? "rectangle.fill.on.rectangle.fill" : "rectangle.on.rectangle")
+                    .font(.system(size: 11, weight: .semibold))
+                Text(tab.title)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(isSelected ? Color.accentColor.opacity(0.13) : Color.clear)
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .stroke(isSelected ? Color.accentColor.opacity(0.28) : NotebookStyle.softBorder.opacity(0.9), lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button("Renombrar") {
+                presentRenameNotebookTab(tab)
+            }
+            Button("Eliminar pestaña", role: .destructive) {
+                pendingDeleteNotebookTab = tab
+            }
+        }
+        .help("Abrir \(tab.title)")
     }
 
     @ViewBuilder
@@ -587,7 +760,14 @@ struct NotebookModuleView: View {
             } fixedRows: {
                 LazyVStack(spacing: 0) {
                     ForEach(Array(rows.enumerated()), id: \.element.id) { index, item in
-                        notebookRowView(item: item, data: data, segments: fixedSegments, rowIndex: index)
+                        notebookRowView(
+                            item: item,
+                            data: data,
+                            segments: fixedSegments,
+                            rowIndex: index,
+                            allRows: rows,
+                            navigableSegments: scrollableSegments
+                        )
                         Divider()
                             .overlay(NotebookStyle.softBorder)
                             .padding(.horizontal, 16)
@@ -597,7 +777,14 @@ struct NotebookModuleView: View {
             } scrollRows: {
                 LazyVStack(spacing: 0) {
                     ForEach(Array(rows.enumerated()), id: \.element.id) { index, item in
-                        notebookRowView(item: item, data: data, segments: scrollableSegments, rowIndex: index)
+                        notebookRowView(
+                            item: item,
+                            data: data,
+                            segments: scrollableSegments,
+                            rowIndex: index,
+                            allRows: rows,
+                            navigableSegments: scrollableSegments
+                        )
                         Divider()
                             .overlay(NotebookStyle.softBorder)
                             .padding(.horizontal, 16)
@@ -751,10 +938,35 @@ struct NotebookModuleView: View {
                     showToast(message, style: style)
                 }
             }
+            .sheet(item: $formulaEditRequest) { request in
+                formulaEditorSheet(request: request, data: data)
+            }
+            .sheet(isPresented: Binding(
+                get: { bridge.showingBulkRubricEvaluation },
+                set: { isPresented in
+                    if !isPresented {
+                        bridge.closeBulkRubricEvaluation()
+                    }
+                }
+            )) {
+                RubricBulkEvaluationSheet(bridge: bridge)
+                    #if os(macOS)
+                    .frame(width: 1180, height: 760)
+                    #else
+                    .presentationDetents([.large])
+                    #endif
+            }
             .navigationTitle("Cuaderno")
             .notebookNavigationSubtitle(notebookNavigationSubtitle(data: data))
+            .notebookKeyboardNavigation {
+                navigateFromFocused(direction: navigationDirection, data: data)
+            }
             .onAppear {
+                ensureActiveNotebookTab(data: data)
                 syncToolbarState(data: data)
+            }
+            .onChange(of: notebookTabsStateKey(data: data)) { _ in
+                ensureActiveNotebookTab(data: data)
             }
             .onChange(of: toolbarStateKey(data: data)) { _ in
                 syncToolbarState(data: data)
@@ -778,10 +990,113 @@ struct NotebookModuleView: View {
         #endif
     }
 
+    @ViewBuilder
+    private func formulaEditorSheet(request: NotebookFormulaEditRequest, data: NotebookUiStateData) -> some View {
+        if let column = data.sheet.columns.first(where: { $0.id == request.columnId }) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Fórmula de columna")
+                            .font(.title3.bold())
+                        Text(column.title)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("Cerrar") {
+                        formulaEditRequest = nil
+                    }
+                    .buttonStyle(.borderless)
+                }
+                .padding(22)
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Edita la fórmula una vez y se aplicará a todas las celdas de esta columna calculada.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+
+                    NotebookFormulaKeyboard(
+                        formula: $formulaDraft,
+                        availableColumns: formulaReferenceColumns(for: column, data: data)
+                    )
+
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Ayuda con Apple Intelligence")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .textCase(.uppercase)
+                            .tracking(0.3)
+
+                        TextField("Ej: media del examen y la rúbrica, o corrige esta fórmula", text: $formulaAIPrompt, axis: .vertical)
+                            .textFieldStyle(.roundedBorder)
+                            .lineLimit(2...4)
+
+                        HStack {
+                            Button {
+                                generateFormulaWithAI(column: column, data: data)
+                            } label: {
+                                Label(isFormulaAIGenerating ? "Pensando…" : "Generar / corregir fórmula", systemImage: "apple.intelligence")
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(isFormulaAIGenerating || formulaAIPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                            if let formulaAIMessage {
+                                Text(formulaAIMessage)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(2)
+                            }
+                        }
+                    }
+                }
+                .padding(22)
+
+                Spacer(minLength: 0)
+                Divider()
+
+                HStack {
+                    Button("Cancelar") {
+                        formulaEditRequest = nil
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.secondary)
+
+                    Spacer()
+
+                    Button("Guardar fórmula") {
+                        saveFormula(column)
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                .padding(18)
+            }
+            .frame(width: 620, height: 560)
+        } else {
+            Text("No se encontró la columna")
+                .padding()
+        }
+    }
+
+    private func formulaReferenceColumns(for column: NotebookColumnDefinition, data: NotebookUiStateData) -> [NotebookColumnDefinition] {
+        visibleNotebookSourceColumns(data: data)
+            .filter { $0.id != column.id && $0.type != .calculated }
+    }
+
     private func notebookNavigationSubtitle(data: NotebookUiStateData) -> String {
         let context = headerContextLine(in: data)
         let studentCount = filteredRows(data: data).count
         return "\(context) · \(studentCount) alumnos"
+    }
+
+    private func notebookTabsStateKey(data: NotebookUiStateData) -> String {
+        data.sheet.tabs
+            .sorted { $0.id < $1.id }
+            .map { "\($0.id)|\($0.title)|\($0.order)|\($0.parentTabId ?? "")" }
+            .joined(separator: "¬")
     }
 
     private func notebookAISheet(request: NotebookAISheetRequest, data: NotebookUiStateData) -> some View {
@@ -1100,7 +1415,56 @@ struct NotebookModuleView: View {
     private func headerContextLine(in data: NotebookUiStateData) -> String {
         let classText = activeClassLabel
         let groupText = selectedGroupId.flatMap { groupName(for: $0, in: data) } ?? "Grupo completo"
-        return "\(classText) · \(groupText)"
+        let tabText = activeNotebookTab(data: data)?.title
+        return [classText, tabText, groupText]
+            .compactMap { value in
+                let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                return trimmed.isEmpty ? nil : trimmed
+            }
+            .joined(separator: " · ")
+    }
+
+    private func orderedNotebookTabs(data: NotebookUiStateData) -> [NotebookTab] {
+        let rootTabs = data.sheet.tabs.filter { $0.parentTabId == nil }
+        let source = rootTabs.isEmpty ? data.sheet.tabs : rootTabs
+        return source.sorted {
+            if $0.order != $1.order { return $0.order < $1.order }
+            return $0.id < $1.id
+        }
+    }
+
+    private func activeNotebookTabId(data: NotebookUiStateData) -> String? {
+        let tabs = orderedNotebookTabs(data: data)
+        if let selected = bridge.selectedNotebookTabId,
+           tabs.contains(where: { $0.id == selected }) {
+            return selected
+        }
+        return tabs.first?.id
+    }
+
+    private func activeNotebookTab(data: NotebookUiStateData) -> NotebookTab? {
+        guard let activeTabId = activeNotebookTabId(data: data) else { return nil }
+        return data.sheet.tabs.first { $0.id == activeTabId }
+    }
+
+    private func ensureActiveNotebookTab(data: NotebookUiStateData) {
+        guard let activeTabId = activeNotebookTabId(data: data) else {
+            if bridge.selectedNotebookTabId != nil {
+                bridge.setSelectedNotebookTab(id: nil)
+            }
+            return
+        }
+        if bridge.selectedNotebookTabId != activeTabId {
+            bridge.setSelectedNotebookTab(id: activeTabId)
+        }
+    }
+
+    private func selectNotebookTab(_ tabId: String) {
+        selectedGroupId = nil
+        inspectorSelection = nil
+        isInspectorPresented = false
+        highlightedRandomStudentId = nil
+        bridge.setSelectedNotebookTab(id: tabId)
     }
 
     private func selectNotebookClass(_ classId: Int64) {
@@ -1197,7 +1561,7 @@ struct NotebookModuleView: View {
     }
 
     private func filteredRows(data: NotebookUiStateData) -> [NotebookTableRow] {
-        let rows = data.sheet.groupedRowsFor(tabId: bridge.selectedNotebookTabId).flatMap { section in
+        let rows = data.sheet.groupedRowsFor(tabId: activeNotebookTabId(data: data)).flatMap { section in
             let groupName = section.group?.name ?? "Sin grupo"
             return section.rows.map { NotebookTableRow(student: $0.student, row: $0, groupName: groupName) }
         }
@@ -1209,10 +1573,23 @@ struct NotebookModuleView: View {
         }
     }
 
-    private func notebookRowView(item: NotebookTableRow, data: NotebookUiStateData, segments: [NotebookDisplaySegment], rowIndex: Int) -> some View {
+    private func notebookRowView(
+        item: NotebookTableRow,
+        data: NotebookUiStateData,
+        segments: [NotebookDisplaySegment],
+        rowIndex: Int,
+        allRows: [NotebookTableRow],
+        navigableSegments: [NotebookDisplaySegment]
+    ) -> some View {
         HStack(alignment: .center, spacing: 12) {
             ForEach(segments, id: \.id) { segment in
-                rowCell(for: segment, item: item, data: data)
+                rowCell(
+                    for: segment,
+                    item: item,
+                    data: data,
+                    allRows: allRows,
+                    navigableSegments: navigableSegments
+                )
             }
         }
         .frame(height: notebookGridRowHeight, alignment: .center)
@@ -1230,25 +1607,38 @@ struct NotebookModuleView: View {
     }
 
     private func groupedRows(data: NotebookUiStateData) -> [NotebookWorkGroup] {
-        data.sheet.workGroups.sorted { $0.order < $1.order }
+        let activeTabId = activeNotebookTabId(data: data)
+        return data.sheet.workGroups
+            .filter { activeTabId == nil || $0.tabId == activeTabId }
+            .sorted { $0.order < $1.order }
     }
 
     private func groupId(for studentId: Int64, in data: NotebookUiStateData) -> Int64? {
-        data.sheet.workGroupMembers.first(where: { $0.studentId == studentId })?.groupId
+        let activeTabId = activeNotebookTabId(data: data)
+        return data.sheet.workGroupMembers
+            .first(where: { $0.studentId == studentId && (activeTabId == nil || $0.tabId == activeTabId) })?
+            .groupId
     }
 
     private func groupName(for groupId: Int64, in data: NotebookUiStateData) -> String? {
-        data.sheet.workGroups.first(where: { $0.id == groupId })?.name
+        let activeTabId = activeNotebookTabId(data: data)
+        return data.sheet.workGroups
+            .first(where: { $0.id == groupId && (activeTabId == nil || $0.tabId == activeTabId) })?
+            .name
     }
 
     private func memberCount(_ groupId: Int64, in data: NotebookUiStateData) -> Int {
-        data.sheet.workGroupMembers.filter { $0.groupId == groupId }.count
+        let activeTabId = activeNotebookTabId(data: data)
+        return data.sheet.workGroupMembers
+            .filter { $0.groupId == groupId && (activeTabId == nil || $0.tabId == activeTabId) }
+            .count
     }
 
     private func columns(in category: NotebookColumnCategory, data: NotebookUiStateData, includeHidden: Bool = false) -> [NotebookColumnDefinition] {
         data.sheet.columns
             .filter { $0.categoryId == category.id }
             .filter { includeHidden || !$0.isHidden }
+            .filter { columnMatchesActiveTab($0, data: data) }
             .filter { columnMatchesCurrentView($0) }
             .sorted {
                 if $0.order != $1.order { return $0.order < $1.order }
@@ -1258,6 +1648,7 @@ struct NotebookModuleView: View {
 
     private func managedColumns(data: NotebookUiStateData) -> [NotebookColumnDefinition] {
         data.sheet.columns
+            .filter { columnMatchesActiveTab($0, data: data) }
             .filter { columnMatchesCurrentView($0) }
             .sorted {
             if $0.order != $1.order { return $0.order < $1.order }
@@ -1266,13 +1657,12 @@ struct NotebookModuleView: View {
     }
 
     private func relevantCategories(data: NotebookUiStateData) -> [NotebookColumnCategory] {
-        data.sheet.columnCategories
-            .sorted { $0.order < $1.order }
+        visibleCategories(data: data)
             .filter { !columns(in: $0, data: data, includeHidden: true).isEmpty }
     }
 
     private func visibleCategories(data: NotebookUiStateData) -> [NotebookColumnCategory] {
-        let activeTabId = bridge.selectedNotebookTabId ?? data.sheet.tabs.first?.id
+        let activeTabId = activeNotebookTabId(data: data)
         return data.sheet.columnCategories
             .filter { activeTabId == nil || $0.tabId == activeTabId }
             .sorted { $0.order < $1.order }
@@ -1283,6 +1673,7 @@ struct NotebookModuleView: View {
         let categoriesById = Dictionary(uniqueKeysWithValues: data.sheet.columnCategories.map { ($0.id, $0) })
         let orderedColumns = data.sheet.columns
             .filter { !$0.isHidden }
+            .filter { columnMatchesActiveTab($0, data: data) }
             .filter { columnMatchesCurrentView($0) }
             .sorted {
                 if $0.isPinned != $1.isPinned { return $0.isPinned && !$1.isPinned }
@@ -1329,6 +1720,164 @@ struct NotebookModuleView: View {
             return [inspectorSelection.studentId]
         }
         return filteredRows(data: data).map(\.student.id)
+    }
+
+    private func cellFocusId(studentId: Int64, columnId: String) -> String {
+        "\(studentId)|\(columnId)"
+    }
+
+    private func presentFormulaEditor(for column: NotebookColumnDefinition) {
+        formulaDraft = column.formula ?? ""
+        formulaAIPrompt = ""
+        formulaAIMessage = nil
+        isFormulaAIGenerating = false
+        focusedCellId = nil
+        activeChoiceCellId = nil
+        formulaEditRequest = NotebookFormulaEditRequest(columnId: column.id)
+    }
+
+    private func saveFormula(_ column: NotebookColumnDefinition) {
+        let trimmed = formulaDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        saveColumnMutation(
+            column,
+            formula: trimmed.isEmpty ? nil : trimmed,
+            updatesFormula: true
+        )
+        formulaEditRequest = nil
+        showToast(trimmed.isEmpty ? "Fórmula eliminada" : "Fórmula actualizada")
+    }
+
+    private func generateFormulaWithAI(column: NotebookColumnDefinition, data: NotebookUiStateData) {
+        let prompt = formulaAIPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prompt.isEmpty else { return }
+        isFormulaAIGenerating = true
+        formulaAIMessage = nil
+        let columns = formulaReferenceColumns(for: column, data: data)
+        let currentFormula = formulaDraft
+        Task {
+            do {
+                let formula = try await formulaAIService.generateFormula(
+                    request: prompt,
+                    currentFormula: currentFormula,
+                    availableColumns: columns
+                )
+                await MainActor.run {
+                    formulaDraft = formula
+                    formulaAIMessage = "Propuesta insertada. Revísala antes de guardar."
+                    isFormulaAIGenerating = false
+                }
+            } catch {
+                await MainActor.run {
+                    formulaAIMessage = error.localizedDescription
+                    isFormulaAIGenerating = false
+                }
+            }
+        }
+    }
+
+    private func openRubricIndividual(column: NotebookColumnDefinition, item: NotebookTableRow) {
+        guard let rubricId = column.rubricId?.int64Value,
+              let evaluationId = column.evaluationId?.int64Value else {
+            showToast("Esta columna no tiene una rúbrica asociada", style: .warning)
+            return
+        }
+        focusedCellId = nil
+        activeChoiceCellId = nil
+        inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
+        bridge.loadForNotebookCell(
+            studentId: item.student.id,
+            columnId: column.id,
+            rubricId: rubricId,
+            evaluationId: evaluationId
+        )
+    }
+
+    private func openRubricBulk(column: NotebookColumnDefinition, data: NotebookUiStateData) {
+        guard let evaluationId = column.evaluationId?.int64Value,
+              let rubricId = column.rubricId?.int64Value else {
+            showToast("Esta columna no tiene una rúbrica asociada", style: .warning)
+            return
+        }
+        focusedCellId = nil
+        activeChoiceCellId = nil
+        bridge.startBulkRubricEvaluation(
+            classId: data.sheet.classId,
+            evaluationId: evaluationId,
+            rubricId: rubricId,
+            columnId: column.id,
+            tabId: activeNotebookTabId(data: data)
+        )
+    }
+
+    private func navigateFromFocused(direction: NotebookNavigationDirection, data: NotebookUiStateData) {
+        let currentCellId = focusedCellId ?? activeChoiceCellId
+        guard let currentCellId else { return }
+        let parts = currentCellId.split(separator: "|", maxSplits: 1).map(String.init)
+        guard parts.count == 2,
+              let studentId = Int64(parts[0]),
+              let column = data.sheet.columns.first(where: { $0.id == parts[1] }) else {
+            return
+        }
+        navigateCell(
+            from: studentId,
+            column: column,
+            direction: direction,
+            rows: filteredRows(data: data),
+            segments: displaySegments(data: data).filter { !isFixedSegment($0) }
+        )
+    }
+
+    private func navigateCell(
+        from studentId: Int64,
+        column: NotebookColumnDefinition,
+        direction: NotebookNavigationDirection,
+        rows: [NotebookTableRow],
+        segments: [NotebookDisplaySegment]
+    ) {
+        let navigableColumns = segments.compactMap { segment -> NotebookColumnDefinition? in
+            guard case .column(let candidate) = segment else { return nil }
+            return candidate
+        }
+
+        guard !rows.isEmpty,
+              !navigableColumns.isEmpty,
+              let currentRowIndex = rows.firstIndex(where: { $0.student.id == studentId }),
+              let currentColumnIndex = navigableColumns.firstIndex(where: { $0.id == column.id }) else {
+            return
+        }
+
+        var nextRowIndex = currentRowIndex
+        var nextColumnIndex = currentColumnIndex
+        switch direction {
+        case .up:
+            nextRowIndex = max(currentRowIndex - 1, 0)
+        case .down:
+            nextRowIndex = min(currentRowIndex + 1, rows.count - 1)
+        case .left:
+            nextColumnIndex = max(currentColumnIndex - 1, 0)
+        case .right:
+            nextColumnIndex = min(currentColumnIndex + 1, navigableColumns.count - 1)
+        }
+
+        let nextStudentId = rows[nextRowIndex].student.id
+        let nextColumn = navigableColumns[nextColumnIndex]
+        let nextCellId = cellFocusId(studentId: nextStudentId, columnId: nextColumn.id)
+
+        withAnimation(.spring(response: 0.18, dampingFraction: 0.9)) {
+            inspectorSelection = NotebookInspectorSelection(studentId: nextStudentId, columnId: nextColumn.id)
+            focusedCellId = nil
+            activeChoiceCellId = nil
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            withAnimation(.spring(response: 0.18, dampingFraction: 0.9)) {
+                if nextColumn.type == .ordinal || nextColumn.type == .attendance || nextColumn.categoryKind == .attendance {
+                    activeChoiceCellId = nextCellId
+                } else if nextColumn.type != .calculated && nextColumn.type != .rubric && nextColumn.type != .check {
+                    focusedCellId = nextCellId
+                }
+            }
+        }
     }
 
     private func isNotebookAICommentColumn(_ column: NotebookColumnDefinition) -> Bool {
@@ -1404,6 +1953,11 @@ struct NotebookModuleView: View {
         }
     }
 
+    private func columnMatchesActiveTab(_ column: NotebookColumnDefinition, data: NotebookUiStateData) -> Bool {
+        guard let activeTabId = activeNotebookTabId(data: data) else { return false }
+        return column.tabIds.contains(activeTabId) || (column.sharedAcrossTabs && column.tabIds.isEmpty)
+    }
+
     private func toggleColumnVisibility(_ column: NotebookColumnDefinition) {
         bridge.saveColumn(column: NotebookColumnDefinition(
             id: column.id,
@@ -1443,12 +1997,42 @@ struct NotebookModuleView: View {
     private func exportText(data: NotebookUiStateData) -> String {
         let segments = displaySegments(data: data)
         let header = segments.map(exportHeaderTitle(for:)).joined(separator: "\t")
+        let columnLettersById = exportColumnLettersById(segments: segments)
 
-        let body = filteredRows(data: data).map { item in
-            segments.map { exportValue(for: $0, item: item) }.joined(separator: "\t")
+        let body = filteredRows(data: data).enumerated().map { rowIndex, item in
+            segments.map {
+                exportValue(
+                    for: $0,
+                    item: item,
+                    spreadsheetRowIndex: rowIndex + 2,
+                    columnLettersById: columnLettersById
+                )
+            }
+            .joined(separator: "\t")
         }
 
         return ([header] + body).joined(separator: "\n")
+    }
+
+    private func exportColumnLettersById(segments: [NotebookDisplaySegment]) -> [String: String] {
+        var result: [String: String] = [:]
+        for (index, segment) in segments.enumerated() {
+            if case .column(let column) = segment {
+                result[column.id] = spreadsheetColumnName(for: index + 1)
+            }
+        }
+        return result
+    }
+
+    private func spreadsheetColumnName(for oneBasedIndex: Int) -> String {
+        var index = max(oneBasedIndex, 1)
+        var result = ""
+        while index > 0 {
+            let remainder = (index - 1) % 26
+            result = String(UnicodeScalar(65 + remainder)!) + result
+            index = (index - 1) / 26
+        }
+        return result
     }
 
     private func exportHeaderTitle(for segment: NotebookDisplaySegment) -> String {
@@ -1462,7 +2046,12 @@ struct NotebookModuleView: View {
         }
     }
 
-    private func exportValue(for segment: NotebookDisplaySegment, item: NotebookTableRow) -> String {
+    private func exportValue(
+        for segment: NotebookDisplaySegment,
+        item: NotebookTableRow,
+        spreadsheetRowIndex: Int,
+        columnLettersById: [String: String]
+    ) -> String {
         switch segment {
         case .fixed(let fixed):
             switch fixed {
@@ -1480,10 +2069,82 @@ struct NotebookModuleView: View {
                 return averageText(for: item)
             }
         case .column(let column):
+            if column.type == .calculated,
+               let formula = column.formula?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !formula.isEmpty {
+                return spreadsheetFormula(
+                    formula,
+                    rowIndex: spreadsheetRowIndex,
+                    columnLettersById: columnLettersById
+                )
+            }
             return displayValue(for: item, column: column)
         case .collapsedCategory(_, let columns):
             return "\(filledCellCount(item, columns: columns))/\(columns.count)"
         }
+    }
+
+    private func formulaDisplay(
+        for item: NotebookTableRow,
+        column: NotebookColumnDefinition,
+        data: NotebookUiStateData
+    ) -> NotebookFormulaCellDisplay? {
+        guard column.type == .calculated else { return nil }
+        let formula = column.formula?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !formula.isEmpty else {
+            return NotebookFormulaCellDisplay(text: "Sin fórmula", isError: true)
+        }
+
+        do {
+            let variables = formulaVariables(for: item, data: data)
+            let value = try NotebookFormulaEvaluator.evaluate(formula, variables: variables)
+            return NotebookFormulaCellDisplay(text: formatFormulaResult(value), isError: false)
+        } catch {
+            return NotebookFormulaCellDisplay(text: error.localizedDescription, isError: true)
+        }
+    }
+
+    private func formulaVariables(for item: NotebookTableRow, data: NotebookUiStateData) -> [String: Double] {
+        var variables: [String: Double] = [:]
+        for column in data.sheet.columns where column.type != .calculated {
+            let raw: String
+            if column.type == .rubric {
+                raw = bridge.rubricGradeText(studentId: item.student.id, column: column)
+            } else {
+                raw = bridge.numericGradeText(studentId: item.student.id, columnId: column.id)
+            }
+            let value = parseFormulaNumber(raw) ?? 0
+            variables[column.id] = value
+            variables[NotebookFormulaEvaluator.safeIdentifier(for: column.id)] = value
+        }
+        return variables
+    }
+
+    private func parseFormulaNumber(_ raw: String) -> Double? {
+        let normalized = raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: ",", with: ".")
+        return Double(normalized)
+    }
+
+    private func formatFormulaResult(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.locale = .current
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = 2
+        return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.2f", value)
+    }
+
+    private func spreadsheetFormula(
+        _ formula: String,
+        rowIndex: Int,
+        columnLettersById: [String: String]
+    ) -> String {
+        var output = formula.hasPrefix("=") ? formula : "=\(formula)"
+        for (columnId, letter) in columnLettersById {
+            output = output.replacingOccurrences(of: "[\(columnId)]", with: "\(letter)\(rowIndex)")
+        }
+        return output
     }
 
     private func categoryTitle(for column: NotebookColumnDefinition, data: NotebookUiStateData) -> String {
@@ -1863,7 +2524,13 @@ struct NotebookModuleView: View {
         }
     }
 
-    private func rowCell(for segment: NotebookDisplaySegment, item: NotebookTableRow, data: NotebookUiStateData) -> some View {
+    private func rowCell(
+        for segment: NotebookDisplaySegment,
+        item: NotebookTableRow,
+        data: NotebookUiStateData,
+        allRows: [NotebookTableRow],
+        navigableSegments: [NotebookDisplaySegment]
+    ) -> some View {
         switch segment {
         case .fixed(let fixed):
             return AnyView(fixedRowCell(for: fixed, item: item, data: data))
@@ -1873,14 +2540,40 @@ struct NotebookModuleView: View {
                     bridge: bridge,
                     item: item,
                     column: column,
+                    classId: data.sheet.classId,
                     width: resolvedColumnWidth(for: column),
                     tint: tint(for: column),
                     categoryTint: column.categoryId.flatMap { id in
                         data.sheet.columnCategories.first(where: { $0.id == id }).map { tint(for: $0) }
                     },
+                    focusedCellId: $focusedCellId,
+                    activeChoiceCellId: $activeChoiceCellId,
+                    navigationDirection: navigationDirection,
+                    formulaDisplay: formulaDisplay(for: item, column: column, data: data),
                     isSelected: inspectorSelection == NotebookInspectorSelection(studentId: item.student.id, columnId: column.id),
                     onSelect: {
                         inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
+                    },
+                    onOpenFormula: {
+                        presentFormulaEditor(for: column)
+                    },
+                    onOpenRubricIndividual: {
+                        openRubricIndividual(column: column, item: item)
+                    },
+                    onOpenRubricBulk: {
+                        openRubricBulk(column: column, data: data)
+                    },
+                    onNavigate: { direction in
+                        navigateCell(
+                            from: item.student.id,
+                            column: column,
+                            direction: direction,
+                            rows: allRows,
+                            segments: navigableSegments
+                        )
+                    },
+                    onAttendanceSaved: {
+                        Task { await refreshNotebookSignals() }
                     }
                 )
                 .frame(width: resolvedColumnWidth(for: column))
@@ -1985,6 +2678,26 @@ struct NotebookModuleView: View {
         if isNotebookIndividualSummaryColumn(column) {
             Button(summaryActionTitle(for: column, data: data)) {
                 notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: column.id)
+            }
+        }
+        if column.type == .calculated {
+            Button("Editar fórmula…") {
+                presentFormulaEditor(for: column)
+            }
+        }
+        if column.type == .rubric {
+            Button("Evaluar alumno…") {
+                let targetRow = inspectorSelection
+                    .flatMap { selection in filteredRows(data: data).first { $0.student.id == selection.studentId } }
+                    ?? filteredRows(data: data).first
+                if let targetRow {
+                    openRubricIndividual(column: column, item: targetRow)
+                } else {
+                    showToast("No hay alumnos disponibles para evaluar", style: .warning)
+                }
+            }
+            Button("Evaluar grupo…") {
+                openRubricBulk(column: column, data: data)
             }
         }
         Button("Renombrar") {
@@ -2170,6 +2883,70 @@ struct NotebookModuleView: View {
         addColumnContext = NotebookAddColumnContext(categoryId: category.id, startsCreatingCategory: false)
     }
 
+    private func presentCreateNotebookTab() {
+        editingNotebookTabId = nil
+        notebookTabDraft = defaultNotebookTabDraft()
+        isNotebookTabAlertPresented = true
+    }
+
+    private func presentRenameNotebookTab(_ tab: NotebookTab) {
+        editingNotebookTabId = tab.id
+        notebookTabDraft = tab.title
+        isNotebookTabAlertPresented = true
+    }
+
+    private func defaultNotebookTabDraft() -> String {
+        guard let data = bridge.notebookState as? NotebookUiStateData else { return "Nuevo tema" }
+        let nextIndex = orderedNotebookTabs(data: data).count + 1
+        return "Tema \(nextIndex)"
+    }
+
+    private func resetNotebookTabDraft() {
+        editingNotebookTabId = nil
+        notebookTabDraft = ""
+    }
+
+    private func saveNotebookTabDraft() {
+        let draft = notebookTabDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !draft.isEmpty else { return }
+
+        if let editingNotebookTabId,
+           let data = bridge.notebookState as? NotebookUiStateData,
+           let tab = data.sheet.tabs.first(where: { $0.id == editingNotebookTabId }) {
+            bridge.saveTab(tab: NotebookTab(
+                id: tab.id,
+                title: draft,
+                description: tab.description,
+                order: tab.order,
+                parentTabId: tab.parentTabId,
+                trace: tab.trace
+            ))
+            showToast("Pestaña renombrada")
+        } else if let createdId = bridge.createTab(title: draft) {
+            selectNotebookTab(createdId)
+            showToast("Pestaña creada")
+        }
+
+        resetNotebookTabDraft()
+    }
+
+    private func deleteNotebookTab(_ tab: NotebookTab) {
+        let nextTabId: String? = {
+            guard let data = bridge.notebookState as? NotebookUiStateData else { return nil }
+            let remainingTabs = orderedNotebookTabs(data: data).filter { $0.id != tab.id }
+            if let selectedIndex = orderedNotebookTabs(data: data).firstIndex(where: { $0.id == tab.id }),
+               remainingTabs.indices.contains(selectedIndex) {
+                return remainingTabs[selectedIndex].id
+            }
+            return remainingTabs.last?.id
+        }()
+
+        bridge.deleteTab(id: tab.id)
+        bridge.setSelectedNotebookTab(id: nextTabId)
+        pendingDeleteNotebookTab = nil
+        showToast("Pestaña eliminada", style: .warning)
+    }
+
     private func saveCategoryFromDraft() {
         let draft = categoryDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         bridge.saveColumnCategory(name: draft, categoryId: editingCategoryId)
@@ -2193,7 +2970,13 @@ struct NotebookModuleView: View {
         columnDraft = ""
     }
 
-    private func saveColumnMutation(_ column: NotebookColumnDefinition, title: String? = nil, colorHex: String? = nil) {
+    private func saveColumnMutation(
+        _ column: NotebookColumnDefinition,
+        title: String? = nil,
+        colorHex: String? = nil,
+        formula: String? = nil,
+        updatesFormula: Bool = false
+    ) {
         let nextTitle = (title?.isEmpty == false ? title! : column.title)
         bridge.saveColumn(column: NotebookColumnDefinition(
             id: column.id,
@@ -2204,7 +2987,7 @@ struct NotebookModuleView: View {
             inputKind: column.inputKind,
             evaluationId: column.evaluationId,
             rubricId: column.rubricId,
-            formula: column.formula,
+            formula: updatesFormula ? formula : column.formula,
             weight: column.weight,
             dateEpochMs: column.dateEpochMs,
             unitOrSituation: column.unitOrSituation,
@@ -2380,9 +3163,273 @@ private struct NotebookNavigationSubtitleModifier: ViewModifier {
     }
 }
 
+private struct NotebookKeyboardNavigationModifier: ViewModifier {
+    let onNext: () -> Void
+
+    func body(content: Content) -> some View {
+        if #available(iOS 17.0, macOS 14.0, *) {
+            content
+                .focusable()
+                .onKeyPress(.return) {
+                    onNext()
+                    return .handled
+                }
+                .onKeyPress(.tab) {
+                    onNext()
+                    return .handled
+                }
+        } else {
+            content
+        }
+    }
+}
+
 private extension View {
     func notebookNavigationSubtitle(_ subtitle: String) -> some View {
         modifier(NotebookNavigationSubtitleModifier(subtitle: subtitle))
+    }
+
+    func notebookKeyboardNavigation(onNext: @escaping () -> Void) -> some View {
+        modifier(NotebookKeyboardNavigationModifier(onNext: onNext))
+    }
+}
+
+private enum NotebookFormulaError: LocalizedError {
+    case incompleteExpression
+    case unexpectedToken(String)
+    case unbalancedParentheses
+    case unknownVariable(String)
+    case unknownFunction(String)
+    case invalidArguments(String)
+    case divisionByZero
+
+    var errorDescription: String? {
+        switch self {
+        case .incompleteExpression:
+            return "Fórmula incompleta"
+        case .unexpectedToken(let token):
+            return "Token inesperado: \(token)"
+        case .unbalancedParentheses:
+            return "Paréntesis desbalanceados"
+        case .unknownVariable(let name):
+            return "Columna no encontrada: \(name)"
+        case .unknownFunction(let name):
+            return "Función no soportada: \(name)"
+        case .invalidArguments(let message):
+            return message
+        case .divisionByZero:
+            return "División por cero"
+        }
+    }
+}
+
+private enum NotebookFormulaEvaluator {
+    static func safeIdentifier(for raw: String) -> String {
+        let mapped = raw.map { character -> Character in
+            if character.isLetter || character.isNumber || character == "_" {
+                return character
+            }
+            return "_"
+        }
+        let identifier = String(mapped)
+        if identifier.first?.isNumber == true {
+            return "_\(identifier)"
+        }
+        return identifier
+    }
+
+    static func evaluate(_ expression: String, variables: [String: Double]) throws -> Double {
+        let normalized = expression
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .drop(while: { $0 == "=" })
+        var parser = Parser(tokens: tokenize(String(normalized)), variables: variables)
+        return try parser.parseExpression()
+    }
+
+    private static func tokenize(_ input: String) -> [String] {
+        var tokens: [String] = []
+        var current = ""
+
+        func flush() {
+            if !current.isEmpty {
+                tokens.append(current)
+                current = ""
+            }
+        }
+
+        var index = input.startIndex
+        while index < input.endIndex {
+            let character = input[index]
+            if character.isWhitespace {
+                flush()
+            } else if character == "[" {
+                flush()
+                let nextIndex = input.index(after: index)
+                if let end = input[nextIndex...].firstIndex(of: "]") {
+                    let columnId = String(input[nextIndex..<end])
+                    tokens.append(columnId)
+                    index = end
+                } else {
+                    tokens.append(String(character))
+                }
+            } else if "+-*/(),<>".contains(character) {
+                flush()
+                let nextIndex = input.index(after: index)
+                if nextIndex < input.endIndex {
+                    let pair = "\(character)\(input[nextIndex])"
+                    if ["<=", ">=", "==", "!=", "<>"].contains(pair) {
+                        tokens.append(pair)
+                        index = nextIndex
+                    } else {
+                        tokens.append(String(character))
+                    }
+                } else {
+                    tokens.append(String(character))
+                }
+            } else {
+                current.append(character)
+            }
+            index = input.index(after: index)
+        }
+        flush()
+        return tokens
+    }
+
+    private struct Parser {
+        let tokens: [String]
+        let variables: [String: Double]
+        var position = 0
+
+        mutating func parseExpression() throws -> Double {
+            let result = try parseComparison()
+            if !isAtEnd {
+                throw NotebookFormulaError.unexpectedToken(peek)
+            }
+            return result
+        }
+
+        private mutating func parseComparison() throws -> Double {
+            var left = try parseAddSub()
+            while match("<", ">", "<=", ">=", "==", "!=", "<>") {
+                let op = previous
+                let right = try parseAddSub()
+                switch op {
+                case "<": left = left < right ? 1 : 0
+                case ">": left = left > right ? 1 : 0
+                case "<=": left = left <= right ? 1 : 0
+                case ">=": left = left >= right ? 1 : 0
+                case "==": left = left == right ? 1 : 0
+                case "!=", "<>": left = left != right ? 1 : 0
+                default: throw NotebookFormulaError.unexpectedToken(op)
+                }
+            }
+            return left
+        }
+
+        private mutating func parseAddSub() throws -> Double {
+            var left = try parseMulDiv()
+            while match("+", "-") {
+                let op = previous
+                let right = try parseMulDiv()
+                left = op == "+" ? left + right : left - right
+            }
+            return left
+        }
+
+        private mutating func parseMulDiv() throws -> Double {
+            var left = try parseUnary()
+            while match("*", "/") {
+                let op = previous
+                let right = try parseUnary()
+                if op == "/" {
+                    guard right != 0 else { throw NotebookFormulaError.divisionByZero }
+                    left /= right
+                } else {
+                    left *= right
+                }
+            }
+            return left
+        }
+
+        private mutating func parseUnary() throws -> Double {
+            if match("-") { return try -parseUnary() }
+            return try parsePrimary()
+        }
+
+        private mutating func parsePrimary() throws -> Double {
+            if match("(") {
+                let value = try parseComparison()
+                guard match(")") else { throw NotebookFormulaError.unbalancedParentheses }
+                return value
+            }
+
+            guard !isAtEnd else { throw NotebookFormulaError.incompleteExpression }
+            let token = advance()
+            if let number = Double(token.replacingOccurrences(of: ",", with: ".")) {
+                return number
+            }
+            if match("(") {
+                var args: [Double] = []
+                if !check(")") {
+                    repeat {
+                        args.append(try parseComparison())
+                    } while match(",")
+                }
+                guard match(")") else { throw NotebookFormulaError.unbalancedParentheses }
+                return try evaluateFunction(token, args: args)
+            }
+            if let value = variables[token] ?? variables[NotebookFormulaEvaluator.safeIdentifier(for: token)] {
+                return value
+            }
+            throw NotebookFormulaError.unknownVariable(token)
+        }
+
+        private func evaluateFunction(_ rawName: String, args: [Double]) throws -> Double {
+            let name = rawName.uppercased()
+            switch name {
+            case "SUM", "SUMA":
+                return args.reduce(0, +)
+            case "AVG", "AVERAGE", "PROMEDIO":
+                guard !args.isEmpty else { throw NotebookFormulaError.invalidArguments("\(rawName) requiere al menos 1 argumento") }
+                return args.reduce(0, +) / Double(args.count)
+            case "MIN":
+                guard let value = args.min() else { throw NotebookFormulaError.invalidArguments("MIN requiere al menos 1 argumento") }
+                return value
+            case "MAX":
+                guard let value = args.max() else { throw NotebookFormulaError.invalidArguments("MAX requiere al menos 1 argumento") }
+                return value
+            case "ROUND", "REDONDEAR":
+                guard args.count == 1 || args.count == 2 else { throw NotebookFormulaError.invalidArguments("\(rawName) requiere 1 o 2 argumentos") }
+                let digits = args.count == 2 ? Int(args[1]) : 0
+                let factor = pow(10.0, Double(digits))
+                return (args[0] * factor).rounded() / factor
+            case "IF", "SI":
+                guard args.count == 3 else { throw NotebookFormulaError.invalidArguments("\(rawName) requiere 3 argumentos") }
+                return args[0] != 0 ? args[1] : args[2]
+            default:
+                throw NotebookFormulaError.unknownFunction(rawName)
+            }
+        }
+
+        private mutating func match(_ expected: String...) -> Bool {
+            guard !isAtEnd, expected.contains(peek) else { return false }
+            position += 1
+            return true
+        }
+
+        private func check(_ expected: String) -> Bool {
+            !isAtEnd && peek == expected
+        }
+
+        private mutating func advance() -> String {
+            let token = peek
+            position += 1
+            return token
+        }
+
+        private var previous: String { tokens[position - 1] }
+        private var peek: String { tokens[position] }
+        private var isAtEnd: Bool { position >= tokens.count }
     }
 }
 
@@ -2390,16 +3437,31 @@ private struct NotebookEditableTableCell: View {
     @ObservedObject var bridge: KmpBridge
     let item: NotebookTableRow
     let column: NotebookColumnDefinition
+    let classId: Int64?
     let width: CGFloat
     let tint: Color
     let categoryTint: Color?
+    var focusedCellId: FocusState<String?>.Binding
+    @Binding var activeChoiceCellId: String?
+    let navigationDirection: NotebookNavigationDirection
+    let formulaDisplay: NotebookFormulaCellDisplay?
     let isSelected: Bool
     let onSelect: () -> Void
+    let onOpenFormula: () -> Void
+    let onOpenRubricIndividual: () -> Void
+    let onOpenRubricBulk: () -> Void
+    let onNavigate: (NotebookNavigationDirection) -> Void
+    let onAttendanceSaved: () -> Void
 
     @State private var numericDraft = ""
     @State private var textDraft = ""
     @State private var checkDraft = false
     @State private var showTextPopover = false
+    @State private var hasLoadedDrafts = false
+
+    private var cellId: String {
+        "\(item.student.id)|\(column.id)"
+    }
 
     var body: some View {
         let persistedCell = item.row.persistedCells.first(where: { $0.columnId == column.id })
@@ -2452,71 +3514,130 @@ private struct NotebookEditableTableCell: View {
 
     @ViewBuilder
     private var content: some View {
-        switch column.type {
-        case .numeric:
-            TextField("", text: $numericDraft)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
-                .appKeyboardType(.decimalPad)
-                .foregroundStyle(.primary)
-                .onSubmit(saveNumeric)
-        case .calculated:
-            Text(bridge.numericGradeOnTenText(studentId: item.student.id, columnId: column.id))
-                .font(.system(size: 13, weight: .bold, design: .rounded))
-                .foregroundStyle(.primary)
-        case .check:
-            Toggle("", isOn: $checkDraft)
-                .labelsHidden()
-                .tint(tint)
-                .onChange(of: checkDraft) { newValue in
-                    onSelect()
-                    bridge.saveColumnGrade(studentId: item.student.id, column: column, value: newValue ? "true" : "false")
-                }
-        case .ordinal:
-            Menu {
-                ForEach(ordinalOptions, id: \.self) { option in
-                    Button(option) {
-                        textDraft = option
-                        onSelect()
-                        bridge.saveColumnGrade(studentId: item.student.id, column: column, value: option)
-                    }
-                }
-            } label: {
-                Text(textDraft.isEmpty ? "Seleccionar" : textDraft)
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.primary)
-            }
-        case .rubric:
-            let rubricText = displayRubricText()
-            Button {
-                onSelect()
-                if let rubricId = column.rubricId?.int64Value, let evaluationId = column.evaluationId?.int64Value {
-                    bridge.loadForNotebookCell(studentId: item.student.id, columnId: column.id, rubricId: rubricId, evaluationId: evaluationId)
-                }
-            } label: {
-                Text(rubricText)
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(rubricText == "—" ? .tertiary : .primary)
-            }
-            .buttonStyle(.plain)
-        default:
-            HStack(spacing: 6) {
-                TextField("", text: $textDraft)
+        if isAttendanceColumn {
+            attendancePicker
+        } else {
+            switch column.type {
+            case .numeric:
+                let field = TextField("", text: $numericDraft)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .appKeyboardType(.decimalPad)
+                    .focused(focusedCellId, equals: cellId)
+                    .submitLabel(.next)
                     .foregroundStyle(.primary)
-                    .onSubmit(saveText)
+                    .onSubmit { saveNumericAndNavigate(navigationDirection) }
 
-                if shouldOfferTextPopover {
-                    Button {
-                        showTextPopover = true
-                    } label: {
-                        Image(systemName: "text.alignleft")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                #if canImport(UIKit)
+                field
+                    .toolbar {
+                        ToolbarItemGroup(placement: .keyboard) {
+                            Button("Arriba") { saveNumericAndNavigate(.up) }
+                            Button("Abajo") { saveNumericAndNavigate(.down) }
+                            Spacer()
+                            Button("Guardar y avanzar") {
+                                saveNumericAndNavigate(navigationDirection)
+                            }
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .popover(isPresented: $showTextPopover, arrowEdge: .bottom) {
-                        #if os(macOS)
-                        VStack(spacing: 0) {
+                #else
+                field
+                #endif
+            case .calculated:
+                Button {
+                    onSelect()
+                    onOpenFormula()
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(formulaDisplay?.text ?? bridge.numericGradeOnTenText(studentId: item.student.id, columnId: column.id))
+                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .foregroundStyle(formulaDisplay?.isError == true ? .orange : .primary)
+                            .lineLimit(1)
+                        Image(systemName: formulaDisplay?.isError == true ? "exclamationmark.triangle.fill" : "function")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(formulaDisplay?.isError == true ? .orange : .secondary)
+                    }
+                }
+                .buttonStyle(.plain)
+                .help(formulaDisplay?.isError == true ? (formulaDisplay?.text ?? "Error en la fórmula") : "Editar fórmula")
+            case .check:
+                Toggle("", isOn: $checkDraft)
+                    .labelsHidden()
+                    .tint(tint)
+                    .onChange(of: checkDraft) { newValue in
+                        guard hasLoadedDrafts else { return }
+                        onSelect()
+                        bridge.saveColumnGrade(studentId: item.student.id, column: column, value: newValue ? "true" : "false")
+                        onNavigate(navigationDirection)
+                    }
+            case .ordinal:
+                Button {
+                    onSelect()
+                    activeChoiceCellId = cellId
+                } label: {
+                    Text(textDraft.isEmpty ? "Seleccionar" : textDraft)
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.primary)
+                }
+                .buttonStyle(.plain)
+                .popover(isPresented: choicePopoverBinding, arrowEdge: .bottom) {
+                    choiceList(options: ordinalOptions) { option in
+                        saveOrdinalValue(option)
+                    }
+                }
+            case .rubric:
+                let rubricText = displayRubricText()
+                Menu {
+                    Button("Evaluar alumno…") {
+                        onSelect()
+                        onOpenRubricIndividual()
+                    }
+                    Button("Evaluar grupo…") {
+                        onSelect()
+                        onOpenRubricBulk()
+                    }
+                } label: {
+                    Text(rubricText)
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundStyle(rubricText == "—" ? .tertiary : .primary)
+                }
+                .menuStyle(.borderlessButton)
+            default:
+                HStack(spacing: 6) {
+                    TextField("", text: $textDraft)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .focused(focusedCellId, equals: cellId)
+                        .foregroundStyle(.primary)
+                        .submitLabel(.next)
+                        .onSubmit { saveTextAndNavigate() }
+
+                    if shouldOfferTextPopover {
+                        Button {
+                            showTextPopover = true
+                        } label: {
+                            Image(systemName: "text.alignleft")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .popover(isPresented: $showTextPopover, arrowEdge: .bottom) {
+                            #if os(macOS)
+                            VStack(spacing: 0) {
+                                ScrollView {
+                                    Text(textDraft)
+                                        .font(.callout)
+                                        .foregroundStyle(.primary)
+                                        .frame(maxWidth: 320, alignment: .leading)
+                                        .padding(14)
+                                        .textSelection(.enabled)
+                                }
+                                .frame(maxWidth: 340, maxHeight: 260)
+
+                                MacPopupActionBar(
+                                    title: nil,
+                                    onClose: { showTextPopover = false }
+                                )
+                            }
+                            #else
                             ScrollView {
                                 Text(textDraft)
                                     .font(.callout)
@@ -2526,26 +3647,116 @@ private struct NotebookEditableTableCell: View {
                                     .textSelection(.enabled)
                             }
                             .frame(maxWidth: 340, maxHeight: 260)
-
-                            MacPopupActionBar(
-                                title: nil,
-                                onClose: { showTextPopover = false }
-                            )
+                            #endif
                         }
-                        #else
-                        ScrollView {
-                            Text(textDraft)
-                                .font(.callout)
-                                .foregroundStyle(.primary)
-                                .frame(maxWidth: 320, alignment: .leading)
-                                .padding(14)
-                                .textSelection(.enabled)
-                        }
-                        .frame(maxWidth: 340, maxHeight: 260)
-                        #endif
                     }
                 }
             }
+        }
+    }
+
+    private var isAttendanceColumn: Bool {
+        column.type == .attendance || column.categoryKind == .attendance
+    }
+
+    private var choicePopoverBinding: Binding<Bool> {
+        Binding(
+            get: { activeChoiceCellId == cellId },
+            set: { isPresented in
+                if isPresented {
+                    activeChoiceCellId = cellId
+                } else if activeChoiceCellId == cellId {
+                    activeChoiceCellId = nil
+                }
+            }
+        )
+    }
+
+    private func choiceList(options: [String], onChoose: @escaping (String) -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(options, id: \.self) { option in
+                Button {
+                    onChoose(option)
+                } label: {
+                    HStack {
+                        Text(option)
+                        Spacer(minLength: 18)
+                        if textDraft == option {
+                            Image(systemName: "checkmark")
+                                .font(.caption.weight(.bold))
+                        }
+                    }
+                    .frame(minWidth: 170, alignment: .leading)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+            }
+        }
+        .padding(8)
+    }
+
+    private var attendancePicker: some View {
+        Button {
+            onSelect()
+            activeChoiceCellId = cellId
+        } label: {
+            attendanceChip(value: textDraft)
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: choicePopoverBinding, arrowEdge: .bottom) {
+            choiceList(options: attendanceOptions.map(\.label)) { label in
+                if let option = attendanceOptions.first(where: { $0.label == label }) {
+                    saveAttendanceValue(option.value)
+                }
+            }
+        }
+    }
+
+    private var attendanceOptions: [(label: String, value: String)] {
+        [
+            ("Presente", "PRESENTE"),
+            ("Ausente", "AUSENTE"),
+            ("Retraso", "TARDE"),
+            ("Justificada", "JUSTIFICADO"),
+            ("Sin material", "SIN_MATERIAL"),
+            ("Exento", "EXENTO"),
+            ("Sin pasar", "")
+        ]
+    }
+
+    private func attendanceChip(value: String) -> some View {
+        let display = attendanceDisplay(value)
+        return Text(display.label)
+            .font(.system(size: 12, weight: .bold, design: .rounded))
+            .foregroundStyle(display.color)
+            .lineLimit(1)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(display.color.opacity(display.value.isEmpty ? 0.08 : 0.14))
+            )
+    }
+
+    private func attendanceDisplay(_ value: String) -> (label: String, value: String, color: Color) {
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        switch normalized {
+        case "PRESENTE", "PRESENT", "PRES":
+            return ("Presente", normalized, .green)
+        case "AUSENTE", "ABSENT", "AUS":
+            return ("Ausente", normalized, .red)
+        case "TARDE", "RETRASO", "LATE":
+            return ("Retraso", normalized, .orange)
+        case "JUSTIFICADO", "JUSTIFICADA", "JUSTIFIED":
+            return ("Justificada", normalized, .gray)
+        case "SIN_MATERIAL":
+            return ("Sin material", normalized, .brown)
+        case "EXENTO":
+            return ("Exento", normalized, .indigo)
+        default:
+            return ("—", "", .secondary)
         }
     }
 
@@ -2564,9 +3775,13 @@ private struct NotebookEditableTableCell: View {
     }
 
     private func loadDrafts() {
+        hasLoadedDrafts = false
         numericDraft = bridge.numericGradeText(studentId: item.student.id, columnId: column.id)
         textDraft = bridge.cellText(studentId: item.student.id, columnId: column.id)
         checkDraft = bridge.cellCheck(studentId: item.student.id, columnId: column.id)
+        DispatchQueue.main.async {
+            hasLoadedDrafts = true
+        }
     }
 
     private func saveNumeric() {
@@ -2574,9 +3789,51 @@ private struct NotebookEditableTableCell: View {
         bridge.saveColumnGradeDebounced(studentId: item.student.id, column: column, value: numericDraft)
     }
 
+    private func saveNumericAndNavigate(_ direction: NotebookNavigationDirection) {
+        saveNumeric()
+        onNavigate(direction)
+    }
+
     private func saveText() {
         onSelect()
         bridge.saveColumnGradeDebounced(studentId: item.student.id, column: column, value: textDraft)
+    }
+
+    private func saveTextAndNavigate() {
+        saveText()
+        onNavigate(navigationDirection)
+    }
+
+    private func saveOrdinalValue(_ option: String) {
+        textDraft = option
+        onSelect()
+        activeChoiceCellId = nil
+        bridge.saveColumnGrade(studentId: item.student.id, column: column, value: option)
+        onNavigate(navigationDirection)
+    }
+
+    private func saveAttendanceValue(_ status: String) {
+        textDraft = status
+        onSelect()
+        activeChoiceCellId = nil
+        bridge.saveColumnGrade(studentId: item.student.id, column: column, value: status)
+        onNavigate(navigationDirection)
+
+        guard let classId else { return }
+        let attendanceDate = column.dateEpochMs
+            .map { Date(timeIntervalSince1970: TimeInterval($0.int64Value) / 1000.0) } ?? Date()
+
+        Task {
+            try? await bridge.saveAttendance(
+                studentId: item.student.id,
+                classId: classId,
+                on: attendanceDate,
+                status: status
+            )
+            await MainActor.run {
+                onAttendanceSaved()
+            }
+        }
     }
 
     private func displayRubricText() -> String {
@@ -2609,6 +3866,8 @@ private struct NotebookDynamicCellsRow: View {
     let segments: [NotebookDisplaySegment]
     let inspectorSelection: NotebookInspectorSelection?
     let onSelect: (NotebookInspectorSelection) -> Void
+    @FocusState private var focusedCellId: String?
+    @State private var activeChoiceCellId: String? = nil
 
     var body: some View {
         HStack(spacing: 10) {
@@ -2621,13 +3880,23 @@ private struct NotebookDynamicCellsRow: View {
                         bridge: bridge,
                         item: item,
                         column: column,
+                        classId: nil,
                         width: max(column.widthDp, 120),
                         tint: column.colorHex.map { Color(hex: $0) } ?? NotebookStyle.primaryTint,
                         categoryTint: nil,
+                        focusedCellId: $focusedCellId,
+                        activeChoiceCellId: $activeChoiceCellId,
+                        navigationDirection: .down,
+                        formulaDisplay: nil,
                         isSelected: inspectorSelection == NotebookInspectorSelection(studentId: item.student.id, columnId: column.id),
                         onSelect: {
                             onSelect(NotebookInspectorSelection(studentId: item.student.id, columnId: column.id))
-                        }
+                        },
+                        onOpenFormula: {},
+                        onOpenRubricIndividual: {},
+                        onOpenRubricBulk: {},
+                        onNavigate: { _ in },
+                        onAttendanceSaved: {}
                     )
                     .frame(width: max(column.widthDp, 120))
                 case .collapsedCategory(let category, let columns):

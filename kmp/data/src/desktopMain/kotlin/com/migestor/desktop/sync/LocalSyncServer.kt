@@ -96,7 +96,12 @@ class LocalSyncServer(
     private val port: Int = 8765,
     private val syncCoordinator: SyncCoordinator = SyncCoordinator(InMemorySyncAdapter()),
     private val stateListener: ((CommandCenterSnapshot) -> Unit)? = null,
+    private val dataChangeListener: ((Set<String>) -> Unit)? = null,
 ) {
+    private companion object {
+        const val DESKTOP_AUTHORITATIVE_DIFF_THRESHOLD = 20
+    }
+
     private val json = Json { ignoreUnknownKeys = true }
     private var server: HttpsServer? = null
     private var jmDns: JmDNS? = null
@@ -260,11 +265,27 @@ class LocalSyncServer(
             }
             if (!isAuthorized(ex)) return@createContext
             val req = decodePushRequest(ex.readBody())
-            val ack = kotlinx.coroutines.runBlocking {
-                println("📤 Recibida solicitud de PUSH (${req.changes.size} cambios)")
-                syncCoordinator.pushChanges(req, serverNowEpochMs = System.currentTimeMillis())
+            val serverNow = System.currentTimeMillis()
+            val desktopWins = shouldPreferDesktopState(req, serverNow)
+            val ack = if (desktopWins) {
+                println("🛡️ PUSH descartado: divergencia grande; prevalece el estado de macOS (${req.changes.size} cambios iOS)")
+                SyncAck(
+                    applied = 0,
+                    conflictsResolvedByLww = 0,
+                    serverEpochMs = serverNow,
+                    ignored = req.changes.size,
+                    failed = 0,
+                )
+            } else {
+                kotlinx.coroutines.runBlocking {
+                    println("📤 Recibida solicitud de PUSH (${req.changes.size} cambios)")
+                    syncCoordinator.pushChanges(req, serverNowEpochMs = serverNow)
+                }
             }
-            ex.respond(200, encodeAck(ack))
+            if (!desktopWins && ack.applied > 0) {
+                dataChangeListener?.invoke(req.changes.map { it.entity }.toSet())
+            }
+            ex.respond(200, encodeAck(ack, desktopAuthoritative = desktopWins))
         }
 
         https.createContext("/sync/events") { ex ->
@@ -431,6 +452,23 @@ class LocalSyncServer(
         }.onFailure { error ->
             println("⚠️ No se pudieron escanear cambios locales para SSE: ${error.message}")
         }
+    }
+
+    private fun shouldPreferDesktopState(req: SyncPushRequest, serverNowEpochMs: Long): Boolean {
+        if (req.changes.size < DESKTOP_AUTHORITATIVE_DIFF_THRESHOLD) return false
+        if (req.lastKnownServerEpochMs <= 0L) return true
+        val iosDeviceId = pairedDeviceId
+        val desktopChanges = runCatching {
+            kotlinx.coroutines.runBlocking {
+                syncCoordinator.pullChanges(
+                    sinceEpochMs = req.lastKnownServerEpochMs,
+                    serverNowEpochMs = serverNowEpochMs,
+                )
+            }.changes.filter { change ->
+                iosDeviceId.isNullOrBlank() || change.deviceId != iosDeviceId
+            }
+        }.getOrDefault(emptyList())
+        return desktopChanges.isNotEmpty()
     }
 
     private fun notifyDataChanged(entities: List<String>, serverEpochMs: Long = System.currentTimeMillis()) {
@@ -621,13 +659,14 @@ class LocalSyncServer(
         }.toString()
     }
 
-    private fun encodeAck(ack: SyncAck): String {
+    private fun encodeAck(ack: SyncAck, desktopAuthoritative: Boolean = false): String {
         return buildJsonObject {
             put("applied", JsonPrimitive(ack.applied))
             put("conflictsResolvedByLww", JsonPrimitive(ack.conflictsResolvedByLww))
             put("serverEpochMs", JsonPrimitive(ack.serverEpochMs))
             put("ignored", JsonPrimitive(ack.ignored))
             put("failed", JsonPrimitive(ack.failed))
+            put("desktopAuthoritative", JsonPrimitive(desktopAuthoritative))
         }.toString()
     }
 

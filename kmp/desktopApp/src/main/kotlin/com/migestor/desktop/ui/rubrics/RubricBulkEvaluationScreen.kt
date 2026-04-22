@@ -22,8 +22,10 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.Dp
 import com.migestor.shared.viewmodel.RubricBulkEvaluationViewModel
 import com.migestor.shared.domain.*
 import com.migestor.desktop.ui.navigation.Navigator
@@ -61,6 +63,7 @@ fun RubricBulkEvaluationScreen(viewModel: RubricBulkEvaluationViewModel) {
     }
 
     val rubricDetail = state.rubricDetail ?: return
+    var injuredSidebarExpanded by remember { mutableStateOf(true) }
 
     MeshBackground {
         Column(modifier = Modifier.fillMaxSize().padding(EvaluationDesign.screenPadding)) {
@@ -107,9 +110,10 @@ fun RubricBulkEvaluationScreen(viewModel: RubricBulkEvaluationViewModel) {
                         // Matrix with Sticky Header
                         Box(modifier = Modifier.fillMaxSize()) {
                             val horizontalScrollState = rememberScrollState()
+                            val stickyOffset = with(LocalDensity.current) { horizontalScrollState.value.toDp() }
                             
                             Column(modifier = Modifier.fillMaxSize().horizontalScroll(horizontalScrollState)) {
-                                MatrixHeaderRow(rubricDetail.criteria)
+                                MatrixHeaderRow(rubricDetail.criteria, stickyOffset)
                                 
                                 Spacer(modifier = Modifier.height(12.dp))
                                 
@@ -136,6 +140,7 @@ fun RubricBulkEvaluationScreen(viewModel: RubricBulkEvaluationViewModel) {
                                                 criteria = rubricDetail.criteria,
                                                 selectedLevels = state.assessments[student.id] ?: emptyMap(),
                                                 score = state.scores[student.id],
+                                                stickyOffset = stickyOffset,
                                                 onLevelSelected = { critId, lvlId ->
                                                     viewModel.selectLevel(student.id, critId, lvlId)
                                                 },
@@ -155,7 +160,25 @@ fun RubricBulkEvaluationScreen(viewModel: RubricBulkEvaluationViewModel) {
                 Spacer(modifier = Modifier.width(EvaluationDesign.sectionSpacing))
 
                 // Sidebar
-                InjuredSidebar(state.injuredStudents)
+                Column(
+                    modifier = Modifier.width(if (injuredSidebarExpanded) 320.dp else 60.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    FilledTonalButton(
+                        onClick = { injuredSidebarExpanded = !injuredSidebarExpanded },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            if (injuredSidebarExpanded) Icons.AutoMirrored.Filled.ArrowForward else Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = null
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(if (injuredSidebarExpanded) "Ocultar panel" else "Lesionados")
+                    }
+                    AnimatedVisibility(injuredSidebarExpanded) {
+                        InjuredSidebar(state.injuredStudents)
+                    }
+                }
             }
         }
     }
@@ -264,7 +287,7 @@ private fun BulkEvaluationHeader(
 }
 
 @Composable
-private fun MatrixHeaderRow(criteria: List<RubricCriterionWithLevels>) {
+private fun MatrixHeaderRow(criteria: List<RubricCriterionWithLevels>, stickyOffset: Dp) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -276,7 +299,10 @@ private fun MatrixHeaderRow(criteria: List<RubricCriterionWithLevels>) {
             style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.Black,
             color = EvaluationDesign.secondary,
-            modifier = Modifier.width(EvaluationDesign.studentColumnWidth),
+            modifier = Modifier
+                .width(EvaluationDesign.studentColumnWidth)
+                .offset(x = stickyOffset)
+                .background(Color.White.copy(alpha = 0.98f)),
             letterSpacing = 1.sp
         )
 
@@ -331,6 +357,7 @@ private fun StudentEvaluationRow(
     criteria: List<RubricCriterionWithLevels>,
     selectedLevels: Map<Long, Long>,
     score: Double?,
+    stickyOffset: Dp,
     onLevelSelected: (Long, Long) -> Unit,
     onCopy: () -> Unit,
     onPaste: () -> Unit,
@@ -352,7 +379,13 @@ private fun StudentEvaluationRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Student Info
-            Row(modifier = Modifier.width(EvaluationDesign.studentColumnWidth), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier
+                    .width(EvaluationDesign.studentColumnWidth)
+                    .offset(x = stickyOffset)
+                    .background(Color.White.copy(alpha = 0.98f)),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 EvaluationAvatar(
                     initials = student.firstName.take(1) + student.lastName.take(1),
                     tint = if (isInjured) EvaluationDesign.danger else EvaluationDesign.accent

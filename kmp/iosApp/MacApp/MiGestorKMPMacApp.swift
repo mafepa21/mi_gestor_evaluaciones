@@ -4,7 +4,8 @@ import SwiftUI
 struct MiGestorKMPMacApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("theme_mode") private var themeModeRawValue: String = AppThemeMode.system.rawValue
-    @StateObject private var commandCenter = MacCommandCenterCoordinator()
+    @StateObject private var session = MacAppSessionController()
+    @StateObject private var layoutState = WorkspaceLayoutState()
 
     private var themeMode: AppThemeMode {
         AppThemeMode(rawValue: themeModeRawValue) ?? .system
@@ -12,17 +13,20 @@ struct MiGestorKMPMacApp: App {
 
     var body: some Scene {
         WindowGroup("MiGestor") {
-            AppleAppRootView(
-                themeMode: themeMode,
-                commandCenterState: commandCenter.environmentState
-            )
+            MacRootView(session: session)
+                .environmentObject(layoutState)
+                .preferredColorScheme(themeMode.colorSchemeOverride)
                 .onChange(of: scenePhase) { _, newPhase in
                     handleScenePhase(newPhase)
                 }
         }
         .commands {
             CommandGroup(after: .newItem) {
-                Button("Refrescar dashboard") {}
+                Button("Refrescar dashboard") {
+                    Task {
+                        await session.bridge.refreshDashboard(mode: .office)
+                    }
+                }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
             }
         }
@@ -33,15 +37,6 @@ struct MiGestorKMPMacApp: App {
     }
 
     private func handleScenePhase(_ newPhase: ScenePhase) {
-        switch newPhase {
-        case .active:
-            NotificationCenter.default.post(name: .appleAppDidBecomeActive, object: nil)
-        case .background:
-            NotificationCenter.default.post(name: .appleAppDidEnterBackground, object: nil)
-        case .inactive:
-            break
-        @unknown default:
-            break
-        }
+        session.handleScenePhase(newPhase)
     }
 }

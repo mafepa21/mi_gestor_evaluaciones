@@ -25,6 +25,7 @@ data class BulkRubricEvaluationUiState(
     val assessments: Map<Long, Map<Long, Long>> = emptyMap(),
     // StudentId -> Score (0.0 - 10.0)
     val scores: Map<Long, Double> = emptyMap(),
+    val passingThreshold: Double = 5.0,
     val isLoading: Boolean = false,
     val isSaving: Boolean = false,
     val isSaveSuccessful: Boolean = false,

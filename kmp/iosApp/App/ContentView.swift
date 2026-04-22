@@ -2573,99 +2573,212 @@ struct RubricsEmptyStateView: View {
 struct AssignRubricToTabView: View {
     @EnvironmentObject var bridge: KmpBridge
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var isAssigning = false
 
     private var dialog: AssignRubricDialogState? {
         bridge.rubricsUiState?.assignDialogState
     }
 
+    private var selectedClassBinding: Binding<Int64?> {
+        Binding(
+            get: { dialog?.selectedClassId?.int64Value },
+            set: { bridge.onAssignClassSelected($0 ?? 0) }
+        )
+    }
+
+    private var selectedTabBinding: Binding<String?> {
+        Binding(
+            get: { dialog?.selectedTab },
+            set: { bridge.onAssignTabSelected($0 ?? "") }
+        )
+    }
+
+    private var createNewTabBinding: Binding<Bool> {
+        Binding(
+            get: { dialog?.createNewTab ?? false },
+            set: { bridge.onToggleCreateNewTab($0) }
+        )
+    }
+
+    private var newTabNameBinding: Binding<String> {
+        Binding(
+            get: { dialog?.newTabName ?? "" },
+            set: { bridge.onNewTabNameChanged($0) }
+        )
+    }
+
     var body: some View {
         NavigationStack {
-            Group {
+            VStack(spacing: 0) {
                 if let state = dialog {
-                    Form {
-                        Section("Rúbrica") {
-                            Text(state.rubricName)
+                    #if os(macOS)
+                    MacPopupActionBar(
+                        title: "Asignar rúbrica",
+                        subtitle: state.rubricName,
+                        saveTitle: isAssigning ? "Asignando…" : "Asignar",
+                        saveSystemImage: "square.and.arrow.down",
+                        canSave: canAssign && !isAssigning,
+                        onClose: closeAssignDialog,
+                        onSave: confirmAssignDialog
+                    )
+                    #endif
+
+                    VStack(alignment: .leading, spacing: 18) {
+                        HStack(alignment: .top, spacing: 16) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Asignar rúbrica")
+                                    .font(.title2.weight(.bold))
+                                Text(state.rubricName)
+                                    .font(.callout.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            #if !os(macOS)
+                            Button {
+                                closeAssignDialog()
+                            } label: {
+                                Label("Cerrar", systemImage: "xmark")
+                            }
+                            .buttonStyle(.bordered)
+                            #endif
                         }
 
-                        Section("Clase") {
-                            Picker(
-                                "Selecciona clase",
-                                selection: Binding<Int64>(
-                                    get: { state.selectedClassId?.int64Value ?? 0 },
-                                    set: { bridge.onAssignClassSelected($0) }
-                                )
-                            ) {
-                                Text("Elige una clase").tag(Int64(0))
-                                ForEach(bridge.classes, id: \.id) { schoolClass in
-                                    Text(schoolClass.name).tag(schoolClass.id)
+                        assignmentStepCard(number: "1", title: "Clase") {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Elige el curso donde quieres crear la columna de rúbrica.")
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+
+                                Picker("Clase", selection: selectedClassBinding) {
+                                    Text("Selecciona una clase").tag(Optional<Int64>.none)
+                                    ForEach(bridge.classes, id: \.id) { schoolClass in
+                                        Text("\(schoolClass.name) · \(schoolClass.course)º").tag(Optional<Int64>.some(schoolClass.id))
+                                    }
                                 }
+                                .pickerStyle(.menu)
+                                .frame(maxWidth: 360, alignment: .leading)
                             }
                         }
 
                         if state.selectedClassId != nil {
-                            Section("Destino") {
-                                Toggle(
-                                    "Crear pestaña nueva",
-                                    isOn: Binding(
-                                        get: { state.createNewTab },
-                                        set: { bridge.onToggleCreateNewTab($0) }
-                                    )
-                                )
+                            assignmentStepCard(number: "2", title: "Destino en cuaderno") {
+                                VStack(alignment: .leading, spacing: 14) {
+                                    Picker("Destino", selection: createNewTabBinding) {
+                                        Text("Usar pestaña existente").tag(false)
+                                        Text("Crear pestaña nueva").tag(true)
+                                    }
+                                    .pickerStyle(.segmented)
+                                    .frame(maxWidth: 420)
+                                    .disabled(state.availableTabs.isEmpty)
 
-                                if state.createNewTab {
-                                    TextField(
-                                        "Nombre de pestaña",
-                                        text: Binding(
-                                            get: { state.newTabName },
-                                            set: { bridge.onNewTabNameChanged($0) }
-                                        )
-                                    )
-                                } else {
-                                    Picker(
-                                        "Pestaña",
-                                        selection: Binding<String>(
-                                            get: { state.selectedTab ?? "" },
-                                            set: { bridge.onAssignTabSelected($0) }
-                                        )
-                                    ) {
-                                        ForEach(state.availableTabs, id: \.self) { tab in
-                                            Text(tab).tag(tab)
+                                    if state.createNewTab || state.availableTabs.isEmpty {
+                                        VStack(alignment: .leading, spacing: 8) {
+                                            Text("Nombre de la nueva pestaña")
+                                                .font(.caption.weight(.semibold))
+                                                .foregroundStyle(.secondary)
+                                            TextField("Rúbricas", text: newTabNameBinding)
+                                                .textFieldStyle(.roundedBorder)
+                                                .frame(maxWidth: 360)
+                                            if state.availableTabs.isEmpty {
+                                                Text("Esta clase todavía no tiene pestañas, así que crearemos una nueva.")
+                                                    .font(.caption)
+                                                    .foregroundStyle(.secondary)
+                                            }
                                         }
+                                    } else {
+                                        Picker("Pestaña", selection: selectedTabBinding) {
+                                            Text("Selecciona una pestaña").tag(Optional<String>.none)
+                                            ForEach(state.availableTabs, id: \.self) { tab in
+                                                Text(tab).tag(Optional<String>.some(tab))
+                                            }
+                                        }
+                                        .pickerStyle(.menu)
+                                        .frame(maxWidth: 360, alignment: .leading)
                                     }
                                 }
                             }
                         }
                     }
+                    .padding(28)
+                    .frame(maxWidth: 720, alignment: .topLeading)
                 } else {
                     ProgressView("Cargando…")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
-            .navigationTitle("Asignar rúbrica")
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .background(appPageBackground(for: colorScheme).ignoresSafeArea())
+            #if !os(macOS)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancelar") {
-                        bridge.dismissAssignRubricDialog()
-                        dismiss()
+                        closeAssignDialog()
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Asignar") {
-                        bridge.confirmAssignRubric()
-                        dismiss()
+                    Button(isAssigning ? "Asignando…" : "Asignar") {
+                        confirmAssignDialog()
                     }
                     .fontWeight(.bold)
-                    .disabled(!canAssign)
+                    .disabled(!canAssign || isAssigning)
                 }
             }
+            #endif
         }
+    }
+
+    @ViewBuilder
+    private func assignmentStepCard<Content: View>(
+        number: String,
+        title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            Text(number)
+                .font(.headline.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(width: 30, height: 30)
+                .background(Color.accentColor, in: Circle())
+
+            VStack(alignment: .leading, spacing: 12) {
+                Text(title)
+                    .font(.headline)
+                content()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(18)
+        .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(.primary.opacity(0.08), lineWidth: 1)
+        )
     }
 
     private var canAssign: Bool {
         guard let state = dialog, state.selectedClassId != nil else { return false }
-        if state.createNewTab {
+        if state.createNewTab || state.availableTabs.isEmpty {
             return !state.newTabName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
-        return state.selectedTab != nil || !state.availableTabs.isEmpty
+        return state.selectedTab != nil
+    }
+
+    private func closeAssignDialog() {
+        bridge.dismissAssignRubricDialog()
+        dismiss()
+    }
+
+    private func confirmAssignDialog() {
+        guard canAssign else { return }
+        isAssigning = true
+        bridge.confirmAssignRubric()
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            if dialog != nil {
+                isAssigning = false
+            }
+        }
     }
 }
 
@@ -2684,13 +2797,38 @@ struct RubricsBuilderScreen: View {
             Group {
                 if let state {
                     VStack(alignment: .leading, spacing: 16) {
-                        RubricBuilderHeader(
-                            state: state,
-                            rubricName: rubricNameBinding,
-                            selectedClassId: selectedClassBinding,
-                            selectedTeachingUnitId: selectedTeachingUnitBinding
+                        #if os(macOS)
+                        MacPopupActionBar(
+                            title: "Editor de rúbricas",
+                            subtitle: state.rubricName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Nueva rúbrica" : state.rubricName,
+                            saveTitle: "Guardar Rúbrica",
+                            canSave: !state.rubricName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !state.isSaving,
+                            onClose: { dismiss() },
+                            onSave: saveRubricAndDismiss
                         )
-                        .environmentObject(bridge)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        #endif
+
+                        HStack(alignment: .top, spacing: 16) {
+                            RubricBuilderHeader(
+                                state: state,
+                                rubricName: rubricNameBinding,
+                                selectedClassId: selectedClassBinding,
+                                selectedTeachingUnitId: selectedTeachingUnitBinding
+                            )
+                            .environmentObject(bridge)
+
+                            Spacer()
+
+                            #if !os(macOS)
+                            Button {
+                                dismiss()
+                            } label: {
+                                Label("Cerrar", systemImage: "xmark")
+                            }
+                            .buttonStyle(.bordered)
+                            #endif
+                        }
 
                         TextEditor(text: instructionsBinding)
                             .frame(height: 88)
@@ -2725,21 +2863,23 @@ struct RubricsBuilderScreen: View {
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)
                             } else {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(.green)
-                                    .font(.system(size: 14))
-                                Text(saveFeedback ?? "Guardado")
+                                if saveFeedback == nil {
+                                    Image(systemName: "circle")
+                                        .foregroundStyle(.secondary)
+                                        .font(.system(size: 14))
+                                } else {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(Color.green)
+                                        .font(.system(size: 14))
+                                }
+                                Text(saveFeedback ?? "Cambios sin guardar")
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
+                            #if !os(macOS)
                             Button {
-                                bridge.saveRubricFromBuilder { success in
-                                    saveFeedback = success ? "Rúbrica guardada correctamente" : "Error al guardar"
-                                    if success {
-                                        dismiss()
-                                    }
-                                }
+                                saveRubricAndDismiss()
                             } label: {
                             Label("Guardar Rúbrica", systemImage: "square.and.arrow.down")
                                 .font(.system(size: 15, weight: .bold))
@@ -2750,6 +2890,7 @@ struct RubricsBuilderScreen: View {
                             }
                             .buttonStyle(.plain)
                             .disabled(state.rubricName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || state.isSaving)
+                            #endif
                         }
                     }
                     .padding(20)
@@ -2760,10 +2901,21 @@ struct RubricsBuilderScreen: View {
             }
             .background(appPageBackground(for: colorScheme).ignoresSafeArea())
             .appInlineNavigationBarTitleDisplayMode()
+            #if !os(macOS)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cerrar") { dismiss() }
                 }
+            }
+            #endif
+        }
+    }
+
+    private func saveRubricAndDismiss() {
+        bridge.saveRubricFromBuilder { success in
+            saveFeedback = success ? "Rúbrica guardada correctamente" : "Error al guardar"
+            if success {
+                dismiss()
             }
         }
     }

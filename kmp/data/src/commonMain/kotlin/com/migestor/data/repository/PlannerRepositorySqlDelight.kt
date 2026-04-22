@@ -98,12 +98,14 @@ class PlannerRepositorySqlDelight(
             .map { mapToDomain(it) }
     }
 
+    @Throws(Exception::class)
     override suspend fun upsertSession(session: PlanningSession): Long {
         val now = Clock.System.now().toEpochMilliseconds()
         val date = sessionDate(session).toString()
+        val resolvedId = resolveSessionIdForUpsert(session, date)
         return db.transactionWithResult {
             db.plannerQueries.upsertSession(
-                id = if (session.id == 0L) null else session.id,
+                id = resolvedId,
                 date = date,
                 group_id = session.groupId,
                 period = session.period.toLong(),
@@ -117,7 +119,7 @@ class PlannerRepositorySqlDelight(
                 device_id = null,
                 sync_version = 0L
             )
-            if (session.id == 0L) db.plannerQueries.lastInsertedId().executeAsOne() else session.id
+            resolvedId ?: db.plannerQueries.lastInsertedId().executeAsOne()
         }
     }
 
@@ -127,9 +129,11 @@ class PlannerRepositorySqlDelight(
         db.transaction {
             sessions.forEach { session ->
                 val now = Clock.System.now().toEpochMilliseconds()
+                val date = sessionDate(session).toString()
+                val resolvedId = resolveSessionIdForUpsert(session, date)
                 db.plannerQueries.upsertSession(
-                    id = if (session.id == 0L) null else session.id,
-                    date = sessionDate(session).toString(),
+                    id = resolvedId,
+                    date = date,
                     group_id = session.groupId,
                     period = session.period.toLong(),
                     unit_id = if (session.teachingUnitId == 0L) null else session.teachingUnitId,
@@ -142,10 +146,19 @@ class PlannerRepositorySqlDelight(
                     device_id = null,
                     sync_version = 0L
                 )
-                ids += if (session.id == 0L) db.plannerQueries.lastInsertedId().executeAsOne() else session.id
+                ids += resolvedId ?: db.plannerQueries.lastInsertedId().executeAsOne()
             }
         }
         return ids
+    }
+
+    private fun resolveSessionIdForUpsert(session: PlanningSession, date: String): Long? {
+        val naturalKeyId = db.plannerQueries.selectSessionByNaturalKey(
+            date = date,
+            groupId = session.groupId,
+            period = session.period.toLong()
+        ).executeAsOneOrNull()?.id
+        return naturalKeyId ?: session.id.takeIf { it > 0L }
     }
 
     override suspend fun deleteSession(sessionId: Long) {

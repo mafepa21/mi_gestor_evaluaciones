@@ -27,6 +27,17 @@ enum PlannerWorkspaceSection: String, CaseIterable, Identifiable {
     }
 }
 
+enum PlannerSessionFilter: String, CaseIterable, Identifiable {
+    case all = "Todos"
+    case planned = "Planificadas"
+    case completed = "Impartidas"
+    case draftDiary = "Diario borrador"
+    case closedDiary = "Diario cerrado"
+    case emptyDiary = "Sin diario"
+
+    var id: String { rawValue }
+}
+
 struct PlannerJournalDraftNote: Identifiable, Equatable {
     var id = UUID()
     var studentId: Int64? = nil
@@ -292,6 +303,12 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     @Published var year = 2026
     @Published var groups: [SchoolClass] = []
     @Published var selectedGroupId: Int64?
+    @Published var groupFilterId: Int64? {
+        didSet {
+            applySearch()
+            rebuildVisiblePlannerStructure()
+        }
+    }
     @Published var classColorHexById: [Int64: String] = [:]
     @Published var sessions: [PlanningSession] = []
     @Published var filteredSessions: [PlanningSession] = []
@@ -307,6 +324,11 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     @Published var evaluationPeriods: [PlannerEvaluationPeriod] = []
     @Published var forecastRows: [PlannerSessionForecast] = []
     @Published var searchText = ""
+    @Published var sessionFilter: PlannerSessionFilter = .all {
+        didSet {
+            applySearch()
+        }
+    }
     @Published var selectionMode = false
     @Published var selectedSessionIds: Set<Int64> = []
     @Published var showingComposer = false
@@ -423,22 +445,19 @@ final class PlannerWorkspaceViewModel: ObservableObject {
 
     func applySearch() {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !query.isEmpty else {
-            filteredSessions = sessions.sorted { lhs, rhs in
+        filteredSessions = sessions
+            .filter { session in
+                matchesGroupFilter(session)
+                    && matchesSessionFilter(session)
+                    && matchesSearch(session, query: query)
+            }
+            .sorted { lhs, rhs in
                 if lhs.dayOfWeek == rhs.dayOfWeek {
                     if lhs.period == rhs.period { return lhs.groupName < rhs.groupName }
                     return lhs.period < rhs.period
                 }
                 return lhs.dayOfWeek < rhs.dayOfWeek
             }
-            return
-        }
-        filteredSessions = sessions.filter {
-            [$0.groupName, $0.teachingUnitName, $0.objectives, $0.activities]
-                .joined(separator: " ")
-                .lowercased()
-                .contains(query)
-        }
     }
 
     func previousWeek() async {
@@ -502,6 +521,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         }
         if let groupId, self.selectedGroupId != groupId {
             self.selectedGroupId = groupId
+            self.groupFilterId = groupId
             self.scheduleFormGroupId = groupId
         }
 
@@ -970,8 +990,18 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     }
 
     private func rebuildVisiblePlannerStructure() {
-        let relevantTeacherSlots = teacherScheduleSlots
-        let relevantWeeklySlots = weeklySlots
+        let relevantTeacherSlots = teacherScheduleSlots.filter { slot in
+            guard let groupFilterId else { return true }
+            return slot.schoolClassId == groupFilterId
+        }
+        let relevantWeeklySlots = weeklySlots.filter { slot in
+            guard let groupFilterId else { return true }
+            return slot.schoolClassId == groupFilterId
+        }
+        let relevantSessions = sessions.filter { session in
+            guard let groupFilterId else { return true }
+            return session.groupId == groupFilterId
+        }
 
         var rangesByPeriod: [Int: PlannerVisibleSlot] = [:]
         for slot in timeSlots {
@@ -982,7 +1012,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
             )
         }
 
-        for session in sessions {
+        for session in relevantSessions {
             if let matchingDefault = timeSlots.first(where: { Int($0.period) == Int(session.period) }) {
                 rangesByPeriod[Int(session.period)] = PlannerVisibleSlot(
                     period: Int(session.period),
@@ -1043,7 +1073,13 @@ final class PlannerWorkspaceViewModel: ObservableObject {
 
     func entries(for day: Int, period: Int) -> [PlannerWeekCellEntry] {
         let sessionEntries = sessions
-            .filter { Int($0.dayOfWeek) == day && Int($0.period) == period }
+            .filter {
+                Int($0.dayOfWeek) == day
+                    && Int($0.period) == period
+                    && matchesGroupFilter($0)
+                    && matchesSessionFilter($0)
+                    && matchesSearch($0, query: searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+            }
             .sorted {
                 if $0.groupName == $1.groupName { return $0.teachingUnitName < $1.teachingUnitName }
                 return $0.groupName < $1.groupName
@@ -1082,9 +1118,10 @@ final class PlannerWorkspaceViewModel: ObservableObject {
             }
 
         let existingClassIds = Set(sessionEntries.map(\.classId))
-        let scheduledEntries = teacherScheduleSlots
+        let scheduledEntries = effectiveScheduleSlots
             .filter { slot in
                 guard Int(slot.dayOfWeek) == day else { return false }
+                if let groupFilterId, slot.schoolClassId != groupFilterId { return false }
                 guard let visibleSlot = visibleSlots.first(where: { $0.period == period }) else { return false }
                 return slot.startTime == visibleSlot.startTime && slot.endTime == visibleSlot.endTime && !existingClassIds.contains(slot.schoolClassId)
             }
@@ -1146,6 +1183,37 @@ final class PlannerWorkspaceViewModel: ObservableObject {
             sections.append(.init(title: "Evaluación", value: evaluation))
         }
         return sections
+    }
+
+    private func matchesSearch(_ session: PlanningSession, query: String) -> Bool {
+        guard !query.isEmpty else { return true }
+        return [session.groupName, session.teachingUnitName, session.objectives, session.activities]
+            .joined(separator: " ")
+            .lowercased()
+            .contains(query)
+    }
+
+    private func matchesGroupFilter(_ session: PlanningSession) -> Bool {
+        guard let groupFilterId else { return true }
+        return session.groupId == groupFilterId
+    }
+
+    private func matchesSessionFilter(_ session: PlanningSession) -> Bool {
+        let journalStatus = summary(for: session.id)?.status
+        switch sessionFilter {
+        case .all:
+            return true
+        case .planned:
+            return session.status != .completed
+        case .completed:
+            return session.status == .completed
+        case .draftDiary:
+            return journalStatus == .draft
+        case .closedDiary:
+            return journalStatus == .completed
+        case .emptyDiary:
+            return journalStatus == nil || journalStatus == .empty
+        }
     }
 }
 
@@ -1588,7 +1656,7 @@ private struct PlannerWeekEntryCard: View {
     }
 }
 
-private struct PlannerStatusPill: View {
+struct PlannerStatusPill: View {
     let status: SessionJournalStatus
 
     var body: some View {
@@ -2457,136 +2525,43 @@ private struct PlannerInstrumentSelectionRow: View {
     }
 }
 
-private struct PlannerSessionComposerSheet: View {
+struct PlannerSessionComposerSheet: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var vm: PlannerWorkspaceViewModel
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    EvaluationGlassCard {
-                        VStack(alignment: .leading, spacing: 14) {
-                            EvaluationSectionTitle(
-                                eyebrow: "Sesión",
-                                title: vm.composerDraft.sessionId == 0 ? "Nueva sesión" : "Editar sesión",
-                                subtitle: "Redacta la sesión en formato largo y déjala ya planificada."
-                            )
-
-                            Picker("Curso", selection: $vm.composerDraft.groupId) {
-                                Text("Selecciona curso").tag(Optional<Int64>.none)
-                                ForEach(vm.groups, id: \.id) { group in
-                                    Text(group.name).tag(Optional(group.id))
-                                }
-                            }
-                            .pickerStyle(.menu)
-
-                            Picker("Unidad / SA existente", selection: $vm.composerDraft.teachingUnitId) {
-                                Text("Crear o elegir después").tag(Optional<Int64>.none)
-                                ForEach(vm.composerTeachingUnits, id: \.id) { unit in
-                                    Text(unit.name).tag(Optional(unit.id))
-                                }
-                            }
-                            .pickerStyle(.menu)
-
-                            TextField("Nueva Unidad / SA", text: $vm.composerDraft.unitTitle, axis: .vertical)
-                                .lineLimit(1...3)
-                                .textFieldStyle(RoundedBorderTextFieldStyle())
-
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Objetivos")
-                                    .font(.caption.weight(.bold))
-                                    .foregroundStyle(.secondary)
-                                TextEditor(text: $vm.composerDraft.objectives)
-                                    .frame(minHeight: 120)
-                                    .padding(8)
-                                    .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                            }
-
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Resumen de la sesión")
-                                    .font(.caption.weight(.bold))
-                                    .foregroundStyle(.secondary)
-                                TextEditor(text: $vm.composerDraft.activities)
-                                    .frame(minHeight: 150)
-                                    .padding(8)
-                                    .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                            }
-                        }
+            Group {
+                #if os(macOS)
+                VStack(spacing: 0) {
+                    MacPopupActionBar(
+                        title: vm.composerDraft.sessionId == 0 ? "Nueva sesión" : "Editar sesión",
+                        subtitle: "Planificación",
+                        saveTitle: "Guardar",
+                        canSave: vm.composerDraft.groupId != nil,
+                        onClose: { dismiss() },
+                        onSave: saveAndDismiss
+                    )
+                    composerContent
+                }
+                #else
+                composerContent
+                .navigationTitle(vm.composerDraft.sessionId == 0 ? "Nueva sesión" : "Editar sesión")
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Cancelar") { dismiss() }
                     }
-
-                    EvaluationGlassCard {
-                        VStack(alignment: .leading, spacing: 12) {
-                            EvaluationSectionTitle(
-                                eyebrow: "Evaluación",
-                                title: "Instrumentos enlazados",
-                                subtitle: "Selecciona evaluaciones o rúbricas del curso para conectarlas también con Cuaderno."
-                            )
-
-                            if !vm.composerContextError.isEmpty {
-                                Text(vm.composerContextError)
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.red)
-                            }
-
-                            if vm.composerAvailableInstruments.isEmpty {
-                                Text("No hay instrumentos disponibles para este curso todavía.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            } else {
-                                LazyVStack(alignment: .leading, spacing: 10) {
-                                    ForEach(vm.composerAvailableInstruments) { instrument in
-                                        PlannerInstrumentSelectionRow(
-                                            instrument: instrument,
-                                            isSelected: vm.composerDraft.selectedInstrumentIds.contains(instrument.id),
-                                            toggle: { vm.toggleComposerInstrument(instrument.id) }
-                                        )
-                                    }
-                                }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Guardar") {
+                            Task {
+                                await vm.saveComposer()
+                                dismiss()
                             }
                         }
-                    }
-
-                    EvaluationGlassCard {
-                        VStack(alignment: .leading, spacing: 12) {
-                            EvaluationSectionTitle(
-                                eyebrow: "Ubicación semanal",
-                                title: "Dónde cae la sesión",
-                                subtitle: "Se guardará como planificada en la franja seleccionada."
-                            )
-
-                            Picker("Día", selection: $vm.composerDraft.dayOfWeek) {
-                                ForEach(vm.visibleWeekdays, id: \.self) { day in
-                                    Text(vm.dayLabel(for: day)).tag(day)
-                                }
-                            }
-                            .pickerStyle(.menu)
-
-                            Picker("Franja", selection: $vm.composerDraft.period) {
-                                ForEach(vm.visibleSlots, id: \.period) { slot in
-                                    Text(slot.label).tag(slot.period)
-                                }
-                            }
-                            .pickerStyle(.menu)
-                        }
+                        .disabled(vm.composerDraft.groupId == nil)
                     }
                 }
-                .padding(EvaluationDesign.screenPadding)
-            }
-            .navigationTitle(vm.composerDraft.sessionId == 0 ? "Nueva sesión" : "Editar sesión")
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancelar") { dismiss() }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Guardar") {
-                        Task {
-                            await vm.saveComposer()
-                            dismiss()
-                        }
-                    }
-                    .disabled(vm.composerDraft.groupId == nil)
-                }
+                #endif
             }
             .task {
                 await vm.refreshComposerContext()
@@ -2602,6 +2577,126 @@ private struct PlannerSessionComposerSheet: View {
                 }
                 Task { await vm.refreshComposerContext() }
             }
+        }
+    }
+
+    private var composerContent: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                EvaluationGlassCard {
+                    VStack(alignment: .leading, spacing: 14) {
+                        EvaluationSectionTitle(
+                            eyebrow: "Sesión",
+                            title: vm.composerDraft.sessionId == 0 ? "Nueva sesión" : "Editar sesión",
+                            subtitle: "Redacta la sesión en formato largo y déjala ya planificada."
+                        )
+
+                        Picker("Curso", selection: $vm.composerDraft.groupId) {
+                            Text("Selecciona curso").tag(Optional<Int64>.none)
+                            ForEach(vm.groups, id: \.id) { group in
+                                Text(group.name).tag(Optional(group.id))
+                            }
+                        }
+                        .pickerStyle(.menu)
+
+                        Picker("Unidad / SA existente", selection: $vm.composerDraft.teachingUnitId) {
+                            Text("Crear o elegir después").tag(Optional<Int64>.none)
+                            ForEach(vm.composerTeachingUnits, id: \.id) { unit in
+                                Text(unit.name).tag(Optional(unit.id))
+                            }
+                        }
+                        .pickerStyle(.menu)
+
+                        TextField("Nueva Unidad / SA", text: $vm.composerDraft.unitTitle, axis: .vertical)
+                            .lineLimit(1...3)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Objetivos")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.secondary)
+                            TextEditor(text: $vm.composerDraft.objectives)
+                                .frame(minHeight: 120)
+                                .padding(8)
+                                .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        }
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Resumen de la sesión")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.secondary)
+                            TextEditor(text: $vm.composerDraft.activities)
+                                .frame(minHeight: 150)
+                                .padding(8)
+                                .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        }
+                    }
+                }
+
+                EvaluationGlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        EvaluationSectionTitle(
+                            eyebrow: "Evaluación",
+                            title: "Instrumentos enlazados",
+                            subtitle: "Selecciona evaluaciones o rúbricas del curso para conectarlas también con Cuaderno."
+                        )
+
+                        if !vm.composerContextError.isEmpty {
+                            Text(vm.composerContextError)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.red)
+                        }
+
+                        if vm.composerAvailableInstruments.isEmpty {
+                            Text("No hay instrumentos disponibles para este curso todavía.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            LazyVStack(alignment: .leading, spacing: 10) {
+                                ForEach(vm.composerAvailableInstruments) { instrument in
+                                    PlannerInstrumentSelectionRow(
+                                        instrument: instrument,
+                                        isSelected: vm.composerDraft.selectedInstrumentIds.contains(instrument.id),
+                                        toggle: { vm.toggleComposerInstrument(instrument.id) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                EvaluationGlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        EvaluationSectionTitle(
+                            eyebrow: "Ubicación semanal",
+                            title: "Dónde cae la sesión",
+                            subtitle: "Se guardará como planificada en la franja seleccionada."
+                        )
+
+                        Picker("Día", selection: $vm.composerDraft.dayOfWeek) {
+                            ForEach(vm.visibleWeekdays, id: \.self) { day in
+                                Text(vm.dayLabel(for: day)).tag(day)
+                            }
+                        }
+                        .pickerStyle(.menu)
+
+                        Picker("Franja", selection: $vm.composerDraft.period) {
+                            ForEach(vm.visibleSlots, id: \.period) { slot in
+                                Text(slot.label).tag(slot.period)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                    }
+                }
+            }
+            .padding(EvaluationDesign.screenPadding)
+        }
+    }
+
+    private func saveAndDismiss() {
+        Task {
+            await vm.saveComposer()
+            dismiss()
         }
     }
 }

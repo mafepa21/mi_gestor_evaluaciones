@@ -168,7 +168,7 @@ final class AppleFoundationReportService {
 
     #if canImport(FoundationModels)
     @available(iOS 26.0, macOS 26.0, *)
-    private lazy var reportSession: LanguageModelSession = {
+    private var reportSession: LanguageModelSession {
         LanguageModelSession(
             instructions: """
             Actúas como asistente de redacción docente dentro de una app escolar local-first.
@@ -179,7 +179,7 @@ final class AppleFoundationReportService {
             Redacta en español de España.
             """
         )
-    }()
+    }
     #endif
 
     func currentAvailability() -> AIReportAvailabilityState {

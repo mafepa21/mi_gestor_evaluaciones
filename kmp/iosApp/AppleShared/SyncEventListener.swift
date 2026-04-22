@@ -8,7 +8,7 @@ final class SyncEventListener {
         host: String,
         token: String,
         pinnedFingerprint: String?,
-        onEvent: @escaping @MainActor () async -> Void
+        onEvent: @escaping @MainActor (LanSyncEvent?) async -> Void
     ) {
         let connectionKey = "\(host)|\(token)|\(pinnedFingerprint ?? "")"
         if currentConnectionKey == connectionKey, eventTask?.isCancelled == false {
@@ -37,7 +37,7 @@ final class SyncEventListener {
         host: String,
         token: String,
         pinnedFingerprint: String?,
-        onEvent: @escaping @MainActor () async -> Void
+        onEvent: @escaping @MainActor (LanSyncEvent?) async -> Void
     ) async {
         while !Task.isCancelled {
             do {
@@ -59,7 +59,7 @@ final class SyncEventListener {
         host: String,
         token: String,
         pinnedFingerprint: String?,
-        onEvent: @escaping @MainActor () async -> Void
+        onEvent: @escaping @MainActor (LanSyncEvent?) async -> Void
     ) async throws {
         let url = try buildEventsURL(host: host)
         var request = URLRequest(url: url)
@@ -86,12 +86,36 @@ final class SyncEventListener {
             throw URLError(.badServerResponse)
         }
 
+        var frameLines: [String] = []
         for try await line in bytes.lines {
             try Task.checkCancellation()
-            if line.hasPrefix("data:") {
-                await onEvent()
+            if line.isEmpty {
+                if let event = parseSyncEvent(from: frameLines) {
+                    await onEvent(event)
+                } else if frameLines.contains(where: { $0.hasPrefix("data:") }) {
+                    await onEvent(nil)
+                }
+                frameLines.removeAll(keepingCapacity: true)
+            } else {
+                frameLines.append(line)
             }
         }
+    }
+
+    private func parseSyncEvent(from lines: [String]) -> LanSyncEvent? {
+        let dataLines = lines.compactMap { line -> String? in
+            guard line.hasPrefix("data:") else { return nil }
+            var data = String(line.dropFirst("data:".count))
+            if data.first == " " {
+                data.removeFirst()
+            }
+            return data
+        }
+
+        guard !dataLines.isEmpty else { return nil }
+        let data = dataLines.joined(separator: "\n")
+        guard let payload = data.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(LanSyncEvent.self, from: payload)
     }
 
     private func buildEventsURL(host: String) throws -> URL {

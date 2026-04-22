@@ -255,6 +255,13 @@ private struct NotebookFormulaCellDisplay {
     let isError: Bool
 }
 
+private struct NotebookCellUndoEntry {
+    let studentId: Int64
+    let column: NotebookColumnDefinition
+    let previousValue: String
+    let previousDisplayLabel: String?
+}
+
 struct NotebookModuleView: View {
     private let notebookGridRowHeight: CGFloat = 72
     private let notebookGridHeaderHeight: CGFloat = 68
@@ -293,6 +300,10 @@ struct NotebookModuleView: View {
     @State private var pendingDeleteCategory: NotebookColumnCategory? = nil
     @State private var isOrganizationMenuPresented = false
     @State private var toast: NotebookToast? = nil
+    @State private var isAttendanceQuickMode = false
+    @State private var isMarkAllPresentDialogPresented = false
+    @State private var undoStack: [NotebookCellUndoEntry] = []
+    @State private var cellReloadRevision = 0
     @State private var highlightedCategoryId: String? = nil
     @State private var notebookAISheetRequest: NotebookAISheetRequest? = nil
     @State private var notebookSummarySheetRequest: NotebookSummarySheetRequest? = nil
@@ -443,6 +454,22 @@ struct NotebookModuleView: View {
                 Text("Se eliminará la pestaña “\(tab.title)” y las columnas que solo pertenezcan a ella.")
             }
         }
+        .confirmationDialog(
+            "Marcar todos como presentes",
+            isPresented: $isMarkAllPresentDialogPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Marcar alumnos visibles") {
+                if let data = bridge.notebookState as? NotebookUiStateData {
+                    markAllVisibleStudentsPresent(data: data)
+                }
+            }
+            Button("Cancelar", role: .cancel) {}
+        } message: {
+            if let data = bridge.notebookState as? NotebookUiStateData {
+                Text("Se marcarán como presentes \(filteredRows(data: data).count) alumnos visibles.")
+            }
+        }
     }
 
     private func notebookSheetAndTaskModifiers<Content: View>(_ content: Content) -> some View {
@@ -474,11 +501,13 @@ struct NotebookModuleView: View {
     private func notebookSelectionObservationModifiers<Content: View>(_ content: Content) -> some View {
         content
             .onChange(of: selectedClassId) { newValue in
+                undoStack.removeAll()
                 guard let newValue else { return }
                 guard bridge.notebookViewModel.currentClassId?.int64Value != newValue else { return }
                 selectNotebookClass(newValue)
             }
             .onChange(of: bridge.selectedNotebookTabId) { _ in
+                undoStack.removeAll()
                 restoreSeatPositions()
                 Task { await refreshNotebookSignals() }
             }
@@ -532,6 +561,9 @@ struct NotebookModuleView: View {
                     surfaceMode: $surfaceMode,
                     navigationDirection: navigationDirection,
                     isInspectorPresented: isInspectorPresented,
+                    isAttendanceQuickMode: isAttendanceQuickMode,
+                    canMarkAllPresent: !filteredRows(data: data).isEmpty,
+                    canUndo: !undoStack.isEmpty,
                     onSelectClass: selectNotebookClass,
                     onOpenOrganizationMenu: {
                         isOrganizationMenuPresented = true
@@ -552,6 +584,19 @@ struct NotebookModuleView: View {
                     },
                     onNavigationDirectionChange: { direction in
                         navigationDirection = direction
+                    },
+                    onToggleAttendanceQuickMode: {
+                        isAttendanceQuickMode.toggle()
+                        if isAttendanceQuickMode {
+                            activeChoiceCellId = nil
+                            focusedCellId = nil
+                        }
+                    },
+                    onMarkAllPresent: {
+                        requestMarkAllVisibleStudentsPresent(data: data)
+                    },
+                    onUndo: {
+                        undoLastCellChange()
                     },
                     onGenerateSummaryFallback: {
                         notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: nil)
@@ -1781,15 +1826,19 @@ struct NotebookModuleView: View {
             showToast("Esta columna no tiene una rúbrica asociada", style: .warning)
             return
         }
-        focusedCellId = nil
-        activeChoiceCellId = nil
-        inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
-        bridge.loadForNotebookCell(
-            studentId: item.student.id,
-            columnId: column.id,
-            rubricId: rubricId,
-            evaluationId: evaluationId
-        )
+        withAnimation(.spring(response: 0.18, dampingFraction: 0.9)) {
+            focusedCellId = nil
+            activeChoiceCellId = nil
+            inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
+        }
+        DispatchQueue.main.async {
+            bridge.loadForNotebookCell(
+                studentId: item.student.id,
+                columnId: column.id,
+                rubricId: rubricId,
+                evaluationId: evaluationId
+            )
+        }
     }
 
     private func openRubricBulk(column: NotebookColumnDefinition, data: NotebookUiStateData) {
@@ -2163,6 +2212,35 @@ struct NotebookModuleView: View {
         }
     }
 
+    private func columnHeaderSubtitle(
+        for column: NotebookColumnDefinition,
+        data: NotebookUiStateData,
+        rows: [NotebookTableRow]
+    ) -> String {
+        var parts = [categoryTitle(for: column, data: data)]
+        if let epochMs = column.dateEpochMs?.int64Value {
+            let date = Date(timeIntervalSince1970: TimeInterval(epochMs) / 1000.0)
+            parts.append(date.formatted(.dateTime.day().month(.abbreviated)))
+        }
+        if let average = columnAverageText(for: column, rows: rows) {
+            parts.append(average)
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private func columnAverageText(for column: NotebookColumnDefinition, rows: [NotebookTableRow]) -> String? {
+        guard column.type == .numeric || column.type == .rubric else { return nil }
+        let values = rows.compactMap { item -> Double? in
+            let raw = column.type == .rubric
+                ? bridge.rubricGradeOnTenText(studentId: item.student.id, column: column)
+                : bridge.numericGradeText(studentId: item.student.id, columnId: column.id)
+            return parseFormulaNumber(raw)
+        }
+        guard !values.isEmpty else { return nil }
+        let average = values.reduce(0, +) / Double(values.count)
+        return String(format: "x̄ %.1f", average)
+    }
+
     private func tint(for category: NotebookColumnCategory) -> Color {
         tint(forName: category.name)
     }
@@ -2311,6 +2389,60 @@ struct NotebookModuleView: View {
             await refreshNotebookSignals()
         } catch {
         }
+    }
+
+    private func requestMarkAllVisibleStudentsPresent(data: NotebookUiStateData) {
+        let visibleRows = filteredRows(data: data)
+        guard !visibleRows.isEmpty else { return }
+        if visibleRows.count > 5 {
+            isMarkAllPresentDialogPresented = true
+        } else {
+            markAllVisibleStudentsPresent(data: data)
+        }
+    }
+
+    private func markAllVisibleStudentsPresent(data: NotebookUiStateData) {
+        let visibleRows = filteredRows(data: data)
+        guard !visibleRows.isEmpty else { return }
+        Task {
+            for row in visibleRows {
+                await markAttendance(for: row.student.id, status: "PRESENTE")
+            }
+            await MainActor.run {
+                showToast("\(visibleRows.count) alumnos marcados como presentes")
+            }
+        }
+    }
+
+    private func recordCellUndo(studentId: Int64, column: NotebookColumnDefinition, previousValue: String, previousDisplayLabel: String?) {
+        undoStack.append(
+            NotebookCellUndoEntry(
+                studentId: studentId,
+                column: column,
+                previousValue: previousValue,
+                previousDisplayLabel: previousDisplayLabel
+            )
+        )
+        if undoStack.count > 10 {
+            undoStack.removeFirst(undoStack.count - 10)
+        }
+    }
+
+    private func undoLastCellChange() {
+        guard let entry = undoStack.popLast() else {
+            showToast("No hay cambios que deshacer", style: .warning)
+            return
+        }
+        bridge.flushPendingColumnGradeSave(studentId: entry.studentId, columnId: entry.column.id)
+        bridge.saveColumnGrade(studentId: entry.studentId, column: entry.column, value: entry.previousValue)
+        cellReloadRevision += 1
+        withAnimation(.spring(response: 0.18, dampingFraction: 0.9)) {
+            inspectorSelection = NotebookInspectorSelection(studentId: entry.studentId, columnId: entry.column.id)
+            focusedCellId = nil
+            activeChoiceCellId = nil
+        }
+        let label = entry.previousDisplayLabel ?? entry.previousValue
+        showToast(label.isEmpty ? "Cambio deshecho" : "Cambio deshecho: \(label)")
     }
 
     private func createFollowUp(for student: Student) async {
@@ -2462,6 +2594,7 @@ struct NotebookModuleView: View {
     }
 
     private func headerChip(for segment: NotebookDisplaySegment, data: NotebookUiStateData) -> some View {
+        let visibleRows = filteredRows(data: data)
         switch segment {
         case .fixed(let fixed):
             return AnyView(
@@ -2483,7 +2616,7 @@ struct NotebookModuleView: View {
                 } content: {
                     headerChip(
                         title: column.title,
-                        subtitle: categoryTitle(for: column, data: data),
+                        subtitle: columnHeaderSubtitle(for: column, data: data, rows: visibleRows),
                         width: resolvedColumnWidth(for: column),
                         tint: tint(for: column),
                         folderStyle: column.categoryId != nil,
@@ -2551,8 +2684,18 @@ struct NotebookModuleView: View {
                     navigationDirection: navigationDirection,
                     formulaDisplay: formulaDisplay(for: item, column: column, data: data),
                     isSelected: inspectorSelection == NotebookInspectorSelection(studentId: item.student.id, columnId: column.id),
+                    isAttendanceQuickMode: isAttendanceQuickMode,
+                    reloadToken: cellReloadRevision,
                     onSelect: {
                         inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
+                    },
+                    onPrepareUndo: { previousValue, previousDisplayLabel in
+                        recordCellUndo(
+                            studentId: item.student.id,
+                            column: column,
+                            previousValue: previousValue,
+                            previousDisplayLabel: previousDisplayLabel
+                        )
                     },
                     onOpenFormula: {
                         presentFormulaEditor(for: column)
@@ -3446,7 +3589,10 @@ private struct NotebookEditableTableCell: View {
     let navigationDirection: NotebookNavigationDirection
     let formulaDisplay: NotebookFormulaCellDisplay?
     let isSelected: Bool
+    let isAttendanceQuickMode: Bool
+    let reloadToken: Int
     let onSelect: () -> Void
+    let onPrepareUndo: (String, String?) -> Void
     let onOpenFormula: () -> Void
     let onOpenRubricIndividual: () -> Void
     let onOpenRubricBulk: () -> Void
@@ -3456,6 +3602,10 @@ private struct NotebookEditableTableCell: View {
     @State private var numericDraft = ""
     @State private var textDraft = ""
     @State private var checkDraft = false
+    @State private var originalNumericDraft = ""
+    @State private var originalTextDraft = ""
+    @State private var originalCheckDraft = false
+    @State private var numericDragStartValue: Double?
     @State private var showTextPopover = false
     @State private var hasLoadedDrafts = false
 
@@ -3510,12 +3660,19 @@ private struct NotebookEditableTableCell: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)
         .onAppear(perform: loadDrafts)
+        .onChange(of: reloadToken) { _ in
+            loadDrafts()
+        }
     }
 
     @ViewBuilder
     private var content: some View {
         if isAttendanceColumn {
-            attendancePicker
+            if isAttendanceQuickMode {
+                quickAttendanceButton
+            } else {
+                attendancePicker
+            }
         } else {
             switch column.type {
             case .numeric:
@@ -3526,6 +3683,7 @@ private struct NotebookEditableTableCell: View {
                     .submitLabel(.next)
                     .foregroundStyle(.primary)
                     .onSubmit { saveNumericAndNavigate(navigationDirection) }
+                    .simultaneousGesture(numericDragGesture)
 
                 #if canImport(UIKit)
                 field
@@ -3566,6 +3724,12 @@ private struct NotebookEditableTableCell: View {
                     .onChange(of: checkDraft) { newValue in
                         guard hasLoadedDrafts else { return }
                         onSelect()
+                        let previousValue = originalCheckDraft ? "true" : "false"
+                        let nextValue = newValue ? "true" : "false"
+                        if previousValue != nextValue {
+                            onPrepareUndo(previousValue, originalCheckDraft ? "Sí" : "No")
+                            originalCheckDraft = newValue
+                        }
                         bridge.saveColumnGrade(studentId: item.student.id, column: column, value: newValue ? "true" : "false")
                         onNavigate(navigationDirection)
                     }
@@ -3714,6 +3878,40 @@ private struct NotebookEditableTableCell: View {
         }
     }
 
+    private var quickAttendanceButton: some View {
+        Button {
+            saveQuickAttendanceValue()
+        } label: {
+            HStack(spacing: 6) {
+                attendanceChip(value: textDraft)
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, minHeight: 32)
+        }
+        .buttonStyle(.plain)
+        .help("Pase rápido")
+    }
+
+    private var numericDragGesture: some Gesture {
+        DragGesture(minimumDistance: 4)
+            .onChanged { value in
+                if numericDragStartValue == nil {
+                    numericDragStartValue = parseEditableNumber(numericDraft) ?? 0
+                }
+                guard let start = numericDragStartValue else { return }
+                let delta = Double(-value.translation.height / 20.0)
+                let adjusted = min(10.0, max(0.0, start + delta))
+                let rounded = (adjusted * 10).rounded() / 10
+                numericDraft = String(format: "%.1f", rounded)
+            }
+            .onEnded { _ in
+                numericDragStartValue = nil
+                saveNumeric()
+            }
+    }
+
     private var attendanceOptions: [(label: String, value: String)] {
         [
             ("Presente", "PRESENTE"),
@@ -3760,6 +3958,23 @@ private struct NotebookEditableTableCell: View {
         }
     }
 
+    private func nextQuickAttendanceStatus(after value: String) -> String {
+        switch attendanceDisplay(value).value {
+        case "":
+            return "PRESENTE"
+        case "PRESENTE", "PRESENT", "PRES":
+            return "AUSENTE"
+        case "AUSENTE", "ABSENT", "AUS":
+            return "TARDE"
+        default:
+            return "PRESENTE"
+        }
+    }
+
+    private func parseEditableNumber(_ raw: String) -> Double? {
+        Double(raw.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: "."))
+    }
+
     private var ordinalOptions: [String] {
         if !column.ordinalLevels.isEmpty { return column.ordinalLevels }
         switch column.inputKind {
@@ -3779,6 +3994,9 @@ private struct NotebookEditableTableCell: View {
         numericDraft = bridge.numericGradeText(studentId: item.student.id, columnId: column.id)
         textDraft = bridge.cellText(studentId: item.student.id, columnId: column.id)
         checkDraft = bridge.cellCheck(studentId: item.student.id, columnId: column.id)
+        originalNumericDraft = numericDraft
+        originalTextDraft = textDraft
+        originalCheckDraft = checkDraft
         DispatchQueue.main.async {
             hasLoadedDrafts = true
         }
@@ -3786,6 +4004,10 @@ private struct NotebookEditableTableCell: View {
 
     private func saveNumeric() {
         onSelect()
+        if originalNumericDraft != numericDraft {
+            onPrepareUndo(originalNumericDraft, originalNumericDraft)
+            originalNumericDraft = numericDraft
+        }
         bridge.saveColumnGradeDebounced(studentId: item.student.id, column: column, value: numericDraft)
     }
 
@@ -3796,6 +4018,10 @@ private struct NotebookEditableTableCell: View {
 
     private func saveText() {
         onSelect()
+        if originalTextDraft != textDraft {
+            onPrepareUndo(originalTextDraft, originalTextDraft)
+            originalTextDraft = textDraft
+        }
         bridge.saveColumnGradeDebounced(studentId: item.student.id, column: column, value: textDraft)
     }
 
@@ -3805,17 +4031,27 @@ private struct NotebookEditableTableCell: View {
     }
 
     private func saveOrdinalValue(_ option: String) {
+        let previousValue = textDraft
         textDraft = option
         onSelect()
         activeChoiceCellId = nil
+        if previousValue != option {
+            onPrepareUndo(previousValue, previousValue)
+            originalTextDraft = option
+        }
         bridge.saveColumnGrade(studentId: item.student.id, column: column, value: option)
         onNavigate(navigationDirection)
     }
 
     private func saveAttendanceValue(_ status: String) {
+        let previousValue = textDraft
         textDraft = status
         onSelect()
         activeChoiceCellId = nil
+        if previousValue != status {
+            onPrepareUndo(previousValue, attendanceDisplay(previousValue).label)
+            originalTextDraft = status
+        }
         bridge.saveColumnGrade(studentId: item.student.id, column: column, value: status)
         onNavigate(navigationDirection)
 
@@ -3834,6 +4070,11 @@ private struct NotebookEditableTableCell: View {
                 onAttendanceSaved()
             }
         }
+    }
+
+    private func saveQuickAttendanceValue() {
+        let nextStatus = nextQuickAttendanceStatus(after: textDraft)
+        saveAttendanceValue(nextStatus)
     }
 
     private func displayRubricText() -> String {
@@ -3889,9 +4130,12 @@ private struct NotebookDynamicCellsRow: View {
                         navigationDirection: .down,
                         formulaDisplay: nil,
                         isSelected: inspectorSelection == NotebookInspectorSelection(studentId: item.student.id, columnId: column.id),
+                        isAttendanceQuickMode: false,
+                        reloadToken: 0,
                         onSelect: {
                             onSelect(NotebookInspectorSelection(studentId: item.student.id, columnId: column.id))
                         },
+                        onPrepareUndo: { _, _ in },
                         onOpenFormula: {},
                         onOpenRubricIndividual: {},
                         onOpenRubricBulk: {},

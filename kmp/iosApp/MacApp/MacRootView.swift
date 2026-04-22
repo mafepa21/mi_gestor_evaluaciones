@@ -6,6 +6,7 @@ struct MacRootView: View {
     @StateObject private var commandCenter = MacCommandCenterCoordinator()
     @State private var selectedClassId: Int64? = nil
     @State private var selectedStudentId: Int64? = nil
+    @State private var attendanceToolbarActions: MacAttendanceToolbarActions? = nil
 
     var body: some View {
         Group {
@@ -75,6 +76,14 @@ struct MacRootView: View {
                 selectedStudentId: $selectedStudentId,
                 onOpenModule: open(module:classId:studentId:)
             )
+        case .attendance:
+            MacAttendanceView(
+                bridge: session.bridge,
+                selectedClassId: $selectedClassId,
+                selectedStudentId: $selectedStudentId,
+                onOpenModule: open(module:classId:studentId:),
+                onToolbarActionsChange: { attendanceToolbarActions = $0 }
+            )
         case .students:
             MacStudentsView(
                 bridge: session.bridge,
@@ -124,8 +133,37 @@ struct MacRootView: View {
                 .help("Nueva columna")
             }
 
+            if session.selectedFeature == .attendance, let attendanceToolbarActions {
+                Button {
+                    attendanceToolbarActions.markAllPresent()
+                } label: {
+                    Label("Todos presentes", systemImage: "checkmark.circle.fill")
+                }
+                .help("Marcar como presentes los alumnos filtrados")
+
+                Button {
+                    attendanceToolbarActions.repeatPattern()
+                } label: {
+                    Label("Repetir patrón", systemImage: "repeat")
+                }
+                .help("Repetir el último patrón de asistencia")
+
+                if attendanceToolbarActions.canCloseSelection {
+                    Button {
+                        attendanceToolbarActions.clearSelection()
+                    } label: {
+                        Label("Cerrar ficha", systemImage: "sidebar.right")
+                    }
+                    .help("Cerrar el inspector del alumno")
+                }
+            }
+
             Button {
-                Task { await session.bridge.refreshDashboard(mode: .office) }
+                if session.selectedFeature == .attendance, let attendanceToolbarActions {
+                    attendanceToolbarActions.refresh()
+                } else {
+                    Task { await session.bridge.refreshDashboard(mode: .office) }
+                }
             } label: {
                 Label("Refrescar", systemImage: "arrow.clockwise")
             }
@@ -147,6 +185,7 @@ struct MacRootView: View {
         switch feature {
         case .dashboard: return .accentColor
         case .notebook: return .purple
+        case .attendance: return .green
         case .planner: return .orange
         case .students: return .blue
         case .rubrics: return .teal
@@ -173,7 +212,7 @@ struct MacRootView: View {
         case .reports:
             session.selectedFeature = .reports
         case .attendance:
-            session.bridge.status = "Contexto de asistencia preparado para el alumno seleccionado."
+            session.selectedFeature = .attendance
         default:
             session.bridge.status = "El módulo \(module.title) todavía no está disponible en la shell Mac."
         }

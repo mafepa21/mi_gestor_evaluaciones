@@ -517,12 +517,18 @@ struct NotebookTopBar: View {
     @Binding var surfaceMode: NotebookSurfaceMode
     let navigationDirection: NotebookNavigationDirection
     let isInspectorPresented: Bool
+    let isAttendanceQuickMode: Bool
+    let canMarkAllPresent: Bool
+    let canUndo: Bool
     let onSelectClass: (Int64) -> Void
     let onOpenOrganizationMenu: () -> Void
     let onToggleInspector: () -> Void
     let onOpenAdvancedMenu: () -> Void
     let onOpenAddColumn: () -> Void
     let onNavigationDirectionChange: (NotebookNavigationDirection) -> Void
+    let onToggleAttendanceQuickMode: () -> Void
+    let onMarkAllPresent: () -> Void
+    let onUndo: () -> Void
     var onGenerateSummaryFallback: (() -> Void)? = nil
     var exportText: String? = nil
 
@@ -563,6 +569,33 @@ struct NotebookTopBar: View {
 
             saveStatusChip
             navigationDirectionMenu
+
+            Button(action: onMarkAllPresent) {
+                Image(systemName: "checkmark.circle.fill")
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(canMarkAllPresent ? .green : .secondary)
+            .disabled(!canMarkAllPresent)
+            .help("Todos presentes")
+
+            Button(action: onToggleAttendanceQuickMode) {
+                Image(systemName: isAttendanceQuickMode ? "figure.walk.circle.fill" : "figure.walk.circle")
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(isAttendanceQuickMode ? NotebookStyle.warningTint : .secondary)
+            .help("Pase rápido")
+
+            Button(action: onUndo) {
+                Image(systemName: "arrow.uturn.backward")
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(canUndo ? .secondary : .tertiary)
+            .disabled(!canUndo)
+            .keyboardShortcut("z", modifiers: .command)
+            .help("Deshacer último cambio")
 
             Button(action: onOpenOrganizationMenu) {
                 Image(systemName: "rectangle.3.group")

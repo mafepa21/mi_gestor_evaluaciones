@@ -187,6 +187,17 @@ final class KmpBridge: ObservableObject {
         let sessionId: Int64?
     }
 
+    struct AttendanceClassOverview: Identifiable {
+        let id: Int64
+        let schoolClass: SchoolClass
+        let studentCount: Int
+        let presentCount: Int
+        let absentCount: Int
+        let lateCount: Int
+        let pendingTodayCount: Int
+        let attendanceRate: Int
+    }
+
     struct AttendanceSessionSnapshot: Identifiable {
         let id: Int64
         let session: PlanningSession
@@ -1055,6 +1066,10 @@ final class KmpBridge: ObservableObject {
         } catch {
             status = "Error cargando alumnos: \(error.localizedDescription)"
         }
+    }
+
+    func students(forClassId classId: Int64) async throws -> [Student] {
+        try await container.classesRepository.listStudentsInClass(classId: classId)
     }
 
     func refreshRubrics() async throws {
@@ -1955,6 +1970,53 @@ final class KmpBridge: ObservableObject {
         return rows.map(attendanceSnapshot(from:))
     }
 
+    func attendanceHistory(for classId: Int64, from startDate: Date, to endDate: Date) async throws -> [AttendanceRecordSnapshot] {
+        let rows = try await container.attendanceRepository.getAttendanceForClassBetweenDates(
+            classId: classId,
+            startDateMs: startOfDayEpochMs(for: startDate),
+            endDateMs: startOfDayEpochMs(for: endDate)
+        )
+        return rows.map(attendanceSnapshot(from:))
+    }
+
+    func attendanceOverview(for classIds: [Int64], from startDate: Date, to endDate: Date) async throws -> [AttendanceClassOverview] {
+        var overviews: [AttendanceClassOverview] = []
+        let todayEpochMs = startOfDayEpochMs(for: Date())
+        for classId in classIds {
+            guard let schoolClass = classes.first(where: { $0.id == classId }) else { continue }
+            let students = try await container.classesRepository.listStudentsInClass(classId: classId)
+            let history = try await container.attendanceRepository.getAttendanceForClassBetweenDates(
+                classId: classId,
+                startDateMs: startOfDayEpochMs(for: startDate),
+                endDateMs: startOfDayEpochMs(for: endDate)
+            )
+            let todayRecords = try await container.attendanceRepository.listAttendanceByDate(
+                classId: classId,
+                dateEpochMs: todayEpochMs
+            )
+            let present = history.filter { $0.status.uppercased().contains("PRESENT") }.count
+            let absent = history.filter { $0.status.uppercased().contains("AUS") }.count
+            let late = history.filter {
+                let status = $0.status.uppercased()
+                return status.contains("TARD") || status.contains("RETR")
+            }.count
+            let attendanceRate = history.isEmpty ? 0 : Int((Double(present) / Double(history.count)) * 100.0)
+            overviews.append(
+                AttendanceClassOverview(
+                    id: classId,
+                    schoolClass: schoolClass,
+                    studentCount: students.count,
+                    presentCount: present,
+                    absentCount: absent,
+                    lateCount: late,
+                    pendingTodayCount: max(students.count - todayRecords.count, 0),
+                    attendanceRate: attendanceRate
+                )
+            )
+        }
+        return overviews.sorted { $0.schoolClass.name.localizedCaseInsensitiveCompare($1.schoolClass.name) == .orderedAscending }
+    }
+
     func attendanceSessions(for classId: Int64, on date: Date) async throws -> [AttendanceSessionSnapshot] {
         let calendar = Calendar(identifier: .iso8601)
         let weekOfYear = calendar.component(.weekOfYear, from: date)
@@ -1998,7 +2060,8 @@ final class KmpBridge: ObservableObject {
         on date: Date,
         status: String,
         note: String = "",
-        hasIncident: Bool = false
+        hasIncident: Bool = false,
+        followUpRequired: Bool? = nil
     ) async throws {
         let dateEpochMs = startOfDayEpochMs(for: date)
         let existing = try await container.attendanceRepository.listAttendanceByDate(classId: classId, dateEpochMs: dateEpochMs)
@@ -2013,7 +2076,7 @@ final class KmpBridge: ObservableObject {
             status: status,
             note: note,
             hasIncident: hasIncident,
-            followUpRequired: hasIncident,
+            followUpRequired: followUpRequired ?? hasIncident,
             sessionId: kotlinLong(linkedSessionId),
             updatedAtEpochMs: nowMs,
             deviceId: localDeviceId,
@@ -2030,6 +2093,7 @@ final class KmpBridge: ObservableObject {
                 "status": status,
                 "note": note,
                 "hasIncident": hasIncident,
+                "followUpRequired": followUpRequired ?? hasIncident,
                 "sessionId": linkedSessionId ?? NSNull()
             ]
         )
@@ -3231,22 +3295,50 @@ final class KmpBridge: ObservableObject {
             )
         }
         
-        // Si no hay cambios, no hacemos nada más.
-        guard !pull.changes.isEmpty else {
-            lastSyncCursorEpochMs = pull.serverEpochMs
+        try await applyIncomingLanChanges(
+            pull.changes,
+            serverEpochMs: pull.serverEpochMs,
+            refreshAfterApply: refreshAfterApply
+        )
+        if !silent {
+            syncStatusMessage = "Pull OK (\(pull.changeCount) cambios)"
+        }
+    }
+
+    private func applySyncEvent(_ event: LanSyncEvent) async {
+        guard let changes = event.changes, !changes.isEmpty else {
+            await syncNow(reason: "sse_event", forceFullPull: false, silent: true)
+            return
+        }
+        do {
+            try await applyIncomingLanChanges(
+                changes,
+                serverEpochMs: event.serverEpochMs,
+                refreshAfterApply: true
+            )
+            syncStatusMessage = "Evento LAN OK (\(changes.count) cambios)"
+        } catch {
+            await syncNow(reason: "sse_event_fallback", forceFullPull: false, silent: true)
+        }
+    }
+
+    private func applyIncomingLanChanges(
+        _ changes: [LanSyncChange],
+        serverEpochMs: Int64,
+        refreshAfterApply: Bool
+    ) async throws {
+        guard !changes.isEmpty else {
+            lastSyncCursorEpochMs = serverEpochMs
             UserDefaults.standard.set(lastSyncCursorEpochMs, forKey: "sync.last.cursor")
             syncLastRunAt = Date()
             return
         }
 
-        try await applyPulledChanges(pull.changes)
-        lastSyncCursorEpochMs = pull.serverEpochMs
+        try await applyPulledChanges(changes)
+        lastSyncCursorEpochMs = serverEpochMs
         UserDefaults.standard.set(lastSyncCursorEpochMs, forKey: "sync.last.cursor")
         syncPendingChanges = pendingOutboundChanges.count
         syncLastRunAt = Date()
-        if !silent {
-            syncStatusMessage = "Pull OK (\(pull.changeCount) cambios)"
-        }
 
         guard refreshAfterApply else { return }
 
@@ -3263,7 +3355,7 @@ final class KmpBridge: ObservableObject {
         let notebookEntityTypes: Set<String> = [
             "grade", "notebook_tab", "notebook_column", "notebook_column_category", "notebook_cell", "rubric_assessment", "student", "class_roster", "evaluation", "notebook_group", "notebook_group_member"
         ]
-        let hasNotebookChangesFromRemote = pull.changes.contains {
+        let hasNotebookChangesFromRemote = changes.contains {
             notebookEntityTypes.contains($0.entity) && $0.deviceId != localDeviceId
         }
         if hasNotebookChangesFromRemote {
@@ -6321,9 +6413,13 @@ final class KmpBridge: ObservableObject {
             host: host,
             token: token,
             pinnedFingerprint: pairedServerFingerprint
-        ) { [weak self] in
+        ) { [weak self] event in
             guard let self else { return }
-            await self.syncNow(reason: "sse_event", forceFullPull: false, silent: true)
+            guard let event else {
+                await self.syncNow(reason: "sse_event", forceFullPull: false, silent: true)
+                return
+            }
+            await self.applySyncEvent(event)
         }
     }
 
@@ -6548,6 +6644,12 @@ struct LanPullResult {
     let serverEpochMs: Int64
     let changes: [LanSyncChange]
     var changeCount: Int { changes.count }
+}
+
+struct LanSyncEvent: Codable {
+    let serverEpochMs: Int64
+    let entities: [String]
+    let changes: [LanSyncChange]?
 }
 
 struct LanPushResult {

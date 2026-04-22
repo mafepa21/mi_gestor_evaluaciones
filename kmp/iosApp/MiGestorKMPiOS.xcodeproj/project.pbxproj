@@ -16,6 +16,7 @@
 		0D1BC8425E85592907678399 /* MacDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B45DCEB32A99C22B048911B6 /* MacDashboardView.swift */; };
 		0D1BC8425E85592907678400 /* MacSyncView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B45DCEB32A99C22B048911B7 /* MacSyncView.swift */; };
 		0D1BC8425E85592907678401 /* MacModuleStubs.swift in Sources */ = {isa = PBXBuildFile; fileRef = B45DCEB32A99C22B048911B8 /* MacModuleStubs.swift */; };
+		0D1BC8425E85592907678402 /* MacAttendanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B45DCEB32A99C22B048911B9 /* MacAttendanceView.swift */; };
 		0E1FCE13DF847EFA7D44E0AD /* TeacherScheduleSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85B8ED1FDFD34D1DF02ACDD8 /* TeacherScheduleSettingsView.swift */; };
 		1286D99337F554322E21CD9C /* AppleAppRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BE36C2FC3CA10A0D5E7F322 /* AppleAppRootView.swift */; };
 		17C72CB98D707507A9BA78E1 /* PlannerWorkspaceIOS.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AFC9FBC11C0B8B50E847112 /* PlannerWorkspaceIOS.swift */; };
@@ -135,6 +136,7 @@
 		B45DCEB32A99C22B048911B6 /* MacDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacDashboardView.swift; sourceTree = "<group>"; };
 		B45DCEB32A99C22B048911B7 /* MacSyncView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacSyncView.swift; sourceTree = "<group>"; };
 		B45DCEB32A99C22B048911B8 /* MacModuleStubs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacModuleStubs.swift; sourceTree = "<group>"; };
+		B45DCEB32A99C22B048911B9 /* MacAttendanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacAttendanceView.swift; sourceTree = "<group>"; };
 		B819027ADD26559CC96B1BDB /* KmpBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KmpBridge.swift; sourceTree = "<group>"; };
 		BB7ABC0A1CE983C4799B4FE9 /* MiGestorKMPMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MiGestorKMPMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BD165C28F5CF6FD5F43B44DF /* NotebookDataGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookDataGrid.swift; sourceTree = "<group>"; };
@@ -171,6 +173,7 @@
 			children = (
 				B45DCEB32A99C22B048911B5 /* MacAppStyle.swift */,
 				B45DCEB32A99C22B048911B1 /* MacAppSessionController.swift */,
+				B45DCEB32A99C22B048911B9 /* MacAttendanceView.swift */,
 				75913A6148C5D164F2EFA2A7 /* MacCommandCenterCoordinator.swift */,
 				B45DCEB32A99C22B048911B6 /* MacDashboardView.swift */,
 				B45DCEB32A99C22B048911B2 /* MacFeatureRegistry.swift */,
@@ -441,6 +444,7 @@
 				A891426FA79E3A7AB4670107 /* KmpBridge.swift in Sources */,
 				0D1BC8425E85592907678398 /* MacAppStyle.swift in Sources */,
 				0D1BC8425E85592907678394 /* MacAppSessionController.swift in Sources */,
+				0D1BC8425E85592907678402 /* MacAttendanceView.swift in Sources */,
 				BC91ADD74993C72E5A133C3D /* MacCommandCenterCoordinator.swift in Sources */,
 				0D1BC8425E85592907678399 /* MacDashboardView.swift in Sources */,
 				0D1BC8425E85592907678395 /* MacFeatureRegistry.swift in Sources */,

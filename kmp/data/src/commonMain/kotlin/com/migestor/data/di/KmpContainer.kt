@@ -43,7 +43,7 @@ import kotlinx.datetime.Clock
 import com.migestor.data.repository.NotebookConfigRepositorySqlDelight
 import com.migestor.shared.usecase.*
 
-class KmpContainer(driver: SqlDriver) {
+class KmpContainer(val driver: SqlDriver) {
     val database = AppDatabase(driver)
 
     val studentsRepository = StudentsRepositorySqlDelight(database)

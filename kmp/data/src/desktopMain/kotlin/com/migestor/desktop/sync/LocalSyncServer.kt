@@ -10,6 +10,8 @@ import com.migestor.shared.sync.SyncStoreAdapter
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpsConfigurator
 import com.sun.net.httpserver.HttpsServer
+import app.cash.sqldelight.Query
+import app.cash.sqldelight.db.SqlDriver
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -54,6 +56,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import java.util.prefs.Preferences
 import javax.jmdns.JmDNS
@@ -92,14 +95,87 @@ class InMemorySyncAdapter : SyncStoreAdapter {
     }
 }
 
+internal object LanSyncJsonCodec {
+    fun encodePullResponse(response: SyncPullResponse): String {
+        return buildJsonObject {
+            put("serverEpochMs", JsonPrimitive(response.serverEpochMs))
+            put("changes", JsonArray(response.changes.map(::encodeSyncChange)))
+        }.toString()
+    }
+
+    fun encodeSyncEventPayload(serverEpochMs: Long, entities: List<String>, changes: List<SyncChange>): String {
+        return buildJsonObject {
+            put("serverEpochMs", JsonPrimitive(serverEpochMs))
+            put("entities", JsonArray(entities.map { JsonPrimitive(it) }))
+            put("changes", JsonArray(changes.map(::encodeSyncChange)))
+        }.toString()
+    }
+
+    fun encodeSyncChange(change: SyncChange): JsonObject {
+        return buildJsonObject {
+            put("entity", JsonPrimitive(change.entity))
+            put("id", JsonPrimitive(change.id))
+            put("updatedAtEpochMs", JsonPrimitive(change.updatedAtEpochMs))
+            put("deviceId", JsonPrimitive(change.deviceId))
+            put("payload", JsonPrimitive(change.payload))
+            put("op", JsonPrimitive(change.op))
+            put("schemaVersion", JsonPrimitive(change.schemaVersion))
+        }
+    }
+}
+
+internal fun filterDesktopChangesForSse(changes: List<SyncChange>, pairedDeviceId: String?): List<SyncChange> {
+    return changes.filter { change ->
+        pairedDeviceId.isNullOrBlank() || change.deviceId != pairedDeviceId
+    }
+}
+
 class LocalSyncServer(
     private val port: Int = 8765,
     private val syncCoordinator: SyncCoordinator = SyncCoordinator(InMemorySyncAdapter()),
+    private val sqlDriver: SqlDriver? = null,
     private val stateListener: ((CommandCenterSnapshot) -> Unit)? = null,
     private val dataChangeListener: ((Set<String>) -> Unit)? = null,
 ) {
     private companion object {
         const val DESKTOP_AUTHORITATIVE_DIFF_THRESHOLD = 20
+        const val IMMEDIATE_CHANGE_DEBOUNCE_MS = 75L
+        val SYNCABLE_TABLES = arrayOf(
+            "students",
+            "classes",
+            "class_students",
+            "evaluations",
+            "grades",
+            "rubrics",
+            "rubric_criteria",
+            "rubric_levels",
+            "rubric_assessments",
+            "attendance",
+            "competency_criteria",
+            "evaluation_competency_links",
+            "incidents",
+            "calendar_events",
+            "configuration_templates",
+            "configuration_template_versions",
+            "notebook_cell_entries",
+            "notebook_tabs",
+            "notebook_columns",
+            "notebook_column_categories",
+            "notebook_work_groups",
+            "notebook_work_group_members",
+            "planner_session",
+            "teaching_unit",
+            "weekly_slot_template",
+            "planned_session",
+            "teacher_schedules",
+            "teacher_schedule_slots",
+            "planner_evaluation_periods",
+            "session_journal",
+            "session_journal_individual_note",
+            "session_journal_action",
+            "session_journal_media",
+            "session_journal_link",
+        )
     }
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -108,8 +184,10 @@ class LocalSyncServer(
     private var serviceInfo: ServiceInfo? = null
     private var networkMonitor: ScheduledExecutorService? = null
     private var desktopChangeScanner: ScheduledExecutorService? = null
+    private var databaseChangeListener: Query.Listener? = null
     private val sseClients = CopyOnWriteArrayList<HttpExchange>()
     private val lastDesktopChangeCursorMs = AtomicLong(0L)
+    private val immediateChangePending = AtomicBoolean(false)
     @Volatile
     private var advertisedLanAddress: InetAddress? = null
 
@@ -221,7 +299,7 @@ class LocalSyncServer(
                 secureStore.put("paired-token", newToken)
             }
             pairedDeviceId = deviceId
-            lastDesktopChangeCursorMs.set(0L)
+            scanDesktopChanges(notifyClients = false)
             secureStore.put("paired-device-id", deviceId)
 
             println("✅ Handshake exitoso para '$deviceId'. Token emitido.")
@@ -318,6 +396,7 @@ class LocalSyncServer(
         publishBonjour()
         startNetworkMonitor()
         startDesktopChangeScanner()
+        startImmediateChangeListener()
         notifyStatusChanged()
     }
 
@@ -327,6 +406,7 @@ class LocalSyncServer(
 
     fun stop() {
         stopNetworkMonitor()
+        stopImmediateChangeListener()
         stopDesktopChangeScanner()
         closeSseClients()
         server?.stop(0)
@@ -425,6 +505,52 @@ class LocalSyncServer(
     private fun stopDesktopChangeScanner() {
         desktopChangeScanner?.shutdownNow()
         desktopChangeScanner = null
+        immediateChangePending.set(false)
+    }
+
+    private fun startImmediateChangeListener() {
+        val driver = sqlDriver ?: return
+        if (databaseChangeListener != null) return
+        val listener = Query.Listener {
+            scheduleImmediateDesktopChangeScan()
+        }
+        databaseChangeListener = listener
+        runCatching {
+            driver.addListener(*SYNCABLE_TABLES, listener = listener)
+        }.onFailure { error ->
+            databaseChangeListener = null
+            println("⚠️ No se pudo activar el listener inmediato de cambios SQLDelight: ${error.message}")
+        }
+    }
+
+    private fun stopImmediateChangeListener() {
+        val driver = sqlDriver
+        val listener = databaseChangeListener
+        if (driver != null && listener != null) {
+            runCatching {
+                driver.removeListener(*SYNCABLE_TABLES, listener = listener)
+            }
+        }
+        databaseChangeListener = null
+        immediateChangePending.set(false)
+    }
+
+    private fun scheduleImmediateDesktopChangeScan() {
+        if (!isPaired()) return
+        if (!immediateChangePending.compareAndSet(false, true)) return
+        val scheduler = desktopChangeScanner
+        if (scheduler == null) {
+            immediateChangePending.set(false)
+            return
+        }
+        scheduler.schedule(
+            {
+                immediateChangePending.set(false)
+                scanDesktopChanges(notifyClients = true)
+            },
+            IMMEDIATE_CHANGE_DEBOUNCE_MS,
+            TimeUnit.MILLISECONDS
+        )
     }
 
     private fun scanDesktopChanges(notifyClients: Boolean) {
@@ -440,12 +566,11 @@ class LocalSyncServer(
         }.onSuccess { response ->
             lastDesktopChangeCursorMs.set(response.serverEpochMs)
             val iosDeviceId = pairedDeviceId
-            val desktopChanges = response.changes.filter { change ->
-                iosDeviceId.isNullOrBlank() || change.deviceId != iosDeviceId
-            }
+            val desktopChanges = filterDesktopChangesForSse(response.changes, iosDeviceId)
             if (notifyClients && cursor > 0L && desktopChanges.isNotEmpty()) {
                 notifyDataChanged(
                     entities = desktopChanges.map { it.entity }.distinct(),
+                    changes = desktopChanges,
                     serverEpochMs = response.serverEpochMs,
                 )
             }
@@ -464,19 +589,22 @@ class LocalSyncServer(
                     sinceEpochMs = req.lastKnownServerEpochMs,
                     serverNowEpochMs = serverNowEpochMs,
                 )
-            }.changes.filter { change ->
-                iosDeviceId.isNullOrBlank() || change.deviceId != iosDeviceId
-            }
+            }.changes.let { filterDesktopChangesForSse(it, iosDeviceId) }
         }.getOrDefault(emptyList())
         return desktopChanges.isNotEmpty()
     }
 
-    private fun notifyDataChanged(entities: List<String>, serverEpochMs: Long = System.currentTimeMillis()) {
+    private fun notifyDataChanged(
+        entities: List<String>,
+        changes: List<SyncChange> = emptyList(),
+        serverEpochMs: Long = System.currentTimeMillis()
+    ) {
         if (entities.isEmpty()) return
-        val payload = buildJsonObject {
-            put("serverEpochMs", JsonPrimitive(serverEpochMs))
-            put("entities", JsonArray(entities.map { JsonPrimitive(it) }))
-        }.toString()
+        val payload = LanSyncJsonCodec.encodeSyncEventPayload(
+            serverEpochMs = serverEpochMs,
+            entities = entities,
+            changes = changes,
+        )
         val frame = "event: syncChanged\nid: $serverEpochMs\ndata: $payload\n\n"
         broadcastSseFrame(frame)
     }
@@ -642,21 +770,7 @@ class LocalSyncServer(
     }
 
     private fun encodePullResponse(response: SyncPullResponse): String {
-        val changes = response.changes.map { change ->
-            buildJsonObject {
-                put("entity", JsonPrimitive(change.entity))
-                put("id", JsonPrimitive(change.id))
-                put("updatedAtEpochMs", JsonPrimitive(change.updatedAtEpochMs))
-                put("deviceId", JsonPrimitive(change.deviceId))
-                put("payload", JsonPrimitive(change.payload))
-                put("op", JsonPrimitive(change.op))
-                put("schemaVersion", JsonPrimitive(change.schemaVersion))
-            }
-        }
-        return buildJsonObject {
-            put("serverEpochMs", JsonPrimitive(response.serverEpochMs))
-            put("changes", JsonArray(changes))
-        }.toString()
+        return LanSyncJsonCodec.encodePullResponse(response)
     }
 
     private fun encodeAck(ack: SyncAck, desktopAuthoritative: Boolean = false): String {

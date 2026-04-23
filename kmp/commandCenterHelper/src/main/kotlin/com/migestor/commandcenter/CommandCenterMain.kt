@@ -21,7 +21,9 @@ fun main(args: Array<String>) {
         val adapter = SqlDelightSyncAdapter(container)
         val server = LocalSyncServer(
             syncCoordinator = SyncCoordinator(adapter),
+            sqlDriver = driver,
             stateListener = ::emitSnapshotState,
+            dataChangeListener = ::emitDataChanged,
         )
         server.start()
 
@@ -38,6 +40,17 @@ fun main(args: Array<String>) {
         println("[command-center] State: failed|${error.message ?: error::class.simpleName ?: "unknown"}")
         throw error
     }
+}
+
+private fun emitDataChanged(entities: Set<String>) {
+    if (entities.isEmpty()) return
+    val normalized = entities
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .distinct()
+        .sorted()
+    if (normalized.isEmpty()) return
+    println("[command-center] Data: changed|entities=${normalized.joinToString(",")}")
 }
 
 private fun emitSnapshotState(snapshot: CommandCenterSnapshot) {

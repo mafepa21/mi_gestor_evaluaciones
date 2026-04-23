@@ -425,7 +425,10 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         sessions = (try? await bridge.plannerListSessions(weekNumber: week, year: year, classId: nil)) ?? []
         rebuildVisiblePlannerStructure()
         let summaries = (try? await bridge.plannerJournalSummaries(sessionIds: sessions.map(\.id))) ?? []
-        journalSummaryBySessionId = Dictionary(uniqueKeysWithValues: summaries.map { ($0.planningSessionId, $0) })
+        journalSummaryBySessionId = Dictionary(
+            summaries.map { ($0.planningSessionId, $0) },
+            uniquingKeysWith: { _, latest in latest }
+        )
         applySearch()
 
         if keepSelection, let selectedSession {
@@ -650,7 +653,10 @@ final class PlannerWorkspaceViewModel: ObservableObject {
                 isHydratingDraft = false
             }
             let refreshedSummaries = (try? await bridge.plannerJournalSummaries(sessionIds: sessions.map(\.id))) ?? []
-            journalSummaryBySessionId = Dictionary(uniqueKeysWithValues: refreshedSummaries.map { ($0.planningSessionId, $0) })
+            journalSummaryBySessionId = Dictionary(
+                refreshedSummaries.map { ($0.planningSessionId, $0) },
+                uniquingKeysWith: { _, latest in latest }
+            )
         } catch {
         }
     }

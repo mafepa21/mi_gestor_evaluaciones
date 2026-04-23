@@ -1715,7 +1715,10 @@ struct NotebookModuleView: View {
 
     private func displaySegments(data: NotebookUiStateData) -> [NotebookDisplaySegment] {
         var segments = fixedSegmentsForCurrentView().map(NotebookDisplaySegment.fixed)
-        let categoriesById = Dictionary(uniqueKeysWithValues: data.sheet.columnCategories.map { ($0.id, $0) })
+        let categoriesById = Dictionary(
+            data.sheet.columnCategories.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
         let orderedColumns = data.sheet.columns
             .filter { !$0.isHidden }
             .filter { columnMatchesActiveTab($0, data: data) }
@@ -1935,7 +1938,10 @@ struct NotebookModuleView: View {
 
     private func headerLaneItems(data: NotebookUiStateData, segments: [NotebookDisplaySegment]) -> [NotebookHeaderLaneItem] {
         var items: [NotebookHeaderLaneItem] = []
-        let categoriesById = Dictionary(uniqueKeysWithValues: visibleCategories(data: data).map { ($0.id, $0) })
+        let categoriesById = Dictionary(
+            visibleCategories(data: data).map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
         var emittedCategoryIds = Set<String>()
 
         for segment in segments {
@@ -2361,7 +2367,10 @@ struct NotebookModuleView: View {
         do {
             let attendance = try await bridge.attendanceRecords(for: classId, on: Date())
             await MainActor.run {
-                todayAttendanceByStudentId = Dictionary(uniqueKeysWithValues: attendance.map { ($0.studentId, $0.status) })
+                todayAttendanceByStudentId = Dictionary(
+                    attendance.map { ($0.studentId, $0.status) },
+                    uniquingKeysWith: { _, latest in latest }
+                )
             }
         } catch {
             await MainActor.run { todayAttendanceByStudentId = [:] }

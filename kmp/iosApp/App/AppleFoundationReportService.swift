@@ -271,6 +271,26 @@ final class AppleFoundationReportService {
         let notes = context.supportNotes.isEmpty ? "- Sin notas de apoyo adicionales." : context.supportNotes.map { "- \($0)" }.joined(separator: "\n")
         let curriculumReferences = context.curriculumReferences.isEmpty ? "- Sin referencias curriculares preseleccionadas." : context.curriculumReferences.map { "- \($0)" }.joined(separator: "\n")
         let promptDirectives = context.promptDirectives.isEmpty ? "- Redacción general prudente." : context.promptDirectives.map { "- \($0)" }.joined(separator: "\n")
+        let audienceDirectives: String = {
+            switch audience {
+            case .docente:
+                return """
+                - Mantén un foco interno y profesional.
+                - Prioriza hechos observables y próxima acción docente.
+                """
+            case .tutoria:
+                return """
+                - Usa un tono coordinado, prudente y útil para seguimiento tutorial.
+                - No cierres juicios; propone continuidad o contraste con más evidencias.
+                """
+            case .familia:
+                return """
+                - Usa lenguaje claro, respetuoso y no técnico.
+                - No medicalices, no atribuyas causas y no etiquetes al alumnado.
+                - Incluye siempre una siguiente acción o recomendación prudente.
+                """
+            }
+        }()
 
         return """
         Genera un borrador estructurado para un informe escolar.
@@ -309,6 +329,9 @@ final class AppleFoundationReportService {
 
         Directrices de salida
         \(promptDirectives)
+
+        Directrices específicas por audiencia
+        \(audienceDirectives)
 
         Requisitos de salida
         - summary: un párrafo breve y prudente.

@@ -7,6 +7,7 @@ struct MacRootView: View {
     @State private var selectedClassId: Int64? = nil
     @State private var selectedStudentId: Int64? = nil
     @State private var attendanceToolbarActions: MacAttendanceToolbarActions? = nil
+    @State private var dashboardToolbarActions: MacDashboardToolbarActions? = nil
 
     var body: some View {
         Group {
@@ -37,7 +38,9 @@ struct MacRootView: View {
             }
         }
         .task {
+            commandCenter.attachBridge(session.bridge)
             session.start()
+            commandCenter.autostartIfNeeded()
         }
     }
 
@@ -68,7 +71,11 @@ struct MacRootView: View {
     private func featureDetail(for feature: MacFeatureDescriptor.Feature) -> some View {
         switch feature {
         case .dashboard:
-            MacDashboardView(bridge: session.bridge, bootstrap: session.bootstrap)
+            MacDashboardView(
+                bridge: session.bridge,
+                bootstrap: session.bootstrap,
+                onToolbarActionsChange: { dashboardToolbarActions = $0 }
+            )
         case .notebook:
             NotebookModuleView(
                 bridge: session.bridge,
@@ -133,6 +140,39 @@ struct MacRootView: View {
                 .help("Nueva columna")
             }
 
+            if session.selectedFeature == .dashboard, let dashboardToolbarActions {
+                Picker(
+                    "Modo",
+                    selection: Binding(
+                        get: { dashboardToolbarActions.modeRawValue },
+                        set: { dashboardToolbarActions.setMode($0) }
+                    )
+                ) {
+                    Text("Clase").tag("classroom")
+                    Text("Despacho").tag("office")
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 210)
+                .help("Modo operativo del dashboard")
+
+                Button {
+                    dashboardToolbarActions.passList()
+                } label: {
+                    Label("Pasar lista", systemImage: "checkmark.circle")
+                }
+                .disabled(!dashboardToolbarActions.canRunActions)
+                .keyboardShortcut("l", modifiers: [.command])
+                .help("Pasar lista para la clase activa")
+
+                Button {
+                    dashboardToolbarActions.observation()
+                } label: {
+                    Label("Observación", systemImage: "note.text.badge.plus")
+                }
+                .disabled(!dashboardToolbarActions.canRunActions)
+                .help("Registrar una observación rápida")
+            }
+
             if session.selectedFeature == .attendance, let attendanceToolbarActions {
                 Button {
                     attendanceToolbarActions.markAllPresent()
@@ -159,7 +199,9 @@ struct MacRootView: View {
             }
 
             Button {
-                if session.selectedFeature == .attendance, let attendanceToolbarActions {
+                if session.selectedFeature == .dashboard, let dashboardToolbarActions {
+                    dashboardToolbarActions.refresh()
+                } else if session.selectedFeature == .attendance, let attendanceToolbarActions {
                     attendanceToolbarActions.refresh()
                 } else {
                     Task { await session.bridge.refreshDashboard(mode: .office) }
@@ -167,6 +209,7 @@ struct MacRootView: View {
             } label: {
                 Label("Refrescar", systemImage: "arrow.clockwise")
             }
+            .keyboardShortcut("r", modifiers: [.command])
             .help("Refrescar datos")
         }
 

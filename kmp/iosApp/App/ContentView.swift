@@ -64,6 +64,45 @@ private struct DashboardGroupRow: Identifiable {
     let studentsInFollowUp: Int
 }
 
+private enum DashboardInspectorTab: String, CaseIterable, Identifiable {
+    case detail = "Detalle"
+    case history = "Historial"
+    case actions = "Acciones"
+
+    var id: String { rawValue }
+}
+
+private struct DashboardFilterOption: Identifiable, Hashable {
+    let rawValue: String
+    let label: String
+    let systemImage: String
+
+    var id: String { rawValue }
+}
+
+private enum DashboardFilterOptions {
+    static let severity: [DashboardFilterOption] = [
+        .init(rawValue: "", label: "Todas", systemImage: "line.3.horizontal.decrease.circle"),
+        .init(rawValue: "high", label: "Alta", systemImage: "exclamationmark.triangle.fill"),
+        .init(rawValue: "medium", label: "Media", systemImage: "exclamationmark.circle.fill"),
+        .init(rawValue: "low", label: "Baja", systemImage: "checkmark.circle.fill")
+    ]
+
+    static let priority: [DashboardFilterOption] = [
+        .init(rawValue: "", label: "Todas", systemImage: "line.3.horizontal.decrease.circle"),
+        .init(rawValue: "high", label: "Alta", systemImage: "flag.fill"),
+        .init(rawValue: "medium", label: "Media", systemImage: "flag"),
+        .init(rawValue: "low", label: "Baja", systemImage: "flag.slash")
+    ]
+
+    static let sessionStatus: [DashboardFilterOption] = [
+        .init(rawValue: "", label: "Todas", systemImage: "calendar"),
+        .init(rawValue: "planned", label: "Planificada", systemImage: "calendar.badge.clock"),
+        .init(rawValue: "in_progress", label: "En curso", systemImage: "play.circle.fill"),
+        .init(rawValue: "completed", label: "Completada", systemImage: "checkmark.circle.fill")
+    ]
+}
+
 struct DashboardView: View {
     @EnvironmentObject var bridge: KmpBridge
     @EnvironmentObject private var layoutState: WorkspaceLayoutState
@@ -78,6 +117,10 @@ struct DashboardView: View {
     @State private var sessionStatusFilter: String = ""
     @State private var inspectorSelection: DashboardInspectorSelection? = nil
     @State private var isInspectorPresented = false
+    @State private var inspectorTab: DashboardInspectorTab = .detail
+    @State private var groupSortOrder: [KeyPathComparator<DashboardGroupRow>] = [
+        KeyPathComparator(\DashboardGroupRow.groupName)
+    ]
 
     private var mode: OperationalDashboardMode {
         OperationalDashboardMode(rawValue: modeRawValue) ?? .office
@@ -95,6 +138,10 @@ struct DashboardView: View {
         !isCompactWidth
     }
 
+    private var dashboardWarningTint: Color {
+        .orange
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             VStack(spacing: 0) {
@@ -102,11 +149,16 @@ struct DashboardView: View {
                 dashboardContent
             }
 
-            if isInspectorPresented {
+            if isInspectorPresented && !isCompactWidth {
                 inspectorPane
             }
         }
         .background(appPageBackground(for: colorScheme).ignoresSafeArea())
+        .sheet(isPresented: compactInspectorPresentation) {
+            dashboardInspector
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
         .task {
             await bridge.ensureClassesLoaded()
             if selectedClassId == nil {
@@ -136,9 +188,20 @@ struct DashboardView: View {
         Group {
             Divider().opacity(0.18)
             dashboardInspector
-                .frame(width: 320)
+                .frame(width: 344)
                 .background(appCardBackground(for: colorScheme))
         }
+    }
+
+    private var compactInspectorPresentation: Binding<Bool> {
+        Binding(
+            get: { isCompactWidth && isInspectorPresented },
+            set: { isPresented in
+                if !isPresented {
+                    isInspectorPresented = false
+                }
+            }
+        )
     }
 
     private func triggerDashboardReload() {
@@ -150,6 +213,8 @@ struct DashboardView: View {
     private func handleInspectorSelectionChange() {
         if inspectorSelection == nil {
             isInspectorPresented = false
+        } else {
+            inspectorTab = .detail
         }
         syncToolbarState()
     }
@@ -176,23 +241,53 @@ struct DashboardView: View {
             }
 
             if isCompactWidth {
-                VStack(spacing: 10) {
-                    dashboardFilterField(title: "Severidad", placeholder: "high / medium / low", text: $severityFilter)
-                    dashboardFilterField(title: "Prioridad", placeholder: "high / medium / low", text: $priorityFilter)
-                    dashboardFilterField(title: "Estado sesión", placeholder: "planned / in_progress / completed", text: $sessionStatusFilter)
-                }
+                dashboardCompactFilters
             } else {
                 HStack(spacing: 12) {
-                    dashboardFilterField(title: "Severidad", placeholder: "high / medium / low", text: $severityFilter)
-                    dashboardFilterField(title: "Prioridad", placeholder: "high / medium / low", text: $priorityFilter)
-                    dashboardFilterField(title: "Estado sesión", placeholder: "planned / in_progress / completed", text: $sessionStatusFilter)
+                    dashboardFilterPicker(title: "Severidad", options: DashboardFilterOptions.severity, selection: $severityFilter)
+                    dashboardFilterPicker(title: "Prioridad", options: DashboardFilterOptions.priority, selection: $priorityFilter)
+                    dashboardFilterPicker(title: "Estado sesión", options: DashboardFilterOptions.sessionStatus, selection: $sessionStatusFilter)
                 }
             }
         }
         .padding(.horizontal, 20)
         .padding(.top, 18)
         .padding(.bottom, 14)
-        .background(appMutedCardBackground(for: colorScheme))
+        .background(headerBackground)
+    }
+
+    private var headerBackground: some View {
+        appMutedCardBackground(for: colorScheme)
+            .overlay {
+                if mode == .classroom {
+                    EvaluationDesign.accent.opacity(colorScheme == .dark ? 0.16 : 0.10)
+                }
+            }
+    }
+
+    private var dashboardCompactFilters: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Menu {
+                dashboardFilterMenuSection(title: "Severidad", options: DashboardFilterOptions.severity, selection: $severityFilter)
+                dashboardFilterMenuSection(title: "Prioridad", options: DashboardFilterOptions.priority, selection: $priorityFilter)
+                dashboardFilterMenuSection(title: "Estado sesión", options: DashboardFilterOptions.sessionStatus, selection: $sessionStatusFilter)
+            } label: {
+                Label("Filtros", systemImage: "line.3.horizontal.decrease.circle")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    activeFilterChip(title: "Severidad", options: DashboardFilterOptions.severity, rawValue: severityFilter)
+                    activeFilterChip(title: "Prioridad", options: DashboardFilterOptions.priority, rawValue: priorityFilter)
+                    activeFilterChip(title: "Sesión", options: DashboardFilterOptions.sessionStatus, rawValue: sessionStatusFilter)
+                }
+                .padding(.vertical, 2)
+            }
+        }
     }
 
     private var dashboardContent: some View {
@@ -235,51 +330,212 @@ struct DashboardView: View {
 
     private var dashboardInspector: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Inspector")
-                .font(.title3.bold())
+            HStack {
+                Text("Inspector")
+                    .font(.title3.bold())
+                Spacer()
+                if isCompactWidth {
+                    Button {
+                        isInspectorPresented = false
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .imageScale(.large)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Cerrar inspector")
+                }
+            }
+
+            Picker("Vista", selection: $inspectorTab) {
+                ForEach(DashboardInspectorTab.allCases) { tab in
+                    Text(tab.rawValue).tag(tab)
+                }
+            }
+            .pickerStyle(.segmented)
+
             Text("Estado: \(bridge.status)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .lineLimit(2)
+
+            Divider().opacity(0.18)
 
             if let snapshot = bridge.dashboardSnapshot {
-                switch inspectorSelection {
-                case .session(let id):
-                    if let item = snapshot.todaySessions.first(where: { $0.id == id }) {
-                        Text(item.groupName).font(.headline)
-                        Text(item.didacticUnit)
-                        Text("Horario: \(item.timeLabel)")
-                        Text("Espacio: \(item.space)")
-                        Text("Estado: \(item.sessionStatus)")
-                    } else {
-                        Text("Sesión no encontrada")
+                ScrollView {
+                    Group {
+                        switch inspectorTab {
+                        case .detail:
+                            dashboardInspectorDetail(snapshot: snapshot)
+                        case .history:
+                            dashboardInspectorHistory(snapshot: snapshot)
+                        case .actions:
+                            dashboardInspectorActions
+                        }
                     }
-                case .alert(let id):
-                    if let alert = snapshot.alerts.first(where: { $0.id == id }) {
-                        Text(alert.title).font(.headline)
-                        Text(alert.detail)
-                        Text("Severidad: \(alert.severity)")
-                        Text("Prioridad: \(alert.priority)")
-                    } else {
-                        Text("Alerta no encontrada")
-                    }
-                case .pe(let id):
-                    if let item = snapshot.peItems.first(where: { $0.id == id }) {
-                        Text(item.title).font(.headline)
-                        Text(item.detail)
-                        Text("Severidad: \(item.severity)")
-                    } else {
-                        Text("Ítem EF no encontrado")
-                    }
-                case .none:
-                    Text("Selecciona una sesión, alerta o bloque EF para revisar.")
-                        .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             } else {
-                Text("Sin datos")
+                inspectorUnavailable("Sin datos del dashboard")
             }
         }
         .padding(16)
         .frame(maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    @ViewBuilder
+    private func dashboardInspectorDetail(snapshot: DashboardSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            switch inspectorSelection {
+            case .session(let id):
+                if let item = snapshot.todaySessions.first(where: { $0.id == id }) {
+                    inspectorTitle(item.groupName, subtitle: item.didacticUnit, systemImage: "calendar")
+                    inspectorMetric("Horario", item.timeLabel)
+                    inspectorMetric("Espacio", item.space)
+                    inspectorMetric("Estado", readableSessionStatus(item.sessionStatus))
+                } else {
+                    inspectorUnavailable("Sesión no encontrada")
+                }
+            case .alert(let id):
+                if let alert = snapshot.alerts.first(where: { $0.id == id }) {
+                    inspectorTitle(alert.title, subtitle: alert.detail, systemImage: "exclamationmark.bubble")
+                    inspectorMetric("Tipo", alert.type)
+                    inspectorMetric("Severidad", readableLevel(alert.severity))
+                    inspectorMetric("Prioridad", readableLevel(alert.priority))
+                    inspectorMetric("Recuento", "\(alert.count)")
+                } else {
+                    inspectorUnavailable("Alerta no encontrada")
+                }
+            case .pe(let id):
+                if let item = snapshot.peItems.first(where: { $0.id == id }) {
+                    inspectorTitle(item.title, subtitle: item.detail, systemImage: "figure.run")
+                    inspectorMetric("Tipo", item.type)
+                    inspectorMetric("Severidad", readableLevel(item.severity))
+                } else {
+                    inspectorUnavailable("Ítem EF no encontrado")
+                }
+            case .none:
+                inspectorUnavailable("Selecciona una sesión, alerta o bloque EF para revisar.")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func dashboardInspectorHistory(snapshot: DashboardSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            switch inspectorSelection {
+            case .session(let id):
+                if let item = snapshot.todaySessions.first(where: { $0.id == id }) {
+                    inspectorTitle("Contexto de sesión", subtitle: "Datos disponibles en el snapshot actual", systemImage: "clock.arrow.circlepath")
+                    inspectorMetric("Grupo", item.groupName)
+                    inspectorMetric("Unidad", item.didacticUnit)
+                    inspectorMetric("Sesiones hoy", "\(snapshot.todayCount)")
+                    inspectorMetric("Próxima sesión", snapshot.nextSessionLabel)
+                } else {
+                    inspectorUnavailable("No hay historial disponible para esta selección.")
+                }
+            case .alert(let id):
+                if let alert = snapshot.alerts.first(where: { $0.id == id }) {
+                    inspectorTitle("Contexto de alerta", subtitle: alert.detail, systemImage: "list.bullet.clipboard")
+                    inspectorMetric("Alertas activas", "\(snapshot.alertsCount)")
+                    inspectorMetric("Pendientes", "\(snapshot.pendingCount)")
+                    inspectorMetric("Apariciones", "\(alert.count)")
+                } else {
+                    inspectorUnavailable("No hay historial disponible para esta alerta.")
+                }
+            case .pe(let id):
+                if let item = snapshot.peItems.first(where: { $0.id == id }) {
+                    inspectorTitle("Contexto EF", subtitle: item.detail, systemImage: "figure.cooldown")
+                    inspectorMetric("Incidencias EF", "\(snapshot.peItems.count)")
+                    inspectorMetric("Severidad", readableLevel(item.severity))
+                } else {
+                    inspectorUnavailable("No hay historial disponible para este ítem EF.")
+                }
+            case .none:
+                inspectorUnavailable("El historial se mostrará al seleccionar un elemento del dashboard.")
+            }
+        }
+    }
+
+    private var dashboardInspectorActions: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            inspectorTitle("Acciones rápidas", subtitle: selectedClassLabel, systemImage: "bolt.circle")
+
+            Button {
+                Task { await performPassList() }
+            } label: {
+                Label("Pasar lista", systemImage: "checkmark.circle")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(dashboardActionClassId == nil)
+
+            Button {
+                Task { await performObservation() }
+            } label: {
+                Label("Nueva observación", systemImage: "note.text.badge.plus")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.bordered)
+            .disabled(dashboardActionClassId == nil)
+
+            Button {
+                Task { await performQuickEvaluation() }
+            } label: {
+                Label("Evaluación rápida", systemImage: "sparkles")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.bordered)
+            .disabled(dashboardActionClassId == nil)
+        }
+    }
+
+    private func inspectorTitle(_ title: String, subtitle: String, systemImage: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: systemImage)
+                .font(.headline)
+                .foregroundStyle(EvaluationDesign.accent)
+                .frame(width: 30, height: 30)
+                .background(EvaluationDesign.accent.opacity(0.12), in: Circle())
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.headline)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func inspectorMetric(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .top) {
+            Text(label)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 12)
+            Text(value.isEmpty ? "Sin dato" : value)
+                .font(.caption)
+                .multilineTextAlignment(.trailing)
+        }
+        .padding(10)
+        .background(appMutedCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func inspectorUnavailable(_ message: String) -> some View {
+        VStack(spacing: 10) {
+            Image(systemName: "sidebar.right")
+                .font(.title2)
+                .foregroundStyle(.secondary)
+            Text(message)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, minHeight: 160)
+        .padding(16)
+        .background(appMutedCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private var selectedClassLabel: String {
@@ -312,24 +568,74 @@ struct DashboardView: View {
 
     @ViewBuilder
     private func dashboardKpiRow(snapshot: DashboardSnapshot) -> some View {
-        HStack(spacing: 12) {
-            dashboardKpiCard(title: "Hoy", value: "\(snapshot.todayCount)")
-            dashboardKpiCard(title: "Alertas", value: "\(snapshot.alertsCount)")
-            dashboardKpiCard(title: "Pendientes", value: "\(snapshot.pendingCount)")
-            dashboardKpiCard(title: "Próxima sesión", value: snapshot.nextSessionLabel)
+        let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: isCompactWidth ? 2 : 4)
+        LazyVGrid(columns: columns, spacing: 12) {
+            dashboardKpiCard(
+                title: "Hoy",
+                value: "\(snapshot.todayCount)",
+                systemImage: "calendar",
+                tint: EvaluationDesign.accent,
+                footnote: snapshot.todayCount == 1 ? "sesión" : "sesiones"
+            )
+            dashboardKpiCard(
+                title: "Alertas",
+                value: "\(snapshot.alertsCount)",
+                systemImage: "exclamationmark.bubble.fill",
+                tint: snapshot.alertsCount > 0 ? dashboardWarningTint : EvaluationDesign.success,
+                footnote: snapshot.alertsCount > 0 ? "revisar" : "sin alertas"
+            )
+            dashboardKpiCard(
+                title: "Pendientes",
+                value: "\(snapshot.pendingCount)",
+                systemImage: "clock.badge.exclamationmark",
+                tint: snapshot.pendingCount > 0 ? EvaluationDesign.danger : EvaluationDesign.success,
+                footnote: snapshot.pendingCount > 0 ? "requiere acción" : "al día"
+            )
+            dashboardKpiCard(
+                title: "Próxima sesión",
+                value: snapshot.nextSessionLabel,
+                systemImage: "forward.end.circle",
+                tint: EvaluationDesign.accent,
+                footnote: "agenda"
+            )
         }
     }
 
     @ViewBuilder
-    private func dashboardKpiCard(title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(.caption.bold()).foregroundStyle(.secondary)
-            Text(value).font(.headline)
+    private func dashboardKpiCard(title: String, value: String, systemImage: String, tint: Color, footnote: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: systemImage)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(tint)
+                Text(title)
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Text(value)
+                .font(.headline)
+                .lineLimit(2)
+                .minimumScaleFactor(0.72)
+
+            HStack(spacing: 6) {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(tint)
+                    .frame(width: 22, height: 4)
+                Text(footnote)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(appCardBackground(for: colorScheme))
-        .cornerRadius(12)
+        .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(tint.opacity(0.18), lineWidth: 1)
+        }
     }
 
     @ViewBuilder
@@ -359,6 +665,23 @@ struct DashboardView: View {
                     .cornerRadius(10)
                 }
                 .buttonStyle(.plain)
+#if os(iOS)
+                .swipeActions(edge: .trailing) {
+                    Button {
+                        Task { await performPassList() }
+                    } label: {
+                        Label("Pasar lista", systemImage: "checkmark.circle")
+                    }
+                    .tint(EvaluationDesign.success)
+
+                    Button {
+                        Task { await performObservation() }
+                    } label: {
+                        Label("Observación", systemImage: "note.text.badge.plus")
+                    }
+                    .tint(EvaluationDesign.accent)
+                }
+#endif
             }
             if snapshot.todaySessions.isEmpty { Text("Sin sesiones hoy").foregroundStyle(.secondary) }
         }
@@ -394,6 +717,18 @@ struct DashboardView: View {
                     .cornerRadius(10)
                 }
                 .buttonStyle(.plain)
+#if os(iOS)
+                .swipeActions(edge: .trailing) {
+                    Button {
+                        inspectorSelection = .alert(alert.id)
+                        inspectorTab = .actions
+                        isInspectorPresented = true
+                    } label: {
+                        Label("Acciones", systemImage: "bolt.circle")
+                    }
+                    .tint(EvaluationDesign.accent)
+                }
+#endif
             }
             if snapshot.alerts.isEmpty { Text("Sin alertas").foregroundStyle(.secondary) }
         }
@@ -447,7 +782,7 @@ struct DashboardView: View {
                     .font(.caption)
             }
             if showsWideSummary {
-                Table(rows) {
+                Table(rows.sorted(using: groupSortOrder), sortOrder: $groupSortOrder) {
                     TableColumn("Grupo") { Text($0.groupName) }
                     TableColumn("Asist") { Text("\($0.attendancePct)%") }
                     TableColumn("Eval") { Text("\($0.evaluationCompletedPct)%") }
@@ -528,6 +863,16 @@ struct DashboardView: View {
                     .cornerRadius(8)
                 }
                 .buttonStyle(.plain)
+#if os(iOS)
+                .swipeActions(edge: .trailing) {
+                    Button {
+                        Task { await performObservation() }
+                    } label: {
+                        Label("Observación", systemImage: "note.text.badge.plus")
+                    }
+                    .tint(EvaluationDesign.accent)
+                }
+#endif
             }
             if snapshot.peItems.isEmpty { Text("Sin incidencias EF hoy").foregroundStyle(.secondary) }
         }
@@ -536,15 +881,47 @@ struct DashboardView: View {
         .cornerRadius(12)
     }
 
-    private func dashboardFilterField(title: String, placeholder: String, text: Binding<String>) -> some View {
+    private func dashboardFilterPicker(title: String, options: [DashboardFilterOption], selection: Binding<String>) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.secondary)
-            TextField(placeholder, text: text)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
+            Picker(title, selection: selection) {
+                ForEach(options) { option in
+                    Label(option.label, systemImage: option.systemImage)
+                        .tag(option.rawValue)
+                }
+            }
+            .pickerStyle(.menu)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func dashboardFilterMenuSection(title: String, options: [DashboardFilterOption], selection: Binding<String>) -> some View {
+        Section(title) {
+            Picker(title, selection: selection) {
+                ForEach(options) { option in
+                    Label(option.label, systemImage: option.systemImage)
+                        .tag(option.rawValue)
+                }
+            }
+        }
+    }
+
+    private func activeFilterChip(title: String, options: [DashboardFilterOption], rawValue: String) -> some View {
+        let option = options.first(where: { $0.rawValue == rawValue }) ?? options[0]
+        let isActive = !rawValue.isEmpty
+        return Label("\(title): \(option.label)", systemImage: option.systemImage)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(isActive ? EvaluationDesign.accent : .secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                Capsule(style: .continuous)
+                    .fill((isActive ? EvaluationDesign.accent : Color.secondary).opacity(0.10))
+            )
     }
 
     private func syncToolbarState() {
@@ -638,6 +1015,24 @@ struct DashboardView: View {
             sessionStatus: sessionStatusFilter
         )
         await bridge.refreshDashboard(mode: mode.kotlinMode)
+    }
+
+    private func readableLevel(_ rawValue: String) -> String {
+        switch rawValue.lowercased() {
+        case "high": return "Alta"
+        case "medium": return "Media"
+        case "low": return "Baja"
+        default: return rawValue.isEmpty ? "Sin dato" : rawValue
+        }
+    }
+
+    private func readableSessionStatus(_ rawValue: String) -> String {
+        switch rawValue.lowercased() {
+        case "planned": return "Planificada"
+        case "in_progress": return "En curso"
+        case "completed": return "Completada"
+        default: return rawValue.isEmpty ? "Sin dato" : rawValue
+        }
     }
 
     private func csvToday(_ snapshot: DashboardSnapshot) -> String {
@@ -984,19 +1379,19 @@ fileprivate struct SyncLanCard: View {
                             let normalizedHost = selectedHost.trimmingCharacters(in: .whitespacesAndNewlines)
                             let normalizedPin = pin.trimmingCharacters(in: .whitespacesAndNewlines)
                             guard !normalizedHost.isEmpty else {
-                                bridge.syncStatusMessage = "Introduce un host LAN válido del Mac."
+                                bridge.setSyncStatusMessage("Introduce un host LAN válido del Mac.")
                                 return
                             }
                             guard let port = Int(selectedPort), (1...65535).contains(port) else {
-                                bridge.syncStatusMessage = "El puerto de enlace no es válido."
+                                bridge.setSyncStatusMessage("El puerto de enlace no es válido.")
                                 return
                             }
                             guard port == 8765 else {
-                                bridge.syncStatusMessage = "Esta compilación del iPad usa el puerto 8765 para enlazar con el Mac."
+                                bridge.setSyncStatusMessage("Esta compilación del iPad usa el puerto 8765 para enlazar con el Mac.")
                                 return
                             }
                             guard !normalizedPin.isEmpty else {
-                                bridge.syncStatusMessage = "Introduce el PIN de enlace."
+                                bridge.setSyncStatusMessage("Introduce el PIN de enlace.")
                                 return
                             }
 
@@ -1011,7 +1406,7 @@ fileprivate struct SyncLanCard: View {
                                 )
                                 selectedHost = hostToUse
                             } catch {
-                                bridge.syncStatusMessage = "Error emparejando: \(error.localizedDescription)"
+                                bridge.setSyncStatusMessage("Error emparejando: \(error.localizedDescription)")
                             }
                         }
                     }
@@ -1037,7 +1432,7 @@ fileprivate struct SyncLanCard: View {
                         do {
                             try await bridge.runLanPullSync()
                         } catch {
-                            bridge.syncStatusMessage = "Error pull: \(error.localizedDescription)"
+                            bridge.setSyncStatusMessage("Error pull: \(error.localizedDescription)")
                         }
                     }
                 }
@@ -1049,7 +1444,7 @@ fileprivate struct SyncLanCard: View {
                         do {
                             try await bridge.runLanPushSync()
                         } catch {
-                            bridge.syncStatusMessage = "Error push: \(error.localizedDescription)"
+                            bridge.setSyncStatusMessage("Error push: \(error.localizedDescription)")
                         }
                     }
                 }
@@ -1067,7 +1462,7 @@ fileprivate struct SyncLanCard: View {
         .sheet(isPresented: $showingQrScanner) {
             LanQrScannerSheet { payload in
                 guard let parsed = parseSyncPayload(payload) else {
-                    bridge.syncStatusMessage = "QR no válido para sincronización"
+                    bridge.setSyncStatusMessage("QR no válido para sincronización")
                     return
                 }
                 selectedHost = parsed.host
@@ -1076,7 +1471,7 @@ fileprivate struct SyncLanCard: View {
                 Task {
                     do {
                         guard parsed.port == 8765 else {
-                            bridge.syncStatusMessage = "Este QR usa un puerto no compatible con esta compilación del iPad."
+                            bridge.setSyncStatusMessage("Este QR usa un puerto no compatible con esta compilación del iPad.")
                             return
                         }
                         try await bridge.pairLanSync(
@@ -1086,7 +1481,7 @@ fileprivate struct SyncLanCard: View {
                             expectedFingerprint: parsed.fingerprint
                         )
                     } catch {
-                        bridge.syncStatusMessage = "Error emparejando: \(error.localizedDescription)"
+                        bridge.setSyncStatusMessage("Error emparejando: \(error.localizedDescription)")
                     }
                 }
             }

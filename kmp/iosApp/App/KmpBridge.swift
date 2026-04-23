@@ -132,6 +132,10 @@ final class KmpBridge: ObservableObject {
     @Published var syncPendingChanges: Int = 0
     @Published var syncLastRunAt: Date? = nil
     @Published var pairedSyncHost: String? = nil
+
+    var hasPersistedLanPairing: Bool {
+        !(syncToken?.isEmpty ?? true) && !((pairedServerId?.isEmpty ?? true) && (pairedServerFingerprint?.isEmpty ?? true))
+    }
     
     // UI State for Sheets
     @Published var showingAddColumn = false
@@ -491,15 +495,20 @@ final class KmpBridge: ObservableObject {
             case operationalSummary
             case prioritizedAlerts
             case weeklyDigest
+            case dailyBriefing
             case classSnapshot
             case studentFollowUp
+            case studentRiskRadar
             case familyComment
+            case tutoringDraft
             case attendancePatterns
             case followUpList
             case diarySummary
             case nextSteps
+            case sessionClosure
             case evaluationDigest
             case progressReadout
+            case groupInsight
             case notebookGroupSummary
             case notebookStudentComment
             case observationProposal
@@ -657,6 +666,7 @@ final class KmpBridge: ObservableObject {
     private var discoveredPeersByHost: [String: LanDiscoveredPeer] = [:]
     private var autoSyncLoopTask: Task<Void, Never>? = nil
     private var autoSyncDebounceTask: Task<Void, Never>? = nil
+    private var pendingChangesPersistenceTask: Task<Void, Never>? = nil
     private var notebookSnapshotDebounceTask: Task<Void, Never>? = nil
     private var pendingDebouncedGradeSaves: [String: Task<Void, Never>] = [:]
     private var pendingGradeSnapshotTask: Task<Void, Never>? = nil
@@ -769,7 +779,10 @@ final class KmpBridge: ObservableObject {
             Task { @MainActor in
                 guard let self else { return }
                 let uniquePeers = Self.deduplicateDiscoveredPeers(peers)
-                self.discoveredPeersByHost = Dictionary(uniqueKeysWithValues: uniquePeers.map { ($0.host, $0) })
+                self.discoveredPeersByHost = Dictionary(
+                    uniquePeers.map { ($0.host, $0) },
+                    uniquingKeysWith: { first, _ in first }
+                )
                 self.discoveredSyncHosts = uniquePeers.map(\.host).sorted()
                 self.rebindPairedHostIfNeeded()
             }
@@ -779,6 +792,9 @@ final class KmpBridge: ObservableObject {
             self.lanSyncDiscovery.start()
             self.startAutoSyncLoop()
             self.startSyncEventListenerIfPaired()
+            if self.hasPersistedLanPairing {
+                await self.syncNow(reason: "rehydrate", forceFullPull: false, silent: true)
+            }
         }
 
         setupObservers()
@@ -787,6 +803,7 @@ final class KmpBridge: ObservableObject {
     deinit {
         autoSyncLoopTask?.cancel()
         autoSyncDebounceTask?.cancel()
+        pendingChangesPersistenceTask?.cancel()
         syncEventListener.stop()
         notebookSnapshotDebounceTask?.cancel()
         pendingGradeSnapshotTask?.cancel()
@@ -795,7 +812,8 @@ final class KmpBridge: ObservableObject {
 
     private func setupObservers() {
         // Observe Notebook State with Debounce (to stabilize UI during typing)
-        Task {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
             let sequence = notebookViewModel.state.asAsyncSequence(type: NotebookUiState.self)
             for await state in sequence {
                 if state is NotebookUiStateLoading {
@@ -824,7 +842,8 @@ final class KmpBridge: ObservableObject {
             .store(in: &cancellables)
         
         // Observe Notebook Save State
-        Task {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
             let sequence = notebookViewModel.saveState.asAsyncSequence(type: NotebookViewModelSaveState.self)
             for await saveState in sequence {
                 self.notebookSaveState = saveState
@@ -832,7 +851,8 @@ final class KmpBridge: ObservableObject {
         }
         
         // Observe Rubric Evaluation State
-        Task {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
             let sequence = rubricEvaluationViewModel.uiState.asAsyncSequence(type: RubricEvaluationUiState.self)
             for await state in sequence {
                 let wasSaveSuccessful = self.rubricEvaluationState.isSaveSuccessful
@@ -847,7 +867,8 @@ final class KmpBridge: ObservableObject {
         }
         
         // Observe Rubric Bulk Evaluation State
-        Task {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
             let sequence = rubricBulkEvaluationViewModel.uiState.asAsyncSequence(type: BulkRubricEvaluationUiState.self)
             for await state in sequence {
                 let wasSaveSuccessful = self.bulkRubricEvaluationState?.isSaveSuccessful ?? false
@@ -862,7 +883,8 @@ final class KmpBridge: ObservableObject {
         }
 
         // Observe Rubrics Builder/Bank State
-        Task {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
             let sequence = rubricsViewModel.uiState.asAsyncSequence(type: RubricUiState.self)
             for await state in sequence {
                 self.rubricsUiState = state
@@ -1350,7 +1372,10 @@ final class KmpBridge: ObservableObject {
     }
 
     func plannerCourseColors(for classIds: [Int64]) -> [Int64: String] {
-        Dictionary(uniqueKeysWithValues: classIds.map { ($0, plannerCourseColor(for: $0)) })
+        Dictionary(
+            classIds.map { ($0, plannerCourseColor(for: $0)) },
+            uniquingKeysWith: { first, _ in first }
+        )
     }
 
     func plannerSetCourseColor(_ colorHex: String, for classId: Int64) {
@@ -2026,7 +2051,10 @@ final class KmpBridge: ObservableObject {
             .filter { Int($0.dayOfWeek) == weekday }
             .sorted { $0.period < $1.period }
         let summaries = try await plannerJournalSummaries(sessionIds: sessions.map(\.id))
-        let summariesById = Dictionary(uniqueKeysWithValues: summaries.map { ($0.planningSessionId, $0) })
+        let summariesById = Dictionary(
+            summaries.map { ($0.planningSessionId, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
         return sessions.map { session in
             AttendanceSessionSnapshot(
                 id: session.id,
@@ -2039,7 +2067,10 @@ final class KmpBridge: ObservableObject {
     func diarySessions(weekNumber: Int, year: Int, classId: Int64?) async throws -> [DiarySessionSnapshot] {
         let sessions = try await plannerListSessions(weekNumber: weekNumber, year: year, classId: classId)
         let summaries = try await plannerJournalSummaries(sessionIds: sessions.map(\.id))
-        let summariesById = Dictionary(uniqueKeysWithValues: summaries.map { ($0.planningSessionId, $0) })
+        let summariesById = Dictionary(
+            summaries.map { ($0.planningSessionId, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
         return sessions
             .sorted {
                 if $0.dayOfWeek == $1.dayOfWeek { return $0.period < $1.period }
@@ -2227,9 +2258,12 @@ final class KmpBridge: ObservableObject {
                 .filter { $0.studentId?.int64Value == studentId }
             let sessions = try await container.plannerRepository.listAllSessions()
                 .filter { $0.groupId == classId }
-            let sessionDateById = Dictionary(uniqueKeysWithValues: sessions.map { session in
-                (session.id, self.date(from: session))
-            })
+            let sessionDateById = Dictionary(
+                sessions.map { session in
+                    (session.id, self.date(from: session))
+                },
+                uniquingKeysWith: { first, _ in first }
+            )
             var collectedAggregates: [SessionJournalAggregate] = []
             for session in sessions {
                 let aggregate = try await self.container.sessionJournalRepository.getJournalForSession(
@@ -2241,10 +2275,13 @@ final class KmpBridge: ObservableObject {
                 }
             }
             journalAggregates = collectedAggregates
-            journalDateByJournalId = Dictionary(uniqueKeysWithValues: journalAggregates.map { aggregate in
-                let sessionDate = sessionDateById[aggregate.journal.planningSessionId] ?? Date.distantPast
-                return (aggregate.journal.id, sessionDate)
-            })
+            journalDateByJournalId = Dictionary(
+                journalAggregates.map { aggregate in
+                    let sessionDate = sessionDateById[aggregate.journal.planningSessionId] ?? Date.distantPast
+                    return (aggregate.journal.id, sessionDate)
+                },
+                uniquingKeysWith: { first, _ in first }
+            )
         } else {
             attendanceData = []
             evaluationsData = []
@@ -2292,7 +2329,10 @@ final class KmpBridge: ObservableObject {
             )
         })
 
-        let evaluationsById = Dictionary(uniqueKeysWithValues: evaluationsData.map { ($0.id, $0) })
+        let evaluationsById = Dictionary(
+            evaluationsData.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
         timeline.append(contentsOf: gradesData.prefix(8).map { grade in
             let evaluationName = grade.evaluationId.flatMap { evaluationsById[$0.int64Value]?.name } ?? grade.columnId
             let subtitle: String
@@ -2369,7 +2409,10 @@ final class KmpBridge: ObservableObject {
         var workGroupByStudentId: [Int64: String] = [:]
         if let classId {
             let groups = try await container.notebookRepository.listWorkGroups(classId: classId, tabId: nil)
-            let groupNames = Dictionary(uniqueKeysWithValues: groups.map { ($0.id, $0.name) })
+            let groupNames = Dictionary(
+                groups.map { ($0.id, $0.name) },
+                uniquingKeysWith: { first, _ in first }
+            )
             let members = try await container.notebookRepository.listWorkGroupMembers(classId: classId, tabId: nil)
             for member in members where workGroupByStudentId[member.studentId] == nil {
                 workGroupByStudentId[member.studentId] = groupNames[member.groupId]
@@ -2970,7 +3013,10 @@ final class KmpBridge: ObservableObject {
 
         return physicalEvaluations.map { evaluation in
             let evaluationGrades = grades.filter { $0.evaluationId?.int64Value == evaluation.id }
-            let gradesByStudent = Dictionary(uniqueKeysWithValues: evaluationGrades.map { ($0.studentId, $0) })
+            let gradesByStudent = Dictionary(
+                evaluationGrades.map { ($0.studentId, $0) },
+                uniquingKeysWith: { first, _ in first }
+            )
             let results = students.map { student in
                 let grade = gradesByStudent[student.id]
                 return PhysicalTestSnapshot.StudentResult(
@@ -2998,7 +3044,10 @@ final class KmpBridge: ObservableObject {
     func loadPESessions(weekNumber: Int, year: Int, classId: Int64?) async throws -> [PESessionSnapshot] {
         let sessions = try await plannerListSessions(weekNumber: weekNumber, year: year, classId: classId)
         let summaries = try await plannerJournalSummaries(sessionIds: sessions.map(\.id))
-        let summariesById = Dictionary(uniqueKeysWithValues: summaries.map { ($0.planningSessionId, $0) })
+        let summariesById = Dictionary(
+            summaries.map { ($0.planningSessionId, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
 
         var snapshots: [PESessionSnapshot] = []
         for session in sessions.sorted(by: {
@@ -3196,7 +3245,9 @@ final class KmpBridge: ObservableObject {
             let now = Date()
             lastSuccessfulSyncAt = now
             lastFullPullAt = now
-            syncStatusMessage = "Emparejado con \(normalizedHost)"
+            publishSyncState {
+                $0.syncStatusMessage = "Emparejado con \(normalizedHost)"
+            }
             isPairingInFlight = false
             startAutoSyncLoop()
             startSyncEventListenerIfPaired()
@@ -3226,7 +3277,9 @@ final class KmpBridge: ObservableObject {
             _ = try? await lanSyncClient.unpair(host: host, token: token, pinnedFingerprint: pairedServerFingerprint)
         }
         clearPersistedPairing()
-        syncStatusMessage = "Desvinculado. Empareja de nuevo para reactivar la sync."
+        publishSyncState {
+            $0.syncStatusMessage = "Desvinculado. Empareja de nuevo para reactivar la sync."
+        }
     }
 
     func discoveredPeer(forHost host: String) -> LanDiscoveredPeer? {
@@ -3241,7 +3294,9 @@ final class KmpBridge: ObservableObject {
         do {
             try await performPullSync(silent: false)
         } catch {
-            syncStatusMessage = "Pull manual fallido: \(error.localizedDescription)"
+            publishSyncState {
+                $0.syncStatusMessage = "Pull manual fallido: \(error.localizedDescription)"
+            }
         }
     }
 
@@ -3301,7 +3356,9 @@ final class KmpBridge: ObservableObject {
             refreshAfterApply: refreshAfterApply
         )
         if !silent {
-            syncStatusMessage = "Pull OK (\(pull.changeCount) cambios)"
+            publishSyncState {
+                $0.syncStatusMessage = "Pull OK (\(pull.changeCount) cambios)"
+            }
         }
     }
 
@@ -3316,7 +3373,9 @@ final class KmpBridge: ObservableObject {
                 serverEpochMs: event.serverEpochMs,
                 refreshAfterApply: true
             )
-            syncStatusMessage = "Evento LAN OK (\(changes.count) cambios)"
+            publishSyncState {
+                $0.syncStatusMessage = "Evento LAN OK (\(changes.count) cambios)"
+            }
         } catch {
             await syncNow(reason: "sse_event_fallback", forceFullPull: false, silent: true)
         }
@@ -3330,15 +3389,20 @@ final class KmpBridge: ObservableObject {
         guard !changes.isEmpty else {
             lastSyncCursorEpochMs = serverEpochMs
             UserDefaults.standard.set(lastSyncCursorEpochMs, forKey: "sync.last.cursor")
-            syncLastRunAt = Date()
+            publishSyncState {
+                $0.syncLastRunAt = Date()
+            }
             return
         }
 
         try await applyPulledChanges(changes)
         lastSyncCursorEpochMs = serverEpochMs
         UserDefaults.standard.set(lastSyncCursorEpochMs, forKey: "sync.last.cursor")
-        syncPendingChanges = pendingOutboundChanges.count
-        syncLastRunAt = Date()
+        let pendingChangesCount = pendingOutboundChanges.count
+        publishSyncState {
+            $0.syncPendingChanges = pendingChangesCount
+            $0.syncLastRunAt = Date()
+        }
 
         guard refreshAfterApply else { return }
 
@@ -3369,7 +3433,9 @@ final class KmpBridge: ObservableObject {
         }
         guard !pendingOutboundChanges.isEmpty else {
             if !silent {
-                syncStatusMessage = "No hay cambios pendientes"
+                publishSyncState {
+                    $0.syncStatusMessage = "No hay cambios pendientes"
+                }
             }
             return
         }
@@ -3401,12 +3467,18 @@ final class KmpBridge: ObservableObject {
             pendingOutboundChanges.removeAll()
             UserDefaults.standard.removeObject(forKey: "sync.pending.changes.v2")
         }
-        syncPendingChanges = pendingOutboundChanges.count
-        syncLastRunAt = Date()
+        let pendingChangesCount = pendingOutboundChanges.count
+        publishSyncState {
+            $0.syncPendingChanges = pendingChangesCount
+            $0.syncLastRunAt = Date()
+        }
         if !silent {
-            syncStatusMessage = ack.desktopAuthoritative
+            let statusMessage = ack.desktopAuthoritative
                 ? "macOS prevalece; cambios locales descartados"
                 : "Push OK (\(ack.applied) aplicados)"
+            publishSyncState {
+                $0.syncStatusMessage = statusMessage
+            }
         }
     }
 
@@ -4021,6 +4093,31 @@ final class KmpBridge: ObservableObject {
         rubricEvaluationViewModel.loadForNotebookCell(studentId: studentId, columnId: columnId, rubricId: rubricId, evaluationId: evaluationId)
     }
 
+    func openAgendaNavigationTarget(_ target: AgendaNavigationTarget) {
+        guard let studentId = target.studentId?.int64Value,
+              let classId = target.classId?.int64Value,
+              let evaluationId = target.evaluationId?.int64Value,
+              let rubricId = target.rubricId?.int64Value,
+              let columnId = target.columnId?.nilIfEmpty else {
+            status = "La agenda no pudo resolver la rúbrica seleccionada."
+            return
+        }
+
+        if showingBulkRubricEvaluation {
+            closeBulkRubricEvaluation()
+        }
+        closeRubricEvaluation()
+        if notebookViewModel.currentClassId?.int64Value != classId {
+            selectClass(id: classId)
+        }
+        rubricEvaluationViewModel.loadForNotebookCell(
+            studentId: studentId,
+            columnId: columnId,
+            rubricId: rubricId,
+            evaluationId: evaluationId
+        )
+    }
+
     func saveRubricEvaluation(manual: Bool = true, onSuccess: @escaping () -> Void = {}) {
         rubricEvaluationViewModel.save(manual: manual) { [weak self] in
             Task { @MainActor in
@@ -4425,7 +4522,10 @@ final class KmpBridge: ObservableObject {
                         for existingLevel in existingLevels where !retainedLevelOrders.contains(Int32(existingLevel.order)) {
                             try await container.rubricsRepository.deleteLevel(levelId: existingLevel.id)
                         }
-                        existingLevelsByOrder = Dictionary(uniqueKeysWithValues: existingLevels.map { (Int32($0.order), $0) })
+                        existingLevelsByOrder = Dictionary(
+                            existingLevels.map { (Int32($0.order), $0) },
+                            uniquingKeysWith: { first, _ in first }
+                        )
                     } else {
                         existingLevelsByOrder = [:]
                     }
@@ -4692,7 +4792,16 @@ final class KmpBridge: ObservableObject {
         )
     }
 
-    private func enqueueLocalChange(entity: String, id: String, updatedAtEpochMs: Int64, payload: [String: Any], op: String = "upsert", shouldPersist: Bool = true) {
+    private func enqueueLocalChange(
+        entity: String,
+        id: String,
+        updatedAtEpochMs: Int64,
+        payload: [String: Any],
+        op: String = "upsert",
+        shouldPersist: Bool = true,
+        shouldScheduleAutoSync: Bool = true,
+        autoSyncDelayNanoseconds: UInt64 = 250_000_000
+    ) {
         guard let payloadData = try? JSONSerialization.data(withJSONObject: payload),
               let payloadString = String(data: payloadData, encoding: .utf8) else {
             return
@@ -4711,16 +4820,37 @@ final class KmpBridge: ObservableObject {
             pendingOutboundChanges.append(newChange)
         }
         lastLocalMutationAt = Date()
-        syncPendingChanges = pendingOutboundChanges.count
+        let pendingChangesCount = pendingOutboundChanges.count
+        publishSyncState {
+            $0.syncPendingChanges = pendingChangesCount
+        }
         
         if shouldPersist {
             persistPendingChanges()
         }
-        triggerAutoSyncSoon()
+        if shouldScheduleAutoSync {
+            triggerAutoSyncSoon(delayNanoseconds: autoSyncDelayNanoseconds)
+        }
+    }
+
+    private func publishSyncState(_ update: @escaping @MainActor (KmpBridge) -> Void) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            update(self)
+        }
+    }
+
+    func setSyncStatusMessage(_ message: String) {
+        publishSyncState {
+            $0.syncStatusMessage = message
+        }
     }
 
     private func persistPendingChanges() {
-        if let encoded = try? JSONEncoder().encode(pendingOutboundChanges) {
+        pendingChangesPersistenceTask?.cancel()
+        let snapshot = pendingOutboundChanges
+        pendingChangesPersistenceTask = Task.detached(priority: .utility) {
+            guard let encoded = try? JSONEncoder().encode(snapshot) else { return }
             UserDefaults.standard.set(encoded, forKey: "sync.pending.changes.v2")
         }
     }
@@ -4743,7 +4873,7 @@ final class KmpBridge: ObservableObject {
         notebookSnapshotDebounceTask?.cancel()
         notebookSnapshotDebounceTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            try? await Task.sleep(nanoseconds: 120_000_000)
+            try? await Task.sleep(nanoseconds: 900_000_000)
             try? await self.enqueueNotebookSnapshot(forClassId: classId)
         }
     }
@@ -4774,7 +4904,8 @@ final class KmpBridge: ObservableObject {
                     "photoPath": student.photoPath ?? NSNull(),
                     "isInjured": student.isInjured
                 ],
-                shouldPersist: false
+                shouldPersist: false,
+                shouldScheduleAutoSync: false
             )
         }
 
@@ -4786,7 +4917,8 @@ final class KmpBridge: ObservableObject {
                 "classId": classId,
                 "studentIds": students.map(\.id).sorted()
             ],
-            shouldPersist: false
+            shouldPersist: false,
+            shouldScheduleAutoSync: false
         )
 
         evaluations.forEach { evaluation in
@@ -4806,7 +4938,8 @@ final class KmpBridge: ObservableObject {
                     "rubricId": evaluation.rubricId ?? 0,
                     "description": evaluation.description
                 ],
-                shouldPersist: false
+                shouldPersist: false,
+                shouldScheduleAutoSync: false
             )
         }
 
@@ -4824,7 +4957,8 @@ final class KmpBridge: ObservableObject {
                     "order": Int(tab.order),
                     "parentTabId": tab.parentTabId ?? ""
                 ],
-                shouldPersist: false
+                shouldPersist: false,
+                shouldScheduleAutoSync: false
             )
         }
 
@@ -4842,7 +4976,8 @@ final class KmpBridge: ObservableObject {
                     "name": group.name,
                     "order": Int(group.order)
                 ],
-                shouldPersist: false
+                shouldPersist: false,
+                shouldScheduleAutoSync: false
             )
         }
 
@@ -4859,7 +4994,8 @@ final class KmpBridge: ObservableObject {
                     "groupId": member.groupId,
                     "studentId": member.studentId
                 ],
-                shouldPersist: false
+                shouldPersist: false,
+                shouldScheduleAutoSync: false
             )
         }
 
@@ -4877,13 +5013,17 @@ final class KmpBridge: ObservableObject {
                     "order": Int(category.order),
                     "isCollapsed": category.isCollapsed
                 ],
-                shouldPersist: false
+                shouldPersist: false,
+                shouldScheduleAutoSync: false
             )
         }
 
         columns.forEach { column in
             notebookSyncCache.deviceIdByEntityId[column.id] = column.trace.deviceId ?? localDeviceId
-            let tabTitlesById = Dictionary(uniqueKeysWithValues: tabs.map { ($0.id, $0.title) })
+            let tabTitlesById = Dictionary(
+                tabs.map { ($0.id, $0.title) },
+                uniquingKeysWith: { first, _ in first }
+            )
             let tabTitlesCsv = column.tabIds.compactMap { tabTitlesById[$0] }.joined(separator: ",")
             enqueueLocalChange(
                 entity: "notebook_column",
@@ -4909,7 +5049,8 @@ final class KmpBridge: ObservableObject {
                     "shared_across_tabs": column.sharedAcrossTabs,
                     "colorHex": column.colorHex ?? ""
                 ],
-                shouldPersist: false
+                shouldPersist: false,
+                shouldScheduleAutoSync: false
             )
         }
 
@@ -4925,7 +5066,8 @@ final class KmpBridge: ObservableObject {
                     "evaluationId": grade.evaluationId ?? 0,
                     "value": grade.value ?? NSNull()
                 ],
-                shouldPersist: false
+                shouldPersist: false,
+                shouldScheduleAutoSync: false
             )
         }
 
@@ -4946,7 +5088,8 @@ final class KmpBridge: ObservableObject {
                     "colorHex": cell.annotation?.colorHex ?? NSNull(),
                     "attachmentUris": cell.annotation?.attachmentUris ?? []
                 ],
-                shouldPersist: false
+                shouldPersist: false,
+                shouldScheduleAutoSync: false
             )
         }
 
@@ -4967,7 +5110,8 @@ final class KmpBridge: ObservableObject {
                             "criterionId": assessment.criterionId,
                             "levelId": assessment.levelId
                         ],
-                        shouldPersist: false
+                        shouldPersist: false,
+                        shouldScheduleAutoSync: false
                     )
                 }
             }
@@ -5020,6 +5164,7 @@ final class KmpBridge: ObservableObject {
         
         // Persistencia final de todos los cambios del snapshot
         persistPendingChanges()
+        triggerAutoSyncSoon(delayNanoseconds: 900_000_000)
     }
 
     private func enqueueNotebookDeletes(
@@ -5063,7 +5208,8 @@ final class KmpBridge: ObservableObject {
                 updatedAtEpochMs: nowMs,
                 payload: payloadForId(deletedId),
                 op: "delete",
-                shouldPersist: false
+                shouldPersist: false,
+                shouldScheduleAutoSync: false
             )
             
             // Limpiar el dueño ya que se ha borrado
@@ -5865,7 +6011,10 @@ final class KmpBridge: ObservableObject {
     ) -> [String] {
         guard !existingTabs.isEmpty else { return [] }
 
-        let tabsById = Dictionary(uniqueKeysWithValues: existingTabs.map { ($0.id.lowercased(), $0.id) })
+        let tabsById = Dictionary(
+            existingTabs.map { ($0.id.lowercased(), $0.id) },
+            uniquingKeysWith: { first, _ in first }
+        )
         var tabsByTitle: [String: String] = [:]
         for tab in existingTabs {
             let key = tab.title.lowercased()
@@ -6285,6 +6434,8 @@ final class KmpBridge: ObservableObject {
         autoSyncLoopTask = nil
         autoSyncDebounceTask?.cancel()
         autoSyncDebounceTask = nil
+        pendingChangesPersistenceTask?.cancel()
+        pendingChangesPersistenceTask = nil
         syncEventListener.stop()
         syncSecureStore.delete(key: "sync.token")
         syncSecureStore.delete(key: "sync.host")
@@ -6303,7 +6454,9 @@ final class KmpBridge: ObservableObject {
 
         if pairedSyncHost != matched.host {
             pairedSyncHost = matched.host
-            syncStatusMessage = "Host actualizado automáticamente: \(matched.host)"
+            publishSyncState {
+                $0.syncStatusMessage = "Host actualizado automáticamente: \(matched.host)"
+            }
             changed = true
         }
         if (pairedServerId == nil || pairedServerId?.isEmpty == true), !matched.serverId.isEmpty {
@@ -6423,17 +6576,18 @@ final class KmpBridge: ObservableObject {
         }
     }
 
-    private func triggerAutoSyncSoon() {
+    private func triggerAutoSyncSoon(delayNanoseconds: UInt64 = 250_000_000) {
         guard pairedSyncHost != nil, syncToken != nil else { return }
         autoSyncDebounceTask?.cancel()
         autoSyncDebounceTask = Task { [weak self] in
             guard let self else { return }
             do {
-                // Disparamos rápido para que desktop reciba cambios de estado casi inmediatos.
-                try await Task.sleep(nanoseconds: 250_000_000)
+                try await Task.sleep(nanoseconds: delayNanoseconds)
                 await self.syncNow(reason: "debounced_local_change", forceFullPull: false, silent: true)
             } catch {
-                self.syncStatusMessage = "Auto-sync pendiente (reconectando...)"
+                self.publishSyncState {
+                    $0.syncStatusMessage = "Auto-sync pendiente (reconectando...)"
+                }
             }
         }
     }
@@ -6503,13 +6657,20 @@ final class KmpBridge: ObservableObject {
                 lastSuccessfulSyncAt = now
 
                 if !silent {
-                    syncStatusMessage = "Sincronizado (\(reason))"
+                    publishSyncState {
+                        $0.syncStatusMessage = "Sincronizado (\(reason))"
+                    }
                 }
             } catch {
                 if !silent {
-                    syncStatusMessage = "Sync fallido (\(reason)): \(error.localizedDescription)"
+                    let statusMessage = "Sync fallido (\(reason)): \(error.localizedDescription)"
+                    publishSyncState {
+                        $0.syncStatusMessage = statusMessage
+                    }
                 } else {
-                    syncStatusMessage = "Auto-sync pendiente (reconectando...)"
+                    publishSyncState {
+                        $0.syncStatusMessage = "Auto-sync pendiente (reconectando...)"
+                    }
                 }
             }
 
@@ -7002,6 +7163,7 @@ extension KmpBridge {
                 snapshot.agendaItems.first.map { "\($0.title) · \($0.subtitle)" }
             ),
             suggestedActions: [
+                ContextualAIAction(actionId: .dailyBriefing, title: "Briefing diario", subtitle: "Qué atender hoy y por qué", systemImage: "sun.max.fill", promptHint: "Prioriza el arranque del día con hechos y acciones docentes."),
                 ContextualAIAction(actionId: .operationalSummary, title: "Resumen operativo", subtitle: "Prioriza lo importante del día", systemImage: "bolt.badge.clock.fill", promptHint: "Resume el estado operativo y lo urgente."),
                 ContextualAIAction(actionId: .prioritizedAlerts, title: "Alertas priorizadas", subtitle: "Ordena incidencias y seguimiento", systemImage: "exclamationmark.triangle.fill", promptHint: "Ordena alertas y explica por qué conviene revisarlas."),
                 ContextualAIAction(actionId: .weeklyDigest, title: "Digest semanal", subtitle: "Texto breve para seguimiento docente", systemImage: "doc.text.fill", promptHint: "Crea un digest semanal breve y accionable.")
@@ -7084,7 +7246,9 @@ extension KmpBridge {
                 ),
                 suggestedActions: [
                     ContextualAIAction(actionId: .studentFollowUp, title: "Resumen de seguimiento", subtitle: "Lectura docente breve", systemImage: "person.text.rectangle.fill", promptHint: "Resume el seguimiento del alumno de forma accionable."),
+                    ContextualAIAction(actionId: .studentRiskRadar, title: "Radar de riesgo", subtitle: "Clasificación prudente y explicable", systemImage: "shield.lefthalf.filled.badge.exclamationmark", promptHint: "Explica el nivel de atención del alumno con hechos verificables."),
                     ContextualAIAction(actionId: .familyComment, title: "Comentario para familia", subtitle: "Versión clara y respetuosa", systemImage: "person.2.badge.gearshape.fill", promptHint: "Redacta un comentario claro para familia."),
+                    ContextualAIAction(actionId: .tutoringDraft, title: "Borrador de tutoría", subtitle: "Texto base con siguiente acción", systemImage: "person.crop.rectangle.stack.fill", promptHint: "Prepara un borrador prudente para tutoría o seguimiento."),
                     ContextualAIAction(actionId: .observationProposal, title: "Propuesta de observación", subtitle: "Texto corto editable", systemImage: "text.badge.plus", promptHint: "Genera una observación breve y prudente.")
                 ],
                 hasEnoughData: profile.instrumentsCount > 0 || profile.incidentCount > 0 || profile.journalNoteCount > 0,
@@ -7181,7 +7345,8 @@ extension KmpBridge {
             ),
             suggestedActions: [
                 ContextualAIAction(actionId: .diarySummary, title: "Síntesis semanal", subtitle: "Resumen docente breve", systemImage: "doc.plaintext.fill", promptHint: "Resume la semana lectiva con foco en lo relevante."),
-                ContextualAIAction(actionId: .nextSteps, title: "Próximos pasos", subtitle: "Acciones sugeridas para la siguiente sesión", systemImage: "arrowshape.right.fill", promptHint: "Propón próximos pasos realistas y prudentes.")
+                ContextualAIAction(actionId: .nextSteps, title: "Próximos pasos", subtitle: "Acciones sugeridas para la siguiente sesión", systemImage: "arrowshape.right.fill", promptHint: "Propón próximos pasos realistas y prudentes."),
+                ContextualAIAction(actionId: .sessionClosure, title: "Cierre de sesión", subtitle: "Qué pasó y qué ajustar después", systemImage: "flag.checkered.2.crossed", promptHint: "Cierra la sesión con hechos, aprendizaje y siguiente paso.")
             ],
             hasEnoughData: !sessions.isEmpty,
             dataQualityNote: sessions.isEmpty ? "No hay sesiones de diario registradas esta semana." : nil
@@ -7220,7 +7385,8 @@ extension KmpBridge {
             supportNotes: evaluations.prefix(4).map { "\($0.name) · peso \(IosFormatting.decimal(from: $0.weight))" },
             suggestedActions: [
                 ContextualAIAction(actionId: .evaluationDigest, title: "Digest de evaluación", subtitle: "Lectura narrativa de los instrumentos", systemImage: "chart.bar.doc.horizontal.fill", promptHint: "Resume instrumentos, pesos y progreso."),
-                ContextualAIAction(actionId: .progressReadout, title: "Lectura de progreso", subtitle: "Explica el avance del grupo", systemImage: "chart.line.uptrend.xyaxis", promptHint: "Explica el estado de progreso del grupo con prudencia.")
+                ContextualAIAction(actionId: .progressReadout, title: "Lectura de progreso", subtitle: "Explica el avance del grupo", systemImage: "chart.line.uptrend.xyaxis", promptHint: "Explica el estado de progreso del grupo con prudencia."),
+                ContextualAIAction(actionId: .groupInsight, title: "Inspector analítico", subtitle: "Patrones del grupo apoyados en evidencia", systemImage: "chart.xyaxis.line", promptHint: "Resume patrones del grupo a partir de paneles analíticos y hechos verificables.")
             ],
             hasEnoughData: !evaluations.isEmpty,
             dataQualityNote: values.isEmpty ? "Hay estructura evaluativa pero faltan calificaciones para una lectura más sólida." : nil
@@ -7251,7 +7417,8 @@ extension KmpBridge {
             supportNotes: context.supportNotes,
             suggestedActions: [
                 ContextualAIAction(actionId: .reportBridge, title: "Puente a informe", subtitle: "Preparar texto base para informe", systemImage: "doc.richtext.fill", promptHint: "Resume este contexto con formato listo para informe."),
-                ContextualAIAction(actionId: .familyComment, title: "Versión para familia", subtitle: "Lenguaje más claro y cercano", systemImage: "person.2.badge.gearshape.fill", promptHint: "Reescribe el resumen con lenguaje para familia.")
+                ContextualAIAction(actionId: .familyComment, title: "Versión para familia", subtitle: "Lenguaje más claro y cercano", systemImage: "person.2.badge.gearshape.fill", promptHint: "Reescribe el resumen con lenguaje para familia."),
+                ContextualAIAction(actionId: .tutoringDraft, title: "Borrador de tutoría", subtitle: "Modo interno, tutoría o familia", systemImage: "text.document.fill", promptHint: "Prepara un borrador prudente con siguiente acción sugerida.")
             ],
             hasEnoughData: context.hasEnoughData,
             dataQualityNote: context.dataQualityNote
@@ -7349,7 +7516,10 @@ extension KmpBridge {
         else { return [] }
 
         let selectedColumns = data.sheet.columns.filter { includedColumnIds.contains($0.id) }
-        let columnCategoryNames = Dictionary(uniqueKeysWithValues: data.sheet.columnCategories.map { ($0.id, $0.name) })
+        let columnCategoryNames = Dictionary(
+            data.sheet.columnCategories.map { ($0.id, $0.name) },
+            uniquingKeysWith: { first, _ in first }
+        )
         let filteredRows = data.sheet.rows.filter { row in
             guard let studentIds else { return true }
             return studentIds.contains(row.student.id)
@@ -8162,7 +8332,7 @@ private final class IosKeychainStore {
     }
 }
 
-final class PinnedTLSDelegate: NSObject, URLSessionDelegate {
+final class PinnedTLSDelegate: NSObject, URLSessionDelegate, URLSessionTaskDelegate {
     private let pinnedFingerprint: String?
 
     init(pinnedFingerprint: String?) {
@@ -8174,11 +8344,26 @@ final class PinnedTLSDelegate: NSObject, URLSessionDelegate {
         didReceive challenge: URLAuthenticationChallenge,
         completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
     ) {
+        handleServerTrustChallenge(challenge, completionHandler: completionHandler)
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        handleServerTrustChallenge(challenge, completionHandler: completionHandler)
+    }
+
+    private func handleServerTrustChallenge(
+        _ challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
         guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
               let trust = challenge.protectionSpace.serverTrust,
-              let chain = SecTrustCopyCertificateChain(trust) as? [SecCertificate],
-              let certificate = chain.first else {
-            completionHandler(.cancelAuthenticationChallenge, nil)
+              let certificate = SecTrustGetCertificateAtIndex(trust, 0) else {
+            completionHandler(.performDefaultHandling, nil)
             return
         }
 

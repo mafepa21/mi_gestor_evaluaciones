@@ -672,6 +672,7 @@ struct AppWorkspaceShell: View {
 
     private func contextualAISheet(_ sheet: ContextualAISheetState) -> some View {
         ContextualAIAssistantSheet(
+            bridge: bridge,
             module: sheet.module,
             context: sheet.context
         )
@@ -1805,6 +1806,7 @@ private struct AttendanceWorkspaceView: View {
     @State private var searchText = ""
     @State private var selectedStudentId: Int64?
     @State private var historySelection: AttendanceHistorySelection?
+    @State private var isFilterPopoverPresented = false
     @State private var recordsByStudentId: [Int64: KmpBridge.AttendanceRecordSnapshot] = [:]
     @State private var classOverviews: [KmpBridge.AttendanceClassOverview] = []
     @State private var savingStudentIds: Set<Int64> = []
@@ -1958,9 +1960,9 @@ private struct AttendanceWorkspaceView: View {
     }
 
     private var attendanceHeader: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 24) {
             HStack(alignment: .top, spacing: 16) {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 8) {
                     Text("Asistencia")
                         .font(.system(size: 34, weight: .black, design: .rounded))
                     Text(selectedClass?.name ?? "Todos los cursos")
@@ -1993,14 +1995,14 @@ private struct AttendanceWorkspaceView: View {
                 } label: {
                     Label(selectedClass?.name ?? "Todos los cursos", systemImage: "rectangle.3.group")
                         .font(.subheadline.weight(.bold))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
                 .buttonStyle(.plain)
             }
 
-            HStack(spacing: 12) {
+            HStack(spacing: 16) {
                 Picker("Vista", selection: $boardMode) {
                     ForEach(AttendanceBoardMode.allCases) { mode in
                         Text(mode.rawValue).tag(mode)
@@ -2012,25 +2014,71 @@ private struct AttendanceWorkspaceView: View {
                 DatePicker("", selection: $selectedDate, displayedComponents: .date)
                     .labelsHidden()
 
-                TextField("Buscar alumno…", text: $searchText)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: 260)
+                Spacer()
 
-                Picker("Estado", selection: $selectedStatusFilter) {
-                    Text("Todos").tag("TODOS")
-                    ForEach(AttendanceStatusOption.all) { option in
-                        Text(option.label).tag(option.id)
-                    }
+                Button {
+                    isFilterPopoverPresented.toggle()
+                } label: {
+                    Label(activeAttendanceFilterLabel, systemImage: activeAttendanceFilterIcon)
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
-                .pickerStyle(.menu)
-                .frame(width: 156)
+                .buttonStyle(.plain)
                 .disabled(boardMode == .courses)
+                .popover(isPresented: $isFilterPopoverPresented, arrowEdge: .bottom) {
+                    attendanceFilterPopover
+                }
             }
         }
         .padding(.horizontal, 24)
         .padding(.top, 24)
-        .padding(.bottom, 12)
+        .padding(.bottom, 24)
         .background(appPageBackground(for: colorScheme))
+    }
+
+    private var activeAttendanceFilterLabel: String {
+        var active = 0
+        if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            active += 1
+        }
+        if selectedStatusFilter != "TODOS" {
+            active += 1
+        }
+        return active == 0 ? "Filtrar" : "Filtros \(active)"
+    }
+
+    private var activeAttendanceFilterIcon: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedStatusFilter == "TODOS"
+            ? "line.3.horizontal.decrease.circle"
+            : "line.3.horizontal.decrease.circle.fill"
+    }
+
+    private var attendanceFilterPopover: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            TextField("Buscar alumno", text: $searchText)
+                .textFieldStyle(.roundedBorder)
+
+            Picker("Estado", selection: $selectedStatusFilter) {
+                Text("Todos").tag("TODOS")
+                ForEach(AttendanceStatusOption.all) { option in
+                    Text(option.label).tag(option.id)
+                }
+            }
+            .pickerStyle(.menu)
+
+            Button {
+                searchText = ""
+                selectedStatusFilter = "TODOS"
+            } label: {
+                Label("Limpiar filtros", systemImage: "xmark.circle")
+            }
+            .buttonStyle(.bordered)
+            .disabled(searchText.isEmpty && selectedStatusFilter == "TODOS")
+        }
+        .padding(24)
+        .frame(width: 320)
     }
 
     @ViewBuilder
@@ -2047,7 +2095,7 @@ private struct AttendanceWorkspaceView: View {
 
     private var coursesOverviewContent: some View {
         ScrollView {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 16)], spacing: 16) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 24)], spacing: 24) {
                 ForEach(classOverviews) { overview in
                     Button {
                         selectedClassId = overview.id
@@ -2069,16 +2117,16 @@ private struct AttendanceWorkspaceView: View {
                                     .foregroundStyle(.green)
                             }
 
-                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                                 overviewMiniStat("Presentes", overview.presentCount, .green)
                                 overviewMiniStat("Ausencias", overview.absentCount, .red)
                                 overviewMiniStat("Retrasos", overview.lateCount, .orange)
                                 overviewMiniStat("Pendientes", overview.pendingTodayCount, .gray)
                             }
                         }
-                        .padding(18)
+                        .padding(24)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
                     }
                     .buttonStyle(.plain)
                 }
@@ -2193,7 +2241,7 @@ private struct AttendanceWorkspaceView: View {
             }
         }
         .padding(.horizontal, 24)
-        .padding(.bottom, 20)
+        .padding(.bottom, 24)
         .background(appPageBackground(for: colorScheme))
     }
 
@@ -2203,8 +2251,8 @@ private struct AttendanceWorkspaceView: View {
             let studentIncidents = incidents.filter { $0.studentId?.int64Value == student.id }
             let recentStatuses = history.filter { $0.studentId == student.id }.sorted { $0.date > $1.date }
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 24) {
+                    HStack(alignment: .top, spacing: 16) {
                         WorkspaceInspectorHero(
                             title: "\(student.firstName) \(student.lastName)",
                             subtitle: "Histórico de asistencia e incidencias"
@@ -2236,7 +2284,7 @@ private struct AttendanceWorkspaceView: View {
                         )
                     }
 
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 8) {
                         Text("Histórico reciente")
                             .font(.headline)
                         ForEach(Array(recentStatuses.prefix(6)), id: \.id) { attendance in
@@ -2252,11 +2300,11 @@ private struct AttendanceWorkspaceView: View {
                     }
 
                     if !sessions.isEmpty {
-                        VStack(alignment: .leading, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 8) {
                             Text("Sesiones del día")
                                 .font(.headline)
                             ForEach(sessions) { entry in
-                                VStack(alignment: .leading, spacing: 6) {
+                                VStack(alignment: .leading, spacing: 8) {
                                     HStack {
                                         Text(entry.session.teachingUnitName)
                                             .font(.subheadline.weight(.bold))
@@ -2278,13 +2326,13 @@ private struct AttendanceWorkspaceView: View {
                                             .foregroundStyle(.secondary)
                                     }
                                 }
-                                .padding(12)
-                                .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .padding(16)
+                                .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                             }
                         }
                     }
 
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 8) {
                         Text("Incidencias")
                             .font(.headline)
                         if studentIncidents.isEmpty {
@@ -2303,7 +2351,7 @@ private struct AttendanceWorkspaceView: View {
                         }
                     }
 
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 8) {
                         Text("Nota de asistencia")
                             .font(.headline)
                         TextField("Observación rápida de la sesión…", text: $noteDraft, axis: .vertical)
@@ -2317,7 +2365,7 @@ private struct AttendanceWorkspaceView: View {
                         .disabled(selectedInspectionAttendance == nil)
                     }
 
-                    HStack(spacing: 12) {
+                    HStack(spacing: 16) {
                         Button("Abrir ficha de alumno") {
                             onOpenModule(.students, selectedClassId, student.id)
                         }
@@ -2341,7 +2389,7 @@ private struct AttendanceWorkspaceView: View {
                         .buttonStyle(.bordered)
                     }
                 }
-                .padding(20)
+                .padding(24)
             }
         } else {
             WorkspaceEmptyState(
@@ -2416,7 +2464,7 @@ private struct AttendanceWorkspaceView: View {
             let day = calendar.startOfDay(for: date)
             return (day, day)
         }
-        let end = calendar.date(byAdding: .day, value: -1, to: interval.end) ?? interval.end
+        let end = calendar.date(byAdding: .second, value: -1, to: interval.end) ?? interval.end
         return (interval.start, end)
     }
 
@@ -2527,12 +2575,16 @@ private struct AttendanceWorkspaceView: View {
 
     private func markAllPresent() async {
         guard let selectedClassId else { return }
-        for student in bridge.studentsInClass {
+        let students = filteredRows.map(\.student)
+        guard !students.isEmpty else { return }
+        for student in students {
             applyLocalAttendanceStatus("PRESENTE", for: student, classId: selectedClassId)
             try? await bridge.saveAttendance(studentId: student.id, classId: selectedClassId, on: selectedDate, status: "PRESENTE")
         }
         savingStudentIds.removeAll()
         await reloadAttendance()
+        await reloadClassOverviews()
+        bridge.status = "Todos los alumnos filtrados marcados como presentes."
     }
 
     private func repeatPattern() async {
@@ -2575,7 +2627,7 @@ private struct AttendanceWorkspaceView: View {
                 .background((option?.color ?? Color.secondary).opacity(record == nil ? 0.04 : 0.16))
                 .overlay(
                     Rectangle()
-                        .stroke(isSelected ? Color.accentColor.opacity(0.8) : Color.white.opacity(0.08), lineWidth: isSelected ? 1.5 : 0.5)
+                        .stroke(isSelected ? Color.accentColor.opacity(0.8) : Color.clear, lineWidth: isSelected ? 1.5 : 0.5)
                 )
         }
         .buttonStyle(.plain)
@@ -2598,8 +2650,8 @@ private struct AttendanceWorkspaceView: View {
                 .foregroundStyle(tint)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(8)
+        .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     private func historyRecord(for studentId: Int64, date: Date) -> KmpBridge.AttendanceRecordSnapshot? {
@@ -8471,6 +8523,7 @@ private extension Date {
 }
 
 private struct ContextualAIAssistantSheet: View {
+    let bridge: KmpBridge
     let module: AppWorkspaceModule
     let context: KmpBridge.ScreenAIContext
 
@@ -8483,8 +8536,10 @@ private struct ContextualAIAssistantSheet: View {
     @State private var editableText = ""
     @State private var isGenerating = false
     @State private var feedbackMessage: String?
+    @State private var teachingDraft: TeachingAssistantDraft?
 
     private let aiService = AppleFoundationContextualAIService()
+    private let teachingAssistantService = AppleFoundationTeachingAssistantService()
 
     var body: some View {
         NavigationStack {
@@ -8506,6 +8561,7 @@ private struct ContextualAIAssistantSheet: View {
             }
             .onAppear {
                 aiService.prewarm()
+                teachingAssistantService.prewarm()
                 selectedAction = context.suggestedActions.first
             }
         }
@@ -8525,6 +8581,13 @@ private struct ContextualAIAssistantSheet: View {
                     .foregroundStyle(.secondary)
                 Text(context.summary)
                     .font(.system(size: 14, weight: .medium, design: .rounded))
+                if let riskTitle = teachingDraft?.riskLevel?.title {
+                    Text(riskTitle)
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(NotebookStyle.primaryTint.opacity(0.12), in: Capsule(style: .continuous))
+                }
                 Text(availability.message)
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(availability.isAvailable ? NotebookStyle.successTint : NotebookStyle.warningTint)
@@ -8660,6 +8723,22 @@ private struct ContextualAIAssistantSheet: View {
                         .font(.system(size: 14, weight: .medium, design: .rounded))
                         .foregroundStyle(.secondary)
                 } else {
+                    if let result {
+                        evidenceSummary(
+                            facts: result.factsUsed,
+                            warnings: result.warnings,
+                            recommendedActions: result.recommendedActions,
+                            confidenceNote: result.confidenceNote
+                        )
+                    } else if let teachingDraft {
+                        evidenceSummary(
+                            facts: teachingDraft.factsUsed,
+                            warnings: teachingDraft.warnings,
+                            recommendedActions: teachingDraft.recommendedActions,
+                            confidenceNote: teachingDraft.confidenceNote
+                        )
+                    }
+
                     TextEditor(text: $editableText)
                         .frame(minHeight: 220)
                         .padding(8)
@@ -8672,23 +8751,84 @@ private struct ContextualAIAssistantSheet: View {
         }
     }
 
+    @ViewBuilder
+    private func evidenceSummary(
+        facts: [String],
+        warnings: [String],
+        recommendedActions: [String],
+        confidenceNote: String?
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let confidenceNote {
+                Text(confidenceNote)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+
+            if !facts.isEmpty {
+                summarySection(title: "Hechos usados", items: facts)
+            }
+            if !warnings.isEmpty {
+                summarySection(title: "Alertas", items: warnings)
+            }
+            if !recommendedActions.isEmpty {
+                summarySection(title: "Acciones recomendadas", items: recommendedActions)
+            }
+        }
+        .padding(.bottom, 10)
+    }
+
+    private func summarySection(title: String, items: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .foregroundStyle(.secondary)
+            ForEach(items, id: \.self) { item in
+                Text("• \(item)")
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+            }
+        }
+    }
+
     private func generate() {
         guard let selectedAction else { return }
         isGenerating = true
         feedbackMessage = nil
+        result = nil
+        teachingDraft = nil
         Task {
             do {
-                let generated = try await aiService.generateResult(
-                    from: context,
-                    action: selectedAction,
-                    audience: audience,
-                    tone: tone,
-                    customPrompt: customPrompt.nilIfBlank
-                )
                 await MainActor.run {
-                    result = generated
-                    editableText = generated.editableText
-                    isGenerating = false
+                    feedbackMessage = nil
+                }
+
+                if teachingAssistantService.canHandle(selectedAction.actionId) {
+                    let generated = try await teachingAssistantService.generateDraft(
+                        for: selectedAction.actionId,
+                        bridge: bridge,
+                        context: context,
+                        audience: audience,
+                        tone: tone,
+                        customPrompt: customPrompt.nilIfBlank
+                    )
+                    await MainActor.run {
+                        teachingDraft = generated
+                        editableText = generated.editableText
+                        isGenerating = false
+                    }
+                } else {
+                    let generated = try await aiService.generateResult(
+                        from: context,
+                        action: selectedAction,
+                        audience: audience,
+                        tone: tone,
+                        customPrompt: customPrompt.nilIfBlank
+                    )
+                    await MainActor.run {
+                        result = generated
+                        editableText = generated.editableText
+                        isGenerating = false
+                    }
                 }
             } catch {
                 await MainActor.run {

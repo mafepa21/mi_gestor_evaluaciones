@@ -7,37 +7,34 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		042FE630464B6D6C17B475DC /* MacModuleStubs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09D87D21656FDFADF58B2FBA /* MacModuleStubs.swift */; };
 		0D1BC8425E85592907678393 /* MacSqliteCompat.c in Sources */ = {isa = PBXBuildFile; fileRef = B45DCEB32A99C22B048911B0 /* MacSqliteCompat.c */; };
-		0D1BC8425E85592907678394 /* MacAppSessionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B45DCEB32A99C22B048911B1 /* MacAppSessionController.swift */; };
-		0D1BC8425E85592907678395 /* MacFeatureRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = B45DCEB32A99C22B048911B2 /* MacFeatureRegistry.swift */; };
-		0D1BC8425E85592907678396 /* MacRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B45DCEB32A99C22B048911B3 /* MacRootView.swift */; };
-		0D1BC8425E85592907678397 /* MacSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B45DCEB32A99C22B048911B4 /* MacSettingsView.swift */; };
-		0D1BC8425E85592907678398 /* MacAppStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = B45DCEB32A99C22B048911B5 /* MacAppStyle.swift */; };
-		0D1BC8425E85592907678399 /* MacDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B45DCEB32A99C22B048911B6 /* MacDashboardView.swift */; };
-		0D1BC8425E85592907678400 /* MacSyncView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B45DCEB32A99C22B048911B7 /* MacSyncView.swift */; };
-		0D1BC8425E85592907678401 /* MacModuleStubs.swift in Sources */ = {isa = PBXBuildFile; fileRef = B45DCEB32A99C22B048911B8 /* MacModuleStubs.swift */; };
-		0D1BC8425E85592907678402 /* MacAttendanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B45DCEB32A99C22B048911B9 /* MacAttendanceView.swift */; };
 		0E1FCE13DF847EFA7D44E0AD /* TeacherScheduleSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85B8ED1FDFD34D1DF02ACDD8 /* TeacherScheduleSettingsView.swift */; };
 		1286D99337F554322E21CD9C /* AppleAppRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BE36C2FC3CA10A0D5E7F322 /* AppleAppRootView.swift */; };
+		141D04C442E3CD9754436746 /* SyncEventListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8E92873CBFFD07EEDF953F4 /* SyncEventListener.swift */; };
 		17C72CB98D707507A9BA78E1 /* PlannerWorkspaceIOS.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AFC9FBC11C0B8B50E847112 /* PlannerWorkspaceIOS.swift */; };
 		1E5709A0F0A7D9DD69106545 /* RubricBulkEvaluationSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53D5C192E36FCFC177FCB496 /* RubricBulkEvaluationSheet.swift */; };
 		21BBC6052C42456A62FA3759 /* MiGestorKMPiOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20918D0AFE00F50C0378076 /* MiGestorKMPiOSApp.swift */; };
 		233E4313DEDDC02CD056C9CA /* AppleFoundationContextualAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14C238867D14FCB6C59390D5 /* AppleFoundationContextualAIService.swift */; };
 		2E0C1B67E85317A3147416FF /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2BAD893EC7E90121671F7BDB /* Assets.xcassets */; };
+		303A136D412D596B99BB06A8 /* MacDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7030138D429F12877D448CD /* MacDashboardView.swift */; };
 		304A3E3E0D133E436DD668CB /* AppleLifecycleNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CA5E3F32F725E60EF71507B /* AppleLifecycleNotifications.swift */; };
-		31A2A5BC1C8F4D3A9E1C0011 /* QRCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31A2A5BC1C8F4D3A9E1C0010 /* QRCodeView.swift */; };
+		3C174718E1D1C8F7AFA23C0E /* PendingEvaluationPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72D234C2A47232591178F898 /* PendingEvaluationPickerSheet.swift */; };
 		3CB4C3CA98572F18CC5D1DA7 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2BAD893EC7E90121671F7BDB /* Assets.xcassets */; };
+		3D42ABE38DAA65311889C449 /* MacFeatureRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 540E9FF031B5425A4147DC64 /* MacFeatureRegistry.swift */; };
 		48055DD8105D96F8A70C7436 /* NotebookTopBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 553BE9C8F245950E744D692A /* NotebookTopBar.swift */; };
 		4A94FBA079B366485372AFC6 /* AppleFoundationAnalyticsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2EB53505ACE7B6CA23A520F /* AppleFoundationAnalyticsService.swift */; };
 		4FC65E1EA9E7488F1442911F /* MiGestorKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D60E195E650E3C66A0B033A6 /* MiGestorKit.framework */; };
 		56234DAACC18188F7C681066 /* AppleLifecycleNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CA5E3F32F725E60EF71507B /* AppleLifecycleNotifications.swift */; };
+		59D57BFC6882311B3CE5FB2A /* NotebookFormulaKeyboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28F88ED1497646466866123A /* NotebookFormulaKeyboard.swift */; };
+		5C66DE9508311795F6FE0DF8 /* PendingEvaluationPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72D234C2A47232591178F898 /* PendingEvaluationPickerSheet.swift */; };
 		5E3F7337F3A6A0EC2C17DA4E /* AppleBridgeBootstrap.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4DF051FC8473FCD24BCC26C /* AppleBridgeBootstrap.swift */; };
 		61FFEC29461420F26B181A57 /* RubricBulkEvaluationSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53D5C192E36FCFC177FCB496 /* RubricBulkEvaluationSheet.swift */; };
+		636BFAF254D3F3711AE5CF10 /* MacAppStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = E57AA10D4F5A9A3199288A4C /* MacAppStyle.swift */; };
 		63DB1711AD7BF3AFA2B8B305 /* EvaluationDesign.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61DBB79CD6256350F830529A /* EvaluationDesign.swift */; };
 		6439B3815A09D0F867D1FE88 /* TeacherScheduleSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85B8ED1FDFD34D1DF02ACDD8 /* TeacherScheduleSettingsView.swift */; };
 		6BE839B846E6739DA1A6885C /* AppleRoundedCorner.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC0359FA7FD3BF06A0E300F5 /* AppleRoundedCorner.swift */; };
 		7022D3558D3683BF04051378 /* NotebookHiddenColumnsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B252E2D9B95CDC6CB59B9A3 /* NotebookHiddenColumnsSheet.swift */; };
-		71F0A9C2B4E647D890123450 /* NotebookFormulaKeyboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71F0A9C2B4E647D89012344F /* NotebookFormulaKeyboard.swift */; };
 		727DC013672A58DEC4CCB567 /* MiGestorKMPMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7F324EED74CBC624894170D /* MiGestorKMPMacApp.swift */; };
 		738EEEE78B67FE32320DC5E1 /* AppleFoundationContextualAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14C238867D14FCB6C59390D5 /* AppleFoundationContextualAIService.swift */; };
 		740FE4946BFED011E3EE355F /* AppleAppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 996E1D0739D88B5507B110B6 /* AppleAppEnvironment.swift */; };
@@ -50,17 +47,20 @@
 		86BC90A2A4604BC6B4545E27 /* IPadWorkspaceShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74BD0F6DDCBB48B737A44D3C /* IPadWorkspaceShell.swift */; };
 		878FB204389D94BB6A912BF6 /* NotebookModuleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BA9E95BA74B4D7D8AC2D362 /* NotebookModuleView.swift */; };
 		89A42DAB37443B7552C21222 /* AppleAppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 996E1D0739D88B5507B110B6 /* AppleAppEnvironment.swift */; };
-		89A42DAB37443B7552C21223 /* QRCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31A2A5BC1C8F4D3A9E1C0010 /* QRCodeView.swift */; };
+		8EBCBE31F6DB70B8CE3C1CE0 /* SyncEventListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8E92873CBFFD07EEDF953F4 /* SyncEventListener.swift */; };
+		9546F37A775EA87B30F4F374 /* MacSyncView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 926C38D687AB3B3B857DA79A /* MacSyncView.swift */; };
+		96D1470DC455935FA3D0954A /* QRCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9892E60A7CF035F7B78B081 /* QRCodeView.swift */; };
 		9A31C548996D137897FA1C75 /* AppleBridgeBootstrap.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4DF051FC8473FCD24BCC26C /* AppleBridgeBootstrap.swift */; };
 		9D01F457DE02D070677CF7CC /* AppleSharedBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = B43394FF80D6A97B38599A52 /* AppleSharedBridge.swift */; };
-		A1B2C3D4E5F60718293A4B5D /* SyncEventListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5C /* SyncEventListener.swift */; };
-		A1B2C3D4E5F60718293A4B5E /* SyncEventListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5C /* SyncEventListener.swift */; };
 		A891426FA79E3A7AB4670107 /* KmpBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = B819027ADD26559CC96B1BDB /* KmpBridge.swift */; };
 		A955FA3E7711CA5298A75589 /* IPadWorkspaceShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74BD0F6DDCBB48B737A44D3C /* IPadWorkspaceShell.swift */; };
 		B20B74F08202FFF9657EF528 /* PlannerWorkspaceIOS.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AFC9FBC11C0B8B50E847112 /* PlannerWorkspaceIOS.swift */; };
+		B3F0FF57249376955AE83723 /* MacAttendanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5FCBA2AF2D125D2CD13CFF5 /* MacAttendanceView.swift */; };
 		B7CB07BCB74E309D55528193 /* KmpBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = B819027ADD26559CC96B1BDB /* KmpBridge.swift */; };
 		BC651399795A9BCF20664187 /* AppleRoundedCorner.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC0359FA7FD3BF06A0E300F5 /* AppleRoundedCorner.swift */; };
 		BC91ADD74993C72E5A133C3D /* MacCommandCenterCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75913A6148C5D164F2EFA2A7 /* MacCommandCenterCoordinator.swift */; };
+		BC978153E9C1C28BB90F4581 /* NotebookFormulaKeyboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28F88ED1497646466866123A /* NotebookFormulaKeyboard.swift */; };
+		BD47B7FB84E4AAC46BCF34DD /* MacSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98A9F35D6CEDD07FCA45EBA5 /* MacSettingsView.swift */; };
 		BEE09F01DFABE9A8498C8B0E /* AppleViewCompatibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = 466A6EE8F4E0ABF4D24AEDDD /* AppleViewCompatibility.swift */; };
 		BEE5A4B10ED6EF26DC223E17 /* AppleViewCompatibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = 466A6EE8F4E0ABF4D24AEDDD /* AppleViewCompatibility.swift */; };
 		C5E1560FD55A2CDC68B12B61 /* MiGestorKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = D60E195E650E3C66A0B033A6 /* MiGestorKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -68,11 +68,13 @@
 		D05BF5462DD0EA3DF89D927B /* NotebookTopBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 553BE9C8F245950E744D692A /* NotebookTopBar.swift */; };
 		D3EBA1E1A169F964D3CA7654 /* NotebookModuleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BA9E95BA74B4D7D8AC2D362 /* NotebookModuleView.swift */; };
 		DAE6053C0723B1F6576BE406 /* NotebookHiddenColumnsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B252E2D9B95CDC6CB59B9A3 /* NotebookHiddenColumnsSheet.swift */; };
-		DB7E21F64A9148BCA0123451 /* NotebookFormulaKeyboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71F0A9C2B4E647D89012344F /* NotebookFormulaKeyboard.swift */; };
 		DE599C50071E5A0823817F7F /* NotebookDataGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD165C28F5CF6FD5F43B44DF /* NotebookDataGrid.swift */; };
 		E491CBE20486EA0E556C3F9B /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 574A36D51DB905768D1450DF /* ContentView.swift */; };
+		E6E3B11097E285CF5867AFEF /* QRCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9892E60A7CF035F7B78B081 /* QRCodeView.swift */; };
 		EBDC0553FE5545D4E7C33846 /* AppleFoundationReportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27176C9EB76172D41191833D /* AppleFoundationReportService.swift */; };
 		F0B171DB64DE32129BFBCE30 /* AppleAppRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BE36C2FC3CA10A0D5E7F322 /* AppleAppRootView.swift */; };
+		F0FD5D3E81213790BCEC6415 /* MacRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4D63DE58BB98EFB94E5B080 /* MacRootView.swift */; };
+		F1D09F5DF977701D749A19AD /* MacAppSessionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C66F3C885EB6EAF74EACD0D6 /* MacAppSessionController.swift */; };
 		F5B53E702D8FF43EAC82D921 /* AddColumnSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 583BC23E9E292D736CC9EF49 /* AddColumnSheet.swift */; };
 		F5D4B655C174800ABAD76329 /* AppleFoundationAnalyticsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2EB53505ACE7B6CA23A520F /* AppleFoundationAnalyticsService.swift */; };
 		FAF9D1F8EE5E77D85E248623 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 574A36D51DB905768D1450DF /* ContentView.swift */; };
@@ -104,47 +106,48 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		09D87D21656FDFADF58B2FBA /* MacModuleStubs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacModuleStubs.swift; sourceTree = "<group>"; };
 		14C238867D14FCB6C59390D5 /* AppleFoundationContextualAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleFoundationContextualAIService.swift; sourceTree = "<group>"; };
 		27176C9EB76172D41191833D /* AppleFoundationReportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleFoundationReportService.swift; sourceTree = "<group>"; };
+		28F88ED1497646466866123A /* NotebookFormulaKeyboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookFormulaKeyboard.swift; sourceTree = "<group>"; };
 		2BAD893EC7E90121671F7BDB /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		31A2A5BC1C8F4D3A9E1C0010 /* QRCodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRCodeView.swift; sourceTree = "<group>"; };
 		466A6EE8F4E0ABF4D24AEDDD /* AppleViewCompatibility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleViewCompatibility.swift; sourceTree = "<group>"; };
 		467B02D2576A83946B6237BA /* MiGestorKMPiOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = MiGestorKMPiOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4BA9E95BA74B4D7D8AC2D362 /* NotebookModuleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookModuleView.swift; sourceTree = "<group>"; };
 		4BE36C2FC3CA10A0D5E7F322 /* AppleAppRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleAppRootView.swift; sourceTree = "<group>"; };
 		53D5C192E36FCFC177FCB496 /* RubricBulkEvaluationSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RubricBulkEvaluationSheet.swift; sourceTree = "<group>"; };
+		540E9FF031B5425A4147DC64 /* MacFeatureRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacFeatureRegistry.swift; sourceTree = "<group>"; };
 		553BE9C8F245950E744D692A /* NotebookTopBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookTopBar.swift; sourceTree = "<group>"; };
 		574A36D51DB905768D1450DF /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		583BC23E9E292D736CC9EF49 /* AddColumnSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddColumnSheet.swift; sourceTree = "<group>"; };
 		61DBB79CD6256350F830529A /* EvaluationDesign.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvaluationDesign.swift; sourceTree = "<group>"; };
 		6CA5E3F32F725E60EF71507B /* AppleLifecycleNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleLifecycleNotifications.swift; sourceTree = "<group>"; };
-		71F0A9C2B4E647D89012344F /* NotebookFormulaKeyboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookFormulaKeyboard.swift; sourceTree = "<group>"; };
+		72D234C2A47232591178F898 /* PendingEvaluationPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingEvaluationPickerSheet.swift; sourceTree = "<group>"; };
 		74BD0F6DDCBB48B737A44D3C /* IPadWorkspaceShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPadWorkspaceShell.swift; sourceTree = "<group>"; };
 		75913A6148C5D164F2EFA2A7 /* MacCommandCenterCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacCommandCenterCoordinator.swift; sourceTree = "<group>"; };
 		7B252E2D9B95CDC6CB59B9A3 /* NotebookHiddenColumnsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookHiddenColumnsSheet.swift; sourceTree = "<group>"; };
 		85B8ED1FDFD34D1DF02ACDD8 /* TeacherScheduleSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeacherScheduleSettingsView.swift; sourceTree = "<group>"; };
 		8AFC9FBC11C0B8B50E847112 /* PlannerWorkspaceIOS.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerWorkspaceIOS.swift; sourceTree = "<group>"; };
+		926C38D687AB3B3B857DA79A /* MacSyncView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacSyncView.swift; sourceTree = "<group>"; };
+		98A9F35D6CEDD07FCA45EBA5 /* MacSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacSettingsView.swift; sourceTree = "<group>"; };
 		996E1D0739D88B5507B110B6 /* AppleAppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleAppEnvironment.swift; sourceTree = "<group>"; };
-		A1B2C3D4E5F60718293A4B5C /* SyncEventListener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncEventListener.swift; sourceTree = "<group>"; };
+		A5FCBA2AF2D125D2CD13CFF5 /* MacAttendanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacAttendanceView.swift; sourceTree = "<group>"; };
 		B43394FF80D6A97B38599A52 /* AppleSharedBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSharedBridge.swift; sourceTree = "<group>"; };
 		B45DCEB32A99C22B048911B0 /* MacSqliteCompat.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = MacSqliteCompat.c; sourceTree = "<group>"; };
-		B45DCEB32A99C22B048911B1 /* MacAppSessionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacAppSessionController.swift; sourceTree = "<group>"; };
-		B45DCEB32A99C22B048911B2 /* MacFeatureRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacFeatureRegistry.swift; sourceTree = "<group>"; };
-		B45DCEB32A99C22B048911B3 /* MacRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacRootView.swift; sourceTree = "<group>"; };
-		B45DCEB32A99C22B048911B4 /* MacSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacSettingsView.swift; sourceTree = "<group>"; };
-		B45DCEB32A99C22B048911B5 /* MacAppStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacAppStyle.swift; sourceTree = "<group>"; };
-		B45DCEB32A99C22B048911B6 /* MacDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacDashboardView.swift; sourceTree = "<group>"; };
-		B45DCEB32A99C22B048911B7 /* MacSyncView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacSyncView.swift; sourceTree = "<group>"; };
-		B45DCEB32A99C22B048911B8 /* MacModuleStubs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacModuleStubs.swift; sourceTree = "<group>"; };
-		B45DCEB32A99C22B048911B9 /* MacAttendanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacAttendanceView.swift; sourceTree = "<group>"; };
 		B819027ADD26559CC96B1BDB /* KmpBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KmpBridge.swift; sourceTree = "<group>"; };
 		BB7ABC0A1CE983C4799B4FE9 /* MiGestorKMPMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MiGestorKMPMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BD165C28F5CF6FD5F43B44DF /* NotebookDataGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookDataGrid.swift; sourceTree = "<group>"; };
 		C20918D0AFE00F50C0378076 /* MiGestorKMPiOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiGestorKMPiOSApp.swift; sourceTree = "<group>"; };
 		C2EB53505ACE7B6CA23A520F /* AppleFoundationAnalyticsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleFoundationAnalyticsService.swift; sourceTree = "<group>"; };
 		C4DF051FC8473FCD24BCC26C /* AppleBridgeBootstrap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleBridgeBootstrap.swift; sourceTree = "<group>"; };
+		C66F3C885EB6EAF74EACD0D6 /* MacAppSessionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacAppSessionController.swift; sourceTree = "<group>"; };
+		D4D63DE58BB98EFB94E5B080 /* MacRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacRootView.swift; sourceTree = "<group>"; };
 		D60E195E650E3C66A0B033A6 /* MiGestorKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MiGestorKit.framework; path = Frameworks/MiGestorKit.framework; sourceTree = "<group>"; };
+		D7030138D429F12877D448CD /* MacDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacDashboardView.swift; sourceTree = "<group>"; };
 		D7F324EED74CBC624894170D /* MiGestorKMPMacApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiGestorKMPMacApp.swift; sourceTree = "<group>"; };
+		D8E92873CBFFD07EEDF953F4 /* SyncEventListener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncEventListener.swift; sourceTree = "<group>"; };
+		D9892E60A7CF035F7B78B081 /* QRCodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRCodeView.swift; sourceTree = "<group>"; };
+		E57AA10D4F5A9A3199288A4C /* MacAppStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacAppStyle.swift; sourceTree = "<group>"; };
 		EC0359FA7FD3BF06A0E300F5 /* AppleRoundedCorner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleRoundedCorner.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -171,17 +174,17 @@
 		05C4C41DB5CB5D22AFCD1879 /* MacApp */ = {
 			isa = PBXGroup;
 			children = (
-				B45DCEB32A99C22B048911B5 /* MacAppStyle.swift */,
-				B45DCEB32A99C22B048911B1 /* MacAppSessionController.swift */,
-				B45DCEB32A99C22B048911B9 /* MacAttendanceView.swift */,
+				C66F3C885EB6EAF74EACD0D6 /* MacAppSessionController.swift */,
+				E57AA10D4F5A9A3199288A4C /* MacAppStyle.swift */,
+				A5FCBA2AF2D125D2CD13CFF5 /* MacAttendanceView.swift */,
 				75913A6148C5D164F2EFA2A7 /* MacCommandCenterCoordinator.swift */,
-				B45DCEB32A99C22B048911B6 /* MacDashboardView.swift */,
-				B45DCEB32A99C22B048911B2 /* MacFeatureRegistry.swift */,
-				B45DCEB32A99C22B048911B8 /* MacModuleStubs.swift */,
-				B45DCEB32A99C22B048911B3 /* MacRootView.swift */,
-				B45DCEB32A99C22B048911B4 /* MacSettingsView.swift */,
+				D7030138D429F12877D448CD /* MacDashboardView.swift */,
+				540E9FF031B5425A4147DC64 /* MacFeatureRegistry.swift */,
+				09D87D21656FDFADF58B2FBA /* MacModuleStubs.swift */,
+				D4D63DE58BB98EFB94E5B080 /* MacRootView.swift */,
+				98A9F35D6CEDD07FCA45EBA5 /* MacSettingsView.swift */,
 				B45DCEB32A99C22B048911B0 /* MacSqliteCompat.c */,
-				B45DCEB32A99C22B048911B7 /* MacSyncView.swift */,
+				926C38D687AB3B3B857DA79A /* MacSyncView.swift */,
 				D7F324EED74CBC624894170D /* MiGestorKMPMacApp.swift */,
 			);
 			path = MacApp;
@@ -194,11 +197,12 @@
 				4BE36C2FC3CA10A0D5E7F322 /* AppleAppRootView.swift */,
 				C4DF051FC8473FCD24BCC26C /* AppleBridgeBootstrap.swift */,
 				6CA5E3F32F725E60EF71507B /* AppleLifecycleNotifications.swift */,
-				31A2A5BC1C8F4D3A9E1C0010 /* QRCodeView.swift */,
 				EC0359FA7FD3BF06A0E300F5 /* AppleRoundedCorner.swift */,
 				B43394FF80D6A97B38599A52 /* AppleSharedBridge.swift */,
 				466A6EE8F4E0ABF4D24AEDDD /* AppleViewCompatibility.swift */,
-				A1B2C3D4E5F60718293A4B5C /* SyncEventListener.swift */,
+				72D234C2A47232591178F898 /* PendingEvaluationPickerSheet.swift */,
+				D9892E60A7CF035F7B78B081 /* QRCodeView.swift */,
+				D8E92873CBFFD07EEDF953F4 /* SyncEventListener.swift */,
 			);
 			path = AppleShared;
 			sourceTree = "<group>";
@@ -245,7 +249,7 @@
 				B819027ADD26559CC96B1BDB /* KmpBridge.swift */,
 				C20918D0AFE00F50C0378076 /* MiGestorKMPiOSApp.swift */,
 				BD165C28F5CF6FD5F43B44DF /* NotebookDataGrid.swift */,
-				71F0A9C2B4E647D89012344F /* NotebookFormulaKeyboard.swift */,
+				28F88ED1497646466866123A /* NotebookFormulaKeyboard.swift */,
 				7B252E2D9B95CDC6CB59B9A3 /* NotebookHiddenColumnsSheet.swift */,
 				4BA9E95BA74B4D7D8AC2D362 /* NotebookModuleView.swift */,
 				553BE9C8F245950E744D692A /* NotebookTopBar.swift */,
@@ -433,34 +437,35 @@
 				233E4313DEDDC02CD056C9CA /* AppleFoundationContextualAIService.swift in Sources */,
 				78A071A272E2BC12FABF66B2 /* AppleFoundationReportService.swift in Sources */,
 				56234DAACC18188F7C681066 /* AppleLifecycleNotifications.swift in Sources */,
-				31A2A5BC1C8F4D3A9E1C0011 /* QRCodeView.swift in Sources */,
 				BC651399795A9BCF20664187 /* AppleRoundedCorner.swift in Sources */,
 				7B200C717CDA9324BBC303F3 /* AppleSharedBridge.swift in Sources */,
 				BEE09F01DFABE9A8498C8B0E /* AppleViewCompatibility.swift in Sources */,
-				A1B2C3D4E5F60718293A4B5D /* SyncEventListener.swift in Sources */,
 				FAF9D1F8EE5E77D85E248623 /* ContentView.swift in Sources */,
 				82E4E70524506517472625EB /* EvaluationDesign.swift in Sources */,
 				A955FA3E7711CA5298A75589 /* IPadWorkspaceShell.swift in Sources */,
 				A891426FA79E3A7AB4670107 /* KmpBridge.swift in Sources */,
-				0D1BC8425E85592907678398 /* MacAppStyle.swift in Sources */,
-				0D1BC8425E85592907678394 /* MacAppSessionController.swift in Sources */,
-				0D1BC8425E85592907678402 /* MacAttendanceView.swift in Sources */,
+				F1D09F5DF977701D749A19AD /* MacAppSessionController.swift in Sources */,
+				636BFAF254D3F3711AE5CF10 /* MacAppStyle.swift in Sources */,
+				B3F0FF57249376955AE83723 /* MacAttendanceView.swift in Sources */,
 				BC91ADD74993C72E5A133C3D /* MacCommandCenterCoordinator.swift in Sources */,
-				0D1BC8425E85592907678399 /* MacDashboardView.swift in Sources */,
-				0D1BC8425E85592907678395 /* MacFeatureRegistry.swift in Sources */,
-				0D1BC8425E85592907678401 /* MacModuleStubs.swift in Sources */,
-				0D1BC8425E85592907678396 /* MacRootView.swift in Sources */,
-				0D1BC8425E85592907678397 /* MacSettingsView.swift in Sources */,
+				303A136D412D596B99BB06A8 /* MacDashboardView.swift in Sources */,
+				3D42ABE38DAA65311889C449 /* MacFeatureRegistry.swift in Sources */,
+				042FE630464B6D6C17B475DC /* MacModuleStubs.swift in Sources */,
+				F0FD5D3E81213790BCEC6415 /* MacRootView.swift in Sources */,
+				BD47B7FB84E4AAC46BCF34DD /* MacSettingsView.swift in Sources */,
 				0D1BC8425E85592907678393 /* MacSqliteCompat.c in Sources */,
-				0D1BC8425E85592907678400 /* MacSyncView.swift in Sources */,
+				9546F37A775EA87B30F4F374 /* MacSyncView.swift in Sources */,
 				727DC013672A58DEC4CCB567 /* MiGestorKMPMacApp.swift in Sources */,
 				DE599C50071E5A0823817F7F /* NotebookDataGrid.swift in Sources */,
-				DB7E21F64A9148BCA0123451 /* NotebookFormulaKeyboard.swift in Sources */,
+				BC978153E9C1C28BB90F4581 /* NotebookFormulaKeyboard.swift in Sources */,
 				DAE6053C0723B1F6576BE406 /* NotebookHiddenColumnsSheet.swift in Sources */,
 				878FB204389D94BB6A912BF6 /* NotebookModuleView.swift in Sources */,
 				48055DD8105D96F8A70C7436 /* NotebookTopBar.swift in Sources */,
+				3C174718E1D1C8F7AFA23C0E /* PendingEvaluationPickerSheet.swift in Sources */,
 				17C72CB98D707507A9BA78E1 /* PlannerWorkspaceIOS.swift in Sources */,
+				96D1470DC455935FA3D0954A /* QRCodeView.swift in Sources */,
 				61FFEC29461420F26B181A57 /* RubricBulkEvaluationSheet.swift in Sources */,
+				141D04C442E3CD9754436746 /* SyncEventListener.swift in Sources */,
 				0E1FCE13DF847EFA7D44E0AD /* TeacherScheduleSettingsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -477,23 +482,24 @@
 				738EEEE78B67FE32320DC5E1 /* AppleFoundationContextualAIService.swift in Sources */,
 				EBDC0553FE5545D4E7C33846 /* AppleFoundationReportService.swift in Sources */,
 				304A3E3E0D133E436DD668CB /* AppleLifecycleNotifications.swift in Sources */,
-				89A42DAB37443B7552C21223 /* QRCodeView.swift in Sources */,
 				6BE839B846E6739DA1A6885C /* AppleRoundedCorner.swift in Sources */,
 				9D01F457DE02D070677CF7CC /* AppleSharedBridge.swift in Sources */,
 				BEE5A4B10ED6EF26DC223E17 /* AppleViewCompatibility.swift in Sources */,
-				A1B2C3D4E5F60718293A4B5E /* SyncEventListener.swift in Sources */,
 				E491CBE20486EA0E556C3F9B /* ContentView.swift in Sources */,
 				63DB1711AD7BF3AFA2B8B305 /* EvaluationDesign.swift in Sources */,
 				86BC90A2A4604BC6B4545E27 /* IPadWorkspaceShell.swift in Sources */,
 				B7CB07BCB74E309D55528193 /* KmpBridge.swift in Sources */,
 				21BBC6052C42456A62FA3759 /* MiGestorKMPiOSApp.swift in Sources */,
 				CE280AA0131630BF9D889D8E /* NotebookDataGrid.swift in Sources */,
-				71F0A9C2B4E647D890123450 /* NotebookFormulaKeyboard.swift in Sources */,
+				59D57BFC6882311B3CE5FB2A /* NotebookFormulaKeyboard.swift in Sources */,
 				7022D3558D3683BF04051378 /* NotebookHiddenColumnsSheet.swift in Sources */,
 				D3EBA1E1A169F964D3CA7654 /* NotebookModuleView.swift in Sources */,
 				D05BF5462DD0EA3DF89D927B /* NotebookTopBar.swift in Sources */,
+				5C66DE9508311795F6FE0DF8 /* PendingEvaluationPickerSheet.swift in Sources */,
 				B20B74F08202FFF9657EF528 /* PlannerWorkspaceIOS.swift in Sources */,
+				E6E3B11097E285CF5867AFEF /* QRCodeView.swift in Sources */,
 				1E5709A0F0A7D9DD69106545 /* RubricBulkEvaluationSheet.swift in Sources */,
+				8EBCBE31F6DB70B8CE3C1CE0 /* SyncEventListener.swift in Sources */,
 				6439B3815A09D0F867D1FE88 /* TeacherScheduleSettingsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -586,8 +592,17 @@
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = (
+					UIInterfaceOrientationPortrait,
+					UIInterfaceOrientationPortraitUpsideDown,
+					UIInterfaceOrientationLandscapeLeft,
+					UIInterfaceOrientationLandscapeRight,
+				);
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = (
+					UIInterfaceOrientationPortrait,
+					UIInterfaceOrientationLandscapeLeft,
+					UIInterfaceOrientationLandscapeRight,
+				);
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -683,8 +698,17 @@
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = (
+					UIInterfaceOrientationPortrait,
+					UIInterfaceOrientationPortraitUpsideDown,
+					UIInterfaceOrientationLandscapeLeft,
+					UIInterfaceOrientationLandscapeRight,
+				);
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = (
+					UIInterfaceOrientationPortrait,
+					UIInterfaceOrientationLandscapeLeft,
+					UIInterfaceOrientationLandscapeRight,
+				);
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -772,7 +796,7 @@
 				D0F48562755318C6C55888FF /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
+			defaultConfigurationName = Debug;
 		};
 		B223B89168BBA6C91E036090 /* Build configuration list for PBXNativeTarget "MiGestorKMPiOS" */ = {
 			isa = XCConfigurationList;
@@ -781,7 +805,7 @@
 				53D1114FEAA05D13A4A71A21 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
+			defaultConfigurationName = Debug;
 		};
 		BC114C473E48EF5361E72A92 /* Build configuration list for PBXProject "MiGestorKMPiOS" */ = {
 			isa = XCConfigurationList;
@@ -790,7 +814,7 @@
 				5A115C837F9C64337C07D5DC /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
+			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
 	};

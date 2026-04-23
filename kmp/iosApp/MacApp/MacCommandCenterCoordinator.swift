@@ -237,6 +237,7 @@ final class MacCommandCenterCoordinator: ObservableObject {
     }
 
     private func updateState(_ newState: ApplePairingServiceState, message: String) {
+        guard serviceState != newState || statusMessage != message else { return }
         serviceState = newState
         statusMessage = message
     }
@@ -358,6 +359,10 @@ final class MacCommandCenterCoordinator: ObservableObject {
                 return
             }
 
+            if lastLifecycleState == .running, lastRunningSnapshot == snapshot {
+                return
+            }
+
             lastRunningSnapshot = snapshot
             lastLifecycleState = .running
             print("[Pairing] received payload: \(snapshot.payload)")
@@ -443,7 +448,7 @@ private enum HelperLifecycleState {
     case failed
 }
 
-private struct RunningSnapshot {
+private struct RunningSnapshot: Equatable {
     let host: String
     let port: Int
     let pin: String

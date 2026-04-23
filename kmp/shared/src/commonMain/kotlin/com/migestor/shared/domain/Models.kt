@@ -391,6 +391,17 @@ data class GroupSummary(
     val lastNotes: String,
 )
 
+data class AgendaNavigationTarget(
+    val id: String,
+    val navigationKind: String = "none",
+    val label: String,
+    val studentId: Long? = null,
+    val classId: Long? = null,
+    val evaluationId: Long? = null,
+    val rubricId: Long? = null,
+    val columnId: String? = null,
+)
+
 data class AgendaItem(
     val id: String,
     val classId: Long?,
@@ -399,6 +410,8 @@ data class AgendaItem(
     val subtitle: String,
     val timeLabel: String,
     val status: String,
+    val navigationKind: String = "none",
+    val navigationTargets: List<AgendaNavigationTarget> = emptyList(),
 )
 
 data class PEOperationalItem(

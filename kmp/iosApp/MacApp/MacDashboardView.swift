@@ -23,6 +23,7 @@ struct MacDashboardView: View {
     @State private var inspectorSelection: MacDashboardInspectorSelection? = nil
     @State private var inspectorTab: MacDashboardInspectorTab = .detail
     @State private var activeSheet: DashboardSheet? = nil
+    @State private var briefingEvidence: TeachingEvidencePack?
 
     private var mode: MacDashboardMode {
         MacDashboardMode(rawValue: modeRawValue) ?? .office
@@ -37,6 +38,7 @@ struct MacDashboardView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
                     pageHeader
+                    briefingCard
 
                     if let snapshot = bridge.dashboardSnapshot {
                         if proxy.size.width >= 1100 {
@@ -75,6 +77,10 @@ struct MacDashboardView: View {
                 selectedClassId = bridge.classes.first?.id
             }
             await applyFiltersAndReload()
+            briefingEvidence = try? await DailyBriefEvidenceBuilder.build(bridge: bridge, classId: selectedClassId)
+        }
+        .task(id: selectedClassId) {
+            briefingEvidence = try? await DailyBriefEvidenceBuilder.build(bridge: bridge, classId: selectedClassId)
         }
         .onAppear(perform: syncToolbarActions)
         .onDisappear { onToolbarActionsChange(nil) }
@@ -85,6 +91,32 @@ struct MacDashboardView: View {
         .onChange(of: priorityFilter) { _ in triggerReload() }
         .onChange(of: sessionStatusFilter) { _ in triggerReload() }
         .onChange(of: inspectorSelection) { _ in inspectorTab = .detail }
+    }
+
+    @ViewBuilder
+    private var briefingCard: some View {
+        if let briefingEvidence, briefingEvidence.hasEnoughData {
+            MacPanel(title: "Briefing IA") {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(briefingEvidence.summary)
+                        .font(.system(size: 13, weight: .semibold))
+                    if let confidenceNote = briefingEvidence.confidenceNote {
+                        Text(confidenceNote)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(Array(briefingEvidence.factTexts.prefix(3)), id: \.self) { fact in
+                        Label(fact, systemImage: "checkmark.circle")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(Array(briefingEvidence.recommendedActionTexts.prefix(2)), id: \.self) { action in
+                        Label(action, systemImage: "arrowshape.right.circle.fill")
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                }
+            }
+        }
     }
 
     private var pageHeader: some View {

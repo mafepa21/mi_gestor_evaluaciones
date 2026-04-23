@@ -17,6 +17,7 @@ struct MacStudentsView: View {
     @State private var isLoadingRows = false
     @State private var isSavingNote = false
     @State private var errorMessage: String?
+    @State private var riskPack: TeachingEvidencePack?
     @FocusState private var isSearchFocused: Bool
 
     private var filteredRows: [KmpBridge.MacStudentRowSnapshot] {
@@ -309,6 +310,29 @@ struct MacStudentsView: View {
                             MacMetricCard(label: "Evidencias", value: "\(profile.evidenceCount)", systemImage: "paperclip")
                         }
 
+                        if let riskPack, let level = riskPack.riskLevel {
+                            inspectorSection("Radar de riesgo") {
+                                VStack(alignment: .leading, spacing: 10) {
+                                    MacStatusPill(
+                                        label: level.title,
+                                        isActive: level != .seguimientoNormal,
+                                        tint: level == .atencionPrioritaria ? MacAppStyle.dangerTint : (level == .atencionPuntual ? MacAppStyle.warningTint : MacAppStyle.successTint)
+                                    )
+                                    Text(riskPack.summary)
+                                        .font(.system(size: 13, weight: .medium))
+                                    ForEach(Array(riskPack.warningTexts.prefix(3)), id: \.self) { warning in
+                                        Label(warning, systemImage: "exclamationmark.triangle.fill")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    ForEach(Array(riskPack.recommendedActionTexts.prefix(2)), id: \.self) { action in
+                                        Label(action, systemImage: "arrowshape.right.circle")
+                                            .font(.caption)
+                                    }
+                                }
+                            }
+                        }
+
                         inspectorSection("Notas rápidas") {
                             TextEditor(text: $quickNoteText)
                                 .frame(minHeight: 86)
@@ -428,9 +452,11 @@ struct MacStudentsView: View {
     private func reloadProfile() async {
         guard let selectedStudentId else {
             profile = nil
+            riskPack = nil
             return
         }
         profile = try? await bridge.loadStudentProfile(studentId: selectedStudentId, classId: selectedClassId)
+        riskPack = try? await StudentRiskEvidenceBuilder.build(bridge: bridge, classId: selectedClassId, studentId: selectedStudentId)
     }
 
     @MainActor

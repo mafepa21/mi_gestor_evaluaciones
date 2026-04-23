@@ -38,7 +38,9 @@ struct MacRootView: View {
             }
         }
         .task {
+            commandCenter.attachBridge(session.bridge)
             session.start()
+            commandCenter.autostartIfNeeded()
         }
     }
 

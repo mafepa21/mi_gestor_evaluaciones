@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import Security
 
 @MainActor
 final class MacCommandCenterCoordinator: ObservableObject {
@@ -16,11 +17,16 @@ final class MacCommandCenterCoordinator: ObservableObject {
     private var shouldRestartAfterStop = false
     private var stdoutBuffer = ""
     private var stderrBuffer = ""
+    private weak var bridge: KmpBridge?
 
     private var isProcessRunning = false
     private var lastLifecycleState: HelperLifecycleState = .stopped
     private var lastFailureMessage: String?
     private var lastRunningSnapshot: RunningSnapshot?
+    private var lastStopReason: HelperStopReason = .none
+    private var pendingRefreshDomains = Set<RefreshDomain>()
+    private var refreshTask: Task<Void, Never>?
+    private let syncSecureStore = MacSyncSecureStore(service: "com.migestor.sync.ios")
 
     init() {
         observers.append(NotificationCenter.default.addObserver(
@@ -29,7 +35,7 @@ final class MacCommandCenterCoordinator: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
-                self?.stop()
+                self?.stopForAppTermination()
             }
         })
         observers.append(NotificationCenter.default.addObserver(
@@ -62,15 +68,26 @@ final class MacCommandCenterCoordinator: ObservableObject {
     }
 
     deinit {
+        refreshTask?.cancel()
         for observer in observers {
             NotificationCenter.default.removeObserver(observer)
         }
+    }
+
+    func attachBridge(_ bridge: KmpBridge) {
+        self.bridge = bridge
+    }
+
+    func autostartIfNeeded() {
+        guard hasPersistedPairing else { return }
+        startIfNeeded()
     }
 
     func startIfNeeded() {
         guard process?.isRunning != true else { return }
 
         print("[Pairing] start requested")
+        lastStopReason = .none
         lastFailureMessage = nil
         lastRunningSnapshot = nil
         lastLifecycleState = .starting
@@ -147,6 +164,7 @@ final class MacCommandCenterCoordinator: ObservableObject {
                 self.clearHelperBuffers()
 
                 if self.shouldRestartAfterStop {
+                    self.lastStopReason = .none
                     self.shouldRestartAfterStop = false
                     self.startIfNeeded()
                     return
@@ -155,6 +173,14 @@ final class MacCommandCenterCoordinator: ObservableObject {
                 if case .failed = self.lastLifecycleState {
                     let message = self.lastFailureMessage ?? "El helper terminó inesperadamente."
                     self.updateState(.failed(message: message), message: message)
+                    return
+                }
+
+                if self.shouldTreatTerminationAsExpected(terminatedProcess.terminationStatus) {
+                    self.lastStopReason = .none
+                    self.lastRunningSnapshot = nil
+                    self.lastLifecycleState = .stopped
+                    self.updateState(.stopped, message: "La sincronización LAN no está activa en este Mac.")
                     return
                 }
 
@@ -167,6 +193,7 @@ final class MacCommandCenterCoordinator: ObservableObject {
                     return
                 }
 
+                self.lastStopReason = .none
                 self.lastRunningSnapshot = nil
                 self.lastLifecycleState = .stopped
                 self.updateState(.stopped, message: "La sincronización LAN no está activa en este Mac.")
@@ -191,6 +218,26 @@ final class MacCommandCenterCoordinator: ObservableObject {
     }
 
     func stop() {
+        lastStopReason = .userStop
+        shouldRestartAfterStop = false
+        isProcessRunning = false
+        lastFailureMessage = nil
+        lastLifecycleState = .stopped
+        lastRunningSnapshot = nil
+        clearHelperBuffers()
+        updateState(.stopped, message: "La sincronización LAN no está activa en este Mac.")
+        stdoutPipe?.fileHandleForReading.readabilityHandler = nil
+        stderrPipe?.fileHandleForReading.readabilityHandler = nil
+        if process?.isRunning == true {
+            process?.terminate()
+        }
+        process = nil
+        stdoutPipe = nil
+        stderrPipe = nil
+    }
+
+    private func stopForAppTermination() {
+        lastStopReason = .appTermination
         shouldRestartAfterStop = false
         isProcessRunning = false
         lastFailureMessage = nil
@@ -210,6 +257,7 @@ final class MacCommandCenterCoordinator: ObservableObject {
 
     func restartForNewPin() {
         print("[Pairing] start requested")
+        lastStopReason = .regeneratePin
         lastFailureMessage = nil
         lastRunningSnapshot = nil
         lastLifecycleState = .starting
@@ -238,8 +286,28 @@ final class MacCommandCenterCoordinator: ObservableObject {
 
     private func updateState(_ newState: ApplePairingServiceState, message: String) {
         guard serviceState != newState || statusMessage != message else { return }
-        serviceState = newState
-        statusMessage = message
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            guard self.serviceState != newState || self.statusMessage != message else { return }
+            self.serviceState = newState
+            self.statusMessage = message
+        }
+    }
+
+    private var hasPersistedPairing: Bool {
+        let token = syncSecureStore.loadString(key: "sync.token")?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let serverId = syncSecureStore.loadString(key: "sync.server.id")?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fingerprint = syncSecureStore.loadString(key: "sync.server.fingerprint")?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !(token?.isEmpty ?? true) && !((serverId?.isEmpty ?? true) && (fingerprint?.isEmpty ?? true))
+    }
+
+    private func shouldTreatTerminationAsExpected(_ status: Int32) -> Bool {
+        switch lastStopReason {
+        case .none:
+            return status == 0
+        case .userStop, .regeneratePin, .appTermination:
+            return status == 0 || status == 143 || status == 15
+        }
     }
 
     private func terminateStaleHelperProcesses(executableURL: URL) {
@@ -337,6 +405,11 @@ final class MacCommandCenterCoordinator: ObservableObject {
             return
         }
 
+        if let dataEvent = HelperDataEvent.parse(from: text) {
+            consumeHelperDataEvent(dataEvent)
+            return
+        }
+
         if text.contains("Handshake exitoso") {
             promoteToConnected(deviceName: nil)
             return
@@ -395,6 +468,50 @@ final class MacCommandCenterCoordinator: ObservableObject {
         }
     }
 
+    private func consumeHelperDataEvent(_ event: HelperDataEvent) {
+        switch event {
+        case let .changed(entities):
+            let refreshDomains = entities.reduce(into: Set<RefreshDomain>()) { partialResult, entity in
+                if let domain = RefreshDomain(entity: entity) {
+                    partialResult.insert(domain)
+                }
+            }
+            guard !refreshDomains.isEmpty else { return }
+            pendingRefreshDomains.formUnion(refreshDomains)
+            scheduleBridgeRefresh()
+        }
+    }
+
+    private func scheduleBridgeRefresh() {
+        refreshTask?.cancel()
+        refreshTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: 200_000_000)
+            } catch {
+                return
+            }
+            await self?.flushPendingBridgeRefreshes()
+        }
+    }
+
+    private func flushPendingBridgeRefreshes() async {
+        guard let bridge else { return }
+        let domains = pendingRefreshDomains
+        pendingRefreshDomains.removeAll()
+        guard !domains.isEmpty else { return }
+
+        if domains.contains(.notebook) {
+            try? await bridge.refreshStudentsDirectory()
+            bridge.refreshCurrentNotebook()
+        }
+        if domains.contains(.dashboard) {
+            await bridge.refreshDashboard(mode: .office)
+        }
+        if domains.contains(.planner) {
+            try? await bridge.refreshPlanning()
+        }
+    }
+
     private func promoteToConnected(deviceName: String?) {
         guard let lastRunningSnapshot else {
             lastLifecycleState = .connected
@@ -448,6 +565,43 @@ private enum HelperLifecycleState {
     case failed
 }
 
+private enum HelperStopReason {
+    case none
+    case userStop
+    case regeneratePin
+    case appTermination
+}
+
+private enum RefreshDomain: Hashable {
+    case notebook
+    case dashboard
+    case planner
+
+    init?(entity: String) {
+        if entity == "grade" ||
+            entity == "rubric_assessment" ||
+            entity == "evaluation" ||
+            entity == "student" ||
+            entity == "class_roster" ||
+            entity.hasPrefix("notebook_") {
+            self = .notebook
+            return
+        }
+        if entity == "attendance" || entity == "incident" {
+            self = .dashboard
+            return
+        }
+        if entity.hasPrefix("planner_") ||
+            entity == "weekly_slot" ||
+            entity == "teaching_unit" ||
+            entity == "calendar_event" {
+            self = .planner
+            return
+        }
+        return nil
+    }
+}
+
 private struct RunningSnapshot: Equatable {
     let host: String
     let port: Int
@@ -474,6 +628,29 @@ private struct RunningSnapshot: Equatable {
     }
 }
 
+private enum HelperDataEvent {
+    case changed(entities: [String])
+
+    static func parse(from text: String) -> HelperDataEvent? {
+        let prefix = "[command-center] Data: "
+        guard text.hasPrefix(prefix) else { return nil }
+        let payload = String(text.dropFirst(prefix.count))
+        let parts = payload.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+        guard parts.first?.lowercased() == "changed" else { return nil }
+        let values = parts.dropFirst().reduce(into: [String: String]()) { partialResult, segment in
+            let pair = segment.split(separator: "=", maxSplits: 1).map(String.init)
+            guard pair.count == 2 else { return }
+            partialResult[pair[0].lowercased()] = pair[1]
+        }
+        let entities = values["entities"]?
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .filter { !$0.isEmpty } ?? []
+        guard !entities.isEmpty else { return nil }
+        return .changed(entities: entities)
+    }
+}
+
 private enum HelperEvent {
     case starting
     case running(RunningSnapshot)
@@ -494,11 +671,11 @@ private enum HelperEvent {
             return .starting
 
         case "running":
-            let values = Dictionary(uniqueKeysWithValues: parts.dropFirst().compactMap { segment -> (String, String)? in
+            let values = parts.dropFirst().reduce(into: [String: String]()) { partialResult, segment in
                 let pair = segment.split(separator: "=", maxSplits: 1).map(String.init)
-                guard pair.count == 2 else { return nil }
-                return (pair[0].lowercased(), pair[1])
-            })
+                guard pair.count == 2 else { return }
+                partialResult[pair[0].lowercased()] = pair[1]
+            }
             guard let host = values["host"],
                   let pin = values["pin"],
                   let sessionId = values["sid"],
@@ -521,11 +698,11 @@ private enum HelperEvent {
             return .networkError(message: message.isEmpty ? "No se pudo resolver una IP LAN válida para este Mac." : message)
 
         case "connected":
-            let values = Dictionary(uniqueKeysWithValues: parts.dropFirst().compactMap { segment -> (String, String)? in
+            let values = parts.dropFirst().reduce(into: [String: String]()) { partialResult, segment in
                 let pair = segment.split(separator: "=", maxSplits: 1).map(String.init)
-                guard pair.count == 2 else { return nil }
-                return (pair[0].lowercased(), pair[1])
-            })
+                guard pair.count == 2 else { return }
+                partialResult[pair[0].lowercased()] = pair[1]
+            }
             return .connected(deviceName: values["device"])
 
         case "failed":
@@ -542,4 +719,26 @@ extension Notification.Name {
     static let appleCommandCenterStartRequested = Notification.Name("appleCommandCenterStartRequested")
     static let appleCommandCenterStopRequested = Notification.Name("appleCommandCenterStopRequested")
     static let appleCommandCenterRegeneratePinRequested = Notification.Name("appleCommandCenterRegeneratePinRequested")
+}
+
+private final class MacSyncSecureStore {
+    private let service: String
+
+    init(service: String) {
+        self.service = service
+    }
+
+    func loadString(key: String) -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        guard status == errSecSuccess, let data = item as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
 }

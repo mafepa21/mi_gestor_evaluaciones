@@ -2367,7 +2367,10 @@ struct NotebookModuleView: View {
         do {
             let attendance = try await bridge.attendanceRecords(for: classId, on: Date())
             await MainActor.run {
-                todayAttendanceByStudentId = Dictionary(uniqueKeysWithValues: attendance.map { ($0.studentId, $0.status) })
+                todayAttendanceByStudentId = Dictionary(
+                    attendance.map { ($0.studentId, $0.status) },
+                    uniquingKeysWith: { _, latest in latest }
+                )
             }
         } catch {
             await MainActor.run { todayAttendanceByStudentId = [:] }

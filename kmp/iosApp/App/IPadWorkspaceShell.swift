@@ -672,6 +672,7 @@ struct AppWorkspaceShell: View {
 
     private func contextualAISheet(_ sheet: ContextualAISheetState) -> some View {
         ContextualAIAssistantSheet(
+            bridge: bridge,
             module: sheet.module,
             context: sheet.context
         )
@@ -8471,6 +8472,7 @@ private extension Date {
 }
 
 private struct ContextualAIAssistantSheet: View {
+    let bridge: KmpBridge
     let module: AppWorkspaceModule
     let context: KmpBridge.ScreenAIContext
 
@@ -8483,8 +8485,10 @@ private struct ContextualAIAssistantSheet: View {
     @State private var editableText = ""
     @State private var isGenerating = false
     @State private var feedbackMessage: String?
+    @State private var teachingDraft: TeachingAssistantDraft?
 
     private let aiService = AppleFoundationContextualAIService()
+    private let teachingAssistantService = AppleFoundationTeachingAssistantService()
 
     var body: some View {
         NavigationStack {
@@ -8506,6 +8510,7 @@ private struct ContextualAIAssistantSheet: View {
             }
             .onAppear {
                 aiService.prewarm()
+                teachingAssistantService.prewarm()
                 selectedAction = context.suggestedActions.first
             }
         }
@@ -8525,6 +8530,13 @@ private struct ContextualAIAssistantSheet: View {
                     .foregroundStyle(.secondary)
                 Text(context.summary)
                     .font(.system(size: 14, weight: .medium, design: .rounded))
+                if let riskTitle = teachingDraft?.riskLevel?.title {
+                    Text(riskTitle)
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(NotebookStyle.primaryTint.opacity(0.12), in: Capsule(style: .continuous))
+                }
                 Text(availability.message)
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(availability.isAvailable ? NotebookStyle.successTint : NotebookStyle.warningTint)
@@ -8660,6 +8672,22 @@ private struct ContextualAIAssistantSheet: View {
                         .font(.system(size: 14, weight: .medium, design: .rounded))
                         .foregroundStyle(.secondary)
                 } else {
+                    if let result {
+                        evidenceSummary(
+                            facts: result.factsUsed,
+                            warnings: result.warnings,
+                            recommendedActions: result.recommendedActions,
+                            confidenceNote: result.confidenceNote
+                        )
+                    } else if let teachingDraft {
+                        evidenceSummary(
+                            facts: teachingDraft.factsUsed,
+                            warnings: teachingDraft.warnings,
+                            recommendedActions: teachingDraft.recommendedActions,
+                            confidenceNote: teachingDraft.confidenceNote
+                        )
+                    }
+
                     TextEditor(text: $editableText)
                         .frame(minHeight: 220)
                         .padding(8)
@@ -8672,23 +8700,84 @@ private struct ContextualAIAssistantSheet: View {
         }
     }
 
+    @ViewBuilder
+    private func evidenceSummary(
+        facts: [String],
+        warnings: [String],
+        recommendedActions: [String],
+        confidenceNote: String?
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let confidenceNote {
+                Text(confidenceNote)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+
+            if !facts.isEmpty {
+                summarySection(title: "Hechos usados", items: facts)
+            }
+            if !warnings.isEmpty {
+                summarySection(title: "Alertas", items: warnings)
+            }
+            if !recommendedActions.isEmpty {
+                summarySection(title: "Acciones recomendadas", items: recommendedActions)
+            }
+        }
+        .padding(.bottom, 10)
+    }
+
+    private func summarySection(title: String, items: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .foregroundStyle(.secondary)
+            ForEach(items, id: \.self) { item in
+                Text("• \(item)")
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+            }
+        }
+    }
+
     private func generate() {
         guard let selectedAction else { return }
         isGenerating = true
         feedbackMessage = nil
+        result = nil
+        teachingDraft = nil
         Task {
             do {
-                let generated = try await aiService.generateResult(
-                    from: context,
-                    action: selectedAction,
-                    audience: audience,
-                    tone: tone,
-                    customPrompt: customPrompt.nilIfBlank
-                )
                 await MainActor.run {
-                    result = generated
-                    editableText = generated.editableText
-                    isGenerating = false
+                    feedbackMessage = nil
+                }
+
+                if teachingAssistantService.canHandle(selectedAction.actionId) {
+                    let generated = try await teachingAssistantService.generateDraft(
+                        for: selectedAction.actionId,
+                        bridge: bridge,
+                        context: context,
+                        audience: audience,
+                        tone: tone,
+                        customPrompt: customPrompt.nilIfBlank
+                    )
+                    await MainActor.run {
+                        teachingDraft = generated
+                        editableText = generated.editableText
+                        isGenerating = false
+                    }
+                } else {
+                    let generated = try await aiService.generateResult(
+                        from: context,
+                        action: selectedAction,
+                        audience: audience,
+                        tone: tone,
+                        customPrompt: customPrompt.nilIfBlank
+                    )
+                    await MainActor.run {
+                        result = generated
+                        editableText = generated.editableText
+                        isGenerating = false
+                    }
                 }
             } catch {
                 await MainActor.run {

@@ -132,6 +132,10 @@ final class KmpBridge: ObservableObject {
     @Published var syncPendingChanges: Int = 0
     @Published var syncLastRunAt: Date? = nil
     @Published var pairedSyncHost: String? = nil
+
+    var hasPersistedLanPairing: Bool {
+        !(syncToken?.isEmpty ?? true) && !((pairedServerId?.isEmpty ?? true) && (pairedServerFingerprint?.isEmpty ?? true))
+    }
     
     // UI State for Sheets
     @Published var showingAddColumn = false
@@ -491,15 +495,20 @@ final class KmpBridge: ObservableObject {
             case operationalSummary
             case prioritizedAlerts
             case weeklyDigest
+            case dailyBriefing
             case classSnapshot
             case studentFollowUp
+            case studentRiskRadar
             case familyComment
+            case tutoringDraft
             case attendancePatterns
             case followUpList
             case diarySummary
             case nextSteps
+            case sessionClosure
             case evaluationDigest
             case progressReadout
+            case groupInsight
             case notebookGroupSummary
             case notebookStudentComment
             case observationProposal
@@ -657,6 +666,7 @@ final class KmpBridge: ObservableObject {
     private var discoveredPeersByHost: [String: LanDiscoveredPeer] = [:]
     private var autoSyncLoopTask: Task<Void, Never>? = nil
     private var autoSyncDebounceTask: Task<Void, Never>? = nil
+    private var pendingChangesPersistenceTask: Task<Void, Never>? = nil
     private var notebookSnapshotDebounceTask: Task<Void, Never>? = nil
     private var pendingDebouncedGradeSaves: [String: Task<Void, Never>] = [:]
     private var pendingGradeSnapshotTask: Task<Void, Never>? = nil
@@ -782,6 +792,9 @@ final class KmpBridge: ObservableObject {
             self.lanSyncDiscovery.start()
             self.startAutoSyncLoop()
             self.startSyncEventListenerIfPaired()
+            if self.hasPersistedLanPairing {
+                await self.syncNow(reason: "rehydrate", forceFullPull: false, silent: true)
+            }
         }
 
         setupObservers()
@@ -790,6 +803,7 @@ final class KmpBridge: ObservableObject {
     deinit {
         autoSyncLoopTask?.cancel()
         autoSyncDebounceTask?.cancel()
+        pendingChangesPersistenceTask?.cancel()
         syncEventListener.stop()
         notebookSnapshotDebounceTask?.cancel()
         pendingGradeSnapshotTask?.cancel()
@@ -4778,7 +4792,16 @@ final class KmpBridge: ObservableObject {
         )
     }
 
-    private func enqueueLocalChange(entity: String, id: String, updatedAtEpochMs: Int64, payload: [String: Any], op: String = "upsert", shouldPersist: Bool = true) {
+    private func enqueueLocalChange(
+        entity: String,
+        id: String,
+        updatedAtEpochMs: Int64,
+        payload: [String: Any],
+        op: String = "upsert",
+        shouldPersist: Bool = true,
+        shouldScheduleAutoSync: Bool = true,
+        autoSyncDelayNanoseconds: UInt64 = 250_000_000
+    ) {
         guard let payloadData = try? JSONSerialization.data(withJSONObject: payload),
               let payloadString = String(data: payloadData, encoding: .utf8) else {
             return
@@ -4805,7 +4828,9 @@ final class KmpBridge: ObservableObject {
         if shouldPersist {
             persistPendingChanges()
         }
-        triggerAutoSyncSoon()
+        if shouldScheduleAutoSync {
+            triggerAutoSyncSoon(delayNanoseconds: autoSyncDelayNanoseconds)
+        }
     }
 
     private func publishSyncState(_ update: @escaping @MainActor (KmpBridge) -> Void) {
@@ -4822,7 +4847,10 @@ final class KmpBridge: ObservableObject {
     }
 
     private func persistPendingChanges() {
-        if let encoded = try? JSONEncoder().encode(pendingOutboundChanges) {
+        pendingChangesPersistenceTask?.cancel()
+        let snapshot = pendingOutboundChanges
+        pendingChangesPersistenceTask = Task.detached(priority: .utility) {
+            guard let encoded = try? JSONEncoder().encode(snapshot) else { return }
             UserDefaults.standard.set(encoded, forKey: "sync.pending.changes.v2")
         }
     }
@@ -4845,7 +4873,7 @@ final class KmpBridge: ObservableObject {
         notebookSnapshotDebounceTask?.cancel()
         notebookSnapshotDebounceTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            try? await Task.sleep(nanoseconds: 120_000_000)
+            try? await Task.sleep(nanoseconds: 900_000_000)
             try? await self.enqueueNotebookSnapshot(forClassId: classId)
         }
     }
@@ -4876,7 +4904,8 @@ final class KmpBridge: ObservableObject {
                     "photoPath": student.photoPath ?? NSNull(),
                     "isInjured": student.isInjured
                 ],
-                shouldPersist: false
+                shouldPersist: false,
+                shouldScheduleAutoSync: false
             )
         }
 
@@ -4888,7 +4917,8 @@ final class KmpBridge: ObservableObject {
                 "classId": classId,
                 "studentIds": students.map(\.id).sorted()
             ],
-            shouldPersist: false
+            shouldPersist: false,
+            shouldScheduleAutoSync: false
         )
 
         evaluations.forEach { evaluation in
@@ -4908,7 +4938,8 @@ final class KmpBridge: ObservableObject {
                     "rubricId": evaluation.rubricId ?? 0,
                     "description": evaluation.description
                 ],
-                shouldPersist: false
+                shouldPersist: false,
+                shouldScheduleAutoSync: false
             )
         }
 
@@ -4926,7 +4957,8 @@ final class KmpBridge: ObservableObject {
                     "order": Int(tab.order),
                     "parentTabId": tab.parentTabId ?? ""
                 ],
-                shouldPersist: false
+                shouldPersist: false,
+                shouldScheduleAutoSync: false
             )
         }
 
@@ -4944,7 +4976,8 @@ final class KmpBridge: ObservableObject {
                     "name": group.name,
                     "order": Int(group.order)
                 ],
-                shouldPersist: false
+                shouldPersist: false,
+                shouldScheduleAutoSync: false
             )
         }
 
@@ -4961,7 +4994,8 @@ final class KmpBridge: ObservableObject {
                     "groupId": member.groupId,
                     "studentId": member.studentId
                 ],
-                shouldPersist: false
+                shouldPersist: false,
+                shouldScheduleAutoSync: false
             )
         }
 
@@ -4979,7 +5013,8 @@ final class KmpBridge: ObservableObject {
                     "order": Int(category.order),
                     "isCollapsed": category.isCollapsed
                 ],
-                shouldPersist: false
+                shouldPersist: false,
+                shouldScheduleAutoSync: false
             )
         }
 
@@ -5014,7 +5049,8 @@ final class KmpBridge: ObservableObject {
                     "shared_across_tabs": column.sharedAcrossTabs,
                     "colorHex": column.colorHex ?? ""
                 ],
-                shouldPersist: false
+                shouldPersist: false,
+                shouldScheduleAutoSync: false
             )
         }
 
@@ -5030,7 +5066,8 @@ final class KmpBridge: ObservableObject {
                     "evaluationId": grade.evaluationId ?? 0,
                     "value": grade.value ?? NSNull()
                 ],
-                shouldPersist: false
+                shouldPersist: false,
+                shouldScheduleAutoSync: false
             )
         }
 
@@ -5051,7 +5088,8 @@ final class KmpBridge: ObservableObject {
                     "colorHex": cell.annotation?.colorHex ?? NSNull(),
                     "attachmentUris": cell.annotation?.attachmentUris ?? []
                 ],
-                shouldPersist: false
+                shouldPersist: false,
+                shouldScheduleAutoSync: false
             )
         }
 
@@ -5072,7 +5110,8 @@ final class KmpBridge: ObservableObject {
                             "criterionId": assessment.criterionId,
                             "levelId": assessment.levelId
                         ],
-                        shouldPersist: false
+                        shouldPersist: false,
+                        shouldScheduleAutoSync: false
                     )
                 }
             }
@@ -5125,6 +5164,7 @@ final class KmpBridge: ObservableObject {
         
         // Persistencia final de todos los cambios del snapshot
         persistPendingChanges()
+        triggerAutoSyncSoon(delayNanoseconds: 900_000_000)
     }
 
     private func enqueueNotebookDeletes(
@@ -5168,7 +5208,8 @@ final class KmpBridge: ObservableObject {
                 updatedAtEpochMs: nowMs,
                 payload: payloadForId(deletedId),
                 op: "delete",
-                shouldPersist: false
+                shouldPersist: false,
+                shouldScheduleAutoSync: false
             )
             
             // Limpiar el dueño ya que se ha borrado
@@ -6393,6 +6434,8 @@ final class KmpBridge: ObservableObject {
         autoSyncLoopTask = nil
         autoSyncDebounceTask?.cancel()
         autoSyncDebounceTask = nil
+        pendingChangesPersistenceTask?.cancel()
+        pendingChangesPersistenceTask = nil
         syncEventListener.stop()
         syncSecureStore.delete(key: "sync.token")
         syncSecureStore.delete(key: "sync.host")
@@ -6533,14 +6576,13 @@ final class KmpBridge: ObservableObject {
         }
     }
 
-    private func triggerAutoSyncSoon() {
+    private func triggerAutoSyncSoon(delayNanoseconds: UInt64 = 250_000_000) {
         guard pairedSyncHost != nil, syncToken != nil else { return }
         autoSyncDebounceTask?.cancel()
         autoSyncDebounceTask = Task { [weak self] in
             guard let self else { return }
             do {
-                // Disparamos rápido para que desktop reciba cambios de estado casi inmediatos.
-                try await Task.sleep(nanoseconds: 250_000_000)
+                try await Task.sleep(nanoseconds: delayNanoseconds)
                 await self.syncNow(reason: "debounced_local_change", forceFullPull: false, silent: true)
             } catch {
                 self.publishSyncState {
@@ -7121,6 +7163,7 @@ extension KmpBridge {
                 snapshot.agendaItems.first.map { "\($0.title) · \($0.subtitle)" }
             ),
             suggestedActions: [
+                ContextualAIAction(actionId: .dailyBriefing, title: "Briefing diario", subtitle: "Qué atender hoy y por qué", systemImage: "sun.max.fill", promptHint: "Prioriza el arranque del día con hechos y acciones docentes."),
                 ContextualAIAction(actionId: .operationalSummary, title: "Resumen operativo", subtitle: "Prioriza lo importante del día", systemImage: "bolt.badge.clock.fill", promptHint: "Resume el estado operativo y lo urgente."),
                 ContextualAIAction(actionId: .prioritizedAlerts, title: "Alertas priorizadas", subtitle: "Ordena incidencias y seguimiento", systemImage: "exclamationmark.triangle.fill", promptHint: "Ordena alertas y explica por qué conviene revisarlas."),
                 ContextualAIAction(actionId: .weeklyDigest, title: "Digest semanal", subtitle: "Texto breve para seguimiento docente", systemImage: "doc.text.fill", promptHint: "Crea un digest semanal breve y accionable.")
@@ -7203,7 +7246,9 @@ extension KmpBridge {
                 ),
                 suggestedActions: [
                     ContextualAIAction(actionId: .studentFollowUp, title: "Resumen de seguimiento", subtitle: "Lectura docente breve", systemImage: "person.text.rectangle.fill", promptHint: "Resume el seguimiento del alumno de forma accionable."),
+                    ContextualAIAction(actionId: .studentRiskRadar, title: "Radar de riesgo", subtitle: "Clasificación prudente y explicable", systemImage: "shield.lefthalf.filled.badge.exclamationmark", promptHint: "Explica el nivel de atención del alumno con hechos verificables."),
                     ContextualAIAction(actionId: .familyComment, title: "Comentario para familia", subtitle: "Versión clara y respetuosa", systemImage: "person.2.badge.gearshape.fill", promptHint: "Redacta un comentario claro para familia."),
+                    ContextualAIAction(actionId: .tutoringDraft, title: "Borrador de tutoría", subtitle: "Texto base con siguiente acción", systemImage: "person.crop.rectangle.stack.fill", promptHint: "Prepara un borrador prudente para tutoría o seguimiento."),
                     ContextualAIAction(actionId: .observationProposal, title: "Propuesta de observación", subtitle: "Texto corto editable", systemImage: "text.badge.plus", promptHint: "Genera una observación breve y prudente.")
                 ],
                 hasEnoughData: profile.instrumentsCount > 0 || profile.incidentCount > 0 || profile.journalNoteCount > 0,
@@ -7300,7 +7345,8 @@ extension KmpBridge {
             ),
             suggestedActions: [
                 ContextualAIAction(actionId: .diarySummary, title: "Síntesis semanal", subtitle: "Resumen docente breve", systemImage: "doc.plaintext.fill", promptHint: "Resume la semana lectiva con foco en lo relevante."),
-                ContextualAIAction(actionId: .nextSteps, title: "Próximos pasos", subtitle: "Acciones sugeridas para la siguiente sesión", systemImage: "arrowshape.right.fill", promptHint: "Propón próximos pasos realistas y prudentes.")
+                ContextualAIAction(actionId: .nextSteps, title: "Próximos pasos", subtitle: "Acciones sugeridas para la siguiente sesión", systemImage: "arrowshape.right.fill", promptHint: "Propón próximos pasos realistas y prudentes."),
+                ContextualAIAction(actionId: .sessionClosure, title: "Cierre de sesión", subtitle: "Qué pasó y qué ajustar después", systemImage: "flag.checkered.2.crossed", promptHint: "Cierra la sesión con hechos, aprendizaje y siguiente paso.")
             ],
             hasEnoughData: !sessions.isEmpty,
             dataQualityNote: sessions.isEmpty ? "No hay sesiones de diario registradas esta semana." : nil
@@ -7339,7 +7385,8 @@ extension KmpBridge {
             supportNotes: evaluations.prefix(4).map { "\($0.name) · peso \(IosFormatting.decimal(from: $0.weight))" },
             suggestedActions: [
                 ContextualAIAction(actionId: .evaluationDigest, title: "Digest de evaluación", subtitle: "Lectura narrativa de los instrumentos", systemImage: "chart.bar.doc.horizontal.fill", promptHint: "Resume instrumentos, pesos y progreso."),
-                ContextualAIAction(actionId: .progressReadout, title: "Lectura de progreso", subtitle: "Explica el avance del grupo", systemImage: "chart.line.uptrend.xyaxis", promptHint: "Explica el estado de progreso del grupo con prudencia.")
+                ContextualAIAction(actionId: .progressReadout, title: "Lectura de progreso", subtitle: "Explica el avance del grupo", systemImage: "chart.line.uptrend.xyaxis", promptHint: "Explica el estado de progreso del grupo con prudencia."),
+                ContextualAIAction(actionId: .groupInsight, title: "Inspector analítico", subtitle: "Patrones del grupo apoyados en evidencia", systemImage: "chart.xyaxis.line", promptHint: "Resume patrones del grupo a partir de paneles analíticos y hechos verificables.")
             ],
             hasEnoughData: !evaluations.isEmpty,
             dataQualityNote: values.isEmpty ? "Hay estructura evaluativa pero faltan calificaciones para una lectura más sólida." : nil
@@ -7370,7 +7417,8 @@ extension KmpBridge {
             supportNotes: context.supportNotes,
             suggestedActions: [
                 ContextualAIAction(actionId: .reportBridge, title: "Puente a informe", subtitle: "Preparar texto base para informe", systemImage: "doc.richtext.fill", promptHint: "Resume este contexto con formato listo para informe."),
-                ContextualAIAction(actionId: .familyComment, title: "Versión para familia", subtitle: "Lenguaje más claro y cercano", systemImage: "person.2.badge.gearshape.fill", promptHint: "Reescribe el resumen con lenguaje para familia.")
+                ContextualAIAction(actionId: .familyComment, title: "Versión para familia", subtitle: "Lenguaje más claro y cercano", systemImage: "person.2.badge.gearshape.fill", promptHint: "Reescribe el resumen con lenguaje para familia."),
+                ContextualAIAction(actionId: .tutoringDraft, title: "Borrador de tutoría", subtitle: "Modo interno, tutoría o familia", systemImage: "text.document.fill", promptHint: "Prepara un borrador prudente con siguiente acción sugerida.")
             ],
             hasEnoughData: context.hasEnoughData,
             dataQualityNote: context.dataQualityNote

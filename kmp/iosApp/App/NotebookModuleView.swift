@@ -1156,8 +1156,8 @@ struct NotebookModuleView: View {
         NotebookAICommentSheet(
             bridge: bridge,
             data: data,
-            managedColumns: notebookSourceColumns(data: data),
-            visibleColumns: visibleNotebookSourceColumns(data: data),
+            managedColumns: notebookEvidenceSourceColumns(notebookSourceColumns(data: data)),
+            visibleColumns: notebookEvidenceSourceColumns(visibleNotebookSourceColumns(data: data)),
             selectedStudentIds: request.studentIds,
             targetColumnId: request.targetColumnId,
             mode: request.mode
@@ -1810,6 +1810,10 @@ struct NotebookModuleView: View {
             guard case .column(let column) = segment else { return nil }
             return column
         }
+    }
+
+    private func notebookEvidenceSourceColumns(_ columns: [NotebookColumnDefinition]) -> [NotebookColumnDefinition] {
+        columns.filter { !isNotebookIndividualSummaryColumn($0) }
     }
 
     private func selectedNotebookAIStudentIds(in data: NotebookUiStateData) -> [Int64] {
@@ -3689,6 +3693,7 @@ private struct NotebookEditableTableCell: View {
     @State private var originalCheckDraft = false
     @State private var numericDragStartValue: Double?
     @State private var showTextPopover = false
+    @State private var isNumericKeyboardPresented = false
     @State private var hasLoadedDrafts = false
 
     private var cellId: String {
@@ -3758,30 +3763,63 @@ private struct NotebookEditableTableCell: View {
         } else {
             switch column.type {
             case .numeric:
-                let field = TextField("", text: $numericDraft)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .appKeyboardType(.decimalPad)
-                    .focused(focusedCellId, equals: cellId)
-                    .submitLabel(.next)
-                    .foregroundStyle(.primary)
-                    .onSubmit { saveNumericAndNavigate(navigationDirection) }
-                    .simultaneousGesture(numericDragGesture)
+                if usesNotebookNumericKeyboard {
+                    Button {
+                        onSelect()
+                        focusedCellId.wrappedValue = nil
+                        activeChoiceCellId = nil
+                        isNumericKeyboardPresented = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(numericDraft.isEmpty ? "—" : numericDraft)
+                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .monospacedDigit()
+                                .foregroundStyle(numericDraft.isEmpty ? .tertiary : .primary)
+                                .lineLimit(1)
+                            Image(systemName: "keyboard")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 30)
+                    }
+                    .buttonStyle(.plain)
+                    .popover(isPresented: $isNumericKeyboardPresented, arrowEdge: .bottom) {
+                        NotebookNumericCellKeyboard(
+                            value: $numericDraft,
+                            tint: tint,
+                            onSave: saveNumeric,
+                            onNavigate: { direction in
+                                saveNumericAndNavigate(direction)
+                                isNumericKeyboardPresented = false
+                            }
+                        )
+                    }
+                } else {
+                    let field = TextField("", text: $numericDraft)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .appKeyboardType(.decimalPad)
+                        .focused(focusedCellId, equals: cellId)
+                        .submitLabel(.next)
+                        .foregroundStyle(.primary)
+                        .onSubmit { saveNumericAndNavigate(navigationDirection) }
+                        .simultaneousGesture(numericDragGesture)
 
-                #if canImport(UIKit)
-                field
-                    .toolbar {
-                        ToolbarItemGroup(placement: .keyboard) {
-                            Button("Arriba") { saveNumericAndNavigate(.up) }
-                            Button("Abajo") { saveNumericAndNavigate(.down) }
-                            Spacer()
-                            Button("Guardar y avanzar") {
-                                saveNumericAndNavigate(navigationDirection)
+                    #if canImport(UIKit)
+                    field
+                        .toolbar {
+                            ToolbarItemGroup(placement: .keyboard) {
+                                Button("Arriba") { saveNumericAndNavigate(.up) }
+                                Button("Abajo") { saveNumericAndNavigate(.down) }
+                                Spacer()
+                                Button("Guardar y avanzar") {
+                                    saveNumericAndNavigate(navigationDirection)
+                                }
                             }
                         }
-                    }
-                #else
-                field
-                #endif
+                    #else
+                    field
+                    #endif
+                }
             case .calculated:
                 Button {
                     onSelect()
@@ -3903,6 +3941,10 @@ private struct NotebookEditableTableCell: View {
 
     private var isAttendanceColumn: Bool {
         column.type == .attendance || column.categoryKind == .attendance
+    }
+
+    private var usesNotebookNumericKeyboard: Bool {
+        column.instrumentKind == .writtenTest && column.inputKind == .numeric010
     }
 
     private var choicePopoverBinding: Binding<Bool> {

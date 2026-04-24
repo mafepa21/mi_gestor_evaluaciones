@@ -114,6 +114,128 @@ struct NotebookFormulaKeyboard: View {
     }
 }
 
+struct NotebookNumericCellKeyboard: View {
+    @Binding var value: String
+    let tint: Color
+    let onSave: () -> Void
+    let onNavigate: (NotebookNavigationDirection) -> Void
+
+    private let rows = [
+        ["7", "8", "9"],
+        ["4", "5", "6"],
+        ["1", "2", "3"],
+        [",", "0", "delete.left"]
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Text(value.isEmpty ? "—" : value)
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(.quaternary.opacity(0.24))
+                    )
+
+                Button("5") {
+                    value = "5"
+                    onSave()
+                }
+                .buttonStyle(.bordered)
+
+                Button("10") {
+                    value = "10"
+                    onSave()
+                }
+                .buttonStyle(.bordered)
+            }
+
+            VStack(spacing: 8) {
+                ForEach(rows, id: \.self) { row in
+                    HStack(spacing: 8) {
+                        ForEach(row, id: \.self) { key in
+                            Button {
+                                press(key)
+                            } label: {
+                                if key == "delete.left" {
+                                    Image(systemName: key)
+                                        .font(.system(size: 16, weight: .bold))
+                                        .frame(maxWidth: .infinity, minHeight: 36)
+                                } else {
+                                    Text(key)
+                                        .font(.system(size: 17, weight: .bold, design: .rounded))
+                                        .frame(maxWidth: .infinity, minHeight: 36)
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                }
+            }
+
+            HStack(spacing: 8) {
+                Button("Limpiar") {
+                    value = ""
+                    onSave()
+                }
+                .buttonStyle(.bordered)
+
+                Spacer(minLength: 0)
+
+                Button {
+                    onNavigate(.up)
+                } label: {
+                    Image(systemName: "arrow.up")
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    onNavigate(.down)
+                } label: {
+                    Image(systemName: "arrow.down")
+                }
+                .buttonStyle(.bordered)
+
+                Button("Guardar") {
+                    onSave()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(tint)
+            }
+        }
+        .padding(12)
+        .frame(width: 260)
+    }
+
+    private func press(_ key: String) {
+        if key == "delete.left" {
+            if !value.isEmpty {
+                value.removeLast()
+            }
+            onSave()
+            return
+        }
+
+        if key == "," {
+            guard !value.contains(",") && !value.contains(".") else { return }
+            value = value.isEmpty ? "0," : value + ","
+            onSave()
+            return
+        }
+
+        if value == "0" {
+            value = key
+        } else {
+            value += key
+        }
+        onSave()
+    }
+}
+
 enum NotebookFormulaAIError: LocalizedError {
     case unavailable(String)
     case emptyResponse

@@ -81,6 +81,48 @@ class BuildNotebookSheetUseCaseTest {
     }
 
     @Test
+    fun `calculated columns read persisted grades by column id without evaluation id`() = runTest {
+        val classId = 1L
+        val student = Student(id = 1, firstName = "Ana", lastName = "Lopez")
+        val grades = listOf(
+            Grade(id = 1, classId = classId, studentId = 1, columnId = "physical_reps", evaluationId = null, value = 12.0),
+        )
+
+        val getNotebook = GetNotebookUseCase(
+            classesRepository = FakeClassesRepository2(student, classId),
+            evaluationsRepository = FakeEvaluationsRepository2(emptyList()),
+            gradesRepository = FakeGradesRepository2(grades),
+            notebookCellsRepository = FakeNotebookCellsRepository2()
+        )
+        val useCase = BuildNotebookSheetUseCase(getNotebook)
+
+        val sheet = useCase.build(
+            classId = classId,
+            evaluations = emptyList(),
+            students = listOf(student),
+            tabs = listOf(NotebookTab(id = "eval", title = "Evaluacion", order = 0)),
+            configuredColumns = listOf(
+                NotebookColumnDefinition(
+                    id = "physical_reps",
+                    title = "Flexiones",
+                    type = NotebookColumnType.NUMERIC,
+                    evaluationId = null,
+                    tabIds = listOf("eval"),
+                ),
+                NotebookColumnDefinition(
+                    id = "calc_physical",
+                    title = "Resultado",
+                    type = NotebookColumnType.CALCULATED,
+                    formula = "=[physical_reps]",
+                    tabIds = listOf("eval"),
+                ),
+            )
+        )
+
+        assertEquals(12.0, sheet.rows.first().weightedAverage)
+    }
+
+    @Test
     fun `keeps configured evaluation columns when evaluation is missing from snapshot`() = runTest {
         val classId = 1L
         val student = Student(id = 1, firstName = "Ana", lastName = "Lopez")

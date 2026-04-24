@@ -167,11 +167,8 @@ final class AppleFoundationReportService {
     private var availabilityRetryTask: Task<Void, Never>?
 
     #if canImport(FoundationModels)
-    @available(iOS 26.0, macOS 26.0, *)
-    private var cachedReportSession: LanguageModelSession?
-
-    @available(iOS 26.0, macOS 26.0, *)
-    private var activeReportSession: LanguageModelSession?
+    private var cachedReportSessionStorage: Any?
+    private var activeReportSessionStorage: Any?
 
     @available(iOS 26.0, macOS 26.0, *)
     private func makeReportSession() -> LanguageModelSession {
@@ -189,8 +186,8 @@ final class AppleFoundationReportService {
 
     @available(iOS 26.0, macOS 26.0, *)
     private func consumeReportSession() -> LanguageModelSession {
-        if let cachedReportSession {
-            self.cachedReportSession = nil
+        if let cachedReportSession = cachedReportSessionStorage as? LanguageModelSession {
+            self.cachedReportSessionStorage = nil
             return cachedReportSession
         }
         return makeReportSession()
@@ -211,8 +208,8 @@ final class AppleFoundationReportService {
 
         #if canImport(FoundationModels)
         if #available(iOS 26.0, macOS 26.0, *), resolved == .available || resolved == .modelLoading {
-            if cachedReportSession == nil {
-                cachedReportSession = makeReportSession()
+            if cachedReportSessionStorage == nil {
+                cachedReportSessionStorage = makeReportSession()
             }
         }
         #endif
@@ -221,7 +218,7 @@ final class AppleFoundationReportService {
     func clearActiveConversation() {
         #if canImport(FoundationModels)
         if #available(iOS 26.0, macOS 26.0, *) {
-            activeReportSession = nil
+            activeReportSessionStorage = nil
         }
         #endif
     }
@@ -284,7 +281,7 @@ final class AppleFoundationReportService {
         with cleaned: String,
         context: KmpBridge.ReportGenerationContext
     ) async throws -> AIReportDraft {
-        guard let session = activeReportSession else {
+        guard let session = activeReportSessionStorage as? LanguageModelSession else {
             throw AIReportServiceError.insufficientContext("No hay un borrador activo para refinar.")
         }
         let response = try await session.respond(
@@ -311,7 +308,7 @@ final class AppleFoundationReportService {
         tone: AIReportTone
     ) async throws -> AIReportDraft {
         let session = consumeReportSession()
-        activeReportSession = session
+        activeReportSessionStorage = session
         let response = try await session.respond(
             to: reportPrompt(from: context, audience: audience, tone: tone),
             generating: GeneratedAIReportDraft.self,

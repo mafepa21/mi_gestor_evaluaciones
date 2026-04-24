@@ -2,7 +2,10 @@ package com.migestor.shared.formula
 
 class FormulaEvaluator {
     fun evaluate(expression: String, variables: Map<String, Double>): Double {
-        val parser = Parser(tokenize(expression), variables)
+        val normalized = expression
+            .trim()
+            .dropWhile { it == '=' }
+        val parser = Parser(tokenize(normalized), variables)
         return parser.parseExpression()
     }
 
@@ -27,7 +30,17 @@ class FormulaEvaluator {
                     tokens += "${input[i]}${input[i + 1]}"
                     i += 1
                 }
-                char in listOf('+', '-', '*', '/', '(', ')', ',', '<', '>') -> {
+                char == '[' -> {
+                    flushToken()
+                    val end = input.indexOf(']', startIndex = i + 1)
+                    if (end >= 0) {
+                        tokens += input.substring(i + 1, end)
+                        i = end
+                    } else {
+                        tokens += char.toString()
+                    }
+                }
+                char in listOf('+', '-', '*', '/', '(', ')', ',', '<', '>', '=') -> {
                     flushToken()
                     tokens += char.toString()
                 }
@@ -53,7 +66,7 @@ class FormulaEvaluator {
 
         private fun parseComparison(): Double {
             var left = parseAddSub()
-            while (match("<", ">", "<=", ">=", "==", "!=", "<>")) {
+            while (match("<", ">", "<=", ">=", "==", "=", "!=", "<>")) {
                 val operator = previous()
                 val right = parseAddSub()
                 left = when (operator) {
@@ -111,18 +124,20 @@ class FormulaEvaluator {
             val token = advance()
             token.toDoubleOrNull()?.let { return it }
 
-            if (isIdentifier(token)) {
-                if (match("(")) {
-                    val args = mutableListOf<Double>()
-                    if (!check(")")) {
-                        do {
-                            args += parseComparison()
-                        } while (match(","))
-                    }
-                    require(match(")")) { "Paréntesis desbalanceados en función $token" }
-                    return evalFunction(token, args)
+            if (isIdentifier(token) && match("(")) {
+                val args = mutableListOf<Double>()
+                if (!check(")")) {
+                    do {
+                        args += parseComparison()
+                    } while (match(","))
                 }
+                require(match(")")) { "Paréntesis desbalanceados en función $token" }
+                return evalFunction(token, args)
+            }
 
+            variables[token]?.let { return it }
+
+            if (isIdentifier(token)) {
                 return variables[token]
                     ?: error("Variable no encontrada en fórmula: $token")
             }

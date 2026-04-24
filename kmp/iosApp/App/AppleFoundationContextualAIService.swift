@@ -627,15 +627,9 @@ final class AppleFoundationContextualAIService {
     private var availabilityRetryTask: Task<Void, Never>?
 
     #if canImport(FoundationModels)
-    @available(iOS 26.0, macOS 26.0, *)
-    private var cachedContextualSession: LanguageModelSession?
-
-    @available(iOS 26.0, macOS 26.0, *)
-    private var cachedNotebookSession: LanguageModelSession?
-
-    @available(iOS 26.0, macOS 26.0, *)
-    private var activeTeachingSession: LanguageModelSession?
-
+    private var cachedContextualSessionStorage: Any?
+    private var cachedNotebookSessionStorage: Any?
+    private var activeTeachingSessionStorage: Any?
     private var activeTeachingRiskLevel: RiskLevel?
     private var activeTeachingConfidenceFallback: String?
 
@@ -668,8 +662,8 @@ final class AppleFoundationContextualAIService {
 
     @available(iOS 26.0, macOS 26.0, *)
     private func consumeContextualSession() -> LanguageModelSession {
-        if let cachedContextualSession {
-            self.cachedContextualSession = nil
+        if let cachedContextualSession = cachedContextualSessionStorage as? LanguageModelSession {
+            self.cachedContextualSessionStorage = nil
             return cachedContextualSession
         }
         return makeContextualSession()
@@ -677,8 +671,8 @@ final class AppleFoundationContextualAIService {
 
     @available(iOS 26.0, macOS 26.0, *)
     private func consumeNotebookSession() -> LanguageModelSession {
-        if let cachedNotebookSession {
-            self.cachedNotebookSession = nil
+        if let cachedNotebookSession = cachedNotebookSessionStorage as? LanguageModelSession {
+            self.cachedNotebookSessionStorage = nil
             return cachedNotebookSession
         }
         return makeNotebookSession()
@@ -699,11 +693,11 @@ final class AppleFoundationContextualAIService {
 
         #if canImport(FoundationModels)
         if #available(iOS 26.0, macOS 26.0, *), resolved == .available || resolved == .modelLoading {
-            if cachedContextualSession == nil {
-                cachedContextualSession = makeContextualSession()
+            if cachedContextualSessionStorage == nil {
+                cachedContextualSessionStorage = makeContextualSession()
             }
-            if cachedNotebookSession == nil {
-                cachedNotebookSession = makeNotebookSession()
+            if cachedNotebookSessionStorage == nil {
+                cachedNotebookSessionStorage = makeNotebookSession()
             }
         }
         #endif
@@ -712,7 +706,7 @@ final class AppleFoundationContextualAIService {
     func clearActiveConversation() {
         #if canImport(FoundationModels)
         if #available(iOS 26.0, macOS 26.0, *) {
-            activeTeachingSession = nil
+            activeTeachingSessionStorage = nil
         }
         #endif
         activeTeachingRiskLevel = nil
@@ -827,7 +821,7 @@ final class AppleFoundationContextualAIService {
     #if canImport(FoundationModels)
     @available(iOS 26.0, macOS 26.0, *)
     private func refineActiveTeachingDraftLocally(with cleaned: String) async throws -> TeachingAssistantDraft {
-        guard let session = activeTeachingSession else {
+        guard let session = activeTeachingSessionStorage as? LanguageModelSession else {
             throw AIContextualServiceError.insufficientContext("No hay un borrador activo para refinar.")
         }
         let response = try await session.respond(
@@ -932,7 +926,7 @@ final class AppleFoundationContextualAIService {
         customPrompt: String?
     ) async throws -> TeachingAssistantDraft {
         let session = makeContextualSession()
-        activeTeachingSession = session
+        activeTeachingSessionStorage = session
         activeTeachingRiskLevel = evidence.riskLevel
         activeTeachingConfidenceFallback = evidence.confidenceNote
         let response = try await session.respond(

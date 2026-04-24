@@ -41,4 +41,22 @@ class FormulaEvaluatorTest {
         val result = evaluator.evaluate("ROUND(AVG(EX1, EX2, EX3), 2)", mapOf("EX1" to 6.0, "EX2" to 7.0, "EX3" to 8.0))
         assertEquals(7.0, result)
     }
+
+    @Test
+    fun `supports leading equals and bracket column references`() {
+        val result = evaluator.evaluate(
+            "=ROUND(AVG([eval_1], [COL_2]), 2)",
+            mapOf("eval_1" to 8.0, "COL_2" to 6.0),
+        )
+        assertEquals(7.0, result)
+    }
+
+    @Test
+    fun `supports equality comparison with bracket references`() {
+        val result = evaluator.evaluate(
+            "SI([col_1]=5, 10, 0)",
+            mapOf("col_1" to 5.0),
+        )
+        assertEquals(10.0, result)
+    }
 }

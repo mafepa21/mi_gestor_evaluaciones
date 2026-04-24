@@ -3,6 +3,12 @@ import Foundation
 final class SyncEventListener {
     private var eventTask: Task<Void, Never>?
     private var currentConnectionKey: String?
+    private let initialReconnectDelay: UInt64 = 2_000_000_000
+    private let maximumReconnectDelay: UInt64 = 30_000_000_000
+
+    private struct OpenedStreamError: Error {
+        let underlying: Error
+    }
 
     func start(
         host: String,
@@ -39,6 +45,7 @@ final class SyncEventListener {
         pinnedFingerprint: String?,
         onEvent: @escaping @MainActor (LanSyncEvent?) async -> Void
     ) async {
+        var reconnectDelay = initialReconnectDelay
         while !Task.isCancelled {
             do {
                 try await openStream(
@@ -47,10 +54,16 @@ final class SyncEventListener {
                     pinnedFingerprint: pinnedFingerprint,
                     onEvent: onEvent
                 )
+                reconnectDelay = initialReconnectDelay
             } catch is CancellationError {
                 return
+            } catch is OpenedStreamError {
+                reconnectDelay = initialReconnectDelay
+                try? await Task.sleep(nanoseconds: reconnectDelay)
+                reconnectDelay = min(reconnectDelay * 2, maximumReconnectDelay)
             } catch {
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                try? await Task.sleep(nanoseconds: reconnectDelay)
+                reconnectDelay = min(reconnectDelay * 2, maximumReconnectDelay)
             }
         }
     }
@@ -66,12 +79,12 @@ final class SyncEventListener {
         request.httpMethod = "GET"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-        request.timeoutInterval = 20
+        request.timeoutInterval = 60
 
         let configuration = URLSessionConfiguration.ephemeral
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
-        configuration.timeoutIntervalForRequest = 20
-        configuration.timeoutIntervalForResource = 7 * 24 * 60 * 60
+        configuration.timeoutIntervalForRequest = 60
+        configuration.timeoutIntervalForResource = 120
         configuration.waitsForConnectivity = false
 
         let session = URLSession(
@@ -81,24 +94,35 @@ final class SyncEventListener {
         )
         defer { session.invalidateAndCancel() }
 
-        let (bytes, response) = try await session.bytes(for: request)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw URLError(.badServerResponse)
-        }
-
-        var frameLines: [String] = []
-        for try await line in bytes.lines {
-            try Task.checkCancellation()
-            if line.isEmpty {
-                if let event = parseSyncEvent(from: frameLines) {
-                    await onEvent(event)
-                } else if frameLines.contains(where: { $0.hasPrefix("data:") }) {
-                    await onEvent(nil)
-                }
-                frameLines.removeAll(keepingCapacity: true)
-            } else {
-                frameLines.append(line)
+        var didOpenStream = false
+        do {
+            let (bytes, response) = try await session.bytes(for: request)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                throw URLError(.badServerResponse)
             }
+            didOpenStream = true
+
+            var frameLines: [String] = []
+            for try await line in bytes.lines {
+                try Task.checkCancellation()
+                if line.isEmpty {
+                    if let event = parseSyncEvent(from: frameLines) {
+                        await onEvent(event)
+                    } else if frameLines.contains(where: { $0.hasPrefix("data:") }) {
+                        await onEvent(nil)
+                    }
+                    frameLines.removeAll(keepingCapacity: true)
+                } else {
+                    frameLines.append(line)
+                }
+            }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            if didOpenStream {
+                throw OpenedStreamError(underlying: error)
+            }
+            throw error
         }
     }
 

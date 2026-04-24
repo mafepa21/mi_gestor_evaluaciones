@@ -993,6 +993,25 @@ CREATE TABLE IF NOT EXISTS notebook_work_group_members (
 );
 CREATE INDEX IF NOT EXISTS idx_work_group_members_class_tab ON notebook_work_group_members(class_id, tab_id, group_id, student_id);
 
+CREATE TABLE IF NOT EXISTS ai_audit_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at_epoch_ms INTEGER NOT NULL,
+    service TEXT NOT NULL,
+    use_case TEXT NOT NULL,
+    report_kind TEXT,
+    class_id INTEGER,
+    student_hash TEXT,
+    availability TEXT NOT NULL,
+    model_available INTEGER NOT NULL DEFAULT 0,
+    success INTEGER NOT NULL DEFAULT 0,
+    duration_ms INTEGER NOT NULL DEFAULT 0,
+    error_kind TEXT,
+    error_message TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_ai_audit_created ON ai_audit_events(created_at_epoch_ms DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_audit_use_case ON ai_audit_events(use_case, created_at_epoch_ms DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_audit_success ON ai_audit_events(success, created_at_epoch_ms DESC);
+
 selectTabsByClass:
 SELECT id, class_id, title, parent_tab_id, sort_order, updated_at_epoch_ms, device_id, sync_version
 FROM notebook_tabs
@@ -1111,3 +1130,44 @@ DELETE FROM notebook_columns WHERE id = ?;
 
 lastInsertedId:
 SELECT last_insert_rowid();
+
+insertAiAuditEvent:
+INSERT INTO ai_audit_events(
+    created_at_epoch_ms, service, use_case, report_kind, class_id, student_hash,
+    availability, model_available, success, duration_ms, error_kind, error_message
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectAiAuditEvents:
+SELECT id, created_at_epoch_ms, service, use_case, report_kind, class_id, student_hash,
+       availability, model_available, success, duration_ms, error_kind, error_message
+FROM ai_audit_events
+ORDER BY created_at_epoch_ms DESC
+LIMIT ?;
+
+selectRecentAiAuditFailures:
+SELECT id, created_at_epoch_ms, service, use_case, report_kind, class_id, student_hash,
+       availability, model_available, success, duration_ms, error_kind, error_message
+FROM ai_audit_events
+WHERE success = 0
+ORDER BY created_at_epoch_ms DESC
+LIMIT ?;
+
+selectLatestAiAuditEvent:
+SELECT id, created_at_epoch_ms, service, use_case, report_kind, class_id, student_hash,
+       availability, model_available, success, duration_ms, error_kind, error_message
+FROM ai_audit_events
+ORDER BY created_at_epoch_ms DESC
+LIMIT 1;
+
+selectAiAuditTotalsByUseCase:
+SELECT use_case, COUNT(*) AS total_count, SUM(success) AS success_count, MAX(created_at_epoch_ms) AS last_created_at_epoch_ms
+FROM ai_audit_events
+GROUP BY use_case
+ORDER BY total_count DESC, use_case;
+
+selectRecentAiAuditAvailability:
+SELECT availability, COUNT(*) AS total_count, MAX(created_at_epoch_ms) AS last_created_at_epoch_ms
+FROM ai_audit_events
+GROUP BY availability
+ORDER BY last_created_at_epoch_ms DESC;

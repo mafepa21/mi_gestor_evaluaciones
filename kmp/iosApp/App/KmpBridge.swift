@@ -3467,6 +3467,12 @@ final class KmpBridge: ObservableObject {
             pendingOutboundChanges.removeAll()
             UserDefaults.standard.removeObject(forKey: "sync.pending.changes.v2")
         }
+        if ack.desktopAuthoritative {
+            try await performPullSync(
+                silent: true,
+                sinceEpochMsOverride: 0
+            )
+        }
         let pendingChangesCount = pendingOutboundChanges.count
         publishSyncState {
             $0.syncPendingChanges = pendingChangesCount
@@ -7620,6 +7626,140 @@ extension KmpBridge {
         guard let data = notebookState as? NotebookUiStateData,
               let column = data.sheet.columns.first(where: { $0.id == columnId }) else { return }
         saveColumnGrade(studentId: studentId, column: column, value: text)
+    }
+
+    func createNotebookAICommentColumnForClass(
+        classId: Int64,
+        name: String,
+        categoryKind: NotebookColumnCategoryKind = .followUp
+    ) async throws -> String {
+        let normalized = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else {
+            throw NSError(domain: "KmpBridge", code: 422, userInfo: [NSLocalizedDescriptionKey: "El nombre de la columna no puede estar vacío."])
+        }
+        let nowMillis = Int64(Date().timeIntervalSince1970 * 1000)
+        let columnId = "COL_AI_\(nowMillis)"
+        let nowMs = KotlinLong(value: nowMillis)
+        let nowInstant = Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMillis)
+        let trace = AuditTrace(
+            authorUserId: nil,
+            createdAt: nowInstant,
+            updatedAt: nowInstant,
+            associatedGroupId: KotlinLong(value: classId),
+            deviceId: localDeviceId,
+            syncVersion: 0
+        )
+        let tabs = try await container.notebookConfigRepository.listTabs(classId: classId)
+        let tabIds = selectedNotebookTabId.map { [$0] } ?? tabs.first.map { [$0.id] } ?? []
+        let column = NotebookColumnDefinition(
+            id: columnId,
+            title: normalized,
+            type: .text,
+            categoryKind: categoryKind,
+            instrumentKind: .privateComment,
+            inputKind: .text,
+            evaluationId: nil,
+            rubricId: nil,
+            formula: nil,
+            weight: 0,
+            dateEpochMs: nowMs,
+            unitOrSituation: "Comentario IA",
+            competencyCriteriaIds: [],
+            scaleKind: .custom,
+            tabIds: tabIds,
+            sessions: [],
+            sharedAcrossTabs: false,
+            colorHex: "3D7DFF",
+            iconName: "apple.intelligence",
+            order: -1,
+            widthDp: 260,
+            categoryId: nil,
+            ordinalLevels: [],
+            availableIcons: [],
+            countsTowardAverage: false,
+            isPinned: false,
+            isHidden: false,
+            visibility: .visible,
+            isLocked: false,
+            isTemplate: false,
+            trace: trace
+        )
+        try await container.notebookRepository.saveColumn(classId: classId, column: column)
+        return columnId
+    }
+
+    func saveNotebookAICommentDirect(
+        classId: Int64,
+        studentId: Int64,
+        columnId: String,
+        text: String
+    ) async throws {
+        try await container.notebookRepository.saveCell(
+            classId: classId,
+            studentId: studentId,
+            columnId: columnId,
+            textValue: text,
+            boolValue: nil,
+            iconValue: nil,
+            ordinalValue: nil,
+            note: nil,
+            colorHex: nil,
+            attachmentUris: [],
+            authorUserId: nil,
+            associatedGroupId: nil
+        )
+    }
+
+    func notebookTextCell(classId: Int64, studentId: Int64, columnId: String) async throws -> String {
+        let cells = try await container.notebookCellsRepository.listClassCells(classId: classId)
+        return cells.first { $0.studentId == studentId && $0.columnId == columnId }?.textValue ?? ""
+    }
+
+    func recordAIAuditEvent(
+        service: String,
+        useCase: String,
+        reportKind: String? = nil,
+        classId: Int64? = nil,
+        studentId: Int64? = nil,
+        availability: String,
+        modelAvailable: Bool,
+        success: Bool,
+        durationMs: Int64,
+        errorKind: String? = nil,
+        errorMessage: String? = nil
+    ) async {
+        let createdAt = Int64(Date().timeIntervalSince1970 * 1000)
+        let studentHash = studentId.map { anonymizedStudentHash($0) }
+        let event = AIAuditEvent(
+            id: 0,
+            createdAtEpochMs: createdAt,
+            service: service,
+            useCase: useCase,
+            reportKind: reportKind,
+            classId: classId.map { KotlinLong(value: $0) },
+            studentHash: studentHash,
+            availability: availability,
+            modelAvailable: modelAvailable,
+            success: success,
+            durationMs: durationMs,
+            errorKind: errorKind,
+            errorMessage: errorMessage
+        )
+        try? await container.aiAuditRepository.recordEvent(event: event)
+    }
+
+    func aiAuditTotalsByUseCase() async throws -> [AIAuditUseCaseTotal] {
+        try await container.aiAuditRepository.totalsByUseCase()
+    }
+
+    func recentAIAuditFailures(limit: Int64 = 20) async throws -> [AIAuditEvent] {
+        try await container.aiAuditRepository.recentFailures(limit: limit)
+    }
+
+    private func anonymizedStudentHash(_ studentId: Int64) -> String {
+        let payload = "\(localDeviceId)|\(studentId)"
+        let digest = SHA256.hash(data: Data(payload.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
     }
 
     func isNotebookAICommentColumn(_ column: NotebookColumnDefinition) -> Bool {

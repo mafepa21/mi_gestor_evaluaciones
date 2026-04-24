@@ -259,6 +259,35 @@ data class EvaluationCompetencyLink(
     val trace: AuditTrace = AuditTrace(),
 )
 
+data class AIAuditEvent(
+    val id: Long = 0,
+    val createdAtEpochMs: Long,
+    val service: String,
+    val useCase: String,
+    val reportKind: String? = null,
+    val classId: Long? = null,
+    val studentHash: String? = null,
+    val availability: String,
+    val modelAvailable: Boolean,
+    val success: Boolean,
+    val durationMs: Long = 0,
+    val errorKind: String? = null,
+    val errorMessage: String? = null,
+)
+
+data class AIAuditUseCaseTotal(
+    val useCase: String,
+    val totalCount: Long,
+    val successCount: Long,
+    val lastCreatedAtEpochMs: Long,
+)
+
+data class AIAuditAvailabilityTotal(
+    val availability: String,
+    val totalCount: Long,
+    val lastCreatedAtEpochMs: Long,
+)
+
 data class EvidenceAttachment(
     val id: Long,
     val evaluationId: Long,

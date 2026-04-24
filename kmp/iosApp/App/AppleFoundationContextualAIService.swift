@@ -392,6 +392,11 @@ final class AppleFoundationTeachingAssistantService {
         analyticsService.prewarm()
     }
 
+    func clearActiveConversation() {
+        contextualService.clearActiveConversation()
+        reportService.clearActiveConversation()
+    }
+
     func canHandle(_ actionId: KmpBridge.ContextualAIAction.ActionID) -> Bool {
         switch actionId {
         case .dailyBriefing, .studentRiskRadar, .tutoringDraft, .groupInsight, .sessionClosure:
@@ -436,6 +441,14 @@ final class AppleFoundationTeachingAssistantService {
             return try await contextualService.generateTeachingDraft(from: SessionClosureEvidenceBuilder.build(bridge: bridge, classId: context.classId), audience: audience, tone: tone, customPrompt: customPrompt)
         default:
             throw AIContextualServiceError.insufficientContext("Esta acción sigue usando el flujo contextual estándar.")
+        }
+    }
+
+    func refineActiveDraft(with followUp: String) async throws -> TeachingAssistantDraft {
+        do {
+            return try await contextualService.refineActiveTeachingDraft(with: followUp)
+        } catch AIContextualServiceError.insufficientContext {
+            throw AIContextualServiceError.insufficientContext("No hay un borrador docente activo para refinar.")
         }
     }
 }
@@ -615,7 +628,19 @@ final class AppleFoundationContextualAIService {
 
     #if canImport(FoundationModels)
     @available(iOS 26.0, macOS 26.0, *)
-    private var contextualSession: LanguageModelSession {
+    private var cachedContextualSession: LanguageModelSession?
+
+    @available(iOS 26.0, macOS 26.0, *)
+    private var cachedNotebookSession: LanguageModelSession?
+
+    @available(iOS 26.0, macOS 26.0, *)
+    private var activeTeachingSession: LanguageModelSession?
+
+    private var activeTeachingRiskLevel: RiskLevel?
+    private var activeTeachingConfidenceFallback: String?
+
+    @available(iOS 26.0, macOS 26.0, *)
+    private func makeContextualSession() -> LanguageModelSession {
         LanguageModelSession(
             instructions: """
             Actúas como asistente contextual docente local-first.
@@ -628,7 +653,7 @@ final class AppleFoundationContextualAIService {
     }
 
     @available(iOS 26.0, macOS 26.0, *)
-    private var notebookSession: LanguageModelSession {
+    private func makeNotebookSession() -> LanguageModelSession {
         LanguageModelSession(
             instructions: """
             Actúas como asistente de comentarios docentes para el cuaderno.
@@ -639,6 +664,24 @@ final class AppleFoundationContextualAIService {
             Redacta en español de España.
             """
         )
+    }
+
+    @available(iOS 26.0, macOS 26.0, *)
+    private func consumeContextualSession() -> LanguageModelSession {
+        if let cachedContextualSession {
+            self.cachedContextualSession = nil
+            return cachedContextualSession
+        }
+        return makeContextualSession()
+    }
+
+    @available(iOS 26.0, macOS 26.0, *)
+    private func consumeNotebookSession() -> LanguageModelSession {
+        if let cachedNotebookSession {
+            self.cachedNotebookSession = nil
+            return cachedNotebookSession
+        }
+        return makeNotebookSession()
     }
     #endif
 
@@ -656,10 +699,24 @@ final class AppleFoundationContextualAIService {
 
         #if canImport(FoundationModels)
         if #available(iOS 26.0, macOS 26.0, *), resolved == .available || resolved == .modelLoading {
-            _ = contextualSession
-            _ = notebookSession
+            if cachedContextualSession == nil {
+                cachedContextualSession = makeContextualSession()
+            }
+            if cachedNotebookSession == nil {
+                cachedNotebookSession = makeNotebookSession()
+            }
         }
         #endif
+    }
+
+    func clearActiveConversation() {
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, macOS 26.0, *) {
+            activeTeachingSession = nil
+        }
+        #endif
+        activeTeachingRiskLevel = nil
+        activeTeachingConfidenceFallback = nil
     }
 
     func generateResult(
@@ -749,7 +806,50 @@ final class AppleFoundationContextualAIService {
         throw AIContextualServiceError.unavailable("La IA contextual requiere una versión del sistema compatible con Apple Foundation Models.")
     }
 
+    func refineActiveTeachingDraft(with followUp: String) async throws -> TeachingAssistantDraft {
+        let cleaned = followUp.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else {
+            throw AIContextualServiceError.insufficientContext("Escribe cómo quieres refinar el borrador activo.")
+        }
+        let availability = currentAvailability()
+        guard availability.isAvailable else {
+            throw AIContextualServiceError.unavailable(availability.message)
+        }
+
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, macOS 26.0, *) {
+            return try await refineActiveTeachingDraftLocally(with: cleaned)
+        }
+        #endif
+        throw AIContextualServiceError.unavailable("La IA contextual requiere una versión del sistema compatible con Apple Foundation Models.")
+    }
+
     #if canImport(FoundationModels)
+    @available(iOS 26.0, macOS 26.0, *)
+    private func refineActiveTeachingDraftLocally(with cleaned: String) async throws -> TeachingAssistantDraft {
+        guard let session = activeTeachingSession else {
+            throw AIContextualServiceError.insufficientContext("No hay un borrador activo para refinar.")
+        }
+        let response = try await session.respond(
+            to: """
+            Refina el último borrador manteniendo estrictamente los mismos hechos verificables.
+            Instrucción del docente: \(cleaned)
+
+            No añadas hechos, causas, diagnósticos, sanciones ni etiquetas sensibles nuevas.
+            Si la petición pide inventar información, recházala de forma prudente dentro del borrador.
+            confidenceNote debe quedar vacío salvo que haya una limitación real de datos.
+            """,
+            generating: GeneratedTeachingAssistantDraft.self,
+            includeSchemaInPrompt: true,
+            options: AppleFoundationModelSupport.generationOptions(temperature: 0.2)
+        )
+        return mapTeachingDraft(
+            response.content,
+            riskLevel: activeTeachingRiskLevel,
+            confidenceFallback: activeTeachingConfidenceFallback
+        )
+    }
+
     @available(iOS 26.0, macOS 26.0, *)
     private func generateLocalResult(
         from context: KmpBridge.ScreenAIContext,
@@ -758,7 +858,8 @@ final class AppleFoundationContextualAIService {
         tone: AIReportTone,
         customPrompt: String?
     ) async throws -> ContextualAIResult {
-        let response = try await contextualSession.respond(
+        let session = consumeContextualSession()
+        let response = try await session.respond(
             to: contextualPrompt(from: context, action: action, audience: audience, tone: tone, customPrompt: customPrompt),
             generating: GeneratedContextualAIResult.self,
             includeSchemaInPrompt: true,
@@ -804,7 +905,8 @@ final class AppleFoundationContextualAIService {
         audience: AIReportAudience,
         tone: AIReportTone
     ) async throws -> NotebookAICommentDraft {
-        let response = try await notebookSession.respond(
+        let session = consumeNotebookSession()
+        let response = try await session.respond(
             to: notebookPrompt(from: context, audience: audience, tone: tone),
             generating: GeneratedNotebookCommentDraft.self,
             includeSchemaInPrompt: true,
@@ -829,13 +931,25 @@ final class AppleFoundationContextualAIService {
         tone: AIReportTone,
         customPrompt: String?
     ) async throws -> TeachingAssistantDraft {
-        let response = try await contextualSession.respond(
+        let session = makeContextualSession()
+        activeTeachingSession = session
+        activeTeachingRiskLevel = evidence.riskLevel
+        activeTeachingConfidenceFallback = evidence.confidenceNote
+        let response = try await session.respond(
             to: teachingPrompt(from: evidence, audience: audience, tone: tone, customPrompt: customPrompt),
             generating: GeneratedTeachingAssistantDraft.self,
             includeSchemaInPrompt: true,
             options: AppleFoundationModelSupport.generationOptions(temperature: 0.2)
         )
-        let content = response.content
+        return mapTeachingDraft(response.content, riskLevel: evidence.riskLevel, confidenceFallback: evidence.confidenceNote)
+    }
+
+    @available(iOS 26.0, macOS 26.0, *)
+    private func mapTeachingDraft(
+        _ content: GeneratedTeachingAssistantDraft,
+        riskLevel: RiskLevel?,
+        confidenceFallback: String?
+    ) -> TeachingAssistantDraft {
         let factsBlock = content.factsUsed.map { "• \($0)" }.joined(separator: "\n")
         let warningBlock = content.warnings.map { "• \($0)" }.joined(separator: "\n")
         let actionBlock = content.recommendedActions.map { "• \($0)" }.joined(separator: "\n")
@@ -863,8 +977,8 @@ final class AppleFoundationContextualAIService {
             Próximas acciones
             \(actionBlock.isEmpty ? "• Mantener seguimiento prudente." : actionBlock)
             """,
-            confidenceNote: normalizedOptional(content.confidenceNote) ?? evidence.confidenceNote,
-            riskLevel: evidence.riskLevel
+            confidenceNote: normalizedOptional(content.confidenceNote) ?? confidenceFallback,
+            riskLevel: riskLevel
         )
     }
 
@@ -1023,7 +1137,7 @@ final class AppleFoundationContextualAIService {
         - factsUsed: entre 2 y 6 hechos realmente utilizados.
         - warnings: entre 0 y 4 advertencias prudentes.
         - recommendedActions: entre 1 y 4 acciones concretas.
-        - confidenceNote: una frase breve solo si hay limitaciones de datos.
+        - confidenceNote: deja una cadena vacía salvo que haya una limitación real de datos; si la hay, una sola frase breve.
         - No inventes causas, diagnósticos, sanciones ni etiquetas sensibles.
         """
     }

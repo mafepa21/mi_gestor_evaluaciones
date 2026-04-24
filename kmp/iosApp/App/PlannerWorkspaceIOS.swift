@@ -2225,6 +2225,11 @@ private struct SessionJournalEFCard: View {
 
 private struct JournalIndividualNotesList: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
+    @EnvironmentObject private var bridge: KmpBridge
+
+    private var availableStudents: [Student] {
+        bridge.studentsInClass.isEmpty ? bridge.allStudents : bridge.studentsInClass
+    }
 
     var body: some View {
         SessionJournalSectionCard(
@@ -2232,32 +2237,33 @@ private struct JournalIndividualNotesList: View {
             title: "Observaciones individuales",
             subtitle: "Notas breves por alumno con intención de seguimiento."
         ) {
-            ForEach(Array(vm.journalDraft.notes.enumerated()), id: \.element.id) { index, _ in
+            ForEach($vm.journalDraft.notes) { $note in
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
-                        TextField("Alumno", text: Binding(
-                            get: { vm.journalDraft.notes[index].studentName },
-                            set: { vm.journalDraft.notes[index].studentName = $0 }
-                        ))
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        Picker("Alumno", selection: $note.studentId) {
+                            Text("Sin alumno").tag(Optional<Int64>.none)
+                            ForEach(availableStudents, id: \.id) { student in
+                                Text(student.fullName).tag(Optional<Int64>.some(student.id))
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(maxWidth: .infinity)
+                        .onChange(of: note.studentId) { newId in
+                            syncStudentName(for: newId, note: $note)
+                        }
 
-                        TextField("Tag", text: Binding(
-                            get: { vm.journalDraft.notes[index].tag },
-                            set: { vm.journalDraft.notes[index].tag = $0 }
-                        ))
+                        TextField("Tag", text: $note.tag)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .frame(width: 90)
 
                         Button(role: .destructive) {
-                            vm.journalDraft.notes.remove(at: index)
+                            vm.journalDraft.notes.removeAll { $0.id == note.id }
                         } label: {
                             Image(systemName: "trash")
                         }
                     }
 
-                    TextField("Observación", text: Binding(
-                        get: { vm.journalDraft.notes[index].note },
-                        set: { vm.journalDraft.notes[index].note = $0 }
-                    ), axis: .vertical)
+                    TextField("Observación", text: $note.note, axis: .vertical)
                     .lineLimit(2...4)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
                 }
@@ -2271,6 +2277,15 @@ private struct JournalIndividualNotesList: View {
             }
             .buttonStyle(.bordered)
         }
+    }
+
+    private func syncStudentName(for studentId: Int64?, note: Binding<PlannerJournalDraftNote>) {
+        guard let studentId,
+              let student = availableStudents.first(where: { $0.id == studentId }) else {
+            note.wrappedValue.studentName = ""
+            return
+        }
+        note.wrappedValue.studentName = student.fullName
     }
 }
 
@@ -2302,9 +2317,19 @@ private struct JournalMediaDock: View {
                         recorder.start()
                     }
                 } label: {
+                    #if os(macOS)
+                    Label("Audio no disponible", systemImage: "mic.slash")
+                    #else
                     Label(recorder.isRecording ? "Detener audio" : "Grabar audio", systemImage: recorder.isRecording ? "stop.circle.fill" : "mic.fill")
+                    #endif
                 }
+                #if os(macOS)
+                .buttonStyle(.bordered)
+                .disabled(true)
+                .help("La grabación de audio no está disponible en macOS.")
+                #else
                 .buttonStyle(.borderedProminent)
+                #endif
 
                 Button {
                     vm.journalDraft.media.append(

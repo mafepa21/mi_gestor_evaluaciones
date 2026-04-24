@@ -307,6 +307,9 @@ struct NotebookModuleView: View {
     @State private var highlightedCategoryId: String? = nil
     @State private var notebookAISheetRequest: NotebookAISheetRequest? = nil
     @State private var notebookSummarySheetRequest: NotebookSummarySheetRequest? = nil
+    @State private var riskLevelCache: [Int64: RiskLevel] = [:]
+    @State private var riskComputationKey: String?
+    @State private var isPrecomputingRiskLevels = false
     @AppStorage("notebook.fixedZoneWidth") private var fixedZoneWidthStored = 460.0
     @State private var isDraggingFixedZoneDivider = false
     @State private var fixedZoneDragStartWidth: CGFloat = 0
@@ -490,6 +493,9 @@ struct NotebookModuleView: View {
                 restoreSeatPositions()
                 await refreshNotebookSignals()
             }
+            .task(id: notebookRiskRefreshKey) {
+                await precomputeRiskLevelsForVisibleRows()
+            }
     }
 
     private func notebookObservationModifiers<Content: View>(_ content: Content) -> some View {
@@ -539,9 +545,11 @@ struct NotebookModuleView: View {
                 if let data = bridge.notebookState as? NotebookUiStateData {
                     syncToolbarState(data: data)
                 }
+                riskComputationKey = nil
             }
             .onChange(of: bridge.notebookState is NotebookUiStateData) { _ in
                 restoreSeatPositions()
+                riskComputationKey = nil
             }
     }
 
@@ -1148,8 +1156,8 @@ struct NotebookModuleView: View {
         NotebookAICommentSheet(
             bridge: bridge,
             data: data,
-            managedColumns: notebookSourceColumns(data: data),
-            visibleColumns: visibleNotebookSourceColumns(data: data),
+            managedColumns: notebookEvidenceSourceColumns(notebookSourceColumns(data: data)),
+            visibleColumns: notebookEvidenceSourceColumns(visibleNotebookSourceColumns(data: data)),
             selectedStudentIds: request.studentIds,
             targetColumnId: request.targetColumnId,
             mode: request.mode
@@ -1571,6 +1579,50 @@ struct NotebookModuleView: View {
         return "\(classKey)|\(groupKey)|\(surfaceMode.rawValue)|\(managedColumns(data: data).count)|\(filteredRows(data: data).count)|\(inspectorKey)|\(isInspectorPresented)"
     }
 
+    private var notebookRiskRefreshKey: String {
+        guard let data = bridge.notebookState as? NotebookUiStateData else {
+            return "empty|\(selectedClassId ?? -1)"
+        }
+        let rows = filteredRows(data: data)
+        return "\(selectedClassId ?? -1)|\(selectedGroupId ?? -1)|\(bridge.selectedNotebookTabId ?? "all")|\(rows.map { String($0.student.id) }.joined(separator: ","))"
+    }
+
+    @MainActor
+    private func precomputeRiskLevelsForVisibleRows() async {
+        guard !isPrecomputingRiskLevels,
+              let classId = selectedClassId,
+              let data = bridge.notebookState as? NotebookUiStateData
+        else { return }
+        let rows = filteredRows(data: data)
+        guard !rows.isEmpty else {
+            riskLevelCache = [:]
+            riskComputationKey = nil
+            return
+        }
+        let key = notebookRiskRefreshKey
+        guard riskComputationKey != key else { return }
+        riskComputationKey = key
+        isPrecomputingRiskLevels = true
+        defer { isPrecomputingRiskLevels = false }
+
+        var nextCache = riskLevelCache.filter { cached in
+            rows.contains { $0.student.id == cached.key }
+        }
+
+        for item in rows where nextCache[item.student.id] == nil {
+            if Task.isCancelled { return }
+            do {
+                let profile = try await bridge.loadStudentProfile(studentId: item.student.id, classId: classId)
+                nextCache[item.student.id] = StudentRiskEvidenceBuilder.classify(profile: profile)
+                riskLevelCache = nextCache
+            } catch {
+                nextCache[item.student.id] = .seguimientoNormal
+            }
+            await Task.yield()
+        }
+        riskLevelCache = nextCache
+    }
+
     private func openInspectorForSelection(_ data: NotebookUiStateData) {
         if inspectorSelection != nil { return }
         if let firstColumn = managedColumns(data: data).first,
@@ -1758,6 +1810,10 @@ struct NotebookModuleView: View {
             guard case .column(let column) = segment else { return nil }
             return column
         }
+    }
+
+    private func notebookEvidenceSourceColumns(_ columns: [NotebookColumnDefinition]) -> [NotebookColumnDefinition] {
+        columns.filter { !isNotebookIndividualSummaryColumn($0) }
     }
 
     private func selectedNotebookAIStudentIds(in data: NotebookUiStateData) -> [Int64] {
@@ -3255,10 +3311,13 @@ struct NotebookModuleView: View {
                     openInspectorForStudent(item.student.id, data: data)
                 } label: {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("\(item.student.firstName) \(item.student.lastName)")
-                            .font(.system(size: 14, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
+                        HStack(spacing: 6) {
+                            Text("\(item.student.firstName) \(item.student.lastName)")
+                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                            riskBadge(for: item.student.id)
+                        }
                         if item.student.isInjured {
                             Text("Seguimiento físico")
                                 .font(.system(size: 11, weight: .medium, design: .rounded))
@@ -3289,6 +3348,24 @@ struct NotebookModuleView: View {
                     .foregroundStyle(.primary)
                     .frame(width: resolvedFixedWidth(for: fixed), alignment: .leading)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func riskBadge(for studentId: Int64) -> some View {
+        switch riskLevelCache[studentId] {
+        case .atencionPrioritaria:
+            Image(systemName: "exclamationmark.circle.fill")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.orange)
+                .help("Atención prioritaria")
+        case .atencionPuntual:
+            Image(systemName: "exclamationmark.circle")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(NotebookStyle.warningTint)
+                .help("Atención puntual")
+        case .seguimientoNormal, .none:
+            EmptyView()
         }
     }
 
@@ -3616,6 +3693,7 @@ private struct NotebookEditableTableCell: View {
     @State private var originalCheckDraft = false
     @State private var numericDragStartValue: Double?
     @State private var showTextPopover = false
+    @State private var isNumericKeyboardPresented = false
     @State private var hasLoadedDrafts = false
 
     private var cellId: String {
@@ -3685,30 +3763,63 @@ private struct NotebookEditableTableCell: View {
         } else {
             switch column.type {
             case .numeric:
-                let field = TextField("", text: $numericDraft)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .appKeyboardType(.decimalPad)
-                    .focused(focusedCellId, equals: cellId)
-                    .submitLabel(.next)
-                    .foregroundStyle(.primary)
-                    .onSubmit { saveNumericAndNavigate(navigationDirection) }
-                    .simultaneousGesture(numericDragGesture)
+                if usesNotebookNumericKeyboard {
+                    Button {
+                        onSelect()
+                        focusedCellId.wrappedValue = nil
+                        activeChoiceCellId = nil
+                        isNumericKeyboardPresented = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(numericDraft.isEmpty ? "—" : numericDraft)
+                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .monospacedDigit()
+                                .foregroundStyle(numericDraft.isEmpty ? .tertiary : .primary)
+                                .lineLimit(1)
+                            Image(systemName: "keyboard")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 30)
+                    }
+                    .buttonStyle(.plain)
+                    .popover(isPresented: $isNumericKeyboardPresented, arrowEdge: .bottom) {
+                        NotebookNumericCellKeyboard(
+                            value: $numericDraft,
+                            tint: tint,
+                            onSave: saveNumeric,
+                            onNavigate: { direction in
+                                saveNumericAndNavigate(direction)
+                                isNumericKeyboardPresented = false
+                            }
+                        )
+                    }
+                } else {
+                    let field = TextField("", text: $numericDraft)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .appKeyboardType(.decimalPad)
+                        .focused(focusedCellId, equals: cellId)
+                        .submitLabel(.next)
+                        .foregroundStyle(.primary)
+                        .onSubmit { saveNumericAndNavigate(navigationDirection) }
+                        .simultaneousGesture(numericDragGesture)
 
-                #if canImport(UIKit)
-                field
-                    .toolbar {
-                        ToolbarItemGroup(placement: .keyboard) {
-                            Button("Arriba") { saveNumericAndNavigate(.up) }
-                            Button("Abajo") { saveNumericAndNavigate(.down) }
-                            Spacer()
-                            Button("Guardar y avanzar") {
-                                saveNumericAndNavigate(navigationDirection)
+                    #if canImport(UIKit)
+                    field
+                        .toolbar {
+                            ToolbarItemGroup(placement: .keyboard) {
+                                Button("Arriba") { saveNumericAndNavigate(.up) }
+                                Button("Abajo") { saveNumericAndNavigate(.down) }
+                                Spacer()
+                                Button("Guardar y avanzar") {
+                                    saveNumericAndNavigate(navigationDirection)
+                                }
                             }
                         }
-                    }
-                #else
-                field
-                #endif
+                    #else
+                    field
+                    #endif
+                }
             case .calculated:
                 Button {
                     onSelect()
@@ -3830,6 +3941,10 @@ private struct NotebookEditableTableCell: View {
 
     private var isAttendanceColumn: Bool {
         column.type == .attendance || column.categoryKind == .attendance
+    }
+
+    private var usesNotebookNumericKeyboard: Bool {
+        column.instrumentKind == .writtenTest && column.inputKind == .numeric010
     }
 
     private var choicePopoverBinding: Binding<Bool> {

@@ -1983,17 +1983,22 @@ struct MacPlannerView: View {
         .background(MacAppStyle.pageBackground)
         .task {
             await vm.bind(bridge: bridge)
+            await syncInspectorStudents(for: vm.selectedSession)
         }
         .onChange(of: selectedTableSessionId) { newValue in
             guard let newValue,
                   let session = vm.filteredSessions.first(where: { $0.id == newValue }) ?? vm.sessions.first(where: { $0.id == newValue }) else { return }
             Task {
                 await vm.select(session: session)
+                await syncInspectorStudents(for: session)
                 isInspectorVisible = true
             }
         }
         .onChange(of: vm.selectedSession?.id) { newValue in
             selectedTableSessionId = newValue
+            Task {
+                await syncInspectorStudents(for: vm.selectedSession)
+            }
         }
         .sheet(isPresented: $vm.showingComposer) {
             PlannerSessionComposerSheet(vm: vm)
@@ -2016,6 +2021,13 @@ struct MacPlannerView: View {
         } message: {
             Text("El resumen actual de planificación se ha copiado al portapapeles.")
         }
+    }
+
+    private func syncInspectorStudents(for session: PlanningSession?) async {
+        guard let session else { return }
+        await Task.yield()
+        bridge.selectClass(id: session.groupId)
+        await bridge.selectStudentsClass(classId: session.groupId)
     }
 
     private var plannerSidebar: some View {
@@ -2230,6 +2242,7 @@ struct MacPlannerView: View {
             Divider()
 
             PlannerJournalDetailPane(vm: vm)
+                .environmentObject(bridge)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .background(MacAppStyle.cardBackground)

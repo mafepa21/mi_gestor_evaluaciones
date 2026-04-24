@@ -74,7 +74,7 @@ struct MacRootView: View {
             MacDashboardView(
                 bridge: session.bridge,
                 bootstrap: session.bootstrap,
-                onToolbarActionsChange: { dashboardToolbarActions = $0 }
+                onToolbarActionsChange: setDashboardToolbarActions
             )
         case .notebook:
             NotebookModuleView(
@@ -89,7 +89,7 @@ struct MacRootView: View {
                 selectedClassId: $selectedClassId,
                 selectedStudentId: $selectedStudentId,
                 onOpenModule: open(module:classId:studentId:),
-                onToolbarActionsChange: { attendanceToolbarActions = $0 }
+                onToolbarActionsChange: setAttendanceToolbarActions
             )
         case .students:
             MacStudentsView(
@@ -236,6 +236,20 @@ struct MacRootView: View {
         case .backups: return .gray
         case .reports: return .indigo
         case .settings: return .secondary
+        }
+    }
+
+    private func setDashboardToolbarActions(_ actions: MacDashboardToolbarActions?) {
+        DispatchQueue.main.async {
+            guard session.selectedFeature == .dashboard else { return }
+            dashboardToolbarActions = actions
+        }
+    }
+
+    private func setAttendanceToolbarActions(_ actions: MacAttendanceToolbarActions?) {
+        DispatchQueue.main.async {
+            guard session.selectedFeature == .attendance else { return }
+            attendanceToolbarActions = actions
         }
     }
 

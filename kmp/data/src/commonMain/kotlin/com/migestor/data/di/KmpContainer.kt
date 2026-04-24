@@ -3,6 +3,7 @@ package com.migestor.data.di
 import app.cash.sqldelight.db.SqlDriver
 import com.migestor.data.db.AppDatabase
 import com.migestor.data.repository.AttendanceRepositorySqlDelight
+import com.migestor.data.repository.AIAuditRepositorySqlDelight
 import com.migestor.data.repository.BackupMetadataRepositorySqlDelight
 import com.migestor.data.repository.CalendarRepositorySqlDelight
 import com.migestor.data.repository.ClassesRepositorySqlDelight
@@ -54,6 +55,7 @@ class KmpContainer(val driver: SqlDriver) {
     val notebookCellsRepository = NotebookCellsRepositorySqlDelight(database)
     val rubricsRepository = RubricsRepositorySqlDelight(database)
     val attendanceRepository = AttendanceRepositorySqlDelight(database)
+    val aiAuditRepository = AIAuditRepositorySqlDelight(database)
     val competenciesRepository = CompetenciesRepositorySqlDelight(database)
     val incidentsRepository = IncidentsRepositorySqlDelight(database)
     val calendarRepository = CalendarRepositorySqlDelight(database)

@@ -140,8 +140,8 @@ class BuildNotebookSheetUseCase(
                 }
                 if (relevantColumns.isEmpty()) return@runCatching row.weightedAverage
 
-                val weightedSum = relevantColumns.sumOf { (evaluation, column) ->
-                    val grade = row.cells.firstOrNull { it.evaluationId == evaluation.id }?.value ?: 0.0
+                val weightedSum = relevantColumns.sumOf { (_, column) ->
+                    val grade = numericValueFor(row, column)
                     grade * column.weight
                 }
                 val totalWeight = relevantColumns.sumOf { (_, column) -> column.weight }
@@ -157,14 +157,16 @@ class BuildNotebookSheetUseCase(
             }
 
             val varsByCode = evaluations.associate { evaluation ->
-                val value = row.cells.firstOrNull { it.evaluationId == evaluation.id }?.value ?: 0.0
+                val value = columns
+                    .firstOrNull { it.evaluationId == evaluation.id }
+                    ?.let { column -> numericValueFor(row, column) }
+                    ?: row.persistedGrades.firstOrNull { it.evaluationId == evaluation.id }?.value
+                    ?: row.cells.firstOrNull { it.evaluationId == evaluation.id }?.value
+                    ?: 0.0
                 evaluation.code to value
             }
             val varsByColumnId = columns.associate { column ->
-                val value = column.evaluationId?.let { evalId ->
-                    row.cells.firstOrNull { it.evaluationId == evalId }?.value ?: 0.0
-                } ?: 0.0
-                column.id to value
+                column.id to numericValueFor(row, column)
             }
             val vars = varsByCode + varsByColumnId
 
@@ -179,5 +181,15 @@ class BuildNotebookSheetUseCase(
                 persistedGrades = row.persistedGrades
             )
         }
+    }
+
+    private fun numericValueFor(row: NotebookRow, column: NotebookColumnDefinition): Double {
+        val evaluationId = column.evaluationId
+        if (evaluationId != null) {
+            row.cells.firstOrNull { it.evaluationId == evaluationId }?.value?.let { return it }
+            row.persistedGrades.firstOrNull { it.evaluationId == evaluationId }?.value?.let { return it }
+        }
+        row.persistedGrades.firstOrNull { it.columnId == column.id }?.value?.let { return it }
+        return 0.0
     }
 }

@@ -24,7 +24,7 @@ struct MacDashboardView: View {
     @State private var inspectorTab: MacDashboardInspectorTab = .detail
     @State private var activeSheet: DashboardSheet? = nil
     @State private var briefingEvidence: TeachingEvidencePack?
-    @State private var showsSystemDetails = false
+    @State private var showsFilters = false
 
     private var mode: MacDashboardMode {
         MacDashboardMode(rawValue: modeRawValue) ?? .office
@@ -37,7 +37,7 @@ struct MacDashboardView: View {
     var body: some View {
         GeometryReader { proxy in
             ScrollView {
-                VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
+                VStack(alignment: .leading, spacing: 24) {
                     pageHeader
                     briefingCard
 
@@ -78,12 +78,10 @@ struct MacDashboardView: View {
                 selectedClassId = bridge.classes.first?.id
             }
             await applyFiltersAndReload()
+            briefingEvidence = try? await DailyBriefEvidenceBuilder.build(bridge: bridge, classId: selectedClassId)
         }
-        .task(id: briefingRefreshKey) {
-            await refreshBriefingEvidence()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .macDashboardDataDidRefresh)) { _ in
-            Task { await refreshBriefingEvidence() }
+        .task(id: selectedClassId) {
+            briefingEvidence = try? await DailyBriefEvidenceBuilder.build(bridge: bridge, classId: selectedClassId)
         }
         .onAppear(perform: syncToolbarActions)
         .onDisappear { onToolbarActionsChange(nil) }
@@ -99,32 +97,48 @@ struct MacDashboardView: View {
     @ViewBuilder
     private var briefingCard: some View {
         if let briefingEvidence, briefingEvidence.hasEnoughData {
-            MacPanel(title: "Briefing IA") {
+            VStack(alignment: .leading, spacing: 16) {
+                Label("Briefing IA", systemImage: "sparkles")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(MacAppStyle.infoTint)
+
+                Text(briefingEvidence.summary)
+                    .font(.system(size: 13, weight: .semibold))
+
+                if let confidenceNote = briefingEvidence.confidenceNote {
+                    Text(confidenceNote)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(briefingEvidence.summary)
-                        .font(.system(size: 13, weight: .semibold))
-                    if let confidenceNote = briefingEvidence.confidenceNote {
-                        Text(confidenceNote)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
                     ForEach(Array(briefingEvidence.factTexts.prefix(3)), id: \.self) { fact in
                         Label(fact, systemImage: "checkmark.circle")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(.secondary)
                     }
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
                     ForEach(Array(briefingEvidence.recommendedActionTexts.prefix(2)), id: \.self) { action in
                         Label(action, systemImage: "arrowshape.right.circle.fill")
                             .font(.system(size: 12, weight: .semibold))
                     }
                 }
             }
+            .padding(MacAppStyle.innerPadding)
+            .background(MacAppStyle.infoTint.opacity(0.06))
+            .overlay {
+                RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous)
+                    .stroke(MacAppStyle.infoTint.opacity(0.25), lineWidth: 0.75)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
         }
     }
 
     private var pageHeader: some View {
         HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 8) {
                 Text("Dashboard")
                     .font(MacAppStyle.pageTitle)
                 Text("\(Date.now.formatted(date: .complete, time: .omitted)) · \(mode.title)")
@@ -141,7 +155,7 @@ struct MacDashboardView: View {
     }
 
     private func wideDashboard(snapshot: DashboardSnapshot) -> some View {
-        HStack(alignment: .top, spacing: MacAppStyle.sectionSpacing) {
+        HStack(alignment: .top, spacing: 24) {
             leftColumn(snapshot: snapshot)
                 .frame(width: 280)
 
@@ -154,7 +168,7 @@ struct MacDashboardView: View {
     }
 
     private func compactDashboard(snapshot: DashboardSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
+        VStack(alignment: .leading, spacing: 24) {
             leftColumn(snapshot: snapshot)
             centerColumn(snapshot: snapshot)
             inspector(snapshot: snapshot)
@@ -162,8 +176,8 @@ struct MacDashboardView: View {
     }
 
     private func leftColumn(snapshot: DashboardSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: MacAppStyle.cardSpacing) {
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: MacAppStyle.cardSpacing) {
+        VStack(alignment: .leading, spacing: 16) {
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 16) {
                 MacMetricCard(label: "Hoy", value: "\(snapshot.todayCount)", tint: MacAppStyle.infoTint, systemImage: "calendar")
                 MacMetricCard(
                     label: "Alertas",
@@ -180,25 +194,29 @@ struct MacDashboardView: View {
                 MacMetricCard(label: "Próxima", value: snapshot.nextSessionLabel, tint: MacAppStyle.infoTint, systemImage: "forward.end.circle")
             }
 
+            classPicker
+                .padding(.horizontal, 8)
+
             filtersSection
-
-            if !bridge.classes.isEmpty {
-                classesSection()
-            }
-
-            alertSummary(snapshot: snapshot)
         }
     }
 
     private var filtersSection: some View {
-        MacPanel(title: "Filtros") {
+        DisclosureGroup(isExpanded: $showsFilters) {
             VStack(alignment: .leading, spacing: 8) {
-                classPicker
                 filterPicker("Severidad", options: MacDashboardFilterOptions.severity, selection: $severityFilter)
                 filterPicker("Prioridad", options: MacDashboardFilterOptions.priority, selection: $priorityFilter)
                 filterPicker("Estado sesión", options: MacDashboardFilterOptions.sessionStatus, selection: $sessionStatusFilter)
             }
+            .padding(.top, 8)
+        } label: {
+            Label("Filtros", systemImage: "line.3.horizontal.decrease.circle")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
         }
+        .padding(MacAppStyle.innerPadding)
+        .background(MacAppStyle.subtleFill)
+        .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
     }
 
     private var classPicker: some View {
@@ -211,71 +229,18 @@ struct MacDashboardView: View {
         .pickerStyle(.menu)
     }
 
-    private func classesSection() -> some View {
-        MacPanel(title: "Grupos") {
-            VStack(spacing: 8) {
-                ForEach(bridge.classes.prefix(3), id: \.id) { schoolClass in
-                    Button {
-                        selectedClassId = schoolClass.id
-                    } label: {
-                        classRow(for: schoolClass)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-    }
-
-    private func classRow(for schoolClass: SchoolClass) -> some View {
-        HStack(spacing: 8) {
-            Text("\(schoolClass.course)º")
-                .font(.headline)
-                .frame(width: 32, height: 32)
-                .background(MacAppStyle.infoTint.opacity(0.12))
-                .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.chipRadius, style: .continuous))
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(schoolClass.name)
-                    .font(.callout.weight(.semibold))
-                    .lineLimit(1)
-                let avg = bridge.activityGroups.first(where: { $0.name == schoolClass.name })?.average ?? 0
-                Text(avg > 0 ? String(format: "Media %.1f", avg) : "Sin media")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-        }
-        .padding(8)
-        .background(selectedClassId == schoolClass.id ? MacAppStyle.infoTint.opacity(0.10) : MacAppStyle.subtleFill)
-        .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
-    }
-
-    private func alertSummary(snapshot: DashboardSnapshot) -> some View {
-        MacPanel(title: "Alertas") {
-            VStack(alignment: .leading, spacing: 8) {
-                if snapshot.alerts.isEmpty {
-                    emptyRow("Sin alertas activas")
-                } else {
-                    ForEach(snapshot.alerts.prefix(3), id: \.id) { alert in
-                        alertButton(alert)
-                    }
-                }
-            }
-        }
-    }
-
     private func centerColumn(snapshot: DashboardSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
+        VStack(alignment: .leading, spacing: 16) {
             todayBlock(snapshot: snapshot)
             quickEvaluationBlock(snapshot: snapshot)
             agendaBlock(snapshot: snapshot)
-            alertsBlock(snapshot: snapshot)
             peBlock(snapshot: snapshot)
+            alertsBlock(snapshot: snapshot)
         }
     }
 
     private func todayBlock(snapshot: DashboardSnapshot) -> some View {
-        MacPanel(title: "Hoy") {
+        MacPanel(title: "A · Hoy") {
             VStack(spacing: 8) {
                 if snapshot.todaySessions.isEmpty {
                     emptyRow("Sin sesiones hoy")
@@ -289,7 +254,7 @@ struct MacDashboardView: View {
     }
 
     private func alertsBlock(snapshot: DashboardSnapshot) -> some View {
-        MacPanel(title: "Alertas") {
+        MacPanel(title: "B · Alertas") {
             VStack(spacing: 8) {
                 if snapshot.alerts.isEmpty {
                     emptyRow("Sin alertas")
@@ -303,12 +268,12 @@ struct MacDashboardView: View {
     }
 
     private func quickEvaluationBlock(snapshot: DashboardSnapshot) -> some View {
-        MacPanel(title: "Evaluación rápida") {
-            VStack(alignment: .leading, spacing: 8) {
+        MacPanel(title: "C · Evaluación rápida") {
+            VStack(alignment: .leading, spacing: 16) {
                 dashboardListText("Columnas", snapshot.quickColumns)
                 dashboardListText("Rúbricas", snapshot.quickRubrics)
 
-                HStack {
+                HStack(spacing: 8) {
                     Button {
                         Task { await performPassList() }
                     } label: {
@@ -328,7 +293,7 @@ struct MacDashboardView: View {
     }
 
     private func agendaBlock(snapshot: DashboardSnapshot) -> some View {
-        MacPanel(title: "Agenda docente") {
+        MacPanel(title: "E · Agenda docente") {
             VStack(spacing: 8) {
                 if snapshot.agendaItems.isEmpty {
                     emptyRow("Sin agenda para hoy")
@@ -361,7 +326,7 @@ struct MacDashboardView: View {
 
     private func agendaRowContent(_ item: AgendaItem, showsDisclosure: Bool) -> some View {
         HStack {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 8) {
                 Text(item.title).font(.callout.weight(.semibold))
                 Text(item.subtitle).font(.caption).foregroundStyle(.secondary)
             }
@@ -376,7 +341,7 @@ struct MacDashboardView: View {
     }
 
     private func peBlock(snapshot: DashboardSnapshot) -> some View {
-        MacPanel(title: "Educación Física") {
+        MacPanel(title: "F · Educación Física") {
             VStack(spacing: 8) {
                 if snapshot.peItems.isEmpty {
                     emptyRow("Sin incidencias EF hoy")
@@ -395,7 +360,7 @@ struct MacDashboardView: View {
         } label: {
             MacHoverRow {
                 HStack {
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: 8) {
                         Text("\(item.groupName) · \(item.timeLabel)").font(.callout.weight(.semibold))
                         Text(item.didacticUnit).font(.caption).foregroundStyle(.secondary)
                         Text("Espacio: \(item.space) · \(readableSessionStatus(item.sessionStatus))")
@@ -426,7 +391,7 @@ struct MacDashboardView: View {
         } label: {
             MacHoverRow {
                 HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: 8) {
                         Text(alert.title).font(.callout.weight(.semibold))
                         Text(alert.detail).font(.caption).foregroundStyle(.secondary)
                     }
@@ -453,7 +418,7 @@ struct MacDashboardView: View {
         } label: {
             MacHoverRow {
                 HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: 8) {
                         Text(item.title).font(.callout.weight(.semibold))
                         Text(item.detail).font(.caption).foregroundStyle(.secondary)
                     }
@@ -472,7 +437,7 @@ struct MacDashboardView: View {
 
     private func inspector(snapshot: DashboardSnapshot) -> some View {
         MacPanel(title: "Selección activa") {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 16) {
                 Picker("Vista", selection: $inspectorTab) {
                     ForEach(MacDashboardInspectorTab.allCases) { tab in
                         Text(tab.rawValue).tag(tab)
@@ -537,7 +502,7 @@ struct MacDashboardView: View {
     }
 
     private var inspectorActions: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 16) {
             Button {
                 Task { await performPassList() }
             } label: {
@@ -564,21 +529,15 @@ struct MacDashboardView: View {
     }
 
     private var systemSection: some View {
-        DisclosureGroup(isExpanded: $showsSystemDetails) {
+        MacPanel(title: "Sistema") {
             VStack(alignment: .leading, spacing: 8) {
                 labeledRow("Plataforma", value: bootstrap.platformName)
+                Divider()
                 labeledRow("Base de datos", value: URL(fileURLWithPath: bootstrap.databasePath).lastPathComponent)
+                Divider()
                 labeledRow("Bridge", value: bridge.status)
             }
-            .padding(.top, 8)
-        } label: {
-            Text("Estado técnico")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
         }
-        .padding(16)
-        .background(MacAppStyle.subtleFill)
-        .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
     }
 
     private func filterPicker(_ title: String, options: [MacDashboardFilterOption], selection: Binding<String>) -> some View {
@@ -592,7 +551,7 @@ struct MacDashboardView: View {
     }
 
     private func dashboardListText(_ title: String, _ values: [String]) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(title)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
@@ -603,13 +562,13 @@ struct MacDashboardView: View {
     }
 
     private func inspectorTitle(_ title: String, subtitle: String, systemImage: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: 16) {
             Image(systemName: systemImage)
                 .font(.headline)
                 .foregroundStyle(MacAppStyle.infoTint)
-                .frame(width: 30, height: 30)
+                .frame(width: 32, height: 32)
                 .background(MacAppStyle.infoTint.opacity(0.12), in: Circle())
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 8) {
                 Text(title).font(.headline)
                 Text(subtitle).font(.caption).foregroundStyle(.secondary)
             }
@@ -626,9 +585,10 @@ struct MacDashboardView: View {
                 .font(.caption)
                 .multilineTextAlignment(.trailing)
         }
-        .padding(8)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
         .background(MacAppStyle.subtleFill)
-        .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.chipRadius, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
     }
 
     private func emptyRow(_ message: String) -> some View {
@@ -636,7 +596,7 @@ struct MacDashboardView: View {
             .font(.callout)
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(16)
+            .padding(MacAppStyle.innerPadding)
             .background(MacAppStyle.subtleFill)
             .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
     }
@@ -665,10 +625,6 @@ struct MacDashboardView: View {
         return "\(classKey)|\(modeRawValue)|\(severityFilter)|\(priorityFilter)|\(sessionStatusFilter)|\(selectionKey)|\(bridge.dashboardSnapshot != nil)"
     }
 
-    private var briefingRefreshKey: String {
-        "\(selectedClassId ?? -1)|\(modeRawValue)|\(severityFilter)|\(priorityFilter)|\(sessionStatusFilter)|\(bridge.dashboardSnapshot != nil)"
-    }
-
     private func syncToolbarActions() {
         onToolbarActionsChange(
             MacDashboardToolbarActions(
@@ -694,11 +650,6 @@ struct MacDashboardView: View {
             sessionStatus: sessionStatusFilter
         )
         await bridge.refreshDashboard(mode: mode.kotlinMode)
-        await refreshBriefingEvidence()
-    }
-
-    private func refreshBriefingEvidence() async {
-        briefingEvidence = try? await DailyBriefEvidenceBuilder.build(bridge: bridge, classId: selectedClassId)
     }
 
     private func performPassList() async {
@@ -864,7 +815,7 @@ private struct MacPanel<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: MacAppStyle.cardSpacing) {
+        VStack(alignment: .leading, spacing: 16) {
             MacSectionHeader(title: title)
             content
         }
@@ -888,7 +839,7 @@ private struct MacHoverRow<Content: View>: View {
 
     var body: some View {
         content
-            .padding(8)
+            .padding(MacAppStyle.innerPadding)
             .background(isHovering ? MacAppStyle.infoTint.opacity(0.08) : MacAppStyle.subtleFill)
             .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
             .overlay {

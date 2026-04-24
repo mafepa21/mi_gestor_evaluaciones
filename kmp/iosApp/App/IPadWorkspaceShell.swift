@@ -1470,7 +1470,10 @@ struct AppWorkspaceShell: View {
     }
 
     private func syncRootSplitVisibility() {
-        rootSplitVisibility = (layoutState.isSidebarVisible && !layoutState.isFocusModeEnabled) ? .all : .detailOnly
+        let visibility: NavigationSplitViewVisibility = (layoutState.isSidebarVisible && !layoutState.isFocusModeEnabled) ? .all : .detailOnly
+        DispatchQueue.main.async {
+            rootSplitVisibility = visibility
+        }
     }
 
     private func open(module: AppWorkspaceModule, classId: Int64? = nil, studentId: Int64? = nil) {
@@ -3815,6 +3818,9 @@ private struct ReportsWorkspaceView: View {
     @State private var editableDraftText = ""
     @State private var aiFeedbackMessage: String?
     @State private var isGeneratingAIDraft = false
+    @State private var refinePrompt = ""
+    @State private var isRefiningAIDraft = false
+    @State private var isBulkLomloeSheetPresented = false
 
     @State private var analyticsMode: AnalyticsMode = .dashboards
     @State private var analyticsAvailability: AIAnalyticsAvailabilityState = .unavailable("Comprobando disponibilidad…")
@@ -3893,9 +3899,11 @@ private struct ReportsWorkspaceView: View {
             Task { await refreshWorkspaceContext() }
         }
         .onChange(of: selectedStudentId) { _ in
+            aiReportService.clearActiveConversation()
             Task { await reloadPreview() }
         }
         .onChange(of: selectedReportKind) { _ in
+            aiReportService.clearActiveConversation()
             if selectedReportKind == .lomloeEvaluationComment {
                 aiAudience = .familia
                 aiTone = .formal
@@ -3903,6 +3911,7 @@ private struct ReportsWorkspaceView: View {
             Task { await reloadPreview() }
         }
         .onChange(of: selectedReportTerm) { _ in
+            aiReportService.clearActiveConversation()
             Task { await reloadPreview() }
         }
         .onChange(of: selectedAnalyticsRange) { _ in
@@ -3914,6 +3923,17 @@ private struct ReportsWorkspaceView: View {
         }
         .onChange(of: selectedChartKind) { _ in
             analyticsInsight = nil
+        }
+        .sheet(isPresented: $isBulkLomloeSheetPresented) {
+            if let selectedClassId {
+                BulkLOMLOEGenerationSheet(
+                    bridge: bridge,
+                    classId: selectedClassId,
+                    termLabel: selectedReportTerm.rawValue,
+                    audience: aiAudience,
+                    tone: aiTone
+                )
+            }
         }
     }
 
@@ -4149,6 +4169,16 @@ private struct ReportsWorkspaceView: View {
                             }
                             .buttonStyle(.borderedProminent)
                             .disabled(!canGenerateAIDraft)
+
+                            if selectedReportKind == .lomloeEvaluationComment {
+                                Button {
+                                    isBulkLomloeSheetPresented = true
+                                } label: {
+                                    Label("Generar lote", systemImage: "person.3.sequence.fill")
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(selectedClassId == nil || !aiAvailability.isAvailable)
+                            }
                         }
 
                         WorkspaceDetailBlock(title: "Disponibilidad", content: aiAvailability.message)
@@ -4171,6 +4201,25 @@ private struct ReportsWorkspaceView: View {
                             .padding(12)
                             .scrollContentBackground(.hidden)
                             .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+                        if aiDraft != nil {
+                            HStack(alignment: .top, spacing: 10) {
+                                TextField("Refinar: más breve, más cálido, foco en orientaciones...", text: $refinePrompt, axis: .vertical)
+                                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                                    .lineLimit(2, reservesSpace: true)
+                                Button {
+                                    Task { await refineAIDraft() }
+                                } label: {
+                                    if isRefiningAIDraft {
+                                        ProgressView()
+                                    } else {
+                                        Label("Refinar", systemImage: "wand.and.stars")
+                                    }
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(isRefiningAIDraft || refinePrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            }
+                        }
                     }
 
                     ShareLink(item: shareableReportText) {
@@ -4419,6 +4468,7 @@ private struct ReportsWorkspaceView: View {
     @MainActor
     private func refreshWorkspaceContext() async {
         guard let selectedClassId else { return }
+        aiReportService.clearActiveConversation()
         refreshAvailability()
         bridge.selectClass(id: selectedClassId)
         bridge.evaluationsInClass = (try? await bridge.evaluations(for: selectedClassId)) ?? []
@@ -4433,6 +4483,7 @@ private struct ReportsWorkspaceView: View {
         aiDraft = nil
         editableDraftText = ""
         aiFeedbackMessage = nil
+        refinePrompt = ""
 
         guard let context = try? await bridge.buildReportGenerationContext(
             classId: selectedClassId,
@@ -4496,6 +4547,7 @@ private struct ReportsWorkspaceView: View {
         guard let reportContext else { return }
         isGeneratingAIDraft = true
         aiFeedbackMessage = nil
+        let startedAt = Date()
         defer { isGeneratingAIDraft = false }
 
         do {
@@ -4507,8 +4559,75 @@ private struct ReportsWorkspaceView: View {
             aiDraft = draft
             editableDraftText = draft.editableText(for: reportContext)
             aiFeedbackMessage = "Borrador generado. Revísalo y edítalo antes de compartir."
+            await bridge.recordAIAuditEvent(
+                service: "reports",
+                useCase: "single_draft",
+                reportKind: reportContext.kind.rawValue,
+                classId: reportContext.classId,
+                studentId: reportContext.studentId,
+                availability: aiAvailabilityLabel,
+                modelAvailable: aiAvailability.isAvailable,
+                success: true,
+                durationMs: Int64(Date().timeIntervalSince(startedAt) * 1000)
+            )
         } catch {
             aiFeedbackMessage = error.localizedDescription
+            await bridge.recordAIAuditEvent(
+                service: "reports",
+                useCase: "single_draft",
+                reportKind: reportContext.kind.rawValue,
+                classId: reportContext.classId,
+                studentId: reportContext.studentId,
+                availability: aiAvailabilityLabel,
+                modelAvailable: aiAvailability.isAvailable,
+                success: false,
+                durationMs: Int64(Date().timeIntervalSince(startedAt) * 1000),
+                errorKind: String(describing: type(of: error)),
+                errorMessage: error.localizedDescription
+            )
+        }
+    }
+
+    @MainActor
+    private func refineAIDraft() async {
+        guard let reportContext else { return }
+        isRefiningAIDraft = true
+        aiFeedbackMessage = nil
+        let startedAt = Date()
+        defer { isRefiningAIDraft = false }
+
+        do {
+            let draft = try await aiReportService.refineActiveDraft(with: refinePrompt, context: reportContext)
+            aiDraft = draft
+            editableDraftText = draft.editableText(for: reportContext)
+            refinePrompt = ""
+            aiFeedbackMessage = "Borrador refinado. Revísalo antes de compartir."
+            await bridge.recordAIAuditEvent(
+                service: "reports",
+                useCase: "refine_draft",
+                reportKind: reportContext.kind.rawValue,
+                classId: reportContext.classId,
+                studentId: reportContext.studentId,
+                availability: aiAvailabilityLabel,
+                modelAvailable: aiAvailability.isAvailable,
+                success: true,
+                durationMs: Int64(Date().timeIntervalSince(startedAt) * 1000)
+            )
+        } catch {
+            aiFeedbackMessage = error.localizedDescription
+            await bridge.recordAIAuditEvent(
+                service: "reports",
+                useCase: "refine_draft",
+                reportKind: reportContext.kind.rawValue,
+                classId: reportContext.classId,
+                studentId: reportContext.studentId,
+                availability: aiAvailabilityLabel,
+                modelAvailable: aiAvailability.isAvailable,
+                success: false,
+                durationMs: Int64(Date().timeIntervalSince(startedAt) * 1000),
+                errorKind: String(describing: type(of: error)),
+                errorMessage: error.localizedDescription
+            )
         }
     }
 
@@ -4798,6 +4917,266 @@ private func analyticsColor(_ token: String) -> Color {
     case "purple": return .purple
     case "blue": return .blue
     default: return .accentColor
+    }
+}
+
+private struct BulkLOMLOEGenerationSheet: View {
+    enum GenerationStatus: Equatable {
+        case pending
+        case generating
+        case done
+        case failed(String)
+        case omitted(String)
+
+        var title: String {
+            switch self {
+            case .pending: return "Pendiente"
+            case .generating: return "Generando"
+            case .done: return "Listo"
+            case .failed: return "Error"
+            case .omitted: return "Omitido"
+            }
+        }
+    }
+
+    struct DraftRow: Identifiable {
+        let student: Student
+        var status: GenerationStatus = .pending
+        var text: String = ""
+        var isApproved: Bool = true
+
+        var id: Int64 { student.id }
+    }
+
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var bridge: KmpBridge
+    let classId: Int64
+    let termLabel: String
+    let audience: AIReportAudience
+    let tone: AIReportTone
+
+    @State private var rows: [DraftRow] = []
+    @State private var onlyEmptyCells = true
+    @State private var columnName: String
+    @State private var targetColumnId: String?
+    @State private var isGenerating = false
+    @State private var isSaving = false
+    @State private var feedbackMessage: String?
+
+    private let reportService = AppleFoundationReportService()
+
+    init(
+        bridge: KmpBridge,
+        classId: Int64,
+        termLabel: String,
+        audience: AIReportAudience,
+        tone: AIReportTone
+    ) {
+        self.bridge = bridge
+        self.classId = classId
+        self.termLabel = termLabel
+        self.audience = audience
+        self.tone = tone
+        _columnName = State(initialValue: "LOMLOE IA - \(termLabel)")
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                configBar
+                List {
+                    ForEach($rows) { $row in
+                        rowEditor($row)
+                    }
+                }
+                .listStyle(.plain)
+            }
+            .navigationTitle("LOMLOE por lotes")
+            .appInlineNavigationBarTitleDisplayMode()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cerrar") { dismiss() }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        Task { await saveApprovedDrafts() }
+                    } label: {
+                        if isSaving {
+                            ProgressView()
+                        } else {
+                            Label("Guardar", systemImage: "square.and.arrow.down")
+                        }
+                    }
+                    .disabled(isSaving || isGenerating || rows.allSatisfy { !$0.isApproved || $0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+                }
+            }
+            .task {
+                reportService.prewarm()
+                if rows.isEmpty {
+                    await loadStudents()
+                }
+            }
+        }
+    }
+
+    private var configBar: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            TextField("Columna destino", text: $columnName)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+            Toggle("Rellenar solo celdas vacías", isOn: $onlyEmptyCells)
+            HStack(spacing: 12) {
+                Button {
+                    Task { await generateAll() }
+                } label: {
+                    if isGenerating {
+                        ProgressView()
+                    } else {
+                        Label("Generar comentarios", systemImage: "apple.intelligence")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isGenerating || rows.isEmpty)
+
+                Text(feedbackMessage ?? "\(rows.count) alumnos preparados")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(16)
+        .background(.regularMaterial)
+    }
+
+    private func rowEditor(_ row: Binding<DraftRow>) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(row.wrappedValue.student.fullName)
+                    .font(.headline)
+                Spacer()
+                statusLabel(row.wrappedValue.status)
+                Toggle("", isOn: row.isApproved)
+                    .labelsHidden()
+            }
+            TextEditor(text: row.text)
+                .frame(minHeight: 96)
+                .padding(8)
+                .background(NotebookStyle.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .padding(.vertical, 8)
+    }
+
+    private func statusLabel(_ status: GenerationStatus) -> some View {
+        let tint: Color = {
+            switch status {
+            case .pending: return .secondary
+            case .generating: return NotebookStyle.primaryTint
+            case .done: return NotebookStyle.successTint
+            case .failed: return NotebookStyle.warningTint
+            case .omitted: return .secondary
+            }
+        }()
+        return Text(status.title)
+            .font(.caption.weight(.bold))
+            .foregroundStyle(tint)
+    }
+
+    @MainActor
+    private func loadStudents() async {
+        rows = ((try? await bridge.students(forClassId: classId)) ?? bridge.studentsInClass)
+            .map { DraftRow(student: $0) }
+        feedbackMessage = rows.isEmpty ? "No hay alumnado en la clase." : nil
+    }
+
+    @MainActor
+    private func generateAll() async {
+        isGenerating = true
+        feedbackMessage = nil
+        defer { isGenerating = false }
+
+        for index in rows.indices {
+            rows[index].status = .generating
+            let startedAt = Date()
+            do {
+                let context = try await bridge.buildReportGenerationContext(
+                    classId: classId,
+                    studentId: rows[index].student.id,
+                    kind: .lomloeEvaluationComment,
+                    termLabel: termLabel
+                )
+                guard context.hasEnoughData else {
+                    rows[index].status = .omitted(context.dataQualityNote ?? "Datos insuficientes")
+                    continue
+                }
+                let draft = try await reportService.generateDraft(from: context, audience: audience, tone: tone)
+                rows[index].text = draft.editableText(for: context)
+                rows[index].status = .done
+                await bridge.recordAIAuditEvent(
+                    service: "reports",
+                    useCase: "bulk_lomloe",
+                    reportKind: context.kind.rawValue,
+                    classId: context.classId,
+                    studentId: context.studentId,
+                    availability: "Disponible",
+                    modelAvailable: true,
+                    success: true,
+                    durationMs: Int64(Date().timeIntervalSince(startedAt) * 1000)
+                )
+            } catch {
+                rows[index].status = .failed(error.localizedDescription)
+                await bridge.recordAIAuditEvent(
+                    service: "reports",
+                    useCase: "bulk_lomloe",
+                    reportKind: KmpBridge.ReportKind.lomloeEvaluationComment.rawValue,
+                    classId: classId,
+                    studentId: rows[index].student.id,
+                    availability: "Disponible",
+                    modelAvailable: true,
+                    success: false,
+                    durationMs: Int64(Date().timeIntervalSince(startedAt) * 1000),
+                    errorKind: String(describing: type(of: error)),
+                    errorMessage: error.localizedDescription
+                )
+            }
+        }
+        feedbackMessage = "Generación completada. Revisa y guarda los comentarios aprobados."
+    }
+
+    @MainActor
+    private func saveApprovedDrafts() async {
+        isSaving = true
+        feedbackMessage = nil
+        defer { isSaving = false }
+
+        do {
+            let columnId: String
+            if let targetColumnId {
+                columnId = targetColumnId
+            } else {
+                columnId = try await bridge.createNotebookAICommentColumnForClass(classId: classId, name: columnName)
+                targetColumnId = columnId
+            }
+
+            var saved = 0
+            var skipped = 0
+            for row in rows where row.isApproved {
+                let text = row.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !text.isEmpty else {
+                    skipped += 1
+                    continue
+                }
+                if onlyEmptyCells {
+                    let existing = try await bridge.notebookTextCell(classId: classId, studentId: row.student.id, columnId: columnId)
+                    if !existing.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        skipped += 1
+                        continue
+                    }
+                }
+                try await bridge.saveNotebookAICommentDirect(classId: classId, studentId: row.student.id, columnId: columnId, text: text)
+                saved += 1
+            }
+            feedbackMessage = "Guardados: \(saved). Omitidos: \(skipped)."
+        } catch {
+            feedbackMessage = error.localizedDescription
+        }
     }
 }
 
@@ -8535,8 +8914,10 @@ private struct ContextualAIAssistantSheet: View {
     @State private var result: ContextualAIResult?
     @State private var editableText = ""
     @State private var isGenerating = false
+    @State private var isRefining = false
     @State private var feedbackMessage: String?
     @State private var teachingDraft: TeachingAssistantDraft?
+    @State private var refinePrompt = ""
 
     private let aiService = AppleFoundationContextualAIService()
     private let teachingAssistantService = AppleFoundationTeachingAssistantService()
@@ -8626,6 +9007,8 @@ private struct ContextualAIAssistantSheet: View {
                     ForEach(context.suggestedActions) { action in
                         Button {
                             selectedAction = action
+                            teachingAssistantService.clearActiveConversation()
+                            refinePrompt = ""
                         } label: {
                             HStack(alignment: .top, spacing: 12) {
                                 Image(systemName: action.systemImage)
@@ -8659,6 +9042,9 @@ private struct ContextualAIAssistantSheet: View {
                         }
                     }
                     .pickerStyle(.segmented)
+                    .onChange(of: audience) { _ in
+                        teachingAssistantService.clearActiveConversation()
+                    }
 
                     Picker("Tono", selection: $tone) {
                         ForEach(AIReportTone.allCases) { item in
@@ -8666,6 +9052,9 @@ private struct ContextualAIAssistantSheet: View {
                         }
                     }
                     .pickerStyle(.segmented)
+                    .onChange(of: tone) { _ in
+                        teachingAssistantService.clearActiveConversation()
+                    }
 
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Variación opcional")
@@ -8746,6 +9135,25 @@ private struct ContextualAIAssistantSheet: View {
                             RoundedRectangle(cornerRadius: 18, style: .continuous)
                                 .fill(NotebookStyle.surface)
                         )
+
+                    if teachingDraft != nil {
+                        HStack(alignment: .top, spacing: 10) {
+                            TextField("Refinar: más breve, más cálido, foco en próximos pasos...", text: $refinePrompt, axis: .vertical)
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                                .lineLimit(2, reservesSpace: true)
+                            Button {
+                                refineTeachingDraft()
+                            } label: {
+                                if isRefining {
+                                    ProgressView()
+                                } else {
+                                    Label("Refinar", systemImage: "wand.and.stars")
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(isRefining || refinePrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }
+                    }
                 }
             }
         }
@@ -8796,6 +9204,7 @@ private struct ContextualAIAssistantSheet: View {
         feedbackMessage = nil
         result = nil
         teachingDraft = nil
+        refinePrompt = ""
         Task {
             do {
                 await MainActor.run {
@@ -8835,6 +9244,52 @@ private struct ContextualAIAssistantSheet: View {
                     feedbackMessage = error.localizedDescription
                     isGenerating = false
                 }
+            }
+        }
+    }
+
+    private func refineTeachingDraft() {
+        isRefining = true
+        feedbackMessage = nil
+        let startedAt = Date()
+        Task {
+            do {
+                let refined = try await teachingAssistantService.refineActiveDraft(with: refinePrompt)
+                await MainActor.run {
+                    teachingDraft = refined
+                    editableText = refined.editableText
+                    refinePrompt = ""
+                    isRefining = false
+                }
+                await bridge.recordAIAuditEvent(
+                    service: "contextual",
+                    useCase: "refine_draft",
+                    reportKind: nil,
+                    classId: context.classId,
+                    studentId: context.studentId,
+                    availability: "Disponible",
+                    modelAvailable: true,
+                    success: true,
+                    durationMs: Int64(Date().timeIntervalSince(startedAt) * 1000)
+                )
+            } catch {
+                await MainActor.run {
+                    feedbackMessage = error.localizedDescription
+                    isRefining = false
+                }
+                await bridge.recordAIAuditEvent(
+                    service: "contextual",
+                    useCase: "refine_draft",
+                    reportKind: nil,
+                    classId: context.classId,
+                    studentId: context.studentId,
+                    availability: "Disponible",
+                    modelAvailable: true,
+                    success: false,
+                    durationMs: Int64(Date().timeIntervalSince(startedAt) * 1000),
+                    errorKind: String(describing: type(of: error)),
+                    errorMessage: error.localizedDescription
+                )
             }
         }
     }

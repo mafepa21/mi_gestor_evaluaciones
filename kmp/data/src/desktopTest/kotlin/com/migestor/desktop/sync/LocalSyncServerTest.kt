@@ -1,6 +1,7 @@
 package com.migestor.desktop.sync
 
 import com.migestor.shared.sync.SyncChange
+import java.net.InetAddress
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -61,5 +62,37 @@ class LocalSyncServerTest {
         val filtered = filterDesktopChangesForSse(changes, pairedDeviceId = null)
 
         assertEquals(changes, filtered)
+    }
+
+    @Test
+    fun lanAddressSelectionPrefersPrimaryAppleEthernetInterface() {
+        val vpn = InetAddress.getByName("10.8.0.2")
+        val en1 = InetAddress.getByName("192.168.1.12")
+        val en0 = InetAddress.getByName("192.168.1.11")
+
+        val selected = selectPreferredLanAddress(
+            listOf(
+                "utun4" to vpn,
+                "en1" to en1,
+                "en0" to en0,
+            )
+        )
+
+        assertEquals(en0, selected)
+    }
+
+    @Test
+    fun lanAddressSelectionFallsBackToEthernetThenAnyValidAddress() {
+        val bridge = InetAddress.getByName("172.17.0.1")
+        val ethernet = InetAddress.getByName("192.168.1.22")
+
+        val selected = selectPreferredLanAddress(
+            listOf(
+                "bridge100" to bridge,
+                "eth0" to ethernet,
+            )
+        )
+
+        assertEquals(ethernet, selected)
     }
 }

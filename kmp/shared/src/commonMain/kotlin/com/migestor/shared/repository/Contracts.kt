@@ -431,6 +431,15 @@ interface BackupMetadataRepository {
     suspend fun deleteBackup(id: Long)
 }
 
+interface AIAuditRepository {
+    suspend fun recordEvent(event: AIAuditEvent)
+    suspend fun recentEvents(limit: Long = 50): List<AIAuditEvent>
+    suspend fun recentFailures(limit: Long = 20): List<AIAuditEvent>
+    suspend fun latestEvent(): AIAuditEvent?
+    suspend fun totalsByUseCase(): List<AIAuditUseCaseTotal>
+    suspend fun recentAvailabilityTotals(): List<AIAuditAvailabilityTotal>
+}
+
 interface CsvImportService {
     suspend fun parseStudents(csv: String): List<StudentCsvRow>
 }

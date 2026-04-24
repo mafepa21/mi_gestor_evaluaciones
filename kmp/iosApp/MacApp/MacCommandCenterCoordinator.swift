@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import Security
+import MiGestorKit
 
 @MainActor
 final class MacCommandCenterCoordinator: ObservableObject {
@@ -505,11 +506,18 @@ final class MacCommandCenterCoordinator: ObservableObject {
             bridge.refreshCurrentNotebook()
         }
         if domains.contains(.dashboard) {
-            await bridge.refreshDashboard(mode: .office)
+            await bridge.refreshDashboard(mode: activeDashboardMode)
+            NotificationCenter.default.post(name: .macDashboardDataDidRefresh, object: nil)
         }
         if domains.contains(.planner) {
             try? await bridge.refreshPlanning()
         }
+    }
+
+    private var activeDashboardMode: DashboardMode {
+        UserDefaults.standard.string(forKey: "dashboard_operational_mode") == "classroom"
+            ? .classroom
+            : .office
     }
 
     private func promoteToConnected(deviceName: String?) {
@@ -719,6 +727,7 @@ extension Notification.Name {
     static let appleCommandCenterStartRequested = Notification.Name("appleCommandCenterStartRequested")
     static let appleCommandCenterStopRequested = Notification.Name("appleCommandCenterStopRequested")
     static let appleCommandCenterRegeneratePinRequested = Notification.Name("appleCommandCenterRegeneratePinRequested")
+    static let macDashboardDataDidRefresh = Notification.Name("macDashboardDataDidRefresh")
 }
 
 private final class MacSyncSecureStore {

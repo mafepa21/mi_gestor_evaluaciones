@@ -75,6 +75,7 @@ struct MacAttendanceView: View {
     @State private var historySelection: MacAttendanceHistorySelection?
     @State private var noteDraft = ""
     @State private var isLoading = false
+    @State private var isFilterPopoverPresented = false
 
     private var selectedClass: SchoolClass? {
         selectedClassId.flatMap { id in bridge.classes.first(where: { $0.id == id }) }
@@ -200,9 +201,9 @@ struct MacAttendanceView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 24) {
             HStack(alignment: .top, spacing: 16) {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 8) {
                     Text("Asistencia")
                         .font(MacAppStyle.pageTitle)
                     Text(selectedClass?.name ?? "Todos los cursos")
@@ -218,7 +219,7 @@ struct MacAttendanceView: View {
                 }
             }
 
-            HStack(spacing: 10) {
+            HStack(spacing: 16) {
                 Picker("Vista", selection: $mode) {
                     ForEach(MacAttendanceMode.allCases) { mode in
                         Text(mode.rawValue).tag(mode)
@@ -256,21 +257,61 @@ struct MacAttendanceView: View {
                     .labelsHidden()
                     .disabled(mode == .courses)
 
-                TextField("Buscar alumno", text: $searchText)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(minWidth: 180, idealWidth: 240, maxWidth: 300)
-                    .disabled(mode == .courses)
-
-                Picker("Estado", selection: $selectedStatusFilter) {
-                    Text("Todos").tag("TODOS")
-                    ForEach(MacAttendanceStatusOption.all) { option in
-                        Text(option.label).tag(option.id)
-                    }
+                Button {
+                    isFilterPopoverPresented.toggle()
+                } label: {
+                    Label(attendanceFilterLabel, systemImage: attendanceFilterIcon)
+                        .frame(minWidth: 120, alignment: .leading)
                 }
-                .frame(width: 150)
                 .disabled(mode == .courses)
+                .popover(isPresented: $isFilterPopoverPresented, arrowEdge: .bottom) {
+                    attendanceFilterPopover
+                }
             }
         }
+    }
+
+    private var attendanceFilterLabel: String {
+        var active = 0
+        if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            active += 1
+        }
+        if selectedStatusFilter != "TODOS" {
+            active += 1
+        }
+        return active == 0 ? "Filtrar" : "Filtros \(active)"
+    }
+
+    private var attendanceFilterIcon: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedStatusFilter == "TODOS"
+            ? "line.3.horizontal.decrease.circle"
+            : "line.3.horizontal.decrease.circle.fill"
+    }
+
+    private var attendanceFilterPopover: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            TextField("Buscar alumno", text: $searchText)
+                .textFieldStyle(.roundedBorder)
+
+            Picker("Estado", selection: $selectedStatusFilter) {
+                Text("Todos").tag("TODOS")
+                ForEach(MacAttendanceStatusOption.all) { option in
+                    Text(option.label).tag(option.id)
+                }
+            }
+            .pickerStyle(.menu)
+
+            Button {
+                searchText = ""
+                selectedStatusFilter = "TODOS"
+            } label: {
+                Label("Limpiar filtros", systemImage: "xmark.circle")
+            }
+            .buttonStyle(.bordered)
+            .disabled(searchText.isEmpty && selectedStatusFilter == "TODOS")
+        }
+        .padding(24)
+        .frame(width: 320)
     }
 
     @ViewBuilder
@@ -306,13 +347,13 @@ struct MacAttendanceView: View {
 
     private var coursesContent: some View {
         ScrollView {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 12)], spacing: 12) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 16)], spacing: 16) {
                 ForEach(classOverviews) { overview in
                     Button {
                         selectedClassId = overview.id
                         mode = .day
                     } label: {
-                        VStack(alignment: .leading, spacing: 14) {
+                        VStack(alignment: .leading, spacing: 16) {
                             HStack(alignment: .firstTextBaseline) {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(overview.schoolClass.name)
@@ -346,7 +387,7 @@ struct MacAttendanceView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.vertical, 2)
+            .padding(.vertical, 8)
         }
     }
 
@@ -376,7 +417,7 @@ struct MacAttendanceView: View {
                             )
                         }
                     }
-                    .padding(.vertical, 2)
+                    .padding(.vertical, 8)
                 }
             }
         }
@@ -835,7 +876,7 @@ struct MacAttendanceView: View {
             let day = calendar.startOfDay(for: date)
             return (day, day)
         }
-        let end = calendar.date(byAdding: .day, value: -1, to: interval.end) ?? interval.end
+        let end = calendar.date(byAdding: .second, value: -1, to: interval.end) ?? interval.end
         return (interval.start, end)
     }
 

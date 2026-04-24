@@ -248,6 +248,41 @@ class RepositoriesIntegrationTest {
     }
 
     @Test
+    fun `same student and column can keep separate grades per class`() = runTest {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        AppDatabase.Schema.create(driver)
+        val db = AppDatabase(driver)
+
+        val students = StudentsRepositorySqlDelight(db)
+        val classes = ClassesRepositorySqlDelight(db)
+        val grades = GradesRepositorySqlDelight(db)
+
+        val firstClassId = classes.saveClass(name = "1 ESO A", course = 1, description = null)
+        val secondClassId = classes.saveClass(name = "1 ESO B", course = 1, description = null)
+        val studentId = students.saveStudent(firstName = "Test", lastName = "Student", email = null)
+        classes.addStudentToClass(firstClassId, studentId)
+        classes.addStudentToClass(secondClassId, studentId)
+
+        grades.saveGrade(
+            classId = firstClassId,
+            studentId = studentId,
+            columnId = "SHARED_COL",
+            evaluationId = null,
+            value = 6.0
+        )
+        grades.saveGrade(
+            classId = secondClassId,
+            studentId = studentId,
+            columnId = "SHARED_COL",
+            evaluationId = null,
+            value = 8.0
+        )
+
+        assertEquals(6.0, grades.listGradesForStudentInClass(studentId, firstClassId).single().value)
+        assertEquals(8.0, grades.listGradesForStudentInClass(studentId, secondClassId).single().value)
+    }
+
+    @Test
     fun `persists notebook column type and formula`() = runTest {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         AppDatabase.Schema.create(driver)

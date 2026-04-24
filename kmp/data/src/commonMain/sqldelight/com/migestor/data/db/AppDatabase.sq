@@ -140,7 +140,7 @@ CREATE TABLE IF NOT EXISTS grades (
     updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
     device_id TEXT,
     sync_version INTEGER NOT NULL DEFAULT 0,
-    UNIQUE(student_id, column_id),
+    UNIQUE(class_id, student_id, column_id),
     FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
     FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
     FOREIGN KEY (evaluation_id) REFERENCES evaluations(id) ON DELETE SET NULL
@@ -509,7 +509,7 @@ DELETE FROM evaluations WHERE id = ?;
 upsertGrade:
 INSERT INTO grades(class_id, student_id, column_id, evaluation_id, value, evidence, evidence_path, rubric_selections, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(student_id, column_id) DO UPDATE SET
+ON CONFLICT(class_id, student_id, column_id) DO UPDATE SET
     class_id = excluded.class_id,
     evaluation_id = excluded.evaluation_id,
     value = excluded.value,
@@ -530,15 +530,19 @@ SELECT id, class_id, student_id, column_id, evaluation_id, value, evidence, evid
 FROM grades
 WHERE student_id = ? AND class_id = ?;
 
-selectGradeByStudentAndColumn:
+selectGradeByStudentClassAndColumn:
 SELECT updated_at_epoch_ms, device_id
 FROM grades
-WHERE student_id = ? AND column_id = ?
+WHERE class_id = ? AND student_id = ? AND column_id = ?
 LIMIT 1;
 
 deleteGradesByColumnId:
 DELETE FROM grades
 WHERE column_id = ?;
+
+deleteGradesByClassAndColumnId:
+DELETE FROM grades
+WHERE class_id = ? AND column_id = ?;
 
 selectAllPeriods:
 SELECT id, name, start_epoch_ms, end_epoch_ms, updated_at_epoch_ms, device_id, sync_version

@@ -35,10 +35,10 @@ else
 fi
 
 if [ "$BUILD_FAILED" -ne 0 ]; then
-    if [ -x "$HELPER_BIN" ]; then
-        echo "WARNING: Gradle build failed inside Xcode; reusing prebuilt helper at $HELPER_BIN"
+    if [ "${MIGESTOR_ALLOW_STALE_HELPER:-0}" = "1" ] && [ -x "$HELPER_BIN" ]; then
+        echo "WARNING: Gradle build failed; reusing stale helper at $HELPER_BIN"
     else
-        echo "ERROR: Gradle build failed and no prebuilt helper is available."
+        echo "ERROR: Gradle build failed. Set MIGESTOR_ALLOW_STALE_HELPER=1 to reuse an existing helper in local debug builds."
         exit 1
     fi
 fi

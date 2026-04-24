@@ -59,4 +59,28 @@ class FormulaEvaluatorTest {
         )
         assertEquals(10.0, result)
     }
+
+    @Test
+    fun `IF and SI evaluate only the selected branch`() {
+        val result = evaluator.evaluate(
+            "SI([B] = 0, 0, [A] / [B])",
+            mapOf("A" to 10.0, "B" to 0.0),
+        )
+        assertEquals(0.0, result)
+    }
+
+    @Test
+    fun `AND and OR short circuit unsafe branches`() {
+        val andResult = evaluator.evaluate(
+            "AND([B] <> 0, [A] / [B] > 1)",
+            mapOf("A" to 10.0, "B" to 0.0),
+        )
+        val orResult = evaluator.evaluate(
+            "OR([B] = 0, [A] / [B] > 1)",
+            mapOf("A" to 10.0, "B" to 0.0),
+        )
+
+        assertEquals(0.0, andResult)
+        assertEquals(1.0, orResult)
+    }
 }

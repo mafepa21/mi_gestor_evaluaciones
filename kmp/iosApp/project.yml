@@ -108,3 +108,23 @@ targets:
           ./scripts/build_command_center_helper.sh
         outputFiles:
           - "$(SRCROOT)/../commandCenterHelper/build/compose/binaries/main/app/MiGestorCommandCenter.app/Contents/MacOS/MiGestorCommandCenter"
+    postBuildScripts:
+      - name: Embed Command Center Helper
+        script: |
+          set -euo pipefail
+          SRC="${SRCROOT}/../commandCenterHelper/build/compose/binaries/main/app/MiGestorCommandCenter.app"
+          DST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/MiGestorCommandCenter.app"
+
+          if [ ! -d "$SRC" ]; then
+            echo "ERROR: Command center helper app not found at $SRC"
+            exit 1
+          fi
+
+          rm -rf "$DST"
+          ditto "$SRC" "$DST"
+
+          if [ -n "${EXPANDED_CODE_SIGN_IDENTITY:-}" ]; then
+            codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY}" --options runtime "$DST"
+          fi
+        outputFiles:
+          - "$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/MiGestorCommandCenter.app/Contents/MacOS/MiGestorCommandCenter"

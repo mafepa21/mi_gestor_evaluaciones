@@ -791,8 +791,7 @@ class LocalSyncServer(
             "sid" to serverId,
             "proto" to "https",
             "fp" to certFingerprintSha256,
-            "paired" to if (isPaired()) "1" else "0",
-            "pin" to pairingPin
+            "paired" to if (isPaired()) "1" else "0"
         )
     }
 

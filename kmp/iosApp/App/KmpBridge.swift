@@ -132,6 +132,7 @@ final class KmpBridge: ObservableObject {
     @Published var syncPendingChanges: Int = 0
     @Published var syncLastRunAt: Date? = nil
     @Published var pairedSyncHost: String? = nil
+    @Published var pairedSyncPort: Int = 8765
 
     var hasPersistedLanPairing: Bool {
         !(syncToken?.isEmpty ?? true) && !((pairedServerId?.isEmpty ?? true) && (pairedServerFingerprint?.isEmpty ?? true))
@@ -772,6 +773,7 @@ final class KmpBridge: ObservableObject {
         migrateLegacySyncSecretsFromUserDefaults()
         self.syncToken = syncSecureStore.loadString(key: "sync.token")
         self.pairedSyncHost = syncSecureStore.loadString(key: "sync.host")
+        self.pairedSyncPort = syncSecureStore.loadString(key: "sync.port").flatMap(Int.init) ?? 8765
         self.pairedServerId = syncSecureStore.loadString(key: "sync.server.id")
         self.pairedServerFingerprint = syncSecureStore.loadString(key: "sync.server.fingerprint")
 
@@ -3174,6 +3176,7 @@ final class KmpBridge: ObservableObject {
 
     func pairLanSync(
         host: String,
+        port: Int = 8765,
         pin: String,
         expectedServerId: String? = nil,
         expectedFingerprint: String? = nil
@@ -3194,9 +3197,17 @@ final class KmpBridge: ObservableObject {
                 userInfo: [NSLocalizedDescriptionKey: "Introduce un host LAN válido para el desktop."]
             )
         }
+        guard (1...65535).contains(port) else {
+            throw NSError(
+                domain: "Sync",
+                code: -208,
+                userInfo: [NSLocalizedDescriptionKey: "El puerto de sincronizacion LAN no es valido."]
+            )
+        }
 
         let previousToken = syncToken
         let previousHost = pairedSyncHost
+        let previousPort = pairedSyncPort
         let previousServerId = pairedServerId
         let previousFingerprint = pairedServerFingerprint
 
@@ -3214,6 +3225,7 @@ final class KmpBridge: ObservableObject {
             result = try await runSyncOperationWithTimeout(seconds: 12) {
                 try await self.lanSyncClient.handshake(
                     host: normalizedHost,
+                    port: port,
                     pin: pin,
                     deviceId: self.localDeviceId,
                     pinnedFingerprint: expectedFingerprint
@@ -3230,6 +3242,7 @@ final class KmpBridge: ObservableObject {
 
         syncToken = result.token
         pairedSyncHost = normalizedHost
+        pairedSyncPort = port
         pairedServerId = result.serverId
         pairedServerFingerprint = result.certificateFingerprint
 
@@ -3258,6 +3271,7 @@ final class KmpBridge: ObservableObject {
         } catch {
             syncToken = previousToken
             pairedSyncHost = previousHost
+            pairedSyncPort = previousPort
             pairedServerId = previousServerId
             pairedServerFingerprint = previousFingerprint
             isPairingInFlight = false
@@ -3274,7 +3288,7 @@ final class KmpBridge: ObservableObject {
 
     func unpairLanSync() async {
         if let host = pairedSyncHost, let token = syncToken {
-            _ = try? await lanSyncClient.unpair(host: host, token: token, pinnedFingerprint: pairedServerFingerprint)
+            _ = try? await lanSyncClient.unpair(host: host, port: pairedSyncPort, token: token, pinnedFingerprint: pairedServerFingerprint)
         }
         clearPersistedPairing()
         publishSyncState {
@@ -3334,6 +3348,7 @@ final class KmpBridge: ObservableObject {
         do {
             pull = try await lanSyncClient.pull(
                 host: host,
+                port: pairedSyncPort,
                 token: token,
                 sinceEpochMs: cursor,
                 pinnedFingerprint: pairedServerFingerprint
@@ -3344,6 +3359,7 @@ final class KmpBridge: ObservableObject {
             }
             pull = try await lanSyncClient.pull(
                 host: reboundHost,
+                port: pairedSyncPort,
                 token: token,
                 sinceEpochMs: cursor,
                 pinnedFingerprint: pairedServerFingerprint
@@ -3444,6 +3460,7 @@ final class KmpBridge: ObservableObject {
         do {
             ack = try await lanSyncClient.push(
                 host: host,
+                port: pairedSyncPort,
                 token: token,
                 deviceId: localDeviceId,
                 changes: pendingOutboundChanges,
@@ -3456,6 +3473,7 @@ final class KmpBridge: ObservableObject {
             }
             ack = try await lanSyncClient.push(
                 host: reboundHost,
+                port: pairedSyncPort,
                 token: token,
                 deviceId: localDeviceId,
                 changes: pendingOutboundChanges,
@@ -6414,6 +6432,10 @@ final class KmpBridge: ObservableObject {
             syncSecureStore.saveString(legacyHost, key: "sync.host")
             UserDefaults.standard.removeObject(forKey: "sync.host")
         }
+        if let legacyPort = UserDefaults.standard.string(forKey: "sync.port"), !legacyPort.isEmpty {
+            syncSecureStore.saveString(legacyPort, key: "sync.port")
+            UserDefaults.standard.removeObject(forKey: "sync.port")
+        }
     }
 
     private func persistSyncSecrets() {
@@ -6423,6 +6445,7 @@ final class KmpBridge: ObservableObject {
         if let host = pairedSyncHost {
             syncSecureStore.saveString(host, key: "sync.host")
         }
+        syncSecureStore.saveString("\(pairedSyncPort)", key: "sync.port")
         if let sid = pairedServerId {
             syncSecureStore.saveString(sid, key: "sync.server.id")
         }
@@ -6434,6 +6457,7 @@ final class KmpBridge: ObservableObject {
     private func clearPersistedPairing() {
         syncToken = nil
         pairedSyncHost = nil
+        pairedSyncPort = 8765
         pairedServerId = nil
         pairedServerFingerprint = nil
         autoSyncLoopTask?.cancel()
@@ -6445,6 +6469,7 @@ final class KmpBridge: ObservableObject {
         syncEventListener.stop()
         syncSecureStore.delete(key: "sync.token")
         syncSecureStore.delete(key: "sync.host")
+        syncSecureStore.delete(key: "sync.port")
         syncSecureStore.delete(key: "sync.server.id")
         syncSecureStore.delete(key: "sync.server.fingerprint")
     }
@@ -6463,6 +6488,10 @@ final class KmpBridge: ObservableObject {
             publishSyncState {
                 $0.syncStatusMessage = "Host actualizado automáticamente: \(matched.host)"
             }
+            changed = true
+        }
+        if pairedSyncPort != matched.port {
+            pairedSyncPort = matched.port
             changed = true
         }
         if (pairedServerId == nil || pairedServerId?.isEmpty == true), !matched.serverId.isEmpty {
@@ -6570,6 +6599,7 @@ final class KmpBridge: ObservableObject {
         }
         syncEventListener.start(
             host: host,
+            port: pairedSyncPort,
             token: token,
             pinnedFingerprint: pairedServerFingerprint
         ) { [weak self] event in
@@ -6902,12 +6932,13 @@ final class LanSyncClient {
 
     func handshake(
         host: String,
+        port: Int,
         pin: String,
         deviceId: String,
         pinnedFingerprint: String?
     ) async throws -> LanHandshakeResult {
         let normalizedHost = Self.normalizeHost(host)
-        let url = try buildURL(host: normalizedHost, path: "/sync/handshake")
+        let url = try buildURL(host: normalizedHost, port: port, path: "/sync/handshake")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -6943,9 +6974,9 @@ final class LanSyncClient {
         )
     }
 
-    func pull(host: String, token: String, sinceEpochMs: Int64, pinnedFingerprint: String?) async throws -> LanPullResult {
+    func pull(host: String, port: Int, token: String, sinceEpochMs: Int64, pinnedFingerprint: String?) async throws -> LanPullResult {
         let normalizedHost = Self.normalizeHost(host)
-        let url = try buildURL(host: normalizedHost, path: "/sync/pull", queryItems: [
+        let url = try buildURL(host: normalizedHost, port: port, path: "/sync/pull", queryItems: [
             URLQueryItem(name: "since", value: "\(sinceEpochMs)")
         ])
         var request = URLRequest(url: url)
@@ -6973,6 +7004,7 @@ final class LanSyncClient {
 
     func push(
         host: String,
+        port: Int,
         token: String,
         deviceId: String,
         changes: [LanSyncChange],
@@ -6980,7 +7012,7 @@ final class LanSyncClient {
         pinnedFingerprint: String?
     ) async throws -> LanPushResult {
         let normalizedHost = Self.normalizeHost(host)
-        let url = try buildURL(host: normalizedHost, path: "/sync/push")
+        let url = try buildURL(host: normalizedHost, port: port, path: "/sync/push")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -7018,9 +7050,9 @@ final class LanSyncClient {
         )
     }
 
-    func unpair(host: String, token: String, pinnedFingerprint: String?) async throws -> Bool {
+    func unpair(host: String, port: Int, token: String, pinnedFingerprint: String?) async throws -> Bool {
         let normalizedHost = Self.normalizeHost(host)
-        let url = try buildURL(host: normalizedHost, path: "/sync/unpair")
+        let url = try buildURL(host: normalizedHost, port: port, path: "/sync/unpair")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -7051,6 +7083,7 @@ final class LanSyncClient {
 
     private func buildURL(
         host: String,
+        port: Int,
         path: String,
         queryItems: [URLQueryItem] = []
     ) throws -> URL {
@@ -7061,11 +7094,18 @@ final class LanSyncClient {
                 userInfo: [NSLocalizedDescriptionKey: "El host de sincronización está vacío o no es válido."]
             )
         }
+        guard (1...65535).contains(port) else {
+            throw NSError(
+                domain: "Sync",
+                code: -208,
+                userInfo: [NSLocalizedDescriptionKey: "El puerto de sincronizacion LAN no es valido."]
+            )
+        }
 
         var components = URLComponents()
         components.scheme = "https"
         components.host = host
-        components.port = 8765
+        components.port = port
         components.path = path
         components.queryItems = queryItems.isEmpty ? nil : queryItems
 
@@ -7103,7 +7143,7 @@ final class LanSyncClient {
                 throw NSError(
                     domain: "Sync",
                     code: -212,
-                    userInfo: [NSLocalizedDescriptionKey: "No se pudo conectar con \(host):8765 para \(operation). Comprueba que el desktop siga abierto y que ese host sea el correcto."]
+                    userInfo: [NSLocalizedDescriptionKey: "No se pudo conectar con \(host) para \(operation). Comprueba que el desktop siga abierto y que ese host y puerto sean correctos."]
                 )
             }
             if urlError.code == .cannotFindHost || urlError.code == .dnsLookupFailed {
@@ -8400,7 +8440,8 @@ final class LanSyncDiscovery: NSObject, NetServiceBrowserDelegate, NetServiceDel
             let sid = txt["sid"].flatMap { String(data: $0, encoding: .utf8) } ?? ""
             let fp = txt["fp"].flatMap { String(data: $0, encoding: .utf8) } ?? ""
             let proto = txt["proto"].flatMap { String(data: $0, encoding: .utf8) } ?? "https"
-            return LanDiscoveredPeer(host: host, serverId: sid, fingerprint: fp, scheme: proto)
+            let port = service.port > 0 ? service.port : 8765
+            return LanDiscoveredPeer(host: host, port: port, serverId: sid, fingerprint: fp, scheme: proto)
         }
         let unique = KmpBridge.deduplicateDiscoveredPeers(peers)
         onPeersChanged?(unique.sorted { $0.host < $1.host })
@@ -8409,6 +8450,7 @@ final class LanSyncDiscovery: NSObject, NetServiceBrowserDelegate, NetServiceDel
 
 struct LanDiscoveredPeer: Equatable {
     let host: String
+    let port: Int
     let serverId: String
     let fingerprint: String
     let scheme: String

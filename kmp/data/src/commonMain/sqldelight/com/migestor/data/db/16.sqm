@@ -1,0 +1,61 @@
+-- Migration from version 15 to 16
+-- Scope grade uniqueness by class so shared students and reused column ids do not collide.
+
+PRAGMA foreign_keys = OFF;
+
+ALTER TABLE grades RENAME TO grades_old;
+
+CREATE TABLE grades (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    class_id INTEGER NOT NULL,
+    student_id INTEGER NOT NULL,
+    column_id TEXT NOT NULL,
+    evaluation_id INTEGER,
+    value REAL,
+    evidence TEXT,
+    evidence_path TEXT,
+    rubric_selections TEXT,
+    created_at_epoch_ms INTEGER NOT NULL,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(class_id, student_id, column_id),
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    FOREIGN KEY (evaluation_id) REFERENCES evaluations(id) ON DELETE SET NULL
+);
+
+INSERT INTO grades (
+    id,
+    class_id,
+    student_id,
+    column_id,
+    evaluation_id,
+    value,
+    evidence,
+    evidence_path,
+    rubric_selections,
+    created_at_epoch_ms,
+    updated_at_epoch_ms,
+    device_id,
+    sync_version
+)
+SELECT
+    id,
+    class_id,
+    student_id,
+    column_id,
+    evaluation_id,
+    value,
+    evidence,
+    evidence_path,
+    rubric_selections,
+    created_at_epoch_ms,
+    updated_at_epoch_ms,
+    device_id,
+    sync_version
+FROM grades_old;
+
+DROP TABLE grades_old;
+
+PRAGMA foreign_keys = ON;

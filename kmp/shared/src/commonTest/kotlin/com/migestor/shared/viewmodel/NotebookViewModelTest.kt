@@ -208,6 +208,47 @@ class NotebookViewModelTest {
         assertEquals(1, repository.savedWorkGroups.size)
     }
 
+    @Test
+    fun `rubric drafts are numeric and save through grade repository`() = runTest {
+        val classId = 1L
+        val studentId = 7L
+        val column = NotebookColumnDefinition(
+            id = "eval_42",
+            title = "Rúbrica",
+            type = NotebookColumnType.RUBRIC,
+            evaluationId = 42L,
+            rubricId = 99L,
+        )
+        val repository = FakeNotebookRepository(
+            snapshot = NotebookSheet(
+                classId = classId,
+                tabs = emptyList(),
+                columns = listOf(column),
+                rows = listOf(
+                    com.migestor.shared.domain.NotebookRow(
+                        student = Student(id = studentId, firstName = "Ada", lastName = "Lovelace"),
+                        cells = emptyList(),
+                        weightedAverage = null,
+                    )
+                ),
+            )
+        )
+        val viewModel = createViewModel(repository)
+
+        viewModel.selectClass(classId)
+        advanceUntilIdle()
+        viewModel.saveColumnGrade(studentId, column, "8,5")
+        advanceUntilIdle()
+
+        val state = viewModel.state.value as NotebookUiState.Data
+        assertEquals("8,5", state.numericDrafts[studentId to column.id])
+        assertFalse(state.textDrafts.containsKey(studentId to column.id))
+        assertEquals(
+            FakeNotebookRepository.SavedGrade(classId, studentId, column.id, 42L, 8.5),
+            repository.savedGrades.last()
+        )
+    }
+
     private fun createViewModel(repository: FakeNotebookRepository): NotebookViewModel {
         return NotebookViewModel(
             notebookRepository = repository,
@@ -223,6 +264,15 @@ private class FakeNotebookRepository(
 ) : NotebookRepository {
     val savedColumns = mutableListOf<NotebookColumnDefinition>()
     val savedWorkGroups = mutableListOf<NotebookWorkGroup>()
+    val savedGrades = mutableListOf<SavedGrade>()
+
+    data class SavedGrade(
+        val classId: Long,
+        val studentId: Long,
+        val columnId: String,
+        val evaluationId: Long?,
+        val value: Double?,
+    )
 
     override suspend fun loadNotebookSnapshot(classId: Long): NotebookSheet = snapshot
     override fun observeStudentChanges(classId: Long): Flow<List<Student>> = flowOf(emptyList())
@@ -230,7 +280,10 @@ private class FakeNotebookRepository(
     override suspend fun addStudent(classId: Long, firstName: String, lastName: String, isInjured: Boolean): Student = Student(id = 1, firstName = firstName, lastName = lastName, isInjured = isInjured)
     override suspend fun removeStudent(classId: Long, studentId: Long) = Unit
     override suspend fun listStudentsInClass(classId: Long): List<Student> = emptyList()
-    override suspend fun saveGrade(classId: Long, studentId: Long, columnId: String, evaluationId: Long?, value: Double?): Long = 1
+    override suspend fun saveGrade(classId: Long, studentId: Long, columnId: String, evaluationId: Long?, value: Double?): Long {
+        savedGrades += SavedGrade(classId, studentId, columnId, evaluationId, value)
+        return savedGrades.size.toLong()
+    }
     override suspend fun saveTab(classId: Long, tab: NotebookTab) = Unit
     override suspend fun deleteTab(tabId: String) = Unit
     override suspend fun saveColumn(classId: Long, column: NotebookColumnDefinition) {

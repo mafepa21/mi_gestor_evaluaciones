@@ -27,7 +27,7 @@ final class MacCommandCenterCoordinator: ObservableObject {
     private var lastStopReason: HelperStopReason = .none
     private var pendingRefreshDomains = Set<RefreshDomain>()
     private var refreshTask: Task<Void, Never>?
-    private let syncSecureStore = MacSyncSecureStore(service: "com.migestor.sync.ios")
+    private let syncSecureStore = MacSyncSecureStore(service: "com.migestor.sync.desktop")
 
     init() {
         observers.append(NotificationCenter.default.addObserver(
@@ -296,10 +296,9 @@ final class MacCommandCenterCoordinator: ObservableObject {
     }
 
     private var hasPersistedPairing: Bool {
-        let token = syncSecureStore.loadString(key: "sync.token")?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let serverId = syncSecureStore.loadString(key: "sync.server.id")?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let fingerprint = syncSecureStore.loadString(key: "sync.server.fingerprint")?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return !(token?.isEmpty ?? true) && !((serverId?.isEmpty ?? true) && (fingerprint?.isEmpty ?? true))
+        let token = syncSecureStore.loadString(key: "paired-token")?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let deviceId = syncSecureStore.loadString(key: "paired-device-id")?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !(token?.isEmpty ?? true) && !(deviceId?.isEmpty ?? true)
     }
 
     private func shouldTreatTerminationAsExpected(_ status: Int32) -> Bool {

@@ -294,6 +294,7 @@
 				5E7C76C4953CB83CF3B1D4B4 /* Resources */,
 				677677B0B4FCCBAD19F73642 /* Frameworks */,
 				784B08E4A7373DB7893260F9 /* Embed Frameworks */,
+				FE75F6163DC74DD01E88F555 /* Embed Command Center Helper */,
 			);
 			buildRules = (
 			);
@@ -402,6 +403,25 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "set -euo pipefail\ncd \"${SRCROOT}/..\"\nexport GRADLE_USER_HOME=\"${SRCROOT}/../.gradle\"\nmkdir -p \"${GRADLE_USER_HOME}\"\n./scripts/build_apple_framework.sh\n";
+		};
+		FE75F6163DC74DD01E88F555 /* Embed Command Center Helper */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Embed Command Center Helper";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/MiGestorCommandCenter.app/Contents/MacOS/MiGestorCommandCenter",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -euo pipefail\nSRC=\"${SRCROOT}/../commandCenterHelper/build/compose/binaries/main/app/MiGestorCommandCenter.app\"\nDST=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/MiGestorCommandCenter.app\"\n\nif [ ! -d \"$SRC\" ]; then\n  echo \"ERROR: Command center helper app not found at $SRC\"\n  exit 1\nfi\n\nrm -rf \"$DST\"\nditto \"$SRC\" \"$DST\"\n\nif [ -n \"${EXPANDED_CODE_SIGN_IDENTITY:-}\" ]; then\n  codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --options runtime \"$DST\"\nfi\n";
 		};
 		FF78BEF6C2A3CCBB345A7E03 /* Build Command Center Helper */ = {
 			isa = PBXShellScriptBuildPhase;

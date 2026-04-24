@@ -1386,10 +1386,6 @@ fileprivate struct SyncLanCard: View {
                                 bridge.setSyncStatusMessage("El puerto de enlace no es válido.")
                                 return
                             }
-                            guard port == 8765 else {
-                                bridge.setSyncStatusMessage("Esta compilación del iPad usa el puerto 8765 para enlazar con el Mac.")
-                                return
-                            }
                             guard !normalizedPin.isEmpty else {
                                 bridge.setSyncStatusMessage("Introduce el PIN de enlace.")
                                 return
@@ -1400,6 +1396,7 @@ fileprivate struct SyncLanCard: View {
                                 let peer = bridge.discoveredPeer(forHost: hostToUse)
                                 try await bridge.pairLanSync(
                                     host: hostToUse,
+                                    port: port,
                                     pin: normalizedPin,
                                     expectedServerId: peer?.serverId,
                                     expectedFingerprint: peer?.fingerprint
@@ -1419,7 +1416,12 @@ fileprivate struct SyncLanCard: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(bridge.discoveredSyncHosts, id: \.self) { host in
-                            Button(host) { selectedHost = host }
+                            Button(host) {
+                                selectedHost = host
+                                if let peer = bridge.discoveredPeer(forHost: host) {
+                                    selectedPort = "\(peer.port)"
+                                }
+                            }
                                 .buttonStyle(.bordered)
                         }
                     }
@@ -1470,12 +1472,9 @@ fileprivate struct SyncLanCard: View {
                 pin = parsed.pin
                 Task {
                     do {
-                        guard parsed.port == 8765 else {
-                            bridge.setSyncStatusMessage("Este QR usa un puerto no compatible con esta compilación del iPad.")
-                            return
-                        }
                         try await bridge.pairLanSync(
                             host: parsed.host,
+                            port: parsed.port,
                             pin: parsed.pin,
                             expectedServerId: parsed.serverId,
                             expectedFingerprint: parsed.fingerprint

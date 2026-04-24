@@ -162,8 +162,13 @@ class NotebookRepositorySqlDelight(
             }
         }
 
+        val classId = columnRow?.class_id
         columnIdsToDelete.forEach { id ->
-            db.appDatabaseQueries.deleteGradesByColumnId(id)
+            if (classId != null) {
+                db.appDatabaseQueries.deleteGradesByClassAndColumnId(classId, id)
+            } else {
+                db.appDatabaseQueries.deleteGradesByColumnId(id)
+            }
             db.appDatabaseQueries.deleteNotebookCellsByColumnId(id)
             notebookConfigRepository.deleteColumn(id)
         }

@@ -205,6 +205,7 @@ class NotebookViewModel(
             try {
                 val snapshot = notebookRepository.loadNotebookSnapshot(classId)
                 val evaluations = evaluationsRepository.listClassEvaluations(classId)
+                if (activeClassId != classId) return@launch
                 val currentData = _state.value as? NotebookUiState.Data
                 cachedEvaluations = evaluations
                 val freshDataState = buildDataState(snapshot, evaluations, currentData)
@@ -631,7 +632,8 @@ class NotebookViewModel(
     private suspend fun internalSaveGrade(studentId: Long, column: NotebookColumnDefinition, value: String) {
         val classId = activeClassId ?: return
         when (column.type) {
-            NotebookColumnType.NUMERIC -> {
+            NotebookColumnType.NUMERIC,
+            NotebookColumnType.RUBRIC -> {
                 val raw = value.trim()
                 val numericValue = raw.replace(",", ".").toDoubleOrNull()
                 if (raw.isNotEmpty() && numericValue == null) return
@@ -758,7 +760,8 @@ class NotebookViewModel(
     fun updateDraft(studentId: Long, columnId: String, type: NotebookColumnType, value: Any) {
         val valStr = value.toString()
         when (type) {
-            NotebookColumnType.NUMERIC -> {
+            NotebookColumnType.NUMERIC,
+            NotebookColumnType.RUBRIC -> {
                 _numericDrafts.update { it + ((studentId to columnId) to valStr) }
             }
             NotebookColumnType.CHECK -> {

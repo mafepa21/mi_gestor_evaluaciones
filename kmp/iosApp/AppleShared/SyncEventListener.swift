@@ -12,11 +12,12 @@ final class SyncEventListener {
 
     func start(
         host: String,
+        port: Int,
         token: String,
         pinnedFingerprint: String?,
         onEvent: @escaping @MainActor (LanSyncEvent?) async -> Void
     ) {
-        let connectionKey = "\(host)|\(token)|\(pinnedFingerprint ?? "")"
+        let connectionKey = "\(host)|\(port)|\(token)|\(pinnedFingerprint ?? "")"
         if currentConnectionKey == connectionKey, eventTask?.isCancelled == false {
             return
         }
@@ -26,6 +27,7 @@ final class SyncEventListener {
         eventTask = Task { [weak self] in
             await self?.listen(
                 host: host,
+                port: port,
                 token: token,
                 pinnedFingerprint: pinnedFingerprint,
                 onEvent: onEvent
@@ -41,6 +43,7 @@ final class SyncEventListener {
 
     private func listen(
         host: String,
+        port: Int,
         token: String,
         pinnedFingerprint: String?,
         onEvent: @escaping @MainActor (LanSyncEvent?) async -> Void
@@ -50,6 +53,7 @@ final class SyncEventListener {
             do {
                 try await openStream(
                     host: host,
+                    port: port,
                     token: token,
                     pinnedFingerprint: pinnedFingerprint,
                     onEvent: onEvent
@@ -70,11 +74,12 @@ final class SyncEventListener {
 
     private func openStream(
         host: String,
+        port: Int,
         token: String,
         pinnedFingerprint: String?,
         onEvent: @escaping @MainActor (LanSyncEvent?) async -> Void
     ) async throws {
-        let url = try buildEventsURL(host: host)
+        let url = try buildEventsURL(host: host, port: port)
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -142,11 +147,11 @@ final class SyncEventListener {
         return try? JSONDecoder().decode(LanSyncEvent.self, from: payload)
     }
 
-    private func buildEventsURL(host: String) throws -> URL {
+    private func buildEventsURL(host: String, port: Int) throws -> URL {
         var components = URLComponents()
         components.scheme = "https"
         components.host = host
-        components.port = 8765
+        components.port = port
         components.path = "/sync/events"
 
         guard let url = components.url else {

@@ -5,8 +5,8 @@ class FormulaEvaluator {
         val normalized = expression
             .trim()
             .dropWhile { it == '=' }
-        val parser = Parser(tokenize(normalized), variables)
-        return parser.parseExpression()
+        val parser = Parser(tokenize(normalized))
+        return parser.parseExpression().evaluate(variables)
     }
 
     private fun tokenize(input: String): List<String> {
@@ -52,140 +52,177 @@ class FormulaEvaluator {
         return tokens
     }
 
+    private sealed interface Node {
+        fun evaluate(variables: Map<String, Double>): Double
+    }
+
+    private data class NumberNode(val value: Double) : Node {
+        override fun evaluate(variables: Map<String, Double>): Double = value
+    }
+
+    private data class VariableNode(val name: String) : Node {
+        override fun evaluate(variables: Map<String, Double>): Double {
+            return variables[name] ?: error("Variable no encontrada en formula: $name")
+        }
+    }
+
+    private data class UnaryNode(val operator: String, val value: Node) : Node {
+        override fun evaluate(variables: Map<String, Double>): Double {
+            val evaluated = value.evaluate(variables)
+            return when (operator) {
+                "-" -> -evaluated
+                else -> error("Operador no soportado: $operator")
+            }
+        }
+    }
+
+    private data class BinaryNode(val left: Node, val operator: String, val right: Node) : Node {
+        override fun evaluate(variables: Map<String, Double>): Double {
+            val leftValue = left.evaluate(variables)
+            val rightValue = right.evaluate(variables)
+            return when (operator) {
+                "+" -> leftValue + rightValue
+                "-" -> leftValue - rightValue
+                "*" -> leftValue * rightValue
+                "/" -> {
+                    require(rightValue != 0.0) { "Division por cero" }
+                    leftValue / rightValue
+                }
+                "<" -> bool(leftValue < rightValue)
+                ">" -> bool(leftValue > rightValue)
+                "<=" -> bool(leftValue <= rightValue)
+                ">=" -> bool(leftValue >= rightValue)
+                "==", "=" -> bool(leftValue == rightValue)
+                "!=", "<>" -> bool(leftValue != rightValue)
+                else -> error("Operador no soportado: $operator")
+            }
+        }
+    }
+
+    private data class FunctionNode(val nameRaw: String, val args: List<Node>) : Node {
+        override fun evaluate(variables: Map<String, Double>): Double {
+            val name = nameRaw.uppercase()
+            return when (name) {
+                "IF", "SI" -> {
+                    require(args.size == 3) { "$name requiere 3 argumentos" }
+                    if (args[0].evaluate(variables) != 0.0) {
+                        args[1].evaluate(variables)
+                    } else {
+                        args[2].evaluate(variables)
+                    }
+                }
+                "AND", "Y" -> {
+                    for (arg in args) {
+                        if (arg.evaluate(variables) == 0.0) return 0.0
+                    }
+                    1.0
+                }
+                "OR", "O" -> {
+                    for (arg in args) {
+                        if (arg.evaluate(variables) != 0.0) return 1.0
+                    }
+                    0.0
+                }
+                "NOT", "NO" -> {
+                    require(args.size == 1) { "$name requiere 1 argumento" }
+                    bool(args[0].evaluate(variables) == 0.0)
+                }
+                "SUM", "SUMA" -> args.sumOf { it.evaluate(variables) }
+                "AVG", "PROMEDIO", "AVERAGE" -> {
+                    require(args.isNotEmpty()) { "$name requiere al menos 1 argumento" }
+                    args.sumOf { it.evaluate(variables) } / args.size
+                }
+                "MIN" -> {
+                    require(args.isNotEmpty()) { "$name requiere al menos 1 argumento" }
+                    args.minOf { it.evaluate(variables) }
+                }
+                "MAX" -> {
+                    require(args.isNotEmpty()) { "$name requiere al menos 1 argumento" }
+                    args.maxOf { it.evaluate(variables) }
+                }
+                "ROUND", "REDONDEAR" -> {
+                    require(args.size in 1..2) { "$name requiere 1 o 2 argumentos" }
+                    val digits = if (args.size == 2) args[1].evaluate(variables).toInt() else 0
+                    round(args[0].evaluate(variables), digits)
+                }
+                else -> error("Funcion no soportada: $nameRaw")
+            }
+        }
+    }
+
     private class Parser(
         private val tokens: List<String>,
-        private val variables: Map<String, Double>,
     ) {
         private var pos: Int = 0
 
-        fun parseExpression(): Double {
+        fun parseExpression(): Node {
             val result = parseComparison()
             require(isAtEnd()) { "Token inesperado: ${peek()}" }
             return result
         }
 
-        private fun parseComparison(): Double {
+        private fun parseComparison(): Node {
             var left = parseAddSub()
             while (match("<", ">", "<=", ">=", "==", "=", "!=", "<>")) {
                 val operator = previous()
                 val right = parseAddSub()
-                left = when (operator) {
-                    "<" -> bool(left < right)
-                    ">" -> bool(left > right)
-                    "<=" -> bool(left <= right)
-                    ">=" -> bool(left >= right)
-                    "==", "=" -> bool(left == right)
-                    "!=", "<>" -> bool(left != right)
-                    else -> error("Operador no soportado: $operator")
-                }
+                left = BinaryNode(left, operator, right)
             }
             return left
         }
 
-        private fun parseAddSub(): Double {
+        private fun parseAddSub(): Node {
             var left = parseMulDiv()
             while (match("+", "-")) {
                 val operator = previous()
                 val right = parseMulDiv()
-                left = if (operator == "+") left + right else left - right
+                left = BinaryNode(left, operator, right)
             }
             return left
         }
 
-        private fun parseMulDiv(): Double {
+        private fun parseMulDiv(): Node {
             var left = parseUnary()
             while (match("*", "/")) {
                 val operator = previous()
                 val right = parseUnary()
-                left = when (operator) {
-                    "*" -> left * right
-                    "/" -> {
-                        require(right != 0.0) { "División por cero" }
-                        left / right
-                    }
-                    else -> error("Operador no soportado: $operator")
-                }
+                left = BinaryNode(left, operator, right)
             }
             return left
         }
 
-        private fun parseUnary(): Double {
-            if (match("-")) return -parseUnary()
+        private fun parseUnary(): Node {
+            if (match("-")) return UnaryNode("-", parseUnary())
             return parsePrimary()
         }
 
-        private fun parsePrimary(): Double {
+        private fun parsePrimary(): Node {
             if (match("(")) {
                 val value = parseComparison()
-                require(match(")")) { "Paréntesis desbalanceados" }
+                require(match(")")) { "Parentesis desbalanceados" }
                 return value
             }
 
             val token = advance()
-            token.toDoubleOrNull()?.let { return it }
+            token.toDoubleOrNull()?.let { return NumberNode(it) }
 
             if (isIdentifier(token) && match("(")) {
-                val args = mutableListOf<Double>()
+                val args = mutableListOf<Node>()
                 if (!check(")")) {
                     do {
                         args += parseComparison()
                     } while (match(","))
                 }
-                require(match(")")) { "Paréntesis desbalanceados en función $token" }
-                return evalFunction(token, args)
+                require(match(")")) { "Parentesis desbalanceados en funcion $token" }
+                return FunctionNode(token, args)
             }
 
-            variables[token]?.let { return it }
-
             if (isIdentifier(token)) {
-                return variables[token]
-                    ?: error("Variable no encontrada en fórmula: $token")
+                return VariableNode(token)
             }
 
             error("Token no soportado: $token")
         }
-
-        private fun evalFunction(nameRaw: String, args: List<Double>): Double {
-            val name = nameRaw.uppercase()
-            return when (name) {
-                "IF", "SI" -> {
-                    require(args.size == 3) { "$name requiere 3 argumentos" }
-                    if (args[0] != 0.0) args[1] else args[2]
-                }
-                "AND", "Y" -> bool(args.all { it != 0.0 })
-                "OR", "O" -> bool(args.any { it != 0.0 })
-                "NOT", "NO" -> {
-                    require(args.size == 1) { "$name requiere 1 argumento" }
-                    bool(args[0] == 0.0)
-                }
-                "SUM", "SUMA" -> args.sum()
-                "AVG", "PROMEDIO", "AVERAGE" -> {
-                    require(args.isNotEmpty()) { "$name requiere al menos 1 argumento" }
-                    args.sum() / args.size
-                }
-                "MIN" -> {
-                    require(args.isNotEmpty()) { "$name requiere al menos 1 argumento" }
-                    args.minOrNull()!!
-                }
-                "MAX" -> {
-                    require(args.isNotEmpty()) { "$name requiere al menos 1 argumento" }
-                    args.maxOrNull()!!
-                }
-                "ROUND", "REDONDEAR" -> {
-                    require(args.size in 1..2) { "$name requiere 1 o 2 argumentos" }
-                    val digits = if (args.size == 2) args[1].toInt() else 0
-                    round(args[0], digits)
-                }
-                else -> error("Función no soportada: $nameRaw")
-            }
-        }
-
-        private fun round(value: Double, digits: Int): Double {
-            val factor = 10.0.pow(digits)
-            return kotlin.math.round(value * factor) / factor
-        }
-
-        private fun bool(value: Boolean): Double = if (value) 1.0 else 0.0
 
         private fun isIdentifier(value: String): Boolean = value.matches(Regex("[A-Za-z_][A-Za-z0-9_]*"))
 
@@ -204,7 +241,7 @@ class FormulaEvaluator {
         }
 
         private fun advance(): String {
-            require(!isAtEnd()) { "Expresión incompleta" }
+            require(!isAtEnd()) { "Expresion incompleta" }
             return tokens[pos++]
         }
 
@@ -214,6 +251,13 @@ class FormulaEvaluator {
     }
 
     companion object {
+        private fun bool(value: Boolean): Double = if (value) 1.0 else 0.0
+
+        private fun round(value: Double, digits: Int): Double {
+            val factor = 10.0.pow(digits)
+            return kotlin.math.round(value * factor) / factor
+        }
+
         private fun Double.pow(power: Int): Double {
             var result = 1.0
             repeat(kotlin.math.abs(power)) { result *= 10.0 }

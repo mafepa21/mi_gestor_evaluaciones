@@ -265,6 +265,7 @@ private struct NotebookCellUndoEntry {
 struct NotebookModuleView: View {
     private let notebookGridRowHeight: CGFloat = 72
     private let notebookGridHeaderHeight: CGFloat = 68
+    private let notebookGridFolderLaneHeight: CGFloat = 64
 
     @EnvironmentObject private var layoutState: WorkspaceLayoutState
     @ObservedObject var bridge: KmpBridge
@@ -776,7 +777,7 @@ struct NotebookModuleView: View {
                 fixedColumnWidth: fixedZoneWidth
             ) {
                 Color.clear
-                    .frame(height: hasFolders ? 64 : 0)
+                    .frame(height: hasFolders ? notebookGridFolderLaneHeight : 0)
             } dividerHandle: {
                 NotebookDividerHandle(isDragging: isDraggingFixedZoneDivider) { translationWidth in
                     if !isDraggingFixedZoneDivider {
@@ -790,22 +791,25 @@ struct NotebookModuleView: View {
                     snapFixedZoneWidth()
                 }
             } scrollTopAccessory: {
-                if hasFolders {
-                    HStack(alignment: .top, spacing: 12) {
-                        ForEach(laneItems, id: \.id) { item in
-                            switch item {
-                            case .spacer(_, let width):
-                                Color.clear
-                                    .frame(width: width, height: 1)
-                            case .folder(let category, let columns, let width):
-                                categoryFolderHeader(category: category, columns: columns, width: width)
+                Group {
+                    if hasFolders {
+                        HStack(alignment: .top, spacing: 12) {
+                            ForEach(laneItems, id: \.id) { item in
+                                switch item {
+                                case .spacer(_, let width):
+                                    Color.clear
+                                        .frame(width: width, height: 1)
+                                case .folder(let category, let columns, let width):
+                                    categoryFolderHeader(category: category, columns: columns, width: width)
+                                }
                             }
                         }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 10)
+                        .padding(.bottom, 8)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 10)
-                    .padding(.bottom, 8)
                 }
+                .frame(height: hasFolders ? notebookGridFolderLaneHeight : 0, alignment: .topLeading)
             } fixedHeader: {
                 fixedHeaderRow(segments: fixedSegments, data: data)
             } scrollHeader: {

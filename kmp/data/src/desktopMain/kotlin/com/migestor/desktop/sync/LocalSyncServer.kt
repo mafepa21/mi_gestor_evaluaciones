@@ -913,8 +913,8 @@ private class DesktopTlsIdentity(
         return keyStore.getCertificate(keyAlias) as X509Certificate
     }
 
-    private fun ensureIdentity(password: String) {
-        if (keystoreFile.exists()) return
+    private fun ensureIdentity(password: String, force: Boolean = false) {
+        if (keystoreFile.exists() && !force) return
         keystoreFile.parentFile?.mkdirs()
 
         val keyPair = KeyPairGenerator.getInstance("RSA").apply {
@@ -985,8 +985,10 @@ private class DesktopTlsIdentity(
             return password
         }
 
-        runCatching { keystoreFile.delete() }
-        ensureIdentity(password)
+        secureStore.delete(keystorePasswordKey)
+        password = ensureKeystorePassword()
+        ensureIdentity(password, force = true)
+        loadKeyStore(password)
         return password
     }
 
@@ -1016,10 +1018,9 @@ private class DesktopSecureStore(
     }
 
     fun delete(key: String) {
-        if (!deleteFromMacKeychain(key)) {
-            prefs.remove(key)
-            prefs.flushSafely()
-        }
+        deleteFromMacKeychain(key)
+        prefs.remove(key)
+        prefs.flushSafely()
     }
 
     private fun readFromMacKeychain(account: String): String? {

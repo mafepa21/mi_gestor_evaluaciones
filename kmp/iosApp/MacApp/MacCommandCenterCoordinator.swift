@@ -159,12 +159,13 @@ final class MacCommandCenterCoordinator: ObservableObject {
                 self.isProcessRunning = false
                 self.stdoutPipe?.fileHandleForReading.readabilityHandler = nil
                 self.stderrPipe?.fileHandleForReading.readabilityHandler = nil
+                let bufferedFailureMessage = self.helperBufferedFailureMessage()
                 self.stdoutPipe = nil
                 self.stderrPipe = nil
                 self.process = nil
-                self.clearHelperBuffers()
 
                 if self.shouldRestartAfterStop {
+                    self.clearHelperBuffers()
                     self.lastStopReason = .none
                     self.shouldRestartAfterStop = false
                     self.startIfNeeded()
@@ -172,12 +173,14 @@ final class MacCommandCenterCoordinator: ObservableObject {
                 }
 
                 if case .failed = self.lastLifecycleState {
-                    let message = self.lastFailureMessage ?? "El helper terminó inesperadamente."
+                    let message = self.lastFailureMessage ?? bufferedFailureMessage ?? "El helper terminó inesperadamente."
+                    self.clearHelperBuffers()
                     self.updateState(.failed(message: message), message: message)
                     return
                 }
 
                 if self.shouldTreatTerminationAsExpected(terminatedProcess.terminationStatus) {
+                    self.clearHelperBuffers()
                     self.lastStopReason = .none
                     self.lastRunningSnapshot = nil
                     self.lastLifecycleState = .stopped
@@ -187,13 +190,16 @@ final class MacCommandCenterCoordinator: ObservableObject {
 
                 if terminatedProcess.terminationStatus != 0 {
                     let message = self.lastFailureMessage
+                        ?? bufferedFailureMessage
                         ?? "El helper de enlace terminó con código \(terminatedProcess.terminationStatus)."
                     self.lastFailureMessage = message
                     self.lastLifecycleState = .failed
+                    self.clearHelperBuffers()
                     self.updateState(.failed(message: message), message: message)
                     return
                 }
 
+                self.clearHelperBuffers()
                 self.lastStopReason = .none
                 self.lastRunningSnapshot = nil
                 self.lastLifecycleState = .stopped
@@ -312,25 +318,10 @@ final class MacCommandCenterCoordinator: ObservableObject {
 
     private func terminateStaleHelperProcesses(executableURL: URL) {
         let executablePath = executableURL.path
-        let pgrep = Process()
-        pgrep.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
-        pgrep.arguments = ["-f", executablePath]
-
-        let outputPipe = Pipe()
-        pgrep.standardOutput = outputPipe
-        pgrep.standardError = Pipe()
-
-        do {
-            try pgrep.run()
-            pgrep.waitUntilExit()
-        } catch {
-            return
-        }
-
-        guard pgrep.terminationStatus == 0,
-              let output = String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) else {
-            return
-        }
+        let output = [
+            pgrepOutput(arguments: ["-f", executablePath]),
+            pgrepOutput(arguments: ["-x", "MiGestorCommandCenter"]),
+        ].compactMap { $0 }.joined(separator: "\n")
 
         let currentPid = ProcessInfo.processInfo.processIdentifier
         let activeChildPid = process?.processIdentifier
@@ -361,6 +352,26 @@ final class MacCommandCenterCoordinator: ObservableObject {
         Thread.sleep(forTimeInterval: 0.25)
     }
 
+    private func pgrepOutput(arguments: [String]) -> String? {
+        let pgrep = Process()
+        pgrep.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        pgrep.arguments = arguments
+
+        let outputPipe = Pipe()
+        pgrep.standardOutput = outputPipe
+        pgrep.standardError = Pipe()
+
+        do {
+            try pgrep.run()
+            pgrep.waitUntilExit()
+        } catch {
+            return nil
+        }
+
+        guard pgrep.terminationStatus == 0 else { return nil }
+        return String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)
+    }
+
     private func friendlyLaunchMessage(for error: Error) -> String {
         let rawMessage = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
         if rawMessage.localizedCaseInsensitiveContains("address already in use") {
@@ -372,6 +383,18 @@ final class MacCommandCenterCoordinator: ObservableObject {
     private func clearHelperBuffers() {
         stdoutBuffer = ""
         stderrBuffer = ""
+    }
+
+    private func helperBufferedFailureMessage() -> String? {
+        let combined = [stderrBuffer, stdoutBuffer]
+            .joined(separator: "\n")
+            .split(whereSeparator: \.isNewline)
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .suffix(4)
+            .joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return combined.isEmpty ? nil : combined
     }
 
     private func consumeHelperChunk(_ chunk: String, isError: Bool) {

@@ -48,24 +48,10 @@ FRAMEWORK_SRC="$ROOT_DIR/data/build/bin/$SRC_ARCH/${CONF_LOWER}Framework/MiGesto
 
 echo "Building KMP Framework for $APPLE_PLATFORM ($APPLE_ARCHS) in $APPLE_CONFIG mode..."
 LOCAL_GRADLE_BIN="$(find "$GRADLE_USER_HOME/wrapper/dists/gradle-8.6-all" -path '*/gradle-8.6/bin/gradle' -type f 2>/dev/null | head -n 1 || true)"
-BUILD_FAILED=0
 if [ -x "$LOCAL_GRADLE_BIN" ]; then
-    if ! "$LOCAL_GRADLE_BIN" --no-daemon ":data:$GRADLE_TASK"; then
-        BUILD_FAILED=1
-    fi
+    "$LOCAL_GRADLE_BIN" --no-daemon ":data:$GRADLE_TASK"
 else
-    if ! ./gradlew --no-daemon ":data:$GRADLE_TASK"; then
-        BUILD_FAILED=1
-    fi
-fi
-
-if [ "$BUILD_FAILED" -ne 0 ]; then
-    if [ -d "$FRAMEWORK_SRC" ]; then
-        echo "WARNING: Gradle build failed inside Xcode; reusing prebuilt framework at $FRAMEWORK_SRC"
-    else
-        echo "ERROR: Gradle build failed and no prebuilt framework is available."
-        exit 1
-    fi
+    ./gradlew --no-daemon ":data:$GRADLE_TASK"
 fi
 
 rm -rf "$OUT_DIR/MiGestorKit.framework"

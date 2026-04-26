@@ -22,6 +22,16 @@ fun createMacosDriver(): SqlDriver = createAppleDriver(
     ),
 )
 
+fun diagnoseMacosDriverBootstrap(): String {
+    return try {
+        val driver = createMacosDriver()
+        driver.close()
+        "OK"
+    } catch (t: Throwable) {
+        "${t::class.simpleName}: ${t.message}"
+    }
+}
+
 fun getMacosAppDataPath(fileName: String): String = appleAppSupportPath(
     appSupportDirectoryName = MACOS_APP_SUPPORT_DIR,
     fileName = fileName,

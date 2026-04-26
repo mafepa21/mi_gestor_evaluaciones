@@ -2,7 +2,7 @@
 -- Remove the accidental uniqueness constraint that prevented multiple work groups
 -- per class/tab and rebuild the table without it.
 
-PRAGMA foreign_keys = OFF;
+PRAGMA foreign_keys = 0;
 
 ALTER TABLE notebook_work_groups RENAME TO notebook_work_groups_old;
 
@@ -27,4 +27,4 @@ FROM notebook_work_groups_old;
 
 DROP TABLE notebook_work_groups_old;
 
-PRAGMA foreign_keys = ON;
+PRAGMA foreign_keys = 1;

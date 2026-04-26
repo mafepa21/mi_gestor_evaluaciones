@@ -425,7 +425,7 @@ class GradesRepositorySqlDelight(
     ): Long {
         val now = if (updatedAtEpochMs > 0) updatedAtEpochMs else Clock.System.now().toEpochMilliseconds()
         val created = if (createdAtEpochMs > 0) createdAtEpochMs else now
-        val existing = db.appDatabaseQueries.selectGradeByStudentAndColumn(studentId, columnId).executeAsOneOrNull()
+        val existing = db.appDatabaseQueries.selectGradeByStudentClassAndColumn(classId, studentId, columnId).executeAsOneOrNull()
         val canApply = shouldApplyIncomingChange(
             existingUpdatedAtEpochMs = existing?.updated_at_epoch_ms,
             existingDeviceId = existing?.device_id,
@@ -491,7 +491,7 @@ class GradesRepositorySqlDelight(
         syncVersion: Long,
     ) {
         val now = if (updatedAtEpochMs > 0) updatedAtEpochMs else Clock.System.now().toEpochMilliseconds()
-        val existing = db.appDatabaseQueries.selectGradeByStudentAndColumn(studentId, columnId).executeAsOneOrNull()
+        val existing = db.appDatabaseQueries.selectGradeByStudentClassAndColumn(classId, studentId, columnId).executeAsOneOrNull()
         val canApply = shouldApplyIncomingChange(
             existingUpdatedAtEpochMs = existing?.updated_at_epoch_ms,
             existingDeviceId = existing?.device_id,

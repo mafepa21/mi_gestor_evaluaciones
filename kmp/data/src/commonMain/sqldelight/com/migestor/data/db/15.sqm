@@ -1,0 +1,18 @@
+CREATE TABLE IF NOT EXISTS ai_audit_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at_epoch_ms INTEGER NOT NULL,
+    service TEXT NOT NULL,
+    use_case TEXT NOT NULL,
+    report_kind TEXT,
+    class_id INTEGER,
+    student_hash TEXT,
+    availability TEXT NOT NULL,
+    model_available INTEGER NOT NULL DEFAULT 0,
+    success INTEGER NOT NULL DEFAULT 0,
+    duration_ms INTEGER NOT NULL DEFAULT 0,
+    error_kind TEXT,
+    error_message TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_ai_audit_created ON ai_audit_events(created_at_epoch_ms DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_audit_use_case ON ai_audit_events(use_case, created_at_epoch_ms DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_audit_success ON ai_audit_events(success, created_at_epoch_ms DESC);

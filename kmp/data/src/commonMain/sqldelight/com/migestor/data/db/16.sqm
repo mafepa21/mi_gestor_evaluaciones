@@ -1,0 +1,75 @@
+-- Migration from version 16 to 17
+-- Scope grade uniqueness by class and keep one canonical legacy row per class/student/column.
+
+PRAGMA foreign_keys = 0;
+
+DROP TABLE IF EXISTS grades_migration_v16;
+
+CREATE TABLE grades_migration_v16 (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    class_id INTEGER NOT NULL,
+    student_id INTEGER NOT NULL,
+    column_id TEXT NOT NULL,
+    evaluation_id INTEGER,
+    value REAL,
+    evidence TEXT,
+    evidence_path TEXT,
+    rubric_selections TEXT,
+    created_at_epoch_ms INTEGER NOT NULL,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(class_id, student_id, column_id),
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    FOREIGN KEY (evaluation_id) REFERENCES evaluations(id) ON DELETE SET NULL
+);
+
+INSERT INTO grades_migration_v16 (
+    id,
+    class_id,
+    student_id,
+    column_id,
+    evaluation_id,
+    value,
+    evidence,
+    evidence_path,
+    rubric_selections,
+    created_at_epoch_ms,
+    updated_at_epoch_ms,
+    device_id,
+    sync_version
+)
+SELECT
+    id,
+    class_id,
+    student_id,
+    column_id,
+    evaluation_id,
+    value,
+    evidence,
+    evidence_path,
+    rubric_selections,
+    created_at_epoch_ms,
+    updated_at_epoch_ms,
+    device_id,
+    sync_version
+FROM (
+    SELECT
+        *,
+        ROW_NUMBER() OVER (
+            PARTITION BY class_id, student_id, column_id
+            ORDER BY updated_at_epoch_ms DESC, created_at_epoch_ms DESC, id DESC
+        ) AS rn
+    FROM grades
+    WHERE class_id IS NOT NULL
+      AND student_id IS NOT NULL
+      AND column_id IS NOT NULL
+)
+WHERE rn = 1;
+
+DROP TABLE grades;
+
+ALTER TABLE grades_migration_v16 RENAME TO grades;
+
+PRAGMA foreign_keys = 1;

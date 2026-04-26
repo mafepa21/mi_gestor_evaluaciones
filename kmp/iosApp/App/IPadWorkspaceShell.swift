@@ -672,6 +672,7 @@ struct AppWorkspaceShell: View {
 
     private func contextualAISheet(_ sheet: ContextualAISheetState) -> some View {
         ContextualAIAssistantSheet(
+            bridge: bridge,
             module: sheet.module,
             context: sheet.context
         )
@@ -962,11 +963,12 @@ struct AppWorkspaceShell: View {
                     set: { layoutState.setAttendanceBoardMode($0) }
                 )
             ) {
+                Text("Cursos").tag("Cursos")
                 Text("Día").tag("Día")
-                Text("Semana").tag("Semana")
+                Text("Historial").tag("Historial")
             }
             .pickerStyle(.segmented)
-            .frame(width: 170)
+            .frame(width: 250)
         }
     }
 
@@ -1468,7 +1470,10 @@ struct AppWorkspaceShell: View {
     }
 
     private func syncRootSplitVisibility() {
-        rootSplitVisibility = (layoutState.isSidebarVisible && !layoutState.isFocusModeEnabled) ? .all : .detailOnly
+        let visibility: NavigationSplitViewVisibility = (layoutState.isSidebarVisible && !layoutState.isFocusModeEnabled) ? .all : .detailOnly
+        DispatchQueue.main.async {
+            rootSplitVisibility = visibility
+        }
     }
 
     private func open(module: AppWorkspaceModule, classId: Int64? = nil, studentId: Int64? = nil) {
@@ -1751,8 +1756,9 @@ private struct CoursesWorkspaceView: View {
 }
 
 private enum AttendanceBoardMode: String, CaseIterable, Identifiable {
+    case courses = "Cursos"
     case day = "Día"
-    case week = "Semana"
+    case history = "Historial"
 
     var id: String { rawValue }
 }
@@ -1779,6 +1785,16 @@ private struct AttendanceEntryRow: Identifiable {
     let record: KmpBridge.AttendanceRecordSnapshot?
 }
 
+private struct AttendanceHistorySelection: Identifiable {
+    let studentId: Int64
+    let date: Date
+    let record: KmpBridge.AttendanceRecordSnapshot?
+
+    var id: String {
+        "\(studentId)|\(Int(date.stripTime.timeIntervalSince1970))"
+    }
+}
+
 private struct AttendanceWorkspaceView: View {
     @EnvironmentObject private var bridge: KmpBridge
     @Environment(\.colorScheme) private var colorScheme
@@ -1792,7 +1808,10 @@ private struct AttendanceWorkspaceView: View {
     @State private var selectedStatusFilter = "TODOS"
     @State private var searchText = ""
     @State private var selectedStudentId: Int64?
+    @State private var historySelection: AttendanceHistorySelection?
+    @State private var isFilterPopoverPresented = false
     @State private var recordsByStudentId: [Int64: KmpBridge.AttendanceRecordSnapshot] = [:]
+    @State private var classOverviews: [KmpBridge.AttendanceClassOverview] = []
     @State private var savingStudentIds: Set<Int64> = []
     @State private var saveRevisionByStudentId: [Int64: Int] = [:]
     @State private var history: [KmpBridge.AttendanceRecordSnapshot] = []
@@ -1802,12 +1821,9 @@ private struct AttendanceWorkspaceView: View {
 
     private var boardSummary: (present: Int, absent: Int, late: Int, untracked: Int) {
         let rows = bridge.studentsInClass.map { recordsByStudentId[$0.id] }
-        let present = rows.filter { $0?.status.uppercased().contains("PRESENT") == true }.count
-        let absent = rows.filter { $0?.status.uppercased().contains("AUS") == true }.count
-        let late = rows.filter { status in
-            guard let status = status?.status.uppercased() else { return false }
-            return status.contains("TARD") || status.contains("RETR")
-        }.count
+        let present = rows.filter { Self.isPresentStatus($0?.status) }.count
+        let absent = rows.filter { Self.isAbsentStatus($0?.status) }.count
+        let late = rows.filter { Self.isLateStatus($0?.status) }.count
         let untracked = max(bridge.studentsInClass.count - present - absent - late, 0)
         return (present, absent, late, untracked)
     }
@@ -1833,70 +1849,66 @@ private struct AttendanceWorkspaceView: View {
         return recordsByStudentId[selectedStudentId]
     }
 
-    private var weekDates: [Date] {
+    private var selectedInspectionAttendance: KmpBridge.AttendanceRecordSnapshot? {
+        historySelection?.record ?? selectedAttendance
+    }
+
+    private var inspectorDate: Date {
+        historySelection?.date ?? selectedDate
+    }
+
+    private var selectedClass: SchoolClass? {
+        selectedClassId.flatMap { classId in bridge.classes.first(where: { $0.id == classId }) }
+    }
+
+    private var monthDates: [Date] {
         let calendar = Calendar.current
-        let start = calendar.date(byAdding: .day, value: -2, to: selectedDate) ?? selectedDate
-        return (0..<5).compactMap { calendar.date(byAdding: .day, value: $0, to: start) }
+        guard let interval = calendar.dateInterval(of: .month, for: selectedDate) else {
+            return [selectedDate.stripTime]
+        }
+        let dayCount = calendar.dateComponents([.day], from: interval.start, to: interval.end).day ?? 0
+        return (0..<dayCount).compactMap { calendar.date(byAdding: .day, value: $0, to: interval.start) }
+    }
+
+    private var visibleHistoryRows: [Student] {
+        bridge.studentsInClass.filter { student in
+            let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+            let matchesSearch = query.isEmpty || student.fullName.localizedCaseInsensitiveContains(query)
+            let matchesStatus = selectedStatusFilter == "TODOS" || history.contains {
+                $0.studentId == student.id && $0.status == selectedStatusFilter
+            }
+            return matchesSearch && matchesStatus
+        }
     }
 
     private var isInspectorPresented: Bool {
-        selectedStudentId != nil && !layoutState.isFocusModeEnabled
+        (selectedStudentId != nil || historySelection != nil) && !layoutState.isFocusModeEnabled
+    }
+
+    private var averageOverviewRate: Int {
+        guard !classOverviews.isEmpty else { return 0 }
+        return classOverviews.map(\.attendanceRate).reduce(0, +) / classOverviews.count
+    }
+
+    private static func isPresentStatus(_ status: String?) -> Bool {
+        status?.uppercased().contains("PRESENT") == true
+    }
+
+    private static func isAbsentStatus(_ status: String?) -> Bool {
+        status?.uppercased().contains("AUS") == true
+    }
+
+    private static func isLateStatus(_ status: String?) -> Bool {
+        guard let status = status?.uppercased() else { return false }
+        return status.contains("TARD") || status.contains("RETR")
     }
 
     var body: some View {
         HStack(spacing: 0) {
             VStack(spacing: 0) {
+                attendanceHeader
                 attendanceToolbar
-
-                if boardMode == .day {
-                    List(filteredRows) { row in
-                        AttendanceRowCard(
-                            row: row,
-                            onPickStatus: { status in
-                                Task { await updateAttendance(for: row.student, status: status.id) }
-                            },
-                            onSelect: { selectedStudentId = row.student.id },
-                            isSaving: savingStudentIds.contains(row.student.id)
-                        )
-                    }
-                    .listStyle(.plain)
-                    .scrollContentBackground(.hidden)
-                } else {
-                    ScrollView([.horizontal, .vertical]) {
-                        VStack(spacing: 0) {
-                            HStack(spacing: 0) {
-                                weekCellHeader("Alumno", width: 220)
-                                ForEach(weekDates, id: \.self) { date in
-                                    weekCellHeader(Self.weekdayString(date), width: 120)
-                                }
-                            }
-
-                            ForEach(bridge.studentsInClass, id: \.id) { student in
-                                HStack(spacing: 0) {
-                                    Button {
-                                        selectedStudentId = student.id
-                                    } label: {
-                                        HStack {
-                                            Text("\(student.firstName) \(student.lastName)")
-                                                .font(.subheadline.weight(.semibold))
-                                            Spacer()
-                                        }
-                                        .padding(.horizontal, 12)
-                                        .frame(width: 220, height: 54)
-                                    }
-                                    .buttonStyle(.plain)
-                                    .background(appCardBackground(for: colorScheme))
-
-                                    ForEach(weekDates, id: \.self) { date in
-                                        let status = weekStatus(for: student.id, date: date)
-                                        attendanceWeekStatusCell(status)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    .background(appPageBackground(for: colorScheme))
-                }
+                attendanceMainContent
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(appPageBackground(for: colorScheme))
@@ -1915,6 +1927,7 @@ private struct AttendanceWorkspaceView: View {
             if selectedClassId == nil {
                 selectedClassId = bridge.classes.first?.id
             }
+            await reloadClassOverviews()
             await syncClassSelection()
             if let preselectedStudentId {
                 selectedStudentId = preselectedStudentId
@@ -1925,13 +1938,19 @@ private struct AttendanceWorkspaceView: View {
             Task { await syncClassSelection() }
         }
         .onChange(of: selectedDate) { _ in
-            Task { await reloadAttendance() }
+            Task {
+                await reloadClassOverviews()
+                await reloadAttendance()
+            }
         }
         .onChange(of: boardMode) { _ in
-            selectedStudentId = nil
+            if boardMode == .courses {
+                selectedStudentId = nil
+                historySelection = nil
+            }
         }
         .onChange(of: selectedStudentId) { _ in
-            noteDraft = selectedAttendance?.note ?? ""
+            noteDraft = selectedInspectionAttendance?.note ?? ""
         }
         .onAppear(perform: syncAttendanceToolbar)
         .onChange(of: toolbarStateKey) { _ in
@@ -1941,6 +1960,248 @@ private struct AttendanceWorkspaceView: View {
             layoutState.clearAttendanceToolbar()
         }
         .animation(.spring(response: 0.28, dampingFraction: 0.88), value: isInspectorPresented)
+    }
+
+    private var attendanceHeader: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Asistencia")
+                        .font(.system(size: 34, weight: .black, design: .rounded))
+                    Text(selectedClass?.name ?? "Todos los cursos")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Menu {
+                    Button("Todos los cursos") {
+                        boardMode = .courses
+                    }
+                    Divider()
+                    ForEach(bridge.classes, id: \.id) { schoolClass in
+                        Button {
+                            selectedClassId = schoolClass.id
+                            if boardMode == .courses {
+                                boardMode = .day
+                            }
+                        } label: {
+                            HStack {
+                                Text(schoolClass.name)
+                                if schoolClass.id == selectedClassId {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    Label(selectedClass?.name ?? "Todos los cursos", systemImage: "rectangle.3.group")
+                        .font(.subheadline.weight(.bold))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+
+            HStack(spacing: 16) {
+                Picker("Vista", selection: $boardMode) {
+                    ForEach(AttendanceBoardMode.allCases) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 360)
+
+                DatePicker("", selection: $selectedDate, displayedComponents: .date)
+                    .labelsHidden()
+
+                Spacer()
+
+                Button {
+                    isFilterPopoverPresented.toggle()
+                } label: {
+                    Label(activeAttendanceFilterLabel, systemImage: activeAttendanceFilterIcon)
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(boardMode == .courses)
+                .popover(isPresented: $isFilterPopoverPresented, arrowEdge: .bottom) {
+                    attendanceFilterPopover
+                }
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 24)
+        .padding(.bottom, 24)
+        .background(appPageBackground(for: colorScheme))
+    }
+
+    private var activeAttendanceFilterLabel: String {
+        var active = 0
+        if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            active += 1
+        }
+        if selectedStatusFilter != "TODOS" {
+            active += 1
+        }
+        return active == 0 ? "Filtrar" : "Filtros \(active)"
+    }
+
+    private var activeAttendanceFilterIcon: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedStatusFilter == "TODOS"
+            ? "line.3.horizontal.decrease.circle"
+            : "line.3.horizontal.decrease.circle.fill"
+    }
+
+    private var attendanceFilterPopover: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            TextField("Buscar alumno", text: $searchText)
+                .textFieldStyle(.roundedBorder)
+
+            Picker("Estado", selection: $selectedStatusFilter) {
+                Text("Todos").tag("TODOS")
+                ForEach(AttendanceStatusOption.all) { option in
+                    Text(option.label).tag(option.id)
+                }
+            }
+            .pickerStyle(.menu)
+
+            Button {
+                searchText = ""
+                selectedStatusFilter = "TODOS"
+            } label: {
+                Label("Limpiar filtros", systemImage: "xmark.circle")
+            }
+            .buttonStyle(.bordered)
+            .disabled(searchText.isEmpty && selectedStatusFilter == "TODOS")
+        }
+        .padding(24)
+        .frame(width: 320)
+    }
+
+    @ViewBuilder
+    private var attendanceMainContent: some View {
+        switch boardMode {
+        case .courses:
+            coursesOverviewContent
+        case .day:
+            dayRollCallContent
+        case .history:
+            monthlyHistoryContent
+        }
+    }
+
+    private var coursesOverviewContent: some View {
+        ScrollView {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 24)], spacing: 24) {
+                ForEach(classOverviews) { overview in
+                    Button {
+                        selectedClassId = overview.id
+                        boardMode = .day
+                    } label: {
+                        VStack(alignment: .leading, spacing: 16) {
+                            HStack(alignment: .top) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(overview.schoolClass.name)
+                                        .font(.headline.weight(.bold))
+                                        .foregroundStyle(.primary)
+                                    Text("\(overview.studentCount) alumnos")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Text("\(overview.attendanceRate)%")
+                                    .font(.system(size: 28, weight: .black, design: .rounded))
+                                    .foregroundStyle(.green)
+                            }
+
+                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                                overviewMiniStat("Presentes", overview.presentCount, .green)
+                                overviewMiniStat("Ausencias", overview.absentCount, .red)
+                                overviewMiniStat("Retrasos", overview.lateCount, .orange)
+                                overviewMiniStat("Pendientes", overview.pendingTodayCount, .gray)
+                            }
+                        }
+                        .padding(24)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 24)
+        }
+    }
+
+    private var dayRollCallContent: some View {
+        Group {
+            if filteredRows.isEmpty {
+                WorkspaceEmptyState(title: "Sin alumnos visibles", subtitle: "Ajusta el curso, búsqueda o filtro de estado.")
+            } else {
+                List(filteredRows) { row in
+                    AttendanceRowCard(
+                        row: row,
+                        onPickStatus: { status in
+                            Task { await updateAttendance(for: row.student, status: status.id) }
+                        },
+                        onSelect: {
+                            historySelection = nil
+                            selectedStudentId = row.student.id
+                        },
+                        isSaving: savingStudentIds.contains(row.student.id)
+                    )
+                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+            }
+        }
+    }
+
+    private var monthlyHistoryContent: some View {
+        ScrollView([.horizontal, .vertical]) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 0) {
+                    weekCellHeader("Alumno", width: 220)
+                    ForEach(monthDates, id: \.self) { date in
+                        weekCellHeader(Self.dayHeaderString(date), width: 48)
+                    }
+                }
+
+                ForEach(visibleHistoryRows, id: \.id) { student in
+                    HStack(spacing: 0) {
+                        Button {
+                            historySelection = nil
+                            selectedStudentId = student.id
+                        } label: {
+                            HStack {
+                                Text(student.fullName)
+                                    .font(.subheadline.weight(.semibold))
+                                    .lineLimit(1)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 12)
+                            .frame(width: 220, height: 48)
+                        }
+                        .buttonStyle(.plain)
+                        .background(appCardBackground(for: colorScheme))
+
+                        ForEach(monthDates, id: \.self) { date in
+                            let record = historyRecord(for: student.id, date: date)
+                            historyStatusCell(record: record, studentId: student.id, date: date)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 24)
+        }
+        .background(appPageBackground(for: colorScheme))
     }
 
     private var attendanceToolbar: some View {
@@ -1953,7 +2214,7 @@ private struct AttendanceWorkspaceView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("\(selectedStudent.firstName) \(selectedStudent.lastName)")
                                 .font(.headline)
-                            Text(selectedAttendance?.status ?? "Sin registro")
+                            Text(selectedInspectionAttendance?.status ?? "Sin registro")
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(.secondary)
                         }
@@ -1969,15 +2230,21 @@ private struct AttendanceWorkspaceView: View {
             }
 
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 12)], spacing: 12) {
-                WorkspaceCompactStat(title: "Presentes", value: "\(boardSummary.present)", tint: .green)
-                WorkspaceCompactStat(title: "Ausencias", value: "\(boardSummary.absent)", tint: .red)
-                WorkspaceCompactStat(title: "Retrasos", value: "\(boardSummary.late)", tint: .orange)
-                WorkspaceCompactStat(title: "Pendientes", value: "\(boardSummary.untracked)", tint: .gray)
+                if boardMode == .courses {
+                    WorkspaceCompactStat(title: "Cursos", value: "\(classOverviews.count)", tint: .blue)
+                    WorkspaceCompactStat(title: "Alumnado", value: "\(classOverviews.map(\.studentCount).reduce(0, +))", tint: .green)
+                    WorkspaceCompactStat(title: "Pendientes hoy", value: "\(classOverviews.map(\.pendingTodayCount).reduce(0, +))", tint: .orange)
+                    WorkspaceCompactStat(title: "Media", value: "\(averageOverviewRate)%", tint: .indigo)
+                } else {
+                    WorkspaceCompactStat(title: "Presentes", value: "\(boardSummary.present)", tint: .green)
+                    WorkspaceCompactStat(title: "Ausencias", value: "\(boardSummary.absent)", tint: .red)
+                    WorkspaceCompactStat(title: "Retrasos", value: "\(boardSummary.late)", tint: .orange)
+                    WorkspaceCompactStat(title: "Pendientes", value: "\(boardSummary.untracked)", tint: .gray)
+                }
             }
         }
         .padding(.horizontal, 24)
-        .padding(.top, 24)
-        .padding(.bottom, 20)
+        .padding(.bottom, 24)
         .background(appPageBackground(for: colorScheme))
     }
 
@@ -1987,8 +2254,8 @@ private struct AttendanceWorkspaceView: View {
             let studentIncidents = incidents.filter { $0.studentId?.int64Value == student.id }
             let recentStatuses = history.filter { $0.studentId == student.id }.sorted { $0.date > $1.date }
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 24) {
+                    HStack(alignment: .top, spacing: 16) {
                         WorkspaceInspectorHero(
                             title: "\(student.firstName) \(student.lastName)",
                             subtitle: "Histórico de asistencia e incidencias"
@@ -2008,11 +2275,11 @@ private struct AttendanceWorkspaceView: View {
 
                     WorkspaceMetricCard(
                         title: "Último estado",
-                        value: recentStatuses.first?.status ?? "Sin registros",
+                        value: selectedInspectionAttendance?.status ?? recentStatuses.first?.status ?? "Sin registros",
                         systemImage: "clock.badge.checkmark"
                     )
 
-                    if let latest = recentStatuses.first {
+                    if let latest = selectedInspectionAttendance ?? recentStatuses.first {
                         WorkspaceMetricCard(
                             title: "Seguimiento",
                             value: latest.followUpRequired ? "Requiere revisión" : "Sin seguimiento",
@@ -2020,7 +2287,7 @@ private struct AttendanceWorkspaceView: View {
                         )
                     }
 
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 8) {
                         Text("Histórico reciente")
                             .font(.headline)
                         ForEach(Array(recentStatuses.prefix(6)), id: \.id) { attendance in
@@ -2036,11 +2303,11 @@ private struct AttendanceWorkspaceView: View {
                     }
 
                     if !sessions.isEmpty {
-                        VStack(alignment: .leading, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 8) {
                             Text("Sesiones del día")
                                 .font(.headline)
                             ForEach(sessions) { entry in
-                                VStack(alignment: .leading, spacing: 6) {
+                                VStack(alignment: .leading, spacing: 8) {
                                     HStack {
                                         Text(entry.session.teachingUnitName)
                                             .font(.subheadline.weight(.bold))
@@ -2062,13 +2329,13 @@ private struct AttendanceWorkspaceView: View {
                                             .foregroundStyle(.secondary)
                                     }
                                 }
-                                .padding(12)
-                                .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .padding(16)
+                                .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                             }
                         }
                     }
 
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 8) {
                         Text("Incidencias")
                             .font(.headline)
                         if studentIncidents.isEmpty {
@@ -2087,7 +2354,7 @@ private struct AttendanceWorkspaceView: View {
                         }
                     }
 
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 8) {
                         Text("Nota de asistencia")
                             .font(.headline)
                         TextField("Observación rápida de la sesión…", text: $noteDraft, axis: .vertical)
@@ -2098,10 +2365,10 @@ private struct AttendanceWorkspaceView: View {
                             Task { await saveAttendanceNote(for: student.id) }
                         }
                         .buttonStyle(.bordered)
-                        .disabled(selectedAttendance == nil)
+                        .disabled(selectedInspectionAttendance == nil)
                     }
 
-                    HStack(spacing: 12) {
+                    HStack(spacing: 16) {
                         Button("Abrir ficha de alumno") {
                             onOpenModule(.students, selectedClassId, student.id)
                         }
@@ -2125,7 +2392,7 @@ private struct AttendanceWorkspaceView: View {
                         .buttonStyle(.bordered)
                     }
                 }
-                .padding(20)
+                .padding(24)
             }
         } else {
             WorkspaceEmptyState(
@@ -2138,6 +2405,7 @@ private struct AttendanceWorkspaceView: View {
     @MainActor
     private func syncClassSelection() async {
         selectedStudentId = nil
+        historySelection = nil
         await bridge.selectStudentsClass(classId: selectedClassId)
         await reloadAttendance()
         syncAttendanceToolbar()
@@ -2150,11 +2418,30 @@ private struct AttendanceWorkspaceView: View {
         recordsByStudentId = Dictionary(
             uniqueKeysWithValues: normalizedAttendanceRecords(records).map { ($0.studentId, $0) }
         )
-        history = (try? await bridge.attendanceHistory(for: selectedClassId, days: 21)) ?? []
+        let range = monthRange(for: selectedDate)
+        history = (try? await bridge.attendanceHistory(for: selectedClassId, from: range.start, to: range.end)) ?? []
+        if let selection = historySelection {
+            historySelection = AttendanceHistorySelection(
+                studentId: selection.studentId,
+                date: selection.date,
+                record: historyRecord(for: selection.studentId, date: selection.date)
+            )
+        }
         incidents = (try? await bridge.incidents(for: selectedClassId)) ?? []
         sessions = (try? await bridge.attendanceSessions(for: selectedClassId, on: selectedDate)) ?? []
-        noteDraft = selectedAttendance?.note ?? ""
+        noteDraft = selectedInspectionAttendance?.note ?? ""
         syncAttendanceToolbar()
+    }
+
+    @MainActor
+    private func reloadClassOverviews() async {
+        await bridge.ensureClassesLoaded()
+        let range = monthRange(for: selectedDate)
+        classOverviews = (try? await bridge.attendanceOverview(
+            for: bridge.classes.map(\.id),
+            from: range.start,
+            to: range.end
+        )) ?? []
     }
 
     private func normalizedAttendanceRecords(
@@ -2172,6 +2459,16 @@ private struct AttendanceWorkspaceView: View {
     private func attendanceRecordPriority(_ record: KmpBridge.AttendanceRecordSnapshot) -> (Int, Int64) {
         let sessionPriority = record.sessionId == nil ? 0 : 1
         return (sessionPriority, record.id)
+    }
+
+    private func monthRange(for date: Date) -> (start: Date, end: Date) {
+        let calendar = Calendar.current
+        guard let interval = calendar.dateInterval(of: .month, for: date) else {
+            let day = calendar.startOfDay(for: date)
+            return (day, day)
+        }
+        let end = calendar.date(byAdding: .second, value: -1, to: interval.end) ?? interval.end
+        return (interval.start, end)
     }
 
     private var toolbarStateKey: String {
@@ -2216,6 +2513,7 @@ private struct AttendanceWorkspaceView: View {
                 },
                 onClearSelection: {
                     selectedStudentId = nil
+                    historySelection = nil
                 }
             )
         }
@@ -2252,7 +2550,7 @@ private struct AttendanceWorkspaceView: View {
 
     private func applyLocalAttendanceStatus(_ status: String, for student: Student, classId: Int64) {
         let baseRecord = recordsByStudentId[student.id]
-        recordsByStudentId[student.id] = KmpBridge.AttendanceRecordSnapshot(
+        let updated = KmpBridge.AttendanceRecordSnapshot(
             id: baseRecord?.id ?? -student.id,
             studentId: student.id,
             classId: classId,
@@ -2263,19 +2561,33 @@ private struct AttendanceWorkspaceView: View {
             followUpRequired: baseRecord?.followUpRequired ?? false,
             sessionId: baseRecord?.sessionId
         )
+        recordsByStudentId[student.id] = updated
+        upsertHistoryRecord(updated)
         if selectedStudentId == student.id {
             noteDraft = recordsByStudentId[student.id]?.note ?? ""
         }
     }
 
+    private func upsertHistoryRecord(_ record: KmpBridge.AttendanceRecordSnapshot) {
+        if let index = history.firstIndex(where: { $0.studentId == record.studentId && Calendar.current.isDate($0.date, inSameDayAs: record.date) }) {
+            history[index] = record
+        } else {
+            history.append(record)
+        }
+    }
+
     private func markAllPresent() async {
         guard let selectedClassId else { return }
-        for student in bridge.studentsInClass {
+        let students = filteredRows.map(\.student)
+        guard !students.isEmpty else { return }
+        for student in students {
             applyLocalAttendanceStatus("PRESENTE", for: student, classId: selectedClassId)
             try? await bridge.saveAttendance(studentId: student.id, classId: selectedClassId, on: selectedDate, status: "PRESENTE")
         }
         savingStudentIds.removeAll()
         await reloadAttendance()
+        await reloadClassOverviews()
+        bridge.status = "Todos los alumnos filtrados marcados como presentes."
     }
 
     private func repeatPattern() async {
@@ -2303,6 +2615,27 @@ private struct AttendanceWorkspaceView: View {
             .overlay(Rectangle().stroke(borderColor, lineWidth: 0.5))
     }
 
+    private func historyStatusCell(record: KmpBridge.AttendanceRecordSnapshot?, studentId: Int64, date: Date) -> some View {
+        let option = AttendanceStatusOption.all.first(where: { $0.id == record?.status })
+        let isSelected = historySelection?.studentId == studentId && Calendar.current.isDate(historySelection?.date ?? .distantPast, inSameDayAs: date)
+        return Button {
+            selectedStudentId = studentId
+            historySelection = AttendanceHistorySelection(studentId: studentId, date: date, record: record)
+            noteDraft = record?.note ?? ""
+        } label: {
+            Text(option?.shortLabel ?? "·")
+                .font(.caption.weight(.black))
+                .foregroundStyle(option?.color ?? .secondary)
+                .frame(width: 48, height: 48)
+                .background((option?.color ?? Color.secondary).opacity(record == nil ? 0.04 : 0.16))
+                .overlay(
+                    Rectangle()
+                        .stroke(isSelected ? Color.accentColor.opacity(0.8) : Color.clear, lineWidth: isSelected ? 1.5 : 0.5)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
     private func weekCellHeader(_ title: String, width: CGFloat) -> some View {
         Text(title)
             .font(.caption.bold())
@@ -2310,17 +2643,37 @@ private struct AttendanceWorkspaceView: View {
             .background(appMutedCardBackground(for: colorScheme))
     }
 
+    private func overviewMiniStat(_ title: String, _ value: Int, _ tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.secondary)
+            Text("\(value)")
+                .font(.headline.weight(.black))
+                .foregroundStyle(tint)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(8)
+        .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func historyRecord(for studentId: Int64, date: Date) -> KmpBridge.AttendanceRecordSnapshot? {
+        history.first {
+            $0.studentId == studentId && Calendar.current.isDate($0.date, inSameDayAs: date)
+        }
+    }
+
     private func dateLabel(from date: Date) -> String {
         date.formatted(date: .abbreviated, time: .omitted)
     }
 
-    private static func weekdayString(_ date: Date) -> String {
-        date.formatted(.dateTime.weekday(.abbreviated).day())
+    private static func dayHeaderString(_ date: Date) -> String {
+        date.formatted(.dateTime.day())
     }
 
     private func createAttendanceIncident(for studentId: Int64, classId: Int64, latestStatus: String?) async {
         let statusText = latestStatus ?? "sin registro previo"
-        let detail = "Incidencia creada desde asistencia el \(selectedDate.formatted(date: .abbreviated, time: .omitted)). Estado observado: \(statusText)."
+        let detail = "Incidencia creada desde asistencia el \(inspectorDate.formatted(date: .abbreviated, time: .omitted)). Estado observado: \(statusText)."
         do {
             _ = try await bridge.createIncident(
                 classId: classId,
@@ -2329,7 +2682,17 @@ private struct AttendanceWorkspaceView: View {
                 detail: detail,
                 severity: "medium"
             )
+            try await bridge.saveAttendance(
+                studentId: studentId,
+                classId: classId,
+                on: inspectorDate,
+                status: selectedInspectionAttendance?.status ?? "OBSERVACION",
+                note: selectedInspectionAttendance?.note ?? noteDraft,
+                hasIncident: true,
+                followUpRequired: true
+            )
             incidents = (try? await bridge.incidents(for: classId)) ?? incidents
+            await reloadAttendance()
             bridge.status = "Incidencia registrada desde asistencia."
         } catch {
             bridge.status = "No se pudo crear la incidencia: \(error.localizedDescription)"
@@ -2338,15 +2701,17 @@ private struct AttendanceWorkspaceView: View {
 
     private func saveAttendanceNote(for studentId: Int64) async {
         guard let selectedClassId else { return }
-        let currentStatus = selectedAttendance?.status ?? "PRESENTE"
+        let current = selectedInspectionAttendance
+        let currentStatus = current?.status ?? "PRESENTE"
         do {
             try await bridge.saveAttendance(
                 studentId: studentId,
                 classId: selectedClassId,
-                on: selectedDate,
+                on: inspectorDate,
                 status: currentStatus,
                 note: noteDraft,
-                hasIncident: selectedAttendance?.hasIncident ?? false
+                hasIncident: current?.hasIncident ?? false,
+                followUpRequired: current?.followUpRequired
             )
             bridge.status = "Nota de asistencia guardada."
             await reloadAttendance()
@@ -3453,6 +3818,9 @@ private struct ReportsWorkspaceView: View {
     @State private var editableDraftText = ""
     @State private var aiFeedbackMessage: String?
     @State private var isGeneratingAIDraft = false
+    @State private var refinePrompt = ""
+    @State private var isRefiningAIDraft = false
+    @State private var isBulkLomloeSheetPresented = false
 
     @State private var analyticsMode: AnalyticsMode = .dashboards
     @State private var analyticsAvailability: AIAnalyticsAvailabilityState = .unavailable("Comprobando disponibilidad…")
@@ -3531,9 +3899,11 @@ private struct ReportsWorkspaceView: View {
             Task { await refreshWorkspaceContext() }
         }
         .onChange(of: selectedStudentId) { _ in
+            aiReportService.clearActiveConversation()
             Task { await reloadPreview() }
         }
         .onChange(of: selectedReportKind) { _ in
+            aiReportService.clearActiveConversation()
             if selectedReportKind == .lomloeEvaluationComment {
                 aiAudience = .familia
                 aiTone = .formal
@@ -3541,6 +3911,7 @@ private struct ReportsWorkspaceView: View {
             Task { await reloadPreview() }
         }
         .onChange(of: selectedReportTerm) { _ in
+            aiReportService.clearActiveConversation()
             Task { await reloadPreview() }
         }
         .onChange(of: selectedAnalyticsRange) { _ in
@@ -3552,6 +3923,17 @@ private struct ReportsWorkspaceView: View {
         }
         .onChange(of: selectedChartKind) { _ in
             analyticsInsight = nil
+        }
+        .sheet(isPresented: $isBulkLomloeSheetPresented) {
+            if let selectedClassId {
+                BulkLOMLOEGenerationSheet(
+                    bridge: bridge,
+                    classId: selectedClassId,
+                    termLabel: selectedReportTerm.rawValue,
+                    audience: aiAudience,
+                    tone: aiTone
+                )
+            }
         }
     }
 
@@ -3787,6 +4169,16 @@ private struct ReportsWorkspaceView: View {
                             }
                             .buttonStyle(.borderedProminent)
                             .disabled(!canGenerateAIDraft)
+
+                            if selectedReportKind == .lomloeEvaluationComment {
+                                Button {
+                                    isBulkLomloeSheetPresented = true
+                                } label: {
+                                    Label("Generar lote", systemImage: "person.3.sequence.fill")
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(selectedClassId == nil || !aiAvailability.isAvailable)
+                            }
                         }
 
                         WorkspaceDetailBlock(title: "Disponibilidad", content: aiAvailability.message)
@@ -3809,6 +4201,25 @@ private struct ReportsWorkspaceView: View {
                             .padding(12)
                             .scrollContentBackground(.hidden)
                             .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+                        if aiDraft != nil {
+                            HStack(alignment: .top, spacing: 10) {
+                                TextField("Refinar: más breve, más cálido, foco en orientaciones...", text: $refinePrompt, axis: .vertical)
+                                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                                    .lineLimit(2, reservesSpace: true)
+                                Button {
+                                    Task { await refineAIDraft() }
+                                } label: {
+                                    if isRefiningAIDraft {
+                                        ProgressView()
+                                    } else {
+                                        Label("Refinar", systemImage: "wand.and.stars")
+                                    }
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(isRefiningAIDraft || refinePrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            }
+                        }
                     }
 
                     ShareLink(item: shareableReportText) {
@@ -4057,6 +4468,7 @@ private struct ReportsWorkspaceView: View {
     @MainActor
     private func refreshWorkspaceContext() async {
         guard let selectedClassId else { return }
+        aiReportService.clearActiveConversation()
         refreshAvailability()
         bridge.selectClass(id: selectedClassId)
         bridge.evaluationsInClass = (try? await bridge.evaluations(for: selectedClassId)) ?? []
@@ -4071,6 +4483,7 @@ private struct ReportsWorkspaceView: View {
         aiDraft = nil
         editableDraftText = ""
         aiFeedbackMessage = nil
+        refinePrompt = ""
 
         guard let context = try? await bridge.buildReportGenerationContext(
             classId: selectedClassId,
@@ -4134,6 +4547,7 @@ private struct ReportsWorkspaceView: View {
         guard let reportContext else { return }
         isGeneratingAIDraft = true
         aiFeedbackMessage = nil
+        let startedAt = Date()
         defer { isGeneratingAIDraft = false }
 
         do {
@@ -4145,8 +4559,75 @@ private struct ReportsWorkspaceView: View {
             aiDraft = draft
             editableDraftText = draft.editableText(for: reportContext)
             aiFeedbackMessage = "Borrador generado. Revísalo y edítalo antes de compartir."
+            await bridge.recordAIAuditEvent(
+                service: "reports",
+                useCase: "single_draft",
+                reportKind: reportContext.kind.rawValue,
+                classId: reportContext.classId,
+                studentId: reportContext.studentId,
+                availability: aiAvailabilityLabel,
+                modelAvailable: aiAvailability.isAvailable,
+                success: true,
+                durationMs: Int64(Date().timeIntervalSince(startedAt) * 1000)
+            )
         } catch {
             aiFeedbackMessage = error.localizedDescription
+            await bridge.recordAIAuditEvent(
+                service: "reports",
+                useCase: "single_draft",
+                reportKind: reportContext.kind.rawValue,
+                classId: reportContext.classId,
+                studentId: reportContext.studentId,
+                availability: aiAvailabilityLabel,
+                modelAvailable: aiAvailability.isAvailable,
+                success: false,
+                durationMs: Int64(Date().timeIntervalSince(startedAt) * 1000),
+                errorKind: String(describing: type(of: error)),
+                errorMessage: error.localizedDescription
+            )
+        }
+    }
+
+    @MainActor
+    private func refineAIDraft() async {
+        guard let reportContext else { return }
+        isRefiningAIDraft = true
+        aiFeedbackMessage = nil
+        let startedAt = Date()
+        defer { isRefiningAIDraft = false }
+
+        do {
+            let draft = try await aiReportService.refineActiveDraft(with: refinePrompt, context: reportContext)
+            aiDraft = draft
+            editableDraftText = draft.editableText(for: reportContext)
+            refinePrompt = ""
+            aiFeedbackMessage = "Borrador refinado. Revísalo antes de compartir."
+            await bridge.recordAIAuditEvent(
+                service: "reports",
+                useCase: "refine_draft",
+                reportKind: reportContext.kind.rawValue,
+                classId: reportContext.classId,
+                studentId: reportContext.studentId,
+                availability: aiAvailabilityLabel,
+                modelAvailable: aiAvailability.isAvailable,
+                success: true,
+                durationMs: Int64(Date().timeIntervalSince(startedAt) * 1000)
+            )
+        } catch {
+            aiFeedbackMessage = error.localizedDescription
+            await bridge.recordAIAuditEvent(
+                service: "reports",
+                useCase: "refine_draft",
+                reportKind: reportContext.kind.rawValue,
+                classId: reportContext.classId,
+                studentId: reportContext.studentId,
+                availability: aiAvailabilityLabel,
+                modelAvailable: aiAvailability.isAvailable,
+                success: false,
+                durationMs: Int64(Date().timeIntervalSince(startedAt) * 1000),
+                errorKind: String(describing: type(of: error)),
+                errorMessage: error.localizedDescription
+            )
         }
     }
 
@@ -4436,6 +4917,266 @@ private func analyticsColor(_ token: String) -> Color {
     case "purple": return .purple
     case "blue": return .blue
     default: return .accentColor
+    }
+}
+
+private struct BulkLOMLOEGenerationSheet: View {
+    enum GenerationStatus: Equatable {
+        case pending
+        case generating
+        case done
+        case failed(String)
+        case omitted(String)
+
+        var title: String {
+            switch self {
+            case .pending: return "Pendiente"
+            case .generating: return "Generando"
+            case .done: return "Listo"
+            case .failed: return "Error"
+            case .omitted: return "Omitido"
+            }
+        }
+    }
+
+    struct DraftRow: Identifiable {
+        let student: Student
+        var status: GenerationStatus = .pending
+        var text: String = ""
+        var isApproved: Bool = true
+
+        var id: Int64 { student.id }
+    }
+
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var bridge: KmpBridge
+    let classId: Int64
+    let termLabel: String
+    let audience: AIReportAudience
+    let tone: AIReportTone
+
+    @State private var rows: [DraftRow] = []
+    @State private var onlyEmptyCells = true
+    @State private var columnName: String
+    @State private var targetColumnId: String?
+    @State private var isGenerating = false
+    @State private var isSaving = false
+    @State private var feedbackMessage: String?
+
+    private let reportService = AppleFoundationReportService()
+
+    init(
+        bridge: KmpBridge,
+        classId: Int64,
+        termLabel: String,
+        audience: AIReportAudience,
+        tone: AIReportTone
+    ) {
+        self.bridge = bridge
+        self.classId = classId
+        self.termLabel = termLabel
+        self.audience = audience
+        self.tone = tone
+        _columnName = State(initialValue: "LOMLOE IA - \(termLabel)")
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                configBar
+                List {
+                    ForEach($rows) { $row in
+                        rowEditor($row)
+                    }
+                }
+                .listStyle(.plain)
+            }
+            .navigationTitle("LOMLOE por lotes")
+            .appInlineNavigationBarTitleDisplayMode()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cerrar") { dismiss() }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        Task { await saveApprovedDrafts() }
+                    } label: {
+                        if isSaving {
+                            ProgressView()
+                        } else {
+                            Label("Guardar", systemImage: "square.and.arrow.down")
+                        }
+                    }
+                    .disabled(isSaving || isGenerating || rows.allSatisfy { !$0.isApproved || $0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+                }
+            }
+            .task {
+                reportService.prewarm()
+                if rows.isEmpty {
+                    await loadStudents()
+                }
+            }
+        }
+    }
+
+    private var configBar: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            TextField("Columna destino", text: $columnName)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+            Toggle("Rellenar solo celdas vacías", isOn: $onlyEmptyCells)
+            HStack(spacing: 12) {
+                Button {
+                    Task { await generateAll() }
+                } label: {
+                    if isGenerating {
+                        ProgressView()
+                    } else {
+                        Label("Generar comentarios", systemImage: "apple.intelligence")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isGenerating || rows.isEmpty)
+
+                Text(feedbackMessage ?? "\(rows.count) alumnos preparados")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(16)
+        .background(.regularMaterial)
+    }
+
+    private func rowEditor(_ row: Binding<DraftRow>) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(row.wrappedValue.student.fullName)
+                    .font(.headline)
+                Spacer()
+                statusLabel(row.wrappedValue.status)
+                Toggle("", isOn: row.isApproved)
+                    .labelsHidden()
+            }
+            TextEditor(text: row.text)
+                .frame(minHeight: 96)
+                .padding(8)
+                .background(NotebookStyle.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .padding(.vertical, 8)
+    }
+
+    private func statusLabel(_ status: GenerationStatus) -> some View {
+        let tint: Color = {
+            switch status {
+            case .pending: return .secondary
+            case .generating: return NotebookStyle.primaryTint
+            case .done: return NotebookStyle.successTint
+            case .failed: return NotebookStyle.warningTint
+            case .omitted: return .secondary
+            }
+        }()
+        return Text(status.title)
+            .font(.caption.weight(.bold))
+            .foregroundStyle(tint)
+    }
+
+    @MainActor
+    private func loadStudents() async {
+        rows = ((try? await bridge.students(forClassId: classId)) ?? bridge.studentsInClass)
+            .map { DraftRow(student: $0) }
+        feedbackMessage = rows.isEmpty ? "No hay alumnado en la clase." : nil
+    }
+
+    @MainActor
+    private func generateAll() async {
+        isGenerating = true
+        feedbackMessage = nil
+        defer { isGenerating = false }
+
+        for index in rows.indices {
+            rows[index].status = .generating
+            let startedAt = Date()
+            do {
+                let context = try await bridge.buildReportGenerationContext(
+                    classId: classId,
+                    studentId: rows[index].student.id,
+                    kind: .lomloeEvaluationComment,
+                    termLabel: termLabel
+                )
+                guard context.hasEnoughData else {
+                    rows[index].status = .omitted(context.dataQualityNote ?? "Datos insuficientes")
+                    continue
+                }
+                let draft = try await reportService.generateDraft(from: context, audience: audience, tone: tone)
+                rows[index].text = draft.editableText(for: context)
+                rows[index].status = .done
+                await bridge.recordAIAuditEvent(
+                    service: "reports",
+                    useCase: "bulk_lomloe",
+                    reportKind: context.kind.rawValue,
+                    classId: context.classId,
+                    studentId: context.studentId,
+                    availability: "Disponible",
+                    modelAvailable: true,
+                    success: true,
+                    durationMs: Int64(Date().timeIntervalSince(startedAt) * 1000)
+                )
+            } catch {
+                rows[index].status = .failed(error.localizedDescription)
+                await bridge.recordAIAuditEvent(
+                    service: "reports",
+                    useCase: "bulk_lomloe",
+                    reportKind: KmpBridge.ReportKind.lomloeEvaluationComment.rawValue,
+                    classId: classId,
+                    studentId: rows[index].student.id,
+                    availability: "Disponible",
+                    modelAvailable: true,
+                    success: false,
+                    durationMs: Int64(Date().timeIntervalSince(startedAt) * 1000),
+                    errorKind: String(describing: type(of: error)),
+                    errorMessage: error.localizedDescription
+                )
+            }
+        }
+        feedbackMessage = "Generación completada. Revisa y guarda los comentarios aprobados."
+    }
+
+    @MainActor
+    private func saveApprovedDrafts() async {
+        isSaving = true
+        feedbackMessage = nil
+        defer { isSaving = false }
+
+        do {
+            let columnId: String
+            if let targetColumnId {
+                columnId = targetColumnId
+            } else {
+                columnId = try await bridge.createNotebookAICommentColumnForClass(classId: classId, name: columnName)
+                targetColumnId = columnId
+            }
+
+            var saved = 0
+            var skipped = 0
+            for row in rows where row.isApproved {
+                let text = row.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !text.isEmpty else {
+                    skipped += 1
+                    continue
+                }
+                if onlyEmptyCells {
+                    let existing = try await bridge.notebookTextCell(classId: classId, studentId: row.student.id, columnId: columnId)
+                    if !existing.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        skipped += 1
+                        continue
+                    }
+                }
+                try await bridge.saveNotebookAICommentDirect(classId: classId, studentId: row.student.id, columnId: columnId, text: text)
+                saved += 1
+            }
+            feedbackMessage = "Guardados: \(saved). Omitidos: \(skipped)."
+        } catch {
+            feedbackMessage = error.localizedDescription
+        }
     }
 }
 
@@ -8161,6 +8902,7 @@ private extension Date {
 }
 
 private struct ContextualAIAssistantSheet: View {
+    let bridge: KmpBridge
     let module: AppWorkspaceModule
     let context: KmpBridge.ScreenAIContext
 
@@ -8172,9 +8914,13 @@ private struct ContextualAIAssistantSheet: View {
     @State private var result: ContextualAIResult?
     @State private var editableText = ""
     @State private var isGenerating = false
+    @State private var isRefining = false
     @State private var feedbackMessage: String?
+    @State private var teachingDraft: TeachingAssistantDraft?
+    @State private var refinePrompt = ""
 
     private let aiService = AppleFoundationContextualAIService()
+    private let teachingAssistantService = AppleFoundationTeachingAssistantService()
 
     var body: some View {
         NavigationStack {
@@ -8196,6 +8942,7 @@ private struct ContextualAIAssistantSheet: View {
             }
             .onAppear {
                 aiService.prewarm()
+                teachingAssistantService.prewarm()
                 selectedAction = context.suggestedActions.first
             }
         }
@@ -8215,6 +8962,13 @@ private struct ContextualAIAssistantSheet: View {
                     .foregroundStyle(.secondary)
                 Text(context.summary)
                     .font(.system(size: 14, weight: .medium, design: .rounded))
+                if let riskTitle = teachingDraft?.riskLevel?.title {
+                    Text(riskTitle)
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(NotebookStyle.primaryTint.opacity(0.12), in: Capsule(style: .continuous))
+                }
                 Text(availability.message)
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(availability.isAvailable ? NotebookStyle.successTint : NotebookStyle.warningTint)
@@ -8253,6 +9007,8 @@ private struct ContextualAIAssistantSheet: View {
                     ForEach(context.suggestedActions) { action in
                         Button {
                             selectedAction = action
+                            teachingAssistantService.clearActiveConversation()
+                            refinePrompt = ""
                         } label: {
                             HStack(alignment: .top, spacing: 12) {
                                 Image(systemName: action.systemImage)
@@ -8286,6 +9042,9 @@ private struct ContextualAIAssistantSheet: View {
                         }
                     }
                     .pickerStyle(.segmented)
+                    .onChange(of: audience) { _ in
+                        teachingAssistantService.clearActiveConversation()
+                    }
 
                     Picker("Tono", selection: $tone) {
                         ForEach(AIReportTone.allCases) { item in
@@ -8293,6 +9052,9 @@ private struct ContextualAIAssistantSheet: View {
                         }
                     }
                     .pickerStyle(.segmented)
+                    .onChange(of: tone) { _ in
+                        teachingAssistantService.clearActiveConversation()
+                    }
 
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Variación opcional")
@@ -8350,6 +9112,22 @@ private struct ContextualAIAssistantSheet: View {
                         .font(.system(size: 14, weight: .medium, design: .rounded))
                         .foregroundStyle(.secondary)
                 } else {
+                    if let result {
+                        evidenceSummary(
+                            facts: result.factsUsed,
+                            warnings: result.warnings,
+                            recommendedActions: result.recommendedActions,
+                            confidenceNote: result.confidenceNote
+                        )
+                    } else if let teachingDraft {
+                        evidenceSummary(
+                            facts: teachingDraft.factsUsed,
+                            warnings: teachingDraft.warnings,
+                            recommendedActions: teachingDraft.recommendedActions,
+                            confidenceNote: teachingDraft.confidenceNote
+                        )
+                    }
+
                     TextEditor(text: $editableText)
                         .frame(minHeight: 220)
                         .padding(8)
@@ -8357,7 +9135,65 @@ private struct ContextualAIAssistantSheet: View {
                             RoundedRectangle(cornerRadius: 18, style: .continuous)
                                 .fill(NotebookStyle.surface)
                         )
+
+                    if teachingDraft != nil {
+                        HStack(alignment: .top, spacing: 10) {
+                            TextField("Refinar: más breve, más cálido, foco en próximos pasos...", text: $refinePrompt, axis: .vertical)
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                                .lineLimit(2, reservesSpace: true)
+                            Button {
+                                refineTeachingDraft()
+                            } label: {
+                                if isRefining {
+                                    ProgressView()
+                                } else {
+                                    Label("Refinar", systemImage: "wand.and.stars")
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(isRefining || refinePrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }
+                    }
                 }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func evidenceSummary(
+        facts: [String],
+        warnings: [String],
+        recommendedActions: [String],
+        confidenceNote: String?
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let confidenceNote {
+                Text(confidenceNote)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+
+            if !facts.isEmpty {
+                summarySection(title: "Hechos usados", items: facts)
+            }
+            if !warnings.isEmpty {
+                summarySection(title: "Alertas", items: warnings)
+            }
+            if !recommendedActions.isEmpty {
+                summarySection(title: "Acciones recomendadas", items: recommendedActions)
+            }
+        }
+        .padding(.bottom, 10)
+    }
+
+    private func summarySection(title: String, items: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .foregroundStyle(.secondary)
+            ForEach(items, id: \.self) { item in
+                Text("• \(item)")
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
             }
         }
     }
@@ -8366,25 +9202,94 @@ private struct ContextualAIAssistantSheet: View {
         guard let selectedAction else { return }
         isGenerating = true
         feedbackMessage = nil
+        result = nil
+        teachingDraft = nil
+        refinePrompt = ""
         Task {
             do {
-                let generated = try await aiService.generateResult(
-                    from: context,
-                    action: selectedAction,
-                    audience: audience,
-                    tone: tone,
-                    customPrompt: customPrompt.nilIfBlank
-                )
                 await MainActor.run {
-                    result = generated
-                    editableText = generated.editableText
-                    isGenerating = false
+                    feedbackMessage = nil
+                }
+
+                if teachingAssistantService.canHandle(selectedAction.actionId) {
+                    let generated = try await teachingAssistantService.generateDraft(
+                        for: selectedAction.actionId,
+                        bridge: bridge,
+                        context: context,
+                        audience: audience,
+                        tone: tone,
+                        customPrompt: customPrompt.nilIfBlank
+                    )
+                    await MainActor.run {
+                        teachingDraft = generated
+                        editableText = generated.editableText
+                        isGenerating = false
+                    }
+                } else {
+                    let generated = try await aiService.generateResult(
+                        from: context,
+                        action: selectedAction,
+                        audience: audience,
+                        tone: tone,
+                        customPrompt: customPrompt.nilIfBlank
+                    )
+                    await MainActor.run {
+                        result = generated
+                        editableText = generated.editableText
+                        isGenerating = false
+                    }
                 }
             } catch {
                 await MainActor.run {
                     feedbackMessage = error.localizedDescription
                     isGenerating = false
                 }
+            }
+        }
+    }
+
+    private func refineTeachingDraft() {
+        isRefining = true
+        feedbackMessage = nil
+        let startedAt = Date()
+        Task {
+            do {
+                let refined = try await teachingAssistantService.refineActiveDraft(with: refinePrompt)
+                await MainActor.run {
+                    teachingDraft = refined
+                    editableText = refined.editableText
+                    refinePrompt = ""
+                    isRefining = false
+                }
+                await bridge.recordAIAuditEvent(
+                    service: "contextual",
+                    useCase: "refine_draft",
+                    reportKind: nil,
+                    classId: context.classId,
+                    studentId: context.studentId,
+                    availability: "Disponible",
+                    modelAvailable: true,
+                    success: true,
+                    durationMs: Int64(Date().timeIntervalSince(startedAt) * 1000)
+                )
+            } catch {
+                await MainActor.run {
+                    feedbackMessage = error.localizedDescription
+                    isRefining = false
+                }
+                await bridge.recordAIAuditEvent(
+                    service: "contextual",
+                    useCase: "refine_draft",
+                    reportKind: nil,
+                    classId: context.classId,
+                    studentId: context.studentId,
+                    availability: "Disponible",
+                    modelAvailable: true,
+                    success: false,
+                    durationMs: Int64(Date().timeIntervalSince(startedAt) * 1000),
+                    errorKind: String(describing: type(of: error)),
+                    errorMessage: error.localizedDescription
+                )
             }
         }
     }

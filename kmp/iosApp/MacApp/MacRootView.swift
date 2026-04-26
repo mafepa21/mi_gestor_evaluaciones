@@ -3,134 +3,276 @@ import AppKit
 
 struct MacRootView: View {
     @ObservedObject var session: MacAppSessionController
+    @StateObject private var commandCenter = MacCommandCenterCoordinator()
+    @State private var selectedClassId: Int64? = nil
+    @State private var selectedStudentId: Int64? = nil
+    @State private var attendanceToolbarActions: MacAttendanceToolbarActions? = nil
+    @State private var dashboardToolbarActions: MacDashboardToolbarActions? = nil
 
     var body: some View {
-        NavigationSplitView {
-            List(MacFeatureRegistry.all, selection: $session.selectedFeature) { feature in
-                Label {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(feature.title)
-                        Text(feature.subtitle)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                } icon: {
-                    Image(systemName: feature.systemImage)
-                }
-                .tag(feature.feature)
-            }
-            .navigationTitle("MiGestor")
-        } detail: {
-            featureDetail(for: session.selectedFeature)
+        Group {
+            switch session.bootstrapState {
+            case .idle, .loading:
+                ProgressView("Preparando shell macOS…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(MacAppStyle.pageBackground)
+            case .failed(let message):
+                ContentUnavailableView(
+                    "No se pudo iniciar la shell Mac",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(message)
+                )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(nsColor: .windowBackgroundColor))
-        }
-        .toolbar {
-            ToolbarItemGroup {
-                Button {
-                    Task {
-                        await session.bridge.pullMissingSyncChanges()
-                    }
-                } label: {
-                    Label("Pull", systemImage: "arrow.down.circle")
+                .background(MacAppStyle.pageBackground)
+            case .ready:
+                NavigationSplitView {
+                    macSidebar
+                } detail: {
+                    featureDetail(for: session.selectedFeature)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(MacAppStyle.pageBackground)
                 }
-
-                Button {
-                    Task {
-                        await session.bridge.refreshDashboard(mode: .office)
-                    }
-                } label: {
-                    Label("Refrescar", systemImage: "arrow.clockwise")
+                .toolbar {
+                    macToolbar
                 }
             }
         }
+        .task {
+            commandCenter.attachBridge(session.bridge)
+            session.start()
+            commandCenter.autostartIfNeeded()
+        }
+    }
+
+    private var macSidebar: some View {
+        List(MacFeatureRegistry.all, selection: $session.selectedFeature) { feature in
+            HStack(spacing: 10) {
+                Image(systemName: feature.systemImage)
+                    .frame(width: 20, height: 20)
+                    .foregroundStyle(iconTint(for: feature.feature))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(feature.title)
+                        .font(.callout.weight(.medium))
+                    Text(feature.subtitle)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            .padding(.vertical, 2)
+            .tag(feature.feature)
+        }
+        .listStyle(.sidebar)
+        .navigationTitle("MiGestor")
+        .navigationSubtitle(session.bridge.statsText)
     }
 
     @ViewBuilder
     private func featureDetail(for feature: MacFeatureDescriptor.Feature) -> some View {
         switch feature {
         case .dashboard:
-            MacDashboardView(bridge: session.bridge, bootstrap: session.bootstrap)
+            MacDashboardView(
+                bridge: session.bridge,
+                bootstrap: session.bootstrap,
+                onToolbarActionsChange: setDashboardToolbarActions
+            )
+        case .notebook:
+            NotebookModuleView(
+                bridge: session.bridge,
+                selectedClassId: $selectedClassId,
+                selectedStudentId: $selectedStudentId,
+                onOpenModule: open(module:classId:studentId:)
+            )
+        case .attendance:
+            MacAttendanceView(
+                bridge: session.bridge,
+                selectedClassId: $selectedClassId,
+                selectedStudentId: $selectedStudentId,
+                onOpenModule: open(module:classId:studentId:),
+                onToolbarActionsChange: setAttendanceToolbarActions
+            )
+        case .students:
+            MacStudentsView(
+                bridge: session.bridge,
+                selectedClassId: $selectedClassId,
+                selectedStudentId: $selectedStudentId,
+                onOpenModule: open(module:classId:studentId:)
+            )
+        case .rubrics:
+            MacRubricsView(bridge: session.bridge)
+        case .reports:
+            MacReportsView(
+                bridge: session.bridge,
+                selectedClassId: $selectedClassId,
+                selectedStudentId: $selectedStudentId
+            )
+        case .planner:
+            MacPlannerView(bridge: session.bridge)
         case .sync:
-            MacSyncView(bridge: session.bridge)
+            MacSyncView(bridge: session.bridge, commandCenter: commandCenter)
         case .backups:
             MacBackupsView(bridge: session.bridge)
         case .settings:
-            MacSettingsView(session: session)
+            MacSettingsView(
+                session: session,
+                commandCenter: commandCenter,
+                onOpenSync: { session.selectedFeature = .sync }
+            )
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var macToolbar: some ToolbarContent {
+        ToolbarItemGroup {
+            Button {
+                Task { await session.bridge.pullMissingSyncChanges() }
+            } label: {
+                Label("Sync", systemImage: "arrow.triangle.2.circlepath")
+            }
+            .help("Sincronizar con desktop")
+
+            if session.selectedFeature == .notebook {
+                Button {
+                    session.bridge.showingAddColumn = true
+                } label: {
+                    Label("Columna", systemImage: "plus.rectangle")
+                }
+                .help("Nueva columna")
+            }
+
+            if session.selectedFeature == .dashboard, let dashboardToolbarActions {
+                Picker(
+                    "Modo",
+                    selection: Binding(
+                        get: { dashboardToolbarActions.modeRawValue },
+                        set: { dashboardToolbarActions.setMode($0) }
+                    )
+                ) {
+                    Text("Clase").tag("classroom")
+                    Text("Despacho").tag("office")
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 210)
+                .help("Modo operativo del dashboard")
+
+                Button {
+                    dashboardToolbarActions.passList()
+                } label: {
+                    Label("Pasar lista", systemImage: "checkmark.circle")
+                }
+                .disabled(!dashboardToolbarActions.canRunActions)
+                .keyboardShortcut("l", modifiers: [.command])
+                .help("Pasar lista para la clase activa")
+
+                Button {
+                    dashboardToolbarActions.observation()
+                } label: {
+                    Label("Observación", systemImage: "note.text.badge.plus")
+                }
+                .disabled(!dashboardToolbarActions.canRunActions)
+                .help("Registrar una observación rápida")
+            }
+
+            if session.selectedFeature == .attendance, let attendanceToolbarActions {
+                Button {
+                    attendanceToolbarActions.markAllPresent()
+                } label: {
+                    Label("Todos presentes", systemImage: "checkmark.circle.fill")
+                }
+                .help("Marcar como presentes los alumnos filtrados")
+
+                Button {
+                    attendanceToolbarActions.repeatPattern()
+                } label: {
+                    Label("Repetir patrón", systemImage: "repeat")
+                }
+                .help("Repetir el último patrón de asistencia")
+
+                if attendanceToolbarActions.canCloseSelection {
+                    Button {
+                        attendanceToolbarActions.clearSelection()
+                    } label: {
+                        Label("Cerrar ficha", systemImage: "sidebar.right")
+                    }
+                    .help("Cerrar el inspector del alumno")
+                }
+            }
+
+            Button {
+                if session.selectedFeature == .dashboard, let dashboardToolbarActions {
+                    dashboardToolbarActions.refresh()
+                } else if session.selectedFeature == .attendance, let attendanceToolbarActions {
+                    attendanceToolbarActions.refresh()
+                } else {
+                    Task { await session.bridge.refreshDashboard(mode: .office) }
+                }
+            } label: {
+                Label("Refrescar", systemImage: "arrow.clockwise")
+            }
+            .keyboardShortcut("r", modifiers: [.command])
+            .help("Refrescar datos")
+        }
+
+        ToolbarItem {
+            MacStatusPill(
+                label: session.bridge.syncPendingChanges > 0
+                    ? "\(session.bridge.syncPendingChanges) pendientes"
+                    : "Sincronizado",
+                isActive: session.bridge.syncPendingChanges > 0,
+                tint: session.bridge.syncPendingChanges > 0 ? MacAppStyle.warningTint : MacAppStyle.successTint
+            )
+        }
+    }
+
+    private func iconTint(for feature: MacFeatureDescriptor.Feature) -> Color {
+        switch feature {
+        case .dashboard: return .accentColor
+        case .notebook: return .purple
+        case .attendance: return .green
+        case .planner: return .orange
+        case .students: return .blue
+        case .rubrics: return .teal
+        case .sync: return .green
+        case .backups: return .gray
+        case .reports: return .indigo
+        case .settings: return .secondary
+        }
+    }
+
+    private func setDashboardToolbarActions(_ actions: MacDashboardToolbarActions?) {
+        DispatchQueue.main.async {
+            guard session.selectedFeature == .dashboard else { return }
+            dashboardToolbarActions = actions
+        }
+    }
+
+    private func setAttendanceToolbarActions(_ actions: MacAttendanceToolbarActions?) {
+        DispatchQueue.main.async {
+            guard session.selectedFeature == .attendance else { return }
+            attendanceToolbarActions = actions
+        }
+    }
+
+    private func open(module: AppWorkspaceModule, classId: Int64?, studentId: Int64?) {
+        if let classId {
+            selectedClassId = classId
+        }
+        if let studentId {
+            selectedStudentId = studentId
+        }
+
+        switch module {
+        case .notebook:
+            session.selectedFeature = .notebook
+        case .students:
+            session.selectedFeature = .students
+        case .reports:
+            session.selectedFeature = .reports
+        case .attendance:
+            session.selectedFeature = .attendance
         default:
-            MacFeaturePlaceholderView(feature: MacFeatureRegistry.descriptor(for: feature), bridge: session.bridge)
+            session.bridge.status = "El módulo \(module.title) todavía no está disponible en la shell Mac."
         }
-    }
-}
-
-private struct MacDashboardView: View {
-    @ObservedObject var bridge: KmpBridge
-    let bootstrap: AppleBridgeBootstrap
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Shell macOS operativo")
-                        .font(.largeTitle.weight(.semibold))
-                    Text("Base Apple compartida con KMP y paridad funcional guiada por iOS.")
-                        .foregroundStyle(.secondary)
-                }
-
-                GroupBox("Estado") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        LabeledContent("Plataforma", value: bootstrap.platformName)
-                        LabeledContent("Base de datos", value: bootstrap.databasePath)
-                        LabeledContent("Bridge", value: bridge.status)
-                        LabeledContent("Resumen", value: bridge.statsText)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-
-                GroupBox("Clases") {
-                    if bridge.classes.isEmpty {
-                        Text("Todavía no hay clases cargadas.")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(bridge.classes, id: \.id) { schoolClass in
-                            HStack {
-                                Text(schoolClass.name)
-                                Spacer()
-                                Text("Curso \(schoolClass.course)")
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(.vertical, 2)
-                        }
-                    }
-                }
-            }
-            .padding(24)
-        }
-    }
-}
-
-private struct MacSyncView: View {
-    @ObservedObject var bridge: KmpBridge
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Sync LAN")
-                .font(.title.bold())
-            LabeledContent("Estado", value: bridge.syncStatusMessage)
-            LabeledContent("Pendientes", value: String(bridge.syncPendingChanges))
-            LabeledContent("Última sync", value: bridge.syncLastRunAt?.formatted(date: .abbreviated, time: .shortened) ?? "—")
-            LabeledContent("Host vinculado", value: bridge.pairedSyncHost ?? "Sin vincular")
-
-            if bridge.discoveredSyncHosts.isEmpty {
-                Text("No se han descubierto hosts todavía.")
-                    .foregroundStyle(.secondary)
-            } else {
-                List(bridge.discoveredSyncHosts, id: \.self) { host in
-                    Text(host)
-                }
-            }
-        }
-        .padding(24)
     }
 }
 
@@ -139,9 +281,10 @@ private struct MacBackupsView: View {
     @State private var backupMessage = "Todavía no se ha creado ningún backup."
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
             Text("Backups locales")
-                .font(.title.bold())
+                .font(MacAppStyle.pageTitle)
+
             Text(backupMessage)
                 .foregroundStyle(.secondary)
 
@@ -156,8 +299,9 @@ private struct MacBackupsView: View {
                         }
                     }
                 }
+                .buttonStyle(.bordered)
 
-                Button("Restaurar backup") {
+                Button {
                     Task {
                         let panel = NSOpenPanel()
                         panel.allowsMultipleSelection = false
@@ -166,35 +310,20 @@ private struct MacBackupsView: View {
                         if panel.runModal() == .OK, let path = panel.url?.path {
                             do {
                                 let restored = try await bridge.restoreLocalBackup(from: path)
-                                backupMessage = restored ? "Backup restaurado desde \(path)" : "No se pudo restaurar el backup."
+                                backupMessage = restored
+                                    ? "Backup restaurado desde \(path)"
+                                    : "No se pudo restaurar el backup."
                             } catch {
                                 backupMessage = "Error restaurando backup: \(error.localizedDescription)"
                             }
                         }
                     }
+                } label: {
+                    Text("Restaurar backup")
                 }
+                .buttonStyle(.bordered)
             }
         }
-        .padding(24)
-    }
-}
-
-private struct MacFeaturePlaceholderView: View {
-    let feature: MacFeatureDescriptor
-    @ObservedObject var bridge: KmpBridge
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Label(feature.title, systemImage: feature.systemImage)
-                .font(.title.bold())
-            Text(feature.subtitle)
-                .foregroundStyle(.secondary)
-            Divider()
-            Text("Este vertical ya cuelga del bridge Apple/KMP compartido. La shell macOS está lista para ir incorporando las vistas nativas módulo a módulo sin depender de Compose Desktop.")
-                .fixedSize(horizontal: false, vertical: true)
-            LabeledContent("Estado actual", value: bridge.status)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding(24)
+        .padding(MacAppStyle.pagePadding)
     }
 }

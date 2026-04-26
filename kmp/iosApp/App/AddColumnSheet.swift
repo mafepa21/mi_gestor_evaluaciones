@@ -149,6 +149,46 @@ private struct NotebookColumnBlueprint: Identifiable {
     }
 }
 
+private enum NotebookPhysicalTestMeasurement: String, CaseIterable, Identifiable {
+    case time
+    case distance
+    case repetitions
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .time: return "Tiempo"
+        case .distance: return "Distancia"
+        case .repetitions: return "Repeticiones"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .time: return "Cronos, marcas o duración."
+        case .distance: return "Metros, saltos o lanzamientos."
+        case .repetitions: return "Conteo de repeticiones."
+        }
+    }
+
+    var inputKind: NotebookCellInputKind {
+        switch self {
+        case .time: return .time
+        case .distance: return .distance
+        case .repetitions: return .repetitions
+        }
+    }
+
+    var scaleKind: NotebookScaleKind {
+        switch self {
+        case .time: return .time
+        case .distance: return .distance
+        case .repetitions: return .repetitions
+        }
+    }
+}
+
 private struct ColumnBlueprintCard: View {
     let blueprint: NotebookColumnBlueprint
     let isSelected: Bool
@@ -334,6 +374,7 @@ struct AddColumnSheet: View {
     @State private var isTemplate = false
     @State private var isLocked = false
     @State private var summaryConfiguration = NotebookIndividualSummaryConfiguration()
+    @State private var selectedPhysicalMeasurement: NotebookPhysicalTestMeasurement = .distance
 
     private let blueprints: [NotebookColumnBlueprint] = [
         .init(id: "written_test", title: "Prueba escrita", subtitle: "Nota numérica 0-10", icon: "doc.text.magnifyingglass", type: .numeric, categoryKind: .evaluation, instrumentKind: .writtenTest, inputKind: .numeric010, scaleKind: .tenPoint, defaultWeight: 10),
@@ -344,7 +385,7 @@ struct AddColumnSheet: View {
         .init(id: "attendance", title: "Asistencia", subtitle: "Presente, ausente o retraso", icon: "person.badge.clock", type: .attendance, categoryKind: .attendance, instrumentKind: .systematicObservation, inputKind: .attendanceStatus, scaleKind: .custom, defaultWeight: 0),
         .init(id: "physical_test", title: "Prueba física", subtitle: "Tiempo, distancia o repeticiones", icon: "figure.run", type: .numeric, categoryKind: .physicalEducation, instrumentKind: .physicalTest, inputKind: .distance, scaleKind: .distance, defaultWeight: 10),
         .init(id: "evidence", title: "Evidencia", subtitle: "Archivo o multimedia", icon: "paperclip.circle", type: .text, categoryKind: .extras, instrumentKind: .multimediaEvidence, inputKind: .evidence, scaleKind: .custom, defaultWeight: 0),
-        .init(id: "calculated", title: "Cálculo automático", subtitle: "Media o fórmula", icon: "function", type: .calculated, categoryKind: .evaluation, instrumentKind: .custom, inputKind: .calculated, scaleKind: .tenPoint, defaultWeight: 0),
+        .init(id: "calculated", title: "Cálculo / Fórmula", subtitle: "Fórmula con referencias a columnas", icon: "function", type: .calculated, categoryKind: .evaluation, instrumentKind: .custom, inputKind: .calculated, scaleKind: .tenPoint, defaultWeight: 0),
         .init(id: "individual_summary", title: "Síntesis pedagógica", subtitle: "Columna IA editable y regenerable por alumno", icon: "apple.intelligence", type: .text, categoryKind: .followUp, instrumentKind: .privateComment, inputKind: .text, scaleKind: .custom, defaultWeight: 0),
     ]
 
@@ -409,15 +450,20 @@ struct AddColumnSheet: View {
                         selectedBlueprintId = blueprints.first?.id
                     }
                 }
-                .onChange(of: selectedBlueprintId) {
+                .onChange(of: selectedBlueprintId) { _ in
                     syncBlueprintDefaults()
                     if categoryPlacementMode == .existing, selectedCategoryId == nil {
                         selectedCategoryId = suggestedCategoryId
                     }
                 }
             }
-            .frame(minWidth: 520, idealWidth: 560, maxWidth: 640, minHeight: 560, idealHeight: 620)
+            .frame(width: 560, height: 620)
+            #if os(iOS)
+            .presentationDetents([.large])
+            .presentationDragIndicator(.hidden)
+            #endif
         }
+        .frame(minWidth: 520, idealWidth: 560, maxWidth: 640, minHeight: 560, idealHeight: 620)
     }
 
     @ViewBuilder
@@ -514,15 +560,21 @@ struct AddColumnSheet: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Entrada")
                         .font(.headline)
-                    Text(label(for: selectedBlueprint?.inputKind ?? .text))
+                    Text(label(for: resolvedInputKind))
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(.secondary)
                 }
             }
 
+            if selectedBlueprint?.instrumentKind == .physicalTest {
+                physicalMeasurementPicker
+            }
+
             if selectedBlueprint?.type == .calculated {
-                TextField("Fórmula", text: $formula)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                NotebookFormulaKeyboard(
+                    formula: $formula,
+                    availableColumns: availableFormulaColumns
+                )
             }
 
             if selectedBlueprint?.type == .rubric {
@@ -542,6 +594,24 @@ struct AddColumnSheet: View {
             Toggle("Fijar al inicio", isOn: $isPinned)
             Toggle("Columna bloqueada", isOn: $isLocked)
             Toggle("Guardar como plantilla", isOn: $isTemplate)
+        }
+    }
+
+    private var physicalMeasurementPicker: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Medida física")
+                .font(.headline)
+
+            Picker("Medida física", selection: $selectedPhysicalMeasurement) {
+                ForEach(NotebookPhysicalTestMeasurement.allCases) { measurement in
+                    Text(measurement.title).tag(measurement)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            Text(selectedPhysicalMeasurement.subtitle)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -731,6 +801,22 @@ struct AddColumnSheet: View {
         return data.sheet.columnCategories.sorted { $0.order < $1.order }
     }
 
+    private var availableFormulaColumns: [NotebookColumnDefinition] {
+        guard let data = bridge.notebookState as? NotebookUiStateData else { return [] }
+        let activeTabId = bridge.selectedNotebookTabId ?? data.sheet.tabs.first?.id
+        return data.sheet.columns
+            .filter { !$0.isHidden }
+            .filter { $0.type != .calculated }
+            .filter { column in
+                guard let activeTabId else { return true }
+                return column.tabIds.contains(activeTabId) || (column.sharedAcrossTabs && column.tabIds.isEmpty)
+            }
+            .sorted {
+                if $0.order != $1.order { return $0.order < $1.order }
+                return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+            }
+    }
+
     private var canSave: Bool {
         guard let selectedBlueprint else { return false }
         if resolvedColumnName.isEmpty { return false }
@@ -757,6 +843,20 @@ struct AddColumnSheet: View {
         color(for: selectedBlueprint?.categoryKind ?? .evaluation)
     }
 
+    private var resolvedInputKind: NotebookCellInputKind {
+        guard selectedBlueprint?.instrumentKind == .physicalTest else {
+            return selectedBlueprint?.inputKind ?? .text
+        }
+        return selectedPhysicalMeasurement.inputKind
+    }
+
+    private var resolvedScaleKind: NotebookScaleKind {
+        guard selectedBlueprint?.instrumentKind == .physicalTest else {
+            return selectedBlueprint?.scaleKind ?? .custom
+        }
+        return selectedPhysicalMeasurement.scaleKind
+    }
+
     private func saveColumn() {
         guard let selectedBlueprint else { return }
         if selectedBlueprint.isIndividualSummary {
@@ -780,11 +880,11 @@ struct AddColumnSheet: View {
             categoryId: resolvedCategoryId,
             categoryKind: selectedBlueprint.categoryKind,
             instrumentKind: selectedBlueprint.instrumentKind,
-            inputKind: selectedBlueprint.inputKind,
+            inputKind: resolvedInputKind,
             dateEpochMs: Int64(selectedDate.timeIntervalSince1970 * 1000),
             unitOrSituation: trimmedOrNil(unitOrSituation),
             competencyCriteriaIds: [],
-            scaleKind: selectedBlueprint.scaleKind,
+            scaleKind: resolvedScaleKind,
             iconName: selectedBlueprint.icon,
             countsTowardAverage: countsTowardAverage,
             isPinned: isPinned,
@@ -852,6 +952,9 @@ struct AddColumnSheet: View {
     private func syncBlueprintDefaults() {
         guard let selectedBlueprint else { return }
         weight = String(Int(selectedBlueprint.defaultWeight))
+        if selectedBlueprint.instrumentKind == .physicalTest {
+            selectedPhysicalMeasurement = .distance
+        }
         if selectedBlueprint.isIndividualSummary {
             countsTowardAverage = false
             if columnName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || columnName == "Comentario IA" {

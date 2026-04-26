@@ -65,11 +65,6 @@ targets:
     sources:
       - path: AppleShared
       - path: MacApp
-        excludes:
-          - MacRootView.swift
-          - MacAppSessionController.swift
-          - MacFeatureRegistry.swift
-          - MacSettingsView.swift
       - path: App
         excludes:
           - MiGestorKMPiOSApp.swift

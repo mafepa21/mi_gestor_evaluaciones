@@ -515,12 +515,20 @@ struct NotebookTopBar: View {
     @ObservedObject var bridge: KmpBridge
     @Binding var searchText: String
     @Binding var surfaceMode: NotebookSurfaceMode
+    let navigationDirection: NotebookNavigationDirection
     let isInspectorPresented: Bool
+    let isAttendanceQuickMode: Bool
+    let canMarkAllPresent: Bool
+    let canUndo: Bool
     let onSelectClass: (Int64) -> Void
     let onOpenOrganizationMenu: () -> Void
     let onToggleInspector: () -> Void
     let onOpenAdvancedMenu: () -> Void
     let onOpenAddColumn: () -> Void
+    let onNavigationDirectionChange: (NotebookNavigationDirection) -> Void
+    let onToggleAttendanceQuickMode: () -> Void
+    let onMarkAllPresent: () -> Void
+    let onUndo: () -> Void
     var onGenerateSummaryFallback: (() -> Void)? = nil
     var exportText: String? = nil
 
@@ -560,6 +568,34 @@ struct NotebookTopBar: View {
             Spacer(minLength: 0)
 
             saveStatusChip
+            navigationDirectionMenu
+
+            Button(action: onMarkAllPresent) {
+                Image(systemName: "checkmark.circle.fill")
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(canMarkAllPresent ? .green : .secondary)
+            .disabled(!canMarkAllPresent)
+            .help("Todos presentes")
+
+            Button(action: onToggleAttendanceQuickMode) {
+                Image(systemName: isAttendanceQuickMode ? "figure.walk.circle.fill" : "figure.walk.circle")
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(isAttendanceQuickMode ? NotebookStyle.warningTint : .secondary)
+            .help("Pase rápido")
+
+            Button(action: onUndo) {
+                Image(systemName: "arrow.uturn.backward")
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(canUndo ? .secondary : .tertiary)
+            .disabled(!canUndo)
+            .keyboardShortcut("z", modifiers: .command)
+            .help("Deshacer último cambio")
 
             Button(action: onOpenOrganizationMenu) {
                 Image(systemName: "rectangle.3.group")
@@ -611,6 +647,27 @@ struct NotebookTopBar: View {
         .background(.bar)
     }
 
+    private var navigationDirectionMenu: some View {
+        Menu {
+            ForEach(NotebookNavigationDirection.allCases) { direction in
+                Button {
+                    onNavigationDirectionChange(direction)
+                } label: {
+                    Label(direction.title, systemImage: direction.systemImage)
+                    if direction == navigationDirection {
+                        Image(systemName: "checkmark")
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: navigationDirection.systemImage)
+                .frame(width: 28, height: 28)
+        }
+        .menuStyle(.borderlessButton)
+        .foregroundStyle(.secondary)
+        .help("Dirección al guardar")
+    }
+
     private var classPicker: some View {
         Menu {
             ForEach(bridge.classes, id: \.id) { schoolClass in
@@ -651,8 +708,7 @@ struct NotebookTopBar: View {
 
     private var saveStatusChip: some View {
         HStack(spacing: 6) {
-            Image(systemName: saveBadge.icon)
-                .symbolEffect(.rotate, isActive: bridge.notebookSaveState == .saving)
+            saveStatusIcon
             Text(saveBadge.text)
         }
         .font(.caption.weight(.medium))
@@ -668,5 +724,22 @@ struct NotebookTopBar: View {
                 .stroke(saveBadge.color.opacity(0.14), lineWidth: 1)
         )
         .animation(.easeInOut(duration: 0.2), value: bridge.notebookSaveState)
+    }
+
+    @ViewBuilder
+    private var saveStatusIcon: some View {
+        if #available(iOS 18.0, macOS 15.0, *) {
+            Image(systemName: saveBadge.icon)
+                .symbolEffect(.rotate, isActive: bridge.notebookSaveState == .saving)
+        } else {
+            Image(systemName: saveBadge.icon)
+                .rotationEffect(.degrees(bridge.notebookSaveState == .saving ? 360 : 0))
+                .animation(
+                    bridge.notebookSaveState == .saving
+                        ? .linear(duration: 0.9).repeatForever(autoreverses: false)
+                        : .easeOut(duration: 0.2),
+                    value: bridge.notebookSaveState
+                )
+        }
     }
 }

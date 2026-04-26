@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 100;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -83,25 +83,21 @@
 /* Begin PBXCopyFilesBuildPhase section */
 		6DB68CD39160D219D0A616ED /* Embed Frameworks */ = {
 			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
 			dstPath = "";
-			dstSubfolderSpec = 10;
+			dstSubfolder = Frameworks;
 			files = (
 				7EA33D26A3C473C49C5E8A6B /* MiGestorKit.framework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 		784B08E4A7373DB7893260F9 /* Embed Frameworks */ = {
 			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
 			dstPath = "";
-			dstSubfolderSpec = 10;
+			dstSubfolder = Frameworks;
 			files = (
 				C5E1560FD55A2CDC68B12B61 /* MiGestorKit.framework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
 
@@ -154,19 +150,15 @@
 /* Begin PBXFrameworksBuildPhase section */
 		677677B0B4FCCBAD19F73642 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 				7A9B6526A28BBAA6C5D13AD7 /* MiGestorKit.framework in Frameworks */,
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 		6A553DDCFA00ABD10FB19618 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 				4FC65E1EA9E7488F1442911F /* MiGestorKit.framework in Frameworks */,
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
@@ -275,11 +267,7 @@
 			);
 			buildRules = (
 			);
-			dependencies = (
-			);
 			name = MiGestorKMPiOS;
-			packageProductDependencies = (
-			);
 			productName = MiGestorKMPiOS;
 			productReference = 467B02D2576A83946B6237BA /* MiGestorKMPiOS.app */;
 			productType = "com.apple.product-type.application";
@@ -297,11 +285,7 @@
 			);
 			buildRules = (
 			);
-			dependencies = (
-			);
 			name = MiGestorKMPMac;
-			packageProductDependencies = (
-			);
 			productName = MiGestorKMPMac;
 			productReference = BB7ABC0A1CE983C4799B4FE9 /* MiGestorKMPMac.app */;
 			productType = "com.apple.product-type.application";
@@ -334,7 +318,7 @@
 			);
 			mainGroup = B9B8236102AE82ACD0413CB8;
 			minimizedProjectReferenceProxies = 1;
-			preferredProjectObjectVersion = 77;
+			preferredProjectObjectVersion = 100;
 			productRefGroup = 93715BBAC7A38E8F669C02AE /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -348,86 +332,72 @@
 /* Begin PBXResourcesBuildPhase section */
 		5E7C76C4953CB83CF3B1D4B4 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 				3CB4C3CA98572F18CC5D1DA7 /* Assets.xcassets in Resources */,
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 		97AB6FDEACC1851588EB784C /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 				2E0C1B67E85317A3147416FF /* Assets.xcassets in Resources */,
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
 		0BF793F78DA475B4A590B610 /* Build KMP Framework */ = {
 			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
 			name = "Build KMP Framework";
-			outputFileListPaths = (
-			);
 			outputPaths = (
 				"$(SRCROOT)/Frameworks/MiGestorKit.framework/MiGestorKit",
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\ncd \"${SRCROOT}/..\"\nexport GRADLE_USER_HOME=\"${SRCROOT}/../.gradle\"\nmkdir -p \"${GRADLE_USER_HOME}\"\n./scripts/build_apple_framework.sh\n";
+			shellScript = (
+				"set -euo pipefail",
+				"cd \"${SRCROOT}/..\"",
+				"export GRADLE_USER_HOME=\"${SRCROOT}/../.gradle\"",
+				"mkdir -p \"${GRADLE_USER_HOME}\"",
+				"./scripts/build_apple_framework.sh",
+				"",
+			);
 		};
 		D0A09C945CF2CB5541E2243F /* Build KMP Framework */ = {
 			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
 			name = "Build KMP Framework";
-			outputFileListPaths = (
-			);
 			outputPaths = (
 				"$(SRCROOT)/Frameworks/MiGestorKit.framework/MiGestorKit",
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\ncd \"${SRCROOT}/..\"\nexport GRADLE_USER_HOME=\"${SRCROOT}/../.gradle\"\nmkdir -p \"${GRADLE_USER_HOME}\"\n./scripts/build_apple_framework.sh\n";
+			shellScript = (
+				"set -euo pipefail",
+				"cd \"${SRCROOT}/..\"",
+				"export GRADLE_USER_HOME=\"${SRCROOT}/../.gradle\"",
+				"mkdir -p \"${GRADLE_USER_HOME}\"",
+				"./scripts/build_apple_framework.sh",
+				"",
+			);
 		};
 		FF78BEF6C2A3CCBB345A7E03 /* Build Command Center Helper */ = {
 			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
 			name = "Build Command Center Helper";
-			outputFileListPaths = (
-			);
 			outputPaths = (
 				"$(SRCROOT)/../commandCenterHelper/build/compose/binaries/main/app/MiGestorCommandCenter.app/Contents/MacOS/MiGestorCommandCenter",
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\ncd \"${SRCROOT}/..\"\nexport GRADLE_USER_HOME=\"${SRCROOT}/../.gradle\"\nmkdir -p \"${GRADLE_USER_HOME}\"\n./scripts/build_command_center_helper.sh\n";
+			shellScript = (
+				"set -euo pipefail",
+				"cd \"${SRCROOT}/..\"",
+				"export GRADLE_USER_HOME=\"${SRCROOT}/../.gradle\"",
+				"mkdir -p \"${GRADLE_USER_HOME}\"",
+				"./scripts/build_command_center_helper.sh",
+				"",
+			);
 		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		D76FF343B1E96D5067D6AA15 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 				F5B53E702D8FF43EAC82D921 /* AddColumnSheet.swift in Sources */,
 				740FE4946BFED011E3EE355F /* AppleAppEnvironment.swift in Sources */,
@@ -468,11 +438,9 @@
 				141D04C442E3CD9754436746 /* SyncEventListener.swift in Sources */,
 				0E1FCE13DF847EFA7D44E0AD /* TeacherScheduleSettingsView.swift in Sources */,
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 		E5E7824536C336CDB75E0F25 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 				7FC3CC82E0DA9D27DCD9A52D /* AddColumnSheet.swift in Sources */,
 				89A42DAB37443B7552C21222 /* AppleAppEnvironment.swift in Sources */,
@@ -502,12 +470,11 @@
 				8EBCBE31F6DB70B8CE3C1CE0 /* SyncEventListener.swift in Sources */,
 				6439B3815A09D0F867D1FE88 /* TeacherScheduleSettingsView.swift in Sources */,
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
-		11AC38E697B58F429B226C38 /* Debug */ = {
+		11AC38E697B58F429B226C38 /* Debug configuration for PBXProject "MiGestorKMPiOS" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -570,7 +537,7 @@
 			};
 			name = Debug;
 		};
-		53D1114FEAA05D13A4A71A21 /* Release */ = {
+		53D1114FEAA05D13A4A71A21 /* Release configuration for PBXNativeTarget "MiGestorKMPiOS" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -592,17 +559,8 @@
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = (
-					UIInterfaceOrientationPortrait,
-					UIInterfaceOrientationPortraitUpsideDown,
-					UIInterfaceOrientationLandscapeLeft,
-					UIInterfaceOrientationLandscapeRight,
-				);
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = (
-					UIInterfaceOrientationPortrait,
-					UIInterfaceOrientationLandscapeLeft,
-					UIInterfaceOrientationLandscapeRight,
-				);
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -620,7 +578,7 @@
 			};
 			name = Release;
 		};
-		5A115C837F9C64337C07D5DC /* Release */ = {
+		5A115C837F9C64337C07D5DC /* Release configuration for PBXProject "MiGestorKMPiOS" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -676,7 +634,7 @@
 			};
 			name = Release;
 		};
-		A55434AB0983DF585586728D /* Debug */ = {
+		A55434AB0983DF585586728D /* Debug configuration for PBXNativeTarget "MiGestorKMPiOS" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -698,17 +656,8 @@
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = (
-					UIInterfaceOrientationPortrait,
-					UIInterfaceOrientationPortraitUpsideDown,
-					UIInterfaceOrientationLandscapeLeft,
-					UIInterfaceOrientationLandscapeRight,
-				);
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = (
-					UIInterfaceOrientationPortrait,
-					UIInterfaceOrientationLandscapeLeft,
-					UIInterfaceOrientationLandscapeRight,
-				);
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -726,7 +675,7 @@
 			};
 			name = Debug;
 		};
-		AF73670C65B9F35C0AD3286E /* Debug */ = {
+		AF73670C65B9F35C0AD3286E /* Debug configuration for PBXNativeTarget "MiGestorKMPMac" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -756,7 +705,7 @@
 			};
 			name = Debug;
 		};
-		D0F48562755318C6C55888FF /* Release */ = {
+		D0F48562755318C6C55888FF /* Release configuration for PBXNativeTarget "MiGestorKMPMac" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -792,28 +741,25 @@
 		0D4AB1D79F72E2D5CD45582E /* Build configuration list for PBXNativeTarget "MiGestorKMPMac" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				AF73670C65B9F35C0AD3286E /* Debug */,
-				D0F48562755318C6C55888FF /* Release */,
+				AF73670C65B9F35C0AD3286E /* Debug configuration for PBXNativeTarget "MiGestorKMPMac" */,
+				D0F48562755318C6C55888FF /* Release configuration for PBXNativeTarget "MiGestorKMPMac" */,
 			);
-			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
 		B223B89168BBA6C91E036090 /* Build configuration list for PBXNativeTarget "MiGestorKMPiOS" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				A55434AB0983DF585586728D /* Debug */,
-				53D1114FEAA05D13A4A71A21 /* Release */,
+				A55434AB0983DF585586728D /* Debug configuration for PBXNativeTarget "MiGestorKMPiOS" */,
+				53D1114FEAA05D13A4A71A21 /* Release configuration for PBXNativeTarget "MiGestorKMPiOS" */,
 			);
-			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
 		BC114C473E48EF5361E72A92 /* Build configuration list for PBXProject "MiGestorKMPiOS" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				11AC38E697B58F429B226C38 /* Debug */,
-				5A115C837F9C64337C07D5DC /* Release */,
+				11AC38E697B58F429B226C38 /* Debug configuration for PBXProject "MiGestorKMPiOS" */,
+				5A115C837F9C64337C07D5DC /* Release configuration for PBXProject "MiGestorKMPiOS" */,
 			);
-			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */

@@ -1954,6 +1954,7 @@ struct MacPlannerView: View {
     @State private var transientMessage: String?
     @State private var isInspectorVisible = true
     @State private var inspectorWidth: CGFloat = 380
+    @State private var sessionFilter: MacPlannerSessionFilter = .all
 
     var body: some View {
         GeometryReader { proxy in
@@ -2009,8 +2010,8 @@ struct MacPlannerView: View {
         }) {
             TeacherScheduleSettingsPanel(
                 selectedClassId: Binding(
-                    get: { vm.groupFilterId },
-                    set: { vm.groupFilterId = $0 }
+                    get: { vm.selectedGroupId },
+                    set: { vm.selectedGroupId = $0 }
                 )
             )
             .environmentObject(bridge)
@@ -2069,8 +2070,8 @@ struct MacPlannerView: View {
                     .font(MacAppStyle.sectionTitle)
 
                 Picker("Grupo", selection: Binding(
-                    get: { vm.groupFilterId },
-                    set: { vm.groupFilterId = $0 }
+                    get: { vm.selectedGroupId },
+                    set: { vm.selectGroup($0) }
                 )) {
                     Text("Todos los grupos").tag(Optional<Int64>.none)
                     ForEach(vm.groups, id: \.id) { group in
@@ -2084,8 +2085,8 @@ struct MacPlannerView: View {
                         vm.applySearch()
                     }
 
-                Picker("Estado", selection: $vm.sessionFilter) {
-                    ForEach(PlannerSessionFilter.allCases) { filter in
+                Picker("Estado", selection: $sessionFilter) {
+                    ForEach(MacPlannerSessionFilter.allCases) { filter in
                         Text(filter.rawValue).tag(filter)
                     }
                 }
@@ -2213,7 +2214,7 @@ struct MacPlannerView: View {
         case .agenda:
             MacPlannerAgendaView(
                 vm: vm,
-                groupFilterId: vm.groupFilterId,
+                groupFilterId: vm.selectedGroupId,
                 onOpenSettings: { showingScheduleSettings = true }
             )
         }
@@ -2254,7 +2255,19 @@ struct MacPlannerView: View {
     }
 
     private var displayedSessions: [PlanningSession] {
-        vm.filteredSessions
+        vm.filteredSessions.filter { session in
+            let matchesGroup = vm.selectedGroupId.map { session.groupId == $0 } ?? true
+            let matchesStatus: Bool
+            switch sessionFilter {
+            case .all:
+                matchesStatus = true
+            case .planned:
+                matchesStatus = session.status != .completed
+            case .completed:
+                matchesStatus = session.status == .completed
+            }
+            return matchesGroup && matchesStatus
+        }
     }
 
     private var displayedRows: [MacPlannerSessionRow] {
@@ -2338,6 +2351,14 @@ private enum MacPlannerSection: String, CaseIterable, Identifiable {
         case .agenda: return "clock.badge.checkmark"
         }
     }
+}
+
+private enum MacPlannerSessionFilter: String, CaseIterable, Identifiable {
+    case all = "Todas"
+    case planned = "Planificadas"
+    case completed = "Impartidas"
+
+    var id: String { rawValue }
 }
 
 private struct MacPlannerSessionRow: Identifiable {

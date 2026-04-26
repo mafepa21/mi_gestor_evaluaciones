@@ -38,9 +38,8 @@ struct MacRootView: View {
             }
         }
         .task {
-            commandCenter.attachBridge(session.bridge)
             session.start()
-            commandCenter.autostartIfNeeded()
+            commandCenter.startIfNeeded()
         }
     }
 
@@ -113,11 +112,7 @@ struct MacRootView: View {
         case .backups:
             MacBackupsView(bridge: session.bridge)
         case .settings:
-            MacSettingsView(
-                session: session,
-                commandCenter: commandCenter,
-                onOpenSync: { session.selectedFeature = .sync }
-            )
+            MacSettingsView(session: session)
         }
     }
 

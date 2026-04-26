@@ -259,6 +259,35 @@ data class EvaluationCompetencyLink(
     val trace: AuditTrace = AuditTrace(),
 )
 
+data class AIAuditEvent(
+    val id: Long = 0,
+    val createdAtEpochMs: Long,
+    val service: String,
+    val useCase: String,
+    val reportKind: String? = null,
+    val classId: Long? = null,
+    val studentHash: String? = null,
+    val availability: String,
+    val modelAvailable: Boolean,
+    val success: Boolean,
+    val durationMs: Long = 0,
+    val errorKind: String? = null,
+    val errorMessage: String? = null,
+)
+
+data class AIAuditUseCaseTotal(
+    val useCase: String,
+    val totalCount: Long,
+    val successCount: Long,
+    val lastCreatedAtEpochMs: Long,
+)
+
+data class AIAuditAvailabilityTotal(
+    val availability: String,
+    val totalCount: Long,
+    val lastCreatedAtEpochMs: Long,
+)
+
 data class EvidenceAttachment(
     val id: Long,
     val evaluationId: Long,
@@ -391,6 +420,17 @@ data class GroupSummary(
     val lastNotes: String,
 )
 
+data class AgendaNavigationTarget(
+    val id: String,
+    val navigationKind: String = "none",
+    val label: String,
+    val studentId: Long? = null,
+    val classId: Long? = null,
+    val evaluationId: Long? = null,
+    val rubricId: Long? = null,
+    val columnId: String? = null,
+)
+
 data class AgendaItem(
     val id: String,
     val classId: Long?,
@@ -399,6 +439,8 @@ data class AgendaItem(
     val subtitle: String,
     val timeLabel: String,
     val status: String,
+    val navigationKind: String = "none",
+    val navigationTargets: List<AgendaNavigationTarget> = emptyList(),
 )
 
 data class PEOperationalItem(

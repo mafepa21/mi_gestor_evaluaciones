@@ -206,6 +206,7 @@ interface PlannerRepository {
     suspend fun listSessions(weekNumber: Int, year: Int): List<PlanningSession>
     suspend fun listAllSessions(): List<PlanningSession> = emptyList()
     suspend fun listSessionsInRange(groupId: Long? = null, fromDate: LocalDate, toDate: LocalDate): List<PlanningSession> = emptyList()
+    @Throws(Exception::class)
     suspend fun upsertSession(session: PlanningSession): Long
     suspend fun bulkUpsertSessions(sessions: List<PlanningSession>): List<Long> = sessions.map { upsertSession(it) }
     suspend fun deleteSession(sessionId: Long)
@@ -428,6 +429,15 @@ interface BackupMetadataRepository {
     suspend fun listBackups(): List<BackupEntry>
     suspend fun saveBackup(path: String, createdAtEpochMs: Long, platform: String, sizeBytes: Long): Long
     suspend fun deleteBackup(id: Long)
+}
+
+interface AIAuditRepository {
+    suspend fun recordEvent(event: AIAuditEvent)
+    suspend fun recentEvents(limit: Long = 50): List<AIAuditEvent>
+    suspend fun recentFailures(limit: Long = 20): List<AIAuditEvent>
+    suspend fun latestEvent(): AIAuditEvent?
+    suspend fun totalsByUseCase(): List<AIAuditUseCaseTotal>
+    suspend fun recentAvailabilityTotals(): List<AIAuditAvailabilityTotal>
 }
 
 interface CsvImportService {

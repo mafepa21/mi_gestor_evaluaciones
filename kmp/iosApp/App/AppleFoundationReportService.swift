@@ -167,8 +167,11 @@ final class AppleFoundationReportService {
     private var availabilityRetryTask: Task<Void, Never>?
 
     #if canImport(FoundationModels)
+    private var cachedReportSessionStorage: Any?
+    private var activeReportSessionStorage: Any?
+
     @available(iOS 26.0, macOS 26.0, *)
-    private lazy var reportSession: LanguageModelSession = {
+    private func makeReportSession() -> LanguageModelSession {
         LanguageModelSession(
             instructions: """
             Actúas como asistente de redacción docente dentro de una app escolar local-first.
@@ -179,7 +182,16 @@ final class AppleFoundationReportService {
             Redacta en español de España.
             """
         )
-    }()
+    }
+
+    @available(iOS 26.0, macOS 26.0, *)
+    private func consumeReportSession() -> LanguageModelSession {
+        if let cachedReportSession = cachedReportSessionStorage as? LanguageModelSession {
+            self.cachedReportSessionStorage = nil
+            return cachedReportSession
+        }
+        return makeReportSession()
+    }
     #endif
 
     func currentAvailability() -> AIReportAvailabilityState {
@@ -196,7 +208,17 @@ final class AppleFoundationReportService {
 
         #if canImport(FoundationModels)
         if #available(iOS 26.0, macOS 26.0, *), resolved == .available || resolved == .modelLoading {
-            _ = reportSession
+            if cachedReportSessionStorage == nil {
+                cachedReportSessionStorage = makeReportSession()
+            }
+        }
+        #endif
+    }
+
+    func clearActiveConversation() {
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, macOS 26.0, *) {
+            activeReportSessionStorage = nil
         }
         #endif
     }
@@ -232,20 +254,77 @@ final class AppleFoundationReportService {
         }
     }
 
+    func refineActiveDraft(
+        with followUp: String,
+        context: KmpBridge.ReportGenerationContext
+    ) async throws -> AIReportDraft {
+        let cleaned = followUp.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else {
+            throw AIReportServiceError.insufficientContext("Escribe cómo quieres refinar el borrador activo.")
+        }
+        let availability = currentAvailability()
+        guard availability.isAvailable else {
+            throw AIReportServiceError.unavailable(availability.message)
+        }
+
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, macOS 26.0, *) {
+            return try await refineActiveDraftLocally(with: cleaned, context: context)
+        }
+        #endif
+        throw AIReportServiceError.unavailable("La redacción IA requiere una versión del sistema compatible con Apple Foundation Models.")
+    }
+
     #if canImport(FoundationModels)
+    @available(iOS 26.0, macOS 26.0, *)
+    private func refineActiveDraftLocally(
+        with cleaned: String,
+        context: KmpBridge.ReportGenerationContext
+    ) async throws -> AIReportDraft {
+        guard let session = activeReportSessionStorage as? LanguageModelSession else {
+            throw AIReportServiceError.insufficientContext("No hay un borrador activo para refinar.")
+        }
+        let response = try await session.respond(
+            to: """
+            Refina el último borrador manteniendo estrictamente los mismos hechos verificables.
+            Instrucción del docente: \(cleaned)
+
+            Tipo de informe: \(context.kind.title)
+            Destino específico: \(context.studentName ?? context.className)
+            No añadas notas, causas, diagnósticos, sanciones ni etiquetas sensibles.
+            Si es Comentario LOMLOE, conserva la estructura competencial y no menciones la nota numérica.
+            """,
+            generating: GeneratedAIReportDraft.self,
+            includeSchemaInPrompt: true,
+            options: AppleFoundationModelSupport.generationOptions(temperature: reportTemperature(for: context))
+        )
+        return mapReportDraft(response.content)
+    }
+
     @available(iOS 26.0, macOS 26.0, *)
     private func generateLocalDraft(
         from context: KmpBridge.ReportGenerationContext,
         audience: AIReportAudience,
         tone: AIReportTone
     ) async throws -> AIReportDraft {
-        let response = try await reportSession.respond(
+        let session = consumeReportSession()
+        activeReportSessionStorage = session
+        let response = try await session.respond(
             to: reportPrompt(from: context, audience: audience, tone: tone),
             generating: GeneratedAIReportDraft.self,
             includeSchemaInPrompt: true,
-            options: AppleFoundationModelSupport.generationOptions(temperature: 0.3)
+            options: AppleFoundationModelSupport.generationOptions(temperature: reportTemperature(for: context))
         )
-        let content = response.content
+        return mapReportDraft(response.content)
+    }
+
+    @available(iOS 26.0, macOS 26.0, *)
+    private func reportTemperature(for context: KmpBridge.ReportGenerationContext) -> Double {
+        context.kind == .lomloeEvaluationComment ? 0.1 : 0.3
+    }
+
+    @available(iOS 26.0, macOS 26.0, *)
+    private func mapReportDraft(_ content: GeneratedAIReportDraft) -> AIReportDraft {
         return AIReportDraft(
             title: content.title,
             summary: content.summary,
@@ -271,6 +350,26 @@ final class AppleFoundationReportService {
         let notes = context.supportNotes.isEmpty ? "- Sin notas de apoyo adicionales." : context.supportNotes.map { "- \($0)" }.joined(separator: "\n")
         let curriculumReferences = context.curriculumReferences.isEmpty ? "- Sin referencias curriculares preseleccionadas." : context.curriculumReferences.map { "- \($0)" }.joined(separator: "\n")
         let promptDirectives = context.promptDirectives.isEmpty ? "- Redacción general prudente." : context.promptDirectives.map { "- \($0)" }.joined(separator: "\n")
+        let audienceDirectives: String = {
+            switch audience {
+            case .docente:
+                return """
+                - Mantén un foco interno y profesional.
+                - Prioriza hechos observables y próxima acción docente.
+                """
+            case .tutoria:
+                return """
+                - Usa un tono coordinado, prudente y útil para seguimiento tutorial.
+                - No cierres juicios; propone continuidad o contraste con más evidencias.
+                """
+            case .familia:
+                return """
+                - Usa lenguaje claro, respetuoso y no técnico.
+                - No medicalices, no atribuyas causas y no etiquetes al alumnado.
+                - Incluye siempre una siguiente acción o recomendación prudente.
+                """
+            }
+        }()
 
         return """
         Genera un borrador estructurado para un informe escolar.
@@ -310,6 +409,9 @@ final class AppleFoundationReportService {
         Directrices de salida
         \(promptDirectives)
 
+        Directrices específicas por audiencia
+        \(audienceDirectives)
+
         Requisitos de salida
         - summary: un párrafo breve y prudente.
         - strengths: entre 1 y 4 puntos.
@@ -324,6 +426,7 @@ final class AppleFoundationReportService {
         - Debe incluir referencia explícita a al menos una CE entre CE1 y CE5.
         - Debe usar 4 bloques integrados: resultados de aprendizaje, evolución personal, progresos/talentos y orientaciones.
         - Si hay adaptaciones o apoyos, añádelos en una frase breve antes de las orientaciones.
+        - Usa una redacción estable y consistente entre regeneraciones.
         """
     }
 

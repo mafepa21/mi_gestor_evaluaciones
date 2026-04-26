@@ -1,5 +1,8 @@
 import SwiftUI
 import MiGestorKit
+#if canImport(UIKit)
+import UIKit
+#endif
 #if canImport(VisionKit)
 import VisionKit
 #endif
@@ -12,20 +15,34 @@ struct ContentView: View {
     var body: some View {
         AppWorkspaceShell()
         .tint(.accentColor)
-        .overlay(alignment: .bottom) {
-            if bridge.rubricEvaluationState.rubricDetail != nil {
-                Color.black.opacity(0.4)
-                    .ignoresSafeArea()
-                    .onTapGesture { bridge.rubricEvaluationState = RubricEvaluationUiState.companion.default() }
-                
+        .sheet(isPresented: rubricEvaluationPresentation) {
+#if os(iOS)
+            if #available(iOS 16.4, *) {
                 RubricEvaluationView()
-                    .frame(height: 650)
-                    .appCornerRadius(32, corners: [.topLeft, .topRight])
-                    .transition(.move(edge: .bottom))
-                    .shadow(radius: 20)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+                    .presentationCornerRadius(AppRadius.sheet)
+            } else {
+                RubricEvaluationView()
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
             }
+#else
+            RubricEvaluationView()
+#endif
         }
         .animation(uiFeatureFlags.reduceMotion ? .none : .spring(), value: bridge.rubricEvaluationState.rubricDetail != nil)
+    }
+
+    private var rubricEvaluationPresentation: Binding<Bool> {
+        Binding(
+            get: { bridge.rubricEvaluationState.rubricDetail != nil },
+            set: { isPresented in
+                if !isPresented {
+                    bridge.rubricEvaluationState = RubricEvaluationUiState.companion.default()
+                }
+            }
+        )
     }
 }
 
@@ -618,6 +635,7 @@ struct DashboardView: View {
                 .font(.headline)
                 .lineLimit(2)
                 .minimumScaleFactor(0.72)
+                .contentTransition(.numericText())
 
             HStack(spacing: 6) {
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
@@ -642,13 +660,14 @@ struct DashboardView: View {
     private func dashboardTodayBlock(snapshot: DashboardSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("A · Hoy").font(.headline)
+                Text("Sesiones de hoy").font(.headline)
                 Spacer()
                 ShareLink("Exportar CSV", item: csvToday(snapshot))
                     .font(.caption)
             }
             ForEach(snapshot.todaySessions, id: \.id) { item in
                 Button {
+                    triggerDashboardHaptic()
                     inspectorSelection = .session(item.id)
                     isInspectorPresented = true
                 } label: {
@@ -668,6 +687,7 @@ struct DashboardView: View {
 #if os(iOS)
                 .swipeActions(edge: .trailing) {
                     Button {
+                        triggerDashboardHaptic()
                         Task { await performPassList() }
                     } label: {
                         Label("Pasar lista", systemImage: "checkmark.circle")
@@ -675,6 +695,7 @@ struct DashboardView: View {
                     .tint(EvaluationDesign.success)
 
                     Button {
+                        triggerDashboardHaptic()
                         Task { await performObservation() }
                     } label: {
                         Label("Observación", systemImage: "note.text.badge.plus")
@@ -694,13 +715,14 @@ struct DashboardView: View {
     private func dashboardAlertsBlock(snapshot: DashboardSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("B · Alertas").font(.headline)
+                Text("Alertas pendientes").font(.headline)
                 Spacer()
                 ShareLink("Exportar CSV", item: csvAlerts(snapshot))
                     .font(.caption)
             }
             ForEach(snapshot.alerts.prefix(8), id: \.id) { alert in
                 Button {
+                    triggerDashboardHaptic()
                     inspectorSelection = .alert(alert.id)
                     isInspectorPresented = true
                 } label: {
@@ -720,6 +742,7 @@ struct DashboardView: View {
 #if os(iOS)
                 .swipeActions(edge: .trailing) {
                     Button {
+                        triggerDashboardHaptic()
                         inspectorSelection = .alert(alert.id)
                         inspectorTab = .actions
                         isInspectorPresented = true
@@ -737,11 +760,17 @@ struct DashboardView: View {
         .cornerRadius(12)
     }
 
+    private func triggerDashboardHaptic() {
+#if canImport(UIKit)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+#endif
+    }
+
     @ViewBuilder
     private func dashboardQuickEvalBlock(snapshot: DashboardSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("C · Evaluación rápida").font(.headline)
+                Text("Evaluación rápida").font(.headline)
                 Spacer()
                 ShareLink("Exportar CSV", item: csvQuick(snapshot))
                     .font(.caption)
@@ -750,9 +779,11 @@ struct DashboardView: View {
             Text("Rúbricas: \(snapshot.quickRubrics.joined(separator: ", "))").font(.caption)
             HStack {
                 Button("Pasar lista") {
+                    triggerDashboardHaptic()
                     Task { await performPassList() }
                 }
                 Button("Nueva observación") {
+                    triggerDashboardHaptic()
                     Task { await performObservation() }
                 }
             }
@@ -776,7 +807,7 @@ struct DashboardView: View {
         }
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("D · Resumen por grupo").font(.headline)
+                Text("Resumen por grupo").font(.headline)
                 Spacer()
                 ShareLink("Exportar CSV", item: csvGroups(rows))
                     .font(.caption)
@@ -811,7 +842,7 @@ struct DashboardView: View {
     private func dashboardAgendaBlock(snapshot: DashboardSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("E · Agenda docente").font(.headline)
+                Text("Agenda docente").font(.headline)
                 Spacer()
                 ShareLink("Exportar CSV", item: csvAgenda(snapshot))
                     .font(.caption)
@@ -840,13 +871,14 @@ struct DashboardView: View {
     private func dashboardPEBlock(snapshot: DashboardSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("F · Educación Física").font(.headline)
+                Text("Educación Física").font(.headline)
                 Spacer()
                 ShareLink("Exportar CSV", item: csvPe(snapshot))
                     .font(.caption)
             }
             ForEach(snapshot.peItems, id: \.id) { item in
                 Button {
+                    triggerDashboardHaptic()
                     inspectorSelection = .pe(item.id)
                     isInspectorPresented = true
                 } label: {
@@ -1333,6 +1365,7 @@ fileprivate struct SyncLanCard: View {
     @State private var selectedPort: String = "8765"
     @State private var pin: String = ""
     @State private var showingQrScanner = false
+    @State private var isManualPairingExpanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -1359,73 +1392,52 @@ fileprivate struct SyncLanCard: View {
                     .buttonStyle(.bordered)
                 }
             } else {
-                HStack(spacing: 10) {
-                    TextField("Host desktop (ej. migestor.local)", text: $selectedHost)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                    TextField("Puerto", text: $selectedPort)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .frame(width: 80)
-                    TextField("PIN", text: $pin)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .frame(width: 90)
-                    Button {
-                        showingQrScanner = true
-                    } label: {
-                        Image(systemName: "qrcode.viewfinder")
-                    }
-                    .buttonStyle(.bordered)
-                    Button("Emparejar") {
-                        Task {
-                            let normalizedHost = selectedHost.trimmingCharacters(in: .whitespacesAndNewlines)
-                            let normalizedPin = pin.trimmingCharacters(in: .whitespacesAndNewlines)
-                            guard !normalizedHost.isEmpty else {
-                                bridge.setSyncStatusMessage("Introduce un host LAN válido del Mac.")
-                                return
-                            }
-                            guard let port = Int(selectedPort), (1...65535).contains(port) else {
-                                bridge.setSyncStatusMessage("El puerto de enlace no es válido.")
-                                return
-                            }
-                            guard !normalizedPin.isEmpty else {
-                                bridge.setSyncStatusMessage("Introduce el PIN de enlace.")
-                                return
-                            }
-
-                            do {
-                                let hostToUse = normalizedHost.isEmpty ? bridge.discoveredSyncHosts.first ?? "" : normalizedHost
-                                let peer = bridge.discoveredPeer(forHost: hostToUse)
-                                try await bridge.pairLanSync(
-                                    host: hostToUse,
-                                    port: port,
-                                    pin: normalizedPin,
-                                    expectedServerId: peer?.serverId,
-                                    expectedFingerprint: peer?.fingerprint
-                                )
-                                selectedHost = hostToUse
-                            } catch {
-                                bridge.setSyncStatusMessage("Error emparejando: \(error.localizedDescription)")
-                            }
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!canAttemptPairing)
+                Button {
+                    showingQrScanner = true
+                } label: {
+                    Label("Escanear QR de enlace", systemImage: "qrcode.viewfinder")
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .frame(maxWidth: .infinity)
                 }
-            }
+                .buttonStyle(.borderedProminent)
 
-            if !bridge.discoveredSyncHosts.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(bridge.discoveredSyncHosts, id: \.self) { host in
-                            Button(host) {
-                                selectedHost = host
-                                if let peer = bridge.discoveredPeer(forHost: host) {
-                                    selectedPort = "\(peer.port)"
+                DisclosureGroup("Configuración manual", isExpanded: $isManualPairingExpanded) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        TextField("Host desktop (ej. migestor.local)", text: $selectedHost)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                        HStack(spacing: 10) {
+                            TextField("Puerto", text: $selectedPort)
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                                .frame(width: 96)
+                            TextField("PIN", text: $pin)
+                                .textFieldStyle(RoundedBorderTextFieldStyle())
+                        }
+
+                        if !bridge.discoveredSyncHosts.isEmpty {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    ForEach(bridge.discoveredSyncHosts, id: \.self) { host in
+                                        Button(host) {
+                                            selectedHost = host
+                                            if let peer = bridge.discoveredPeer(forHost: host) {
+                                                selectedPort = "\(peer.port)"
+                                            }
+                                        }
+                                        .buttonStyle(.bordered)
+                                    }
                                 }
                             }
-                                .buttonStyle(.bordered)
                         }
+
+                        Button("Emparejar manualmente") {
+                            Task { await pairManually() }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!canAttemptPairing)
                     }
+                    .padding(.top, 10)
                 }
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
             }
 
             HStack(spacing: 12) {
@@ -1484,6 +1496,39 @@ fileprivate struct SyncLanCard: View {
                     }
                 }
             }
+        }
+    }
+
+    @MainActor
+    private func pairManually() async {
+        let normalizedHost = selectedHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedPin = pin.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedHost.isEmpty else {
+            bridge.setSyncStatusMessage("Introduce un host LAN válido del Mac.")
+            return
+        }
+        guard let port = Int(selectedPort), (1...65535).contains(port) else {
+            bridge.setSyncStatusMessage("El puerto de enlace no es válido.")
+            return
+        }
+        guard !normalizedPin.isEmpty else {
+            bridge.setSyncStatusMessage("Introduce el PIN de enlace.")
+            return
+        }
+
+        do {
+            let hostToUse = normalizedHost.isEmpty ? bridge.discoveredSyncHosts.first ?? "" : normalizedHost
+            let peer = bridge.discoveredPeer(forHost: hostToUse)
+            try await bridge.pairLanSync(
+                host: hostToUse,
+                port: port,
+                pin: normalizedPin,
+                expectedServerId: peer?.serverId,
+                expectedFingerprint: peer?.fingerprint
+            )
+            selectedHost = hostToUse
+        } catch {
+            bridge.setSyncStatusMessage("Error emparejando: \(error.localizedDescription)")
         }
     }
 
@@ -2187,250 +2232,6 @@ struct RubricCriterionRow: View {
                     }
                 }
             }
-        }
-    }
-}
-
-// MARK: - Students Module
-struct StudentsModuleView: View {
-    @EnvironmentObject var bridge: KmpBridge
-    @Environment(\.colorScheme) private var colorScheme
-    @State private var className = ""
-    @State private var classCourse = "3"
-    @State private var firstName = ""
-    @State private var lastName = ""
-    @State private var search = ""
-
-    private var filteredStudents: [Student] {
-        let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return bridge.studentsInClass }
-        return bridge.studentsInClass.filter {
-            "\($0.firstName) \($0.lastName)".localizedCaseInsensitiveContains(query)
-        }
-    }
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                Text("Alumnos")
-                    .font(.system(size: 32, weight: .black, design: .rounded))
-                    .padding(.top, 8)
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Clase activa")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(.secondary)
-                    Picker("Clase", selection: Binding(
-                        get: { bridge.selectedStudentsClassId ?? -1 },
-                        set: { value in
-                            Task { await bridge.selectStudentsClass(classId: value > 0 ? value : nil) }
-                        }
-                    )) {
-                        ForEach(bridge.classes, id: \.id) { schoolClass in
-                            Text(schoolClass.name).tag(schoolClass.id)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                }
-                .padding(14)
-                .background(appCardBackground(for: colorScheme))
-                .cornerRadius(16)
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Crear clase")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(.secondary)
-                    TextField("Nombre de clase", text: $className)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                    TextField("Curso (1-6)", text: $classCourse)
-                        .appKeyboardType(.numberPad)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                    Button("Guardar clase") {
-                        Task {
-                            guard let course = Int32(classCourse), !className.isEmpty else { return }
-                            do {
-                                _ = try await bridge.createClass(name: className, course: course)
-                                className = ""
-                            } catch {
-                                bridge.status = "Error creando clase: \(error.localizedDescription)"
-                            }
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
-                .padding(14)
-                .background(appCardBackground(for: colorScheme))
-                .cornerRadius(16)
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Alta de alumno")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(.secondary)
-                    HStack {
-                        TextField("Nombre", text: $firstName).textFieldStyle(RoundedBorderTextFieldStyle())
-                        TextField("Apellido", text: $lastName).textFieldStyle(RoundedBorderTextFieldStyle())
-                    }
-                    Button("Añadir a clase") {
-                        Task {
-                            guard !firstName.isEmpty, !lastName.isEmpty else { return }
-                            do {
-                                try await bridge.createStudentInSelectedClass(firstName: firstName, lastName: lastName)
-                                firstName = ""
-                                lastName = ""
-                            } catch {
-                                bridge.status = "Error creando alumno: \(error.localizedDescription)"
-                            }
-                        }
-                    }
-                    .buttonStyle(.bordered)
-                }
-                .padding(14)
-                .background(appCardBackground(for: colorScheme))
-                .cornerRadius(16)
-
-                TextField("Buscar alumno...", text: $search)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-
-                VStack(spacing: 10) {
-                    ForEach(filteredStudents, id: \.id) { student in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("\(student.firstName) \(student.lastName)")
-                                    .font(.system(size: 15, weight: .semibold))
-                                Text("ID \(student.id)")
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Menu {
-                                Button("Quitar de la clase") {
-                                    Task { try? await bridge.removeStudentFromSelectedClass(studentId: student.id) }
-                                }
-                                Button("Eliminar definitivamente", role: .destructive) {
-                                    Task { try? await bridge.deleteStudentEverywhere(studentId: student.id) }
-                                }
-                            } label: {
-                                Label("Acciones", systemImage: "ellipsis.circle")
-                                    .labelStyle(.iconOnly)
-                                    .font(.system(size: 18, weight: .semibold))
-                            }
-                            .buttonStyle(.bordered)
-                        }
-                        .padding(12)
-                        .background(appCardBackground(for: colorScheme))
-                        .cornerRadius(14)
-                    }
-                    if filteredStudents.isEmpty {
-                        Text("No hay alumnos en la clase seleccionada.")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.vertical, 8)
-                    }
-                }
-            }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 24)
-        }
-        .background(appPageBackground(for: colorScheme).ignoresSafeArea())
-        .task {
-            try? await bridge.refreshStudentsDirectory()
-        }
-        .refreshable {
-            await bridge.pullMissingSyncChanges()
-            try? await bridge.refreshStudentsDirectory()
-        }
-    }
-}
-
-// MARK: - Planning Module
-struct PlanningModuleView: View {
-    @EnvironmentObject var bridge: KmpBridge
-    @Environment(\.colorScheme) private var colorScheme
-    @State private var periodName = ""
-    @State private var unitTitle = ""
-    @State private var sessionDescription = ""
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                Text("Planificación")
-                    .font(.system(size: 32, weight: .black, design: .rounded))
-                    .padding(.top, 8)
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Nueva sesión")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(.secondary)
-                    TextField("Semana/Periodo", text: $periodName)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                    TextField("Unidad didáctica", text: $unitTitle)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                    TextField("Descripción de sesión", text: $sessionDescription, axis: .vertical)
-                        .lineLimit(3...5)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                    Button("Guardar sesión") {
-                        Task {
-                            guard !unitTitle.isEmpty, !sessionDescription.isEmpty else { return }
-                            do {
-                                try await bridge.createPlanning(
-                                    periodName: periodName.isEmpty ? "Semana actual" : periodName,
-                                    unitTitle: unitTitle,
-                                    sessionDescription: sessionDescription
-                                )
-                                unitTitle = ""
-                                sessionDescription = ""
-                            } catch {
-                                bridge.status = "Error planificación: \(error.localizedDescription)"
-                            }
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
-                .padding(14)
-                .background(appCardBackground(for: colorScheme))
-                .cornerRadius(16)
-
-                ForEach(bridge.planning, id: \.period.id) { period in
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text(period.period.name)
-                            .font(.system(size: 18, weight: .bold))
-                        ForEach(period.units, id: \.unit.id) { unit in
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(unit.unit.title)
-                                    .font(.system(size: 15, weight: .semibold))
-                                ForEach(unit.sessions, id: \.id) { session in
-                                    Text("• \(session.description_)")
-                                        .font(.system(size: 14, weight: .regular))
-                                        .foregroundStyle(.secondary)
-                                }
-                                if unit.sessions.isEmpty {
-                                    Text("Sin sesiones en esta unidad")
-                                        .font(.system(size: 13, weight: .medium))
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            .padding(12)
-                            .background(appCardBackground(for: colorScheme))
-                            .cornerRadius(14)
-                        }
-                    }
-                }
-
-                if bridge.planning.isEmpty {
-                    Text("No hay planificación para la semana actual.")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 24)
-        }
-        .background(appPageBackground(for: colorScheme).ignoresSafeArea())
-        .task { try? await bridge.refreshPlanning() }
-        .refreshable {
-            await bridge.pullMissingSyncChanges()
-            try? await bridge.refreshPlanning()
         }
     }
 }
@@ -3578,8 +3379,6 @@ private struct RubricGridLayout {
 
 private enum PlannerTabIOS: String, CaseIterable, Identifiable {
     case week = "Semana"
-    case timeline = "Timeline"
-    case day = "Día"
     case detail = "Detalle"
     var id: String { rawValue }
 }
@@ -3833,10 +3632,6 @@ struct PlannerScreenIOS: View {
                 switch activeTab {
                 case .week:
                     WeekGridViewIOS(vm: vm)
-                case .timeline:
-                    PlannerPlaceholder(title: "Timeline (v1)")
-                case .day:
-                    PlannerPlaceholder(title: "Día (v1)")
                 case .detail:
                     SessionDetailPanelIOS(vm: vm)
                 }

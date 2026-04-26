@@ -1227,6 +1227,9 @@ struct PlannerWorkspaceIOS: View {
     @EnvironmentObject private var bridge: KmpBridge
     @EnvironmentObject private var layoutState: WorkspaceLayoutState
     @Environment(\.colorScheme) private var colorScheme
+#if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+#endif
     @StateObject private var vm = PlannerWorkspaceViewModel()
     private let initialSection: PlannerWorkspaceSection
     private let context: PlannerNavigationContext
@@ -1246,6 +1249,14 @@ struct PlannerWorkspaceIOS: View {
         self.onOpenDiary = onOpenDiary
         self.onOpenSettings = onOpenSettings
         self.onNavigationContextChange = onNavigationContextChange
+    }
+
+    private var isCompactWidth: Bool {
+#if os(iOS)
+        horizontalSizeClass == .compact
+#else
+        false
+#endif
     }
 
     var body: some View {
@@ -1297,7 +1308,11 @@ struct PlannerWorkspaceIOS: View {
             Group {
                 switch vm.activeSection {
                 case .week:
-                    PlannerWeekBoard(vm: vm, onOpenDiary: openSessionInDiary)
+                    if isCompactWidth {
+                        PlannerCompactWeekAgenda(vm: vm, onOpenDiary: openSessionInDiary)
+                    } else {
+                        PlannerWeekBoard(vm: vm, onOpenDiary: openSessionInDiary)
+                    }
                 case .sessions:
                     PlannerSessionsList(vm: vm, source: vm.filteredSessions, onOpenDiary: openSessionInDiary)
                 case .schedule:
@@ -1343,8 +1358,19 @@ struct PlannerWorkspaceIOS: View {
 }
 
 private struct PlannerToolbar: View {
+#if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+#endif
     @ObservedObject var vm: PlannerWorkspaceViewModel
     let onOpenDiary: () -> Void
+
+    private var isCompactWidth: Bool {
+#if os(iOS)
+        horizontalSizeClass == .compact
+#else
+        false
+#endif
+    }
 
     var body: some View {
         VStack(spacing: 12) {
@@ -1371,40 +1397,15 @@ private struct PlannerToolbar: View {
                 .buttonStyle(.bordered)
             }
 
-            HStack(spacing: 10) {
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundStyle(.secondary)
-                    TextField("Buscar sesión, unidad, objetivo…", text: $vm.searchText)
-                        .textFieldStyle(.plain)
+            if isCompactWidth {
+                VStack(spacing: 10) {
+                    plannerSearchField
+                    plannerActionsRow
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(EvaluationDesign.surfaceSoft)
-                )
-                .onChange(of: vm.searchText) { _ in vm.applySearch() }
-
-                Menu {
-                    Button(vm.selectionMode ? "Salir de selección" : "Seleccionar sesiones") {
-                        vm.selectionMode.toggle()
-                        if !vm.selectionMode { vm.selectedSessionIds.removeAll() }
-                    }
-                    Button("Copiar a la semana siguiente") { Task { await vm.bulkCopyToNextWeek() } }
-                        .disabled(vm.selectedSessionIds.isEmpty)
-                    Button("Mover +1 día") { Task { await vm.bulkMoveOneDay() } }
-                        .disabled(vm.selectedSessionIds.isEmpty)
-                } label: {
-                    Label("Acciones", systemImage: "slider.horizontal.3")
-                }
-                .buttonStyle(.bordered)
-
-                if vm.selectedSession != nil {
-                    Button(action: onOpenDiary) {
-                        Label("Abrir diario", systemImage: "doc.text")
-                    }
-                    .buttonStyle(.borderedProminent)
+            } else {
+                HStack(spacing: 10) {
+                    plannerSearchField
+                    plannerActionsRow
                 }
             }
 
@@ -1418,6 +1419,176 @@ private struct PlannerToolbar: View {
         .padding(.horizontal, EvaluationDesign.screenPadding)
         .padding(.top, 8)
         .padding(.bottom, 10)
+    }
+
+    private var plannerSearchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField("Buscar sesión, unidad, objetivo…", text: $vm.searchText)
+                .textFieldStyle(.plain)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(EvaluationDesign.surfaceSoft)
+        )
+        .onChange(of: vm.searchText) { _ in vm.applySearch() }
+    }
+
+    private var plannerActionsRow: some View {
+        HStack(spacing: 10) {
+            Menu {
+                Button(vm.selectionMode ? "Salir de selección" : "Seleccionar sesiones") {
+                    vm.selectionMode.toggle()
+                    if !vm.selectionMode { vm.selectedSessionIds.removeAll() }
+                }
+                Button("Copiar a la semana siguiente") { Task { await vm.bulkCopyToNextWeek() } }
+                    .disabled(vm.selectedSessionIds.isEmpty)
+                Button("Mover +1 día") { Task { await vm.bulkMoveOneDay() } }
+                    .disabled(vm.selectedSessionIds.isEmpty)
+            } label: {
+                Label("Acciones", systemImage: "slider.horizontal.3")
+            }
+            .buttonStyle(.bordered)
+
+            if vm.selectedSession != nil {
+                Button(action: onOpenDiary) {
+                    Label("Abrir diario", systemImage: "doc.text")
+                }
+                .buttonStyle(.borderedProminent)
+            }
+
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+private struct PlannerCompactWeekAgenda: View {
+    @ObservedObject var vm: PlannerWorkspaceViewModel
+    let onOpenDiary: (PlanningSession) -> Void
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: AppSpacing.md) {
+                ForEach(vm.visibleWeekdays, id: \.self) { day in
+                    daySection(day)
+                }
+            }
+            .padding(AppSpacing.md)
+        }
+    }
+
+    private func daySection(_ day: Int) -> some View {
+        let sessions = sessionsForDay(day)
+        return VStack(alignment: .leading, spacing: AppSpacing.sm) {
+            HStack {
+                Text(vm.dayLabel(for: day))
+                    .font(AppTypography.section)
+                Spacer()
+                Text("\(sessions.count)")
+                    .font(AppTypography.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, AppSpacing.sm)
+                    .padding(.vertical, AppSpacing.xs)
+                    .background(EvaluationDesign.surfaceSoft, in: Capsule(style: .continuous))
+            }
+
+            if sessions.isEmpty {
+                Button {
+                    vm.openComposer(day: day, period: Int(vm.visibleSlots.first?.period ?? 1))
+                } label: {
+                    Label("Añadir primera sesión", systemImage: "plus.circle")
+                        .font(AppTypography.body)
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+                .padding(AppSpacing.md)
+                .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous))
+            } else {
+                ForEach(sessions, id: \.id) { session in
+                    compactSessionCard(session)
+                }
+            }
+        }
+        .appSurfaceCard(radius: AppRadius.panel, padding: AppSpacing.md)
+    }
+
+    private func compactSessionCard(_ session: PlanningSession) -> some View {
+        Button {
+            Task { await vm.select(session: session) }
+        } label: {
+            HStack(alignment: .top, spacing: AppSpacing.sm) {
+                VStack(spacing: 2) {
+                    Text("P\(session.period)")
+                        .font(.caption.bold())
+                    Text(vm.timeLabel(for: Int(session.period)))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(width: 64, alignment: .leading)
+
+                VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                    Text(session.teachingUnitName)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                    Text(session.groupName)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    if !session.objectives.isEmpty {
+                        Text(session.objectives)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                }
+
+                Spacer(minLength: AppSpacing.xs)
+                PlannerStatusPill(status: vm.summary(for: session.id)?.status ?? .empty)
+            }
+            .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+            .padding(AppSpacing.sm)
+            .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: AppRadius.card, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button("Abrir diario") {
+                onOpenDiary(session)
+            }
+            Button("Edición rápida") {
+                vm.openComposer(for: session)
+            }
+            Button("Marcar impartida") {
+                Task { await vm.markCompleted(session) }
+            }
+        }
+        .swipeActions(edge: .trailing) {
+            Button {
+                onOpenDiary(session)
+            } label: {
+                Label("Diario", systemImage: "doc.text")
+            }
+            .tint(EvaluationDesign.accent)
+
+            Button {
+                Task { await vm.markCompleted(session) }
+            } label: {
+                Label("Impartida", systemImage: "checkmark.circle")
+            }
+            .tint(EvaluationDesign.success)
+        }
+    }
+
+    private func sessionsForDay(_ day: Int) -> [PlanningSession] {
+        vm.filteredSessions
+            .filter { Int($0.dayOfWeek) == day }
+            .sorted { lhs, rhs in
+                if lhs.period == rhs.period {
+                    return lhs.teachingUnitName.localizedCaseInsensitiveCompare(rhs.teachingUnitName) == .orderedAscending
+                }
+                return lhs.period < rhs.period
+            }
     }
 }
 

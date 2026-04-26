@@ -6769,6 +6769,9 @@ private struct PETournamentsWorkspaceView: View {
 private struct StudentProfilesWorkspaceView: View {
     @EnvironmentObject private var bridge: KmpBridge
     @Environment(\.colorScheme) private var colorScheme
+#if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+#endif
     @Binding var selectedClassId: Int64?
     @Binding var selectedStudentId: Int64?
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
@@ -6784,7 +6787,15 @@ private struct StudentProfilesWorkspaceView: View {
         }
     }
 
-    var body: some View {
+    private var isCompactWidth: Bool {
+#if os(iOS)
+        horizontalSizeClass == .compact
+#else
+        false
+#endif
+    }
+
+    private var regularLayout: some View {
         HStack(spacing: 0) {
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
@@ -7009,6 +7020,127 @@ private struct StudentProfilesWorkspaceView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(appPageBackground(for: colorScheme))
+        }
+    }
+
+    private var compactLayout: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField("Buscar alumno…", text: $searchText)
+                    .textFieldStyle(.plain)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .padding(16)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(filteredStudents, id: \.id) { student in
+                        Button {
+                            selectedStudentId = student.id
+                            Task { await reloadProfile() }
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: student.isInjured ? "cross.case.fill" : "person.fill")
+                                    .font(.caption.bold())
+                                Text("\(student.firstName) \(student.lastName)")
+                                    .font(.caption.weight(.bold))
+                                    .lineLimit(1)
+                            }
+                            .foregroundStyle(selectedStudentId == student.id ? contrastingTextColor(for: Color.accentColor) : .primary)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .background(
+                                Capsule(style: .continuous)
+                                    .fill(selectedStudentId == student.id ? Color.accentColor : appCardBackground(for: colorScheme))
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
+            }
+
+            Divider().opacity(0.2)
+
+            Group {
+                if let profile {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 20) {
+                            WorkspaceInspectorHero(
+                                title: "\(profile.student.firstName) \(profile.student.lastName)",
+                                subtitle: profile.schoolClass?.name ?? "Sin grupo activo"
+                            )
+
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
+                                WorkspaceMetricCard(title: "Asistencia", value: "\(profile.attendanceRate)%", systemImage: "checklist.checked")
+                                WorkspaceMetricCard(title: "Media", value: IosFormatting.decimal(from: profile.averageScore), systemImage: "sum")
+                                WorkspaceMetricCard(title: "Incidencias", value: "\(profile.incidentCount)", systemImage: "exclamationmark.bubble.fill")
+                                WorkspaceMetricCard(title: "Seguimiento", value: "\(profile.followUpCount)", systemImage: "arrow.triangle.branch")
+                            }
+
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Resumen docente")
+                                    .font(.headline)
+                                VStack(alignment: .leading, spacing: 8) {
+                                    ProfileSummaryLine(title: "Grupo activo", value: profile.schoolClass?.name ?? "Sin grupo filtrado")
+                                    ProfileSummaryLine(title: "Instrumentos evaluativos", value: "\(profile.instrumentsCount)")
+                                    ProfileSummaryLine(title: "Sesiones con seguimiento", value: "\(profile.journalSessionCount)")
+                                }
+                                .padding(14)
+                                .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            }
+
+                            if !profile.recentAttendance.isEmpty {
+                                VStack(alignment: .leading, spacing: 10) {
+                                    Text("Asistencia reciente")
+                                        .font(.headline)
+                                    ForEach(Array(profile.recentAttendance.prefix(4)), id: \.id) { attendance in
+                                        recentAttendanceCard(attendance)
+                                    }
+                                }
+                            }
+
+                            HStack(spacing: 12) {
+                                Button("Asistencia") {
+                                    onOpenModule(.attendance, selectedClassId, profile.student.id)
+                                }
+                                .buttonStyle(.bordered)
+                                Button("Diario") {
+                                    onOpenModule(.diary, selectedClassId, profile.student.id)
+                                }
+                                .buttonStyle(.bordered)
+                                Button("Cuaderno") {
+                                    onOpenModule(.notebook, selectedClassId, profile.student.id)
+                                }
+                                .buttonStyle(.borderedProminent)
+                            }
+                        }
+                        .padding(16)
+                    }
+                } else {
+                    WorkspaceEmptyState(
+                        title: "Selecciona un alumno",
+                        subtitle: "La ficha reúne asistencia, evolución, incidencias y evidencias en un mismo flujo."
+                    )
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(appPageBackground(for: colorScheme))
+        }
+    }
+
+    var body: some View {
+        Group {
+            if isCompactWidth {
+                compactLayout
+            } else {
+                regularLayout
+            }
         }
         .task {
             await bridge.ensureClassesLoaded()

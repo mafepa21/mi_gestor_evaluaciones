@@ -177,6 +177,31 @@ extension EnvironmentValues {
     }
 }
 
+enum AppSpacing {
+    static let xxs: CGFloat = 4
+    static let xs: CGFloat = 8
+    static let sm: CGFloat = 12
+    static let md: CGFloat = 16
+    static let lg: CGFloat = 20
+    static let xl: CGFloat = 24
+    static let xxl: CGFloat = 32
+}
+
+enum AppRadius {
+    static let input: CGFloat = 8
+    static let card: CGFloat = 12
+    static let panel: CGFloat = 20
+    static let sheet: CGFloat = 32
+}
+
+enum AppTypography {
+    static let largeTitle = Font.system(.largeTitle, design: .rounded).weight(.black)
+    static let title = Font.system(.title2, design: .rounded).weight(.black)
+    static let section = Font.system(.headline, design: .rounded).weight(.bold)
+    static let body = Font.system(.subheadline, design: .rounded).weight(.semibold)
+    static let caption = Font.system(.caption, design: .rounded).weight(.semibold)
+}
+
 func appPageBackground(for colorScheme: ColorScheme) -> Color {
     colorScheme == .dark
         ? Color(red: 0.05, green: 0.08, blue: 0.14)
@@ -193,6 +218,28 @@ func appMutedCardBackground(for colorScheme: ColorScheme) -> Color {
     colorScheme == .dark
         ? Color(red: 0.13, green: 0.18, blue: 0.27)
         : appSecondarySystemBackgroundColor()
+}
+
+struct AppSurfaceCardModifier: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+    var radius: CGFloat = AppRadius.card
+    var padding: CGFloat = AppSpacing.md
+
+    func body(content: Content) -> some View {
+        content
+            .padding(padding)
+            .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+            }
+    }
+}
+
+extension View {
+    func appSurfaceCard(radius: CGFloat = AppRadius.card, padding: CGFloat = AppSpacing.md) -> some View {
+        modifier(AppSurfaceCardModifier(radius: radius, padding: padding))
+    }
 }
 
 func contrastingTextColor(for background: Color) -> Color {

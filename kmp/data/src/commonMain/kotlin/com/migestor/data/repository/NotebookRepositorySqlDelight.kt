@@ -149,8 +149,13 @@ class NotebookRepositorySqlDelight(
 
     override suspend fun deleteColumn(columnId: String) {
         val columnRow = db.appDatabaseQueries.selectColumnById(columnId).executeAsOneOrNull()
-        val evaluationIdFromId = columnId.removePrefix("eval_").toLongOrNull()
+        val evaluationIdFromId = columnId.takeIf { it.startsWith("eval_") }
+            ?.removePrefix("eval_")
+            ?.toLongOrNull()
         val evaluationId = columnRow?.evaluation_id ?: evaluationIdFromId
+        if (evaluationId == null) {
+            println("NotebookRepositorySqlDelight.deleteColumn could not resolve evaluationId for columnId=$columnId")
+        }
 
         val columnIdsToDelete = buildSet {
             add(columnId)
@@ -194,9 +199,9 @@ class NotebookRepositorySqlDelight(
                 .filter { it.category_id == categoryId }
                 .forEach { row ->
                     deleteColumn(row.id)
-                }
+            }
         }
-        notebookConfigRepository.deleteColumnCategory(classId, categoryId, preserveColumns = true)
+        notebookConfigRepository.deleteColumnCategory(classId, categoryId, preserveColumns = preserveColumns)
     }
 
     override suspend fun toggleCategoryCollapsed(classId: Long, categoryId: String, isCollapsed: Boolean) {
@@ -304,7 +309,7 @@ class NotebookRepositorySqlDelight(
         syncVersion: Long,
     ) = withContext(Dispatchers.Default) {
         // 1. Find the evaluation associated with the column
-        var evalId: Long? = evaluationId
+        var evalId: Long? = evaluationId?.takeIf { it > 0L }
         
         val columnRow = db.appDatabaseQueries.selectColumnById(columnId).executeAsOneOrNull()
         if (evalId == null && columnRow != null) {
@@ -369,10 +374,12 @@ class NotebookRepositorySqlDelight(
         if (columnRow != null) {
             val evalId = columnRow.evaluation_id
             val classId = columnRow.class_id
+            val grades = gradesRepository.listGradesForStudentInClass(studentId, classId)
 
-            return@withContext gradesRepository.listGradesForStudentInClass(studentId, classId).find {
-                if (evalId != null) it.evaluationId == evalId else it.columnId == columnId
+            evalId?.let { resolvedEvalId ->
+                grades.firstOrNull { it.evaluationId == resolvedEvalId }?.let { return@withContext it }
             }
+            return@withContext grades.firstOrNull { it.columnId == columnId }
         }
 
         if (!columnId.startsWith("eval_")) {

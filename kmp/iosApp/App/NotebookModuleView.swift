@@ -5,6 +5,34 @@ import MiGestorKit
 import UIKit
 #endif
 
+private enum NotebookAttendanceStatus {
+    static let present = "PRESENTE"
+    static let absent = "AUSENTE"
+    static let late = "TARDE"
+    static let justified = "JUSTIFICADO"
+    static let noMaterial = "SIN_MATERIAL"
+    static let exempt = "EXENTO"
+
+    static func canonical(_ value: String) -> String {
+        switch value.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() {
+        case present, "PRESENT", "PRES":
+            return present
+        case absent, "ABSENT", "AUS":
+            return absent
+        case late, "RETRASO", "LATE":
+            return late
+        case justified, "JUSTIFICADA", "JUSTIFIED":
+            return justified
+        case noMaterial:
+            return noMaterial
+        case exempt:
+            return exempt
+        default:
+            return ""
+        }
+    }
+}
+
 struct NotebookInspectorSelection: Identifiable, Hashable {
     let studentId: Int64
     let columnId: String
@@ -864,7 +892,7 @@ struct NotebookModuleView: View {
                                     Color.clear
                                         .frame(width: width, height: 1)
                                 case .folder(let category, let columns, let width):
-                                    categoryFolderHeader(category: category, columns: columns, width: width)
+                                    categoryFolderHeader(category: category, columns: columns, rows: rows, width: width)
                                 }
                             }
                         }
@@ -1491,13 +1519,13 @@ struct NotebookModuleView: View {
                                 openInspectorForStudent(item.student.id, data: data)
                             },
                             onMarkPresent: {
-                                Task { await markAttendance(for: item.student.id, status: "Presente") }
+                                Task { await markAttendance(for: item.student.id, status: NotebookAttendanceStatus.present) }
                             },
                             onMarkAbsent: {
-                                Task { await markAttendance(for: item.student.id, status: "Ausente") }
+                                Task { await markAttendance(for: item.student.id, status: NotebookAttendanceStatus.absent) }
                             },
                             onMarkLate: {
-                                Task { await markAttendance(for: item.student.id, status: "Retraso") }
+                                Task { await markAttendance(for: item.student.id, status: NotebookAttendanceStatus.late) }
                             },
                             onFollowUp: {
                                 Task { await createFollowUp(for: item.student) }
@@ -2154,7 +2182,7 @@ struct NotebookModuleView: View {
     }
 
     private func columnMatchesActiveTab(_ column: NotebookColumnDefinition, data: NotebookUiStateData) -> Bool {
-        guard let activeTabId = activeNotebookTabId(data: data) else { return false }
+        guard let activeTabId = activeNotebookTabId(data: data) else { return true }
         return column.tabIds.contains(activeTabId) || (column.sharedAcrossTabs && column.tabIds.isEmpty)
     }
 
@@ -2536,8 +2564,9 @@ struct NotebookModuleView: View {
 
     private func markAttendance(for studentId: Int64, status: String) async {
         guard let classId = selectedClassId ?? bridge.notebookViewModel.currentClassId?.int64Value else { return }
+        let canonicalStatus = NotebookAttendanceStatus.canonical(status)
         do {
-            try await bridge.saveAttendance(studentId: studentId, classId: classId, on: Date(), status: status)
+            try await bridge.saveAttendance(studentId: studentId, classId: classId, on: Date(), status: canonicalStatus)
             await refreshNotebookSignals()
         } catch {
         }
@@ -2558,7 +2587,7 @@ struct NotebookModuleView: View {
         guard !visibleRows.isEmpty else { return }
         Task {
             for row in visibleRows {
-                await markAttendance(for: row.student.id, status: "PRESENTE")
+                await markAttendance(for: row.student.id, status: NotebookAttendanceStatus.present)
             }
             await MainActor.run {
                 showToast("\(visibleRows.count) alumnos marcados como presentes")
@@ -2610,7 +2639,7 @@ struct NotebookModuleView: View {
                 studentId: student.id,
                 classId: classId,
                 on: Date(),
-                status: todayAttendanceByStudentId[student.id] ?? "Presente",
+                status: NotebookAttendanceStatus.canonical(todayAttendanceByStudentId[student.id] ?? NotebookAttendanceStatus.present),
                 note: "Seguimiento abierto desde el plano.",
                 hasIncident: true
             )
@@ -2783,7 +2812,7 @@ struct NotebookModuleView: View {
             return AnyView(
                 headerChip(
                     title: category.name,
-                    subtitle: "\(filledCollapsedCategoryCount(columns)) / \(columns.count) completas",
+                    subtitle: "\(completedCollapsedCategoryCount(columns, rows: visibleRows)) / \(columns.count) completas",
                     width: 150,
                     tint: tint(for: category),
                     folderStyle: true,
@@ -2904,9 +2933,9 @@ struct NotebookModuleView: View {
         }
     }
 
-    private func categoryFolderHeader(category: NotebookColumnCategory, columns: [NotebookColumnDefinition], width: CGFloat) -> some View {
+    private func categoryFolderHeader(category: NotebookColumnCategory, columns: [NotebookColumnDefinition], rows: [NotebookTableRow], width: CGFloat) -> some View {
         let categoryTint = tint(for: category)
-        let completed = filledCollapsedCategoryCount(columns)
+        let completed = completedCollapsedCategoryCount(columns, rows: rows)
 
         return HStack(alignment: .top, spacing: 10) {
             VStack(alignment: .leading, spacing: 6) {
@@ -3373,10 +3402,14 @@ struct NotebookModuleView: View {
         }
     }
 
-    private func filledCollapsedCategoryCount(_ columns: [NotebookColumnDefinition]) -> Int {
-        columns.reduce(0) { partial, column in
-            partial + (column.isHidden ? 0 : 1)
-        }
+    private func completedCollapsedCategoryCount(_ columns: [NotebookColumnDefinition], rows: [NotebookTableRow]) -> Int {
+        columns.filter { column in
+            rows.contains { row in
+                !displayValue(for: row, column: column)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .isEmpty
+            }
+        }.count
     }
 
     private var columnColorOptions: [(label: String, hex: String)] {
@@ -4134,12 +4167,12 @@ private struct NotebookEditableTableCell: View {
 
     private var attendanceOptions: [(label: String, value: String)] {
         [
-            ("Presente", "PRESENTE"),
-            ("Ausente", "AUSENTE"),
-            ("Retraso", "TARDE"),
-            ("Justificada", "JUSTIFICADO"),
-            ("Sin material", "SIN_MATERIAL"),
-            ("Exento", "EXENTO"),
+            ("Presente", NotebookAttendanceStatus.present),
+            ("Ausente", NotebookAttendanceStatus.absent),
+            ("Retraso", NotebookAttendanceStatus.late),
+            ("Justificada", NotebookAttendanceStatus.justified),
+            ("Sin material", NotebookAttendanceStatus.noMaterial),
+            ("Exento", NotebookAttendanceStatus.exempt),
             ("Sin pasar", "")
         ]
     }
@@ -4159,19 +4192,19 @@ private struct NotebookEditableTableCell: View {
     }
 
     private func attendanceDisplay(_ value: String) -> (label: String, value: String, color: Color) {
-        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        let normalized = NotebookAttendanceStatus.canonical(value)
         switch normalized {
-        case "PRESENTE", "PRESENT", "PRES":
+        case NotebookAttendanceStatus.present:
             return ("Presente", normalized, .green)
-        case "AUSENTE", "ABSENT", "AUS":
+        case NotebookAttendanceStatus.absent:
             return ("Ausente", normalized, .red)
-        case "TARDE", "RETRASO", "LATE":
+        case NotebookAttendanceStatus.late:
             return ("Retraso", normalized, .orange)
-        case "JUSTIFICADO", "JUSTIFICADA", "JUSTIFIED":
+        case NotebookAttendanceStatus.justified:
             return ("Justificada", normalized, .gray)
-        case "SIN_MATERIAL":
+        case NotebookAttendanceStatus.noMaterial:
             return ("Sin material", normalized, .brown)
-        case "EXENTO":
+        case NotebookAttendanceStatus.exempt:
             return ("Exento", normalized, .indigo)
         default:
             return ("—", "", .secondary)
@@ -4181,13 +4214,13 @@ private struct NotebookEditableTableCell: View {
     private func nextQuickAttendanceStatus(after value: String) -> String {
         switch attendanceDisplay(value).value {
         case "":
-            return "PRESENTE"
-        case "PRESENTE", "PRESENT", "PRES":
-            return "AUSENTE"
-        case "AUSENTE", "ABSENT", "AUS":
-            return "TARDE"
+            return NotebookAttendanceStatus.present
+        case NotebookAttendanceStatus.present:
+            return NotebookAttendanceStatus.absent
+        case NotebookAttendanceStatus.absent:
+            return NotebookAttendanceStatus.late
         default:
-            return "PRESENTE"
+            return NotebookAttendanceStatus.present
         }
     }
 
@@ -4275,15 +4308,16 @@ private struct NotebookEditableTableCell: View {
     }
 
     private func saveAttendanceValue(_ status: String) {
+        let canonicalStatus = NotebookAttendanceStatus.canonical(status)
         let previousValue = textDraft
-        textDraft = status
+        textDraft = canonicalStatus
         onSelect()
         activeChoiceCellId = nil
-        if previousValue != status {
+        if previousValue != canonicalStatus {
             onPrepareUndo(previousValue, attendanceDisplay(previousValue).label)
-            originalTextDraft = status
+            originalTextDraft = canonicalStatus
         }
-        bridge.saveColumnGrade(studentId: item.student.id, column: column, value: status)
+        bridge.saveColumnGrade(studentId: item.student.id, column: column, value: canonicalStatus)
         onCellSaved()
         onNavigate(navigationDirection)
 
@@ -4296,7 +4330,7 @@ private struct NotebookEditableTableCell: View {
                 studentId: item.student.id,
                 classId: classId,
                 on: attendanceDate,
-                status: status
+                status: canonicalStatus
             )
             await MainActor.run {
                 onAttendanceSaved()

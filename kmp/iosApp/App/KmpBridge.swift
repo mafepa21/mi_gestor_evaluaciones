@@ -5894,6 +5894,7 @@ final class KmpBridge: ObservableObject {
                         classId: classId,
                         studentId: studentId,
                         columnId: columnId,
+                        evaluationId: kotlinLong(evaluationId),
                         numericValue: resolvedScore?.doubleValue ?? 0.0,
                         rubricSelections: selections.isEmpty ? nil : selections,
                         evidence: nil,

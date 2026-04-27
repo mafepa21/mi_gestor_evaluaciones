@@ -4,7 +4,7 @@ import SwiftUI
 struct MiGestorKMPMacApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("theme_mode") private var themeModeRawValue: String = AppThemeMode.system.rawValue
-    @StateObject private var commandCenter = MacCommandCenterCoordinator()
+    @StateObject private var session = MacAppSessionController()
 
     private var themeMode: AppThemeMode {
         AppThemeMode(rawValue: themeModeRawValue) ?? .system
@@ -12,10 +12,10 @@ struct MiGestorKMPMacApp: App {
 
     var body: some Scene {
         WindowGroup("MiGestor") {
-            AppleAppRootView(
-                themeMode: themeMode,
-                commandCenterState: commandCenter.environmentState
-            )
+            MacRootView(session: session)
+                .environment(\.appThemeMode, themeMode)
+                .preferredColorScheme(themeMode.colorSchemeOverride)
+                .frame(minWidth: 900, minHeight: 600)
                 .onChange(of: scenePhase) { _, newPhase in
                     handleScenePhase(newPhase)
                 }
@@ -35,8 +35,10 @@ struct MiGestorKMPMacApp: App {
     private func handleScenePhase(_ newPhase: ScenePhase) {
         switch newPhase {
         case .active:
+            session.handleScenePhase(.active)
             NotificationCenter.default.post(name: .appleAppDidBecomeActive, object: nil)
         case .background:
+            session.handleScenePhase(.background)
             NotificationCenter.default.post(name: .appleAppDidEnterBackground, object: nil)
         case .inactive:
             break

@@ -200,6 +200,7 @@ class RubricEvaluationViewModel(
                     classId = classId,
                     studentId = state.studentId,
                     columnId = effectiveColumnId,
+                    evaluationId = state.evaluationId,
                     numericValue = computedScore,
                     rubricSelections = selectionsString,
                     evidence = state.notes.takeIf { it.isNotBlank() }

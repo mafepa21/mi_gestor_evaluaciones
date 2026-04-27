@@ -294,6 +294,7 @@ class NotebookRepositorySqlDelight(
         classId: Long,
         studentId: Long,
         columnId: String,
+        evaluationId: Long?,
         numericValue: Double,
         rubricSelections: String?,
         evidence: String?,
@@ -303,12 +304,12 @@ class NotebookRepositorySqlDelight(
         syncVersion: Long,
     ) = withContext(Dispatchers.Default) {
         // 1. Find the evaluation associated with the column
-        var evalId: Long? = null
+        var evalId: Long? = evaluationId
         
         val columnRow = db.appDatabaseQueries.selectColumnById(columnId).executeAsOneOrNull()
-        if (columnRow != null) {
+        if (evalId == null && columnRow != null) {
             evalId = columnRow.evaluation_id
-        } else if (columnId.startsWith("eval_")) {
+        } else if (evalId == null && columnId.startsWith("eval_")) {
             // Handle generated columns (e.g. from BuildNotebookSheetUseCase)
             evalId = columnId.removePrefix("eval_").toLongOrNull()
         }

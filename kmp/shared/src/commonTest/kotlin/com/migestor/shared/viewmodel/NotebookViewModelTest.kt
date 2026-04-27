@@ -114,6 +114,36 @@ class NotebookViewModelTest {
     }
 
     @Test
+    fun `upsertRubricGrade passes evaluation id to repository`() = runTest {
+        val classId = 1L
+        val repository = FakeNotebookRepository(
+            snapshot = NotebookSheet(
+                classId = classId,
+                tabs = emptyList(),
+                columns = emptyList(),
+                rows = emptyList(),
+            )
+        )
+        val viewModel = createViewModel(repository)
+
+        viewModel.selectClass(classId)
+        advanceUntilIdle()
+        viewModel.upsertRubricGrade(
+            studentId = 7L,
+            columnId = "",
+            numericValue = 8.5,
+            rubricSelections = """{"criterion_1":2}""",
+            evaluationId = 123L
+        )
+        advanceUntilIdle()
+
+        val call = repository.upsertGradeCalls.last()
+        assertEquals("eval_123", call.columnId)
+        assertEquals(123L, call.evaluationId)
+        assertEquals(8.5, call.numericValue)
+    }
+
+    @Test
     fun `addColumn keeps formula for calculated columns`() = runTest {
         val classId = 1L
         val tabs = listOf(NotebookTab(id = "TAB_1", title = "Evaluación"))
@@ -223,6 +253,7 @@ private class FakeNotebookRepository(
 ) : NotebookRepository {
     val savedColumns = mutableListOf<NotebookColumnDefinition>()
     val savedWorkGroups = mutableListOf<NotebookWorkGroup>()
+    val upsertGradeCalls = mutableListOf<UpsertGradeCall>()
 
     override suspend fun loadNotebookSnapshot(classId: Long): NotebookSheet = snapshot
     override fun observeStudentChanges(classId: Long): Flow<List<Student>> = flowOf(emptyList())
@@ -278,6 +309,7 @@ private class FakeNotebookRepository(
         classId: Long,
         studentId: Long,
         columnId: String,
+        evaluationId: Long?,
         numericValue: Double,
         rubricSelections: String?,
         evidence: String?,
@@ -285,8 +317,28 @@ private class FakeNotebookRepository(
         updatedAtEpochMs: Long,
         deviceId: String?,
         syncVersion: Long,
-    ) = Unit
+    ) {
+        upsertGradeCalls += UpsertGradeCall(
+            classId = classId,
+            studentId = studentId,
+            columnId = columnId,
+            evaluationId = evaluationId,
+            numericValue = numericValue,
+            rubricSelections = rubricSelections,
+            evidence = evidence,
+        )
+    }
 }
+
+private data class UpsertGradeCall(
+    val classId: Long,
+    val studentId: Long,
+    val columnId: String,
+    val evaluationId: Long?,
+    val numericValue: Double,
+    val rubricSelections: String?,
+    val evidence: String?,
+)
 
 private class FakeEvaluationsRepository : EvaluationsRepository {
     override fun observeClassEvaluations(classId: Long): Flow<List<Evaluation>> = flowOf(emptyList())

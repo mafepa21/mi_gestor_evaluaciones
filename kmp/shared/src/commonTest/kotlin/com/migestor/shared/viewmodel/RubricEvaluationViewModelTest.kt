@@ -219,6 +219,7 @@ class RubricEvaluationViewModelTest {
             classId: Long,
             studentId: Long,
             columnId: String,
+            evaluationId: Long?,
             numericValue: Double,
             rubricSelections: String?,
             evidence: String?,

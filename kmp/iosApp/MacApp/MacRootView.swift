@@ -4,10 +4,13 @@ import AppKit
 struct MacRootView: View {
     @ObservedObject var session: MacAppSessionController
     @StateObject private var commandCenter = MacCommandCenterCoordinator()
+    @StateObject private var layoutState = WorkspaceLayoutState()
+    @StateObject private var notebookInspectorState = NotebookMacInspectorState()
     @State private var selectedClassId: Int64? = nil
     @State private var selectedStudentId: Int64? = nil
     @State private var attendanceToolbarActions: MacAttendanceToolbarActions? = nil
     @State private var dashboardToolbarActions: MacDashboardToolbarActions? = nil
+    @State private var studentsReloadToken = 0
 
     var body: some View {
         Group {
@@ -27,11 +30,16 @@ struct MacRootView: View {
             case .ready:
                 NavigationSplitView {
                     macSidebar
+                } content: {
+                    featureContent(for: session.selectedFeature)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(MacAppStyle.pageBackground)
                 } detail: {
-                    featureDetail(for: session.selectedFeature)
+                    featureInspector(for: session.selectedFeature)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background(MacAppStyle.pageBackground)
                 }
+                .navigationSplitViewStyle(.balanced)
                 .toolbar {
                     macToolbar
                 }
@@ -60,6 +68,9 @@ struct MacRootView: View {
             }
             .padding(.vertical, 2)
             .tag(feature.feature)
+            .contextMenu {
+                sidebarContextMenu(for: feature.feature)
+            }
         }
         .listStyle(.sidebar)
         .navigationTitle("MiGestor")
@@ -67,7 +78,7 @@ struct MacRootView: View {
     }
 
     @ViewBuilder
-    private func featureDetail(for feature: MacFeatureDescriptor.Feature) -> some View {
+    private func featureContent(for feature: MacFeatureDescriptor.Feature) -> some View {
         switch feature {
         case .dashboard:
             MacDashboardView(
@@ -80,8 +91,11 @@ struct MacRootView: View {
                 bridge: session.bridge,
                 selectedClassId: $selectedClassId,
                 selectedStudentId: $selectedStudentId,
-                onOpenModule: open(module:classId:studentId:)
+                onOpenModule: open(module:classId:studentId:),
+                macPresentation: .content,
+                macInspectorState: notebookInspectorState
             )
+            .environmentObject(layoutState)
         case .attendance:
             MacAttendanceView(
                 bridge: session.bridge,
@@ -95,7 +109,9 @@ struct MacRootView: View {
                 bridge: session.bridge,
                 selectedClassId: $selectedClassId,
                 selectedStudentId: $selectedStudentId,
-                onOpenModule: open(module:classId:studentId:)
+                onOpenModule: open(module:classId:studentId:),
+                presentation: .content,
+                reloadToken: studentsReloadToken
             )
         case .rubrics:
             MacRubricsView(bridge: session.bridge)
@@ -116,6 +132,33 @@ struct MacRootView: View {
         }
     }
 
+    @ViewBuilder
+    private func featureInspector(for feature: MacFeatureDescriptor.Feature) -> some View {
+        switch feature {
+        case .notebook:
+            NotebookModuleView(
+                bridge: session.bridge,
+                selectedClassId: $selectedClassId,
+                selectedStudentId: $selectedStudentId,
+                onOpenModule: open(module:classId:studentId:),
+                macPresentation: .inspector,
+                macInspectorState: notebookInspectorState
+            )
+            .environmentObject(layoutState)
+        case .students:
+            MacStudentsView(
+                bridge: session.bridge,
+                selectedClassId: $selectedClassId,
+                selectedStudentId: $selectedStudentId,
+                onOpenModule: open(module:classId:studentId:),
+                presentation: .inspector,
+                reloadToken: studentsReloadToken
+            )
+        default:
+            MacModuleInspectorPlaceholder(feature: MacFeatureRegistry.descriptor(for: feature))
+        }
+    }
+
     @ToolbarContentBuilder
     private var macToolbar: some ToolbarContent {
         ToolbarItemGroup {
@@ -128,10 +171,11 @@ struct MacRootView: View {
 
             if session.selectedFeature == .notebook {
                 Button {
-                    session.bridge.showingAddColumn = true
+                    layoutState.showNotebookAddColumn()
                 } label: {
                     Label("Columna", systemImage: "plus.rectangle")
                 }
+                .disabled(!layoutState.notebookAddColumnAvailable)
                 .help("Nueva columna")
             }
 
@@ -248,6 +292,47 @@ struct MacRootView: View {
         }
     }
 
+    @ViewBuilder
+    private func sidebarContextMenu(for feature: MacFeatureDescriptor.Feature) -> some View {
+        switch feature {
+        case .notebook:
+            if layoutState.notebookAddColumnAvailable {
+                Button {
+                    session.selectedFeature = .notebook
+                    layoutState.showNotebookAddColumn()
+                } label: {
+                    Label("Nueva columna", systemImage: "plus.rectangle")
+                }
+            }
+            if layoutState.notebookOrganizationMenuAvailable {
+                Button {
+                    session.selectedFeature = .notebook
+                    layoutState.openNotebookOrganizationMenu()
+                } label: {
+                    Label("Abrir organización", systemImage: "folder.badge.gearshape")
+                }
+            }
+        case .students:
+            Button {
+                session.selectedFeature = .students
+                studentsReloadToken += 1
+            } label: {
+                Label("Recargar alumnado", systemImage: "arrow.clockwise")
+            }
+        case .attendance:
+            if let attendanceToolbarActions {
+                Button {
+                    session.selectedFeature = .attendance
+                    attendanceToolbarActions.markAllPresent()
+                } label: {
+                    Label("Todos presentes", systemImage: "checkmark.circle.fill")
+                }
+            }
+        default:
+            EmptyView()
+        }
+    }
+
     private func open(module: AppWorkspaceModule, classId: Int64?, studentId: Int64?) {
         if let classId {
             selectedClassId = classId
@@ -268,6 +353,20 @@ struct MacRootView: View {
         default:
             session.bridge.status = "El módulo \(module.title) todavía no está disponible en la shell Mac."
         }
+    }
+}
+
+private struct MacModuleInspectorPlaceholder: View {
+    let feature: MacFeatureDescriptor
+
+    var body: some View {
+        ContentUnavailableView(
+            "\(feature.title)",
+            systemImage: feature.systemImage,
+            description: Text("Este módulo no tiene inspector contextual independiente en la shell Mac.")
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(MacAppStyle.cardBackground)
     }
 }
 

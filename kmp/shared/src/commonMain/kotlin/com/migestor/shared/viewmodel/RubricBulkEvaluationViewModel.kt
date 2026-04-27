@@ -236,6 +236,7 @@ class RubricBulkEvaluationViewModel(
                 classId = state.classId,
                 studentId = studentId,
                 columnId = effectiveColumnId,
+                evaluationId = state.evaluationId,
                 numericValue = score,
                 rubricSelections = selectionsString
             )

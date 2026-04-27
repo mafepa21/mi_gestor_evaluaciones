@@ -5,11 +5,31 @@ import MiGestorKit
 import UIKit
 #endif
 
-private struct NotebookInspectorSelection: Identifiable, Hashable {
+struct NotebookInspectorSelection: Identifiable, Hashable {
     let studentId: Int64
     let columnId: String
 
     var id: String { "\(studentId)|\(columnId)" }
+}
+
+final class NotebookMacInspectorState: ObservableObject {
+    @Published var selection: NotebookInspectorSelection?
+    @Published var noteDraft = ""
+    @Published var iconDraft = ""
+    @Published var attachmentUris: [String] = []
+    @Published var isPresented = false
+
+    func resetDrafts() {
+        noteDraft = ""
+        iconDraft = ""
+        attachmentUris = []
+    }
+}
+
+enum NotebookMacPresentation: Equatable {
+    case full
+    case content
+    case inspector
 }
 
 private struct NotebookTableRow: Identifiable {
@@ -272,16 +292,13 @@ struct NotebookModuleView: View {
     @Binding var selectedClassId: Int64?
     @Binding var selectedStudentId: Int64?
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
+    @StateObject private var inspectorState: NotebookMacInspectorState
+    private let macPresentation: NotebookMacPresentation
     @State private var addColumnContext: NotebookAddColumnContext? = nil
     @State private var searchText = ""
     @State private var selectedGroupId: Int64? = nil
-    @State private var inspectorSelection: NotebookInspectorSelection? = nil
-    @State private var inspectorNoteDraft = ""
-    @State private var inspectorIconDraft = ""
-    @State private var inspectorAttachmentUris: [String] = []
     @State private var viewPreset: NotebookViewPreset = .all
     @State private var surfaceMode: NotebookSurfaceMode = .grid
-    @State private var isInspectorPresented = false
     @State private var todayAttendanceByStudentId: [Int64: String] = [:]
     @State private var incidentCountByStudentId: [Int64: Int] = [:]
     @State private var seatPositions: [Int64: NotebookSeatPosition] = [:]
@@ -325,9 +342,54 @@ struct NotebookModuleView: View {
     @FocusState private var focusedCellId: String?
     private let formulaAIService = AppleFoundationFormulaService()
 
+    init(
+        bridge: KmpBridge,
+        selectedClassId: Binding<Int64?>,
+        selectedStudentId: Binding<Int64?>,
+        onOpenModule: @escaping (AppWorkspaceModule, Int64?, Int64?) -> Void,
+        macPresentation: NotebookMacPresentation = .full,
+        macInspectorState: NotebookMacInspectorState? = nil
+    ) {
+        self._bridge = ObservedObject(wrappedValue: bridge)
+        self._selectedClassId = selectedClassId
+        self._selectedStudentId = selectedStudentId
+        self.onOpenModule = onOpenModule
+        self.macPresentation = macPresentation
+        self._inspectorState = StateObject(wrappedValue: macInspectorState ?? NotebookMacInspectorState())
+    }
+
     private var navigationDirection: NotebookNavigationDirection {
         get { NotebookNavigationDirection(rawValue: navigationDirectionRaw) ?? .down }
         nonmutating set { navigationDirectionRaw = newValue.rawValue }
+    }
+
+    private var inspectorSelection: NotebookInspectorSelection? {
+        get { inspectorState.selection }
+        nonmutating set { inspectorState.selection = newValue }
+    }
+
+    private var inspectorNoteDraft: String {
+        get { inspectorState.noteDraft }
+        nonmutating set { inspectorState.noteDraft = newValue }
+    }
+
+    private var inspectorIconDraft: String {
+        get { inspectorState.iconDraft }
+        nonmutating set { inspectorState.iconDraft = newValue }
+    }
+
+    private var inspectorAttachmentUris: [String] {
+        get { inspectorState.attachmentUris }
+        nonmutating set { inspectorState.attachmentUris = newValue }
+    }
+
+    private var isInspectorPresented: Bool {
+        get { inspectorState.isPresented }
+        nonmutating set { inspectorState.isPresented = newValue }
+    }
+
+    private var isMacInspectorOnly: Bool {
+        macPresentation == .inspector
     }
 
     var body: some View {
@@ -557,7 +619,9 @@ struct NotebookModuleView: View {
     private func notebookLifecycleCleanup<Content: View>(_ content: Content) -> some View {
         content
             .onDisappear {
-                layoutState.clearNotebookToolbar()
+                if !isMacInspectorOnly {
+                    layoutState.clearNotebookToolbar()
+                }
             }
     }
 
@@ -619,7 +683,7 @@ struct NotebookModuleView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
-            if isInspectorPresented {
+            if macPresentation == .full && isInspectorPresented {
                 Divider().opacity(0.16)
                 inspectorPanel(data: data)
                     .frame(width: 360)
@@ -980,7 +1044,16 @@ struct NotebookModuleView: View {
     }
 
     private func notebookLoadedContent(data: NotebookUiStateData) -> some View {
-        centerPanel(data: data)
+        Group {
+            switch macPresentation {
+            case .full, .content:
+                centerPanel(data: data)
+            case .inspector:
+                inspectorPanel(data: data)
+                    .frame(minWidth: 330, idealWidth: 370, maxWidth: 430, maxHeight: .infinity)
+                    .background(NotebookStyle.surfaceMuted)
+            }
+        }
             .sheet(item: $addColumnContext) { context in
                 addColumnSheetPresentation(for: context)
             }
@@ -1019,14 +1092,20 @@ struct NotebookModuleView: View {
                 navigateFromFocused(direction: navigationDirection, data: data)
             }
             .onAppear {
-                ensureActiveNotebookTab(data: data)
-                syncToolbarState(data: data)
+                if !isMacInspectorOnly {
+                    ensureActiveNotebookTab(data: data)
+                    syncToolbarState(data: data)
+                }
             }
             .onChange(of: notebookTabsStateKey(data: data)) { _ in
-                ensureActiveNotebookTab(data: data)
+                if !isMacInspectorOnly {
+                    ensureActiveNotebookTab(data: data)
+                }
             }
             .onChange(of: toolbarStateKey(data: data)) { _ in
-                syncToolbarState(data: data)
+                if !isMacInspectorOnly {
+                    syncToolbarState(data: data)
+                }
             }
     }
 
@@ -1265,7 +1344,12 @@ struct NotebookModuleView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Comentario y evidencia")
                                 .font(.system(size: 13, weight: .semibold, design: .rounded))
-                            TextEditor(text: $inspectorNoteDraft)
+                            TextEditor(
+                                text: Binding(
+                                    get: { inspectorNoteDraft },
+                                    set: { inspectorNoteDraft = $0 }
+                                )
+                            )
                                 .frame(minHeight: 140)
                                 .padding(8)
                                 .background(
@@ -1333,6 +1417,7 @@ struct NotebookModuleView: View {
                                     iconValue: inspectorIconDraft,
                                     attachmentUris: inspectorAttachmentUris
                                 )
+                                cellReloadRevision += 1
                             }
                             .buttonStyle(.borderedProminent)
                         }
@@ -2411,9 +2496,7 @@ struct NotebookModuleView: View {
         guard let selection = inspectorSelection,
               let data = bridge.notebookState as? NotebookUiStateData,
               let item = filteredRows(data: data).first(where: { $0.student.id == selection.studentId }) else {
-            inspectorNoteDraft = ""
-            inspectorIconDraft = ""
-            inspectorAttachmentUris = []
+            inspectorState.resetDrafts()
             return
         }
         let persisted = item.row.persistedCells.first(where: { $0.columnId == selection.columnId })
@@ -2783,6 +2866,9 @@ struct NotebookModuleView: View {
                             rows: allRows,
                             segments: navigableSegments
                         )
+                    },
+                    onCellSaved: {
+                        cellReloadRevision += 1
                     },
                     onAttendanceSaved: {
                         Task { await refreshNotebookSignals() }
@@ -3687,6 +3773,7 @@ private struct NotebookEditableTableCell: View {
     let onOpenRubricIndividual: () -> Void
     let onOpenRubricBulk: () -> Void
     let onNavigate: (NotebookNavigationDirection) -> Void
+    let onCellSaved: () -> Void
     let onAttendanceSaved: () -> Void
 
     @State private var numericDraft = ""
@@ -3752,7 +3839,11 @@ private struct NotebookEditableTableCell: View {
         .onTapGesture(perform: onSelect)
         .onAppear(perform: loadDrafts)
         .onChange(of: reloadToken) { _ in
-            loadDrafts()
+            loadDraftsUnlessEditing()
+        }
+        .onReceive(bridge.$notebookState) { state in
+            guard state is NotebookUiStateData else { return }
+            loadDraftsUnlessEditing()
         }
     }
 
@@ -3855,6 +3946,7 @@ private struct NotebookEditableTableCell: View {
                             originalCheckDraft = newValue
                         }
                         bridge.saveColumnGrade(studentId: item.student.id, column: column, value: newValue ? "true" : "false")
+                        onCellSaved()
                         onNavigate(navigationDirection)
                     }
             case .ordinal:
@@ -4130,6 +4222,14 @@ private struct NotebookEditableTableCell: View {
         }
     }
 
+    private func loadDraftsUnlessEditing() {
+        guard focusedCellId.wrappedValue != cellId,
+              activeChoiceCellId != cellId,
+              !isNumericKeyboardPresented,
+              !showTextPopover else { return }
+        loadDrafts()
+    }
+
     private func saveNumeric() {
         onSelect()
         if originalNumericDraft != numericDraft {
@@ -4137,6 +4237,7 @@ private struct NotebookEditableTableCell: View {
             originalNumericDraft = numericDraft
         }
         bridge.saveColumnGradeDebounced(studentId: item.student.id, column: column, value: numericDraft)
+        onCellSaved()
     }
 
     private func saveNumericAndNavigate(_ direction: NotebookNavigationDirection) {
@@ -4151,6 +4252,7 @@ private struct NotebookEditableTableCell: View {
             originalTextDraft = textDraft
         }
         bridge.saveColumnGradeDebounced(studentId: item.student.id, column: column, value: textDraft)
+        onCellSaved()
     }
 
     private func saveTextAndNavigate() {
@@ -4168,6 +4270,7 @@ private struct NotebookEditableTableCell: View {
             originalTextDraft = option
         }
         bridge.saveColumnGrade(studentId: item.student.id, column: column, value: option)
+        onCellSaved()
         onNavigate(navigationDirection)
     }
 
@@ -4181,6 +4284,7 @@ private struct NotebookEditableTableCell: View {
             originalTextDraft = status
         }
         bridge.saveColumnGrade(studentId: item.student.id, column: column, value: status)
+        onCellSaved()
         onNavigate(navigationDirection)
 
         guard let classId else { return }
@@ -4268,6 +4372,7 @@ private struct NotebookDynamicCellsRow: View {
                         onOpenRubricIndividual: {},
                         onOpenRubricBulk: {},
                         onNavigate: { _ in },
+                        onCellSaved: {},
                         onAttendanceSaved: {}
                     )
                     .frame(width: max(column.widthDp, 120))

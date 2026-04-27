@@ -7,9 +7,9 @@ enum MacAppStyle {
     static let cardSpacing: CGFloat = 12
     static let innerPadding: CGFloat = 16
 
-    static let pageTitle: Font = .title2.weight(.semibold)
+    static let pageTitle: Font = .title3.weight(.semibold)
     static let sectionTitle: Font = .headline
-    static let metricValue: Font = .system(size: 28, weight: .medium, design: .rounded)
+    static let metricValue: Font = .system(size: 22, weight: .medium, design: .rounded)
     static let metricLabel: Font = .caption.weight(.medium)
     static let bodyText: Font = .callout
 

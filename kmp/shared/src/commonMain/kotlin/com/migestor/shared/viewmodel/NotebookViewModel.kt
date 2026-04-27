@@ -406,6 +406,7 @@ class NotebookViewModel(
                     classId = classId,
                     studentId = studentId,
                     columnId = safeColumnId,
+                    evaluationId = evaluationId,
                     numericValue = numericValue,
                     rubricSelections = rubricSelections,
                     evidence = null

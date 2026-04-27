@@ -2,11 +2,19 @@ import SwiftUI
 import AppKit
 import MiGestorKit
 
+enum MacStudentsPresentation {
+    case full
+    case content
+    case inspector
+}
+
 struct MacStudentsView: View {
     @ObservedObject var bridge: KmpBridge
     @Binding var selectedClassId: Int64?
     @Binding var selectedStudentId: Int64?
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
+    var presentation: MacStudentsPresentation = .full
+    var reloadToken: Int = 0
 
     @State private var rows: [KmpBridge.MacStudentRowSnapshot] = []
     @State private var profile: KmpBridge.StudentProfileSnapshot?
@@ -51,20 +59,28 @@ struct MacStudentsView: View {
     }
 
     var body: some View {
-        HSplitView {
-            studentsSidebar
-                .frame(minWidth: 250, idealWidth: 270, maxWidth: 310)
-
-            VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
-                studentsHeader
-                studentsTable
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+        Group {
+            switch presentation {
+            case .full:
+                HSplitView {
+                    studentsFilters
+                        .frame(minWidth: 250, idealWidth: 270, maxWidth: 310)
+                    studentsList
+                        .frame(minWidth: 640)
+                    studentInspector
+                        .frame(minWidth: 330, idealWidth: 370, maxWidth: 430)
+                }
+            case .content:
+                HSplitView {
+                    studentsFilters
+                        .frame(minWidth: 250, idealWidth: 270, maxWidth: 310)
+                    studentsList
+                        .frame(minWidth: 560)
+                }
+            case .inspector:
+                studentInspector
+                    .frame(minWidth: 330, idealWidth: 370, maxWidth: 430, maxHeight: .infinity)
             }
-            .padding(MacAppStyle.pagePadding)
-            .frame(minWidth: 640)
-
-            studentInspector
-                .frame(minWidth: 330, idealWidth: 370, maxWidth: 430)
         }
         .background(MacAppStyle.pageBackground)
         .task {
@@ -75,6 +91,10 @@ struct MacStudentsView: View {
         }
         .task(id: selectedClassId) {
             await bridge.selectStudentsClass(classId: selectedClassId)
+            await reloadRows()
+        }
+        .task(id: reloadToken) {
+            guard reloadToken > 0 else { return }
             await reloadRows()
         }
         .onChange(of: selectedStudentId) { _, _ in
@@ -109,7 +129,16 @@ struct MacStudentsView: View {
         }
     }
 
-    private var studentsSidebar: some View {
+    private var studentsList: some View {
+        VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
+            studentsHeader
+            studentsTable
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .padding(MacAppStyle.pagePadding)
+    }
+
+    private var studentsFilters: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Filtros")

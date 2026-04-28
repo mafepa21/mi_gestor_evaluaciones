@@ -401,7 +401,11 @@ private struct NotebookCellUndoEntry {
 }
 
 struct NotebookModuleView: View {
+    #if os(macOS)
+    private let notebookGridRowHeight: CGFloat = 64
+    #else
     private let notebookGridRowHeight: CGFloat = 72
+    #endif
     private let notebookGridHeaderHeight: CGFloat = 68
     private let notebookGridFolderLaneHeight: CGFloat = 64
 
@@ -1023,10 +1027,11 @@ struct NotebookModuleView: View {
             seatingPlanContent(data: data, rows: rows)
         } else {
             NotebookDataGrid(
-                fixedColumnWidth: fixedZoneWidth
+                fixedColumnWidth: fixedZoneWidth,
+                topAccessoryHeight: hasFolders ? notebookGridFolderLaneHeight : 0,
+                headerHeight: notebookGridHeaderHeight
             ) {
                 Color.clear
-                    .frame(height: hasFolders ? notebookGridFolderLaneHeight : 0)
             } dividerHandle: {
                 NotebookDividerHandle(isDragging: isDraggingFixedZoneDivider) { translationWidth in
                     if !isDraggingFixedZoneDivider {
@@ -1042,7 +1047,7 @@ struct NotebookModuleView: View {
             } scrollTopAccessory: {
                 Group {
                     if hasFolders {
-                        HStack(alignment: .top, spacing: 12) {
+                        HStack(alignment: .top, spacing: 8) {
                             ForEach(laneItems, id: \.id) { item in
                                 switch item {
                                 case .spacer(_, let width):
@@ -1058,7 +1063,6 @@ struct NotebookModuleView: View {
                         .padding(.bottom, 8)
                     }
                 }
-                .frame(height: hasFolders ? notebookGridFolderLaneHeight : 0, alignment: .topLeading)
             } fixedHeader: {
                 fixedHeaderRow(segments: fixedSegments, data: data)
             } scrollHeader: {
@@ -1074,8 +1078,10 @@ struct NotebookModuleView: View {
                             allRows: rows,
                             navigableSegments: scrollableSegments
                         )
+                        .frame(height: notebookGridRowHeight)
                         Divider()
-                            .overlay(NotebookStyle.softBorder)
+                            .frame(height: 0.5)
+                            .overlay(NotebookStyle.softBorder.opacity(0.45))
                             .padding(.horizontal, 16)
                     }
                 }
@@ -1091,8 +1097,10 @@ struct NotebookModuleView: View {
                             allRows: rows,
                             navigableSegments: scrollableSegments
                         )
+                        .frame(height: notebookGridRowHeight)
                         Divider()
-                            .overlay(NotebookStyle.softBorder)
+                            .frame(height: 0.5)
+                            .overlay(NotebookStyle.softBorder.opacity(0.45))
                             .padding(.horizontal, 16)
                     }
                 }
@@ -1103,7 +1111,7 @@ struct NotebookModuleView: View {
 
     @ViewBuilder
     private func headerRow(segments: [NotebookDisplaySegment], data: NotebookUiStateData) -> some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: 8) {
             ForEach(segments, id: \.id) { segment in
                 headerChip(for: segment, data: data)
             }
@@ -1123,7 +1131,7 @@ struct NotebookModuleView: View {
 
     @ViewBuilder
     private func fixedHeaderRow(segments: [NotebookDisplaySegment], data: NotebookUiStateData) -> some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: 8) {
             ForEach(segments, id: \.id) { segment in
                 headerChip(for: segment, data: data)
             }
@@ -1200,7 +1208,7 @@ struct NotebookModuleView: View {
         let trailingWidth = trailingColumns.reduce(CGFloat.zero) { partial, column in
             partial + defaultFixedWidth(for: column)
         }
-        let spacing = CGFloat(max(visibleColumns.count - 1, 0)) * 12
+        let spacing = CGFloat(max(visibleColumns.count - 1, 0)) * 8
         let horizontalPadding: CGFloat = 32
 
         switch fixed {
@@ -2008,15 +2016,21 @@ struct NotebookModuleView: View {
         allRows: [NotebookTableRow],
         navigableSegments: [NotebookDisplaySegment]
     ) -> some View {
-        HStack(alignment: .center, spacing: 12) {
-            ForEach(segments, id: \.id) { segment in
-                rowCell(
-                    for: segment,
-                    item: item,
-                    data: data,
-                    allRows: allRows,
-                    navigableSegments: navigableSegments
-                )
+        HStack(alignment: .center, spacing: 8) {
+            if segments.isEmpty {
+                emptyNotebookCellPlaceholder(width: 180)
+            } else {
+                ForEach(segments, id: \.id) { segment in
+                    rowCell(
+                        for: segment,
+                        item: item,
+                        data: data,
+                        rowIndex: rowIndex,
+                        allRows: allRows,
+                        navigableSegments: navigableSegments
+                    )
+                    .frame(width: segmentWidth(segment), height: notebookGridRowHeight, alignment: .center)
+                }
             }
         }
         .frame(height: notebookGridRowHeight, alignment: .center)
@@ -2031,6 +2045,17 @@ struct NotebookModuleView: View {
                         )
                 )
         )
+    }
+
+    private func emptyNotebookCellPlaceholder(width: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .fill(NotebookStyle.surfaceSoft.opacity(0.16))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(NotebookStyle.softBorder.opacity(0.65), lineWidth: 0.8)
+            )
+            .frame(width: width, height: 44)
+            .frame(height: notebookGridRowHeight, alignment: .center)
     }
 
     private func groupedRows(data: NotebookUiStateData) -> [NotebookWorkGroup] {
@@ -2347,7 +2372,7 @@ struct NotebookModuleView: View {
                 let categoryColumns = columns(in: category, data: data)
                 let totalWidth = categoryColumns.reduce(CGFloat(0)) { partial, column in
                     partial + CGFloat(max(column.widthDp, 120))
-                } + CGFloat(max(categoryColumns.count - 1, 0) * 12)
+                } + CGFloat(max(categoryColumns.count - 1, 0) * 8)
                 items.append(.folder(category, categoryColumns, totalWidth))
             }
         }
@@ -2403,6 +2428,14 @@ struct NotebookModuleView: View {
         column.isHidden || column.visibility == .hidden || column.visibility == .archived
     }
 
+    private func isColumnRestorableHidden(_ column: NotebookColumnDefinition) -> Bool {
+        !isColumnArchived(column) && (column.isHidden || column.visibility == .hidden)
+    }
+
+    private func isColumnArchived(_ column: NotebookColumnDefinition) -> Bool {
+        column.visibility == .archived
+    }
+
     private func toggleColumnVisibility(_ column: NotebookColumnDefinition) {
         setNotebookColumnHidden(column, isHidden: !isColumnHidden(column))
     }
@@ -2454,6 +2487,11 @@ struct NotebookModuleView: View {
     }
 
     private func setNotebookColumnHidden(_ column: NotebookColumnDefinition, isHidden: Bool) {
+        guard !isColumnArchived(column) else {
+            showToast("La columna archivada no se restaura desde Mostrar todas", style: .warning)
+            return
+        }
+
         let updated = copyNotebookColumn(
             column,
             isHidden: isHidden,
@@ -2466,7 +2504,12 @@ struct NotebookModuleView: View {
     }
 
     private func showAllManagedColumns(data: NotebookUiStateData) {
-        let columns = managedColumns(data: data)
+        let columns = managedColumns(data: data).filter(isColumnRestorableHidden)
+        guard !columns.isEmpty else {
+            showToast("No hay columnas ocultas para mostrar", style: .warning)
+            return
+        }
+        // TODO(backend-batch): replace per-column saves with a single batch visibility mutation.
         columns.forEach { column in
             bridge.saveColumn(column: copyNotebookColumn(
                 column,
@@ -2474,11 +2517,12 @@ struct NotebookModuleView: View {
                 visibility: .visible
             ))
         }
-        showToast(columns.count == 1 ? "Columna visible" : "Todas las columnas visibles")
+        showToast(columns.count == 1 ? "Columna visible" : "Columnas ocultas visibles")
         syncToolbarStateIfLoaded()
     }
 
     private func reorderManagedColumns(_ reorderedColumns: [NotebookColumnDefinition]) {
+        // TODO(backend-batch): persist reordered columns in one backend batch instead of many saves.
         reorderedColumns.enumerated().forEach { index, column in
             let nextOrder = Int32(index)
             if column.order != nextOrder {
@@ -3004,7 +3048,15 @@ struct NotebookModuleView: View {
         }
     }
 
-    private func headerChip(title: String, subtitle: String, width: CGFloat, tint: Color, folderStyle: Bool = false, isHighlighted: Bool = false) -> some View {
+    private func headerChip(
+        title: String,
+        subtitle: String,
+        width: CGFloat,
+        tint: Color,
+        folderStyle: Bool = false,
+        hasColumnColor: Bool = false,
+        isHighlighted: Bool = false
+    ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
                 .font(.caption2.weight(.medium))
@@ -3030,15 +3082,26 @@ struct NotebookModuleView: View {
         .frame(minHeight: 52, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(folderStyle ? NotebookStyle.surfaceSoft.opacity(0.55) : Color.clear)
+                .fill(headerChipFill(tint: tint, folderStyle: folderStyle, hasColumnColor: hasColumnColor))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .stroke(
-                            isHighlighted ? tint.opacity(0.32) : (folderStyle ? NotebookStyle.softBorder : Color.clear),
-                            lineWidth: isHighlighted ? 1.5 : 1
+                            headerChipStroke(tint: tint, folderStyle: folderStyle, hasColumnColor: hasColumnColor, isHighlighted: isHighlighted),
+                            lineWidth: isHighlighted ? 1.4 : 0.6
                         )
                 )
         )
+    }
+
+    private func headerChipFill(tint: Color, folderStyle: Bool, hasColumnColor: Bool) -> Color {
+        if hasColumnColor { return tint.opacity(0.18) }
+        return folderStyle ? NotebookStyle.surfaceSoft.opacity(0.55) : Color.clear
+    }
+
+    private func headerChipStroke(tint: Color, folderStyle: Bool, hasColumnColor: Bool, isHighlighted: Bool) -> Color {
+        if isHighlighted { return tint.opacity(0.32) }
+        if hasColumnColor { return tint.opacity(0.30) }
+        return folderStyle ? NotebookStyle.softBorder.opacity(0.80) : Color.clear
     }
 
     private func headerChip(for segment: NotebookDisplaySegment, data: NotebookUiStateData) -> some View {
@@ -3066,8 +3129,9 @@ struct NotebookModuleView: View {
                         title: column.title,
                         subtitle: columnHeaderSubtitle(for: column, data: data, rows: visibleRows),
                         width: resolvedColumnWidth(for: column),
-                        tint: tint(for: column),
+                        tint: displayTint(for: column),
                         folderStyle: column.categoryId != nil,
+                        hasColumnColor: hasCustomColumnColor(column),
                         isHighlighted: highlightedCategoryId == column.categoryId
                     )
                 }
@@ -3105,10 +3169,37 @@ struct NotebookModuleView: View {
         }
     }
 
+    private func displayTint(for column: NotebookColumnDefinition) -> Color {
+        hasCustomColumnColor(column) ? Color(hex: column.colorHex ?? "") : tint(for: column)
+    }
+
+    private func hasCustomColumnColor(_ column: NotebookColumnDefinition) -> Bool {
+        guard let rawHex = column.colorHex?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !rawHex.isEmpty else {
+            return false
+        }
+        let normalized = rawHex.replacingOccurrences(of: "#", with: "").uppercased()
+        return normalized != "FFFFFF" && normalized != "FFFFFFFF"
+    }
+
+    private func notebookColumnCellFill(for column: NotebookColumnDefinition, rowIndex: Int, isActive: Bool) -> Color {
+        if hasCustomColumnColor(column) {
+            return displayTint(for: column).opacity(isActive ? 0.20 : 0.10)
+        }
+        return rowIndex.isMultiple(of: 2) ? NotebookStyle.surfaceMuted.opacity(0.34) : Color.clear
+    }
+
+    private func notebookColumnCellBorder(for column: NotebookColumnDefinition, isActive: Bool) -> Color {
+        if isActive { return Color.accentColor.opacity(0.85) }
+        if hasCustomColumnColor(column) { return displayTint(for: column).opacity(0.24) }
+        return NotebookStyle.softBorder.opacity(0.45)
+    }
+
     private func rowCell(
         for segment: NotebookDisplaySegment,
         item: NotebookTableRow,
         data: NotebookUiStateData,
+        rowIndex: Int,
         allRows: [NotebookTableRow],
         navigableSegments: [NotebookDisplaySegment]
     ) -> some View {
@@ -3116,61 +3207,72 @@ struct NotebookModuleView: View {
         case .fixed(let fixed):
             return AnyView(fixedRowCell(for: fixed, item: item, data: data))
         case .column(let column):
+            let isCellSelected = inspectorSelection == NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
             return AnyView(
-                NotebookEditableTableCell(
-                    bridge: bridge,
-                    item: item,
-                    column: column,
-                    classId: data.sheet.classId,
-                    width: resolvedColumnWidth(for: column),
-                    tint: tint(for: column),
-                    categoryTint: column.categoryId.flatMap { id in
-                        data.sheet.columnCategories.first(where: { $0.id == id }).map { tint(for: $0) }
-                    },
-                    focusedCellId: $focusedCellId,
-                    activeChoiceCellId: $activeChoiceCellId,
-                    navigationDirection: navigationDirection,
-                    formulaDisplay: formulaDisplay(for: item, column: column, data: data),
-                    isSelected: inspectorSelection == NotebookInspectorSelection(studentId: item.student.id, columnId: column.id),
-                    isAttendanceQuickMode: isAttendanceQuickMode,
-                    reloadToken: cellReloadRevision,
-                    onSelect: {
-                        inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
-                    },
-                    onPrepareUndo: { previousValue, previousDisplayLabel in
-                        recordCellUndo(
-                            studentId: item.student.id,
-                            column: column,
-                            previousValue: previousValue,
-                            previousDisplayLabel: previousDisplayLabel
-                        )
-                    },
-                    onOpenFormula: {
-                        presentFormulaEditor(for: column)
-                    },
-                    onOpenRubricIndividual: {
-                        openRubricIndividual(column: column, item: item)
-                    },
-                    onOpenRubricBulk: {
-                        openRubricBulk(column: column, data: data)
-                    },
-                    onNavigate: { direction in
-                        navigateCell(
-                            from: item.student.id,
-                            column: column,
-                            direction: direction,
-                            rows: allRows,
-                            segments: navigableSegments
-                        )
-                    },
-                    onCellSaved: {
-                        cellReloadRevision += 1
-                    },
-                    onAttendanceSaved: {
-                        Task { await refreshNotebookSignals() }
-                    }
+                ZStack {
+                    Rectangle()
+                        .fill(notebookColumnCellFill(for: column, rowIndex: rowIndex, isActive: isCellSelected))
+
+                    NotebookEditableTableCell(
+                        bridge: bridge,
+                        item: item,
+                        column: column,
+                        classId: data.sheet.classId,
+                        width: resolvedColumnWidth(for: column),
+                        tint: displayTint(for: column),
+                        categoryTint: column.categoryId.flatMap { id in
+                            data.sheet.columnCategories.first(where: { $0.id == id }).map { tint(for: $0) }
+                        },
+                        hasColumnColor: hasCustomColumnColor(column),
+                        focusedCellId: $focusedCellId,
+                        activeChoiceCellId: $activeChoiceCellId,
+                        navigationDirection: navigationDirection,
+                        formulaDisplay: formulaDisplay(for: item, column: column, data: data),
+                        isSelected: isCellSelected,
+                        isAttendanceQuickMode: isAttendanceQuickMode,
+                        reloadToken: cellReloadRevision,
+                        onSelect: {
+                            inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
+                        },
+                        onPrepareUndo: { previousValue, previousDisplayLabel in
+                            recordCellUndo(
+                                studentId: item.student.id,
+                                column: column,
+                                previousValue: previousValue,
+                                previousDisplayLabel: previousDisplayLabel
+                            )
+                        },
+                        onOpenFormula: {
+                            presentFormulaEditor(for: column)
+                        },
+                        onOpenRubricIndividual: {
+                            openRubricIndividual(column: column, item: item)
+                        },
+                        onOpenRubricBulk: {
+                            openRubricBulk(column: column, data: data)
+                        },
+                        onNavigate: { direction in
+                            navigateCell(
+                                from: item.student.id,
+                                column: column,
+                                direction: direction,
+                                rows: allRows,
+                                segments: navigableSegments
+                            )
+                        },
+                        onCellSaved: {
+                            cellReloadRevision += 1
+                        },
+                        onAttendanceSaved: {
+                            Task { await refreshNotebookSignals() }
+                        }
+                    )
+                }
+                .frame(width: resolvedColumnWidth(for: column), height: notebookGridRowHeight)
+                .overlay(
+                    Rectangle()
+                        .stroke(notebookColumnCellBorder(for: column, isActive: isCellSelected), lineWidth: isCellSelected ? 1.4 : 0.5)
                 )
-                .frame(width: resolvedColumnWidth(for: column))
             )
         case .collapsedCategory(let category, let columns):
             return AnyView(
@@ -3193,6 +3295,12 @@ struct NotebookModuleView: View {
                     )
                 }
                 .buttonStyle(.plain)
+                .frame(width: 150, height: notebookGridRowHeight)
+                .background(tint(for: category).opacity(0.08))
+                .overlay(
+                    Rectangle()
+                        .stroke(NotebookStyle.softBorder.opacity(0.45), lineWidth: 0.5)
+                )
                 .contextMenu {
                     categoryContextMenu(category, data: data)
                 }
@@ -4046,6 +4154,7 @@ private struct NotebookEditableTableCell: View {
     let width: CGFloat
     let tint: Color
     let categoryTint: Color?
+    let hasColumnColor: Bool
     var focusedCellId: FocusState<String?>.Binding
     @Binding var activeChoiceCellId: String?
     let navigationDirection: NotebookNavigationDirection
@@ -4081,12 +4190,12 @@ private struct NotebookEditableTableCell: View {
         let persistedCell = item.row.persistedCells.first(where: { $0.columnId == column.id })
         ZStack {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(isSelected ? tint.opacity(0.14) : NotebookStyle.surfaceSoft.opacity(column.categoryId == nil ? 0.16 : 0.28))
+                .fill(editableCellFill)
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .stroke(
-                            isSelected ? tint.opacity(0.55) : (categoryTint ?? tint).opacity(column.categoryId == nil ? 0.05 : 0.12),
-                            lineWidth: isSelected ? 1.5 : (column.categoryId == nil ? 0.8 : 1)
+                            isSelected ? Color.accentColor.opacity(0.85) : editableCellBorder,
+                            lineWidth: isSelected ? 1.4 : 0.6
                         )
                 )
 
@@ -4120,7 +4229,7 @@ private struct NotebookEditableTableCell: View {
                 .padding(6)
             }
         }
-        .frame(height: 44)
+        .frame(width: width, height: 44)
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)
         .onAppear(perform: loadDrafts)
@@ -4131,6 +4240,20 @@ private struct NotebookEditableTableCell: View {
             guard state is NotebookUiStateData else { return }
             loadDraftsUnlessEditing()
         }
+    }
+
+    private var editableCellFill: Color {
+        if hasColumnColor {
+            return tint.opacity(isSelected ? 0.22 : 0.10)
+        }
+        return isSelected ? tint.opacity(0.14) : NotebookStyle.surfaceSoft.opacity(column.categoryId == nil ? 0.12 : 0.22)
+    }
+
+    private var editableCellBorder: Color {
+        if hasColumnColor {
+            return tint.opacity(0.28)
+        }
+        return (categoryTint ?? tint).opacity(column.categoryId == nil ? 0.05 : 0.12)
     }
 
     @ViewBuilder
@@ -4644,6 +4767,7 @@ private struct NotebookDynamicCellsRow: View {
                         width: max(column.widthDp, 120),
                         tint: column.colorHex.map { Color(hex: $0) } ?? NotebookStyle.primaryTint,
                         categoryTint: nil,
+                        hasColumnColor: column.colorHex?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false,
                         focusedCellId: $focusedCellId,
                         activeChoiceCellId: $activeChoiceCellId,
                         navigationDirection: .down,
@@ -5100,18 +5224,22 @@ private struct NotebookColumnOrganizerSheet: View {
         orderedColumns.filter { column in
             let trimmedSearch = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
             let matchesSearch = trimmedSearch.isEmpty || column.title.localizedCaseInsensitiveContains(trimmedSearch)
-            let matchesHiddenFilter = !showHiddenOnly || effectiveIsHidden(column)
+            let matchesHiddenFilter = !showHiddenOnly || effectiveIsRestorableHidden(column)
 
             return matchesSearch && matchesHiddenFilter
         }
     }
 
     private var visibleCount: Int {
-        columns.filter { !effectiveIsHidden($0) }.count
+        columns.filter { !effectiveIsHidden($0) && !isArchived($0) }.count
     }
 
     private var hiddenCount: Int {
-        columns.filter { effectiveIsHidden($0) }.count
+        columns.filter { effectiveIsRestorableHidden($0) }.count
+    }
+
+    private var archivedCount: Int {
+        columns.filter { isArchived($0) }.count
     }
 
     var body: some View {
@@ -5168,7 +5296,7 @@ private struct NotebookColumnOrganizerSheet: View {
                 Text("Organizar columnas")
                     .font(.title3.weight(.semibold))
 
-                Text("\(visibleCount) visibles · \(hiddenCount) ocultas · \(columns.count) en total")
+                Text("\(visibleCount) visibles · \(hiddenCount) ocultas · \(archivedCount) archivadas")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -5227,6 +5355,7 @@ private struct NotebookColumnOrganizerSheet: View {
 
     private func columnRow(_ column: NotebookColumnDefinition) -> some View {
         let isHidden = effectiveIsHidden(column)
+        let isArchived = isArchived(column)
 
         return HStack(spacing: 10) {
             Image(systemName: "line.3.horizontal")
@@ -5251,6 +5380,9 @@ private struct NotebookColumnOrganizerSheet: View {
                     if column.isPinned {
                         Text("Fijada")
                     }
+                    if isArchived {
+                        Text("Archivada")
+                    }
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -5268,6 +5400,7 @@ private struct NotebookColumnOrganizerSheet: View {
                 )
             )
             .labelsHidden()
+            .disabled(isArchived)
 
             Menu {
                 Button("Renombrar") {
@@ -5277,6 +5410,7 @@ private struct NotebookColumnOrganizerSheet: View {
                 Button(isHidden ? "Mostrar" : "Ocultar") {
                     setColumnHidden(column, isHidden: !isHidden)
                 }
+                .disabled(isArchived)
 
                 Divider()
 
@@ -5316,16 +5450,25 @@ private struct NotebookColumnOrganizerSheet: View {
     }
 
     private func effectiveIsHidden(_ column: NotebookColumnDefinition) -> Bool {
-        hiddenOverrides[column.id] ?? (column.isHidden || column.visibility == .hidden || column.visibility == .archived)
+        isArchived(column) || effectiveIsRestorableHidden(column)
+    }
+
+    private func effectiveIsRestorableHidden(_ column: NotebookColumnDefinition) -> Bool {
+        hiddenOverrides[column.id] ?? (column.isHidden || column.visibility == .hidden)
+    }
+
+    private func isArchived(_ column: NotebookColumnDefinition) -> Bool {
+        column.visibility == .archived
     }
 
     private func setColumnHidden(_ column: NotebookColumnDefinition, isHidden: Bool) {
+        guard !isArchived(column) else { return }
         hiddenOverrides[column.id] = isHidden
         onToggleHidden(column, isHidden)
     }
 
     private func showAllColumns() {
-        columns.forEach { column in
+        columns.filter { effectiveIsRestorableHidden($0) }.forEach { column in
             hiddenOverrides[column.id] = false
         }
         onShowAll()

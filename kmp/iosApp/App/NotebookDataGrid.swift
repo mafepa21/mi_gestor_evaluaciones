@@ -96,6 +96,8 @@ private struct NotebookResizeCursorModifier: ViewModifier {
 
 struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, ScrollTopAccessory: View, FixedHeader: View, ScrollHeader: View, FixedRows: View, ScrollRows: View>: View {
     let fixedColumnWidth: CGFloat
+    let topAccessoryHeight: CGFloat
+    let headerHeight: CGFloat
     let fixedTopAccessory: FixedTopAccessory
     let dividerHandle: DividerHandle
     let scrollTopAccessory: ScrollTopAccessory
@@ -106,6 +108,8 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, ScrollTopA
 
     init(
         fixedColumnWidth: CGFloat,
+        topAccessoryHeight: CGFloat,
+        headerHeight: CGFloat,
         @ViewBuilder fixedTopAccessory: () -> FixedTopAccessory,
         @ViewBuilder dividerHandle: () -> DividerHandle,
         @ViewBuilder scrollTopAccessory: () -> ScrollTopAccessory,
@@ -115,6 +119,8 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, ScrollTopA
         @ViewBuilder scrollRows: () -> ScrollRows
     ) {
         self.fixedColumnWidth = fixedColumnWidth
+        self.topAccessoryHeight = topAccessoryHeight
+        self.headerHeight = headerHeight
         self.fixedTopAccessory = fixedTopAccessory()
         self.dividerHandle = dividerHandle()
         self.scrollTopAccessory = scrollTopAccessory()
@@ -129,7 +135,9 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, ScrollTopA
             HStack(alignment: .top, spacing: 0) {
                 VStack(alignment: .leading, spacing: 0) {
                     fixedTopAccessory
+                        .frame(height: topAccessoryHeight, alignment: .topLeading)
                     fixedHeader
+                        .frame(height: headerHeight, alignment: .topLeading)
                     fixedRows
                 }
                 .frame(width: fixedColumnWidth, alignment: .topLeading)
@@ -145,7 +153,9 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, ScrollTopA
                 ScrollView(.horizontal, showsIndicators: true) {
                     VStack(alignment: .leading, spacing: 0) {
                         scrollTopAccessory
+                            .frame(height: topAccessoryHeight, alignment: .topLeading)
                         scrollHeader
+                            .frame(height: headerHeight, alignment: .topLeading)
                         scrollRows
                     }
                 }

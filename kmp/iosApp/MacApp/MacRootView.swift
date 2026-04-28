@@ -42,45 +42,23 @@ struct MacRootView: View {
 
     @ViewBuilder
     private var navigationSplit: some View {
-        if session.selectedFeature == .notebook && !isNotebookInspectorColumnVisible {
-            NavigationSplitView(columnVisibility: $columnVisibility) {
-                macSidebar
-            } detail: {
-                featureContent(for: session.selectedFeature)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(MacAppStyle.pageBackground)
-            }
-            .navigationSplitViewStyle(.balanced)
-            .toolbar {
-                macToolbar
-            }
-            .onChange(of: session.selectedFeature) { newFeature in
-                columnVisibility = .all
-                if newFeature == .notebook {
-                    isNotebookInspectorColumnVisible = true
-                }
-            }
-        } else {
-            NavigationSplitView(columnVisibility: $columnVisibility) {
-                macSidebar
-            } content: {
-                featureContent(for: session.selectedFeature)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(MacAppStyle.pageBackground)
-            } detail: {
-                featureInspector(for: session.selectedFeature)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(MacAppStyle.pageBackground)
-            }
-            .navigationSplitViewStyle(.balanced)
-            .toolbar {
-                macToolbar
-            }
-            .onChange(of: session.selectedFeature) { newFeature in
-                columnVisibility = .all
-                if newFeature == .notebook {
-                    isNotebookInspectorColumnVisible = true
-                }
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+            macSidebar
+        } content: {
+            featureContent(for: session.selectedFeature)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(MacAppStyle.pageBackground)
+        } detail: {
+            featureInspectorColumn(for: session.selectedFeature)
+        }
+        .navigationSplitViewStyle(.balanced)
+        .toolbar {
+            macToolbar
+        }
+        .onChange(of: session.selectedFeature) { newFeature in
+            columnVisibility = .all
+            if newFeature == .notebook {
+                isNotebookInspectorColumnVisible = true
             }
         }
     }
@@ -191,6 +169,20 @@ struct MacRootView: View {
             )
         default:
             MacModuleInspectorPlaceholder(feature: MacFeatureRegistry.descriptor(for: feature))
+        }
+    }
+
+    @ViewBuilder
+    private func featureInspectorColumn(for feature: MacFeatureDescriptor.Feature) -> some View {
+        if feature == .notebook && !isNotebookInspectorColumnVisible {
+            Color.clear
+                .frame(minWidth: 0, idealWidth: 0, maxWidth: 0, maxHeight: .infinity)
+                .navigationSplitViewColumnWidth(min: 0, ideal: 0, max: 1)
+                .background(MacAppStyle.pageBackground)
+        } else {
+            featureInspector(for: feature)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(MacAppStyle.pageBackground)
         }
     }
 

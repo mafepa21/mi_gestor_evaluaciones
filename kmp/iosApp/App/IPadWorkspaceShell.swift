@@ -427,7 +427,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .reports: return "Informes"
         case .library: return "Biblioteca"
         case .peSessions: return "EF · Sesiones"
-        case .peTests: return "EF · Pruebas físicas"
+        case .peTests: return "EF · Condición física"
         case .peRubrics: return "EF · Rúbricas"
         case .peIncidents: return "EF · Incidencias"
         case .peMaterial: return "EF · Material"
@@ -450,7 +450,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .reports: return "Salida docente"
         case .library: return "Plantillas reutilizables"
         case .peSessions: return "Operativa en pista"
-        case .peTests: return "Marcas e históricos"
+        case .peTests: return "Pruebas, baremos e históricos"
         case .peRubrics: return "Rúbricas motrices"
         case .peIncidents: return "Seguridad y seguimiento"
         case .peMaterial: return "Inventario rápido"
@@ -1274,7 +1274,7 @@ struct AppWorkspaceShell: View {
             )
             .environmentObject(bridge)
         case .peTests:
-            EFPhysicalTestsWorkspaceView(
+            PhysicalTestsWorkspaceView(
                 selectedClassId: $selectedClassId,
                 onOpenModule: open(module:classId:studentId:)
             )
@@ -1448,7 +1448,7 @@ struct AppWorkspaceShell: View {
         case .peSessions:
             return "Crea sesiones EF, activa el trabajo en pista y registra material, intensidad e incidencias."
         case .peTests:
-            return "Crea pruebas físicas, registra marcas y compara históricos del grupo desde un solo módulo."
+            return "Crea pruebas físicas, aplica baremos, registra marcas y compara históricos del grupo."
         case .peRubrics:
             return "Usa plantillas EF de observación, seguridad y ejecución sin salir del banco de rúbricas."
         case .peIncidents:
@@ -5808,258 +5808,6 @@ private struct EFIncidentsWorkspaceView: View {
             }
             .buttonStyle(.bordered)
         }
-    }
-}
-
-private struct EFPhysicalTestsWorkspaceView: View {
-    @EnvironmentObject private var bridge: KmpBridge
-    @Environment(\.colorScheme) private var colorScheme
-    @Binding var selectedClassId: Int64?
-    let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
-
-    @State private var tests: [KmpBridge.PhysicalTestSnapshot] = []
-    @State private var selectedTestId: Int64?
-    @State private var selectedStudentId: Int64?
-    @State private var scoreDraft = ""
-    @State private var searchText = ""
-    @State private var showingCreateSheet = false
-
-    private var selectedTest: KmpBridge.PhysicalTestSnapshot? {
-        tests.first(where: { $0.evaluation.id == selectedTestId })
-    }
-
-    private var filteredResults: [KmpBridge.PhysicalTestSnapshot.StudentResult] {
-        guard let selectedTest else { return [] }
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return selectedTest.results }
-        return selectedTest.results.filter {
-            "\($0.student.firstName) \($0.student.lastName)".localizedCaseInsensitiveContains(query)
-        }
-    }
-
-    private var selectedResult: KmpBridge.PhysicalTestSnapshot.StudentResult? {
-        filteredResults.first(where: { $0.student.id == selectedStudentId }) ??
-        selectedTest?.results.first(where: { $0.student.id == selectedStudentId })
-    }
-
-    private var metrics: (tests: Int, recorded: Int, avg: Double) {
-        let recorded = selectedTest?.recordedCount ?? 0
-        let avg = selectedTest?.average ?? 0
-        return (tests.count, recorded, avg)
-    }
-
-    var body: some View {
-        HStack(spacing: 0) {
-            VStack(spacing: 0) {
-                VStack(spacing: 12) {
-                    HStack(spacing: 10) {
-                        WorkspaceCompactStat(title: "Pruebas", value: "\(metrics.tests)", tint: .blue)
-                        WorkspaceCompactStat(title: "Registros", value: "\(metrics.recorded)", tint: .green)
-                        WorkspaceCompactStat(title: "Media", value: IosFormatting.decimal(from: metrics.avg), tint: .orange)
-                        Spacer()
-                        Button {
-                            showingCreateSheet = true
-                        } label: {
-                            Label("Nueva prueba", systemImage: "plus")
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
-
-                    HStack(spacing: 10) {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundStyle(.secondary)
-                        TextField("Buscar alumno…", text: $searchText)
-                            .textFieldStyle(.plain)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                }
-                .padding(16)
-
-                List {
-                    Section("Pruebas") {
-                        ForEach(tests, id: \.evaluation.id) { snapshot in
-                            Button {
-                                selectedTestId = snapshot.evaluation.id
-                                selectedStudentId = snapshot.results.first?.student.id
-                                scoreDraft = displayScore(snapshot.results.first?.value)
-                            } label: {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text(snapshot.evaluation.name)
-                                        .font(.headline)
-                                    Text("\(snapshot.recordedCount) registros · media \(IosFormatting.decimal(from: snapshot.average))")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-
-                    if selectedTest != nil {
-                        Section("Resultados") {
-                            ForEach(filteredResults, id: \.student.id) { result in
-                                Button {
-                                    selectedStudentId = result.student.id
-                                    scoreDraft = displayScore(result.value)
-                                } label: {
-                                    HStack {
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text("\(result.student.firstName) \(result.student.lastName)")
-                                                .font(.subheadline.weight(.bold))
-                                            Text(result.value == nil ? "Sin marca" : "Marca registrada")
-                                                .font(.caption.weight(.semibold))
-                                                .foregroundStyle(.secondary)
-                                        }
-                                        Spacer()
-                                        Text(result.value.map { IosFormatting.decimal(from: $0) } ?? "—")
-                                            .font(.headline.monospacedDigit())
-                                    }
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                }
-                .listStyle(.plain)
-            }
-            .frame(minWidth: 340, maxWidth: 400)
-
-            Divider().opacity(0.2)
-
-            Group {
-                if let test = selectedTest, let result = selectedResult {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 18) {
-                            WorkspaceInspectorHero(
-                                title: test.evaluation.name,
-                                subtitle: "\(result.student.firstName) \(result.student.lastName)"
-                            )
-
-                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 16)], spacing: 16) {
-                                WorkspaceMetricCard(
-                                    title: "Marca actual",
-                                    value: result.value.map { IosFormatting.decimal(from: $0) } ?? "Sin dato",
-                                    systemImage: "stopwatch.fill"
-                                )
-                                WorkspaceMetricCard(
-                                    title: "Mejor del grupo",
-                                    value: test.best.map { IosFormatting.decimal(from: $0) } ?? "Sin dato",
-                                    systemImage: "trophy.fill"
-                                )
-                                WorkspaceMetricCard(
-                                    title: "Media grupo",
-                                    value: IosFormatting.decimal(from: test.average),
-                                    systemImage: "chart.line.uptrend.xyaxis"
-                                )
-                            }
-
-                            WorkspaceDetailBlock(
-                                title: "Tipo de prueba",
-                                content: fallback(test.evaluation.type, empty: "Prueba física")
-                            )
-
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text("Registrar marca")
-                                    .font(.headline)
-                                TextField("Ej. 12.40", text: $scoreDraft)
-                                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                                    .appKeyboardType(.decimalPad)
-
-                                Button("Guardar resultado") {
-                                    Task { await savePhysicalTestResult(test: test, result: result) }
-                                }
-                                .buttonStyle(.borderedProminent)
-                            }
-
-                            HStack(spacing: 12) {
-                                Button("Abrir alumno") {
-                                    onOpenModule(.students, selectedClassId, result.student.id)
-                                }
-                                .buttonStyle(.borderedProminent)
-
-                                Button("Abrir cuaderno") {
-                                    onOpenModule(.notebook, selectedClassId, result.student.id)
-                                }
-                                .buttonStyle(.bordered)
-
-                                Button("Abrir evaluación") {
-                                    onOpenModule(.evaluationHub, selectedClassId, result.student.id)
-                                }
-                                .buttonStyle(.bordered)
-                            }
-                        }
-                        .padding(24)
-                    }
-                } else {
-                    WorkspaceEmptyState(
-                        title: "Selecciona una prueba física",
-                        subtitle: "Aquí registramos marcas, comparamos resultados por grupo y enlazamos con alumnado, cuaderno y evaluación."
-                    )
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(appPageBackground(for: colorScheme))
-        }
-        .task { await reload() }
-        .sheet(isPresented: $showingCreateSheet) {
-            CreatePhysicalTestSheet(defaultClassId: selectedClassId) {
-                Task { await reload() }
-            }
-            .environmentObject(bridge)
-        }
-        .onChange(of: selectedClassId) { _ in
-            Task { await reload() }
-        }
-        .onChange(of: selectedStudentId) { _ in
-            scoreDraft = displayScore(selectedResult?.value)
-        }
-    }
-
-    @MainActor
-    private func reload() async {
-        guard let selectedClassId else {
-            tests = []
-            selectedTestId = nil
-            selectedStudentId = nil
-            return
-        }
-        tests = (try? await bridge.loadPhysicalTests(classId: selectedClassId)) ?? []
-        if selectedTestId == nil || !tests.contains(where: { $0.evaluation.id == selectedTestId }) {
-            selectedTestId = tests.first?.evaluation.id
-        }
-        if selectedStudentId == nil || !(selectedTest?.results.contains(where: { $0.student.id == selectedStudentId }) ?? false) {
-            selectedStudentId = selectedTest?.results.first?.student.id
-        }
-        scoreDraft = displayScore(selectedResult?.value)
-    }
-
-    private func savePhysicalTestResult(test: KmpBridge.PhysicalTestSnapshot, result: KmpBridge.PhysicalTestSnapshot.StudentResult) async {
-        guard let selectedClassId else { return }
-        let normalized = scoreDraft.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines)
-        let parsedValue = Double(normalized)
-        do {
-            try await bridge.saveGrade(
-                studentId: result.student.id,
-                evaluationId: test.evaluation.id,
-                value: parsedValue,
-                classId: selectedClassId
-            )
-            bridge.status = parsedValue == nil ? "Marca limpiada correctamente." : "Marca física guardada."
-            await reload()
-        } catch {
-            bridge.status = "No se pudo guardar la prueba física: \(error.localizedDescription)"
-        }
-    }
-
-    private func displayScore(_ value: Double?) -> String {
-        guard let value else { return "" }
-        return IosFormatting.decimal(from: value)
-    }
-
-    private func fallback(_ value: String, empty placeholder: String) -> String {
-        value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? placeholder : value
     }
 }
 

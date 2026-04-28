@@ -10,6 +10,14 @@
 		042FE630464B6D6C17B475DC /* MacModuleStubs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09D87D21656FDFADF58B2FBA /* MacModuleStubs.swift */; };
 		0D1BC8425E85592907678393 /* MacSqliteCompat.c in Sources */ = {isa = PBXBuildFile; fileRef = B45DCEB32A99C22B048911B0 /* MacSqliteCompat.c */; };
 		0E1FCE13DF847EFA7D44E0AD /* TeacherScheduleSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85B8ED1FDFD34D1DF02ACDD8 /* TeacherScheduleSettingsView.swift */; };
+		101F70A10C0F4A1A9D010001 /* PhysicalTestsWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 101F70A10C0F4A1A9D020001 /* PhysicalTestsWorkspaceView.swift */; };
+		101F70A10C0F4A1A9D010002 /* PhysicalTestsWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 101F70A10C0F4A1A9D020001 /* PhysicalTestsWorkspaceView.swift */; };
+		101F70A10C0F4A1A9D010003 /* PhysicalTestCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 101F70A10C0F4A1A9D020002 /* PhysicalTestCaptureView.swift */; };
+		101F70A10C0F4A1A9D010004 /* PhysicalTestCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 101F70A10C0F4A1A9D020002 /* PhysicalTestCaptureView.swift */; };
+		101F70A10C0F4A1A9D010005 /* PhysicalTestScaleEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 101F70A10C0F4A1A9D020003 /* PhysicalTestScaleEditor.swift */; };
+		101F70A10C0F4A1A9D010006 /* PhysicalTestScaleEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 101F70A10C0F4A1A9D020003 /* PhysicalTestScaleEditor.swift */; };
+		101F70A10C0F4A1A9D010007 /* MacPhysicalTestsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 101F70A10C0F4A1A9D020004 /* MacPhysicalTestsView.swift */; };
+		101F70A10C0F4A1A9D010008 /* MacPhysicalTestsToolbarActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 101F70A10C0F4A1A9D020005 /* MacPhysicalTestsToolbarActions.swift */; };
 		1286D99337F554322E21CD9C /* AppleAppRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BE36C2FC3CA10A0D5E7F322 /* AppleAppRootView.swift */; };
 		141D04C442E3CD9754436746 /* SyncEventListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8E92873CBFFD07EEDF953F4 /* SyncEventListener.swift */; };
 		17C72CB98D707507A9BA78E1 /* PlannerWorkspaceIOS.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AFC9FBC11C0B8B50E847112 /* PlannerWorkspaceIOS.swift */; };
@@ -103,6 +111,11 @@
 
 /* Begin PBXFileReference section */
 		09D87D21656FDFADF58B2FBA /* MacModuleStubs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacModuleStubs.swift; sourceTree = "<group>"; };
+		101F70A10C0F4A1A9D020001 /* PhysicalTestsWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhysicalTestsWorkspaceView.swift; sourceTree = "<group>"; };
+		101F70A10C0F4A1A9D020002 /* PhysicalTestCaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhysicalTestCaptureView.swift; sourceTree = "<group>"; };
+		101F70A10C0F4A1A9D020003 /* PhysicalTestScaleEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhysicalTestScaleEditor.swift; sourceTree = "<group>"; };
+		101F70A10C0F4A1A9D020004 /* MacPhysicalTestsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacPhysicalTestsView.swift; sourceTree = "<group>"; };
+		101F70A10C0F4A1A9D020005 /* MacPhysicalTestsToolbarActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacPhysicalTestsToolbarActions.swift; sourceTree = "<group>"; };
 		14C238867D14FCB6C59390D5 /* AppleFoundationContextualAIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleFoundationContextualAIService.swift; sourceTree = "<group>"; };
 		27176C9EB76172D41191833D /* AppleFoundationReportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleFoundationReportService.swift; sourceTree = "<group>"; };
 		28F88ED1497646466866123A /* NotebookFormulaKeyboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookFormulaKeyboard.swift; sourceTree = "<group>"; };
@@ -173,6 +186,8 @@
 				D7030138D429F12877D448CD /* MacDashboardView.swift */,
 				540E9FF031B5425A4147DC64 /* MacFeatureRegistry.swift */,
 				09D87D21656FDFADF58B2FBA /* MacModuleStubs.swift */,
+				101F70A10C0F4A1A9D020005 /* MacPhysicalTestsToolbarActions.swift */,
+				101F70A10C0F4A1A9D020004 /* MacPhysicalTestsView.swift */,
 				D4D63DE58BB98EFB94E5B080 /* MacRootView.swift */,
 				98A9F35D6CEDD07FCA45EBA5 /* MacSettingsView.swift */,
 				B45DCEB32A99C22B048911B0 /* MacSqliteCompat.c */,
@@ -245,6 +260,9 @@
 				7B252E2D9B95CDC6CB59B9A3 /* NotebookHiddenColumnsSheet.swift */,
 				4BA9E95BA74B4D7D8AC2D362 /* NotebookModuleView.swift */,
 				553BE9C8F245950E744D692A /* NotebookTopBar.swift */,
+				101F70A10C0F4A1A9D020002 /* PhysicalTestCaptureView.swift */,
+				101F70A10C0F4A1A9D020003 /* PhysicalTestScaleEditor.swift */,
+				101F70A10C0F4A1A9D020001 /* PhysicalTestsWorkspaceView.swift */,
 				8AFC9FBC11C0B8B50E847112 /* PlannerWorkspaceIOS.swift */,
 				53D5C192E36FCFC177FCB496 /* RubricBulkEvaluationSheet.swift */,
 				85B8ED1FDFD34D1DF02ACDD8 /* TeacherScheduleSettingsView.swift */,
@@ -421,6 +439,8 @@
 				303A136D412D596B99BB06A8 /* MacDashboardView.swift in Sources */,
 				3D42ABE38DAA65311889C449 /* MacFeatureRegistry.swift in Sources */,
 				042FE630464B6D6C17B475DC /* MacModuleStubs.swift in Sources */,
+				101F70A10C0F4A1A9D010008 /* MacPhysicalTestsToolbarActions.swift in Sources */,
+				101F70A10C0F4A1A9D010007 /* MacPhysicalTestsView.swift in Sources */,
 				F0FD5D3E81213790BCEC6415 /* MacRootView.swift in Sources */,
 				BD47B7FB84E4AAC46BCF34DD /* MacSettingsView.swift in Sources */,
 				0D1BC8425E85592907678393 /* MacSqliteCompat.c in Sources */,
@@ -431,6 +451,9 @@
 				DAE6053C0723B1F6576BE406 /* NotebookHiddenColumnsSheet.swift in Sources */,
 				878FB204389D94BB6A912BF6 /* NotebookModuleView.swift in Sources */,
 				48055DD8105D96F8A70C7436 /* NotebookTopBar.swift in Sources */,
+				101F70A10C0F4A1A9D010003 /* PhysicalTestCaptureView.swift in Sources */,
+				101F70A10C0F4A1A9D010005 /* PhysicalTestScaleEditor.swift in Sources */,
+				101F70A10C0F4A1A9D010001 /* PhysicalTestsWorkspaceView.swift in Sources */,
 				3C174718E1D1C8F7AFA23C0E /* PendingEvaluationPickerSheet.swift in Sources */,
 				17C72CB98D707507A9BA78E1 /* PlannerWorkspaceIOS.swift in Sources */,
 				96D1470DC455935FA3D0954A /* QRCodeView.swift in Sources */,
@@ -463,6 +486,9 @@
 				7022D3558D3683BF04051378 /* NotebookHiddenColumnsSheet.swift in Sources */,
 				D3EBA1E1A169F964D3CA7654 /* NotebookModuleView.swift in Sources */,
 				D05BF5462DD0EA3DF89D927B /* NotebookTopBar.swift in Sources */,
+				101F70A10C0F4A1A9D010004 /* PhysicalTestCaptureView.swift in Sources */,
+				101F70A10C0F4A1A9D010006 /* PhysicalTestScaleEditor.swift in Sources */,
+				101F70A10C0F4A1A9D010002 /* PhysicalTestsWorkspaceView.swift in Sources */,
 				5C66DE9508311795F6FE0DF8 /* PendingEvaluationPickerSheet.swift in Sources */,
 				B20B74F08202FFF9657EF528 /* PlannerWorkspaceIOS.swift in Sources */,
 				E6E3B11097E285CF5867AFEF /* QRCodeView.swift in Sources */,

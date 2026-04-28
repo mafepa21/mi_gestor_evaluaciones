@@ -448,6 +448,7 @@ struct NotebookModuleView: View {
     @State private var highlightedCategoryId: String? = nil
     @State private var notebookAISheetRequest: NotebookAISheetRequest? = nil
     @State private var notebookSummarySheetRequest: NotebookSummarySheetRequest? = nil
+    @State private var isAverageConfigurationPresented = false
     @State private var riskLevelCache: [Int64: RiskLevel] = [:]
     @State private var riskComputationKey: String?
     @State private var isPrecomputingRiskLevels = false
@@ -1261,6 +1262,16 @@ struct NotebookModuleView: View {
                     showToast(message, style: style)
                 }
             }
+            .sheet(isPresented: $isAverageConfigurationPresented) {
+                NotebookAverageConfigurationSheet(columns: data.sheet.columns) { updates in
+                    saveAverageConfiguration(updates)
+                }
+                #if os(macOS)
+                .frame(width: 560, height: 640)
+                #else
+                .presentationDetents([.large])
+                #endif
+            }
             .sheet(item: $formulaEditRequest) { request in
                 formulaEditorSheet(request: request, data: data)
             }
@@ -1457,7 +1468,6 @@ struct NotebookModuleView: View {
                         inspectorInfoRow("Valor", value: displayValue(for: item, column: column))
                         inspectorInfoRow("Categoría", value: categoryTitle(for: column, data: data))
                         inspectorInfoRow("Peso", value: String(format: "%.1f", column.weight))
-                        inspectorInfoRow("Cuenta para media", value: column.countsTowardAverage ? "Sí" : "No")
                         inspectorInfoRow("Tipo", value: "\(column.instrumentKind.name) · \(column.inputKind.name)")
                         inspectorInfoRow("Fecha", value: formattedDate(column.dateEpochMs?.int64Value))
                         inspectorInfoRow("Criterio asociado", value: column.competencyCriteriaIds.isEmpty ? "Sin criterio" : column.competencyCriteriaIds.map(String.init).joined(separator: ", "))
@@ -2447,6 +2457,8 @@ struct NotebookModuleView: View {
         visibility: NotebookColumnVisibility? = nil,
         order: Int32? = nil,
         widthDp: Double? = nil,
+        weight: Double? = nil,
+        countsTowardAverage: Bool? = nil,
         colorHex: String? = nil,
         formula: String? = nil,
         updatesFormula: Bool = false
@@ -2461,7 +2473,7 @@ struct NotebookModuleView: View {
             evaluationId: column.evaluationId,
             rubricId: column.rubricId,
             formula: updatesFormula ? formula : column.formula,
-            weight: column.weight,
+            weight: weight ?? column.weight,
             dateEpochMs: column.dateEpochMs,
             unitOrSituation: column.unitOrSituation,
             competencyCriteriaIds: column.competencyCriteriaIds,
@@ -2476,7 +2488,7 @@ struct NotebookModuleView: View {
             categoryId: column.categoryId,
             ordinalLevels: column.ordinalLevels,
             availableIcons: column.availableIcons,
-            countsTowardAverage: column.countsTowardAverage,
+            countsTowardAverage: countsTowardAverage ?? column.countsTowardAverage,
             isPinned: column.isPinned,
             isHidden: isHidden ?? column.isHidden,
             visibility: visibility ?? column.visibility,
@@ -2518,6 +2530,20 @@ struct NotebookModuleView: View {
             ))
         }
         showToast(columns.count == 1 ? "Columna visible" : "Columnas ocultas visibles")
+        syncToolbarStateIfLoaded()
+    }
+
+    private func saveAverageConfiguration(_ updates: [NotebookAverageColumnUpdate]) {
+        guard !updates.isEmpty else { return }
+        // TODO(backend-batch): persist average column configuration in one backend batch instead of many saves.
+        updates.forEach { update in
+            bridge.saveColumn(column: copyNotebookColumn(
+                update.column,
+                weight: update.isIncluded ? update.weight : 0,
+                countsTowardAverage: update.isIncluded
+            ))
+        }
+        showToast("Media actualizada")
         syncToolbarStateIfLoaded()
     }
 
@@ -3108,14 +3134,24 @@ struct NotebookModuleView: View {
         let visibleRows = filteredRows(data: data)
         switch segment {
         case .fixed(let fixed):
-            return AnyView(
-                headerChip(
-                    title: fixed.title,
-                    subtitle: fixed.subtitle,
-                    width: resolvedFixedWidth(for: fixed),
-                    tint: tint(for: fixed)
-                )
+            let chip = headerChip(
+                title: fixed.title,
+                subtitle: fixed.subtitle,
+                width: resolvedFixedWidth(for: fixed),
+                tint: tint(for: fixed)
             )
+            if fixed == .average {
+                return AnyView(
+                    Button {
+                        isAverageConfigurationPresented = true
+                    } label: {
+                        chip
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Configurar media")
+                )
+            }
+            return AnyView(chip)
         case .column(let column):
             return AnyView(
                 NotebookResizableHeader(
@@ -5190,6 +5226,249 @@ private struct NotebookAICommentSheet: View {
     }
 }
 
+private struct NotebookAverageColumnUpdate {
+    let column: NotebookColumnDefinition
+    let isIncluded: Bool
+    let weight: Double
+}
+
+private struct NotebookAverageColumnDraft {
+    var isIncluded: Bool
+    var weightText: String
+}
+
+private struct NotebookAverageConfigurationSheet: View {
+    let columns: [NotebookColumnDefinition]
+    let onSave: ([NotebookAverageColumnUpdate]) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var draftsByColumnId: [String: NotebookAverageColumnDraft]
+
+    init(columns: [NotebookColumnDefinition], onSave: @escaping ([NotebookAverageColumnUpdate]) -> Void) {
+        self.columns = columns
+        self.onSave = onSave
+        _draftsByColumnId = State(initialValue: Dictionary(
+            uniqueKeysWithValues: columns.map {
+                ($0.id, NotebookAverageColumnDraft(
+                    isIncluded: $0.countsTowardAverage,
+                    weightText: Self.formatWeight($0.weight)
+                ))
+            }
+        ))
+    }
+
+    private var allAverageColumns: [NotebookColumnDefinition] {
+        columns
+            .filter { $0.type == .numeric || $0.type == .rubric }
+    }
+
+    private var configurableColumns: [NotebookColumnDefinition] {
+        allAverageColumns
+            .filter { !$0.isHidden && $0.visibility != .hidden && $0.visibility != .archived }
+            .sorted {
+                if $0.order != $1.order { return $0.order < $1.order }
+                return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+            }
+    }
+
+    private var totalWeight: Double? {
+        var total = 0.0
+        for column in configurableColumns {
+            guard draftsByColumnId[column.id]?.isIncluded == true else { continue }
+            guard let value = parsedWeight(for: column) else { return nil }
+            total += value
+        }
+        return total
+    }
+
+    private var canSave: Bool {
+        guard let totalWeight else { return false }
+        return abs(totalWeight - 100) <= 0.01
+    }
+
+    private var validationText: String {
+        guard let totalWeight else { return "Revisa los pesos antes de guardar." }
+        let formatted = Self.formatWeight(totalWeight)
+        if canSave { return "Total \(formatted)% listo para guardar." }
+        return "Total \(formatted)%. Debe sumar 100%."
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 24) {
+                        NotebookSurface(cornerRadius: NotebookStyle.cardRadius, fill: NotebookStyle.surfaceMuted, padding: 20) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Media")
+                                    .font(.title2.weight(.bold))
+                                Text("Selecciona los instrumentos visibles que forman la nota final y reparte su peso.")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+
+                        if configurableColumns.isEmpty {
+                            ContentUnavailableView(
+                                "Sin columnas evaluables visibles",
+                                systemImage: "percent",
+                                description: Text("Muestra o crea columnas numéricas o de rúbrica para configurar la media.")
+                            )
+                            .frame(maxWidth: .infinity, minHeight: 260)
+                        } else {
+                            VStack(alignment: .leading, spacing: 12) {
+                                ForEach(configurableColumns, id: \.id) { column in
+                                    columnRow(column)
+                                }
+                            }
+                        }
+                    }
+                    .padding(24)
+                }
+
+                Divider()
+
+                footer
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 16)
+            }
+            .background(EvaluationBackdrop())
+            .navigationTitle("Configurar media")
+            .appInlineNavigationBarTitleDisplayMode()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancelar") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Guardar") {
+                        onSave(buildUpdates())
+                        dismiss()
+                    }
+                    .disabled(!canSave)
+                }
+            }
+        }
+    }
+
+    private func columnRow(_ column: NotebookColumnDefinition) -> some View {
+        let isIncluded = draftsByColumnId[column.id]?.isIncluded == true
+
+        return NotebookSurface(cornerRadius: 12, fill: NotebookStyle.surface, padding: 16) {
+            HStack(spacing: 16) {
+                Toggle(
+                    "",
+                    isOn: Binding(
+                        get: { draftsByColumnId[column.id]?.isIncluded == true },
+                        set: { setIncluded($0, for: column) }
+                    )
+                )
+                .labelsHidden()
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(column.title)
+                        .font(.headline)
+                    Text(column.type == .rubric ? "Rúbrica" : "Numérica")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 16)
+
+                TextField("0", text: Binding(
+                    get: { draftsByColumnId[column.id]?.weightText ?? "0" },
+                    set: { setWeightText($0, for: column) }
+                ))
+                .appKeyboardType(.decimalPad)
+                .multilineTextAlignment(.trailing)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 72)
+                .disabled(!isIncluded)
+
+                Text("%")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+
+                Stepper("", value: weightBinding(for: column), in: 0...100, step: 5)
+                    .labelsHidden()
+                    .disabled(!isIncluded)
+            }
+        }
+    }
+
+    private var footer: some View {
+        HStack(spacing: 16) {
+            Text(validationText)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(canSave ? NotebookStyle.successTint : NotebookStyle.warningTint)
+
+            Spacer()
+
+            Button("Cancelar") { dismiss() }
+                .buttonStyle(.bordered)
+
+            Button("Guardar") {
+                onSave(buildUpdates())
+                dismiss()
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(!canSave)
+        }
+    }
+
+    private func buildUpdates() -> [NotebookAverageColumnUpdate] {
+        allAverageColumns.map { column in
+            let isConfigurable = configurableColumns.contains { $0.id == column.id }
+            let isIncluded = isConfigurable && (draftsByColumnId[column.id]?.isIncluded == true)
+            return NotebookAverageColumnUpdate(
+                column: column,
+                isIncluded: isIncluded,
+                weight: isIncluded ? (parsedWeight(for: column) ?? 0) : 0
+            )
+        }
+    }
+
+    private func setIncluded(_ isIncluded: Bool, for column: NotebookColumnDefinition) {
+        var draft = draftsByColumnId[column.id] ?? NotebookAverageColumnDraft(isIncluded: false, weightText: "0")
+        draft.isIncluded = isIncluded
+        if isIncluded, (parsedWeight(from: draft.weightText) ?? 0) == 0 {
+            draft.weightText = "10"
+        }
+        draftsByColumnId[column.id] = draft
+    }
+
+    private func setWeightText(_ text: String, for column: NotebookColumnDefinition) {
+        var draft = draftsByColumnId[column.id] ?? NotebookAverageColumnDraft(isIncluded: false, weightText: "0")
+        draft.weightText = text
+        draftsByColumnId[column.id] = draft
+    }
+
+    private func weightBinding(for column: NotebookColumnDefinition) -> Binding<Double> {
+        Binding(
+            get: { parsedWeight(for: column) ?? 0 },
+            set: { setWeightText(Self.formatWeight($0), for: column) }
+        )
+    }
+
+    private func parsedWeight(for column: NotebookColumnDefinition) -> Double? {
+        parsedWeight(from: draftsByColumnId[column.id]?.weightText ?? "")
+    }
+
+    private func parsedWeight(from raw: String) -> Double? {
+        let value = raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: ",", with: ".")
+        guard let number = Double(value), number >= 0, number <= 100 else { return nil }
+        return number
+    }
+
+    private static func formatWeight(_ value: Double) -> String {
+        if value.rounded() == value {
+            return String(Int(value))
+        }
+        return String(format: "%.1f", value)
+    }
+}
+
 private struct NotebookColumnOrganizerSheet: View {
     let columns: [NotebookColumnDefinition]
     let onToggleHidden: (NotebookColumnDefinition, Bool) -> Void
@@ -5374,9 +5653,6 @@ private struct NotebookColumnOrganizerSheet: View {
 
                 HStack(spacing: 6) {
                     Text(columnTypeLabel(for: column))
-                    if column.countsTowardAverage {
-                        Text("Cuenta para media")
-                    }
                     if column.isPinned {
                         Text("Fijada")
                     }

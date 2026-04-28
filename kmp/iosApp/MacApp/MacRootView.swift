@@ -7,6 +7,7 @@ struct MacRootView: View {
     @StateObject private var layoutState = WorkspaceLayoutState()
     @StateObject private var notebookInspectorState = NotebookMacInspectorState()
     @StateObject private var notebookToolbarActions = NotebookMacToolbarActions()
+    @StateObject private var physicalTestsToolbarActions = MacPhysicalTestsToolbarActions()
     @State private var selectedClassId: Int64? = nil
     @State private var selectedStudentId: Int64? = nil
     @State private var attendanceToolbarActions: MacAttendanceToolbarActions? = nil
@@ -128,6 +129,14 @@ struct MacRootView: View {
             )
         case .rubrics:
             MacRubricsView(bridge: session.bridge)
+        case .physicalTests:
+            MacPhysicalTestsView(
+                bridge: session.bridge,
+                selectedClassId: $selectedClassId,
+                selectedStudentId: $selectedStudentId,
+                onOpenModule: open(module:classId:studentId:),
+                toolbarActions: physicalTestsToolbarActions
+            )
         case .reports:
             MacReportsView(
                 bridge: session.bridge,
@@ -319,6 +328,32 @@ struct MacRootView: View {
                 }
             }
 
+            if session.selectedFeature == .physicalTests {
+                Button {
+                    physicalTestsToolbarActions.newBattery()
+                } label: {
+                    Label("Batería", systemImage: "plus.rectangle.on.rectangle")
+                }
+                .disabled(!physicalTestsToolbarActions.canUseClassActions)
+                .help("Nueva batería de condición física")
+
+                Button {
+                    physicalTestsToolbarActions.capture()
+                } label: {
+                    Label("Captura", systemImage: "square.and.pencil")
+                }
+                .disabled(!physicalTestsToolbarActions.canUseClassActions)
+                .help("Abrir captura de marcas")
+
+                Button {
+                    physicalTestsToolbarActions.createColumns()
+                } label: {
+                    Label("Cuaderno", systemImage: "tablecells")
+                }
+                .disabled(!physicalTestsToolbarActions.canUseClassActions)
+                .help("Crear columnas de marca y nota en el cuaderno")
+            }
+
             Button {
                 if session.selectedFeature == .dashboard, let dashboardToolbarActions {
                     dashboardToolbarActions.refresh()
@@ -326,6 +361,8 @@ struct MacRootView: View {
                     notebookToolbarActions.refresh()
                 } else if session.selectedFeature == .attendance, let attendanceToolbarActions {
                     attendanceToolbarActions.refresh()
+                } else if session.selectedFeature == .physicalTests {
+                    physicalTestsToolbarActions.refresh()
                 } else {
                     Task { await session.bridge.refreshDashboard(mode: .office) }
                 }
@@ -355,6 +392,7 @@ struct MacRootView: View {
         case .planner: return .orange
         case .students: return .blue
         case .rubrics: return .teal
+        case .physicalTests: return .orange
         case .sync: return .green
         case .backups: return .gray
         case .reports: return .indigo
@@ -456,6 +494,8 @@ struct MacRootView: View {
             session.selectedFeature = .reports
         case .attendance:
             session.selectedFeature = .attendance
+        case .peTests:
+            session.selectedFeature = .physicalTests
         default:
             session.bridge.status = "El módulo \(module.title) todavía no está disponible en la shell Mac."
         }

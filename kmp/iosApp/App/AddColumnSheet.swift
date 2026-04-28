@@ -369,7 +369,6 @@ struct AddColumnSheet: View {
     @State private var categoryPlacementMode: CategoryPlacementMode = .existing
     @State private var unitOrSituation: String = ""
     @State private var selectedDate: Date = .now
-    @State private var countsTowardAverage = true
     @State private var isPinned = false
     @State private var isTemplate = false
     @State private var isLocked = false
@@ -568,6 +567,7 @@ struct AddColumnSheet: View {
 
             if selectedBlueprint?.instrumentKind == .physicalTest {
                 physicalMeasurementPicker
+                physicalTestsWorkspaceHint
             }
 
             if selectedBlueprint?.type == .calculated {
@@ -590,7 +590,6 @@ struct AddColumnSheet: View {
                 .pickerStyle(.menu)
             }
 
-            Toggle("Cuenta para la media", isOn: $countsTowardAverage)
             Toggle("Fijar al inicio", isOn: $isPinned)
             Toggle("Columna bloqueada", isOn: $isLocked)
             Toggle("Guardar como plantilla", isOn: $isTemplate)
@@ -613,6 +612,24 @@ struct AddColumnSheet: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    private var physicalTestsWorkspaceHint: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Para batería, baremo e histórico usa EF · Condición física.", systemImage: "stopwatch.fill")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(.orange)
+
+            Text("Esta columna simple guarda una marca aislada. El módulo de Condición física prepara captura en pista, nota baremada y conexión limpia con el cuaderno.")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .background(Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color.orange.opacity(0.22), lineWidth: 1)
+        )
     }
 
     private var individualSummaryConfiguration: some View {
@@ -886,7 +903,7 @@ struct AddColumnSheet: View {
             competencyCriteriaIds: [],
             scaleKind: resolvedScaleKind,
             iconName: selectedBlueprint.icon,
-            countsTowardAverage: countsTowardAverage,
+            countsTowardAverage: false,
             isPinned: isPinned,
             isHidden: false,
             visibility: .visible,
@@ -956,15 +973,12 @@ struct AddColumnSheet: View {
             selectedPhysicalMeasurement = .distance
         }
         if selectedBlueprint.isIndividualSummary {
-            countsTowardAverage = false
             if columnName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || columnName == "Comentario IA" {
                 columnName = "Síntesis pedagógica"
             }
             if unitOrSituation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || unitOrSituation == "Comentario IA" {
                 unitOrSituation = NotebookIndividualSummaryPreferences.marker
             }
-        } else {
-            countsTowardAverage = true
         }
     }
 

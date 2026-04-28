@@ -463,13 +463,22 @@ class NotebookViewModel(
             try {
                 var columnToSave = column
                 
-                // Si es una rúbrica nueva sin evaluación asociada, la creamos
-                if (column.type == NotebookColumnType.RUBRIC && column.evaluationId == null && column.rubricId != null) {
+                val shouldCreateEvaluation =
+                    column.evaluationId == null &&
+                    column.countsTowardAverage &&
+                    (column.type == NotebookColumnType.NUMERIC || column.type == NotebookColumnType.RUBRIC) &&
+                    (column.type != NotebookColumnType.RUBRIC || column.rubricId != null)
+
+                if (shouldCreateEvaluation) {
                     val evaluationId = evaluationsRepository.saveEvaluation(
                         classId = classId,
-                        code = "RBC_${Clock.System.now().toEpochMilliseconds()}",
+                        code = if (column.type == NotebookColumnType.RUBRIC) {
+                            "RBC_${Clock.System.now().toEpochMilliseconds()}"
+                        } else {
+                            "COL_${Clock.System.now().toEpochMilliseconds()}"
+                        },
                         name = column.title,
-                        type = "Rúbrica",
+                        type = if (column.type == NotebookColumnType.RUBRIC) "Rúbrica" else "Evaluación",
                         weight = column.weight,
                         rubricId = column.rubricId
                     )

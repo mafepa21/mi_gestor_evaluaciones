@@ -6,6 +6,7 @@ struct MacRootView: View {
     @StateObject private var commandCenter = MacCommandCenterCoordinator()
     @StateObject private var layoutState = WorkspaceLayoutState()
     @StateObject private var notebookInspectorState = NotebookMacInspectorState()
+    @StateObject private var notebookToolbarActions = NotebookMacToolbarActions()
     @State private var selectedClassId: Int64? = nil
     @State private var selectedStudentId: Int64? = nil
     @State private var attendanceToolbarActions: MacAttendanceToolbarActions? = nil
@@ -93,7 +94,8 @@ struct MacRootView: View {
                 selectedStudentId: $selectedStudentId,
                 onOpenModule: open(module:classId:studentId:),
                 macPresentation: .content,
-                macInspectorState: notebookInspectorState
+                macInspectorState: notebookInspectorState,
+                macToolbarActions: notebookToolbarActions
             )
             .environmentObject(layoutState)
         case .attendance:
@@ -171,11 +173,70 @@ struct MacRootView: View {
 
             if session.selectedFeature == .notebook {
                 Button {
-                    layoutState.showNotebookAddColumn()
+                    notebookToolbarActions.markAllPresent()
+                } label: {
+                    Label("Todos presentes", systemImage: "checkmark.circle.fill")
+                }
+                .disabled(!notebookToolbarActions.canMarkAllPresent)
+                .help("Marcar como presentes los alumnos filtrados")
+
+                Button {
+                    notebookToolbarActions.toggleAttendanceQuickMode()
+                } label: {
+                    Label("Pase rápido", systemImage: notebookToolbarActions.isAttendanceQuickMode ? "figure.walk.circle.fill" : "figure.walk.circle")
+                }
+                .help("Activar pase rápido de asistencia")
+
+                Button {
+                    notebookToolbarActions.undo()
+                } label: {
+                    Label("Deshacer", systemImage: "arrow.uturn.backward")
+                }
+                .disabled(!notebookToolbarActions.canUndo)
+                .keyboardShortcut("z", modifiers: .command)
+                .help("Deshacer último cambio del cuaderno")
+
+                Button {
+                    notebookToolbarActions.toggleInspector()
+                } label: {
+                    Label("Inspector", systemImage: "sidebar.right")
+                }
+                .disabled(!notebookToolbarActions.canToggleInspector)
+                .help(notebookToolbarActions.isInspectorPresented ? "Ocultar inspector" : "Mostrar inspector")
+
+                Menu {
+                    Button("Organizar columnas…") {
+                        notebookToolbarActions.openOrganizationMenu()
+                    }
+                    .disabled(!notebookToolbarActions.organizationMenuAvailable)
+
+                    Button("Opciones avanzadas…") {
+                        notebookToolbarActions.openAdvancedMenu()
+                    }
+
+                    Divider()
+
+                    Button("Generar síntesis…") {
+                        notebookToolbarActions.generateSummary()
+                    }
+
+                    if let exportText = notebookToolbarActions.exportText {
+                        Divider()
+                        ShareLink(item: exportText) {
+                            Label("Exportar…", systemImage: "square.and.arrow.up")
+                        }
+                    }
+                } label: {
+                    Label("Más", systemImage: "ellipsis.circle")
+                }
+                .help("Más opciones del cuaderno")
+
+                Button {
+                    notebookToolbarActions.addColumn()
                 } label: {
                     Label("Columna", systemImage: "plus.rectangle")
                 }
-                .disabled(!layoutState.notebookAddColumnAvailable)
+                .disabled(!notebookToolbarActions.addColumnAvailable)
                 .help("Nueva columna")
             }
 

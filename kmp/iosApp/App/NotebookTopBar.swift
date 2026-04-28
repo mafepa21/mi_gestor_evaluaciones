@@ -515,6 +515,9 @@ struct NotebookTopBar: View {
     @ObservedObject var bridge: KmpBridge
     @Binding var searchText: String
     @Binding var surfaceMode: NotebookSurfaceMode
+#if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+#endif
     let navigationDirection: NotebookNavigationDirection
     let isInspectorPresented: Bool
     let isAttendanceQuickMode: Bool
@@ -531,6 +534,7 @@ struct NotebookTopBar: View {
     let onUndo: () -> Void
     var onGenerateSummaryFallback: (() -> Void)? = nil
     var exportText: String? = nil
+    var showsInlineActions: Bool = true
 
     private var selectedClass: SchoolClass? {
         bridge.classes.first(where: { $0.id == bridge.notebookViewModel.currentClassId?.int64Value ?? 0 })
@@ -548,103 +552,205 @@ struct NotebookTopBar: View {
     }
 
     var body: some View {
-        HStack(spacing: 12) {
+        #if os(macOS)
+        if showsInlineActions {
+            regularTopBar(showAddColumnAction: true)
+        } else {
+            macContextTopBar
+        }
+        #else
+        if horizontalSizeClass == .compact {
+            compactTopBar
+        } else {
+            regularTopBar(showAddColumnAction: true)
+        }
+        #endif
+    }
+
+    private var macContextTopBar: some View {
+        HStack(spacing: 16) {
             classPicker
-
-            TextField("Buscar alumno…", text: $searchText)
-                .textFieldStyle(.roundedBorder)
-                .frame(minWidth: 180, maxWidth: 260)
-
+            searchField
             Spacer(minLength: 0)
-
-            Picker("Vista", selection: $surfaceMode) {
-                Label("Rejilla", systemImage: "rectangle.grid.2x2").tag(NotebookSurfaceMode.grid)
-                Label("Plano", systemImage: "list.bullet").tag(NotebookSurfaceMode.seatingPlan)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(width: 138)
-
-            Spacer(minLength: 0)
-
+            surfaceModePicker
             saveStatusChip
-            navigationDirectionMenu
-
-            Button(action: onMarkAllPresent) {
-                Image(systemName: "checkmark.circle.fill")
-                    .frame(width: 28, height: 28)
-            }
-            .buttonStyle(.borderless)
-            .foregroundStyle(canMarkAllPresent ? .green : .secondary)
-            .disabled(!canMarkAllPresent)
-            .help("Todos presentes")
-
-            Button(action: onToggleAttendanceQuickMode) {
-                Image(systemName: isAttendanceQuickMode ? "figure.walk.circle.fill" : "figure.walk.circle")
-                    .frame(width: 28, height: 28)
-            }
-            .buttonStyle(.borderless)
-            .foregroundStyle(isAttendanceQuickMode ? NotebookStyle.warningTint : .secondary)
-            .help("Pase rápido")
-
-            Button(action: onUndo) {
-                Image(systemName: "arrow.uturn.backward")
-                    .frame(width: 28, height: 28)
-            }
-            .buttonStyle(.borderless)
-            .foregroundStyle(canUndo ? .secondary : .tertiary)
-            .disabled(!canUndo)
-            .keyboardShortcut("z", modifiers: .command)
-            .help("Deshacer último cambio")
-
-            Button(action: onOpenOrganizationMenu) {
-                Image(systemName: "rectangle.3.group")
-                    .frame(width: 28, height: 28)
-            }
-            .buttonStyle(.borderless)
-            .foregroundStyle(.secondary)
-            .help("Columnas visibles")
-
-            Button(action: onToggleInspector) {
-                Image(systemName: isInspectorPresented ? "sidebar.right" : "sidebar.right")
-                    .frame(width: 28, height: 28)
-            }
-            .buttonStyle(.borderless)
-            .foregroundStyle(isInspectorPresented ? NotebookStyle.primaryTint : .secondary)
-            .help("Inspector")
-
-            Menu {
-                Button("Organizar columnas…", action: onOpenOrganizationMenu)
-                Button("Opciones avanzadas…", action: onOpenAdvancedMenu)
-
-                if let onGenerateSummaryFallback {
-                    Divider()
-                    Button("Generar síntesis…", action: onGenerateSummaryFallback)
-                }
-
-                if let exportText {
-                    Divider()
-                    ShareLink(item: exportText) {
-                        Label("Exportar…", systemImage: "square.and.arrow.up")
-                    }
-                }
-            } label: {
-                Image(systemName: "ellipsis.circle")
-                    .frame(width: 28, height: 28)
-            }
-            .menuStyle(.borderlessButton)
-            .foregroundStyle(.secondary)
-            .help("Más opciones")
-
-            Button(action: onOpenAddColumn) {
-                Label("Nueva columna", systemImage: "plus")
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.vertical, 8)
         .background(.bar)
+    }
+
+    private var compactTopBar: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                classPicker
+                saveStatusChip
+                Spacer(minLength: 0)
+                overflowMenu
+            }
+
+            HStack(spacing: 8) {
+                searchField
+                surfaceModePicker
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    navigationDirectionMenu
+                    markAllPresentButton
+                    attendanceQuickModeButton
+                    undoButton
+                    organizationButton
+                    inspectorButton
+                    addColumnButton
+                }
+                .padding(.vertical, 2)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(.bar)
+    }
+
+    private func regularTopBar(showAddColumnAction: Bool) -> some View {
+        HStack(spacing: 16) {
+            classPicker
+
+            searchField
+
+            Spacer(minLength: 0)
+
+            HStack(spacing: 8) {
+                surfaceModePicker
+                saveStatusChip
+            }
+
+            Spacer(minLength: 0)
+
+            HStack(spacing: 8) {
+                navigationDirectionMenu
+                markAllPresentButton
+                attendanceQuickModeButton
+                undoButton
+                organizationButton
+                inspectorButton
+                overflowMenu
+                if showAddColumnAction {
+                    addColumnButton
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(.bar)
+    }
+
+    private var searchField: some View {
+        TextField("Buscar alumno…", text: $searchText)
+            .textFieldStyle(.roundedBorder)
+            .frame(minWidth: 180, maxWidth: 260)
+    }
+
+    private var surfaceModePicker: some View {
+        Picker("Vista", selection: $surfaceMode) {
+            Label("Rejilla", systemImage: "rectangle.grid.2x2").tag(NotebookSurfaceMode.grid)
+            Label("Plano", systemImage: "list.bullet").tag(NotebookSurfaceMode.seatingPlan)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .frame(width: 138)
+    }
+
+    private var markAllPresentButton: some View {
+        Button(action: onMarkAllPresent) {
+            Image(systemName: "checkmark.circle.fill")
+                .frame(width: 28, height: 28)
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(canMarkAllPresent ? .green : .secondary)
+        .disabled(!canMarkAllPresent)
+        .help("Todos presentes")
+        .accessibilityLabel("Todos presentes")
+    }
+
+    private var attendanceQuickModeButton: some View {
+        Button(action: onToggleAttendanceQuickMode) {
+            Image(systemName: isAttendanceQuickMode ? "figure.walk.circle.fill" : "figure.walk.circle")
+                .frame(width: 28, height: 28)
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(isAttendanceQuickMode ? NotebookStyle.warningTint : .secondary)
+        .help("Pase rápido")
+        .accessibilityLabel("Pase rápido")
+    }
+
+    private var undoButton: some View {
+        Button(action: onUndo) {
+            Image(systemName: "arrow.uturn.backward")
+                .frame(width: 28, height: 28)
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(canUndo ? .secondary : .tertiary)
+        .disabled(!canUndo)
+        .keyboardShortcut("z", modifiers: .command)
+        .help("Deshacer último cambio")
+        .accessibilityLabel("Deshacer último cambio")
+    }
+
+    private var organizationButton: some View {
+        Button(action: onOpenOrganizationMenu) {
+            Image(systemName: "rectangle.3.group")
+                .frame(width: 28, height: 28)
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(.secondary)
+        .help("Columnas visibles")
+        .accessibilityLabel("Columnas visibles")
+    }
+
+    private var inspectorButton: some View {
+        Button(action: onToggleInspector) {
+            Image(systemName: isInspectorPresented ? "sidebar.right" : "sidebar.right")
+                .frame(width: 28, height: 28)
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(isInspectorPresented ? NotebookStyle.primaryTint : .secondary)
+        .help("Inspector")
+        .accessibilityLabel("Inspector")
+    }
+
+    private var addColumnButton: some View {
+        Button(action: onOpenAddColumn) {
+            Label("Nueva columna", systemImage: "plus")
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.small)
+    }
+
+    private var overflowMenu: some View {
+        Menu {
+            Button("Organizar columnas…", action: onOpenOrganizationMenu)
+            Button("Opciones avanzadas…", action: onOpenAdvancedMenu)
+
+            if let onGenerateSummaryFallback {
+                Divider()
+                Button("Generar síntesis…", action: onGenerateSummaryFallback)
+            }
+
+            if let exportText {
+                Divider()
+                ShareLink(item: exportText) {
+                    Label("Exportar…", systemImage: "square.and.arrow.up")
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .frame(width: 28, height: 28)
+        }
+        .menuStyle(.borderlessButton)
+        .foregroundStyle(.secondary)
+        .help("Más opciones")
+        .accessibilityLabel("Más opciones")
     }
 
     private var navigationDirectionMenu: some View {
@@ -666,6 +772,7 @@ struct NotebookTopBar: View {
         .menuStyle(.borderlessButton)
         .foregroundStyle(.secondary)
         .help("Dirección al guardar")
+        .accessibilityLabel("Dirección al guardar")
     }
 
     private var classPicker: some View {

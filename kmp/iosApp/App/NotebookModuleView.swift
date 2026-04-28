@@ -54,6 +54,91 @@ final class NotebookMacInspectorState: ObservableObject {
     }
 }
 
+@MainActor
+final class NotebookMacToolbarActions: ObservableObject {
+    @Published var canMarkAllPresent = false
+    @Published var canUndo = false
+    @Published var canToggleInspector = false
+    @Published var isAttendanceQuickMode = false
+    @Published var isInspectorPresented = false
+    @Published var addColumnAvailable = false
+    @Published var organizationMenuAvailable = false
+    @Published var exportText: String?
+
+    private var markAllPresentAction: (() -> Void)?
+    private var attendanceQuickModeAction: (() -> Void)?
+    private var undoAction: (() -> Void)?
+    private var toggleInspectorAction: (() -> Void)?
+    private var addColumnAction: (() -> Void)?
+    private var organizationMenuAction: (() -> Void)?
+    private var advancedMenuAction: (() -> Void)?
+    private var summaryAction: (() -> Void)?
+
+    func configure(
+        canMarkAllPresent: Bool,
+        canUndo: Bool,
+        canToggleInspector: Bool,
+        isAttendanceQuickMode: Bool,
+        isInspectorPresented: Bool,
+        addColumnAvailable: Bool,
+        organizationMenuAvailable: Bool,
+        exportText: String?,
+        onMarkAllPresent: @escaping () -> Void,
+        onToggleAttendanceQuickMode: @escaping () -> Void,
+        onUndo: @escaping () -> Void,
+        onToggleInspector: @escaping () -> Void,
+        onAddColumn: @escaping () -> Void,
+        onOpenOrganizationMenu: @escaping () -> Void,
+        onOpenAdvancedMenu: @escaping () -> Void,
+        onGenerateSummary: @escaping () -> Void
+    ) {
+        self.canMarkAllPresent = canMarkAllPresent
+        self.canUndo = canUndo
+        self.canToggleInspector = canToggleInspector
+        self.isAttendanceQuickMode = isAttendanceQuickMode
+        self.isInspectorPresented = isInspectorPresented
+        self.addColumnAvailable = addColumnAvailable
+        self.organizationMenuAvailable = organizationMenuAvailable
+        self.exportText = exportText
+        self.markAllPresentAction = onMarkAllPresent
+        self.attendanceQuickModeAction = onToggleAttendanceQuickMode
+        self.undoAction = onUndo
+        self.toggleInspectorAction = onToggleInspector
+        self.addColumnAction = onAddColumn
+        self.organizationMenuAction = onOpenOrganizationMenu
+        self.advancedMenuAction = onOpenAdvancedMenu
+        self.summaryAction = onGenerateSummary
+    }
+
+    func clear() {
+        canMarkAllPresent = false
+        canUndo = false
+        canToggleInspector = false
+        isAttendanceQuickMode = false
+        isInspectorPresented = false
+        addColumnAvailable = false
+        organizationMenuAvailable = false
+        exportText = nil
+        markAllPresentAction = nil
+        attendanceQuickModeAction = nil
+        undoAction = nil
+        toggleInspectorAction = nil
+        addColumnAction = nil
+        organizationMenuAction = nil
+        advancedMenuAction = nil
+        summaryAction = nil
+    }
+
+    func markAllPresent() { markAllPresentAction?() }
+    func toggleAttendanceQuickMode() { attendanceQuickModeAction?() }
+    func undo() { undoAction?() }
+    func toggleInspector() { toggleInspectorAction?() }
+    func addColumn() { addColumnAction?() }
+    func openOrganizationMenu() { organizationMenuAction?() }
+    func openAdvancedMenu() { advancedMenuAction?() }
+    func generateSummary() { summaryAction?() }
+}
+
 enum NotebookMacPresentation: Equatable {
     case full
     case content
@@ -320,6 +405,7 @@ struct NotebookModuleView: View {
     @Binding var selectedClassId: Int64?
     @Binding var selectedStudentId: Int64?
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
+    private let macToolbarActions: NotebookMacToolbarActions?
     @StateObject private var inspectorState: NotebookMacInspectorState
     private let macPresentation: NotebookMacPresentation
     @State private var addColumnContext: NotebookAddColumnContext? = nil
@@ -376,12 +462,14 @@ struct NotebookModuleView: View {
         selectedStudentId: Binding<Int64?>,
         onOpenModule: @escaping (AppWorkspaceModule, Int64?, Int64?) -> Void,
         macPresentation: NotebookMacPresentation = .full,
-        macInspectorState: NotebookMacInspectorState? = nil
+        macInspectorState: NotebookMacInspectorState? = nil,
+        macToolbarActions: NotebookMacToolbarActions? = nil
     ) {
         self._bridge = ObservedObject(wrappedValue: bridge)
         self._selectedClassId = selectedClassId
         self._selectedStudentId = selectedStudentId
         self.onOpenModule = onOpenModule
+        self.macToolbarActions = macToolbarActions
         self.macPresentation = macPresentation
         self._inspectorState = StateObject(wrappedValue: macInspectorState ?? NotebookMacInspectorState())
     }
@@ -649,6 +737,7 @@ struct NotebookModuleView: View {
             .onDisappear {
                 if !isMacInspectorOnly {
                     layoutState.clearNotebookToolbar()
+                    macToolbarActions?.clear()
                 }
             }
     }
@@ -702,7 +791,8 @@ struct NotebookModuleView: View {
                     onGenerateSummaryFallback: {
                         notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: nil)
                     },
-                    exportText: exportText(data: data)
+                    exportText: exportText(data: data),
+                    showsInlineActions: macPresentation != .content
                 )
                 Divider()
                 notebookTabStrip(data: data)
@@ -1652,8 +1742,11 @@ struct NotebookModuleView: View {
     }
 
     private func syncToolbarState(data: NotebookUiStateData) {
+        let inspectorAvailable = inspectorSelection != nil || !managedColumns(data: data).isEmpty
+        let canMarkAllPresent = !filteredRows(data: data).isEmpty
+
         layoutState.configureNotebookToolbar(
-            inspectorAvailable: inspectorSelection != nil || !managedColumns(data: data).isEmpty,
+            inspectorAvailable: inspectorAvailable,
             isInspectorPresented: isInspectorPresented,
             addColumnAvailable: true,
             searchText: searchText,
@@ -1687,13 +1780,57 @@ struct NotebookModuleView: View {
                 isOrganizationMenuPresented = true
             }
         )
+
+        macToolbarActions?.configure(
+            canMarkAllPresent: canMarkAllPresent,
+            canUndo: !undoStack.isEmpty,
+            canToggleInspector: inspectorAvailable,
+            isAttendanceQuickMode: isAttendanceQuickMode,
+            isInspectorPresented: isInspectorPresented,
+            addColumnAvailable: true,
+            organizationMenuAvailable: true,
+            exportText: exportText(data: data),
+            onMarkAllPresent: {
+                requestMarkAllVisibleStudentsPresent(data: data)
+            },
+            onToggleAttendanceQuickMode: {
+                isAttendanceQuickMode.toggle()
+                if isAttendanceQuickMode {
+                    activeChoiceCellId = nil
+                    focusedCellId = nil
+                }
+            },
+            onUndo: {
+                undoLastCellChange()
+            },
+            onToggleInspector: {
+                if inspectorSelection == nil {
+                    openInspectorForSelection(data)
+                }
+                if inspectorSelection != nil {
+                    isInspectorPresented.toggle()
+                }
+            },
+            onAddColumn: {
+                addColumnContext = NotebookAddColumnContext(categoryId: nil, startsCreatingCategory: false)
+            },
+            onOpenOrganizationMenu: {
+                isOrganizationMenuPresented = true
+            },
+            onOpenAdvancedMenu: {
+                isOrganizationMenuPresented = true
+            },
+            onGenerateSummary: {
+                notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: nil)
+            }
+        )
     }
 
     private func toolbarStateKey(data: NotebookUiStateData) -> String {
         let classKey = currentClass?.id ?? -1
         let groupKey = selectedGroupId ?? -1
         let inspectorKey = inspectorSelection?.id ?? "none"
-        return "\(classKey)|\(groupKey)|\(surfaceMode.rawValue)|\(managedColumns(data: data).count)|\(filteredRows(data: data).count)|\(inspectorKey)|\(isInspectorPresented)"
+        return "\(classKey)|\(groupKey)|\(surfaceMode.rawValue)|\(managedColumns(data: data).count)|\(filteredRows(data: data).count)|\(inspectorKey)|\(isInspectorPresented)|\(undoStack.count)|\(isAttendanceQuickMode)|\(bridge.notebookSaveState)"
     }
 
     private var notebookRiskRefreshKey: String {
@@ -2812,7 +2949,7 @@ struct NotebookModuleView: View {
             return AnyView(
                 headerChip(
                     title: category.name,
-                    subtitle: "\(completedCollapsedCategoryCount(columns, rows: visibleRows)) / \(columns.count) completas",
+                    subtitle: collapsedCategoryProgressText(columns: columns, rows: visibleRows),
                     width: 150,
                     tint: tint(for: category),
                     folderStyle: true,
@@ -2953,7 +3090,7 @@ struct NotebookModuleView: View {
                         .foregroundStyle(categoryTint)
                 }
 
-                Text(columns.isEmpty ? "Carpeta vacía lista para nuevas columnas" : "\(completed)/\(columns.count) completas")
+                Text(columns.isEmpty ? "Carpeta vacía lista para nuevas columnas" : "\(completed)/\(visibleColumnCount(columns)) con datos")
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -3403,13 +3540,21 @@ struct NotebookModuleView: View {
     }
 
     private func completedCollapsedCategoryCount(_ columns: [NotebookColumnDefinition], rows: [NotebookTableRow]) -> Int {
-        columns.filter { column in
+        columns.filter { !$0.isHidden }.filter { column in
             rows.contains { row in
                 !displayValue(for: row, column: column)
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                     .isEmpty
             }
         }.count
+    }
+
+    private func visibleColumnCount(_ columns: [NotebookColumnDefinition]) -> Int {
+        columns.filter { !$0.isHidden }.count
+    }
+
+    private func collapsedCategoryProgressText(columns: [NotebookColumnDefinition], rows: [NotebookTableRow]) -> String {
+        "\(completedCollapsedCategoryCount(columns, rows: rows)) / \(visibleColumnCount(columns)) con datos"
     }
 
     private var columnColorOptions: [(label: String, hex: String)] {

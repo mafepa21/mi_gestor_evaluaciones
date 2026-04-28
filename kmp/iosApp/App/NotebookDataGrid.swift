@@ -133,8 +133,11 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, ScrollTopA
                     fixedRows
                 }
                 .frame(width: fixedColumnWidth, alignment: .topLeading)
-                .background(appSecondarySystemBackgroundColor().opacity(0.94))
-                .shadow(color: Color.black.opacity(0.08), radius: 4, x: 2, y: 0)
+                .background(fixedColumnBackground)
+                .overlay(alignment: .trailing) {
+                    fixedColumnSeparator
+                }
+                .shadow(color: fixedColumnShadowColor, radius: fixedColumnShadowRadius, x: 1, y: 0)
                 .zIndex(1)
 
                 dividerHandle
@@ -148,5 +151,52 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, ScrollTopA
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private var fixedColumnBackground: some View {
+        #if os(macOS)
+        Rectangle()
+            .fill(.thinMaterial)
+            .overlay(appSecondarySystemBackgroundColor().opacity(0.72))
+        #else
+        appSecondarySystemBackgroundColor().opacity(0.94)
+        #endif
+    }
+
+    @ViewBuilder
+    private var fixedColumnSeparator: some View {
+        #if os(macOS)
+        LinearGradient(
+            colors: [
+                Color.clear,
+                NotebookStyle.softBorder.opacity(0.70),
+                NotebookStyle.softBorder.opacity(0.70),
+                Color.clear
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .frame(width: 1)
+        #else
+        Color.secondary.opacity(0.12)
+            .frame(width: 1)
+        #endif
+    }
+
+    private var fixedColumnShadowColor: Color {
+        #if os(macOS)
+        return Color.black.opacity(0.035)
+        #else
+        return Color.black.opacity(0.08)
+        #endif
+    }
+
+    private var fixedColumnShadowRadius: CGFloat {
+        #if os(macOS)
+        return 2
+        #else
+        return 4
+        #endif
     }
 }

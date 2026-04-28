@@ -73,6 +73,7 @@ final class NotebookMacToolbarActions: ObservableObject {
     private var organizationMenuAction: (() -> Void)?
     private var advancedMenuAction: (() -> Void)?
     private var summaryAction: (() -> Void)?
+    private var refreshAction: (() -> Void)?
 
     func configure(
         canMarkAllPresent: Bool,
@@ -90,7 +91,8 @@ final class NotebookMacToolbarActions: ObservableObject {
         onAddColumn: @escaping () -> Void,
         onOpenOrganizationMenu: @escaping () -> Void,
         onOpenAdvancedMenu: @escaping () -> Void,
-        onGenerateSummary: @escaping () -> Void
+        onGenerateSummary: @escaping () -> Void,
+        onRefresh: @escaping () -> Void
     ) {
         self.canMarkAllPresent = canMarkAllPresent
         self.canUndo = canUndo
@@ -108,6 +110,7 @@ final class NotebookMacToolbarActions: ObservableObject {
         self.organizationMenuAction = onOpenOrganizationMenu
         self.advancedMenuAction = onOpenAdvancedMenu
         self.summaryAction = onGenerateSummary
+        self.refreshAction = onRefresh
     }
 
     func clear() {
@@ -127,6 +130,7 @@ final class NotebookMacToolbarActions: ObservableObject {
         organizationMenuAction = nil
         advancedMenuAction = nil
         summaryAction = nil
+        refreshAction = nil
     }
 
     func markAllPresent() { markAllPresentAction?() }
@@ -137,6 +141,7 @@ final class NotebookMacToolbarActions: ObservableObject {
     func openOrganizationMenu() { organizationMenuAction?() }
     func openAdvancedMenu() { advancedMenuAction?() }
     func generateSummary() { summaryAction?() }
+    func refresh() { refreshAction?() }
 }
 
 enum NotebookMacPresentation: Equatable {
@@ -657,7 +662,49 @@ struct NotebookModuleView: View {
     private func notebookSheetAndTaskModifiers<Content: View>(_ content: Content) -> some View {
         content
             .sheet(isPresented: $isOrganizationMenuPresented) {
-                notebookOrganizationSheet(data: bridge.notebookState as? NotebookUiStateData)
+                if let data = bridge.notebookState as? NotebookUiStateData {
+                    NotebookColumnOrganizerSheet(
+                        columns: managedColumns(data: data),
+                        onToggleHidden: { column, isHidden in
+                            setNotebookColumnHidden(column, isHidden: isHidden)
+                        },
+                        onRename: { column in
+                            isOrganizationMenuPresented = false
+                            DispatchQueue.main.async {
+                                presentRenameColumn(column)
+                            }
+                        },
+                        onDelete: { column in
+                            isOrganizationMenuPresented = false
+                            DispatchQueue.main.async {
+                                pendingDeleteColumn = column
+                            }
+                        },
+                        onAddColumn: {
+                            isOrganizationMenuPresented = false
+                            DispatchQueue.main.async {
+                                addColumnContext = NotebookAddColumnContext(
+                                    categoryId: nil,
+                                    startsCreatingCategory: false
+                                )
+                            }
+                        },
+                        onShowAll: {
+                            showAllManagedColumns(data: data)
+                        },
+                        onReorder: { reorderedColumns in
+                            reorderManagedColumns(reorderedColumns)
+                        }
+                    )
+                    .frame(minWidth: 520, minHeight: 620)
+                } else {
+                    ContentUnavailableView(
+                        "Sin datos del cuaderno",
+                        systemImage: "rectangle.3.group",
+                        description: Text("Carga una clase para organizar sus columnas.")
+                    )
+                    .frame(minWidth: 420, minHeight: 260)
+                }
             }
             .task {
                 if let selectedClassId,
@@ -710,25 +757,35 @@ struct NotebookModuleView: View {
 
     private func notebookToolbarObservationModifiers<Content: View>(_ content: Content) -> some View {
         content
+            .onAppear {
+                syncToolbarStateIfLoaded()
+            }
             .onChange(of: isInspectorPresented) { _ in
-                if let data = bridge.notebookState as? NotebookUiStateData {
-                    syncToolbarState(data: data)
-                }
+                syncToolbarStateIfLoaded()
             }
             .onChange(of: surfaceMode) { _ in
-                if let data = bridge.notebookState as? NotebookUiStateData {
-                    syncToolbarState(data: data)
-                }
+                syncToolbarStateIfLoaded()
+            }
+            .onChange(of: undoStack.count) { _ in
+                syncToolbarStateIfLoaded()
+            }
+            .onChange(of: isAttendanceQuickMode) { _ in
+                syncToolbarStateIfLoaded()
+            }
+            .onChange(of: searchText) { _ in
+                syncToolbarStateIfLoaded()
             }
             .onChange(of: selectedGroupId) { _ in
-                if let data = bridge.notebookState as? NotebookUiStateData {
-                    syncToolbarState(data: data)
-                }
+                syncToolbarStateIfLoaded()
                 riskComputationKey = nil
+            }
+            .onChange(of: inspectorSelection) { _ in
+                syncToolbarStateIfLoaded()
             }
             .onChange(of: bridge.notebookState is NotebookUiStateData) { _ in
                 restoreSeatPositions()
                 riskComputationKey = nil
+                syncToolbarStateIfLoaded()
             }
     }
 
@@ -809,6 +866,16 @@ struct NotebookModuleView: View {
             }
         }
         .background(EvaluationBackdrop())
+        .onAppear {
+            if !isMacInspectorOnly {
+                syncToolbarState(data: data)
+            }
+        }
+        .onChange(of: toolbarStateKey(data: data)) { _ in
+            if !isMacInspectorOnly {
+                syncToolbarState(data: data)
+            }
+        }
     }
 
     private func notebookTabStrip(data: NotebookUiStateData) -> some View {
@@ -1822,8 +1889,17 @@ struct NotebookModuleView: View {
             },
             onGenerateSummary: {
                 notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: nil)
+            },
+            onRefresh: {
+                Task { await refreshNotebookSignals() }
             }
         )
+    }
+
+    private func syncToolbarStateIfLoaded() {
+        guard !isMacInspectorOnly,
+              let data = bridge.notebookState as? NotebookUiStateData else { return }
+        syncToolbarState(data: data)
     }
 
     private func toolbarStateKey(data: NotebookUiStateData) -> String {
@@ -1988,7 +2064,7 @@ struct NotebookModuleView: View {
     private func columns(in category: NotebookColumnCategory, data: NotebookUiStateData, includeHidden: Bool = false) -> [NotebookColumnDefinition] {
         data.sheet.columns
             .filter { $0.categoryId == category.id }
-            .filter { includeHidden || !$0.isHidden }
+            .filter { includeHidden || !isColumnHidden($0) }
             .filter { columnMatchesActiveTab($0, data: data) }
             .filter { columnMatchesCurrentView($0) }
             .sorted {
@@ -2026,7 +2102,7 @@ struct NotebookModuleView: View {
             uniquingKeysWith: { first, _ in first }
         )
         let orderedColumns = data.sheet.columns
-            .filter { !$0.isHidden }
+            .filter { !isColumnHidden($0) }
             .filter { columnMatchesActiveTab($0, data: data) }
             .filter { columnMatchesCurrentView($0) }
             .sorted {
@@ -2323,17 +2399,35 @@ struct NotebookModuleView: View {
         return column.tabIds.contains(activeTabId) || (column.sharedAcrossTabs && column.tabIds.isEmpty)
     }
 
+    private func isColumnHidden(_ column: NotebookColumnDefinition) -> Bool {
+        column.isHidden || column.visibility == .hidden || column.visibility == .archived
+    }
+
     private func toggleColumnVisibility(_ column: NotebookColumnDefinition) {
-        bridge.saveColumn(column: NotebookColumnDefinition(
+        setNotebookColumnHidden(column, isHidden: !isColumnHidden(column))
+    }
+
+    private func copyNotebookColumn(
+        _ column: NotebookColumnDefinition,
+        title: String? = nil,
+        isHidden: Bool? = nil,
+        visibility: NotebookColumnVisibility? = nil,
+        order: Int32? = nil,
+        widthDp: Double? = nil,
+        colorHex: String? = nil,
+        formula: String? = nil,
+        updatesFormula: Bool = false
+    ) -> NotebookColumnDefinition {
+        NotebookColumnDefinition(
             id: column.id,
-            title: column.title,
+            title: title?.isEmpty == false ? title! : column.title,
             type: column.type,
             categoryKind: column.categoryKind,
             instrumentKind: column.instrumentKind,
             inputKind: column.inputKind,
             evaluationId: column.evaluationId,
             rubricId: column.rubricId,
-            formula: column.formula,
+            formula: updatesFormula ? formula : column.formula,
             weight: column.weight,
             dateEpochMs: column.dateEpochMs,
             unitOrSituation: column.unitOrSituation,
@@ -2342,21 +2436,57 @@ struct NotebookModuleView: View {
             tabIds: column.tabIds,
             sessions: column.sessions,
             sharedAcrossTabs: column.sharedAcrossTabs,
-            colorHex: column.colorHex,
+            colorHex: colorHex ?? column.colorHex,
             iconName: column.iconName,
-            order: column.order,
-            widthDp: column.widthDp,
+            order: order ?? column.order,
+            widthDp: widthDp ?? column.widthDp,
             categoryId: column.categoryId,
             ordinalLevels: column.ordinalLevels,
             availableIcons: column.availableIcons,
             countsTowardAverage: column.countsTowardAverage,
             isPinned: column.isPinned,
-            isHidden: !column.isHidden,
-            visibility: column.visibility,
+            isHidden: isHidden ?? column.isHidden,
+            visibility: visibility ?? column.visibility,
             isLocked: column.isLocked,
             isTemplate: column.isTemplate,
             trace: column.trace
-        ))
+        )
+    }
+
+    private func setNotebookColumnHidden(_ column: NotebookColumnDefinition, isHidden: Bool) {
+        let updated = copyNotebookColumn(
+            column,
+            isHidden: isHidden,
+            visibility: isHidden ? .hidden : .visible
+        )
+
+        bridge.saveColumn(column: updated)
+        showToast(isHidden ? "Columna ocultada" : "Columna visible")
+        syncToolbarStateIfLoaded()
+    }
+
+    private func showAllManagedColumns(data: NotebookUiStateData) {
+        let columns = managedColumns(data: data)
+        columns.forEach { column in
+            bridge.saveColumn(column: copyNotebookColumn(
+                column,
+                isHidden: false,
+                visibility: .visible
+            ))
+        }
+        showToast(columns.count == 1 ? "Columna visible" : "Todas las columnas visibles")
+        syncToolbarStateIfLoaded()
+    }
+
+    private func reorderManagedColumns(_ reorderedColumns: [NotebookColumnDefinition]) {
+        reorderedColumns.enumerated().forEach { index, column in
+            let nextOrder = Int32(index)
+            if column.order != nextOrder {
+                bridge.saveColumn(column: copyNotebookColumn(column, order: nextOrder))
+            }
+        }
+        showToast("Columnas reordenadas")
+        syncToolbarStateIfLoaded()
     }
 
     private func exportText(data: NotebookUiStateData) -> String {
@@ -3190,9 +3320,8 @@ struct NotebookModuleView: View {
                 }
             }
         }
-        Button(column.isHidden ? "Mostrar" : "Ocultar") {
+        Button(isColumnHidden(column) ? "Mostrar" : "Ocultar") {
             toggleColumnVisibility(column)
-            showToast(column.isHidden ? "Columna visible" : "Columna oculta")
         }
         Button("Eliminar columna", role: .destructive) {
             pendingDeleteColumn = column
@@ -3262,9 +3391,9 @@ struct NotebookModuleView: View {
                                 toggleColumnVisibility(column)
                             } label: {
                                 HStack {
-                                    Label(column.title, systemImage: column.isHidden ? "eye.slash" : "eye")
+                                    Label(column.title, systemImage: isColumnHidden(column) ? "eye.slash" : "eye")
                                     Spacer()
-                                    Text(column.isHidden ? "Oculta" : "Visible")
+                                    Text(isColumnHidden(column) ? "Oculta" : "Visible")
                                         .font(.caption.weight(.semibold))
                                         .foregroundStyle(.secondary)
                                 }
@@ -3359,6 +3488,12 @@ struct NotebookModuleView: View {
         isNotebookTabAlertPresented = true
     }
 
+    private func presentRenameColumn(_ column: NotebookColumnDefinition) {
+        editingColumnId = column.id
+        columnDraft = column.title
+        isRenameColumnAlertPresented = true
+    }
+
     private func defaultNotebookTabDraft() -> String {
         guard let data = bridge.notebookState as? NotebookUiStateData else { return "Nuevo tema" }
         let nextIndex = orderedNotebookTabs(data: data).count + 1
@@ -3441,39 +3576,12 @@ struct NotebookModuleView: View {
         formula: String? = nil,
         updatesFormula: Bool = false
     ) {
-        let nextTitle = (title?.isEmpty == false ? title! : column.title)
-        bridge.saveColumn(column: NotebookColumnDefinition(
-            id: column.id,
-            title: nextTitle,
-            type: column.type,
-            categoryKind: column.categoryKind,
-            instrumentKind: column.instrumentKind,
-            inputKind: column.inputKind,
-            evaluationId: column.evaluationId,
-            rubricId: column.rubricId,
-            formula: updatesFormula ? formula : column.formula,
-            weight: column.weight,
-            dateEpochMs: column.dateEpochMs,
-            unitOrSituation: column.unitOrSituation,
-            competencyCriteriaIds: column.competencyCriteriaIds,
-            scaleKind: column.scaleKind,
-            tabIds: column.tabIds,
-            sessions: column.sessions,
-            sharedAcrossTabs: column.sharedAcrossTabs,
-            colorHex: colorHex ?? column.colorHex,
-            iconName: column.iconName,
-            order: column.order,
-            widthDp: column.widthDp,
-            categoryId: column.categoryId,
-            ordinalLevels: column.ordinalLevels,
-            availableIcons: column.availableIcons,
-            countsTowardAverage: column.countsTowardAverage,
-            isPinned: column.isPinned,
-            isHidden: column.isHidden,
-            visibility: column.visibility,
-            isLocked: column.isLocked,
-            isTemplate: column.isTemplate,
-            trace: column.trace
+        bridge.saveColumn(column: copyNotebookColumn(
+            column,
+            title: title,
+            colorHex: colorHex,
+            formula: formula,
+            updatesFormula: updatesFormula
         ))
     }
 
@@ -3540,7 +3648,7 @@ struct NotebookModuleView: View {
     }
 
     private func completedCollapsedCategoryCount(_ columns: [NotebookColumnDefinition], rows: [NotebookTableRow]) -> Int {
-        columns.filter { !$0.isHidden }.filter { column in
+        columns.filter { !isColumnHidden($0) }.filter { column in
             rows.contains { row in
                 !displayValue(for: row, column: column)
                     .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -3550,7 +3658,7 @@ struct NotebookModuleView: View {
     }
 
     private func visibleColumnCount(_ columns: [NotebookColumnDefinition]) -> Int {
-        columns.filter { !$0.isHidden }.count
+        columns.filter { !isColumnHidden($0) }.count
     }
 
     private func collapsedCategoryProgressText(columns: [NotebookColumnDefinition], rows: [NotebookTableRow]) -> String {
@@ -4954,6 +5062,329 @@ private struct NotebookAICommentSheet: View {
                 isGenerating = false
                 dismiss()
             }
+        }
+    }
+}
+
+private struct NotebookColumnOrganizerSheet: View {
+    let columns: [NotebookColumnDefinition]
+    let onToggleHidden: (NotebookColumnDefinition, Bool) -> Void
+    let onRename: (NotebookColumnDefinition) -> Void
+    let onDelete: (NotebookColumnDefinition) -> Void
+    let onAddColumn: () -> Void
+    let onShowAll: () -> Void
+    let onReorder: ([NotebookColumnDefinition]) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var orderedColumnIds: [String] = []
+    @State private var hiddenOverrides: [String: Bool] = [:]
+    @State private var searchText = ""
+    @State private var showHiddenOnly = false
+
+    private var orderedColumns: [NotebookColumnDefinition] {
+        let columnById = Dictionary(uniqueKeysWithValues: columns.map { ($0.id, $0) })
+        let ids = orderedColumnIds.isEmpty ? defaultOrderedColumnIds : orderedColumnIds
+        let ordered = ids.compactMap { columnById[$0] }
+        let missing = columns
+            .filter { !ids.contains($0.id) }
+            .sorted { $0.order < $1.order }
+
+        return ordered + missing
+    }
+
+    private var defaultOrderedColumnIds: [String] {
+        columns.sorted { $0.order < $1.order }.map(\.id)
+    }
+
+    private var filteredColumns: [NotebookColumnDefinition] {
+        orderedColumns.filter { column in
+            let trimmedSearch = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+            let matchesSearch = trimmedSearch.isEmpty || column.title.localizedCaseInsensitiveContains(trimmedSearch)
+            let matchesHiddenFilter = !showHiddenOnly || effectiveIsHidden(column)
+
+            return matchesSearch && matchesHiddenFilter
+        }
+    }
+
+    private var visibleCount: Int {
+        columns.filter { !effectiveIsHidden($0) }.count
+    }
+
+    private var hiddenCount: Int {
+        columns.filter { effectiveIsHidden($0) }.count
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+
+            Divider()
+
+            controls
+
+            Divider()
+
+            if filteredColumns.isEmpty {
+                ContentUnavailableView(
+                    "Sin columnas",
+                    systemImage: "rectangle.3.group",
+                    description: Text("No hay columnas que coincidan con el filtro actual.")
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List {
+                    Section {
+                        ForEach(filteredColumns, id: \.id) { column in
+                            columnRow(column)
+                        }
+                        .onMove(perform: moveColumns)
+                    } header: {
+                        Text("Columnas del cuaderno")
+                    }
+                }
+                .listStyle(.inset)
+            }
+
+            Divider()
+
+            footer
+        }
+        .background(.regularMaterial)
+        .onAppear {
+            syncLocalStateWithColumns()
+        }
+        .onChange(of: columns.map(\.id)) { _ in
+            syncLocalStateWithColumns()
+        }
+    }
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "rectangle.3.group")
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(Color.accentColor)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Organizar columnas")
+                    .font(.title3.weight(.semibold))
+
+                Text("\(visibleCount) visibles · \(hiddenCount) ocultas · \(columns.count) en total")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Button("Cerrar") {
+                dismiss()
+            }
+            .keyboardShortcut(.cancelAction)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 12)
+    }
+
+    private var controls: some View {
+        HStack(spacing: 12) {
+            TextField("Buscar columna…", text: $searchText)
+                .textFieldStyle(.roundedBorder)
+                .frame(maxWidth: 280)
+
+            Toggle("Solo ocultas", isOn: $showHiddenOnly)
+                .toggleStyle(.switch)
+
+            Spacer()
+
+            if hiddenCount > 0 {
+                Button {
+                    showAllColumns()
+                } label: {
+                    Label("Mostrar todas", systemImage: "eye")
+                }
+                .buttonStyle(.bordered)
+            } else {
+                Button {
+                    showAllColumns()
+                } label: {
+                    Label("Mostrar todas", systemImage: "eye")
+                }
+                .buttonStyle(.bordered)
+                .disabled(true)
+                .fixedSize()
+            }
+
+            Button {
+                onAddColumn()
+            } label: {
+                Label("Nueva columna", systemImage: "plus")
+            }
+            .buttonStyle(.borderedProminent)
+            .fixedSize()
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 10)
+    }
+
+    private func columnRow(_ column: NotebookColumnDefinition) -> some View {
+        let isHidden = effectiveIsHidden(column)
+
+        return HStack(spacing: 10) {
+            Image(systemName: "line.3.horizontal")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.tertiary)
+                .frame(width: 18)
+
+            Image(systemName: columnIcon(for: column))
+                .frame(width: 24)
+                .foregroundStyle(isHidden ? .secondary : Color.accentColor)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(column.title)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(isHidden ? .secondary : .primary)
+
+                HStack(spacing: 6) {
+                    Text(columnTypeLabel(for: column))
+                    if column.countsTowardAverage {
+                        Text("Cuenta para media")
+                    }
+                    if column.isPinned {
+                        Text("Fijada")
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Toggle(
+                "Visible",
+                isOn: Binding(
+                    get: { !effectiveIsHidden(column) },
+                    set: { isVisible in
+                        setColumnHidden(column, isHidden: !isVisible)
+                    }
+                )
+            )
+            .labelsHidden()
+
+            Menu {
+                Button("Renombrar") {
+                    onRename(column)
+                }
+
+                Button(isHidden ? "Mostrar" : "Ocultar") {
+                    setColumnHidden(column, isHidden: !isHidden)
+                }
+
+                Divider()
+
+                Button("Eliminar", role: .destructive) {
+                    onDelete(column)
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+            .menuStyle(.borderlessButton)
+        }
+        .padding(.vertical, 3)
+    }
+
+    private var footer: some View {
+        HStack {
+            Text("Las columnas ocultas no desaparecen: solo dejan de mostrarse en la rejilla.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Spacer()
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 10)
+    }
+
+    private func syncLocalStateWithColumns() {
+        let currentIds = columns.map(\.id)
+        if orderedColumnIds.isEmpty {
+            orderedColumnIds = defaultOrderedColumnIds
+        } else {
+            orderedColumnIds = orderedColumnIds.filter { currentIds.contains($0) }
+            let missingIds = defaultOrderedColumnIds.filter { !orderedColumnIds.contains($0) }
+            orderedColumnIds.append(contentsOf: missingIds)
+        }
+        hiddenOverrides = hiddenOverrides.filter { currentIds.contains($0.key) }
+    }
+
+    private func effectiveIsHidden(_ column: NotebookColumnDefinition) -> Bool {
+        hiddenOverrides[column.id] ?? (column.isHidden || column.visibility == .hidden || column.visibility == .archived)
+    }
+
+    private func setColumnHidden(_ column: NotebookColumnDefinition, isHidden: Bool) {
+        hiddenOverrides[column.id] = isHidden
+        onToggleHidden(column, isHidden)
+    }
+
+    private func showAllColumns() {
+        columns.forEach { column in
+            hiddenOverrides[column.id] = false
+        }
+        onShowAll()
+    }
+
+    private func moveColumns(from source: IndexSet, to destination: Int) {
+        let filteredIds = filteredColumns.map(\.id)
+        var reorderedFilteredIds = filteredIds
+        reorderedFilteredIds.move(fromOffsets: source, toOffset: destination)
+
+        let filteredPositions = orderedColumnIds.indices.filter { filteredIds.contains(orderedColumnIds[$0]) }
+        var nextIds = orderedColumnIds
+        for (index, position) in filteredPositions.enumerated() where reorderedFilteredIds.indices.contains(index) {
+            nextIds[position] = reorderedFilteredIds[index]
+        }
+
+        orderedColumnIds = nextIds
+        onReorder(orderedColumns)
+    }
+
+    private func columnTypeLabel(for column: NotebookColumnDefinition) -> String {
+        switch column.type {
+        case .calculated:
+            return "Calculada"
+        case .rubric:
+            return "Rúbrica"
+        case .check:
+            return "Casilla"
+        case .text:
+            return "Texto"
+        case .attendance:
+            return "Asistencia"
+        case .ordinal:
+            return "Ordinal"
+        case .numeric:
+            return "Numérica"
+        default:
+            return String(describing: column.type)
+        }
+    }
+
+    private func columnIcon(for column: NotebookColumnDefinition) -> String {
+        if let icon = column.iconName, !icon.isEmpty {
+            return icon
+        }
+
+        switch column.type {
+        case .numeric:
+            return "number"
+        case .rubric:
+            return "checklist"
+        case .attendance:
+            return "figure.walk.circle"
+        case .calculated:
+            return "function"
+        case .text:
+            return "text.alignleft"
+        default:
+            return "rectangle"
         }
     }
 }

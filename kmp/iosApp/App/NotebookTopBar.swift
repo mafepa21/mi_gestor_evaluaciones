@@ -730,7 +730,6 @@ struct NotebookTopBar: View {
     private var overflowMenu: some View {
         Menu {
             Button("Organizar columnas…", action: onOpenOrganizationMenu)
-            Button("Opciones avanzadas…", action: onOpenAdvancedMenu)
 
             if let onGenerateSummaryFallback {
                 Divider()

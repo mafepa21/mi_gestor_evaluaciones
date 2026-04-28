@@ -121,6 +121,7 @@ class NotebookConfigRepositorySqlDelight(
             .mapToList(Dispatchers.Default)
             .map { rows ->
                 rows.map { row ->
+                    val resolvedVisibility = row.visibility.toNotebookVisibility()
                     NotebookColumnDefinition(
                         id = row.id,
                         title = row.title,
@@ -142,7 +143,8 @@ class NotebookConfigRepositorySqlDelight(
                         order = row.sort_order.toInt(),
                         widthDp = row.width_dp,
                         categoryId = row.category_id,
-                        visibility = row.visibility.toNotebookVisibility(),
+                        isHidden = resolvedVisibility != NotebookColumnVisibility.VISIBLE,
+                        visibility = resolvedVisibility,
                         isLocked = row.is_locked == 1L,
                         trace = AuditTrace(
                             updatedAt = Instant.fromEpochMilliseconds(row.updated_at_epoch_ms),
@@ -156,6 +158,7 @@ class NotebookConfigRepositorySqlDelight(
 
     override suspend fun listColumns(classId: Long): List<NotebookColumnDefinition> {
         return db.appDatabaseQueries.selectColumnsByClass(classId).executeAsList().map { row ->
+            val resolvedVisibility = row.visibility.toNotebookVisibility()
             NotebookColumnDefinition(
                 id = row.id,
                 title = row.title,
@@ -177,7 +180,8 @@ class NotebookConfigRepositorySqlDelight(
                 order = row.sort_order.toInt(),
                 widthDp = row.width_dp,
                 categoryId = row.category_id,
-                visibility = row.visibility.toNotebookVisibility(),
+                isHidden = resolvedVisibility != NotebookColumnVisibility.VISIBLE,
+                visibility = resolvedVisibility,
                 isLocked = row.is_locked == 1L,
                 trace = AuditTrace(
                     updatedAt = Instant.fromEpochMilliseconds(row.updated_at_epoch_ms),
@@ -213,6 +217,12 @@ class NotebookConfigRepositorySqlDelight(
                 ?.plus(1) ?: 0
         }
 
+        val resolvedVisibility = when {
+            column.visibility == NotebookColumnVisibility.ARCHIVED -> NotebookColumnVisibility.ARCHIVED
+            column.isHidden -> NotebookColumnVisibility.HIDDEN
+            else -> NotebookColumnVisibility.VISIBLE
+        }
+
         db.appDatabaseQueries.upsertColumn(
             id = column.id,
             class_id = classId,
@@ -235,7 +245,7 @@ class NotebookConfigRepositorySqlDelight(
             sort_order = resolvedOrder.toLong(),
             width_dp = if (column.widthDp > 0.0) column.widthDp else 132.0,
             category_id = column.categoryId,
-            visibility = column.visibility.name,
+            visibility = resolvedVisibility.name,
             is_locked = if (column.isLocked) 1L else 0L,
             updated_at_epoch_ms = column.trace.updatedAt.toEpochMilliseconds(),
             device_id = column.trace.deviceId,

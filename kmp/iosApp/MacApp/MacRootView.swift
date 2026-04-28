@@ -12,6 +12,8 @@ struct MacRootView: View {
     @State private var attendanceToolbarActions: MacAttendanceToolbarActions? = nil
     @State private var dashboardToolbarActions: MacDashboardToolbarActions? = nil
     @State private var studentsReloadToken = 0
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var isNotebookInspectorColumnVisible = true
 
     var body: some View {
         Group {
@@ -29,26 +31,57 @@ struct MacRootView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(MacAppStyle.pageBackground)
             case .ready:
-                NavigationSplitView {
-                    macSidebar
-                } content: {
-                    featureContent(for: session.selectedFeature)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(MacAppStyle.pageBackground)
-                } detail: {
-                    featureInspector(for: session.selectedFeature)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(MacAppStyle.pageBackground)
-                }
-                .navigationSplitViewStyle(.balanced)
-                .toolbar {
-                    macToolbar
-                }
+                navigationSplit
             }
         }
         .task {
             session.start()
             commandCenter.startIfNeeded()
+        }
+    }
+
+    @ViewBuilder
+    private var navigationSplit: some View {
+        if session.selectedFeature == .notebook && !isNotebookInspectorColumnVisible {
+            NavigationSplitView(columnVisibility: $columnVisibility) {
+                macSidebar
+            } detail: {
+                featureContent(for: session.selectedFeature)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(MacAppStyle.pageBackground)
+            }
+            .navigationSplitViewStyle(.balanced)
+            .toolbar {
+                macToolbar
+            }
+            .onChange(of: session.selectedFeature) { newFeature in
+                columnVisibility = .all
+                if newFeature == .notebook {
+                    isNotebookInspectorColumnVisible = true
+                }
+            }
+        } else {
+            NavigationSplitView(columnVisibility: $columnVisibility) {
+                macSidebar
+            } content: {
+                featureContent(for: session.selectedFeature)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(MacAppStyle.pageBackground)
+            } detail: {
+                featureInspector(for: session.selectedFeature)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(MacAppStyle.pageBackground)
+            }
+            .navigationSplitViewStyle(.balanced)
+            .toolbar {
+                macToolbar
+            }
+            .onChange(of: session.selectedFeature) { newFeature in
+                columnVisibility = .all
+                if newFeature == .notebook {
+                    isNotebookInspectorColumnVisible = true
+                }
+            }
         }
     }
 
@@ -197,11 +230,11 @@ struct MacRootView: View {
                 .help("Deshacer último cambio del cuaderno")
 
                 Button {
-                    notebookToolbarActions.toggleInspector()
+                    toggleNotebookInspectorColumn()
                 } label: {
                     Label("Inspector", systemImage: "sidebar.right")
                 }
-                .disabled(!notebookToolbarActions.canToggleInspector)
+                .disabled(!isNotebookInspectorColumnVisible && !notebookToolbarActions.canToggleInspector)
                 .help(notebookToolbarActions.isInspectorPresented ? "Ocultar inspector" : "Mostrar inspector")
 
                 Menu {
@@ -209,10 +242,6 @@ struct MacRootView: View {
                         notebookToolbarActions.openOrganizationMenu()
                     }
                     .disabled(!notebookToolbarActions.organizationMenuAvailable)
-
-                    Button("Opciones avanzadas…") {
-                        notebookToolbarActions.openAdvancedMenu()
-                    }
 
                     Divider()
 
@@ -301,6 +330,8 @@ struct MacRootView: View {
             Button {
                 if session.selectedFeature == .dashboard, let dashboardToolbarActions {
                     dashboardToolbarActions.refresh()
+                } else if session.selectedFeature == .notebook {
+                    notebookToolbarActions.refresh()
                 } else if session.selectedFeature == .attendance, let attendanceToolbarActions {
                     attendanceToolbarActions.refresh()
                 } else {
@@ -350,6 +381,28 @@ struct MacRootView: View {
         DispatchQueue.main.async {
             guard session.selectedFeature == .attendance else { return }
             attendanceToolbarActions = actions
+        }
+    }
+
+    private func toggleNotebookInspectorColumn() {
+        guard session.selectedFeature == .notebook else { return }
+
+        if isNotebookInspectorColumnVisible {
+            isNotebookInspectorColumnVisible = false
+            notebookInspectorState.isPresented = false
+            notebookToolbarActions.isInspectorPresented = false
+            columnVisibility = .all
+            return
+        }
+
+        isNotebookInspectorColumnVisible = true
+        columnVisibility = .all
+
+        if notebookInspectorState.selection == nil {
+            notebookToolbarActions.toggleInspector()
+        } else {
+            notebookInspectorState.isPresented = true
+            notebookToolbarActions.isInspectorPresented = true
         }
     }
 

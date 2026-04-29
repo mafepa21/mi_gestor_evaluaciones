@@ -202,6 +202,35 @@ interface NotebookRepository {
     )
 }
 
+interface PhysicalTestsRepository {
+    suspend fun listDefinitions(): List<PhysicalTestDefinition>
+    suspend fun saveDefinition(definition: PhysicalTestDefinition)
+
+    suspend fun listBatteries(): List<PhysicalTestBattery>
+    suspend fun saveBattery(battery: PhysicalTestBattery)
+
+    suspend fun assignBatteryToClass(assignment: PhysicalTestAssignment)
+    suspend fun listAssignmentsForClass(classId: Long): List<PhysicalTestAssignment>
+
+    suspend fun listScalesForTest(testId: String): List<PhysicalTestScale>
+    suspend fun saveScale(scale: PhysicalTestScale)
+
+    suspend fun resolveScale(
+        testId: String,
+        course: Int?,
+        age: Int?,
+        sex: String?,
+        batteryId: String?,
+    ): PhysicalTestScale?
+
+    suspend fun saveNotebookLink(link: PhysicalTestNotebookLink)
+    suspend fun listNotebookLinksForAssignment(assignmentId: String): List<PhysicalTestNotebookLink>
+
+    suspend fun saveResult(result: PhysicalTestResult, attempts: List<PhysicalTestAttempt>)
+    suspend fun listResultsForAssignment(assignmentId: String): List<PhysicalTestResult>
+    suspend fun listResultsForStudent(studentId: Long, testId: String): List<PhysicalTestResult>
+}
+
 interface PlannerRepository {
     fun observeSessions(weekNumber: Int, year: Int): Flow<List<PlanningSession>>
     suspend fun listSessions(weekNumber: Int, year: Int): List<PlanningSession>

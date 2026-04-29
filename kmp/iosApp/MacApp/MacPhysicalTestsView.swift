@@ -9,6 +9,7 @@ private enum PhysicalTestsMacSection: String, CaseIterable, Identifiable {
     case dashboard
     case bank
     case batteries
+    case assignments
     case capture
     case scales
     case history
@@ -20,6 +21,7 @@ private enum PhysicalTestsMacSection: String, CaseIterable, Identifiable {
         case .dashboard: return "Resumen"
         case .bank: return "Banco de pruebas"
         case .batteries: return "Baterías"
+        case .assignments: return "Asignaciones"
         case .capture: return "Captura"
         case .scales: return "Baremos"
         case .history: return "Histórico"
@@ -31,6 +33,7 @@ private enum PhysicalTestsMacSection: String, CaseIterable, Identifiable {
         case .dashboard: return "chart.line.uptrend.xyaxis"
         case .bank: return "list.bullet.rectangle"
         case .batteries: return "rectangle.stack.badge.plus"
+        case .assignments: return "link.circle"
         case .capture: return "tablecells"
         case .scales: return "slider.horizontal.3"
         case .history: return "clock.arrow.circlepath"
@@ -47,10 +50,23 @@ private enum MacPhysicalNotebookColumnMode: String, CaseIterable, Identifiable {
 }
 
 private struct MacPhysicalTestBattery: Identifiable {
-    let id = UUID()
+    let id: String
     var name: String
     var date: Date
     var templateIds: Set<String>
+    var columnMode: MacPhysicalNotebookColumnMode
+}
+
+private struct MacPhysicalTestAssignment: Identifiable {
+    let id: String
+    var batteryId: String
+    var classId: Int64
+    var className: String
+    var course: Int
+    var ageFrom: Int
+    var ageTo: Int
+    var termLabel: String
+    var date: Date
     var columnMode: MacPhysicalNotebookColumnMode
 }
 
@@ -77,10 +93,15 @@ struct MacPhysicalTestsView: View {
     @State private var selectedTestId: Int64?
     @State private var selectedTemplateId: String? = PhysicalTestTemplate.defaults.first?.id
     @State private var batteries: [MacPhysicalTestBattery] = []
+    @State private var assignments: [MacPhysicalTestAssignment] = []
     @State private var batteryName = "Condición física inicial"
     @State private var batteryDate = Date()
     @State private var batteryTemplateIds = Set(PhysicalTestTemplate.defaults.prefix(4).map(\.id))
     @State private var batteryColumnMode: MacPhysicalNotebookColumnMode = .rawAndScore
+    @State private var assignmentCourse = 1
+    @State private var assignmentAgeFrom = 12
+    @State private var assignmentAgeTo = 13
+    @State private var assignmentTermLabel = "1ª evaluación"
     @State private var captureDrafts: [Int64: [String]] = [:]
     @State private var scale = PhysicalTestScaleDraft.defaultJump
 
@@ -145,6 +166,8 @@ struct MacPhysicalTestsView: View {
             bank
         case .batteries:
             batteriesView
+        case .assignments:
+            assignmentsView
         case .capture:
             captureTable
         case .scales:
@@ -313,9 +336,53 @@ struct MacPhysicalTestsView: View {
                     .frame(minHeight: 260)
                 }
 
-                Text("TODO(kmp-physical-tests): persistir baterías macOS como sesiones de medición compartidas con iPad.")
+                Text("Las columnas se crean desde Asignaciones, cuando ya hay clase, curso, edad y fecha.")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
+            }
+            .padding(MacAppStyle.pagePadding)
+        }
+    }
+
+    private var assignmentsView: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
+                header(title: "Asignaciones", subtitle: "Vincula batería, clase, curso, edad, trimestre y columnas de cuaderno.")
+
+                VStack(alignment: .leading, spacing: 14) {
+                    TextField("Trimestre", text: $assignmentTermLabel)
+                    HStack {
+                        Stepper("Curso \(assignmentCourse)", value: $assignmentCourse, in: 1...6)
+                        Stepper("Edad \(assignmentAgeFrom)", value: $assignmentAgeFrom, in: 3...20)
+                        Stepper("Hasta \(assignmentAgeTo)", value: $assignmentAgeTo, in: assignmentAgeFrom...20)
+                    }
+                    DatePicker("Fecha", selection: $batteryDate, displayedComponents: .date)
+                    Picker("Columnas", selection: $batteryColumnMode) {
+                        ForEach(MacPhysicalNotebookColumnMode.allCases) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    Button {
+                        createAssignment()
+                    } label: {
+                        Label("Crear asignación y columnas", systemImage: "link.badge.plus")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(selectedClassId == nil || batteries.isEmpty)
+                }
+                .padding(MacAppStyle.innerPadding)
+                .background(MacAppStyle.cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
+
+                Table(assignments) {
+                    TableColumn("Clase") { assignment in Text(assignment.className) }
+                    TableColumn("Curso") { assignment in Text("\(assignment.course)") }
+                    TableColumn("Edad") { assignment in Text("\(assignment.ageFrom)-\(assignment.ageTo)") }
+                    TableColumn("Trimestre") { assignment in Text(assignment.termLabel) }
+                    TableColumn("Columnas") { assignment in Text(assignment.columnMode.rawValue) }
+                }
+                .frame(minHeight: 260)
             }
             .padding(MacAppStyle.pagePadding)
         }
@@ -369,9 +436,23 @@ struct MacPhysicalTestsView: View {
                 }
             }
 
-            Text("TODO(kmp-physical-tests): persistir intentos individuales, rawText, resultado final, baremo aplicado y score como PhysicalTestResult.")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+            HStack {
+                Spacer()
+                Button {
+                    Task { await saveSelectedCaptureRow() }
+                } label: {
+                    Label("Guardar cambios", systemImage: "checkmark.circle")
+                }
+                .disabled(selectedStudentId == nil)
+
+                Button {
+                    Task { await saveAllCaptureRows() }
+                } label: {
+                    Label("Guardar todo", systemImage: "checkmark.circle.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(selectedTest == nil)
+            }
         }
         .padding(MacAppStyle.pagePadding)
     }
@@ -514,7 +595,7 @@ struct MacPhysicalTestsView: View {
                 section = .capture
             },
             onCreateColumns: {
-                createBattery(createTests: false)
+                section = .assignments
             },
             onRefresh: {
                 Task { await reload() }
@@ -574,6 +655,7 @@ struct MacPhysicalTestsView: View {
 
     private func createBattery(createTests: Bool = true) {
         let battery = MacPhysicalTestBattery(
+            id: "mac_pe_battery_\(Int64(Date().timeIntervalSince1970 * 1000))",
             name: batteryName,
             date: batteryDate,
             templateIds: batteryTemplateIds,
@@ -586,19 +668,41 @@ struct MacPhysicalTestsView: View {
                     await createTest(from: template)
                 }
             }
-            createNotebookColumns(for: battery)
+            section = .assignments
+            bridge.status = "Batería creada. Asígnala a una clase para crear columnas."
         }
     }
 
-    private func createNotebookColumns(for battery: MacPhysicalTestBattery) {
+    private func createAssignment() {
+        guard let selectedClassId, let battery = batteries.first else {
+            bridge.status = "Crea una batería y selecciona una clase antes de asignar."
+            return
+        }
+        let assignment = MacPhysicalTestAssignment(
+            id: "mac_pe_assignment_\(Int64(Date().timeIntervalSince1970 * 1000))",
+            batteryId: battery.id,
+            classId: selectedClassId,
+            className: selectedClassName,
+            course: assignmentCourse,
+            ageFrom: assignmentAgeFrom,
+            ageTo: max(assignmentAgeFrom, assignmentAgeTo),
+            termLabel: assignmentTermLabel,
+            date: batteryDate,
+            columnMode: batteryColumnMode
+        )
+        assignments.insert(assignment, at: 0)
+        createNotebookColumns(for: battery, assignment: assignment)
+    }
+
+    private func createNotebookColumns(for battery: MacPhysicalTestBattery, assignment: MacPhysicalTestAssignment) {
         guard let selectedClassId else { return }
         bridge.selectClass(id: selectedClassId)
         let selectedTemplates = PhysicalTestTemplate.defaults.filter { battery.templateIds.contains($0.id) }
-        let categoryId = "mac_pe_battery_\(Int64(Date().timeIntervalSince1970 * 1000))"
-        bridge.saveColumnCategory(name: battery.name, categoryId: categoryId)
+        let categoryId = assignment.id
+        bridge.saveColumnCategory(name: "\(battery.name) · \(assignment.termLabel)", categoryId: categoryId)
 
         for template in selectedTemplates {
-            if battery.columnMode == .rawOnly || battery.columnMode == .rawAndScore {
+            if assignment.columnMode == .rawOnly || assignment.columnMode == .rawAndScore {
                 bridge.addColumn(
                     name: "\(template.name) · marca",
                     type: NotebookColumnType.numeric.name,
@@ -617,7 +721,7 @@ struct MacPhysicalTestsView: View {
                 )
             }
 
-            if battery.columnMode == .rawAndScore || battery.columnMode == .scoreOnly {
+            if assignment.columnMode == .rawAndScore || assignment.columnMode == .scoreOnly {
                 bridge.addColumn(
                     name: "\(template.name) · nota",
                     type: NotebookColumnType.numeric.name,
@@ -635,7 +739,6 @@ struct MacPhysicalTestsView: View {
                     countsTowardAverage: false
                 )
             }
-            // TODO(kmp-physical-tests): vincular testId -> rawColumnId / scoreColumnId cuando addColumn o KMP devuelvan IDs persistentes.
         }
         bridge.status = "Columnas de condición física preparadas en el cuaderno."
     }
@@ -673,7 +776,43 @@ struct MacPhysicalTestsView: View {
         let values = attemptTexts(for: result).compactMap { text in
             Double(text.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines))
         }
-        return values.max() ?? result.value
+        return resolvedPhysicalResult(
+            attempts: values,
+            direction: scale.direction,
+            resultMode: .best
+        ) ?? result.value
+    }
+
+    @MainActor
+    private func saveSelectedCaptureRow() async {
+        guard let studentId = selectedStudentId,
+              let result = selectedTest?.results.first(where: { $0.student.id == studentId }) else { return }
+        await saveCaptureResult(result)
+    }
+
+    @MainActor
+    private func saveAllCaptureRows() async {
+        guard let selectedTest else { return }
+        for result in selectedTest.results {
+            await saveCaptureResult(result)
+        }
+        await reload()
+    }
+
+    @MainActor
+    private func saveCaptureResult(_ result: KmpBridge.PhysicalTestSnapshot.StudentResult) async {
+        guard let selectedTest, let selectedClassId else { return }
+        do {
+            try await bridge.saveGrade(
+                studentId: result.student.id,
+                evaluationId: selectedTest.evaluation.id,
+                value: resolvedCaptureValue(for: result),
+                classId: selectedClassId
+            )
+            bridge.status = "Marca física guardada."
+        } catch {
+            bridge.status = "No se pudo guardar la marca: \(error.localizedDescription)"
+        }
     }
 }
 

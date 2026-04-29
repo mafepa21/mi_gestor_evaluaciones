@@ -5,6 +5,8 @@ struct PhysicalTestCaptureView: View {
     let classId: Int64
     let test: KmpBridge.PhysicalTestSnapshot
     let scale: PhysicalTestScaleDraft?
+    let direction: PhysicalTestScaleDirection
+    let resultMode: PhysicalTestResultMode
     let onSaved: () async -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -22,7 +24,11 @@ struct PhysicalTestCaptureView: View {
     }
 
     private var finalValue: Double? {
-        parsedAttempts.max() ?? currentResult?.value
+        resolvedPhysicalResult(
+            attempts: parsedAttempts,
+            direction: direction,
+            resultMode: resultMode
+        ) ?? currentResult?.value
     }
 
     private var scorePreview: Double? {
@@ -65,7 +71,7 @@ struct PhysicalTestCaptureView: View {
                             CaptureMetric(title: "Alumno", value: "\(selectedIndex + 1)/\(test.results.count)")
                         }
 
-                        Text("TODO(kmp-physical-tests): guardar intentos, rawText, baremo aplicado y score como PhysicalTestResult cuando exista persistencia KMP.")
+                        Text(scorePreview == nil ? "Sin baremo: se guardará la marca bruta y podrás baremar después." : "Marca y nota listas para guardar.")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
 

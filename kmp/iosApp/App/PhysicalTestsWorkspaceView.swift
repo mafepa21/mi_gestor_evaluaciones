@@ -70,7 +70,9 @@ struct PhysicalTestTemplate: Identifiable, Hashable {
 private enum PhysicalTestsWorkspaceTab: String, CaseIterable, Identifiable {
     case bank = "Banco"
     case batteries = "Baterías"
+    case assignments = "Asignaciones"
     case capture = "Captura"
+    case scales = "Baremos"
     case history = "Histórico"
 
     var id: String { rawValue }
@@ -108,11 +110,32 @@ struct PhysicalBatteryQuickTemplate: Identifiable {
 }
 
 private struct PhysicalTestBattery: Identifiable {
-    let id = UUID()
+    let id: String
     var name: String
     var date: Date
     var templateIds: Set<String>
     var columnMode: PhysicalNotebookColumnMode
+}
+
+private struct PhysicalTestAssignmentDraft: Identifiable {
+    let id: String
+    var batteryId: String
+    var classId: Int64
+    var className: String
+    var course: Int
+    var ageFrom: Int
+    var ageTo: Int
+    var termLabel: String
+    var date: Date
+    var columnMode: PhysicalNotebookColumnMode
+}
+
+private struct PhysicalNotebookLink: Identifiable {
+    var id: String { "\(assignmentId)-\(testId)" }
+    var assignmentId: String
+    var testId: String
+    var rawColumnId: String?
+    var scoreColumnId: String?
 }
 
 struct PhysicalTestsWorkspaceView: View {
@@ -133,6 +156,12 @@ struct PhysicalTestsWorkspaceView: View {
     @State private var batteryDate = Date()
     @State private var batteryTemplateIds: Set<String> = Set(PhysicalTestTemplate.defaults.prefix(4).map(\.id))
     @State private var batteryColumnMode: PhysicalNotebookColumnMode = .rawAndScore
+    @State private var assignments: [PhysicalTestAssignmentDraft] = []
+    @State private var notebookLinks: [PhysicalNotebookLink] = []
+    @State private var assignmentCourse = 1
+    @State private var assignmentAgeFrom = 12
+    @State private var assignmentAgeTo = 13
+    @State private var assignmentTermLabel = "1ª evaluación"
     @State private var scale = PhysicalTestScaleDraft.defaultJump
 
     private var selectedClassName: String {
@@ -183,8 +212,12 @@ struct PhysicalTestsWorkspaceView: View {
                         bankView
                     case .batteries:
                         batteriesView
+                    case .assignments:
+                        assignmentsView
                     case .capture:
                         captureDashboard
+                    case .scales:
+                        scalesView
                     case .history:
                         historyView
                     }
@@ -217,6 +250,8 @@ struct PhysicalTestsWorkspaceView: View {
                         classId: selectedClassId,
                         test: selectedTest,
                         scale: scale,
+                        direction: scale.direction,
+                        resultMode: .best,
                         onSaved: { await reload() }
                     )
                 }
@@ -309,9 +344,74 @@ struct PhysicalTestsWorkspaceView: View {
                     }
                 }
 
-                Text("TODO(kmp-physical-tests): persistir baterías como sesiones de medición y vincularlas con columnas de cuaderno.")
+                Text("Las columnas del cuaderno se crean desde Asignaciones, cuando ya hay clase, curso, edad y fecha.")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
+            }
+            .padding(20)
+        }
+    }
+
+    private var assignmentsView: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                NotebookSurface {
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("Asignar batería a clase")
+                            .font(.headline)
+                        Picker("Batería", selection: $batteryName) {
+                            ForEach(batteries) { battery in
+                                Text(battery.name).tag(battery.name)
+                            }
+                        }
+                        HStack {
+                            Stepper("Curso \(assignmentCourse)", value: $assignmentCourse, in: 1...6)
+                            Stepper("Edad \(assignmentAgeFrom)-\(assignmentAgeTo)", value: $assignmentAgeFrom, in: 3...20)
+                            Stepper("Hasta \(assignmentAgeTo)", value: $assignmentAgeTo, in: assignmentAgeFrom...20)
+                        }
+                        TextField("Evaluación / trimestre", text: $assignmentTermLabel)
+                            .textFieldStyle(.roundedBorder)
+                        DatePicker("Fecha de medición", selection: $batteryDate, displayedComponents: .date)
+                        Picker("Columnas", selection: $batteryColumnMode) {
+                            ForEach(PhysicalNotebookColumnMode.allCases) { mode in
+                                Text(mode.rawValue).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        Button {
+                            createAssignment()
+                        } label: {
+                            Label("Crear asignación y columnas", systemImage: "link.badge.plus")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(selectedClassId == nil || batteries.isEmpty)
+                    }
+                }
+
+                ForEach(assignments) { assignment in
+                    NotebookSurface {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(assignment.termLabel)
+                                .font(.headline)
+                            Text("\(assignment.className) · curso \(assignment.course) · \(assignment.ageFrom)-\(assignment.ageTo) años")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            Text("Columnas: \(assignment.columnMode.rawValue) · \(assignment.date.formatted(date: .abbreviated, time: .omitted))")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                if assignments.isEmpty {
+                    PhysicalEmptyState(
+                        title: "Sin asignaciones",
+                        systemImage: "link.circle",
+                        subtitle: "Crea una batería y asígnala a una clase antes de generar columnas o capturar marcas."
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 260)
+                }
             }
             .padding(20)
         }
@@ -406,6 +506,13 @@ struct PhysicalTestsWorkspaceView: View {
                     .foregroundStyle(.secondary)
             }
             .padding(20)
+        }
+    }
+
+    private var scalesView: some View {
+        NavigationStack {
+            PhysicalTestScaleEditor(scale: $scale)
+                .navigationTitle("Baremos")
         }
     }
 
@@ -515,19 +622,47 @@ struct PhysicalTestsWorkspaceView: View {
             for template in PhysicalTestTemplate.defaults where battery.templateIds.contains(template.id) {
                 await createTest(from: template)
             }
-            createNotebookColumns(for: battery)
+            selectedTab = .assignments
+            bridge.status = "Batería creada. Asígnala a una clase para crear columnas."
         }
     }
 
-    private func createNotebookColumns(for battery: PhysicalTestBattery) {
+    private func createAssignment() {
+        guard let selectedClassId else {
+            bridge.status = "Selecciona una clase antes de asignar la batería."
+            return
+        }
+        guard let battery = batteries.first(where: { $0.name == batteryName }) ?? batteries.first else {
+            bridge.status = "Crea una batería antes de asignarla."
+            return
+        }
+        let assignment = PhysicalTestAssignmentDraft(
+            id: "pe_assignment_\(Int64(Date().timeIntervalSince1970 * 1000))",
+            batteryId: battery.id,
+            classId: selectedClassId,
+            className: selectedClassName,
+            course: assignmentCourse,
+            ageFrom: assignmentAgeFrom,
+            ageTo: max(assignmentAgeFrom, assignmentAgeTo),
+            termLabel: assignmentTermLabel,
+            date: batteryDate,
+            columnMode: batteryColumnMode
+        )
+        assignments.insert(assignment, at: 0)
+        createNotebookColumns(for: battery, assignment: assignment)
+    }
+
+    private func createNotebookColumns(for battery: PhysicalTestBattery, assignment: PhysicalTestAssignmentDraft) {
         guard let selectedClassId else { return }
         bridge.selectClass(id: selectedClassId)
         let selectedTemplates = PhysicalTestTemplate.defaults.filter { battery.templateIds.contains($0.id) }
-        let categoryId = "pe_battery_\(Int64(Date().timeIntervalSince1970 * 1000))"
-        bridge.saveColumnCategory(name: battery.name, categoryId: categoryId)
+        let categoryId = assignment.id
+        bridge.saveColumnCategory(name: "\(battery.name) · \(assignment.termLabel)", categoryId: categoryId)
 
         for template in selectedTemplates {
-            if battery.columnMode == .rawOnly || battery.columnMode == .rawAndScore {
+            let rawColumnId = "\(assignment.id)_\(template.id)_raw"
+            let scoreColumnId = "\(assignment.id)_\(template.id)_score"
+            if assignment.columnMode == .rawOnly || assignment.columnMode == .rawAndScore {
                 bridge.addColumn(
                     name: "\(template.name) · marca",
                     type: NotebookColumnType.numeric.name,
@@ -546,7 +681,7 @@ struct PhysicalTestsWorkspaceView: View {
                 )
             }
 
-            if battery.columnMode == .rawAndScore || battery.columnMode == .scoreOnly {
+            if assignment.columnMode == .rawAndScore || assignment.columnMode == .scoreOnly {
                 bridge.addColumn(
                     name: "\(template.name) · nota",
                     type: NotebookColumnType.numeric.name,
@@ -564,9 +699,16 @@ struct PhysicalTestsWorkspaceView: View {
                     countsTowardAverage: false
                 )
             }
-            // TODO(kmp-physical-tests): vincular testId -> rawColumnId / scoreColumnId cuando addColumn o KMP devuelvan IDs persistentes.
+            notebookLinks.append(
+                PhysicalNotebookLink(
+                    assignmentId: assignment.id,
+                    testId: template.id,
+                    rawColumnId: assignment.columnMode == .rawOnly || assignment.columnMode == .rawAndScore ? rawColumnId : nil,
+                    scoreColumnId: assignment.columnMode == .rawAndScore || assignment.columnMode == .scoreOnly ? scoreColumnId : nil
+                )
+            )
         }
-        bridge.status = "Columnas de cuaderno preparadas para \(battery.name)."
+        bridge.status = "Asignación creada y columnas preparadas para \(battery.name)."
     }
 }
 
@@ -755,6 +897,7 @@ private struct PhysicalBatteryBuilder: View {
                 Button {
                     onCreate(
                         PhysicalTestBattery(
+                            id: "pe_battery_\(Int64(Date().timeIntervalSince1970 * 1000))",
                             name: name,
                             date: date,
                             templateIds: selectedTemplateIds,

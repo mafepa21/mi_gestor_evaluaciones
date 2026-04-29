@@ -38,6 +38,12 @@ struct PhysicalTestScaleRange: Identifiable, Hashable {
 struct PhysicalTestScaleDraft: Identifiable, Hashable {
     let id = UUID()
     var name: String
+    var testId: String = ""
+    var course: Int?
+    var ageFrom: Int?
+    var ageTo: Int?
+    var sex: String = ""
+    var batteryId: String = ""
     var direction: PhysicalTestScaleDirection
     var ranges: [PhysicalTestScaleRange]
 
@@ -67,6 +73,46 @@ struct PhysicalTestScaleDraft: Identifiable, Hashable {
 
     func score(for rawValue: Double) -> Double? {
         ranges.first(where: { $0.contains(rawValue) })?.score
+    }
+
+    var validationMessages: [String] {
+        var messages: [String] = []
+        for range in ranges {
+            if range.minValue == nil && range.maxValue == nil {
+                messages.append("Hay rangos sin mínimo ni máximo.")
+            }
+            if let min = range.minValue, let max = range.maxValue, min > max {
+                messages.append("Hay rangos con mínimo mayor que máximo.")
+            }
+            if !(0...10).contains(range.score) {
+                messages.append("Todas las notas deben estar entre 0 y 10.")
+            }
+        }
+        let sorted = ranges.sorted { ($0.minValue ?? -.infinity) < ($1.minValue ?? -.infinity) }
+        for pair in zip(sorted, sorted.dropFirst()) {
+            if let leftMax = pair.0.maxValue, let rightMin = pair.1.minValue, rightMin <= leftMax {
+                messages.append("Hay rangos solapados.")
+                break
+            }
+        }
+        return Array(Set(messages)).sorted()
+    }
+}
+
+func resolvedPhysicalResult(
+    attempts: [Double],
+    direction: PhysicalTestScaleDirection,
+    resultMode: PhysicalTestResultMode
+) -> Double? {
+    let validAttempts = attempts.filter { $0.isFinite }
+    guard !validAttempts.isEmpty else { return nil }
+    switch resultMode {
+    case .best:
+        return direction == .higherIsBetter ? validAttempts.max() : validAttempts.min()
+    case .average:
+        return validAttempts.reduce(0, +) / Double(validAttempts.count)
+    case .last:
+        return validAttempts.last
     }
 }
 
@@ -117,6 +163,16 @@ struct PhysicalTestScaleEditor: View {
             if strategy == .manual {
                 Section("Baremo") {
                     TextField("Nombre", text: $scale.name)
+                    TextField("Test", text: $scale.testId)
+
+                    HStack {
+                        OptionalIntField(title: "Curso", value: $scale.course)
+                        OptionalIntField(title: "Edad desde", value: $scale.ageFrom)
+                        OptionalIntField(title: "Edad hasta", value: $scale.ageTo)
+                    }
+
+                    TextField("Sexo opcional", text: $scale.sex)
+                    TextField("Batería opcional", text: $scale.batteryId)
 
                     Picker("Dirección", selection: $scale.direction) {
                         ForEach(PhysicalTestScaleDirection.allCases) { direction in
@@ -164,9 +220,25 @@ struct PhysicalTestScaleEditor: View {
                 }
             }
 
+            if !scale.validationMessages.isEmpty {
+                Section("Validación") {
+                    ForEach(scale.validationMessages, id: \.self) { message in
+                        Label(message, systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                    }
+                }
+            }
+
             Section("Preview") {
                 TextField("Marca bruta", text: $previewValue)
                     .appKeyboardType(.decimalPad)
+
+                HStack {
+                    Text("Resultado final")
+                    Spacer()
+                    Text(previewValue.isEmpty ? "-" : previewValue)
+                        .font(.headline.monospacedDigit())
+                }
 
                 HStack {
                     Text("Nota baremada")
@@ -183,6 +255,29 @@ struct PhysicalTestScaleEditor: View {
             }
         }
         .navigationTitle("Baremo")
+    }
+}
+
+private struct OptionalIntField: View {
+    let title: String
+    @Binding var value: Int?
+
+    private var text: Binding<String> {
+        Binding(
+            get: { value.map(String.init) ?? "" },
+            set: { value = Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+        )
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+            TextField("-", text: text)
+                .appKeyboardType(.numberPad)
+                .textFieldStyle(.roundedBorder)
+        }
     }
 }
 

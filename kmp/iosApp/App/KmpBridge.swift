@@ -8503,7 +8503,8 @@ final class PinnedTLSDelegate: NSObject, URLSessionDelegate, URLSessionTaskDeleg
     ) {
         guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
               let trust = challenge.protectionSpace.serverTrust,
-              let certificate = SecTrustGetCertificateAtIndex(trust, 0) else {
+              let certificateChain = SecTrustCopyCertificateChain(trust) as? [SecCertificate],
+              let certificate = certificateChain.first else {
             completionHandler(.performDefaultHandling, nil)
             return
         }

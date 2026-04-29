@@ -228,6 +228,26 @@ final class MacCommandCenterCoordinator: ObservableObject {
         process?.terminate()
     }
 
+    func reconnect() {
+        print("[Pairing] reconnect requested")
+        lastFailureMessage = nil
+        lastRunningSnapshot = nil
+        lastLifecycleState = .starting
+        clearHelperBuffers()
+        updateState(.starting, message: "Reconectando servicio LAN...")
+
+        guard process?.isRunning == true else {
+            shouldRestartAfterStop = false
+            startIfNeeded()
+            return
+        }
+
+        shouldRestartAfterStop = true
+        stdoutPipe?.fileHandleForReading.readabilityHandler = nil
+        stderrPipe?.fileHandleForReading.readabilityHandler = nil
+        process?.terminate()
+    }
+
     var environmentState: AppleCommandCenterState {
         AppleCommandCenterState(
             statusMessage: statusMessage,

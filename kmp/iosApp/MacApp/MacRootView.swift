@@ -150,7 +150,9 @@ struct MacRootView: View {
         case .backups:
             MacBackupsView(bridge: session.bridge)
         case .settings:
-            MacSettingsView(session: session)
+            MacSettingsView(session: session, commandCenter: commandCenter) {
+                session.selectedFeature = .sync
+            }
         }
     }
 

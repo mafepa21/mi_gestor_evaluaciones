@@ -231,6 +231,147 @@ data class Grade(
     val trace: AuditTrace = AuditTrace(),
 )
 
+data class PhysicalTestDefinition(
+    val id: String,
+    val name: String,
+    val capacity: PhysicalCapacity,
+    val measurementKind: PhysicalMeasurementKind,
+    val unit: String,
+    val higherIsBetter: Boolean,
+    val protocol: String = "",
+    val material: String = "",
+    val attempts: Int = 1,
+    val resultMode: PhysicalResultMode = PhysicalResultMode.BEST,
+    val trace: AuditTrace = AuditTrace(),
+)
+
+enum class PhysicalCapacity {
+    RESISTANCE,
+    STRENGTH,
+    SPEED,
+    FLEXIBILITY,
+    COORDINATION,
+    AGILITY,
+    CUSTOM,
+}
+
+enum class PhysicalMeasurementKind {
+    TIME,
+    DISTANCE,
+    REPETITIONS,
+    LEVEL,
+    SCORE,
+}
+
+enum class PhysicalResultMode {
+    BEST,
+    AVERAGE,
+    LAST,
+}
+
+data class PhysicalTestBattery(
+    val id: String,
+    val name: String,
+    val description: String = "",
+    val defaultCourse: Int? = null,
+    val defaultAgeFrom: Int? = null,
+    val defaultAgeTo: Int? = null,
+    val testIds: List<String>,
+    val trace: AuditTrace = AuditTrace(),
+)
+
+data class PhysicalTestAssignment(
+    val id: String,
+    val batteryId: String,
+    val classId: Long,
+    val course: Int?,
+    val ageFrom: Int?,
+    val ageTo: Int?,
+    val termLabel: String?,
+    val dateEpochMs: Long,
+    val rawColumnMode: Boolean = true,
+    val scoreColumnMode: Boolean = true,
+    val trace: AuditTrace = AuditTrace(),
+)
+
+data class PhysicalTestScale(
+    val id: String,
+    val testId: String,
+    val name: String,
+    val course: Int? = null,
+    val ageFrom: Int? = null,
+    val ageTo: Int? = null,
+    val sex: String? = null,
+    val batteryId: String? = null,
+    val direction: PhysicalScaleDirection,
+    val ranges: List<PhysicalTestScaleRange>,
+    val trace: AuditTrace = AuditTrace(),
+)
+
+enum class PhysicalScaleDirection {
+    HIGHER_IS_BETTER,
+    LOWER_IS_BETTER,
+}
+
+data class PhysicalTestScaleRange(
+    val id: String,
+    val scaleId: String,
+    val minValue: Double?,
+    val maxValue: Double?,
+    val score: Double,
+    val label: String? = null,
+    val sortOrder: Int = 0,
+)
+
+data class PhysicalTestResult(
+    val id: String,
+    val assignmentId: String,
+    val testId: String,
+    val classId: Long,
+    val studentId: Long,
+    val rawValue: Double?,
+    val rawText: String,
+    val score: Double?,
+    val scaleId: String?,
+    val observedAtEpochMs: Long,
+    val rawColumnId: String?,
+    val scoreColumnId: String?,
+    val trace: AuditTrace = AuditTrace(),
+)
+
+data class PhysicalTestAttempt(
+    val id: String,
+    val resultId: String,
+    val attemptNumber: Int,
+    val rawValue: Double?,
+    val rawText: String,
+)
+
+data class PhysicalTestNotebookLink(
+    val assignmentId: String,
+    val testId: String,
+    val rawColumnId: String?,
+    val scoreColumnId: String?,
+    val trace: AuditTrace = AuditTrace(),
+)
+
+fun resolvedPhysicalResult(
+    attempts: List<Double>,
+    direction: PhysicalScaleDirection,
+    resultMode: PhysicalResultMode,
+): Double? {
+    val validAttempts = attempts.filter { it.isFinite() }
+    if (validAttempts.isEmpty()) return null
+    return when (resultMode) {
+        PhysicalResultMode.BEST -> when (direction) {
+            PhysicalScaleDirection.HIGHER_IS_BETTER -> validAttempts.maxOrNull()
+            PhysicalScaleDirection.LOWER_IS_BETTER -> validAttempts.minOrNull()
+        }
+        PhysicalResultMode.AVERAGE -> validAttempts.average()
+        PhysicalResultMode.LAST -> validAttempts.last()
+    }
+}
+
 data class CompetencyCriterion(
     val id: Long,
     val code: String,

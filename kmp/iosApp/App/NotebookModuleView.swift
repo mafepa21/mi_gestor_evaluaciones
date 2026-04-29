@@ -703,10 +703,10 @@ struct NotebookModuleView: View {
                     )
                     .frame(minWidth: 520, minHeight: 620)
                 } else {
-                    ContentUnavailableView(
+                    NotebookContentUnavailableView(
                         "Sin datos del cuaderno",
                         systemImage: "rectangle.3.group",
-                        description: Text("Carga una clase para organizar sus columnas.")
+                        description: "Carga una clase para organizar sus columnas."
                     )
                     .frame(minWidth: 420, minHeight: 260)
                 }
@@ -5309,10 +5309,10 @@ private struct NotebookAverageConfigurationSheet: View {
                         }
 
                         if configurableColumns.isEmpty {
-                            ContentUnavailableView(
+                            NotebookContentUnavailableView(
                                 "Sin columnas evaluables visibles",
                                 systemImage: "percent",
-                                description: Text("Muestra o crea columnas numéricas o de rúbrica para configurar la media.")
+                                description: "Muestra o crea columnas numéricas o de rúbrica para configurar la media."
                             )
                             .frame(maxWidth: .infinity, minHeight: 260)
                         } else {
@@ -5532,10 +5532,10 @@ private struct NotebookColumnOrganizerSheet: View {
             Divider()
 
             if filteredColumns.isEmpty {
-                ContentUnavailableView(
+                NotebookContentUnavailableView(
                     "Sin columnas",
                     systemImage: "rectangle.3.group",
-                    description: Text("No hay columnas que coincidan con el filtro actual.")
+                    description: "No hay columnas que coincidan con el filtro actual."
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -5831,6 +5831,38 @@ private struct FlexibleTagRow: View {
                 .buttonStyle(.plain)
             }
         }
+    }
+}
+
+private struct NotebookContentUnavailableView: View {
+    let title: String
+    let systemImage: String
+    let description: String
+
+    init(_ title: String, systemImage: String, description: String) {
+        self.title = title
+        self.systemImage = systemImage
+        self.description = description
+    }
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.system(size: 34, weight: .semibold))
+                .foregroundStyle(.secondary)
+
+            Text(title)
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(.primary)
+
+            Text(description)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(28)
+        .frame(maxWidth: 420)
     }
 }
 

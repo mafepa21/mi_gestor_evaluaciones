@@ -15,12 +15,16 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.migestor.ios
         PRODUCT_NAME: MiGestorKMPiOS
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: "1.0"
         SWIFT_VERSION: "5.0"
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: C8JCMT4298
         ENABLE_USER_SCRIPT_SANDBOXING: NO
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: MiGestorKMPiOS
+        INFOPLIST_KEY_CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        INFOPLIST_KEY_CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
@@ -45,7 +49,6 @@ targets:
         OTHER_LDFLAGS:
           - "$(inherited)"
           - "-lsqlite3"
-          - "-Wl,-undefined,dynamic_lookup"
         EXCLUDED_ARCHS[sdk=iphonesimulator*]: x86_64
     dependencies:
       - framework: Frameworks/MiGestorKit.framework
@@ -72,12 +75,16 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.migestor.mac
         PRODUCT_NAME: MiGestorKMPMac
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: "1.0"
         SWIFT_VERSION: "5.0"
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: C8JCMT4298
         ENABLE_USER_SCRIPT_SANDBOXING: NO
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: MiGestorKMPMac
+        INFOPLIST_KEY_CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        INFOPLIST_KEY_CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         FRAMEWORK_SEARCH_PATHS:
           - "$(inherited)"
           - "$(SRCROOT)/Frameworks"

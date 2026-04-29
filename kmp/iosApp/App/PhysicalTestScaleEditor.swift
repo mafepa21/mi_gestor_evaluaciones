@@ -70,8 +70,30 @@ struct PhysicalTestScaleDraft: Identifiable, Hashable {
     }
 }
 
+enum PhysicalTestScaleStrategy: String, CaseIterable, Identifiable {
+    case recommended = "Baremo recomendado"
+    case progress = "Evaluar por progreso"
+    case manual = "Baremo manual"
+
+    var id: String { rawValue }
+
+    var title: String { rawValue }
+
+    var subtitle: String {
+        switch self {
+        case .recommended:
+            return "Usa el baremo local disponible como punto de partida y deja la ponderación para el Cuaderno."
+        case .progress:
+            return "Evalúa la mejora entre mediciones cuando exista histórico persistente de condición física."
+        case .manual:
+            return "Define rangos de marca y nota para un baremo específico."
+        }
+    }
+}
+
 struct PhysicalTestScaleEditor: View {
     @Binding var scale: PhysicalTestScaleDraft
+    @State private var strategy: PhysicalTestScaleStrategy = .recommended
     @State private var previewValue = ""
 
     private var previewScore: Double? {
@@ -80,37 +102,65 @@ struct PhysicalTestScaleEditor: View {
 
     var body: some View {
         Form {
-            Section("Baremo") {
-                TextField("Nombre", text: $scale.name)
-
-                Picker("Dirección", selection: $scale.direction) {
-                    ForEach(PhysicalTestScaleDirection.allCases) { direction in
-                        Text(direction.title).tag(direction)
+            Section("Tipo de evaluación") {
+                Picker("Baremo", selection: $strategy) {
+                    ForEach(PhysicalTestScaleStrategy.allCases) { strategy in
+                        Text(strategy.rawValue).tag(strategy)
                     }
                 }
 
-                Text(scale.direction.subtitle)
+                Text(strategy.subtitle)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
 
-            Section("Rangos") {
-                ForEach($scale.ranges) { $range in
-                    VStack(alignment: .leading, spacing: 10) {
-                        TextField("Etiqueta", text: $range.label)
-                        HStack {
-                            NumberDraftField(title: "Mín.", value: $range.minValue)
-                            NumberDraftField(title: "Máx.", value: $range.maxValue)
-                            NumberDraftFieldRequired(title: "Nota", value: $range.score)
+            if strategy == .manual {
+                Section("Baremo") {
+                    TextField("Nombre", text: $scale.name)
+
+                    Picker("Dirección", selection: $scale.direction) {
+                        ForEach(PhysicalTestScaleDirection.allCases) { direction in
+                            Text(direction.title).tag(direction)
                         }
                     }
-                    .padding(.vertical, 4)
+
+                    Text(scale.direction.subtitle)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
                 }
 
-                Button {
-                    scale.ranges.append(.init(minValue: nil, maxValue: nil, score: 5, label: "Nuevo rango"))
-                } label: {
-                    Label("Añadir rango", systemImage: "plus")
+                Section("Rangos") {
+                    ForEach($scale.ranges) { $range in
+                        VStack(alignment: .leading, spacing: 8) {
+                            TextField("Etiqueta", text: $range.label)
+                            HStack {
+                                NumberDraftField(title: "Mín.", value: $range.minValue)
+                                NumberDraftField(title: "Máx.", value: $range.maxValue)
+                                NumberDraftFieldRequired(title: "Nota", value: $range.score)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+
+                    Button {
+                        scale.ranges.append(.init(minValue: nil, maxValue: nil, score: 5, label: "Nuevo rango"))
+                    } label: {
+                        Label("Añadir rango", systemImage: "plus")
+                    }
+                }
+            } else {
+                Section(strategy.title) {
+                    HStack {
+                        Text("Baremo activo")
+                        Spacer()
+                        Text(scale.name)
+                            .font(.headline)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Text("TODO(kmp-physical-tests): persistir selección de baremo recomendado/progreso y resolver el baremo por test cuando exista catálogo KMP.")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
                 }
             }
 

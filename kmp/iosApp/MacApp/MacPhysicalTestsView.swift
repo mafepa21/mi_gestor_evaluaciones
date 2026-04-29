@@ -52,7 +52,6 @@ private struct MacPhysicalTestBattery: Identifiable {
     var date: Date
     var templateIds: Set<String>
     var columnMode: MacPhysicalNotebookColumnMode
-    var includeScoreInAverage: Bool
 }
 
 private struct MacPhysicalTestCaptureRow: Identifiable {
@@ -82,7 +81,7 @@ struct MacPhysicalTestsView: View {
     @State private var batteryDate = Date()
     @State private var batteryTemplateIds = Set(PhysicalTestTemplate.defaults.prefix(4).map(\.id))
     @State private var batteryColumnMode: MacPhysicalNotebookColumnMode = .rawAndScore
-    @State private var batteryIncludeScoreInAverage = false
+    @State private var captureDrafts: [Int64: [String]] = [:]
     @State private var scale = PhysicalTestScaleDraft.defaultJump
 
     private var selectedClassName: String {
@@ -204,9 +203,9 @@ struct MacPhysicalTestsView: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 Button {
-                    Task { await createTest(from: selectedTemplate) }
+                    addSelectedTemplateToBattery()
                 } label: {
-                    Label("Crear prueba", systemImage: "plus.circle.fill")
+                    Label("Añadir a batería", systemImage: "plus.circle.fill")
                 }
                 .disabled(selectedClassId == nil)
             }
@@ -226,29 +225,55 @@ struct MacPhysicalTestsView: View {
                             .labelsHidden()
                     }
 
-                    Picker("Columnas", selection: $batteryColumnMode) {
-                        ForEach(MacPhysicalNotebookColumnMode.allCases) { mode in
-                            Text(mode.rawValue).tag(mode)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Plantillas rápidas")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 8)], spacing: 8) {
+                            ForEach(PhysicalBatteryQuickTemplate.defaults(for: PhysicalTestTemplate.defaults)) { quickTemplate in
+                                Button(quickTemplate.title) {
+                                    batteryName = quickTemplate.title
+                                    batteryTemplateIds = quickTemplate.templateIds
+                                }
+                                .buttonStyle(.bordered)
+                            }
                         }
                     }
-                    .pickerStyle(.segmented)
 
-                    Toggle("La nota baremada entra en Media", isOn: $batteryIncludeScoreInAverage)
-                        .disabled(batteryColumnMode == .rawOnly)
-
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 10)], spacing: 10) {
-                        ForEach(PhysicalTestTemplate.defaults) { template in
-                            Toggle(template.name, isOn: Binding(
-                                get: { batteryTemplateIds.contains(template.id) },
-                                set: { enabled in
-                                    if enabled {
-                                        batteryTemplateIds.insert(template.id)
-                                    } else {
-                                        batteryTemplateIds.remove(template.id)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Pruebas")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 8)], spacing: 8) {
+                            ForEach(PhysicalTestTemplate.defaults) { template in
+                                Toggle(template.name, isOn: Binding(
+                                    get: { batteryTemplateIds.contains(template.id) },
+                                    set: { enabled in
+                                        if enabled {
+                                            batteryTemplateIds.insert(template.id)
+                                        } else {
+                                            batteryTemplateIds.remove(template.id)
+                                        }
                                     }
-                                }
-                            ))
+                                ))
+                            }
                         }
+                    }
+
+                    DisclosureGroup("Opciones avanzadas") {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Picker("Columnas", selection: $batteryColumnMode) {
+                                ForEach(MacPhysicalNotebookColumnMode.allCases) { mode in
+                                    Text(mode.rawValue).tag(mode)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+
+                            Text("Las notas se podrán ponderar después desde la columna Media.")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.top, 8)
                     }
 
                     HStack {
@@ -314,16 +339,19 @@ struct MacPhysicalTestsView: View {
                         .font(.callout.weight(.medium))
                 }
                 TableColumn("Intento 1") { row in
-                    Text(row.attempt1)
+                    TextField("-", text: attemptBinding(studentId: row.id, index: 0))
                         .monospacedDigit()
+                        .textFieldStyle(.roundedBorder)
                 }
                 TableColumn("Intento 2") { row in
-                    Text(row.attempt2)
+                    TextField("-", text: attemptBinding(studentId: row.id, index: 1))
                         .monospacedDigit()
+                        .textFieldStyle(.roundedBorder)
                 }
                 TableColumn("Intento 3") { row in
-                    Text(row.attempt3)
+                    TextField("-", text: attemptBinding(studentId: row.id, index: 2))
                         .monospacedDigit()
+                        .textFieldStyle(.roundedBorder)
                 }
                 TableColumn("Resultado") { row in
                     Text(row.result)
@@ -341,7 +369,7 @@ struct MacPhysicalTestsView: View {
                 }
             }
 
-            Text("TODO(kmp-physical-tests): hacer editables los intentos en tabla y guardar PhysicalTestResult por intento, rawText y score.")
+            Text("TODO(kmp-physical-tests): persistir intentos individuales, rawText, resultado final, baremo aplicado y score como PhysicalTestResult.")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
         }
@@ -350,7 +378,7 @@ struct MacPhysicalTestsView: View {
 
     private var scalesView: some View {
         VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
-            header(title: "Baremos", subtitle: "Editor V1 local por rangos, preparado para migrar a KMP/SQLDelight.")
+            header(title: "Baremos", subtitle: "Selección local de evaluación física, preparada para migrar a KMP/SQLDelight.")
 
             PhysicalTestScaleEditor(scale: $scale)
                 .frame(maxWidth: 720, maxHeight: .infinity, alignment: .leading)
@@ -400,14 +428,15 @@ struct MacPhysicalTestsView: View {
     private var captureRows: [MacPhysicalTestCaptureRow] {
         guard let selectedTest else { return [] }
         return selectedTest.results.map { result in
-            let value = result.value.map { PhysicalTestsFormatting.decimal($0) } ?? "-"
-            let numericValue = result.value
+            let attempts = attemptTexts(for: result)
+            let numericValue = resolvedCaptureValue(for: result)
+            let value = numericValue.map { PhysicalTestsFormatting.decimal($0) } ?? "-"
             return MacPhysicalTestCaptureRow(
                 id: result.student.id,
                 studentName: "\(result.student.firstName) \(result.student.lastName)",
-                attempt1: value,
-                attempt2: "-",
-                attempt3: "-",
+                attempt1: attempts[0],
+                attempt2: attempts[1],
+                attempt3: attempts[2],
                 result: value,
                 score: numericValue.flatMap { scale.score(for: $0) }.map { PhysicalTestsFormatting.decimal($0) } ?? "-",
                 status: result.value == nil ? "Pendiente" : "Guardado"
@@ -537,13 +566,18 @@ struct MacPhysicalTestsView: View {
         }
     }
 
+    private func addSelectedTemplateToBattery() {
+        batteryTemplateIds.insert(selectedTemplate.id)
+        section = .batteries
+        bridge.status = "\(selectedTemplate.name) añadida al borrador de batería."
+    }
+
     private func createBattery(createTests: Bool = true) {
         let battery = MacPhysicalTestBattery(
             name: batteryName,
             date: batteryDate,
             templateIds: batteryTemplateIds,
-            columnMode: batteryColumnMode,
-            includeScoreInAverage: batteryIncludeScoreInAverage
+            columnMode: batteryColumnMode
         )
         batteries.insert(battery, at: 0)
         Task {
@@ -598,11 +632,48 @@ struct MacPhysicalTestsView: View {
                     unitOrSituation: "Nota baremada",
                     scaleKind: .tenPoint,
                     iconName: "chart.bar.fill",
-                    countsTowardAverage: battery.includeScoreInAverage
+                    countsTowardAverage: false
                 )
             }
+            // TODO(kmp-physical-tests): vincular testId -> rawColumnId / scoreColumnId cuando addColumn o KMP devuelvan IDs persistentes.
         }
         bridge.status = "Columnas de condición física preparadas en el cuaderno."
+    }
+
+    private func attemptBinding(studentId: Int64, index: Int) -> Binding<String> {
+        Binding(
+            get: {
+                let attempts = captureDrafts[studentId] ?? defaultAttemptTexts(studentId: studentId)
+                return attempts.indices.contains(index) ? attempts[index] : ""
+            },
+            set: { newValue in
+                var attempts = captureDrafts[studentId] ?? defaultAttemptTexts(studentId: studentId)
+                while attempts.count < 3 {
+                    attempts.append("")
+                }
+                attempts[index] = newValue
+                captureDrafts[studentId] = attempts
+            }
+        )
+    }
+
+    private func attemptTexts(for result: KmpBridge.PhysicalTestSnapshot.StudentResult) -> [String] {
+        captureDrafts[result.student.id] ?? defaultAttemptTexts(studentId: result.student.id)
+    }
+
+    private func defaultAttemptTexts(studentId: Int64) -> [String] {
+        guard let result = selectedTest?.results.first(where: { $0.student.id == studentId }),
+              let value = result.value else {
+            return ["", "", ""]
+        }
+        return [PhysicalTestsFormatting.decimal(value), "", ""]
+    }
+
+    private func resolvedCaptureValue(for result: KmpBridge.PhysicalTestSnapshot.StudentResult) -> Double? {
+        let values = attemptTexts(for: result).compactMap { text in
+            Double(text.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        return values.max() ?? result.value
     }
 }
 

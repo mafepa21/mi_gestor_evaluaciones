@@ -84,13 +84,35 @@ private enum PhysicalNotebookColumnMode: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+struct PhysicalBatteryQuickTemplate: Identifiable {
+    let id: String
+    let title: String
+    let templateIds: Set<String>
+
+    static func defaults(for templates: [PhysicalTestTemplate]) -> [PhysicalBatteryQuickTemplate] {
+        let initial = Set(["course_navette", "horizontal_jump", "speed_30m", "sit_and_reach"])
+            .intersection(Set(templates.map(\.id)))
+        return [
+            .init(id: "initial", title: "Condición física inicial", templateIds: initial),
+            .init(id: "final", title: "Condición física final", templateIds: initial),
+            .init(id: "strength", title: "Fuerza", templateIds: ids(in: templates, capacity: .strength)),
+            .init(id: "resistance", title: "Resistencia", templateIds: ids(in: templates, capacity: .resistance)),
+            .init(id: "speed", title: "Velocidad", templateIds: ids(in: templates, capacity: .speed)),
+            .init(id: "mobility", title: "Movilidad", templateIds: ids(in: templates, capacity: .flexibility))
+        ]
+    }
+
+    private static func ids(in templates: [PhysicalTestTemplate], capacity: PhysicalTestCapacity) -> Set<String> {
+        Set(templates.filter { $0.capacity == capacity }.map(\.id))
+    }
+}
+
 private struct PhysicalTestBattery: Identifiable {
     let id = UUID()
     var name: String
     var date: Date
     var templateIds: Set<String>
     var columnMode: PhysicalNotebookColumnMode
-    var includeScoreInAverage: Bool
 }
 
 struct PhysicalTestsWorkspaceView: View {
@@ -107,6 +129,10 @@ struct PhysicalTestsWorkspaceView: View {
     @State private var showingCapture = false
     @State private var showingScaleEditor = false
     @State private var batteries: [PhysicalTestBattery] = []
+    @State private var batteryName = "Condición física inicial"
+    @State private var batteryDate = Date()
+    @State private var batteryTemplateIds: Set<String> = Set(PhysicalTestTemplate.defaults.prefix(4).map(\.id))
+    @State private var batteryColumnMode: PhysicalNotebookColumnMode = .rawAndScore
     @State private var scale = PhysicalTestScaleDraft.defaultJump
 
     private var selectedClassName: String {
@@ -244,7 +270,7 @@ struct PhysicalTestsWorkspaceView: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 260), spacing: 14)], spacing: 14) {
                 ForEach(PhysicalTestTemplate.defaults) { template in
                     PhysicalTemplateCard(template: template) {
-                        Task { await createTest(from: template) }
+                        addTemplateToBattery(template)
                     }
                 }
             }
@@ -258,6 +284,10 @@ struct PhysicalTestsWorkspaceView: View {
                 PhysicalBatteryBuilder(
                     templates: PhysicalTestTemplate.defaults,
                     selectedClassName: selectedClassName,
+                    name: $batteryName,
+                    date: $batteryDate,
+                    selectedTemplateIds: $batteryTemplateIds,
+                    columnMode: $batteryColumnMode,
                     onCreate: createBattery
                 )
 
@@ -470,6 +500,15 @@ struct PhysicalTestsWorkspaceView: View {
         }
     }
 
+    private func addTemplateToBattery(_ template: PhysicalTestTemplate) {
+        batteryTemplateIds.insert(template.id)
+        if batteryName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            batteryName = "Condición física"
+        }
+        selectedTab = .batteries
+        bridge.status = "\(template.name) añadida al borrador de batería."
+    }
+
     private func createBattery(_ battery: PhysicalTestBattery) {
         batteries.insert(battery, at: 0)
         Task {
@@ -522,9 +561,10 @@ struct PhysicalTestsWorkspaceView: View {
                     unitOrSituation: "Nota baremada",
                     scaleKind: .tenPoint,
                     iconName: "chart.bar.fill",
-                    countsTowardAverage: battery.includeScoreInAverage
+                    countsTowardAverage: false
                 )
             }
+            // TODO(kmp-physical-tests): vincular testId -> rawColumnId / scoreColumnId cuando addColumn o KMP devuelvan IDs persistentes.
         }
         bridge.status = "Columnas de cuaderno preparadas para \(battery.name)."
     }
@@ -601,7 +641,7 @@ private struct PhysicalTemplateCard: View {
                 Button {
                     onCreate()
                 } label: {
-                    Label("Crear prueba", systemImage: "plus.circle.fill")
+                    Label("Añadir a batería", systemImage: "plus.circle.fill")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
@@ -622,79 +662,111 @@ private struct PhysicalTemplateCard: View {
 private struct PhysicalBatteryBuilder: View {
     let templates: [PhysicalTestTemplate]
     let selectedClassName: String
+    @Binding var name: String
+    @Binding var date: Date
+    @Binding var selectedTemplateIds: Set<String>
+    @Binding var columnMode: PhysicalNotebookColumnMode
     let onCreate: (PhysicalTestBattery) -> Void
 
-    @State private var name = "Condición física inicial"
-    @State private var date = Date()
-    @State private var selectedTemplateIds: Set<String> = Set(PhysicalTestTemplate.defaults.prefix(4).map(\.id))
-    @State private var columnMode: PhysicalNotebookColumnMode = .rawAndScore
-    @State private var includeScoreInAverage = false
+    private var quickTemplates: [PhysicalBatteryQuickTemplate] {
+        PhysicalBatteryQuickTemplate.defaults(for: templates)
+    }
 
     var body: some View {
         NotebookSurface {
             VStack(alignment: .leading, spacing: 16) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Crear batería")
-                            .font(.headline)
-                        Text(selectedClassName)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button {
-                        onCreate(
-                            PhysicalTestBattery(
-                                name: name,
-                                date: date,
-                                templateIds: selectedTemplateIds,
-                                columnMode: columnMode,
-                                includeScoreInAverage: includeScoreInAverage
-                            )
-                        )
-                    } label: {
-                        Label("Crear", systemImage: "checkmark.circle.fill")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(selectedTemplateIds.isEmpty || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Crear batería")
+                        .font(.headline)
+                    Text(selectedClassName)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
                 }
 
                 TextField("Nombre", text: $name)
                     .textFieldStyle(.roundedBorder)
                 DatePicker("Fecha", selection: $date, displayedComponents: .date)
 
-                Picker("Columnas en cuaderno", selection: $columnMode) {
-                    ForEach(PhysicalNotebookColumnMode.allCases) { mode in
-                        Text(mode.rawValue).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-
-                Toggle("La nota baremada entra en Media", isOn: $includeScoreInAverage)
-                    .disabled(columnMode == .rawOnly)
-
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 190), spacing: 10)], spacing: 10) {
-                    ForEach(templates) { template in
-                        Button {
-                            if selectedTemplateIds.contains(template.id) {
-                                selectedTemplateIds.remove(template.id)
-                            } else {
-                                selectedTemplateIds.insert(template.id)
-                            }
-                        } label: {
-                            HStack {
-                                Image(systemName: selectedTemplateIds.contains(template.id) ? "checkmark.circle.fill" : "circle")
-                                Text(template.name)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Plantillas rápidas")
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 8)], spacing: 8) {
+                        ForEach(quickTemplates) { quickTemplate in
+                            Button {
+                                name = quickTemplate.title
+                                selectedTemplateIds = quickTemplate.templateIds
+                            } label: {
+                                Text(quickTemplate.title)
+                                    .font(.caption.weight(.semibold))
                                     .lineLimit(1)
-                                Spacer()
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 8)
                             }
-                            .font(.subheadline.weight(.semibold))
-                            .padding(10)
-                            .background(selectedTemplateIds.contains(template.id) ? Color.orange.opacity(0.14) : Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .buttonStyle(.bordered)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Pruebas")
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 190), spacing: 8)], spacing: 8) {
+                        ForEach(templates) { template in
+                            Button {
+                                if selectedTemplateIds.contains(template.id) {
+                                    selectedTemplateIds.remove(template.id)
+                                } else {
+                                    selectedTemplateIds.insert(template.id)
+                                }
+                            } label: {
+                                HStack {
+                                    Image(systemName: selectedTemplateIds.contains(template.id) ? "checkmark.circle.fill" : "circle")
+                                    Text(template.name)
+                                        .lineLimit(1)
+                                    Spacer()
+                                }
+                                .font(.subheadline.weight(.semibold))
+                                .padding(8)
+                                .background(selectedTemplateIds.contains(template.id) ? Color.orange.opacity(0.14) : Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
+                DisclosureGroup("Opciones avanzadas") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Picker("Columnas en cuaderno", selection: $columnMode) {
+                            ForEach(PhysicalNotebookColumnMode.allCases) { mode in
+                                Text(mode.rawValue).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+
+                        Text("Las notas se podrán ponderar después desde la columna Media.")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.top, 8)
+                }
+
+                Button {
+                    onCreate(
+                        PhysicalTestBattery(
+                            name: name,
+                            date: date,
+                            templateIds: selectedTemplateIds,
+                            columnMode: columnMode
+                        )
+                    )
+                } label: {
+                    Label("Crear batería", systemImage: "checkmark.circle.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(selectedTemplateIds.isEmpty || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
     }

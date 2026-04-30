@@ -86,6 +86,14 @@ private enum PhysicalNotebookColumnMode: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+private enum PhysicalCompletionFilter: String, CaseIterable, Identifiable {
+    case all = "Todos"
+    case pending = "Pendiente"
+    case completed = "Completado"
+
+    var id: String { rawValue }
+}
+
 struct PhysicalBatteryQuickTemplate: Identifiable {
     let id: String
     let title: String
@@ -151,25 +159,82 @@ struct PhysicalTestsWorkspaceView: View {
     @State private var showingCreateSheet = false
     @State private var showingCapture = false
     @State private var showingScaleEditor = false
-    @State private var batteries: [PhysicalTestBattery] = []
+    @State private var definitions: [MiGestorKit.PhysicalTestDefinition] = []
+    @State private var batteries: [MiGestorKit.PhysicalTestBattery] = []
     @State private var batteryName = "Condición física inicial"
     @State private var batteryDate = Date()
     @State private var batteryTemplateIds: Set<String> = Set(PhysicalTestTemplate.defaults.prefix(4).map(\.id))
     @State private var batteryColumnMode: PhysicalNotebookColumnMode = .rawAndScore
-    @State private var assignments: [PhysicalTestAssignmentDraft] = []
-    @State private var notebookLinks: [PhysicalNotebookLink] = []
+    @State private var selectedBatteryId: String?
+    @State private var assignments: [MiGestorKit.PhysicalTestAssignment] = []
+    @State private var notebookLinks: [MiGestorKit.PhysicalTestNotebookLink] = []
     @State private var assignmentCourse = 1
     @State private var assignmentAgeFrom = 12
     @State private var assignmentAgeTo = 13
     @State private var assignmentTermLabel = "1ª evaluación"
+    @State private var scoreCountsTowardAverage = true
+    @State private var selectedFilterCourse: Int?
+    @State private var selectedFilterBatteryId: String?
+    @State private var selectedFilterTestId: String?
+    @State private var selectedFilterTerm = ""
+    @State private var completionFilter: PhysicalCompletionFilter = .all
     @State private var scale = PhysicalTestScaleDraft.defaultJump
 
     private var selectedClassName: String {
         selectedClassId.flatMap { id in bridge.classes.first(where: { $0.id == id })?.name } ?? "Clase global"
     }
 
+    private var selectedSchoolClass: SchoolClass? {
+        selectedClassId.flatMap { id in bridge.classes.first(where: { $0.id == id }) }
+    }
+
     private var selectedTest: KmpBridge.PhysicalTestSnapshot? {
-        tests.first(where: { $0.evaluation.id == selectedTestId })
+        filteredTests.first(where: { $0.evaluation.id == selectedTestId })
+    }
+
+    private var filteredTests: [KmpBridge.PhysicalTestSnapshot] {
+        tests.filter { test in
+            let definitionId = testDefinitionId(for: test)
+            if let selectedFilterTestId, definitionId != selectedFilterTestId { return false }
+            switch completionFilter {
+            case .all:
+                return true
+            case .pending:
+                return test.recordedCount < test.results.count
+            case .completed:
+                return test.recordedCount >= test.results.count && test.results.count > 0
+            }
+        }
+    }
+
+    private var filteredAssignments: [MiGestorKit.PhysicalTestAssignment] {
+        assignments.filter { assignment in
+            if let selectedFilterCourse, assignment.course?.intValue != selectedFilterCourse { return false }
+            if let selectedFilterBatteryId, assignment.batteryId != selectedFilterBatteryId { return false }
+            if !selectedFilterTerm.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               !(assignment.termLabel ?? "").localizedCaseInsensitiveContains(selectedFilterTerm) {
+                return false
+            }
+            return true
+        }
+    }
+
+    private var activeAssignment: MiGestorKit.PhysicalTestAssignment? {
+        guard let selectedTest else { return filteredAssignments.first ?? assignments.first }
+        let definitionId = testDefinitionId(for: selectedTest)
+        return filteredAssignments.first { assignment in
+            guard let battery = batteries.first(where: { $0.id == assignment.batteryId }) else { return false }
+            return battery.testIds.contains(definitionId)
+        } ?? assignments.first { assignment in
+            guard let battery = batteries.first(where: { $0.id == assignment.batteryId }) else { return false }
+            return battery.testIds.contains(definitionId)
+        }
+    }
+
+    private var activeNotebookLink: MiGestorKit.PhysicalTestNotebookLink? {
+        guard let selectedTest, let activeAssignment else { return nil }
+        let definitionId = testDefinitionId(for: selectedTest)
+        return notebookLinks.first { $0.assignmentId == activeAssignment.id && $0.testId == definitionId }
     }
 
     private var selectedResult: KmpBridge.PhysicalTestSnapshot.StudentResult? {
@@ -190,6 +255,31 @@ struct PhysicalTestsWorkspaceView: View {
         tests.reduce(0) { $0 + $1.recordedCount }
     }
 
+    private var activeScaleEditorContext: PhysicalTestScaleEditorContext? {
+        let testId = selectedTest.map(testDefinitionId(for:)) ?? selectedFilterTestId ?? PhysicalTestTemplate.defaults.first?.id
+        guard let testId, let descriptor = physicalTestDescriptor(for: testId) else { return nil }
+        let assignment = activeAssignment ?? filteredAssignments.first ?? assignments.first
+        let battery = assignment.flatMap { assignment in batteries.first(where: { $0.id == assignment.batteryId }) }
+            ?? selectedBatteryId.flatMap { id in batteries.first(where: { $0.id == id }) }
+            ?? batteries.first
+        let course = assignment?.course?.intValue ?? selectedSchoolClass.map { Int($0.course) } ?? assignmentCourse
+        let ageFrom = assignment?.ageFrom?.intValue ?? assignmentAgeFrom
+        let ageTo = assignment?.ageTo?.intValue ?? assignmentAgeTo
+        let termLabel = assignment?.termLabel ?? assignmentTermLabel
+        return PhysicalTestScaleEditorContext(
+            batteryName: battery?.name ?? "Condición física",
+            className: selectedClassName,
+            termLabel: termLabel,
+            testName: descriptor.name,
+            capacity: descriptor.capacity,
+            measurementKind: descriptor.measurementKind,
+            unit: descriptor.unit,
+            course: course,
+            ageFrom: ageFrom,
+            ageTo: ageTo
+        )
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -203,6 +293,10 @@ struct PhysicalTestsWorkspaceView: View {
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 20)
                 .padding(.bottom, 12)
+
+                filtersBar
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 12)
 
                 Divider()
 
@@ -237,6 +331,7 @@ struct PhysicalTestsWorkspaceView: View {
             }
             .task { await reload() }
             .onChange(of: selectedClassId) { _ in Task { await reload() } }
+            .onChange(of: selectedClassId) { _ in syncSelectedClassDefaults() }
             .sheet(isPresented: $showingCreateSheet) {
                 PhysicalTestCreationSheet(defaultClassId: selectedClassId, templates: PhysicalTestTemplate.defaults) {
                     Task { await reload() }
@@ -244,21 +339,28 @@ struct PhysicalTestsWorkspaceView: View {
                 .environmentObject(bridge)
             }
             .sheet(isPresented: $showingCapture) {
-                if let selectedClassId, let selectedTest {
+                if let selectedClassId, let selectedTest, let activeAssignment {
                     PhysicalTestCaptureView(
                         bridge: bridge,
                         classId: selectedClassId,
                         test: selectedTest,
-                        scale: scale,
-                        direction: scale.direction,
-                        resultMode: .best,
+                        assignmentId: activeAssignment.id,
+                        batteryId: activeAssignment.batteryId,
+                        testDefinitionId: testDefinitionId(for: selectedTest),
+                        course: activeAssignment.course?.intValue,
+                        age: activeAssignment.ageFrom?.intValue,
+                        rawColumnId: activeNotebookLink?.rawColumnId,
+                        scoreColumnId: activeNotebookLink?.scoreColumnId,
+                        attemptsCount: attemptsCount(for: testDefinitionId(for: selectedTest)),
+                        direction: direction(for: testDefinitionId(for: selectedTest)),
+                        resultMode: resultMode(for: testDefinitionId(for: selectedTest)),
                         onSaved: { await reload() }
                     )
                 }
             }
             .sheet(isPresented: $showingScaleEditor) {
                 NavigationStack {
-                    PhysicalTestScaleEditor(scale: $scale)
+                    PhysicalTestScaleEditor(scale: $scale, context: activeScaleEditorContext)
                         .toolbar {
                             ToolbarItem(placement: .confirmationAction) {
                                 Button("OK") { showingScaleEditor = false }
@@ -266,6 +368,65 @@ struct PhysicalTestsWorkspaceView: View {
                         }
                 }
             }
+        }
+    }
+
+    private var filtersBar: some View {
+        HStack(spacing: 10) {
+            Picker("Clase", selection: Binding<Int64?>(
+                get: { selectedClassId },
+                set: { selectedClassId = $0 }
+            )) {
+                Text("Clase").tag(Optional<Int64>.none)
+                ForEach(bridge.classes, id: \.id) { schoolClass in
+                    Text(schoolClass.name).tag(Optional(schoolClass.id))
+                }
+            }
+            .pickerStyle(.menu)
+
+            Picker("Curso", selection: Binding<Int?>(
+                get: { selectedFilterCourse },
+                set: { selectedFilterCourse = $0 }
+            )) {
+                Text("Curso").tag(Optional<Int>.none)
+                ForEach(Array(Set(bridge.classes.map { Int($0.course) })).sorted(), id: \.self) { course in
+                    Text("\(course)º").tag(Optional(course))
+                }
+            }
+            .pickerStyle(.menu)
+
+            Picker("Batería", selection: Binding<String?>(
+                get: { selectedFilterBatteryId },
+                set: { selectedFilterBatteryId = $0 }
+            )) {
+                Text("Batería").tag(Optional<String>.none)
+                ForEach(batteries, id: \.id) { battery in
+                    Text(battery.name).tag(Optional(battery.id))
+                }
+            }
+            .pickerStyle(.menu)
+
+            Picker("Test", selection: Binding<String?>(
+                get: { selectedFilterTestId },
+                set: { selectedFilterTestId = $0 }
+            )) {
+                Text("Test").tag(Optional<String>.none)
+                ForEach(definitions, id: \.id) { definition in
+                    Text(definition.name).tag(Optional(definition.id))
+                }
+            }
+            .pickerStyle(.menu)
+
+            TextField("Trimestre", text: $selectedFilterTerm)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 140)
+
+            Picker("Estado", selection: $completionFilter) {
+                ForEach(PhysicalCompletionFilter.allCases) { status in
+                    Text(status.rawValue).tag(status)
+                }
+            }
+            .pickerStyle(.menu)
         }
     }
 
@@ -293,7 +454,7 @@ struct PhysicalTestsWorkspaceView: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
                 PhysicalStatCard(title: "Pruebas", value: "\(tests.count)", tint: .blue)
                 PhysicalStatCard(title: "Registros", value: "\(recordedCount)", tint: .green)
-                PhysicalStatCard(title: "Banco", value: "\(PhysicalTestTemplate.defaults.count)", tint: .orange)
+                PhysicalStatCard(title: "Banco", value: "\(max(definitions.count, PhysicalTestTemplate.defaults.count))", tint: .orange)
                 PhysicalStatCard(title: "Baterías", value: "\(batteries.count)", tint: .purple)
             }
         }
@@ -326,18 +487,18 @@ struct PhysicalTestsWorkspaceView: View {
                     onCreate: createBattery
                 )
 
-                ForEach(batteries) { battery in
+                ForEach(batteries, id: \.id) { battery in
                     NotebookSurface {
                         HStack(alignment: .top) {
                             VStack(alignment: .leading, spacing: 6) {
                                 Text(battery.name)
                                     .font(.headline)
-                                Text("\(battery.templateIds.count) pruebas · \(battery.columnMode.rawValue)")
+                                Text("\(battery.testIds.count) pruebas")
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
-                            Text(battery.date, style: .date)
+                            Text(battery.description.isEmpty ? "Sin descripción" : battery.description)
                                 .font(.caption.weight(.bold))
                                 .foregroundStyle(.secondary)
                         }
@@ -359,9 +520,21 @@ struct PhysicalTestsWorkspaceView: View {
                     VStack(alignment: .leading, spacing: 14) {
                         Text("Asignar batería a clase")
                             .font(.headline)
-                        Picker("Batería", selection: $batteryName) {
-                            ForEach(batteries) { battery in
-                                Text(battery.name).tag(battery.name)
+                        Picker("Clase", selection: Binding<Int64?>(
+                            get: { selectedClassId },
+                            set: { selectedClassId = $0 }
+                        )) {
+                            Text("Selecciona clase").tag(Optional<Int64>.none)
+                            ForEach(bridge.classes, id: \.id) { schoolClass in
+                                Text(schoolClass.name).tag(Optional(schoolClass.id))
+                            }
+                        }
+                        Picker("Batería", selection: Binding<String?>(
+                            get: { selectedBatteryId ?? batteries.first?.id },
+                            set: { selectedBatteryId = $0 }
+                        )) {
+                            ForEach(batteries, id: \.id) { battery in
+                                Text(battery.name).tag(Optional(battery.id))
                             }
                         }
                         HStack {
@@ -378,8 +551,9 @@ struct PhysicalTestsWorkspaceView: View {
                             }
                         }
                         .pickerStyle(.segmented)
+                        Toggle("La nota cuenta para la media", isOn: $scoreCountsTowardAverage)
                         Button {
-                            createAssignment()
+                            Task { await createAssignment() }
                         } label: {
                             Label("Crear asignación y columnas", systemImage: "link.badge.plus")
                                 .frame(maxWidth: .infinity)
@@ -389,22 +563,22 @@ struct PhysicalTestsWorkspaceView: View {
                     }
                 }
 
-                ForEach(assignments) { assignment in
+                ForEach(filteredAssignments, id: \.id) { assignment in
                     NotebookSurface {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text(assignment.termLabel)
+                            Text(assignment.termLabel ?? "Evaluación física")
                                 .font(.headline)
-                            Text("\(assignment.className) · curso \(assignment.course) · \(assignment.ageFrom)-\(assignment.ageTo) años")
+                            Text("\(className(for: assignment.classId)) · curso \(assignment.course?.intValue ?? 0) · \(assignment.ageFrom?.intValue ?? 0)-\(assignment.ageTo?.intValue ?? 0) años")
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(.secondary)
-                            Text("Columnas: \(assignment.columnMode.rawValue) · \(assignment.date.formatted(date: .abbreviated, time: .omitted))")
+                            Text("Columnas: \(columnModeLabel(for: assignment)) · \(Date(timeIntervalSince1970: TimeInterval(assignment.dateEpochMs) / 1000).formatted(date: .abbreviated, time: .omitted))")
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(.secondary)
                         }
                     }
                 }
 
-                if assignments.isEmpty {
+                if filteredAssignments.isEmpty {
                     PhysicalEmptyState(
                         title: "Sin asignaciones",
                         systemImage: "link.circle",
@@ -443,7 +617,7 @@ struct PhysicalTestsWorkspaceView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
-                    .disabled(selectedClassId == nil)
+                    .disabled(selectedClassId == nil || activeAssignment == nil)
 
                     searchField
                     resultsList
@@ -473,7 +647,7 @@ struct PhysicalTestsWorkspaceView: View {
                     )
                         .frame(maxWidth: .infinity, minHeight: 360)
                 } else {
-                    ForEach(tests, id: \.evaluation.id) { test in
+                    ForEach(filteredTests, id: \.evaluation.id) { test in
                         NotebookSurface {
                             VStack(alignment: .leading, spacing: 12) {
                                 HStack {
@@ -501,9 +675,6 @@ struct PhysicalTestsWorkspaceView: View {
                     }
                 }
 
-                Text("TODO(kmp-physical-tests): calcular evolución real por alumno con PhysicalTestResult histórico, rawValue, score y observedAtEpochMs.")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
             }
             .padding(20)
         }
@@ -511,7 +682,7 @@ struct PhysicalTestsWorkspaceView: View {
 
     private var scalesView: some View {
         NavigationStack {
-            PhysicalTestScaleEditor(scale: $scale)
+            PhysicalTestScaleEditor(scale: $scale, context: activeScaleEditorContext)
                 .navigationTitle("Baremos")
         }
     }
@@ -575,15 +746,29 @@ struct PhysicalTestsWorkspaceView: View {
             tests = []
             selectedTestId = nil
             selectedStudentId = nil
+            assignments = []
+            notebookLinks = []
             return
         }
+        definitions = (try? await bridge.listPhysicalDefinitions()) ?? []
+        batteries = (try? await bridge.listPhysicalBatteries()) ?? []
+        assignments = (try? await bridge.listPhysicalAssignmentsForClass(classId: selectedClassId)) ?? []
+        notebookLinks = []
+        for assignment in assignments {
+            let links = (try? await bridge.listPhysicalNotebookLinksForAssignment(assignmentId: assignment.id)) ?? []
+            notebookLinks.append(contentsOf: links)
+        }
         tests = (try? await bridge.loadPhysicalTests(classId: selectedClassId)) ?? []
-        if selectedTestId == nil || !tests.contains(where: { $0.evaluation.id == selectedTestId }) {
-            selectedTestId = tests.first?.evaluation.id
+        if selectedBatteryId == nil || !batteries.contains(where: { $0.id == selectedBatteryId }) {
+            selectedBatteryId = batteries.first?.id
+        }
+        if selectedTestId == nil || !filteredTests.contains(where: { $0.evaluation.id == selectedTestId }) {
+            selectedTestId = filteredTests.first?.evaluation.id
         }
         if selectedStudentId == nil || !(selectedTest?.results.contains(where: { $0.student.id == selectedStudentId }) ?? false) {
             selectedStudentId = selectedTest?.results.first?.student.id
         }
+        syncSelectedClassDefaults()
     }
 
     private func createTest(from template: PhysicalTestTemplate) async {
@@ -617,98 +802,255 @@ struct PhysicalTestsWorkspaceView: View {
     }
 
     private func createBattery(_ battery: PhysicalTestBattery) {
-        batteries.insert(battery, at: 0)
         Task {
             for template in PhysicalTestTemplate.defaults where battery.templateIds.contains(template.id) {
+                try? await bridge.savePhysicalDefinition(physicalDefinition(from: template))
                 await createTest(from: template)
             }
+            do {
+                let persisted = MiGestorKit.PhysicalTestBattery(
+                    id: battery.id,
+                    name: battery.name,
+                    description: "Creada desde iOS",
+                    defaultCourse: selectedSchoolClass.map { KotlinInt(value: $0.course) },
+                    defaultAgeFrom: KotlinInt(value: Int32(assignmentAgeFrom)),
+                    defaultAgeTo: KotlinInt(value: Int32(assignmentAgeTo)),
+                    testIds: Array(battery.templateIds),
+                    trace: auditTrace()
+                )
+                try await bridge.savePhysicalBattery(persisted)
+                selectedBatteryId = persisted.id
+            } catch {
+                bridge.status = "No se pudo guardar la batería física: \(error.localizedDescription)"
+            }
+            await reload()
             selectedTab = .assignments
             bridge.status = "Batería creada. Asígnala a una clase para crear columnas."
         }
     }
 
-    private func createAssignment() {
+    @MainActor
+    private func createAssignment() async {
         guard let selectedClassId else {
             bridge.status = "Selecciona una clase antes de asignar la batería."
             return
         }
-        guard let battery = batteries.first(where: { $0.name == batteryName }) ?? batteries.first else {
+        guard let battery = selectedBatteryId.flatMap({ id in batteries.first(where: { $0.id == id }) }) ?? batteries.first else {
             bridge.status = "Crea una batería antes de asignarla."
             return
         }
-        let assignment = PhysicalTestAssignmentDraft(
+        let assignment = MiGestorKit.PhysicalTestAssignment(
             id: "pe_assignment_\(Int64(Date().timeIntervalSince1970 * 1000))",
             batteryId: battery.id,
             classId: selectedClassId,
-            className: selectedClassName,
-            course: assignmentCourse,
-            ageFrom: assignmentAgeFrom,
-            ageTo: max(assignmentAgeFrom, assignmentAgeTo),
-            termLabel: assignmentTermLabel,
-            date: batteryDate,
-            columnMode: batteryColumnMode
+            course: KotlinInt(value: Int32(assignmentCourse)),
+            ageFrom: KotlinInt(value: Int32(assignmentAgeFrom)),
+            ageTo: KotlinInt(value: Int32(max(assignmentAgeFrom, assignmentAgeTo))),
+            termLabel: trimmedOrNil(assignmentTermLabel),
+            dateEpochMs: Int64(batteryDate.timeIntervalSince1970 * 1000),
+            rawColumnMode: batteryColumnMode == .rawOnly || batteryColumnMode == .rawAndScore,
+            scoreColumnMode: batteryColumnMode == .scoreOnly || batteryColumnMode == .rawAndScore,
+            trace: auditTrace()
         )
-        assignments.insert(assignment, at: 0)
-        createNotebookColumns(for: battery, assignment: assignment)
+        do {
+            try await bridge.assignPhysicalBatteryToClass(assignment)
+            try await createNotebookColumns(for: battery, assignment: assignment)
+            await reload()
+        } catch {
+            bridge.status = "No se pudo crear la asignación: \(error.localizedDescription)"
+        }
     }
 
-    private func createNotebookColumns(for battery: PhysicalTestBattery, assignment: PhysicalTestAssignmentDraft) {
-        guard let selectedClassId else { return }
+    private func createNotebookColumns(for battery: MiGestorKit.PhysicalTestBattery, assignment: MiGestorKit.PhysicalTestAssignment) async throws {
+        let selectedClassId = assignment.classId
         bridge.selectClass(id: selectedClassId)
-        let selectedTemplates = PhysicalTestTemplate.defaults.filter { battery.templateIds.contains($0.id) }
+        let selectedTemplates = PhysicalTestTemplate.defaults.filter { battery.testIds.contains($0.id) }
         let categoryId = assignment.id
-        bridge.saveColumnCategory(name: "\(battery.name) · \(assignment.termLabel)", categoryId: categoryId)
+        bridge.saveColumnCategory(name: "\(battery.name) · \(assignment.termLabel ?? "Evaluación física")", categoryId: categoryId)
 
         for template in selectedTemplates {
-            let rawColumnId = "\(assignment.id)_\(template.id)_raw"
-            let scoreColumnId = "\(assignment.id)_\(template.id)_score"
-            if assignment.columnMode == .rawOnly || assignment.columnMode == .rawAndScore {
-                bridge.addColumn(
+            var rawColumnId: String?
+            var scoreColumnId: String?
+            if assignment.rawColumnMode {
+                rawColumnId = try await bridge.createNotebookPhysicalColumnForClass(
+                    classId: selectedClassId,
                     name: "\(template.name) · marca",
-                    type: NotebookColumnType.numeric.name,
-                    weight: 0,
-                    formula: nil,
-                    rubricId: nil,
                     categoryId: categoryId,
-                    categoryKind: .physicalEducation,
-                    instrumentKind: .physicalTest,
                     inputKind: template.measurement.inputKind,
-                    dateEpochMs: Int64(battery.date.timeIntervalSince1970 * 1000),
                     unitOrSituation: template.unit,
                     scaleKind: template.measurement.scaleKind,
                     iconName: "stopwatch.fill",
-                    countsTowardAverage: false
+                    weight: 0,
+                    countsTowardAverage: false,
+                    dateEpochMs: assignment.dateEpochMs
                 )
             }
 
-            if assignment.columnMode == .rawAndScore || assignment.columnMode == .scoreOnly {
-                bridge.addColumn(
+            if assignment.scoreColumnMode {
+                scoreColumnId = try await bridge.createNotebookPhysicalColumnForClass(
+                    classId: selectedClassId,
                     name: "\(template.name) · nota",
-                    type: NotebookColumnType.numeric.name,
-                    weight: 10,
-                    formula: nil,
-                    rubricId: nil,
                     categoryId: categoryId,
-                    categoryKind: .physicalEducation,
-                    instrumentKind: .physicalTest,
                     inputKind: .numeric010,
-                    dateEpochMs: Int64(battery.date.timeIntervalSince1970 * 1000),
                     unitOrSituation: "Nota baremada",
                     scaleKind: .tenPoint,
                     iconName: "chart.bar.fill",
-                    countsTowardAverage: false
+                    weight: 10,
+                    countsTowardAverage: scoreCountsTowardAverage,
+                    dateEpochMs: assignment.dateEpochMs
                 )
             }
-            notebookLinks.append(
-                PhysicalNotebookLink(
+            try await bridge.savePhysicalNotebookLink(
+                MiGestorKit.PhysicalTestNotebookLink(
                     assignmentId: assignment.id,
                     testId: template.id,
-                    rawColumnId: assignment.columnMode == .rawOnly || assignment.columnMode == .rawAndScore ? rawColumnId : nil,
-                    scoreColumnId: assignment.columnMode == .rawAndScore || assignment.columnMode == .scoreOnly ? scoreColumnId : nil
+                    rawColumnId: rawColumnId,
+                    scoreColumnId: scoreColumnId,
+                    trace: auditTrace()
                 )
             )
         }
         bridge.status = "Asignación creada y columnas preparadas para \(battery.name)."
+    }
+
+    private func syncSelectedClassDefaults() {
+        guard let selectedSchoolClass else { return }
+        assignmentCourse = Int(selectedSchoolClass.course)
+        selectedFilterCourse = Int(selectedSchoolClass.course)
+    }
+
+    private func className(for classId: Int64) -> String {
+        bridge.classes.first(where: { $0.id == classId })?.name ?? "Clase \(classId)"
+    }
+
+    private func trimmedOrNil(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func columnModeLabel(for assignment: MiGestorKit.PhysicalTestAssignment) -> String {
+        switch (assignment.rawColumnMode, assignment.scoreColumnMode) {
+        case (true, true): return PhysicalNotebookColumnMode.rawAndScore.rawValue
+        case (true, false): return PhysicalNotebookColumnMode.rawOnly.rawValue
+        case (false, true): return PhysicalNotebookColumnMode.scoreOnly.rawValue
+        default: return "Sin columnas"
+        }
+    }
+
+    private func testDefinitionId(for test: KmpBridge.PhysicalTestSnapshot) -> String {
+        test.evaluation.code
+            .replacingOccurrences(of: "EF_", with: "")
+            .lowercased()
+    }
+
+    private func attemptsCount(for testId: String) -> Int {
+        definitions.first(where: { $0.id == testId }).map { Int($0.attempts) }
+            ?? PhysicalTestTemplate.defaults.first(where: { $0.id == testId })?.attempts
+            ?? 1
+    }
+
+    private func direction(for testId: String) -> PhysicalTestScaleDirection {
+        if let definition = definitions.first(where: { $0.id == testId }) {
+            return definition.higherIsBetter ? .higherIsBetter : .lowerIsBetter
+        }
+        return PhysicalTestTemplate.defaults.first(where: { $0.id == testId })?.direction ?? .higherIsBetter
+    }
+
+    private func resultMode(for testId: String) -> PhysicalTestResultMode {
+        guard let mode = definitions.first(where: { $0.id == testId })?.resultMode else {
+            return PhysicalTestTemplate.defaults.first(where: { $0.id == testId })?.resultMode ?? .best
+        }
+        switch mode {
+        case .average: return .average
+        case .last: return .last
+        default: return .best
+        }
+    }
+
+    private func physicalTestDescriptor(for testId: String) -> (name: String, capacity: String, measurementKind: String, unit: String)? {
+        if let template = PhysicalTestTemplate.defaults.first(where: { $0.id == testId }) {
+            return (template.name, template.capacity.rawValue, template.measurement.rawValue, template.unit)
+        }
+        if let definition = definitions.first(where: { $0.id == testId }) {
+            return (
+                definition.name,
+                physicalCapacityLabel(definition.capacity),
+                physicalMeasurementLabel(definition.measurementKind),
+                definition.unit
+            )
+        }
+        if let selectedTest, testDefinitionId(for: selectedTest) == testId {
+            return (selectedTest.evaluation.name, selectedTest.evaluation.type, selectedTest.evaluation.type, "")
+        }
+        return nil
+    }
+
+    private func physicalCapacityLabel(_ capacity: PhysicalCapacity) -> String {
+        switch capacity {
+        case .resistance: return PhysicalTestCapacity.resistance.rawValue
+        case .strength: return PhysicalTestCapacity.strength.rawValue
+        case .speed: return PhysicalTestCapacity.speed.rawValue
+        case .flexibility: return PhysicalTestCapacity.flexibility.rawValue
+        default: return String(describing: capacity)
+        }
+    }
+
+    private func physicalMeasurementLabel(_ measurement: PhysicalMeasurementKind) -> String {
+        switch measurement {
+        case .time: return PhysicalTestMeasurement.time.rawValue
+        case .distance: return PhysicalTestMeasurement.distance.rawValue
+        case .repetitions: return PhysicalTestMeasurement.repetitions.rawValue
+        case .level: return PhysicalTestMeasurement.level.rawValue
+        default: return String(describing: measurement)
+        }
+    }
+
+    private func auditTrace() -> AuditTrace {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let now = Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMs)
+        return AuditTrace(authorUserId: nil, createdAt: now, updatedAt: now, associatedGroupId: selectedClassId.map { KotlinLong(value: $0) }, deviceId: nil, syncVersion: 0)
+    }
+
+    private func physicalDefinition(from template: PhysicalTestTemplate) -> MiGestorKit.PhysicalTestDefinition {
+        MiGestorKit.PhysicalTestDefinition(
+            id: template.id,
+            name: template.name,
+            capacity: physicalCapacity(from: template.capacity),
+            measurementKind: physicalMeasurement(from: template.measurement),
+            unit: template.unit,
+            higherIsBetter: template.direction == .higherIsBetter,
+            protocol: template.protocolText,
+            material: "",
+            attempts: Int32(template.attempts),
+            resultMode: physicalResultMode(from: template.resultMode),
+            trace: auditTrace()
+        )
+    }
+
+    private func physicalCapacity(from capacity: PhysicalTestCapacity) -> PhysicalCapacity {
+        switch capacity {
+        case .resistance: return .resistance
+        case .strength: return .strength
+        case .speed: return .speed
+        case .flexibility: return .flexibility
+        }
+    }
+
+    private func physicalMeasurement(from measurement: PhysicalTestMeasurement) -> PhysicalMeasurementKind {
+        switch measurement {
+        case .time: return .time
+        case .distance: return .distance
+        case .repetitions: return .repetitions
+        case .level: return .level
+        }
+    }
+
+    private func physicalResultMode(from mode: PhysicalTestResultMode) -> PhysicalResultMode {
+        switch mode {
+        case .best: return .best
+        case .average: return .average
+        case .last: return .last
+        }
     }
 }
 

@@ -37,6 +37,7 @@ struct PhysicalTestScaleRange: Identifiable, Hashable {
 
 struct PhysicalTestScaleDraft: Identifiable, Hashable {
     let id = UUID()
+    var persistedScaleId: String?
     var name: String
     var testId: String = ""
     var course: Int?
@@ -90,12 +91,105 @@ struct PhysicalTestScaleDraft: Identifiable, Hashable {
         }
         let sorted = ranges.sorted { ($0.minValue ?? -.infinity) < ($1.minValue ?? -.infinity) }
         for pair in zip(sorted, sorted.dropFirst()) {
-            if let leftMax = pair.0.maxValue, let rightMin = pair.1.minValue, rightMin <= leftMax {
+            if let leftMax = pair.0.maxValue, let rightMin = pair.1.minValue, rightMin < leftMax {
                 messages.append("Hay rangos solapados.")
+                break
+            }
+            if let leftMax = pair.0.maxValue, let rightMin = pair.1.minValue, hasGap(from: leftMax, to: rightMin) {
+                messages.append("Hay huecos entre rangos.")
                 break
             }
         }
         return Array(Set(messages)).sorted()
+    }
+
+    private func hasGap(from leftMax: Double, to rightMin: Double) -> Bool {
+        let gap = rightMin - leftMax
+        guard gap > 0 else { return false }
+        return gap > inferredBoundaryStep + 0.000_001
+    }
+
+    private var inferredBoundaryStep: Double {
+        let values = ranges.flatMap { [$0.minValue, $0.maxValue].compactMap { $0 } }
+        if values.contains(where: { hasDecimalPlaces($0, places: 3) }) { return 0.001 }
+        if values.contains(where: { hasDecimalPlaces($0, places: 2) }) { return 0.01 }
+        if values.contains(where: { hasDecimalPlaces($0, places: 1) }) { return 0.1 }
+        return 1
+    }
+
+    private func hasDecimalPlaces(_ value: Double, places: Int) -> Bool {
+        let multiplier = pow(10, Double(places))
+        let scaled = (value * multiplier).rounded()
+        let previousMultiplier = pow(10, Double(max(places - 1, 0)))
+        let previousScaled = (value * previousMultiplier).rounded()
+        return abs(value * multiplier - scaled) < 0.000_001 &&
+            abs(value * previousMultiplier - previousScaled) >= 0.000_001
+    }
+}
+
+struct PhysicalTestScaleEditorContext {
+    var batteryName: String
+    var className: String
+    var termLabel: String?
+    var testName: String
+    var capacity: String
+    var measurementKind: String
+    var unit: String
+    var course: Int?
+    var ageFrom: Int?
+    var ageTo: Int?
+
+    var ageRange: String {
+        "\(ageFrom.map(String.init) ?? "-")-\(ageTo.map(String.init) ?? "-")"
+    }
+
+    init(
+        batteryName: String,
+        className: String,
+        termLabel: String?,
+        testName: String,
+        capacity: String,
+        measurementKind: String,
+        unit: String,
+        course: Int?,
+        ageFrom: Int?,
+        ageTo: Int?
+    ) {
+        self.batteryName = batteryName
+        self.className = className
+        self.termLabel = termLabel
+        self.testName = testName
+        self.capacity = capacity
+        self.measurementKind = measurementKind
+        self.unit = unit
+        self.course = course
+        self.ageFrom = ageFrom
+        self.ageTo = ageTo
+    }
+
+    init(
+        batteryName: String,
+        className: String,
+        termLabel: String?,
+        testName: String,
+        unit: String,
+        ageRange: String
+    ) {
+        let ages = ageRange
+            .split(separator: "-")
+            .map { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+        self.init(
+            batteryName: batteryName,
+            className: className,
+            termLabel: termLabel,
+            testName: testName,
+            capacity: "Condición física",
+            measurementKind: "Marca",
+            unit: unit,
+            course: nil,
+            ageFrom: ages.first ?? nil,
+            ageTo: ages.dropFirst().first ?? nil
+        )
     }
 }
 
@@ -117,9 +211,9 @@ func resolvedPhysicalResult(
 }
 
 enum PhysicalTestScaleStrategy: String, CaseIterable, Identifiable {
-    case recommended = "Baremo recomendado"
-    case progress = "Evaluar por progreso"
-    case manual = "Baremo manual"
+    case recommended = "Rendimiento absoluto"
+    case progress = "Progreso individual"
+    case manual = "Manual por rangos"
 
     var id: String { rawValue }
 
@@ -137,124 +231,474 @@ enum PhysicalTestScaleStrategy: String, CaseIterable, Identifiable {
     }
 }
 
+enum PhysicalScaleRecommendationObjective: String, CaseIterable, Identifiable {
+    case initial = "Evaluación inicial"
+    case final = "Evaluación final"
+    case individualProgress = "Progreso individual"
+    case mixed = "Mixto"
+
+    var id: String { rawValue }
+}
+
 struct PhysicalTestScaleEditor: View {
     @Binding var scale: PhysicalTestScaleDraft
-    @State private var strategy: PhysicalTestScaleStrategy = .recommended
+    var context: PhysicalTestScaleEditorContext?
+    var canSave: Bool
+    var onSave: ((PhysicalTestScaleDraft) -> Void)?
+    @State private var strategy: PhysicalTestScaleStrategy = .manual
+    @State private var aiObjective: PhysicalScaleRecommendationObjective = .mixed
     @State private var previewValue = ""
+    @State private var savedMessage: String?
+    @State private var aiService = AppleFoundationContextualAIService()
+    @State private var aiAvailability: AIContextualAvailabilityState = .unavailable("Comprobando disponibilidad de Apple Foundation Models.")
+    @State private var aiProposal: PhysicalScaleRecommendationDraft?
+    @State private var aiErrorMessage: String?
+    @State private var isGeneratingAIProposal = false
+
+    init(
+        scale: Binding<PhysicalTestScaleDraft>,
+        context: PhysicalTestScaleEditorContext? = nil,
+        canSave: Bool = true,
+        onSave: ((PhysicalTestScaleDraft) -> Void)? = nil
+    ) {
+        self._scale = scale
+        self.context = context
+        self.canSave = canSave
+        self.onSave = onSave
+    }
 
     private var previewScore: Double? {
         Double(previewValue.replacingOccurrences(of: ",", with: ".")).flatMap { scale.score(for: $0) }
     }
 
+    private var previewRange: PhysicalTestScaleRange? {
+        Double(previewValue.replacingOccurrences(of: ",", with: ".")).flatMap { raw in
+            scale.ranges.first(where: { $0.contains(raw) })
+        }
+    }
+
     var body: some View {
-        Form {
-            Section("Tipo de evaluación") {
-                Picker("Baremo", selection: $strategy) {
+        HStack(alignment: .top, spacing: 24) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    scaleConfiguration
+                    rangesEditor
+                }
+                .padding(20)
+            }
+            .frame(minWidth: 430, maxWidth: 560, maxHeight: .infinity)
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    validationPanel
+                    previewPanel
+                    aiSuggestionPanel
+                }
+                .padding(20)
+            }
+            .frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .navigationTitle("Baremo")
+        .frame(minWidth: 860, minHeight: 600)
+        .task { refreshAIAvailability() }
+    }
+
+    private var scaleConfiguration: some View {
+        ScaleEditorCard(title: "Configuración") {
+            VStack(alignment: .leading, spacing: 14) {
+                TextField("Nombre del baremo", text: $scale.name)
+                    .font(.title3.weight(.semibold))
+
+                if let context {
+                    VStack(alignment: .leading, spacing: 8) {
+                        LockedScaleContextRow(title: "Prueba", value: "\(context.testName) · \(context.unit)")
+                        LockedScaleContextRow(title: "Capacidad", value: context.capacity)
+                        LockedScaleContextRow(title: "Medición", value: context.measurementKind)
+                        LockedScaleContextRow(title: "Batería", value: context.batteryName)
+                        LockedScaleContextRow(title: "Curso / clase", value: "\(context.course.map { "\($0)º" } ?? "Sin curso") · \(context.className)")
+                        LockedScaleContextRow(title: "Edad", value: context.ageRange)
+                        if let termLabel = context.termLabel {
+                            LockedScaleContextRow(title: "Evaluación", value: termLabel)
+                        }
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        LockedScaleContextRow(title: "Prueba", value: scale.testId.isEmpty ? "Selecciona una prueba" : scale.testId)
+                        LockedScaleContextRow(title: "Batería", value: scale.batteryId.isEmpty ? "Sin batería seleccionada" : scale.batteryId)
+                        LockedScaleContextRow(title: "Curso", value: scale.course.map { "\($0)º" } ?? "Sin curso")
+                        LockedScaleContextRow(title: "Edad", value: "\(scale.ageFrom.map(String.init) ?? "-")-\(scale.ageTo.map(String.init) ?? "-")")
+                    }
+                }
+
+                Picker("Dirección", selection: $scale.direction) {
+                    ForEach(PhysicalTestScaleDirection.allCases) { direction in
+                        Text(direction.title).tag(direction)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                Text(scale.direction.subtitle)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                Picker("Tipo de baremo", selection: $strategy) {
                     ForEach(PhysicalTestScaleStrategy.allCases) { strategy in
                         Text(strategy.rawValue).tag(strategy)
                     }
                 }
+                .pickerStyle(.segmented)
 
                 Text(strategy.subtitle)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
+
+                Picker("Objetivo IA", selection: $aiObjective) {
+                    ForEach(PhysicalScaleRecommendationObjective.allCases) { objective in
+                        Text(objective.rawValue).tag(objective)
+                    }
+                }
+                .pickerStyle(.menu)
             }
+        }
+    }
 
-            if strategy == .manual {
-                Section("Baremo") {
-                    TextField("Nombre", text: $scale.name)
-                    TextField("Test", text: $scale.testId)
+    private var rangesEditor: some View {
+        ScaleEditorCard(title: "Rangos") {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("Desde").frame(width: 86, alignment: .leading)
+                    Text("Hasta").frame(width: 86, alignment: .leading)
+                    Text("Nota").frame(width: 76, alignment: .leading)
+                    Text("Etiqueta").frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
 
-                    HStack {
-                        OptionalIntField(title: "Curso", value: $scale.course)
-                        OptionalIntField(title: "Edad desde", value: $scale.ageFrom)
-                        OptionalIntField(title: "Edad hasta", value: $scale.ageTo)
+                ForEach($scale.ranges) { $range in
+                    HStack(spacing: 10) {
+                        NumberDraftField(title: "", value: $range.minValue)
+                            .frame(width: 86)
+                        NumberDraftField(title: "", value: $range.maxValue)
+                            .frame(width: 86)
+                        NumberDraftFieldRequired(title: "", value: $range.score)
+                            .frame(width: 76)
+                        TextField("Etiqueta", text: $range.label)
                     }
-
-                    TextField("Sexo opcional", text: $scale.sex)
-                    TextField("Batería opcional", text: $scale.batteryId)
-
-                    Picker("Dirección", selection: $scale.direction) {
-                        ForEach(PhysicalTestScaleDirection.allCases) { direction in
-                            Text(direction.title).tag(direction)
-                        }
-                    }
-
-                    Text(scale.direction.subtitle)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                    .padding(.vertical, 2)
                 }
 
-                Section("Rangos") {
-                    ForEach($scale.ranges) { $range in
-                        VStack(alignment: .leading, spacing: 8) {
-                            TextField("Etiqueta", text: $range.label)
-                            HStack {
-                                NumberDraftField(title: "Mín.", value: $range.minValue)
-                                NumberDraftField(title: "Máx.", value: $range.maxValue)
-                                NumberDraftFieldRequired(title: "Nota", value: $range.score)
-                            }
-                        }
-                        .padding(.vertical, 4)
-                    }
-
+                HStack {
                     Button {
                         scale.ranges.append(.init(minValue: nil, maxValue: nil, score: 5, label: "Nuevo rango"))
                     } label: {
                         Label("Añadir rango", systemImage: "plus")
                     }
-                }
-            } else {
-                Section(strategy.title) {
-                    HStack {
-                        Text("Baremo activo")
-                        Spacer()
-                        Text(scale.name)
-                            .font(.headline)
-                            .foregroundStyle(.secondary)
+
+                    Button {
+                        scale.ranges.sort { ($0.minValue ?? -.infinity) < ($1.minValue ?? -.infinity) }
+                    } label: {
+                        Label("Ordenar rangos", systemImage: "arrow.up.arrow.down")
                     }
 
-                    Text("TODO(kmp-physical-tests): persistir selección de baremo recomendado/progreso y resolver el baremo por test cuando exista catálogo KMP.")
+                    Button {
+                        normalizeLabels()
+                    } label: {
+                        Label("Normalizar etiquetas", systemImage: "textformat")
+                    }
+
+                    Spacer()
+
+                    Button {
+                        if scale.validationMessages.isEmpty, canSave {
+                            onSave?(scale)
+                            savedMessage = "Baremo guardado para esta prueba."
+                        } else {
+                            savedMessage = "Revisa la validación antes de guardar."
+                        }
+                    } label: {
+                        Label("Guardar baremo de esta prueba", systemImage: "checkmark.circle.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!canSave || !scale.validationMessages.isEmpty)
+                }
+
+                if let savedMessage {
+                    Text(savedMessage)
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(scale.validationMessages.isEmpty ? .green : .orange)
                 }
             }
+        }
+    }
 
-            if !scale.validationMessages.isEmpty {
-                Section("Validación") {
+    private var validationPanel: some View {
+        ScaleEditorCard(title: "Validación") {
+            if scale.validationMessages.isEmpty {
+                Label("Sin incidencias detectadas", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
                     ForEach(scale.validationMessages, id: \.self) { message in
                         Label(message, systemImage: "exclamationmark.triangle.fill")
                             .foregroundStyle(.orange)
                     }
                 }
             }
+        }
+    }
 
-            Section("Preview") {
-                TextField("Marca bruta", text: $previewValue)
+    private var previewPanel: some View {
+        ScaleEditorCard(title: "Preview") {
+            VStack(alignment: .leading, spacing: 14) {
+                TextField("Marca de prueba", text: $previewValue)
                     .appKeyboardType(.decimalPad)
-
-                HStack {
-                    Text("Resultado final")
-                    Spacer()
-                    Text(previewValue.isEmpty ? "-" : previewValue)
-                        .font(.headline.monospacedDigit())
-                }
+                    .textFieldStyle(.roundedBorder)
 
                 HStack {
                     Text("Nota baremada")
                     Spacer()
                     Text(previewScore.map { PhysicalTestsFormatting.decimal($0) } ?? "-")
-                        .font(.headline.monospacedDigit())
+                        .font(.system(size: 30, weight: .black, design: .rounded).monospacedDigit())
+                }
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Rango aplicado")
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                    Text(previewExplanation)
+                        .font(.callout.weight(.semibold))
+                    if let previewRange {
+                        Text("\(previewRange.minValue.map(PhysicalTestsFormatting.decimal) ?? "-∞") a \(previewRange.maxValue.map(PhysicalTestsFormatting.decimal) ?? "+∞") · nota \(PhysicalTestsFormatting.decimal(previewRange.score))")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
+        }
+    }
 
-            Section {
-                Text("TODO(kmp-physical-tests): persistir baremos en KMP/SQLDelight y vincularlos a PhysicalTestResult.rawValue -> score.")
+    private var aiSuggestionPanel: some View {
+        ScaleEditorCard(title: "Sugerir baremo con IA") {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: aiAvailability.isAvailable ? "sparkles" : "sparkles.rectangle.stack")
+                        .foregroundStyle(aiAvailability.isAvailable ? .blue : .secondary)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Propuesta IA")
+                            .font(.subheadline.weight(.bold))
+                        Text(aiAvailability.message)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                }
+
+                Label("Revisión docente necesaria", systemImage: "checkmark.seal")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.orange)
+
+                Text("La IA generará rangos orientativos editables. No son oficiales y deben revisarse antes de usarse con el grupo.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Button {
+                    Task { await generateAIProposal() }
+                } label: {
+                    Label(isGeneratingAIProposal ? "Generando propuesta" : "Generar propuesta", systemImage: "wand.and.stars")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!aiAvailability.isAvailable || isGeneratingAIProposal)
+
+                if isGeneratingAIProposal {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                if let aiErrorMessage {
+                    Label(aiErrorMessage, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.orange)
+                }
+
+                if let aiProposal {
+                    Divider()
+                    aiProposalPreview(aiProposal)
+                }
+            }
+        }
+    }
+
+    private func aiProposalPreview(_ proposal: PhysicalScaleRecommendationDraft) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(proposal.title)
+                    .font(.headline)
+                Text(proposal.summary)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Rango").frame(maxWidth: .infinity, alignment: .leading)
+                    Text("Nota").frame(width: 54, alignment: .trailing)
+                }
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
+
+                ForEach(proposal.ranges) { range in
+                    HStack(spacing: 10) {
+                        Text(range.label.isEmpty ? formattedRange(range) : range.label)
+                            .font(.caption.weight(.semibold))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text(PhysicalTestsFormatting.decimal(range.score))
+                            .font(.caption.weight(.black).monospacedDigit())
+                            .frame(width: 54, alignment: .trailing)
+                    }
+                    .padding(.vertical, 7)
+                    .padding(.horizontal, 10)
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+            }
+
+            Text(proposal.explanation)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(proposal.warnings, id: \.self) { warning in
+                    Label(warning, systemImage: "exclamationmark.triangle")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.orange)
+                }
+            }
+
+            HStack {
+                Button {
+                    applyAIProposal(proposal)
+                } label: {
+                    Label("Aplicar al baremo", systemImage: "checkmark.circle.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button {
+                    aiProposal = nil
+                    aiErrorMessage = nil
+                } label: {
+                    Label("Descartar", systemImage: "xmark.circle")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+            }
         }
-        .navigationTitle("Baremo")
+    }
+
+    private var previewExplanation: String {
+        guard !previewValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return "Introduce una marca para comprobar el baremo."
+        }
+        guard let previewRange else {
+            return "No hay ningún rango que cubra esta marca."
+        }
+        let label = previewRange.label.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rangeText = label.isEmpty ? "\(previewRange.minValue.map(PhysicalTestsFormatting.decimal) ?? "-∞")-\(previewRange.maxValue.map(PhysicalTestsFormatting.decimal) ?? "+∞")" : label
+        return "Esta marca entra en el rango \(rangeText) y obtiene \(PhysicalTestsFormatting.decimal(previewRange.score))."
+    }
+
+    private func normalizeLabels() {
+        for index in scale.ranges.indices {
+            let minText = scale.ranges[index].minValue.map(PhysicalTestsFormatting.decimal) ?? "-∞"
+            let maxText = scale.ranges[index].maxValue.map(PhysicalTestsFormatting.decimal) ?? "+∞"
+            scale.ranges[index].label = "\(minText)-\(maxText)"
+        }
+    }
+
+    private func refreshAIAvailability() {
+        aiAvailability = aiService.currentAvailability()
+    }
+
+    private func generateAIProposal() async {
+        refreshAIAvailability()
+        aiErrorMessage = nil
+        isGeneratingAIProposal = true
+        defer { isGeneratingAIProposal = false }
+        do {
+            aiProposal = try await aiService.generatePhysicalScaleRecommendation(from: recommendationInput)
+        } catch {
+            aiErrorMessage = error.localizedDescription
+        }
+    }
+
+    private func applyAIProposal(_ proposal: PhysicalScaleRecommendationDraft) {
+        scale.ranges = proposal.ranges.map {
+            PhysicalTestScaleRange(minValue: $0.minValue, maxValue: $0.maxValue, score: $0.score, label: $0.label)
+        }
+        if !proposal.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            scale.name = proposal.title
+        }
+        aiProposal = nil
+        savedMessage = "Propuesta IA aplicada al baremo. Revisa y guarda cuando esté ajustada."
+    }
+
+    private var recommendationInput: PhysicalScaleRecommendationInput {
+        PhysicalScaleRecommendationInput(
+            testName: context?.testName ?? (scale.testId.isEmpty ? scale.name : scale.testId),
+            capacity: context?.capacity ?? "Sin capacidad definida",
+            measurementKind: context?.measurementKind ?? "Sin medición definida",
+            unit: context?.unit ?? "unidad",
+            directionLabel: scale.direction == .higherIsBetter ? "mayor marca = mejor nota" : "menor marca = mejor nota",
+            course: context?.course.map { "\($0)º" } ?? scale.course.map { "\($0)º" } ?? "Sin curso",
+            ageFrom: context?.ageFrom ?? scale.ageFrom,
+            ageTo: context?.ageTo ?? scale.ageTo,
+            objective: aiObjective.rawValue,
+            scoreScale: "0-10"
+        )
+    }
+
+    private func formattedRange(_ range: PhysicalScaleRecommendedRange) -> String {
+        let minText = range.minValue.map(PhysicalTestsFormatting.decimal) ?? "-∞"
+        let maxText = range.maxValue.map(PhysicalTestsFormatting.decimal) ?? "+∞"
+        return "\(minText)-\(maxText) \(context?.unit ?? "")"
+    }
+}
+
+private struct LockedScaleContextRow: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 92, alignment: .leading)
+            Text(value)
+                .font(.callout.weight(.semibold))
+                .textSelection(.enabled)
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+private struct ScaleEditorCard<Content: View>: View {
+    let title: String
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(title)
+                .font(.headline)
+            content
+        }
+        .padding(16)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 

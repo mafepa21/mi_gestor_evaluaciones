@@ -153,6 +153,8 @@ private enum NotebookPhysicalTestMeasurement: String, CaseIterable, Identifiable
     case time
     case distance
     case repetitions
+    case level
+    case score
 
     var id: String { rawValue }
 
@@ -161,6 +163,8 @@ private enum NotebookPhysicalTestMeasurement: String, CaseIterable, Identifiable
         case .time: return "Tiempo"
         case .distance: return "Distancia"
         case .repetitions: return "Repeticiones"
+        case .level: return "Nivel"
+        case .score: return "Puntuación"
         }
     }
 
@@ -169,6 +173,8 @@ private enum NotebookPhysicalTestMeasurement: String, CaseIterable, Identifiable
         case .time: return "Cronos, marcas o duración."
         case .distance: return "Metros, saltos o lanzamientos."
         case .repetitions: return "Conteo de repeticiones."
+        case .level: return "Periodos, niveles o etapas."
+        case .score: return "Resultado numérico propio de la prueba."
         }
     }
 
@@ -177,6 +183,8 @@ private enum NotebookPhysicalTestMeasurement: String, CaseIterable, Identifiable
         case .time: return .time
         case .distance: return .distance
         case .repetitions: return .repetitions
+        case .level: return .numeric010
+        case .score: return .numeric010
         }
     }
 
@@ -185,8 +193,18 @@ private enum NotebookPhysicalTestMeasurement: String, CaseIterable, Identifiable
         case .time: return .time
         case .distance: return .distance
         case .repetitions: return .repetitions
+        case .level: return .tenPoint
+        case .score: return .tenPoint
         }
     }
+}
+
+private enum NotebookPhysicalColumnMode: String, CaseIterable, Identifiable {
+    case raw = "Marca"
+    case score = "Nota"
+    case rawAndScore = "Marca + nota"
+
+    var id: String { rawValue }
 }
 
 private struct ColumnBlueprintCard: View {
@@ -374,6 +392,14 @@ struct AddColumnSheet: View {
     @State private var isLocked = false
     @State private var summaryConfiguration = NotebookIndividualSummaryConfiguration()
     @State private var selectedPhysicalMeasurement: NotebookPhysicalTestMeasurement = .distance
+    @State private var physicalAssignments: [MiGestorKit.PhysicalTestAssignment] = []
+    @State private var physicalBatteries: [MiGestorKit.PhysicalTestBattery] = []
+    @State private var physicalDefinitions: [MiGestorKit.PhysicalTestDefinition] = []
+    @State private var physicalScales: [MiGestorKit.PhysicalTestScale] = []
+    @State private var selectedPhysicalAssignmentId: String?
+    @State private var selectedPhysicalTestId: String?
+    @State private var selectedPhysicalScaleId: String?
+    @State private var selectedPhysicalColumnMode: NotebookPhysicalColumnMode = .rawAndScore
 
     private let blueprints: [NotebookColumnBlueprint] = [
         .init(id: "written_test", title: "Prueba escrita", subtitle: "Nota numérica 0-10", icon: "doc.text.magnifyingglass", type: .numeric, categoryKind: .evaluation, instrumentKind: .writtenTest, inputKind: .numeric010, scaleKind: .tenPoint, defaultWeight: 10),
@@ -455,6 +481,7 @@ struct AddColumnSheet: View {
                         selectedCategoryId = suggestedCategoryId
                     }
                 }
+                .task { await loadPhysicalColumnOptions() }
             }
             .frame(width: 560, height: 620)
             #if os(iOS)
@@ -566,8 +593,7 @@ struct AddColumnSheet: View {
             }
 
             if selectedBlueprint?.instrumentKind == .physicalTest {
-                physicalMeasurementPicker
-                physicalTestsWorkspaceHint
+                physicalTestAssignmentPicker
             }
 
             if selectedBlueprint?.type == .calculated {
@@ -614,15 +640,61 @@ struct AddColumnSheet: View {
         }
     }
 
-    private var physicalTestsWorkspaceHint: some View {
+    private var physicalTestAssignmentPicker: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Para batería, baremo e histórico usa EF · Condición física.", systemImage: "stopwatch.fill")
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(.orange)
+            Text("Prueba física asignada")
+                .font(.headline)
 
-            Text("Esta columna simple guarda una marca aislada. El módulo de Condición física prepara captura en pista, nota baremada y conexión limpia con el cuaderno.")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+            if physicalAssignments.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Abrir EF · Condición física", systemImage: "figure.run.circle.fill")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.orange)
+                    Text("Crea una batería y asígnala a esta clase para generar columnas de marca y nota conectadas.")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Picker("Asignación", selection: Binding<String?>(
+                    get: { selectedPhysicalAssignmentId ?? physicalAssignments.first?.id },
+                    set: { selectedPhysicalAssignmentId = $0; syncPhysicalTestsForSelection() }
+                )) {
+                    ForEach(physicalAssignments, id: \.id) { assignment in
+                        Text(assignment.termLabel ?? assignment.batteryId).tag(Optional(assignment.id))
+                    }
+                }
+                .pickerStyle(.menu)
+
+                Picker("Test", selection: Binding<String?>(
+                    get: { selectedPhysicalTestId ?? availablePhysicalTestIds.first },
+                    set: { selectedPhysicalTestId = $0; Task { await loadPhysicalScalesForSelectedTest() } }
+                )) {
+                    ForEach(availablePhysicalTestIds, id: \.self) { testId in
+                        Text(physicalName(for: testId)).tag(Optional(testId))
+                    }
+                }
+                .pickerStyle(.menu)
+
+                Picker("Baremo", selection: Binding<String?>(
+                    get: { selectedPhysicalScaleId },
+                    set: { selectedPhysicalScaleId = $0 }
+                )) {
+                    Text("Sin baremo").tag(Optional<String>.none)
+                    ForEach(physicalScales, id: \.id) { scale in
+                        Text(scale.name).tag(Optional(scale.id))
+                    }
+                }
+                .pickerStyle(.menu)
+
+                Picker("Modo", selection: $selectedPhysicalColumnMode) {
+                    ForEach(NotebookPhysicalColumnMode.allCases) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                physicalMeasurementPicker
+            }
         }
         .padding(12)
         .background(Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -846,6 +918,9 @@ struct AddColumnSheet: View {
     private var resolvedColumnName: String {
         let trimmed = columnName.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
+            if selectedBlueprint?.instrumentKind == .physicalTest, let selectedPhysicalTestId {
+                return physicalName(for: selectedPhysicalTestId)
+            }
             return selectedBlueprint?.isIndividualSummary == true ? "Síntesis pedagógica" : ""
         }
         return trimmed
@@ -888,22 +963,72 @@ struct AddColumnSheet: View {
             resolvedCategoryId = generatedCategoryId
         }
 
+        if selectedBlueprint.instrumentKind == .physicalTest, selectedPhysicalColumnMode == .rawAndScore {
+            bridge.addColumn(
+                name: "\(resolvedColumnName) · marca",
+                type: selectedBlueprint.type.name,
+                weight: 0,
+                formula: nil,
+                rubricId: selectedRubricId,
+                categoryId: resolvedCategoryId,
+                categoryKind: selectedBlueprint.categoryKind,
+                instrumentKind: selectedBlueprint.instrumentKind,
+                inputKind: resolvedInputKind,
+                dateEpochMs: Int64(selectedDate.timeIntervalSince1970 * 1000),
+                unitOrSituation: trimmedOrNil(unitOrSituation),
+                competencyCriteriaIds: [],
+                scaleKind: resolvedScaleKind,
+                iconName: "stopwatch.fill",
+                countsTowardAverage: false,
+                isPinned: isPinned,
+                isHidden: false,
+                visibility: .visible,
+                isLocked: isLocked,
+                isTemplate: isTemplate
+            )
+            bridge.addColumn(
+                name: "\(resolvedColumnName) · nota",
+                type: selectedBlueprint.type.name,
+                weight: Double(weight.replacingOccurrences(of: ",", with: ".")) ?? selectedBlueprint.defaultWeight,
+                formula: nil,
+                rubricId: selectedRubricId,
+                categoryId: resolvedCategoryId,
+                categoryKind: selectedBlueprint.categoryKind,
+                instrumentKind: selectedBlueprint.instrumentKind,
+                inputKind: .numeric010,
+                dateEpochMs: Int64(selectedDate.timeIntervalSince1970 * 1000),
+                unitOrSituation: selectedPhysicalScaleId.flatMap { id in physicalScales.first(where: { $0.id == id })?.name } ?? "Nota baremada",
+                competencyCriteriaIds: [],
+                scaleKind: .tenPoint,
+                iconName: "chart.bar.fill",
+                countsTowardAverage: true,
+                isPinned: isPinned,
+                isHidden: false,
+                visibility: .visible,
+                isLocked: isLocked,
+                isTemplate: isTemplate
+            )
+            dismiss()
+            return
+        }
+
+        let isPhysicalScoreColumn = selectedBlueprint.instrumentKind == .physicalTest && selectedPhysicalColumnMode == .score
         bridge.addColumn(
-            name: resolvedColumnName,
+            name: selectedBlueprint.instrumentKind == .physicalTest && selectedPhysicalColumnMode == .raw ? "\(resolvedColumnName) · marca" : resolvedColumnName,
             type: selectedBlueprint.type.name,
-            weight: Double(weight.replacingOccurrences(of: ",", with: ".")) ?? selectedBlueprint.defaultWeight,
+            weight: isPhysicalScoreColumn ? (Double(weight.replacingOccurrences(of: ",", with: ".")) ?? selectedBlueprint.defaultWeight) : (selectedBlueprint.instrumentKind == .physicalTest ? 0 : (Double(weight.replacingOccurrences(of: ",", with: ".")) ?? selectedBlueprint.defaultWeight)),
             formula: trimmedOrNil(formula),
             rubricId: selectedRubricId,
             categoryId: resolvedCategoryId,
             categoryKind: selectedBlueprint.categoryKind,
             instrumentKind: selectedBlueprint.instrumentKind,
-            inputKind: resolvedInputKind,
+            inputKind: isPhysicalScoreColumn ? .numeric010 : resolvedInputKind,
             dateEpochMs: Int64(selectedDate.timeIntervalSince1970 * 1000),
-            unitOrSituation: trimmedOrNil(unitOrSituation),
+            unitOrSituation: isPhysicalScoreColumn ? (selectedPhysicalScaleId.flatMap { id in physicalScales.first(where: { $0.id == id })?.name } ?? "Nota baremada") : trimmedOrNil(unitOrSituation),
             competencyCriteriaIds: [],
-            scaleKind: resolvedScaleKind,
-            iconName: selectedBlueprint.icon,
-            countsTowardAverage: false,
+            scaleKind: isPhysicalScoreColumn ? .tenPoint : resolvedScaleKind,
+            iconName: selectedBlueprint.instrumentKind == .physicalTest ? (isPhysicalScoreColumn ? "chart.bar.fill" : "stopwatch.fill") : selectedBlueprint.icon,
+            countsTowardAverage: isPhysicalScoreColumn,
             isPinned: isPinned,
             isHidden: false,
             visibility: .visible,
@@ -911,6 +1036,48 @@ struct AddColumnSheet: View {
             isTemplate: isTemplate
         )
         dismiss()
+    }
+
+    private var availablePhysicalTestIds: [String] {
+        guard let assignment = selectedPhysicalAssignmentId.flatMap({ id in physicalAssignments.first(where: { $0.id == id }) }) ?? physicalAssignments.first,
+              let battery = physicalBatteries.first(where: { $0.id == assignment.batteryId }) else {
+            return []
+        }
+        return battery.testIds
+    }
+
+    private func loadPhysicalColumnOptions() async {
+        guard let classId = bridge.currentNotebookClassId else { return }
+        physicalDefinitions = (try? await bridge.listPhysicalDefinitions()) ?? []
+        physicalBatteries = (try? await bridge.listPhysicalBatteries()) ?? []
+        physicalAssignments = (try? await bridge.listPhysicalAssignmentsForClass(classId: classId)) ?? []
+        syncPhysicalTestsForSelection()
+        await loadPhysicalScalesForSelectedTest()
+    }
+
+    private func syncPhysicalTestsForSelection() {
+        if selectedPhysicalAssignmentId == nil {
+            selectedPhysicalAssignmentId = physicalAssignments.first?.id
+        }
+        if selectedPhysicalTestId == nil || !availablePhysicalTestIds.contains(selectedPhysicalTestId ?? "") {
+            selectedPhysicalTestId = availablePhysicalTestIds.first
+        }
+    }
+
+    private func loadPhysicalScalesForSelectedTest() async {
+        guard let testId = selectedPhysicalTestId else {
+            physicalScales = []
+            selectedPhysicalScaleId = nil
+            return
+        }
+        physicalScales = (try? await bridge.listPhysicalScalesForTest(testId: testId)) ?? []
+        if selectedPhysicalScaleId == nil || !physicalScales.contains(where: { $0.id == selectedPhysicalScaleId }) {
+            selectedPhysicalScaleId = physicalScales.first?.id
+        }
+    }
+
+    private func physicalName(for testId: String) -> String {
+        physicalDefinitions.first(where: { $0.id == testId })?.name ?? testId
     }
 
     private func saveIndividualSummaryColumn() {

@@ -23,6 +23,7 @@ enum TeachingAssistantUseCase: String, Identifiable, CaseIterable {
     case groupInsight
     case sessionClosure
     case coverageAudit
+    case physicalScaleRecommendation
 
     var id: String { rawValue }
 
@@ -35,6 +36,7 @@ enum TeachingAssistantUseCase: String, Identifiable, CaseIterable {
         case .groupInsight: return "Inspector analítico"
         case .sessionClosure: return "Cierre de sesión"
         case .coverageAudit: return "Cobertura evaluativa"
+        case .physicalScaleRecommendation: return "Recomendación de baremo físico"
         }
     }
 }
@@ -571,6 +573,36 @@ struct NotebookAICommentDraft {
     let commentText: String
 }
 
+struct PhysicalScaleRecommendationInput: Hashable {
+    var testName: String
+    var capacity: String
+    var measurementKind: String
+    var unit: String
+    var directionLabel: String
+    var course: String
+    var ageFrom: Int?
+    var ageTo: Int?
+    var objective: String
+    var scoreScale: String = "0-10"
+}
+
+struct PhysicalScaleRecommendedRange: Identifiable, Hashable {
+    let id = UUID()
+    var minValue: Double?
+    var maxValue: Double?
+    var score: Double
+    var label: String
+}
+
+struct PhysicalScaleRecommendationDraft: Hashable {
+    var title: String
+    var summary: String
+    var ranges: [PhysicalScaleRecommendedRange]
+    var explanation: String
+    var warnings: [String]
+    var editableProposal: String
+}
+
 enum AIContextualServiceError: LocalizedError {
     case unavailable(String)
     case insufficientContext(String)
@@ -818,6 +850,22 @@ final class AppleFoundationContextualAIService {
         throw AIContextualServiceError.unavailable("La IA contextual requiere una versión del sistema compatible con Apple Foundation Models.")
     }
 
+    func generatePhysicalScaleRecommendation(
+        from input: PhysicalScaleRecommendationInput
+    ) async throws -> PhysicalScaleRecommendationDraft {
+        let availability = currentAvailability()
+        guard availability.isAvailable else {
+            throw AIContextualServiceError.unavailable(availability.message)
+        }
+
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, macOS 26.0, *) {
+            return try await generateLocalPhysicalScaleRecommendation(from: input)
+        }
+        #endif
+        throw AIContextualServiceError.unavailable("La recomendación local de baremos requiere una versión del sistema compatible con Apple Foundation Models.")
+    }
+
     #if canImport(FoundationModels)
     @available(iOS 26.0, macOS 26.0, *)
     private func refineActiveTeachingDraftLocally(with cleaned: String) async throws -> TeachingAssistantDraft {
@@ -936,6 +984,29 @@ final class AppleFoundationContextualAIService {
             options: AppleFoundationModelSupport.generationOptions(temperature: 0.2)
         )
         return mapTeachingDraft(response.content, riskLevel: evidence.riskLevel, confidenceFallback: evidence.confidenceNote)
+    }
+
+    @available(iOS 26.0, macOS 26.0, *)
+    private func generateLocalPhysicalScaleRecommendation(
+        from input: PhysicalScaleRecommendationInput
+    ) async throws -> PhysicalScaleRecommendationDraft {
+        let session = LanguageModelSession(
+            instructions: """
+            Actúas como asistente local para Educación Física.
+            Generas propuestas orientativas de baremos editables, nunca oficiales.
+            No inventes normativa, percentiles oficiales ni referencias legales.
+            Recomienda siempre revisión docente antes de usar la propuesta.
+            Prioriza claridad, rangos simples y edición rápida.
+            Redacta en español de España.
+            """
+        )
+        let response = try await session.respond(
+            to: physicalScalePrompt(from: input),
+            generating: GeneratedPhysicalScaleRecommendation.self,
+            includeSchemaInPrompt: true,
+            options: AppleFoundationModelSupport.generationOptions(temperature: 0.2)
+        )
+        return mapPhysicalScaleRecommendation(response.content)
     }
 
     @available(iOS 26.0, macOS 26.0, *)
@@ -1136,6 +1207,66 @@ final class AppleFoundationContextualAIService {
         """
     }
 
+    @available(iOS 26.0, macOS 26.0, *)
+    private func physicalScalePrompt(from input: PhysicalScaleRecommendationInput) -> String {
+        """
+        Genera una propuesta editable de baremo físico para el módulo EF · Condición física.
+
+        Caso de uso: \(TeachingAssistantUseCase.physicalScaleRecommendation.title)
+        Nombre del test: \(input.testName)
+        Capacidad física: \(input.capacity)
+        Tipo de medición: \(input.measurementKind)
+        Unidad: \(input.unit)
+        Dirección: \(input.directionLabel)
+        Curso: \(input.course)
+        Edad desde: \(input.ageFrom.map(String.init) ?? "Sin dato")
+        Edad hasta: \(input.ageTo.map(String.init) ?? "Sin dato")
+        Objetivo: \(input.objective)
+        Escala de nota: \(input.scoreScale)
+
+        Reglas obligatorias
+        - La respuesta debe decir que es una propuesta orientativa.
+        - La respuesta debe incluir que la revisión docente es necesaria.
+        - No presentes los rangos como baremos oficiales.
+        - No cites normativa, percentiles oficiales ni estándares externos.
+        - Devuelve entre 5 y 7 rangos claros, ordenados para edición rápida.
+        - Cada rango debe tener minValue o maxValue cuando corresponda, score entre 0 y 10 y una etiqueta breve con unidad.
+        - Para mayor/mejor, las notas deben subir con la marca; para menor/mejor, las notas deben bajar con la marca.
+        - warnings debe incluir prudencia sobre contexto, seguridad, diversidad del alumnado y revisión docente.
+        - editableProposal debe poder pegarse como borrador docente breve.
+        """
+    }
+
+    @available(iOS 26.0, macOS 26.0, *)
+    private func mapPhysicalScaleRecommendation(
+        _ content: GeneratedPhysicalScaleRecommendation
+    ) -> PhysicalScaleRecommendationDraft {
+        let mappedRanges = content.ranges.map { range in
+            PhysicalScaleRecommendedRange(
+                minValue: range.minValue,
+                maxValue: range.maxValue,
+                score: min(max(range.score, 0), 10),
+                label: range.label.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+        }
+        let safetyWarnings = compactTexts(
+            content.warnings,
+            [
+                "Propuesta IA orientativa: no es un baremo oficial.",
+                "Revisión docente necesaria antes de aplicarla al grupo.",
+                "No sustituye criterios del centro ni adaptación a diversidad, seguridad o contexto."
+            ]
+        )
+        return PhysicalScaleRecommendationDraft(
+            title: normalizedOptional(content.title) ?? "Propuesta IA de baremo",
+            summary: normalizedOptional(content.summary) ?? "Propuesta orientativa editable para revisión docente.",
+            ranges: mappedRanges,
+            explanation: normalizedOptional(content.explanation) ?? "Rangos pensados para edición rápida y revisión docente.",
+            warnings: Array(safetyWarnings.prefix(5)),
+            editableProposal: normalizedOptional(content.editableProposal) ?? "Propuesta orientativa. Revisar y ajustar antes de usar."
+        )
+    }
+
     private func normalizedOptional(_ value: String?) -> String? {
         guard let value else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1214,6 +1345,26 @@ final class AppleFoundationContextualAIService {
         let warnings: [String]
         let recommendedActions: [String]
         let confidenceNote: String
+    }
+
+    @available(iOS 26.0, macOS 26.0, *)
+    @Generable
+    struct GeneratedPhysicalScaleRange {
+        let minValue: Double?
+        let maxValue: Double?
+        let score: Double
+        let label: String
+    }
+
+    @available(iOS 26.0, macOS 26.0, *)
+    @Generable
+    struct GeneratedPhysicalScaleRecommendation {
+        let title: String
+        let summary: String
+        let ranges: [GeneratedPhysicalScaleRange]
+        let explanation: String
+        let warnings: [String]
+        let editableProposal: String
     }
     #endif
 }

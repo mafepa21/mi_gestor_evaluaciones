@@ -3041,6 +3041,163 @@ final class KmpBridge: ObservableObject {
         }
     }
 
+    func listPhysicalDefinitions() async throws -> [PhysicalTestDefinition] {
+        try await container.physicalTestsRepository.listDefinitions()
+    }
+
+    func savePhysicalDefinition(_ definition: PhysicalTestDefinition) async throws {
+        try await container.physicalTestsRepository.saveDefinition(definition: definition)
+    }
+
+    func listPhysicalBatteries() async throws -> [PhysicalTestBattery] {
+        try await container.physicalTestsRepository.listBatteries()
+    }
+
+    func savePhysicalBattery(_ battery: PhysicalTestBattery) async throws {
+        try await container.physicalTestsRepository.saveBattery(battery: battery)
+    }
+
+    func assignPhysicalBatteryToClass(_ assignment: PhysicalTestAssignment) async throws {
+        try await container.physicalTestsRepository.assignBatteryToClass(assignment: assignment)
+    }
+
+    func listPhysicalAssignmentsForClass(classId: Int64) async throws -> [PhysicalTestAssignment] {
+        try await container.physicalTestsRepository.listAssignmentsForClass(classId: classId)
+    }
+
+    func listPhysicalScalesForTest(testId: String) async throws -> [PhysicalTestScale] {
+        try await container.physicalTestsRepository.listScalesForTest(testId: testId)
+    }
+
+    func savePhysicalScale(_ scale: PhysicalTestScale) async throws {
+        try await container.physicalTestsRepository.saveScale(scale: scale)
+    }
+
+    func resolvePhysicalScale(
+        testId: String,
+        course: Int?,
+        age: Int?,
+        sex: String?,
+        batteryId: String?
+    ) async throws -> PhysicalTestScale? {
+        try await container.physicalTestsRepository.resolveScale(
+            testId: testId,
+            course: course.map { KotlinInt(value: Int32($0)) },
+            age: age.map { KotlinInt(value: Int32($0)) },
+            sex: sex,
+            batteryId: batteryId
+        )
+    }
+
+    func savePhysicalNotebookLink(_ link: PhysicalTestNotebookLink) async throws {
+        try await container.physicalTestsRepository.saveNotebookLink(link: link)
+    }
+
+    func listPhysicalNotebookLinksForAssignment(assignmentId: String) async throws -> [PhysicalTestNotebookLink] {
+        try await container.physicalTestsRepository.listNotebookLinksForAssignment(assignmentId: assignmentId)
+    }
+
+    func savePhysicalResult(_ result: PhysicalTestResult, attempts: [PhysicalTestAttempt]) async throws {
+        try await container.physicalTestsRepository.saveResult(result: result, attempts: attempts)
+    }
+
+    func listPhysicalResultsForAssignment(assignmentId: String) async throws -> [PhysicalTestResult] {
+        try await container.physicalTestsRepository.listResultsForAssignment(assignmentId: assignmentId)
+    }
+
+    func listPhysicalResultsForStudent(studentId: Int64, testId: String) async throws -> [PhysicalTestResult] {
+        try await container.physicalTestsRepository.listResultsForStudent(studentId: studentId, testId: testId)
+    }
+
+    func createNotebookPhysicalColumnForClass(
+        classId: Int64,
+        name: String,
+        categoryId: String?,
+        inputKind: NotebookCellInputKind,
+        unitOrSituation: String?,
+        scaleKind: NotebookScaleKind,
+        iconName: String,
+        weight: Double,
+        countsTowardAverage: Bool,
+        dateEpochMs: Int64
+    ) async throws -> String {
+        let normalized = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else {
+            throw NSError(domain: "KmpBridge", code: 422, userInfo: [NSLocalizedDescriptionKey: "El nombre de la columna no puede estar vacío."])
+        }
+        let nowMillis = Int64(Date().timeIntervalSince1970 * 1000)
+        let columnId = "COL_PE_\(nowMillis)_\(abs(normalized.hashValue))"
+        let nowInstant = Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMillis)
+        let trace = AuditTrace(
+            authorUserId: nil,
+            createdAt: nowInstant,
+            updatedAt: nowInstant,
+            associatedGroupId: KotlinLong(value: classId),
+            deviceId: localDeviceId,
+            syncVersion: 0
+        )
+        let tabs = try await container.notebookConfigRepository.listTabs(classId: classId)
+        let tabIds = selectedNotebookTabId.map { [$0] } ?? tabs.first.map { [$0.id] } ?? []
+        let column = NotebookColumnDefinition(
+            id: columnId,
+            title: normalized,
+            type: .numeric,
+            categoryKind: .physicalEducation,
+            instrumentKind: .physicalTest,
+            inputKind: inputKind,
+            evaluationId: nil,
+            rubricId: nil,
+            formula: nil,
+            weight: weight,
+            dateEpochMs: KotlinLong(value: dateEpochMs),
+            unitOrSituation: unitOrSituation,
+            competencyCriteriaIds: [],
+            scaleKind: scaleKind,
+            tabIds: tabIds,
+            sessions: [],
+            sharedAcrossTabs: false,
+            colorHex: "F97316",
+            iconName: iconName,
+            order: -1,
+            widthDp: 120,
+            categoryId: categoryId,
+            ordinalLevels: [],
+            availableIcons: [],
+            countsTowardAverage: countsTowardAverage,
+            isPinned: false,
+            isHidden: false,
+            visibility: .visible,
+            isLocked: false,
+            isTemplate: false,
+            trace: trace
+        )
+        try await container.notebookRepository.saveColumn(classId: classId, column: column)
+        scheduleNotebookSnapshotSync(forClassId: classId)
+        return columnId
+    }
+
+    func saveNotebookPhysicalValue(
+        classId: Int64,
+        studentId: Int64,
+        columnId: String,
+        value: Double
+    ) async throws {
+        try await container.notebookRepository.upsertGrade(
+            classId: classId,
+            studentId: studentId,
+            columnId: columnId,
+            evaluationId: nil,
+            numericValue: value,
+            rubricSelections: nil,
+            evidence: nil,
+            createdAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+            deviceId: localDeviceId,
+            syncVersion: 1
+        )
+        scheduleGradeSnapshotSync(forClassId: classId)
+    }
+
     func loadPESessions(weekNumber: Int, year: Int, classId: Int64?) async throws -> [PESessionSnapshot] {
         let sessions = try await plannerListSessions(weekNumber: weekNumber, year: year, classId: classId)
         let summaries = try await plannerJournalSummaries(sessionIds: sessions.map(\.id))
@@ -3729,6 +3886,10 @@ final class KmpBridge: ObservableObject {
         selectedNotebookTabId = restoredTabId
         notebookViewModel.setSelectedTabId(tabId: restoredTabId)
         notebookViewModel.selectClass(classId: id, force: true)
+    }
+
+    var currentNotebookClassId: Int64? {
+        notebookViewModel.currentClassId?.int64Value
     }
 
     func setSelectedNotebookTab(id: String?) {

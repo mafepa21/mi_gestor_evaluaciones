@@ -1900,12 +1900,16 @@ final class KmpBridge: ObservableObject {
 
     func createStudentAndAssignToClass(firstName: String, lastName: String, classId: Int64) async throws {
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let sexResolution = await inferredStudentSex(firstName: firstName, lastName: lastName)
         let studentId = try await container.saveStudent.invoke(
             id: nil,
             firstName: firstName,
             lastName: lastName,
             email: nil,
             photoPath: nil,
+            sex: sexResolution.sex,
+            sexSource: sexResolution.source,
+            birthDate: nil,
             updatedAtEpochMs: nowMs,
             deviceId: localDeviceId,
             syncVersion: 1
@@ -1923,17 +1927,28 @@ final class KmpBridge: ObservableObject {
                 "lastName": lastName,
                 "email": NSNull(),
                 "photoPath": NSNull(),
-                "isInjured": false
+                "isInjured": false,
+                "sex": sexResolution.sex.name,
+                "sexSource": sexResolution.source.name,
+                "birthDate": NSNull()
             ]
         )
         enqueueRosterSnapshot(forClassId: classId, updatedAtEpochMs: nowMs)
     }
 
-    func createStudentInSelectedClass(firstName: String, lastName: String, isInjured: Bool = false) async throws {
+    func createStudentInSelectedClass(
+        firstName: String,
+        lastName: String,
+        isInjured: Bool = false,
+        sex: StudentSex? = nil,
+        sexSource: StudentSexSource? = nil,
+        birthDate: LocalDate? = nil
+    ) async throws {
         guard let classId = selectedStudentsClassId else {
             throw NSError(domain: "KMP", code: -20, userInfo: [NSLocalizedDescriptionKey: "Selecciona una clase primero"])
         }
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let sexResolution = await resolvedStudentSex(firstName: firstName, lastName: lastName, sex: sex, sexSource: sexSource)
         let studentId = try await container.studentsRepository.saveStudent(
             id: nil,
             firstName: firstName,
@@ -1941,6 +1956,9 @@ final class KmpBridge: ObservableObject {
             email: nil,
             photoPath: nil,
             isInjured: isInjured,
+            sex: sexResolution.sex,
+            sexSource: sexResolution.source,
+            birthDate: birthDate,
             updatedAtEpochMs: nowMs,
             deviceId: localDeviceId,
             syncVersion: 1
@@ -1959,10 +1977,76 @@ final class KmpBridge: ObservableObject {
                 "lastName": lastName,
                 "email": NSNull(),
                 "photoPath": NSNull(),
-                "isInjured": isInjured
+                "isInjured": isInjured,
+                "sex": sexResolution.sex.name,
+                "sexSource": sexResolution.source.name,
+                "birthDate": birthDate == nil ? NSNull() : birthDate!.description()
             ]
         )
         enqueueRosterSnapshot(forClassId: classId, updatedAtEpochMs: nowMs)
+    }
+
+    private func resolvedStudentSex(
+        firstName: String,
+        lastName: String,
+        sex: StudentSex?,
+        sexSource: StudentSexSource?
+    ) async -> (sex: StudentSex, source: StudentSexSource) {
+        if let sex, sex != .unspecified {
+            return (sex, sexSource ?? .manual)
+        }
+        return await inferredStudentSex(firstName: firstName, lastName: lastName)
+    }
+
+    private func inferredStudentSex(firstName: String, lastName: String) async -> (sex: StudentSex, source: StudentSexSource) {
+        do {
+            let inference = try await AppleFoundationContextualAIService().inferStudentSex(firstName: firstName, lastName: lastName)
+            switch inference.sex {
+            case "MALE":
+                return (.male, .aiInferred)
+            case "FEMALE":
+                return (.female, .aiInferred)
+            default:
+                return (.unspecified, .unknown)
+            }
+        } catch {
+            return (.unspecified, .unknown)
+        }
+    }
+
+    func updateStudentSex(_ student: Student, sex: StudentSex) async throws {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        _ = try await container.studentsRepository.saveStudent(
+            id: KotlinLong(value: student.id),
+            firstName: student.firstName,
+            lastName: student.lastName,
+            email: student.email,
+            photoPath: student.photoPath,
+            isInjured: student.isInjured,
+            sex: sex,
+            sexSource: sex == .unspecified ? .unknown : .manual,
+            birthDate: student.birthDate,
+            updatedAtEpochMs: nowMs,
+            deviceId: localDeviceId,
+            syncVersion: student.trace.syncVersion + 1
+        )
+        try await refreshStudentsDirectory()
+        enqueueLocalChange(
+            entity: "student",
+            id: "\(student.id)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "id": student.id,
+                "firstName": student.firstName,
+                "lastName": student.lastName,
+                "email": student.email ?? NSNull(),
+                "photoPath": student.photoPath ?? NSNull(),
+                "isInjured": student.isInjured,
+                "sex": sex.name,
+                "sexSource": sex == .unspecified ? StudentSexSource.unknown.name : StudentSexSource.manual.name,
+                "birthDate": student.birthDate == nil ? NSNull() : student.birthDate!.description()
+            ]
+        )
     }
 
     func evaluations(for classId: Int64) async throws -> [Evaluation] {
@@ -5069,7 +5153,10 @@ final class KmpBridge: ObservableObject {
                     "lastName": student.lastName,
                     "email": student.email ?? NSNull(),
                     "photoPath": student.photoPath ?? NSNull(),
-                    "isInjured": student.isInjured
+                    "isInjured": student.isInjured,
+                    "sex": student.sex.name,
+                    "sexSource": student.sexSource.name,
+                    "birthDate": student.birthDate == nil ? NSNull() : student.birthDate!.description()
                 ],
                 shouldPersist: false,
                 shouldScheduleAutoSync: false
@@ -5442,6 +5529,9 @@ final class KmpBridge: ObservableObject {
                     email: payloadObject["email"] as? String,
                     photoPath: payloadObject["photoPath"] as? String,
                     isInjured: payloadObject["isInjured"] as? Bool ?? false,
+                    sex: studentSex(from: payloadObject["sex"]),
+                    sexSource: studentSexSource(from: payloadObject["sexSource"]),
+                    birthDate: localDate(from: payloadObject["birthDate"]),
                     updatedAtEpochMs: change.updatedAtEpochMs,
                     deviceId: change.deviceId,
                     syncVersion: 1
@@ -6430,6 +6520,39 @@ final class KmpBridge: ObservableObject {
             }
         }
         return nil
+    }
+
+    private func studentSex(from raw: Any?) -> StudentSex {
+        let value = (raw as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        switch value {
+        case "MALE", "M", "H", "HOMBRE", "MASCULINO":
+            return .male
+        case "FEMALE", "F", "MUJER", "FEMENINO":
+            return .female
+        default:
+            return .unspecified
+        }
+    }
+
+    private func studentSexSource(from raw: Any?) -> StudentSexSource {
+        let value = (raw as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        switch value {
+        case "MANUAL":
+            return .manual
+        case "AI_INFERRED", "AIINFERRED", "IA":
+            return .aiInferred
+        case "IMPORTED":
+            return .imported
+        default:
+            return .unknown
+        }
+    }
+
+    private func localDate(from raw: Any?) -> LocalDate? {
+        guard let value = raw as? String else { return nil }
+        let parts = value.split(separator: "-").compactMap { Int32($0) }
+        guard parts.count == 3 else { return nil }
+        return LocalDate(year: parts[0], monthNumber: parts[1], dayOfMonth: parts[2])
     }
 
     private func longList(_ raw: Any?) -> [KotlinLong] {

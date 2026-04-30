@@ -1,6 +1,8 @@
 package com.migestor.shared.usecase
 
 import com.migestor.shared.domain.PlanningSession
+import com.migestor.shared.domain.StudentSex
+import com.migestor.shared.domain.StudentSexSource
 import com.migestor.shared.repository.AttendanceRepository
 import com.migestor.shared.repository.ClassesRepository
 import com.migestor.shared.repository.EvaluationsRepository
@@ -8,6 +10,7 @@ import com.migestor.shared.repository.GradesRepository
 import com.migestor.shared.repository.PlannerRepository
 import com.migestor.shared.repository.RubricsRepository
 import com.migestor.shared.repository.StudentsRepository
+import kotlinx.datetime.LocalDate
 
 class SaveStudentUseCase(
     private val repository: StudentsRepository,
@@ -18,6 +21,9 @@ class SaveStudentUseCase(
         lastName: String,
         email: String? = null,
         photoPath: String? = null,
+        sex: StudentSex = StudentSex.UNSPECIFIED,
+        sexSource: StudentSexSource = StudentSexSource.UNKNOWN,
+        birthDate: LocalDate? = null,
         updatedAtEpochMs: Long = 0,
         deviceId: String? = null,
         syncVersion: Long = 0,
@@ -30,6 +36,9 @@ class SaveStudentUseCase(
             lastName = lastName.trim(),
             email = email?.trim()?.ifBlank { null },
             photoPath = photoPath?.trim()?.ifBlank { null },
+            sex = sex,
+            sexSource = sexSource,
+            birthDate = birthDate,
             updatedAtEpochMs = updatedAtEpochMs,
             deviceId = deviceId,
             syncVersion = syncVersion

@@ -13,6 +13,19 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
+import kotlinx.datetime.LocalDate
+
+private fun notebookStudentSexOrDefault(value: String): StudentSex {
+    return runCatching { StudentSex.valueOf(value) }.getOrDefault(StudentSex.UNSPECIFIED)
+}
+
+private fun notebookStudentSexSourceOrDefault(value: String): StudentSexSource {
+    return runCatching { StudentSexSource.valueOf(value) }.getOrDefault(StudentSexSource.UNKNOWN)
+}
+
+private fun notebookLocalDateOrNull(value: String?): LocalDate? {
+    return value?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+}
 
 class NotebookRepositorySqlDelight(
     private val db: AppDatabase,
@@ -60,6 +73,9 @@ class NotebookRepositorySqlDelight(
                         email = row.email,
                         photoPath = row.photo_path,
                         isInjured = row.is_injured != 0L,
+                        sex = notebookStudentSexOrDefault(row.sex),
+                        sexSource = notebookStudentSexSourceOrDefault(row.sex_source),
+                        birthDate = notebookLocalDateOrNull(row.birth_date_iso),
                         trace = AuditTrace(
                             updatedAt = Instant.fromEpochMilliseconds(row.updated_at_epoch_ms),
                             deviceId = row.device_id,

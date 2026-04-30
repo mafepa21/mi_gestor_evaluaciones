@@ -7616,12 +7616,24 @@ private struct CreateStudentSheet: View {
     @State private var firstName = ""
     @State private var lastName = ""
     @State private var isInjured = false
+    @State private var studentSex: StudentSex = .unspecified
+    @State private var hasBirthDate = false
+    @State private var birthDate = Calendar.current.date(byAdding: .year, value: -13, to: Date()) ?? Date()
 
     var body: some View {
         NavigationStack {
             Form {
                 TextField("Nombre", text: $firstName)
                 TextField("Apellidos", text: $lastName)
+                Picker("Sexo", selection: $studentSex) {
+                    Text("IA / sin especificar").tag(StudentSex.unspecified)
+                    Text("Hombre").tag(StudentSex.male)
+                    Text("Mujer").tag(StudentSex.female)
+                }
+                Toggle("Fecha de nacimiento", isOn: $hasBirthDate)
+                if hasBirthDate {
+                    DatePicker("Nacimiento", selection: $birthDate, displayedComponents: .date)
+                }
                 Toggle("Seguimiento físico activo", isOn: $isInjured)
             }
             .navigationTitle("Nuevo alumno")
@@ -7638,7 +7650,14 @@ private struct CreateStudentSheet: View {
                             if bridge.selectedStudentsClassId != defaultClassId {
                                 await bridge.selectStudentsClass(classId: defaultClassId)
                             }
-                            try? await bridge.createStudentInSelectedClass(firstName: firstName, lastName: lastName, isInjured: isInjured)
+                            try? await bridge.createStudentInSelectedClass(
+                                firstName: firstName,
+                                lastName: lastName,
+                                isInjured: isInjured,
+                                sex: studentSex,
+                                sexSource: studentSex == .unspecified ? nil : .manual,
+                                birthDate: hasBirthDate ? localDate(from: birthDate) : nil
+                            )
                             onDismiss()
                             dismiss()
                         }
@@ -7647,6 +7666,15 @@ private struct CreateStudentSheet: View {
                 }
             }
         }
+    }
+
+    private func localDate(from date: Date) -> LocalDate {
+        let components = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        return LocalDate(
+            year: Int32(components.year ?? 2010),
+            monthNumber: Int32(components.month ?? 1),
+            dayOfMonth: Int32(components.day ?? 1)
+        )
     }
 }
 

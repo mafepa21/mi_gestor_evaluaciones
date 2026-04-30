@@ -5,6 +5,9 @@ CREATE TABLE IF NOT EXISTS students (
     email TEXT,
     photo_path TEXT,
     is_injured INTEGER NOT NULL DEFAULT 0,
+    sex TEXT NOT NULL DEFAULT 'UNSPECIFIED',
+    sex_source TEXT NOT NULL DEFAULT 'UNKNOWN',
+    birth_date_iso TEXT,
     updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
     device_id TEXT,
     sync_version INTEGER NOT NULL DEFAULT 0
@@ -450,13 +453,13 @@ CREATE TABLE IF NOT EXISTS notebook_cell_entries (
 );
 
 selectAllStudents:
-SELECT id, first_name, last_name, email, photo_path, is_injured, updated_at_epoch_ms, device_id, sync_version
+SELECT id, first_name, last_name, email, photo_path, is_injured, sex, sex_source, birth_date_iso, updated_at_epoch_ms, device_id, sync_version
 FROM students
 ORDER BY last_name, first_name;
 
 upsertStudent:
-INSERT OR REPLACE INTO students(id, first_name, last_name, email, photo_path, is_injured, updated_at_epoch_ms, device_id, sync_version)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO students(id, first_name, last_name, email, photo_path, is_injured, sex, sex_source, birth_date_iso, updated_at_epoch_ms, device_id, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 deleteStudent:
 DELETE FROM students WHERE id = ?;
@@ -482,7 +485,7 @@ DELETE FROM class_students
 WHERE class_id = ? AND student_id = ?;
 
 selectStudentsByClass:
-SELECT s.id, s.first_name, s.last_name, s.email, s.photo_path, s.is_injured, s.updated_at_epoch_ms, s.device_id, s.sync_version
+SELECT s.id, s.first_name, s.last_name, s.email, s.photo_path, s.is_injured, s.sex, s.sex_source, s.birth_date_iso, s.updated_at_epoch_ms, s.device_id, s.sync_version
 FROM students s
 INNER JOIN class_students cs ON cs.student_id = s.id
 WHERE cs.class_id = ?

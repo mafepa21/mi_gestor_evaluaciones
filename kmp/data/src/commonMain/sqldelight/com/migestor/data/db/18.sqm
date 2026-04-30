@@ -1,0 +1,4 @@
+-- Migration from version 18 to 19
+ALTER TABLE students ADD COLUMN sex TEXT NOT NULL DEFAULT 'UNSPECIFIED';
+ALTER TABLE students ADD COLUMN sex_source TEXT NOT NULL DEFAULT 'UNKNOWN';
+ALTER TABLE students ADD COLUMN birth_date_iso TEXT;

@@ -69,9 +69,50 @@ data class Student(
     val email: String? = null,
     val photoPath: String? = null,
     val isInjured: Boolean = false,
+    val sex: StudentSex = StudentSex.UNSPECIFIED,
+    val sexSource: StudentSexSource = StudentSexSource.UNKNOWN,
+    val birthDate: LocalDate? = null,
     val trace: AuditTrace = AuditTrace(),
 ) {
     val fullName: String get() = listOf(firstName, lastName).joinToString(" ").trim()
+
+    fun ageOn(date: LocalDate): Int? {
+        val born = birthDate ?: return null
+        var age = date.year - born.year
+        if (date.monthNumber < born.monthNumber ||
+            (date.monthNumber == born.monthNumber && date.dayOfMonth < born.dayOfMonth)
+        ) {
+            age -= 1
+        }
+        return age.takeIf { it >= 0 }
+    }
+}
+
+enum class StudentSex {
+    MALE,
+    FEMALE,
+    UNSPECIFIED,
+}
+
+enum class StudentSexSource {
+    MANUAL,
+    AI_INFERRED,
+    IMPORTED,
+    UNKNOWN,
+}
+
+fun normalizedStudentSex(value: String?): StudentSex {
+    val normalized = value
+        ?.trim()
+        ?.lowercase()
+        ?.replace("é", "e")
+        ?.replace("á", "a")
+        ?: return StudentSex.UNSPECIFIED
+    return when (normalized) {
+        "male", "m", "h", "hombre", "masculino", "chico", "boy" -> StudentSex.MALE
+        "female", "f", "mujer", "femenino", "chica", "girl" -> StudentSex.FEMALE
+        else -> StudentSex.UNSPECIFIED
+    }
 }
 
 data class SchoolClass(
@@ -354,6 +395,18 @@ data class PhysicalTestNotebookLink(
     val scoreColumnId: String?,
     val trace: AuditTrace = AuditTrace(),
 )
+
+fun PhysicalTestScale.scoreFor(rawValue: Double): Double? {
+    if (!rawValue.isFinite()) return null
+    val range = ranges
+        .sortedBy { it.sortOrder }
+        .firstOrNull { range ->
+            val minOk = range.minValue?.let { rawValue >= it } ?: true
+            val maxOk = range.maxValue?.let { rawValue <= it } ?: true
+            minOk && maxOk
+        } ?: return null
+    return range.score.coerceIn(0.0, 10.0)
+}
 
 fun resolvedPhysicalResult(
     attempts: List<Double>,

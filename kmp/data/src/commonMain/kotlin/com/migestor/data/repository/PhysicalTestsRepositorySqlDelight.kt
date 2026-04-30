@@ -14,6 +14,8 @@ import com.migestor.shared.domain.PhysicalTestNotebookLink
 import com.migestor.shared.domain.PhysicalTestResult
 import com.migestor.shared.domain.PhysicalTestScale
 import com.migestor.shared.domain.PhysicalTestScaleRange
+import com.migestor.shared.domain.StudentSex
+import com.migestor.shared.domain.normalizedStudentSex
 import com.migestor.shared.repository.PhysicalTestsRepository
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
@@ -210,8 +212,9 @@ class PhysicalTestsRepositorySqlDelight(
         batteryId: String?,
     ): PhysicalTestScale? {
         val scales = listScalesForTest(testId)
+        val requestedSex = normalizedStudentSex(sex)
         val sexMatches: (PhysicalTestScale) -> Boolean = { scale ->
-            scale.sex == null || sex == null || scale.sex.equals(sex, ignoreCase = true)
+            scale.sex == null || (requestedSex != StudentSex.UNSPECIFIED && normalizedStudentSex(scale.sex) == requestedSex)
         }
         fun PhysicalTestScale.ageMatches(): Boolean {
             if (age == null) return false
@@ -219,38 +222,44 @@ class PhysicalTestsRepositorySqlDelight(
             val maxOk = ageTo?.let { age <= it } ?: true
             return (ageFrom != null || ageTo != null) && minOk && maxOk
         }
-        return scales.firstOrNull { scale ->
+        fun List<PhysicalTestScale>.bestSexMatch(): PhysicalTestScale? {
+            return firstOrNull { scale ->
+                requestedSex != StudentSex.UNSPECIFIED && normalizedStudentSex(scale.sex) == requestedSex
+            }
+                ?: firstOrNull()
+        }
+        return scales.filter { scale ->
             scale.testId == testId &&
                 scale.batteryId == batteryId &&
                 scale.course == course &&
                 scale.ageMatches() &&
                 sexMatches(scale)
-        } ?: scales.firstOrNull { scale ->
+        }.bestSexMatch() ?: scales.filter { scale ->
             scale.testId == testId &&
                 scale.batteryId == batteryId &&
                 scale.course == course &&
                 sexMatches(scale)
-        } ?: scales.firstOrNull { scale ->
+        }.bestSexMatch() ?: scales.filter { scale ->
             scale.testId == testId &&
                 scale.batteryId == batteryId &&
                 scale.ageMatches() &&
                 sexMatches(scale)
-        } ?: scales.firstOrNull { scale ->
+        }.bestSexMatch() ?: scales.filter { scale ->
             scale.testId == testId &&
                 scale.course == course &&
                 sexMatches(scale)
-        } ?: scales.firstOrNull { scale ->
+        }.bestSexMatch() ?: scales.filter { scale ->
             scale.testId == testId &&
                 scale.ageMatches() &&
                 sexMatches(scale)
-        } ?: scales.firstOrNull { scale ->
+        }.bestSexMatch() ?: scales.filter { scale ->
             scale.testId == testId &&
                 scale.batteryId == null &&
                 scale.course == null &&
                 scale.ageFrom == null &&
                 scale.ageTo == null &&
                 sexMatches(scale)
-        }
+        }.bestSexMatch()
     }
 
     override suspend fun saveNotebookLink(link: PhysicalTestNotebookLink) {

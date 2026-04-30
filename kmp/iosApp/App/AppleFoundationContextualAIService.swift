@@ -487,36 +487,61 @@ struct AppleFoundationModelMessages {
 }
 
 enum AppleFoundationModelSupport {
+    private static var cachedAvailability: (checkedAt: Date, value: AppleFoundationModelAvailability)?
+    private static var runtimeUnavailableUntil: Date?
+    private static let availabilityCacheWindow: TimeInterval = 30
+    private static let runtimeFailureCooldown: TimeInterval = 300
+
     static func resolveAvailability(isEnabled: Bool) -> AppleFoundationModelAvailability {
         guard isEnabled else {
             return .disabled
         }
 
+        let now = Date()
+        if let runtimeUnavailableUntil, runtimeUnavailableUntil > now {
+            return .unavailable("Apple Foundation Models no está respondiendo ahora mismo. Se usará el flujo manual y se reintentará más tarde.")
+        }
+        if let cachedAvailability, now.timeIntervalSince(cachedAvailability.checkedAt) < availabilityCacheWindow {
+            return cachedAvailability.value
+        }
+
         #if canImport(FoundationModels)
         if #available(iOS 26.0, macOS 26.0, *) {
+            let resolved: AppleFoundationModelAvailability
             switch SystemLanguageModel.default.availability {
             case .available:
-                return .available
+                resolved = .available
             case .unavailable(let reason):
                 switch reason {
                 case .deviceNotEligible:
-                    return .unsupportedDevice
+                    resolved = .unsupportedDevice
                 case .appleIntelligenceNotEnabled:
-                    return .notEnabled
+                    resolved = .notEnabled
                 case .modelNotReady:
-                    return .modelLoading
+                    resolved = .modelLoading
                 @unknown default:
-                    return .unavailable("No se pudo determinar la disponibilidad del modelo local.")
+                    resolved = .unavailable("No se pudo determinar la disponibilidad del modelo local.")
                 }
             @unknown default:
-                return .unavailable("No se pudo determinar la disponibilidad del modelo local.")
+                resolved = .unavailable("No se pudo determinar la disponibilidad del modelo local.")
             }
+            cachedAvailability = (now, resolved)
+            return resolved
         } else {
             return .unsupportedOS
         }
         #else
         return .frameworkUnavailable
         #endif
+    }
+
+    static func recordRuntimeFailure(_ error: Error) {
+        runtimeUnavailableUntil = Date().addingTimeInterval(runtimeFailureCooldown)
+        cachedAvailability = (
+            Date(),
+            .unavailable("Apple Foundation Models no está respondiendo ahora mismo. Se usará el flujo manual y se reintentará más tarde.")
+        )
+        debugPrint("[AppleFoundationModels] runtime unavailable: \(error.localizedDescription)")
     }
 
     #if canImport(FoundationModels)
@@ -580,6 +605,7 @@ struct PhysicalScaleRecommendationInput: Hashable {
     var measurementKind: String
     var unit: String
     var directionLabel: String
+    var sex: String
     var course: String
     var ageFrom: Int?
     var ageTo: Int?
@@ -602,6 +628,13 @@ struct PhysicalScaleRecommendationDraft: Hashable {
     var explanation: String
     var warnings: [String]
     var editableProposal: String
+}
+
+struct StudentSexInferenceDraft: Hashable {
+    var sex: String
+    var confidence: Double
+    var reason: String
+    var warning: String
 }
 
 enum PhysicalScalePrecision: Hashable {
@@ -679,7 +712,9 @@ enum PhysicalScaleProfileCatalog {
             return fallbackRanges(higherIsBetter: input.directionLabel.localizedCaseInsensitiveContains("mayor"))
         }
         let middleAge = averageAge(from: input.ageFrom, to: input.ageTo)
-        let adjustment = ageAdjustment(for: middleAge, profile: profile) + profile.objectiveAdjustment
+        let adjustment = ageAdjustment(for: middleAge, profile: profile) +
+            sexAdjustment(for: input.sex, profile: profile) +
+            profile.objectiveAdjustment
         return profile.baseRanges.map { range in
             PhysicalScaleRecommendedRange(
                 minValue: adjusted(range.minValue, by: adjustment, precision: profile.precision),
@@ -786,6 +821,30 @@ enum PhysicalScaleProfileCatalog {
         } else if normalized.contains("inicial") {
             return profile.initialAdjustment
         } else {
+            return 0
+        }
+    }
+
+    private static func sexAdjustment(for sex: String, profile: PhysicalScaleProfile) -> Double {
+        let normalized = sex.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let isMale = ["male", "hombre", "masculino", "m", "h"].contains(normalized)
+        let isFemale = ["female", "mujer", "femenino", "f"].contains(normalized)
+        guard isMale || isFemale else { return 0 }
+
+        switch profile.family {
+        case "speed_time":
+            return isMale ? -0.2 : 0.2
+        case "resistance_level":
+            return isMale ? 0.5 : -0.5
+        case "resistance_distance":
+            return isMale ? 150 : -150
+        case "strength_distance":
+            return isMale ? 0.10 : -0.10
+        case "strength_repetitions", "strength_repetitions_30s":
+            return isMale ? 3 : -3
+        case "flexibility_distance":
+            return isMale ? -2 : 2
+        default:
             return 0
         }
     }
@@ -1108,7 +1167,76 @@ final class AppleFoundationContextualAIService {
         throw AIContextualServiceError.unavailable("La recomendación local de baremos requiere una versión del sistema compatible con Apple Foundation Models.")
     }
 
+    func inferStudentSex(firstName: String, lastName: String) async throws -> StudentSexInferenceDraft {
+        let cleanedFirstName = firstName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanedLastName = lastName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanedFirstName.isEmpty else {
+            return StudentSexInferenceDraft(
+                sex: "UNSPECIFIED",
+                confidence: 0,
+                reason: "No hay nombre suficiente para proponer sexo.",
+                warning: "Configura el sexo manualmente si se necesita para baremos físicos."
+            )
+        }
+        let availability = currentAvailability()
+        guard availability.isAvailable else {
+            throw AIContextualServiceError.unavailable(availability.message)
+        }
+
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, macOS 26.0, *) {
+            do {
+                return try await inferStudentSexLocally(firstName: cleanedFirstName, lastName: cleanedLastName)
+            } catch {
+                AppleFoundationModelSupport.recordRuntimeFailure(error)
+                throw error
+            }
+        }
+        #endif
+        throw AIContextualServiceError.unavailable("La inferencia local requiere una versión del sistema compatible con Apple Foundation Models.")
+    }
+
     #if canImport(FoundationModels)
+    @available(iOS 26.0, macOS 26.0, *)
+    private func inferStudentSexLocally(firstName: String, lastName: String) async throws -> StudentSexInferenceDraft {
+        let session = LanguageModelSession(
+            instructions: """
+            Actúas como asistente local de gestión escolar.
+            Debes proponer el sexo administrativo probable solo desde el nombre proporcionado.
+            No uses fotos, apariencia, identidad de género, origen, religión ni inferencias sensibles adicionales.
+            Si el nombre es ambiguo o no estás seguro, responde UNSPECIFIED con confianza baja.
+            El docente siempre podrá corregir manualmente.
+            """
+        )
+        let response = try await session.respond(
+            to: """
+            Propón el sexo usado solo para seleccionar baremos físicos.
+
+            Nombre: \(firstName)
+            Apellidos: \(lastName)
+
+            Reglas:
+            - sex debe ser exactamente MALE, FEMALE o UNSPECIFIED.
+            - confidence debe estar entre 0 y 1.
+            - Usa MALE/FEMALE solo si el nombre de pila es claramente asociado.
+            - warning debe recordar que es editable por el docente.
+            """,
+            generating: GeneratedStudentSexInference.self,
+            includeSchemaInPrompt: true,
+            options: AppleFoundationModelSupport.generationOptions(temperature: 0.05)
+        )
+        let content = response.content
+        let normalizedSex = ["MALE", "FEMALE"].contains(content.sex.uppercased()) && content.confidence >= 0.75
+            ? content.sex.uppercased()
+            : "UNSPECIFIED"
+        return StudentSexInferenceDraft(
+            sex: normalizedSex,
+            confidence: min(max(content.confidence, 0), 1),
+            reason: content.reason,
+            warning: content.warning.isEmpty ? "Propuesta editable por el docente." : content.warning
+        )
+    }
+
     @available(iOS 26.0, macOS 26.0, *)
     private func refineActiveTeachingDraftLocally(with cleaned: String) async throws -> TeachingAssistantDraft {
         guard let session = activeTeachingSessionStorage as? LanguageModelSession else {
@@ -1480,6 +1608,7 @@ final class AppleFoundationContextualAIService {
         Tipo de medición: \(input.measurementKind)
         Unidad: \(input.unit)
         Dirección: \(input.directionLabel)
+        Sexo del baremo: \(input.sex.isEmpty ? "Sin especificar" : input.sex)
         Curso: \(input.course)
         Edad desde: \(input.ageFrom.map(String.init) ?? "Sin dato")
         Edad hasta: \(input.ageTo.map(String.init) ?? "Sin dato")
@@ -1495,6 +1624,7 @@ final class AppleFoundationContextualAIService {
         - La respuesta debe incluir que la revisión docente es necesaria.
         - No presentes los rangos como baremos oficiales.
         - No cites normativa, percentiles oficiales ni estándares externos.
+        - Ajusta la propuesta al sexo indicado cuando sea MALE o FEMALE; si es Sin especificar, conserva un baremo neutro.
         - Devuelve exactamente 5 rangos claros, ordenados para edición rápida.
         - Prohibido devolver baremos genéricos como Poco/Menor/Medio sin valores minValue/maxValue adecuados.
         - La unidad de todas las etiquetas debe ser \(input.unit).
@@ -1646,6 +1776,15 @@ final class AppleFoundationContextualAIService {
         let explanation: String
         let warnings: [String]
         let editableProposal: String
+    }
+
+    @available(iOS 26.0, macOS 26.0, *)
+    @Generable
+    struct GeneratedStudentSexInference {
+        let sex: String
+        let confidence: Double
+        let reason: String
+        let warning: String
     }
     #endif
 }

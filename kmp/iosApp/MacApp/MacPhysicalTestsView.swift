@@ -1391,7 +1391,7 @@ struct MacPhysicalTestsView: View {
             course: assignment.course,
             ageFrom: assignment.ageFrom,
             ageTo: assignment.ageTo,
-            sex: nil,
+            sex: trimmedOrNil(draft.sex),
             batteryId: battery.id,
             direction: draft.direction == .lowerIsBetter ? .lowerIsBetter : .higherIsBetter,
             ranges: ranges,

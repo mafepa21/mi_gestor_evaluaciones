@@ -1805,6 +1805,9 @@ struct StudentsModuleView: View {
     @State private var classCourse = "3"
     @State private var firstName = ""
     @State private var lastName = ""
+    @State private var studentSex: StudentSex = .unspecified
+    @State private var hasBirthDate = false
+    @State private var birthDate = Calendar.current.date(byAdding: .year, value: -13, to: Date()) ?? Date()
     @State private var search = ""
 
     private var filteredStudents: [Student] {
@@ -1876,13 +1879,31 @@ struct StudentsModuleView: View {
                         TextField("Nombre", text: $firstName).textFieldStyle(RoundedBorderTextFieldStyle())
                         TextField("Apellido", text: $lastName).textFieldStyle(RoundedBorderTextFieldStyle())
                     }
+                    Picker("Sexo", selection: $studentSex) {
+                        Text("IA / sin especificar").tag(StudentSex.unspecified)
+                        Text("Hombre").tag(StudentSex.male)
+                        Text("Mujer").tag(StudentSex.female)
+                    }
+                    .pickerStyle(.segmented)
+                    Toggle("Fecha de nacimiento", isOn: $hasBirthDate)
+                    if hasBirthDate {
+                        DatePicker("Nacimiento", selection: $birthDate, displayedComponents: .date)
+                    }
                     Button("Añadir a clase") {
                         Task {
                             guard !firstName.isEmpty, !lastName.isEmpty else { return }
                             do {
-                                try await bridge.createStudentInSelectedClass(firstName: firstName, lastName: lastName)
+                                try await bridge.createStudentInSelectedClass(
+                                    firstName: firstName,
+                                    lastName: lastName,
+                                    sex: studentSex,
+                                    sexSource: studentSex == .unspecified ? nil : .manual,
+                                    birthDate: hasBirthDate ? localDate(from: birthDate) : nil
+                                )
                                 firstName = ""
                                 lastName = ""
+                                studentSex = .unspecified
+                                hasBirthDate = false
                             } catch {
                                 bridge.status = "Error creando alumno: \(error.localizedDescription)"
                             }
@@ -1906,9 +1927,22 @@ struct StudentsModuleView: View {
                                 Text("ID \(student.id)")
                                     .font(.system(size: 12))
                                     .foregroundStyle(.secondary)
+                                Text("\(sexLabel(for: student)) · \(sexSourceLabel(for: student))")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(.secondary)
                             }
                             Spacer()
                             Menu {
+                                Button("Sexo: Hombre") {
+                                    Task { try? await bridge.updateStudentSex(student, sex: .male) }
+                                }
+                                Button("Sexo: Mujer") {
+                                    Task { try? await bridge.updateStudentSex(student, sex: .female) }
+                                }
+                                Button("Sexo: sin especificar") {
+                                    Task { try? await bridge.updateStudentSex(student, sex: .unspecified) }
+                                }
+                                Divider()
                                 Button("Quitar de la clase") {
                                     Task { try? await bridge.removeStudentFromSelectedClass(studentId: student.id) }
                                 }
@@ -1946,6 +1980,32 @@ struct StudentsModuleView: View {
             await bridge.pullMissingSyncChanges()
             try? await bridge.refreshStudentsDirectory()
         }
+    }
+
+    private func sexLabel(for student: Student) -> String {
+        switch student.sex {
+        case .male: return "Hombre"
+        case .female: return "Mujer"
+        default: return "Sexo sin especificar"
+        }
+    }
+
+    private func sexSourceLabel(for student: Student) -> String {
+        switch student.sexSource {
+        case .manual: return "Manual"
+        case .aiInferred: return "IA inferido"
+        case .imported: return "Importado"
+        default: return "Sin origen"
+        }
+    }
+
+    private func localDate(from date: Date) -> LocalDate {
+        let components = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        return LocalDate(
+            year: Int32(components.year ?? 2010),
+            monthNumber: Int32(components.month ?? 1),
+            dayOfMonth: Int32(components.day ?? 1)
+        )
     }
 }
 

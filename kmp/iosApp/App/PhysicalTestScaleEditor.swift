@@ -390,6 +390,13 @@ struct PhysicalTestScaleEditor: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
 
+                Picker("Sexo del baremo", selection: $scale.sex) {
+                    Text("Neutro").tag("")
+                    Text("Hombre").tag("MALE")
+                    Text("Mujer").tag("FEMALE")
+                }
+                .pickerStyle(.segmented)
+
                 Picker("Tipo de baremo", selection: $strategy) {
                     ForEach(PhysicalTestScaleStrategy.allCases) { strategy in
                         Text(strategy.rawValue).tag(strategy)
@@ -569,6 +576,24 @@ struct PhysicalTestScaleEditor: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(!aiAvailability.isAvailable || isGeneratingAIProposal)
 
+                Button {
+                    Task { await generateSexSpecificProposal(preferredSex: "MALE") }
+                } label: {
+                    Label("Crear baremo Hombre", systemImage: "person.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .disabled(!aiAvailability.isAvailable || isGeneratingAIProposal)
+
+                Button {
+                    Task { await generateSexSpecificProposal(preferredSex: "FEMALE") }
+                } label: {
+                    Label("Crear baremo Mujer", systemImage: "person.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .disabled(!aiAvailability.isAvailable || isGeneratingAIProposal)
+
                 if isGeneratingAIProposal {
                     ProgressView()
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -690,6 +715,11 @@ struct PhysicalTestScaleEditor: View {
         }
     }
 
+    private func generateSexSpecificProposal(preferredSex: String) async {
+        scale.sex = preferredSex
+        await generateAIProposal()
+    }
+
     private func applyAIProposal(_ proposal: PhysicalScaleRecommendationDraft) {
         scale.ranges = proposal.ranges.map {
             PhysicalTestScaleRange(minValue: $0.minValue, maxValue: $0.maxValue, score: $0.score, label: $0.label)
@@ -717,6 +747,7 @@ struct PhysicalTestScaleEditor: View {
             measurementKind: context?.measurementKind ?? "Sin medición definida",
             unit: context?.unit ?? "unidad",
             directionLabel: scale.direction == .higherIsBetter ? "mayor marca = mejor nota" : "menor marca = mejor nota",
+            sex: scale.sex.isEmpty ? "UNSPECIFIED" : scale.sex,
             course: context?.course.map { "\($0)º" } ?? scale.course.map { "\($0)º" } ?? "Sin curso",
             ageFrom: context?.ageFrom ?? scale.ageFrom,
             ageTo: context?.ageTo ?? scale.ageTo,

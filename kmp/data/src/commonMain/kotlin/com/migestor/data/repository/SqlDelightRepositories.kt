@@ -29,6 +29,8 @@ import com.migestor.shared.domain.RubricLevel
 import com.migestor.shared.domain.SchoolClass
 import com.migestor.shared.domain.SessionStatus
 import com.migestor.shared.domain.Student
+import com.migestor.shared.domain.StudentSex
+import com.migestor.shared.domain.StudentSexSource
 import com.migestor.shared.domain.TeachingUnit
 import com.migestor.shared.util.IsoWeekHelper
 import com.migestor.shared.repository.AttendanceRepository
@@ -51,6 +53,19 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
+import kotlinx.datetime.LocalDate
+
+private fun studentSexOrDefault(value: String): StudentSex {
+    return runCatching { StudentSex.valueOf(value) }.getOrDefault(StudentSex.UNSPECIFIED)
+}
+
+private fun studentSexSourceOrDefault(value: String): StudentSexSource {
+    return runCatching { StudentSexSource.valueOf(value) }.getOrDefault(StudentSexSource.UNKNOWN)
+}
+
+private fun localDateOrNull(value: String?): LocalDate? {
+    return value?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+}
 
 class StudentsRepositorySqlDelight(
     private val db: AppDatabase,
@@ -69,6 +84,9 @@ class StudentsRepositorySqlDelight(
                         email = it.email,
                         photoPath = it.photo_path,
                         isInjured = it.is_injured != 0L,
+                        sex = studentSexOrDefault(it.sex),
+                        sexSource = studentSexSourceOrDefault(it.sex_source),
+                        birthDate = localDateOrNull(it.birth_date_iso),
                         trace = AuditTrace(
                             updatedAt = Instant.fromEpochMilliseconds(it.updated_at_epoch_ms),
                             deviceId = it.device_id,
@@ -88,6 +106,9 @@ class StudentsRepositorySqlDelight(
                 email = it.email,
                 photoPath = it.photo_path,
                 isInjured = it.is_injured != 0L,
+                sex = studentSexOrDefault(it.sex),
+                sexSource = studentSexSourceOrDefault(it.sex_source),
+                birthDate = localDateOrNull(it.birth_date_iso),
                 trace = AuditTrace(
                     updatedAt = Instant.fromEpochMilliseconds(it.updated_at_epoch_ms),
                     deviceId = it.device_id,
@@ -104,6 +125,9 @@ class StudentsRepositorySqlDelight(
         email: String?,
         photoPath: String?,
         isInjured: Boolean,
+        sex: StudentSex,
+        sexSource: StudentSexSource,
+        birthDate: LocalDate?,
         updatedAtEpochMs: Long,
         deviceId: String?,
         syncVersion: Long,
@@ -111,7 +135,7 @@ class StudentsRepositorySqlDelight(
         val now = if (updatedAtEpochMs > 0) updatedAtEpochMs else Clock.System.now().toEpochMilliseconds()
         val injured = if (isInjured) 1L else 0L
         return db.transactionWithResult {
-            db.appDatabaseQueries.upsertStudent(id, firstName, lastName, email, photoPath, injured, now, deviceId, syncVersion)
+            db.appDatabaseQueries.upsertStudent(id, firstName, lastName, email, photoPath, injured, sex.name, sexSource.name, birthDate?.toString(), now, deviceId, syncVersion)
             id ?: db.appDatabaseQueries.lastInsertedId().executeAsOne()
         }
     }
@@ -199,6 +223,9 @@ class ClassesRepositorySqlDelight(
                 email = it.email,
                 photoPath = it.photo_path,
                 isInjured = it.is_injured != 0L,
+                sex = studentSexOrDefault(it.sex),
+                sexSource = studentSexSourceOrDefault(it.sex_source),
+                birthDate = localDateOrNull(it.birth_date_iso),
                 trace = AuditTrace(
                     updatedAt = Instant.fromEpochMilliseconds(it.updated_at_epoch_ms),
                     deviceId = it.device_id,
@@ -222,6 +249,9 @@ class ClassesRepositorySqlDelight(
                         email = it.email,
                         photoPath = it.photo_path,
                         isInjured = it.is_injured != 0L,
+                        sex = studentSexOrDefault(it.sex),
+                        sexSource = studentSexSourceOrDefault(it.sex_source),
+                        birthDate = localDateOrNull(it.birth_date_iso),
                         trace = AuditTrace(
                             updatedAt = Instant.fromEpochMilliseconds(it.updated_at_epoch_ms),
                             deviceId = it.device_id,

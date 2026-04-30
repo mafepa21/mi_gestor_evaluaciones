@@ -149,11 +149,13 @@ struct PhysicalTestCaptureView: View {
         do {
             let normalizedAttempts = attempts.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             let rawValue = finalValue
+            let effectiveAge = ageOnCurrentDate(for: currentResult.student) ?? age
+            let effectiveSex = sexForScale(currentResult.student)
             let resolvedScale = try await bridge.resolvePhysicalScale(
                 testId: testDefinitionId,
                 course: course,
-                age: age,
-                sex: nil,
+                age: effectiveAge,
+                sex: effectiveSex,
                 batteryId: batteryId
             )
             let score = rawValue.flatMap { value in
@@ -218,6 +220,26 @@ struct PhysicalTestCaptureView: View {
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
         let now = Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMs)
         return AuditTrace(authorUserId: nil, createdAt: now, updatedAt: now, associatedGroupId: KotlinLong(value: classId), deviceId: nil, syncVersion: 0)
+    }
+
+    private func sexForScale(_ student: Student) -> String? {
+        switch student.sex {
+        case .male: return "MALE"
+        case .female: return "FEMALE"
+        default: return nil
+        }
+    }
+
+    private func ageOnCurrentDate(for student: Student) -> Int? {
+        guard let birthDate = student.birthDate else { return nil }
+        let now = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        guard let year = now.year, let month = now.month, let day = now.day else { return nil }
+        var age = year - Int(birthDate.year)
+        if month < Int(birthDate.monthNumber) ||
+            (month == Int(birthDate.monthNumber) && day < Int(birthDate.dayOfMonth)) {
+            age -= 1
+        }
+        return age >= 0 ? age : nil
     }
 }
 

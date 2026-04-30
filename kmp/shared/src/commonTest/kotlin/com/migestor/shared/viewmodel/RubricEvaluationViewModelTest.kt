@@ -2,6 +2,7 @@ package com.migestor.shared.viewmodel
 
 import com.migestor.shared.domain.*
 import com.migestor.shared.repository.*
+import kotlinx.datetime.LocalDate
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
@@ -114,7 +115,7 @@ class RubricEvaluationViewModelTest {
         override fun observeStudents(): Flow<List<Student>> = flowOf(students)
         override suspend fun listStudents(): List<Student> = students
         suspend fun getStudent(id: Long): Student? = students.find { it.id == id }
-        override suspend fun saveStudent(id: Long?, firstName: String, lastName: String, email: String?, photoPath: String?, isInjured: Boolean, updatedAtEpochMs: Long, deviceId: String?, syncVersion: Long): Long = 1
+        override suspend fun saveStudent(id: Long?, firstName: String, lastName: String, email: String?, photoPath: String?, isInjured: Boolean, sex: StudentSex, sexSource: StudentSexSource, birthDate: LocalDate?, updatedAtEpochMs: Long, deviceId: String?, syncVersion: Long): Long = 1
         override suspend fun deleteStudent(studentId: Long) = Unit
     }
 

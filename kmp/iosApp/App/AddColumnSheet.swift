@@ -387,6 +387,7 @@ struct AddColumnSheet: View {
     @State private var categoryPlacementMode: CategoryPlacementMode = .existing
     @State private var unitOrSituation: String = ""
     @State private var selectedDate: Date = .now
+    @State private var countsTowardAverage = true
     @State private var isPinned = false
     @State private var isTemplate = false
     @State private var isLocked = false
@@ -483,7 +484,6 @@ struct AddColumnSheet: View {
                 }
                 .task { await loadPhysicalColumnOptions() }
             }
-            .frame(width: 560, height: 620)
             #if os(iOS)
             .presentationDetents([.large])
             .presentationDragIndicator(.hidden)
@@ -614,6 +614,10 @@ struct AddColumnSheet: View {
                     }
                 }
                 .pickerStyle(.menu)
+            }
+
+            if selectedBlueprint?.instrumentKind != .physicalTest {
+                Toggle("Cuenta para la media", isOn: $countsTowardAverage)
             }
 
             Toggle("Fijar al inicio", isOn: $isPinned)
@@ -949,6 +953,21 @@ struct AddColumnSheet: View {
         return selectedPhysicalMeasurement.scaleKind
     }
 
+    private var resolvedCountsTowardAverage: Bool {
+        guard let selectedBlueprint else { return false }
+
+        if selectedBlueprint.isIndividualSummary {
+            return false
+        }
+
+        if selectedBlueprint.instrumentKind == .physicalTest {
+            return selectedPhysicalColumnMode == .score ||
+                   selectedPhysicalColumnMode == .rawAndScore
+        }
+
+        return countsTowardAverage
+    }
+
     private func saveColumn() {
         guard let selectedBlueprint else { return }
         if selectedBlueprint.isIndividualSummary {
@@ -1001,7 +1020,7 @@ struct AddColumnSheet: View {
                 competencyCriteriaIds: [],
                 scaleKind: .tenPoint,
                 iconName: "chart.bar.fill",
-                countsTowardAverage: true,
+                countsTowardAverage: resolvedCountsTowardAverage,
                 isPinned: isPinned,
                 isHidden: false,
                 visibility: .visible,
@@ -1028,7 +1047,7 @@ struct AddColumnSheet: View {
             competencyCriteriaIds: [],
             scaleKind: isPhysicalScoreColumn ? .tenPoint : resolvedScaleKind,
             iconName: selectedBlueprint.instrumentKind == .physicalTest ? (isPhysicalScoreColumn ? "chart.bar.fill" : "stopwatch.fill") : selectedBlueprint.icon,
-            countsTowardAverage: isPhysicalScoreColumn,
+            countsTowardAverage: resolvedCountsTowardAverage,
             isPinned: isPinned,
             isHidden: false,
             visibility: .visible,
@@ -1136,6 +1155,7 @@ struct AddColumnSheet: View {
     private func syncBlueprintDefaults() {
         guard let selectedBlueprint else { return }
         weight = String(Int(selectedBlueprint.defaultWeight))
+        countsTowardAverage = defaultCountsTowardAverage(for: selectedBlueprint)
         if selectedBlueprint.instrumentKind == .physicalTest {
             selectedPhysicalMeasurement = .distance
         }
@@ -1146,6 +1166,23 @@ struct AddColumnSheet: View {
             if unitOrSituation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || unitOrSituation == "Comentario IA" {
                 unitOrSituation = NotebookIndividualSummaryPreferences.marker
             }
+        }
+    }
+
+    private func defaultCountsTowardAverage(for blueprint: NotebookColumnBlueprint) -> Bool {
+        if blueprint.isIndividualSummary {
+            return false
+        }
+
+        switch blueprint.instrumentKind {
+        case .writtenTest, .rubric, .checklist, .participation:
+            return true
+        case .systematicObservation:
+            return false
+        case .multimediaEvidence, .physicalTest, .privateComment:
+            return false
+        default:
+            return blueprint.defaultWeight > 0
         }
     }
 

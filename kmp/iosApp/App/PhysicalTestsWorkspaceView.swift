@@ -993,6 +993,7 @@ struct PhysicalTestsWorkspaceView: View {
             measurementKind: context.measurementKind,
             unit: context.unit,
             directionLabel: direction(for: testId) == .higherIsBetter ? "mayor marca = mejor nota" : "menor marca = mejor nota",
+            sex: scale.sex.isEmpty ? "UNSPECIFIED" : scale.sex,
             course: context.course.map { "\($0)º" } ?? "Sin curso",
             ageFrom: context.ageFrom,
             ageTo: context.ageTo,

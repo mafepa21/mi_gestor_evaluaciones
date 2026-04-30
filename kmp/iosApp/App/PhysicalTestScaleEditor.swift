@@ -77,7 +77,27 @@ struct PhysicalTestScaleDraft: Identifiable, Hashable {
     }
 
     var validationMessages: [String] {
+        validationMessages(testId: testId, expectedUnit: nil, expectedDirection: direction)
+    }
+
+    func validationMessages(
+        testId: String?,
+        expectedUnit: String?,
+        expectedDirection: PhysicalTestScaleDirection
+    ) -> [String] {
         var messages: [String] = []
+        let normalizedTestId = testId.map(PhysicalScaleProfileCatalog.normalizedTestId) ?? ""
+        let profile = PhysicalScaleProfileCatalog.profile(for: normalizedTestId, objective: "mixto")
+        let boundaryStep = profile?.precision.boundaryStep ?? inferredBoundaryStep
+        if ranges.count != 5 {
+            messages.append("El baremo debe tener exactamente 5 rangos.")
+        }
+        if let expectedUnit, let profile, !expectedUnit.isEmpty, profile.unit != expectedUnit {
+            messages.append("La unidad no coincide con el perfil de la prueba.")
+        }
+        if let profile, profile.higherIsBetter != (expectedDirection == .higherIsBetter) {
+            messages.append("La dirección de mejora no coincide con el tipo de prueba.")
+        }
         for range in ranges {
             if range.minValue == nil && range.maxValue == nil {
                 messages.append("Hay rangos sin mínimo ni máximo.")
@@ -95,18 +115,27 @@ struct PhysicalTestScaleDraft: Identifiable, Hashable {
                 messages.append("Hay rangos solapados.")
                 break
             }
-            if let leftMax = pair.0.maxValue, let rightMin = pair.1.minValue, hasGap(from: leftMax, to: rightMin) {
+            if let leftMax = pair.0.maxValue, let rightMin = pair.1.minValue, hasGap(from: leftMax, to: rightMin, allowedStep: boundaryStep) {
                 messages.append("Hay huecos entre rangos.")
                 break
+            }
+        }
+        let scores = sorted.map(\.score)
+        if let profile {
+            if profile.higherIsBetter, scores != scores.sorted() {
+                messages.append("Las notas deben subir cuando mejora la marca.")
+            }
+            if !profile.higherIsBetter, scores != scores.sorted(by: >) {
+                messages.append("Las notas deben bajar cuando aumenta el tiempo.")
             }
         }
         return Array(Set(messages)).sorted()
     }
 
-    private func hasGap(from leftMax: Double, to rightMin: Double) -> Bool {
+    private func hasGap(from leftMax: Double, to rightMin: Double, allowedStep: Double) -> Bool {
         let gap = rightMin - leftMax
         guard gap > 0 else { return false }
-        return gap > inferredBoundaryStep + 0.000_001
+        return gap > allowedStep + 0.000_001
     }
 
     private var inferredBoundaryStep: Double {
@@ -128,6 +157,8 @@ struct PhysicalTestScaleDraft: Identifiable, Hashable {
 }
 
 struct PhysicalTestScaleEditorContext {
+    var testId: String
+    var batteryId: String?
     var batteryName: String
     var className: String
     var termLabel: String?
@@ -144,6 +175,8 @@ struct PhysicalTestScaleEditorContext {
     }
 
     init(
+        testId: String = "",
+        batteryId: String? = nil,
         batteryName: String,
         className: String,
         termLabel: String?,
@@ -155,6 +188,8 @@ struct PhysicalTestScaleEditorContext {
         ageFrom: Int?,
         ageTo: Int?
     ) {
+        self.testId = testId
+        self.batteryId = batteryId
         self.batteryName = batteryName
         self.className = className
         self.termLabel = termLabel
@@ -168,6 +203,8 @@ struct PhysicalTestScaleEditorContext {
     }
 
     init(
+        testId: String = "",
+        batteryId: String? = nil,
         batteryName: String,
         className: String,
         termLabel: String?,
@@ -179,6 +216,8 @@ struct PhysicalTestScaleEditorContext {
             .split(separator: "-")
             .map { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
         self.init(
+            testId: testId,
+            batteryId: batteryId,
             batteryName: batteryName,
             className: className,
             termLabel: termLabel,
@@ -275,6 +314,14 @@ struct PhysicalTestScaleEditor: View {
         Double(previewValue.replacingOccurrences(of: ",", with: ".")).flatMap { raw in
             scale.ranges.first(where: { $0.contains(raw) })
         }
+    }
+
+    private var validationMessages: [String] {
+        scale.validationMessages(
+            testId: context?.testId ?? scale.testId,
+            expectedUnit: context?.unit,
+            expectedDirection: scale.direction
+        )
     }
 
     var body: some View {
@@ -411,7 +458,7 @@ struct PhysicalTestScaleEditor: View {
                     Spacer()
 
                     Button {
-                        if scale.validationMessages.isEmpty, canSave {
+                        if validationMessages.isEmpty, canSave {
                             onSave?(scale)
                             savedMessage = "Baremo guardado para esta prueba."
                         } else {
@@ -421,13 +468,13 @@ struct PhysicalTestScaleEditor: View {
                         Label("Guardar baremo de esta prueba", systemImage: "checkmark.circle.fill")
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(!canSave || !scale.validationMessages.isEmpty)
+                    .disabled(!canSave || !validationMessages.isEmpty)
                 }
 
                 if let savedMessage {
                     Text(savedMessage)
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(scale.validationMessages.isEmpty ? .green : .orange)
+                        .foregroundStyle(validationMessages.isEmpty ? .green : .orange)
                 }
             }
         }
@@ -435,12 +482,12 @@ struct PhysicalTestScaleEditor: View {
 
     private var validationPanel: some View {
         ScaleEditorCard(title: "Validación") {
-            if scale.validationMessages.isEmpty {
+            if validationMessages.isEmpty {
                 Label("Sin incidencias detectadas", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.green)
             } else {
                 VStack(alignment: .leading, spacing: 10) {
-                    ForEach(scale.validationMessages, id: \.self) { message in
+                    ForEach(validationMessages, id: \.self) { message in
                         Label(message, systemImage: "exclamationmark.triangle.fill")
                             .foregroundStyle(.orange)
                     }
@@ -500,6 +547,14 @@ struct PhysicalTestScaleEditor: View {
                 Label("Revisión docente necesaria", systemImage: "checkmark.seal")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.orange)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(PhysicalScaleProfileCatalog.safetyWarnings, id: \.self) { warning in
+                        Label(warning, systemImage: "exclamationmark.triangle")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.orange)
+                    }
+                }
 
                 Text("La IA generará rangos orientativos editables. No son oficiales y deben revisarse antes de usarse con el grupo.")
                     .font(.caption)
@@ -639,6 +694,14 @@ struct PhysicalTestScaleEditor: View {
         scale.ranges = proposal.ranges.map {
             PhysicalTestScaleRange(minValue: $0.minValue, maxValue: $0.maxValue, score: $0.score, label: $0.label)
         }
+        scale.testId = recommendationInput.testId
+        if let profile = PhysicalScaleProfileCatalog.profile(for: recommendationInput.testId, objective: recommendationInput.objective) {
+            scale.direction = profile.higherIsBetter ? .higherIsBetter : .lowerIsBetter
+        }
+        scale.course = context?.course ?? scale.course
+        scale.ageFrom = context?.ageFrom ?? scale.ageFrom
+        scale.ageTo = context?.ageTo ?? scale.ageTo
+        scale.batteryId = context?.batteryId ?? scale.batteryId
         if !proposal.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             scale.name = proposal.title
         }
@@ -648,6 +711,7 @@ struct PhysicalTestScaleEditor: View {
 
     private var recommendationInput: PhysicalScaleRecommendationInput {
         PhysicalScaleRecommendationInput(
+            testId: PhysicalScaleProfileCatalog.normalizedTestId(context?.testId ?? scale.testId),
             testName: context?.testName ?? (scale.testId.isEmpty ? scale.name : scale.testId),
             capacity: context?.capacity ?? "Sin capacidad definida",
             measurementKind: context?.measurementKind ?? "Sin medición definida",

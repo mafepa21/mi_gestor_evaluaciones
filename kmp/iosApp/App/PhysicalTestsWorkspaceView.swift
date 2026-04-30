@@ -255,8 +255,12 @@ struct PhysicalTestsWorkspaceView: View {
         tests.reduce(0) { $0 + $1.recordedCount }
     }
 
+    private var activeScaleTestId: String? {
+        selectedTest.map(testDefinitionId(for:)) ?? selectedFilterTestId ?? PhysicalTestTemplate.defaults.first?.id
+    }
+
     private var activeScaleEditorContext: PhysicalTestScaleEditorContext? {
-        let testId = selectedTest.map(testDefinitionId(for:)) ?? selectedFilterTestId ?? PhysicalTestTemplate.defaults.first?.id
+        let testId = activeScaleTestId
         guard let testId, let descriptor = physicalTestDescriptor(for: testId) else { return nil }
         let assignment = activeAssignment ?? filteredAssignments.first ?? assignments.first
         let battery = assignment.flatMap { assignment in batteries.first(where: { $0.id == assignment.batteryId }) }
@@ -267,6 +271,8 @@ struct PhysicalTestsWorkspaceView: View {
         let ageTo = assignment?.ageTo?.intValue ?? assignmentAgeTo
         let termLabel = assignment?.termLabel ?? assignmentTermLabel
         return PhysicalTestScaleEditorContext(
+            testId: testId,
+            batteryId: assignment?.batteryId ?? battery?.id,
             batteryName: battery?.name ?? "Condición física",
             className: selectedClassName,
             termLabel: termLabel,
@@ -332,6 +338,8 @@ struct PhysicalTestsWorkspaceView: View {
             .task { await reload() }
             .onChange(of: selectedClassId) { _ in Task { await reload() } }
             .onChange(of: selectedClassId) { _ in syncSelectedClassDefaults() }
+            .onChange(of: selectedTestId) { _ in resetScaleDraftForActiveTest() }
+            .onChange(of: selectedFilterTestId) { _ in resetScaleDraftForActiveTest() }
             .sheet(isPresented: $showingCreateSheet) {
                 PhysicalTestCreationSheet(defaultClassId: selectedClassId, templates: PhysicalTestTemplate.defaults) {
                     Task { await reload() }
@@ -444,6 +452,7 @@ struct PhysicalTestsWorkspaceView: View {
                 Spacer()
 
                 Button {
+                    resetScaleDraftForActiveTest(force: true)
                     showingScaleEditor = true
                 } label: {
                     Label("Baremos", systemImage: "slider.horizontal.3")
@@ -684,6 +693,7 @@ struct PhysicalTestsWorkspaceView: View {
         NavigationStack {
             PhysicalTestScaleEditor(scale: $scale, context: activeScaleEditorContext)
                 .navigationTitle("Baremos")
+                .onAppear { resetScaleDraftForActiveTest() }
         }
     }
 
@@ -769,6 +779,7 @@ struct PhysicalTestsWorkspaceView: View {
             selectedStudentId = selectedTest?.results.first?.student.id
         }
         syncSelectedClassDefaults()
+        resetScaleDraftForActiveTest()
     }
 
     private func createTest(from template: PhysicalTestTemplate) async {
@@ -965,6 +976,44 @@ struct PhysicalTestsWorkspaceView: View {
         case .last: return .last
         default: return .best
         }
+    }
+
+    private func resetScaleDraftForActiveTest(force: Bool = false) {
+        guard let testId = activeScaleTestId, let context = activeScaleEditorContext else { return }
+        let normalized = PhysicalScaleProfileCatalog.normalizedTestId(testId)
+        guard force || scale.testId != normalized else { return }
+        scale = defaultScaleDraft(for: normalized, context: context)
+    }
+
+    private func defaultScaleDraft(for testId: String, context: PhysicalTestScaleEditorContext) -> PhysicalTestScaleDraft {
+        let input = PhysicalScaleRecommendationInput(
+            testId: testId,
+            testName: context.testName,
+            capacity: context.capacity,
+            measurementKind: context.measurementKind,
+            unit: context.unit,
+            directionLabel: direction(for: testId) == .higherIsBetter ? "mayor marca = mejor nota" : "menor marca = mejor nota",
+            course: context.course.map { "\($0)º" } ?? "Sin curso",
+            ageFrom: context.ageFrom,
+            ageTo: context.ageTo,
+            objective: "Mixto",
+            scoreScale: "0-10"
+        )
+        let ranges = PhysicalScaleProfileCatalog.seedRanges(for: input).map {
+            PhysicalTestScaleRange(minValue: $0.minValue, maxValue: $0.maxValue, score: $0.score, label: $0.label)
+        }
+        return PhysicalTestScaleDraft(
+            persistedScaleId: nil,
+            name: "Baremo \(context.testName) 0-10",
+            testId: testId,
+            course: context.course,
+            ageFrom: context.ageFrom,
+            ageTo: context.ageTo,
+            sex: "",
+            batteryId: context.batteryId ?? "",
+            direction: direction(for: testId),
+            ranges: ranges
+        )
     }
 
     private func physicalTestDescriptor(for testId: String) -> (name: String, capacity: String, measurementKind: String, unit: String)? {

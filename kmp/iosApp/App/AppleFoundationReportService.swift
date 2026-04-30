@@ -151,6 +151,10 @@ private enum AIReportTelemetry {
         defaults.set(kind.rawValue, forKey: "reports.ai.lastFailureKind")
         defaults.set(Date(), forKey: "reports.ai.lastFailureAt")
     }
+
+    static func recordRuntimeFailure(kind: KmpBridge.ReportKind, error: Error) {
+        recordFailure(kind: kind, message: AppleFoundationModelSupport.runtimeFailureKind(for: error))
+    }
 }
 
 @MainActor
@@ -207,7 +211,7 @@ final class AppleFoundationReportService {
         scheduleAvailabilityRetryIfNeeded(for: resolved)
 
         #if canImport(FoundationModels)
-        if #available(iOS 26.0, macOS 26.0, *), resolved == .available || resolved == .modelLoading {
+        if #available(iOS 26.0, macOS 26.0, *), resolved == .available {
             if cachedReportSessionStorage == nil {
                 cachedReportSessionStorage = makeReportSession()
             }
@@ -236,7 +240,7 @@ final class AppleFoundationReportService {
 
         let availability = currentAvailability()
         guard availability.isAvailable else {
-            throw AIReportServiceError.unavailable(availability.message)
+            return fallbackDraft(from: context)
         }
 
         do {
@@ -247,10 +251,12 @@ final class AppleFoundationReportService {
                 return draft
             }
             #endif
-            throw AIReportServiceError.unavailable("La redacción IA requiere una versión del sistema compatible con Apple Foundation Models.")
+            return fallbackDraft(from: context)
         } catch {
+            AppleFoundationModelSupport.recordRuntimeFailure(error)
+            AIReportTelemetry.recordRuntimeFailure(kind: context.kind, error: error)
             AIReportTelemetry.recordFailure(kind: context.kind, message: error.localizedDescription)
-            throw error
+            return fallbackDraft(from: context)
         }
     }
 
@@ -269,10 +275,16 @@ final class AppleFoundationReportService {
 
         #if canImport(FoundationModels)
         if #available(iOS 26.0, macOS 26.0, *) {
-            return try await refineActiveDraftLocally(with: cleaned, context: context)
+            do {
+                return try await refineActiveDraftLocally(with: cleaned, context: context)
+            } catch {
+                AppleFoundationModelSupport.recordRuntimeFailure(error)
+                AIReportTelemetry.recordRuntimeFailure(kind: context.kind, error: error)
+                return fallbackDraft(from: context)
+            }
         }
         #endif
-        throw AIReportServiceError.unavailable("La redacción IA requiere una versión del sistema compatible con Apple Foundation Models.")
+        return fallbackDraft(from: context)
     }
 
     #if canImport(FoundationModels)
@@ -342,14 +354,14 @@ final class AppleFoundationReportService {
         audience: AIReportAudience,
         tone: AIReportTone
     ) -> String {
-        let metrics = context.metrics.map { "- \($0.title): \($0.value)" }.joined(separator: "\n")
-        let facts = context.factLines.map { "- \($0)" }.joined(separator: "\n")
-        let strengths = context.strengths.isEmpty ? "- Sin fortalezas concluyentes." : context.strengths.map { "- \($0)" }.joined(separator: "\n")
-        let needsAttention = context.needsAttention.isEmpty ? "- Sin alertas concluyentes." : context.needsAttention.map { "- \($0)" }.joined(separator: "\n")
-        let actions = context.recommendedActions.isEmpty ? "- Mantener recogida de evidencias." : context.recommendedActions.map { "- \($0)" }.joined(separator: "\n")
-        let notes = context.supportNotes.isEmpty ? "- Sin notas de apoyo adicionales." : context.supportNotes.map { "- \($0)" }.joined(separator: "\n")
-        let curriculumReferences = context.curriculumReferences.isEmpty ? "- Sin referencias curriculares preseleccionadas." : context.curriculumReferences.map { "- \($0)" }.joined(separator: "\n")
-        let promptDirectives = context.promptDirectives.isEmpty ? "- Redacción general prudente." : context.promptDirectives.map { "- \($0)" }.joined(separator: "\n")
+        let metrics = context.metrics.prefix(4).map { "- \($0.title): \($0.value)" }.joined(separator: "\n")
+        let facts = context.factLines.prefix(6).map { "- \($0)" }.joined(separator: "\n")
+        let strengths = context.strengths.isEmpty ? "- Sin fortalezas concluyentes." : context.strengths.prefix(4).map { "- \($0)" }.joined(separator: "\n")
+        let needsAttention = context.needsAttention.isEmpty ? "- Sin alertas concluyentes." : context.needsAttention.prefix(4).map { "- \($0)" }.joined(separator: "\n")
+        let actions = context.recommendedActions.isEmpty ? "- Mantener recogida de evidencias." : context.recommendedActions.prefix(4).map { "- \($0)" }.joined(separator: "\n")
+        let notes = context.supportNotes.isEmpty ? "- Sin notas de apoyo adicionales." : context.supportNotes.prefix(3).map { "- \($0)" }.joined(separator: "\n")
+        let curriculumReferences = context.curriculumReferences.isEmpty ? "- Sin referencias curriculares preseleccionadas." : context.curriculumReferences.prefix(3).map { "- \($0)" }.joined(separator: "\n")
+        let promptDirectives = context.promptDirectives.isEmpty ? "- Redacción general prudente." : context.promptDirectives.prefix(3).map { "- \($0)" }.joined(separator: "\n")
         let audienceDirectives: String = {
             switch audience {
             case .docente:
@@ -428,6 +440,40 @@ final class AppleFoundationReportService {
         - Si hay adaptaciones o apoyos, añádelos en una frase breve antes de las orientaciones.
         - Usa una redacción estable y consistente entre regeneraciones.
         """
+    }
+
+    private func fallbackDraft(from context: KmpBridge.ReportGenerationContext) -> AIReportDraft {
+        let strengths = Array((context.strengths.isEmpty ? context.factLines : context.strengths).prefix(4))
+        let needsAttention = Array((context.needsAttention.isEmpty ? context.supportNotes : context.needsAttention).prefix(4))
+        let recommendedActions = Array((context.recommendedActions.isEmpty ? ["Mantener recogida de evidencias antes del próximo corte."] : context.recommendedActions).prefix(4))
+        let summary = context.summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "Borrador generado por reglas con los datos disponibles del cuaderno."
+            : context.summary
+        let studentOrGroup = context.studentName ?? context.className
+        let familyVersion = """
+        \(studentOrGroup) mantiene un seguimiento basado en las evidencias registradas. Conviene reforzar \(recommendedActions.first?.lowercased() ?? "la continuidad del trabajo") y revisar la evolución en el próximo periodo.
+        """
+        let teacherVersion: String
+        if context.kind == .lomloeEvaluationComment {
+            let factSentence = strengths.first ?? "hay evidencias todavía limitadas"
+            let actionSentence = recommendedActions.first ?? "recoger nuevas evidencias observables"
+            teacherVersion = "\(studentOrGroup) muestra \(factSentence.lowercased()). En relación con las competencias trabajadas, conviene mantener una valoración prudente y basada en evidencias. Próximo paso: \(actionSentence.lowercased())."
+        } else {
+            teacherVersion = """
+            Resumen docente: \(summary)
+            Fortalezas: \((strengths.isEmpty ? ["Sin fortalezas concluyentes con los datos actuales."] : strengths).joined(separator: " "))
+            Seguimiento: \((needsAttention.isEmpty ? ["Sin alertas específicas con los datos actuales."] : needsAttention).joined(separator: " "))
+            """
+        }
+        return AIReportDraft(
+            title: "Borrador por reglas · \(context.kind.title)",
+            summary: summary,
+            strengths: strengths.isEmpty ? ["Sin fortalezas concluyentes con los datos actuales."] : strengths,
+            needsAttention: needsAttention.isEmpty ? ["Sin alertas específicas con los datos actuales."] : needsAttention,
+            recommendedActions: recommendedActions,
+            familyFacingVersion: familyVersion,
+            teacherNotesVersion: teacherVersion
+        )
     }
 
     private func mapAvailability(_ availability: AppleFoundationModelAvailability) -> AIReportAvailabilityState {

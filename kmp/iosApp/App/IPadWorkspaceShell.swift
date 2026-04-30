@@ -7626,9 +7626,9 @@ private struct CreateStudentSheet: View {
                 TextField("Nombre", text: $firstName)
                 TextField("Apellidos", text: $lastName)
                 Picker("Sexo", selection: $studentSex) {
-                    Text("IA / sin especificar").tag(StudentSex.unspecified)
-                    Text("Hombre").tag(StudentSex.male)
-                    Text("Mujer").tag(StudentSex.female)
+                    Text("No especificado").tag(StudentSex.unspecified)
+                    Text("Masculino").tag(StudentSex.male)
+                    Text("Femenino").tag(StudentSex.female)
                 }
                 Toggle("Fecha de nacimiento", isOn: $hasBirthDate)
                 if hasBirthDate {

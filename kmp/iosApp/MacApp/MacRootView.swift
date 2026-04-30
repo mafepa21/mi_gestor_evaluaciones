@@ -97,6 +97,7 @@ struct MacRootView: View {
             MacDashboardView(
                 bridge: session.bridge,
                 bootstrap: session.bootstrap,
+                onNavigate: navigateFromDashboard,
                 onToolbarActionsChange: setDashboardToolbarActions
             )
         case .notebook:
@@ -273,20 +274,6 @@ struct MacRootView: View {
             }
 
             if session.selectedFeature == .dashboard, let dashboardToolbarActions {
-                Picker(
-                    "Modo",
-                    selection: Binding(
-                        get: { dashboardToolbarActions.modeRawValue },
-                        set: { dashboardToolbarActions.setMode($0) }
-                    )
-                ) {
-                    Text("Clase").tag("classroom")
-                    Text("Despacho").tag("office")
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 210)
-                .help("Modo operativo del dashboard")
-
                 Button {
                     dashboardToolbarActions.passList()
                 } label: {
@@ -435,6 +422,31 @@ struct MacRootView: View {
         } else {
             notebookInspectorState.isPresented = true
             notebookToolbarActions.isInspectorPresented = true
+        }
+    }
+
+    private func navigateFromDashboard(_ destination: MacDashboardDestination) {
+        switch destination {
+        case .attendance(let classId):
+            open(module: .attendance, classId: classId, studentId: nil)
+        case .notebook(let classId):
+            open(module: .notebook, classId: classId, studentId: nil)
+        case .rubrics(let classId):
+            if let classId {
+                selectedClassId = classId
+            }
+            session.selectedFeature = .rubrics
+        case .plannerAgenda:
+            session.selectedFeature = .planner
+        case .plannerSession(let sessionId):
+            session.selectedFeature = .planner
+            if let sessionId {
+                session.bridge.status = "Abriendo Planner para la sesión \(sessionId)."
+            }
+        case .students(let classId):
+            open(module: .students, classId: classId, studentId: nil)
+        case .reports(let classId):
+            open(module: .reports, classId: classId, studentId: nil)
         }
     }
 

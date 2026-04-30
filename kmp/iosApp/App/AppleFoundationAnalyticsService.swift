@@ -81,6 +81,11 @@ private enum AIAnalyticsTelemetry {
     static func recordInterpretation() {
         defaults.set(Date(), forKey: "analytics.ai.lastInterpretationAt")
     }
+
+    static func recordFailure(message: String) {
+        defaults.set(message, forKey: "analytics.ai.lastFailureMessage")
+        defaults.set(Date(), forKey: "analytics.ai.lastFailureAt")
+    }
 }
 
 @MainActor
@@ -136,7 +141,7 @@ final class AppleFoundationAnalyticsService {
         scheduleAvailabilityRetryIfNeeded(for: resolved)
 
         #if canImport(FoundationModels)
-        if #available(iOS 26.0, macOS 26.0, *), resolved == .available || resolved == .modelLoading {
+        if #available(iOS 26.0, macOS 26.0, *), resolved == .available {
             _ = insightSession
             _ = interpretationSession
         }
@@ -151,17 +156,23 @@ final class AppleFoundationAnalyticsService {
         }
         let availability = currentAvailability()
         guard availability.isAvailable else {
-            throw AIAnalyticsServiceError.unavailable(availability.message)
+            return fallbackInsight(from: facts)
         }
 
         #if canImport(FoundationModels)
         if #available(iOS 26.0, macOS 26.0, *) {
-            let result = try await generateLocalInsight(from: facts)
-            AIAnalyticsTelemetry.recordInsight(kind: facts.chartKind)
-            return result
+            do {
+                let result = try await generateLocalInsight(from: facts)
+                AIAnalyticsTelemetry.recordInsight(kind: facts.chartKind)
+                return result
+            } catch {
+                AppleFoundationModelSupport.recordRuntimeFailure(error)
+                AIAnalyticsTelemetry.recordFailure(message: AppleFoundationModelSupport.runtimeFailureKind(for: error))
+                return fallbackInsight(from: facts)
+            }
         }
         #endif
-        throw AIAnalyticsServiceError.unavailable("La analítica IA requiere una versión del sistema compatible con Apple Foundation Models.")
+        return fallbackInsight(from: facts)
     }
 
     func interpret(prompt: String, availableCharts: [KmpBridge.ChartKind]) async throws -> AIAnalyticsInterpretation {
@@ -171,17 +182,23 @@ final class AppleFoundationAnalyticsService {
         }
         let availability = currentAvailability()
         guard availability.isAvailable else {
-            throw AIAnalyticsServiceError.unavailable(availability.message)
+            return fallbackInterpretation(prompt: cleaned, availableCharts: availableCharts)
         }
 
         #if canImport(FoundationModels)
         if #available(iOS 26.0, macOS 26.0, *) {
-            let result = try await interpretLocally(prompt: cleaned, availableCharts: availableCharts)
-            AIAnalyticsTelemetry.recordInterpretation()
-            return result
+            do {
+                let result = try await interpretLocally(prompt: cleaned, availableCharts: availableCharts)
+                AIAnalyticsTelemetry.recordInterpretation()
+                return result
+            } catch {
+                AppleFoundationModelSupport.recordRuntimeFailure(error)
+                AIAnalyticsTelemetry.recordFailure(message: AppleFoundationModelSupport.runtimeFailureKind(for: error))
+                return fallbackInterpretation(prompt: cleaned, availableCharts: availableCharts)
+            }
         }
         #endif
-        throw AIAnalyticsServiceError.unavailable("La analítica IA requiere una versión del sistema compatible con Apple Foundation Models.")
+        return fallbackInterpretation(prompt: cleaned, availableCharts: availableCharts)
     }
 
     #if canImport(FoundationModels)
@@ -230,12 +247,12 @@ final class AppleFoundationAnalyticsService {
 
     @available(iOS 26.0, macOS 26.0, *)
     private func insightPrompt(from facts: KmpBridge.ChartFacts) -> String {
-        let metrics = facts.metrics.map { "- \($0.title): \($0.value)" }.joined(separator: "\n")
-        let factLines = facts.factLines.map { "- \($0)" }.joined(separator: "\n")
-        let highlights = facts.highlights.map { "- \($0)" }.joined(separator: "\n")
-        let warnings = facts.warnings.map { "- \($0)" }.joined(separator: "\n")
-        let series = facts.series.map { series in
-            let points = series.points.map { "\($0.label): \(String(format: "%.2f", $0.value))" }.joined(separator: ", ")
+        let metrics = facts.metrics.prefix(4).map { "- \($0.title): \($0.value)" }.joined(separator: "\n")
+        let factLines = facts.factLines.prefix(6).map { "- \($0)" }.joined(separator: "\n")
+        let highlights = facts.highlights.prefix(3).map { "- \($0)" }.joined(separator: "\n")
+        let warnings = facts.warnings.prefix(3).map { "- \($0)" }.joined(separator: "\n")
+        let series = facts.series.prefix(2).map { series in
+            let points = series.points.prefix(6).map { "\($0.label): \(String(format: "%.2f", $0.value))" }.joined(separator: ", ")
             return "- \(series.name): \(points)"
         }.joined(separator: "\n")
 
@@ -269,6 +286,47 @@ final class AppleFoundationAnalyticsService {
         - recommendedActions: entre 1 y 3 acciones concretas.
         - insertableSummary: una frase breve apta para informe o digest interno.
         """
+    }
+
+    private func fallbackInsight(from facts: KmpBridge.ChartFacts) -> AIChartInsight {
+        let highlights = Array(facts.highlights.prefix(3))
+        let warnings = Array(facts.warnings.prefix(3))
+        let metricDigest = facts.metrics.prefix(3).map { "\($0.title): \($0.value)" }.joined(separator: "; ")
+        let baseInsight = firstNonEmpty(
+            facts.teacherDigest,
+            highlights.first,
+            metricDigest,
+            facts.factLines.first,
+            "Hay pocos datos para interpretar este gráfico con seguridad."
+        ) ?? "Hay pocos datos para interpretar este gráfico con seguridad."
+        let recommendedActions = compactTexts([
+            "Contrastar el gráfico con evidencias del cuaderno antes de decidir.",
+            warnings.isEmpty ? nil : "Revisar las alertas visibles antes de compartir la conclusión.",
+            "Usar esta lectura como borrador editable, no como cierre automático."
+        ].compactMap { $0 })
+        return AIChartInsight(
+            title: facts.chartKind.title,
+            subtitle: facts.subtitle,
+            insight: baseInsight,
+            warnings: warnings + ["Generado por reglas porque la IA local no está disponible."],
+            recommendedActions: Array(recommendedActions.prefix(3)),
+            insertableSummary: firstNonEmpty(facts.insertableSummary, baseInsight) ?? baseInsight
+        )
+    }
+
+    private func fallbackInterpretation(
+        prompt: String,
+        availableCharts: [KmpBridge.ChartKind]
+    ) -> AIAnalyticsInterpretation {
+        let normalized = prompt.lowercased()
+        let selected = availableCharts.first { chart in
+            normalized.contains(chart.title.lowercased()) || normalized.contains(chart.rawValue.lowercased())
+        } ?? availableCharts.first ?? .attendanceTrend
+        return AIAnalyticsInterpretation(
+            chartKind: selected,
+            querySummary: "Consulta interpretada por reglas: \(prompt)",
+            warnings: ["Apple Intelligence no está disponible; se ha elegido el gráfico más cercano por reglas."]
+        )
     }
 
     private func mapAvailability(_ availability: AppleFoundationModelAvailability) -> AIAnalyticsAvailabilityState {

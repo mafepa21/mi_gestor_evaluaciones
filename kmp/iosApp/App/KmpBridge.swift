@@ -1900,7 +1900,7 @@ final class KmpBridge: ObservableObject {
 
     func createStudentAndAssignToClass(firstName: String, lastName: String, classId: Int64) async throws {
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
-        let sexResolution = await inferredStudentSex(firstName: firstName, lastName: lastName)
+        let sexResolution: (sex: StudentSex, source: StudentSexSource) = (.unspecified, .unknown)
         let studentId = try await container.saveStudent.invoke(
             id: nil,
             firstName: firstName,
@@ -1995,23 +1995,7 @@ final class KmpBridge: ObservableObject {
         if let sex, sex != .unspecified {
             return (sex, sexSource ?? .manual)
         }
-        return await inferredStudentSex(firstName: firstName, lastName: lastName)
-    }
-
-    private func inferredStudentSex(firstName: String, lastName: String) async -> (sex: StudentSex, source: StudentSexSource) {
-        do {
-            let inference = try await AppleFoundationContextualAIService().inferStudentSex(firstName: firstName, lastName: lastName)
-            switch inference.sex {
-            case "MALE":
-                return (.male, .aiInferred)
-            case "FEMALE":
-                return (.female, .aiInferred)
-            default:
-                return (.unspecified, .unknown)
-            }
-        } catch {
-            return (.unspecified, .unknown)
-        }
+        return (.unspecified, .unknown)
     }
 
     func updateStudentSex(_ student: Student, sex: StudentSex) async throws {

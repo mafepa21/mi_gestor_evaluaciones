@@ -1880,9 +1880,9 @@ struct StudentsModuleView: View {
                         TextField("Apellido", text: $lastName).textFieldStyle(RoundedBorderTextFieldStyle())
                     }
                     Picker("Sexo", selection: $studentSex) {
-                        Text("IA / sin especificar").tag(StudentSex.unspecified)
-                        Text("Hombre").tag(StudentSex.male)
-                        Text("Mujer").tag(StudentSex.female)
+                        Text("No especificado").tag(StudentSex.unspecified)
+                        Text("Masculino").tag(StudentSex.male)
+                        Text("Femenino").tag(StudentSex.female)
                     }
                     .pickerStyle(.segmented)
                     Toggle("Fecha de nacimiento", isOn: $hasBirthDate)
@@ -1933,10 +1933,10 @@ struct StudentsModuleView: View {
                             }
                             Spacer()
                             Menu {
-                                Button("Sexo: Hombre") {
+                                Button("Sexo: Masculino") {
                                     Task { try? await bridge.updateStudentSex(student, sex: .male) }
                                 }
-                                Button("Sexo: Mujer") {
+                                Button("Sexo: Femenino") {
                                     Task { try? await bridge.updateStudentSex(student, sex: .female) }
                                 }
                                 Button("Sexo: sin especificar") {
@@ -1984,8 +1984,8 @@ struct StudentsModuleView: View {
 
     private func sexLabel(for student: Student) -> String {
         switch student.sex {
-        case .male: return "Hombre"
-        case .female: return "Mujer"
+        case .male: return "Masculino"
+        case .female: return "Femenino"
         default: return "Sexo sin especificar"
         }
     }
@@ -1993,7 +1993,7 @@ struct StudentsModuleView: View {
     private func sexSourceLabel(for student: Student) -> String {
         switch student.sexSource {
         case .manual: return "Manual"
-        case .aiInferred: return "IA inferido"
+        case .aiInferred: return "IA inferido (histórico)"
         case .imported: return "Importado"
         default: return "Sin origen"
         }

@@ -158,6 +158,26 @@ private struct NotebookTableRow: Identifiable {
     var id: Int64 { student.id }
 }
 
+private enum NotebookDeletionKind {
+    case column
+    case category
+}
+
+private struct NotebookDeletionImpactDraft: Identifiable {
+    let id = UUID()
+    let kind: NotebookDeletionKind
+    let targetId: String
+    let targetName: String
+    let affectedColumns: [NotebookColumnDefinition]
+    let affectedGradeCount: Int
+    let affectedFormulaColumnCount: Int
+    let affectedAverageColumnCount: Int
+    let hasLockedColumns: Bool
+
+    var affectedColumnCount: Int { affectedColumns.count }
+    var requiresStrongConfirmation: Bool { affectedGradeCount > 0 }
+}
+
 private enum NotebookFixedColumn: String, Identifiable, CaseIterable {
     case photo
     case name
@@ -439,6 +459,8 @@ struct NotebookModuleView: View {
     @State private var editingColumnId: String? = nil
     @State private var pendingDeleteColumn: NotebookColumnDefinition? = nil
     @State private var pendingDeleteCategory: NotebookColumnCategory? = nil
+    @State private var pendingDeletionImpact: NotebookDeletionImpactDraft? = nil
+    @State private var deletionConfirmationText = ""
     @State private var isOrganizationMenuPresented = false
     @State private var toast: NotebookToast? = nil
     @State private var isAttendanceQuickMode = false
@@ -595,35 +617,25 @@ struct NotebookModuleView: View {
                 saveColumnRename()
             }
         }
-        .confirmationDialog(
-            "Eliminar columna",
-            isPresented: Binding(
-                get: { pendingDeleteColumn != nil },
-                set: { if !$0 { pendingDeleteColumn = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            if let column = pendingDeleteColumn {
-                Button("Eliminar columna", role: .destructive) {
-                    deleteColumn(column)
+        .sheet(item: $pendingDeletionImpact, onDismiss: {
+            deletionConfirmationText = ""
+            pendingDeleteColumn = nil
+            pendingDeleteCategory = nil
+        }) { impact in
+            NotebookDeletionImpactSheet(
+                impact: impact,
+                confirmationText: $deletionConfirmationText,
+                onPreserveCategory: {
+                    preserveCategoryFromImpact(impact)
+                },
+                onDelete: {
+                    performDestructiveDeletion(impact)
+                },
+                onCancel: {
+                    pendingDeletionImpact = nil
                 }
-                Button("Cancelar", role: .cancel) {
-                    pendingDeleteColumn = nil
-                }
-            }
-        } message: {
-            if let column = pendingDeleteColumn {
-                deleteColumnDialogMessage(for: column)
-            }
-        }
-        .confirmationDialog(
-            "Eliminar categoría",
-            isPresented: isDeleteCategoryDialogPresented,
-            titleVisibility: .visible
-        ) {
-            deleteCategoryDialogActions()
-        } message: {
-            deleteCategoryDialogMessageContent()
+            )
+            .frame(minWidth: 520, minHeight: 460)
         }
         .confirmationDialog(
             "Eliminar pestaña",
@@ -670,8 +682,8 @@ struct NotebookModuleView: View {
                 if let data = bridge.notebookState as? NotebookUiStateData {
                     NotebookColumnOrganizerSheet(
                         columns: managedColumns(data: data),
-                        onToggleHidden: { column, isHidden in
-                            setNotebookColumnHidden(column, isHidden: isHidden)
+                        onSetVisibility: { column, visibility in
+                            setNotebookColumnVisibility(column, visibility: visibility)
                         },
                         onRename: { column in
                             isOrganizationMenuPresented = false
@@ -682,7 +694,7 @@ struct NotebookModuleView: View {
                         onDelete: { column in
                             isOrganizationMenuPresented = false
                             DispatchQueue.main.async {
-                                pendingDeleteColumn = column
+                                presentDeleteColumnImpact(column)
                             }
                         },
                         onAddColumn: {
@@ -962,51 +974,6 @@ struct NotebookModuleView: View {
     }
 
     @ViewBuilder
-    private func deleteColumnDialogMessage(for column: NotebookColumnDefinition) -> some View {
-        let message = "Se eliminará “\(column.title)” y su vínculo asociado si pertenece a una evaluación."
-        Text(message)
-    }
-
-    @ViewBuilder
-    private func deleteCategoryDialogMessage(for category: NotebookColumnCategory) -> some View {
-        let notebookData = bridge.notebookState as? NotebookUiStateData
-        Text(deleteCategoryMessage(for: category, data: notebookData))
-    }
-
-    private var isDeleteCategoryDialogPresented: Binding<Bool> {
-        Binding(
-            get: { pendingDeleteCategory != nil },
-            set: { if !$0 { pendingDeleteCategory = nil } }
-        )
-    }
-
-    @ViewBuilder
-    private func deleteCategoryDialogActions() -> some View {
-        if let category = pendingDeleteCategory {
-            Button("Eliminar solo la categoría", role: .destructive) {
-                bridge.deleteColumnCategory(id: category.id, preserveColumns: true)
-                showToast("Categoría eliminada; las columnas se han conservado")
-                pendingDeleteCategory = nil
-            }
-            Button("Eliminar categoría y columnas", role: .destructive) {
-                bridge.deleteColumnCategory(id: category.id, preserveColumns: false)
-                showToast("Categoría y columnas eliminadas", style: .warning)
-                pendingDeleteCategory = nil
-            }
-            Button("Cancelar", role: .cancel) {
-                pendingDeleteCategory = nil
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func deleteCategoryDialogMessageContent() -> some View {
-        if let category = pendingDeleteCategory {
-            deleteCategoryDialogMessage(for: category)
-        }
-    }
-
-    @ViewBuilder
     private func spreadsheetContent(data: NotebookUiStateData) -> some View {
         let rows = filteredRows(data: data)
         let segments = displaySegments(data: data)
@@ -1263,7 +1230,11 @@ struct NotebookModuleView: View {
                 }
             }
             .sheet(isPresented: $isAverageConfigurationPresented) {
-                NotebookAverageConfigurationSheet(columns: data.sheet.columns) { updates in
+                NotebookAverageEditorSheet(
+                    classTitle: activeClassLabel,
+                    columns: data.sheet.columns,
+                    rows: data.sheet.rows
+                ) { updates in
                     saveAverageConfiguration(updates)
                 }
                 #if os(macOS)
@@ -1333,88 +1304,19 @@ struct NotebookModuleView: View {
     @ViewBuilder
     private func formulaEditorSheet(request: NotebookFormulaEditRequest, data: NotebookUiStateData) -> some View {
         if let column = data.sheet.columns.first(where: { $0.id == request.columnId }) {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .firstTextBaseline) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Fórmula de columna")
-                            .font(.title3.bold())
-                        Text(column.title)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button("Cerrar") {
-                        formulaEditRequest = nil
-                    }
-                    .buttonStyle(.borderless)
-                }
-                .padding(22)
-
-                Divider()
-
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("Edita la fórmula una vez y se aplicará a todas las celdas de esta columna calculada.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-
-                    NotebookFormulaKeyboard(
-                        formula: $formulaDraft,
-                        availableColumns: formulaReferenceColumns(for: column, data: data)
-                    )
-
-                    Divider()
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Ayuda con Apple Intelligence")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .textCase(.uppercase)
-                            .tracking(0.3)
-
-                        TextField("Ej: media del examen y la rúbrica, o corrige esta fórmula", text: $formulaAIPrompt, axis: .vertical)
-                            .textFieldStyle(.roundedBorder)
-                            .lineLimit(2...4)
-
-                        HStack {
-                            Button {
-                                generateFormulaWithAI(column: column, data: data)
-                            } label: {
-                                Label(isFormulaAIGenerating ? "Pensando…" : "Generar / corregir fórmula", systemImage: "apple.intelligence")
-                            }
-                            .buttonStyle(.bordered)
-                            .disabled(isFormulaAIGenerating || formulaAIPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-                            if let formulaAIMessage {
-                                Text(formulaAIMessage)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(2)
-                            }
-                        }
-                    }
-                }
-                .padding(22)
-
-                Spacer(minLength: 0)
-                Divider()
-
-                HStack {
-                    Button("Cancelar") {
-                        formulaEditRequest = nil
-                    }
-                    .buttonStyle(.borderless)
-                    .foregroundStyle(.secondary)
-
-                    Spacer()
-
-                    Button("Guardar fórmula") {
-                        saveFormula(column)
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
-                .padding(18)
-            }
-            .frame(width: 620, height: 560)
+            NotebookFormulaEditorSheet(
+                column: column,
+                referenceColumns: formulaReferenceColumns(for: column, data: data),
+                allColumns: data.sheet.columns,
+                rows: data.sheet.rows,
+                formula: $formulaDraft,
+                aiPrompt: $formulaAIPrompt,
+                aiMessage: $formulaAIMessage,
+                isAIGenerating: isFormulaAIGenerating,
+                onGenerateAI: { generateFormulaWithAI(column: column, data: data) },
+                onCancel: { formulaEditRequest = nil },
+                onSave: { saveFormula(column) }
+            )
         } else {
             Text("No se encontró la columna")
                 .padding()
@@ -1423,7 +1325,7 @@ struct NotebookModuleView: View {
 
     private func formulaReferenceColumns(for column: NotebookColumnDefinition, data: NotebookUiStateData) -> [NotebookColumnDefinition] {
         visibleNotebookSourceColumns(data: data)
-            .filter { $0.id != column.id && $0.type != .calculated }
+            .filter { $0.id != column.id }
     }
 
     private func notebookNavigationSubtitle(data: NotebookUiStateData) -> String {
@@ -2099,7 +2001,7 @@ struct NotebookModuleView: View {
     private func columns(in category: NotebookColumnCategory, data: NotebookUiStateData, includeHidden: Bool = false) -> [NotebookColumnDefinition] {
         data.sheet.columns
             .filter { $0.categoryId == category.id }
-            .filter { includeHidden || !isColumnHidden($0) }
+            .filter { includeHidden || $0.isVisibleInGrid }
             .filter { columnMatchesActiveTab($0, data: data) }
             .filter { columnMatchesCurrentView($0) }
             .sorted {
@@ -2137,7 +2039,7 @@ struct NotebookModuleView: View {
             uniquingKeysWith: { first, _ in first }
         )
         let orderedColumns = data.sheet.columns
-            .filter { !isColumnHidden($0) }
+            .filter(\.isVisibleInGrid)
             .filter { columnMatchesActiveTab($0, data: data) }
             .filter { columnMatchesCurrentView($0) }
             .sorted {
@@ -2207,6 +2109,18 @@ struct NotebookModuleView: View {
 
     private func saveFormula(_ column: NotebookColumnDefinition) {
         let trimmed = formulaDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let data = bridge.notebookState as? NotebookUiStateData else { return }
+        let validation = NotebookFormulaEditorValidator.validate(
+            formula: trimmed,
+            targetColumn: column,
+            availableColumns: data.sheet.columns,
+            formulaColumns: data.sheet.columns.filter { $0.type == .calculated },
+            previewRow: data.sheet.rows.first
+        )
+        guard validation.isValid else {
+            formulaAIMessage = validation.errors.first?.message ?? "Revisa la fórmula antes de guardar."
+            return
+        }
         saveColumnMutation(
             column,
             formula: trimmed.isEmpty ? nil : trimmed,
@@ -2435,15 +2349,15 @@ struct NotebookModuleView: View {
     }
 
     private func isColumnHidden(_ column: NotebookColumnDefinition) -> Bool {
-        column.isHidden || column.visibility == .hidden || column.visibility == .archived
+        !column.isVisibleInGrid
     }
 
     private func isColumnRestorableHidden(_ column: NotebookColumnDefinition) -> Bool {
-        !isColumnArchived(column) && (column.isHidden || column.visibility == .hidden)
+        column.canBeShownWithShowAll
     }
 
     private func isColumnArchived(_ column: NotebookColumnDefinition) -> Bool {
-        column.visibility == .archived
+        column.isArchived
     }
 
     private func toggleColumnVisibility(_ column: NotebookColumnDefinition) {
@@ -2499,19 +2413,35 @@ struct NotebookModuleView: View {
     }
 
     private func setNotebookColumnHidden(_ column: NotebookColumnDefinition, isHidden: Bool) {
-        guard !isColumnArchived(column) else {
-            showToast("La columna archivada no se restaura desde Mostrar todas", style: .warning)
+        setNotebookColumnVisibility(column, visibility: isHidden ? .hidden : .visible)
+    }
+
+    private func setNotebookColumnVisibility(_ column: NotebookColumnDefinition, visibility: NotebookColumnVisibility) {
+        if column.isArchived && visibility == .hidden {
+            showToast("La columna archivada debe restaurarse antes de ocultarse", style: .warning)
             return
         }
-
+        if visibility == .archived && !column.canBeArchived {
+            showToast("Esta columna no se puede archivar", style: .warning)
+            return
+        }
         let updated = copyNotebookColumn(
             column,
-            isHidden: isHidden,
-            visibility: isHidden ? .hidden : .visible
+            isHidden: visibility != .visible,
+            visibility: visibility
         )
 
         bridge.saveColumn(column: updated)
-        showToast(isHidden ? "Columna ocultada" : "Columna visible")
+        switch visibility {
+        case .visible:
+            showToast("Columna visible")
+        case .hidden:
+            showToast("Columna ocultada")
+        case .archived:
+            showToast("Columna archivada")
+        default:
+            showToast("Visibilidad actualizada")
+        }
         syncToolbarStateIfLoaded()
     }
 
@@ -3464,11 +3394,15 @@ struct NotebookModuleView: View {
                 }
             }
         }
-        Button(isColumnHidden(column) ? "Mostrar" : "Ocultar") {
-            toggleColumnVisibility(column)
+        Button(column.isArchived ? "Restaurar" : (column.isTemporarilyHidden ? "Mostrar" : "Ocultar")) {
+            if column.isArchived {
+                setNotebookColumnVisibility(column, visibility: .visible)
+            } else {
+                toggleColumnVisibility(column)
+            }
         }
         Button("Eliminar columna", role: .destructive) {
-            pendingDeleteColumn = column
+            presentDeleteColumnImpact(column)
         }
     }
 
@@ -3514,7 +3448,7 @@ struct NotebookModuleView: View {
             }
         }
         Button("Eliminar categoría", role: .destructive) {
-            pendingDeleteCategory = category
+            presentDeleteCategoryImpact(category)
         }
     }
 
@@ -3532,12 +3466,16 @@ struct NotebookModuleView: View {
                     if let data {
                         ForEach(managedColumns(data: data), id: \.id) { column in
                             Button {
-                                toggleColumnVisibility(column)
+                                if column.isArchived {
+                                    setNotebookColumnVisibility(column, visibility: .visible)
+                                } else {
+                                    toggleColumnVisibility(column)
+                                }
                             } label: {
                                 HStack {
-                                    Label(column.title, systemImage: isColumnHidden(column) ? "eye.slash" : "eye")
+                                    Label(column.title, systemImage: column.isArchived ? "archivebox" : (isColumnHidden(column) ? "eye.slash" : "eye"))
                                     Spacer()
-                                    Text(isColumnHidden(column) ? "Oculta" : "Visible")
+                                    Text(column.isArchived ? "Archivada" : (column.isTemporarilyHidden ? "Oculta" : "Visible"))
                                         .font(.caption.weight(.semibold))
                                         .foregroundStyle(.secondary)
                                 }
@@ -3730,19 +3668,118 @@ struct NotebookModuleView: View {
     }
 
     private func deleteColumn(_ column: NotebookColumnDefinition) {
+        guard column.canBeDeleted else {
+            showToast("Esta columna está bloqueada y no se puede eliminar", style: .warning)
+            pendingDeleteColumn = nil
+            return
+        }
         bridge.deleteColumn(id: column.id, evaluationId: column.evaluationId?.int64Value)
         showToast("Columna eliminada", style: .warning)
         pendingDeleteColumn = nil
     }
 
-    private func deleteCategoryMessage(for category: NotebookColumnCategory, data: NotebookUiStateData?) -> String {
-        guard let data else { return "Puedes conservar las columnas o eliminarlas junto con la categoría." }
-        let categoryColumns = columns(in: category, data: data, includeHidden: true)
-        let hasProtectedColumns = categoryColumns.contains { $0.isLocked || $0.type == .rubric || $0.evaluationId != nil }
-        if hasProtectedColumns {
-            return "Esta carpeta contiene columnas bloqueadas o vinculadas a evaluación. La opción segura conserva las columnas fuera de la carpeta."
+    private func presentDeleteColumnImpact(_ column: NotebookColumnDefinition) {
+        guard let data = bridge.notebookState as? NotebookUiStateData else {
+            pendingDeleteColumn = column
+            return
         }
-        return "Puedes conservar las columnas o eliminarlas junto con la categoría."
+        pendingDeleteColumn = column
+        pendingDeleteCategory = nil
+        deletionConfirmationText = ""
+        pendingDeletionImpact = deletionImpact(
+            kind: .column,
+            targetId: column.id,
+            targetName: column.title,
+            columns: [column],
+            data: data
+        )
+    }
+
+    private func presentDeleteCategoryImpact(_ category: NotebookColumnCategory) {
+        guard let data = bridge.notebookState as? NotebookUiStateData else {
+            pendingDeleteCategory = category
+            return
+        }
+        pendingDeleteCategory = category
+        pendingDeleteColumn = nil
+        deletionConfirmationText = ""
+        pendingDeletionImpact = deletionImpact(
+            kind: .category,
+            targetId: category.id,
+            targetName: category.name,
+            columns: columns(in: category, data: data, includeHidden: true),
+            data: data
+        )
+    }
+
+    private func preserveCategoryFromImpact(_ impact: NotebookDeletionImpactDraft) {
+        guard impact.kind == .category else { return }
+        bridge.deleteColumnCategory(id: impact.targetId, preserveColumns: true)
+        showToast("Categoría eliminada; las columnas se han conservado")
+        pendingDeletionImpact = nil
+        pendingDeleteCategory = nil
+        deletionConfirmationText = ""
+    }
+
+    private func performDestructiveDeletion(_ impact: NotebookDeletionImpactDraft) {
+        guard !impact.hasLockedColumns else {
+            showToast("Hay columnas bloqueadas. No se puede eliminar destructivamente.", style: .warning)
+            return
+        }
+        if impact.requiresStrongConfirmation && deletionConfirmationText != "ELIMINAR" {
+            showToast("Escribe ELIMINAR para confirmar", style: .warning)
+            return
+        }
+
+        switch impact.kind {
+        case .column:
+            if let column = impact.affectedColumns.first {
+                deleteColumn(column)
+            }
+        case .category:
+            bridge.deleteColumnCategory(id: impact.targetId, preserveColumns: false)
+            showToast("Categoría y columnas eliminadas", style: .warning)
+            pendingDeleteCategory = nil
+        }
+
+        pendingDeletionImpact = nil
+        deletionConfirmationText = ""
+    }
+
+    private func deletionImpact(
+        kind: NotebookDeletionKind,
+        targetId: String,
+        targetName: String,
+        columns: [NotebookColumnDefinition],
+        data: NotebookUiStateData
+    ) -> NotebookDeletionImpactDraft {
+        let columnIds = Set(columns.map(\.id))
+        let gradeCount = data.sheet.rows.reduce(0) { total, row in
+            total + row.persistedGrades.filter { grade in
+                columnIds.contains(grade.columnId) && grade.value != nil
+            }.count
+        }
+        let formulaCount = data.sheet.columns
+            .filter { $0.type == .calculated && !columnIds.contains($0.id) }
+            .filter { column in
+                let formula = column.formula ?? ""
+                return columnIds.contains(where: { id in
+                    formula.contains("[\(id)]") || formula.contains(id)
+                })
+            }
+            .count
+        let averageCount = columns.filter(\.countsTowardAverage).count
+
+        return NotebookDeletionImpactDraft(
+            kind: kind,
+            targetId: targetId,
+            targetName: targetName,
+            affectedColumns: columns,
+            affectedGradeCount: gradeCount,
+            affectedFormulaColumnCount: formulaCount,
+            affectedAverageColumnCount: averageCount,
+            hasLockedColumns: columns.contains { $0.isLocked }
+        )
     }
 
     private func showToast(_ message: String, style: NotebookToastStyle = .success) {
@@ -3792,7 +3829,7 @@ struct NotebookModuleView: View {
     }
 
     private func completedCollapsedCategoryCount(_ columns: [NotebookColumnDefinition], rows: [NotebookTableRow]) -> Int {
-        columns.filter { !isColumnHidden($0) }.filter { column in
+        columns.filter(\.isVisibleInGrid).filter { column in
             rows.contains { row in
                 !displayValue(for: row, column: column)
                     .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -3802,7 +3839,7 @@ struct NotebookModuleView: View {
     }
 
     private func visibleColumnCount(_ columns: [NotebookColumnDefinition]) -> Int {
-        columns.filter { !isColumnHidden($0) }.count
+        columns.filter(\.isVisibleInGrid).count
     }
 
     private func collapsedCategoryProgressText(columns: [NotebookColumnDefinition], rows: [NotebookTableRow]) -> String {
@@ -5226,584 +5263,122 @@ private struct NotebookAICommentSheet: View {
     }
 }
 
-private struct NotebookAverageColumnUpdate {
-    let column: NotebookColumnDefinition
-    let isIncluded: Bool
-    let weight: Double
-}
+private struct NotebookDeletionImpactSheet: View {
+    let impact: NotebookDeletionImpactDraft
+    @Binding var confirmationText: String
+    let onPreserveCategory: () -> Void
+    let onDelete: () -> Void
+    let onCancel: () -> Void
 
-private struct NotebookAverageColumnDraft {
-    var isIncluded: Bool
-    var weightText: String
-}
-
-private struct NotebookAverageConfigurationSheet: View {
-    let columns: [NotebookColumnDefinition]
-    let onSave: ([NotebookAverageColumnUpdate]) -> Void
-
-    @Environment(\.dismiss) private var dismiss
-    @State private var draftsByColumnId: [String: NotebookAverageColumnDraft]
-
-    init(columns: [NotebookColumnDefinition], onSave: @escaping ([NotebookAverageColumnUpdate]) -> Void) {
-        self.columns = columns
-        self.onSave = onSave
-        _draftsByColumnId = State(initialValue: Dictionary(
-            uniqueKeysWithValues: columns.map {
-                ($0.id, NotebookAverageColumnDraft(
-                    isIncluded: $0.countsTowardAverage,
-                    weightText: Self.formatWeight($0.weight)
-                ))
-            }
-        ))
-    }
-
-    private var allAverageColumns: [NotebookColumnDefinition] {
-        columns
-            .filter { $0.type == .numeric || $0.type == .rubric }
-    }
-
-    private var configurableColumns: [NotebookColumnDefinition] {
-        allAverageColumns
-            .filter { !$0.isHidden && $0.visibility != .hidden && $0.visibility != .archived }
-            .sorted {
-                if $0.order != $1.order { return $0.order < $1.order }
-                return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
-            }
-    }
-
-    private var totalWeight: Double? {
-        var total = 0.0
-        for column in configurableColumns {
-            guard draftsByColumnId[column.id]?.isIncluded == true else { continue }
-            guard let value = parsedWeight(for: column) else { return nil }
-            total += value
-        }
-        return total
-    }
-
-    private var canSave: Bool {
-        guard let totalWeight else { return false }
-        return abs(totalWeight - 100) <= 0.01
-    }
-
-    private var validationText: String {
-        guard let totalWeight else { return "Revisa los pesos antes de guardar." }
-        let formatted = Self.formatWeight(totalWeight)
-        if canSave { return "Total \(formatted)% listo para guardar." }
-        return "Total \(formatted)%. Debe sumar 100%."
+    private var destructiveEnabled: Bool {
+        !impact.hasLockedColumns && (!impact.requiresStrongConfirmation || confirmationText == "ELIMINAR")
     }
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        NotebookSurface(cornerRadius: NotebookStyle.cardRadius, fill: NotebookStyle.surfaceMuted, padding: 20) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Media")
-                                    .font(.title2.weight(.bold))
-                                Text("Selecciona los instrumentos visibles que forman la nota final y reparte su peso.")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-
-                        if configurableColumns.isEmpty {
-                            NotebookContentUnavailableView(
-                                "Sin columnas evaluables visibles",
-                                systemImage: "percent",
-                                description: "Muestra o crea columnas numéricas o de rúbrica para configurar la media."
-                            )
-                            .frame(maxWidth: .infinity, minHeight: 260)
-                        } else {
-                            VStack(alignment: .leading, spacing: 12) {
-                                ForEach(configurableColumns, id: \.id) { column in
-                                    columnRow(column)
-                                }
-                            }
-                        }
-                    }
-                    .padding(24)
-                }
-
-                Divider()
-
-                footer
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 16)
-            }
-            .background(EvaluationBackdrop())
-            .navigationTitle("Configurar media")
-            .appInlineNavigationBarTitleDisplayMode()
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancelar") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Guardar") {
-                        onSave(buildUpdates())
-                        dismiss()
-                    }
-                    .disabled(!canSave)
-                }
-            }
-        }
-    }
-
-    private func columnRow(_ column: NotebookColumnDefinition) -> some View {
-        let isIncluded = draftsByColumnId[column.id]?.isIncluded == true
-
-        return NotebookSurface(cornerRadius: 12, fill: NotebookStyle.surface, padding: 16) {
-            HStack(spacing: 16) {
-                Toggle(
-                    "",
-                    isOn: Binding(
-                        get: { draftsByColumnId[column.id]?.isIncluded == true },
-                        set: { setIncluded($0, for: column) }
-                    )
-                )
-                .labelsHidden()
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(column.title)
-                        .font(.headline)
-                    Text(column.type == .rubric ? "Rúbrica" : "Numérica")
-                        .font(.caption.weight(.semibold))
+            VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(title)
+                        .font(.title2.weight(.bold))
+                    Text(subtitle)
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
 
-                Spacer(minLength: 16)
+                VStack(alignment: .leading, spacing: 10) {
+                    impactRow("Columnas afectadas", value: impact.affectedColumnCount, systemImage: "rectangle.3.group")
+                    impactRow("Notas afectadas", value: impact.affectedGradeCount, systemImage: "number")
+                    impactRow("Fórmulas relacionadas", value: impact.affectedFormulaColumnCount, systemImage: "function")
+                    impactRow("Columnas usadas en media", value: impact.affectedAverageColumnCount, systemImage: "percent")
+                }
+                .padding(16)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-                TextField("0", text: Binding(
-                    get: { draftsByColumnId[column.id]?.weightText ?? "0" },
-                    set: { setWeightText($0, for: column) }
-                ))
-                .appKeyboardType(.decimalPad)
-                .multilineTextAlignment(.trailing)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 72)
-                .disabled(!isIncluded)
+                if impact.hasLockedColumns {
+                    Label("Hay columnas bloqueadas. La eliminación destructiva está desactivada.", systemImage: "lock.fill")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(NotebookStyle.warningTint)
+                }
 
-                Text("%")
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
+                if impact.requiresStrongConfirmation {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Escribe ELIMINAR para confirmar el borrado de notas.")
+                            .font(.callout.weight(.semibold))
+                        TextField("ELIMINAR", text: $confirmationText)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                }
 
-                Stepper("", value: weightBinding(for: column), in: 0...100, step: 5)
-                    .labelsHidden()
-                    .disabled(!isIncluded)
-            }
-        }
-    }
+                Spacer(minLength: 0)
 
-    private var footer: some View {
-        HStack(spacing: 16) {
-            Text(validationText)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(canSave ? NotebookStyle.successTint : NotebookStyle.warningTint)
-
-            Spacer()
-
-            Button("Cancelar") { dismiss() }
-                .buttonStyle(.bordered)
-
-            Button("Guardar") {
-                onSave(buildUpdates())
-                dismiss()
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(!canSave)
-        }
-    }
-
-    private func buildUpdates() -> [NotebookAverageColumnUpdate] {
-        allAverageColumns.map { column in
-            let isConfigurable = configurableColumns.contains { $0.id == column.id }
-            let isIncluded = isConfigurable && (draftsByColumnId[column.id]?.isIncluded == true)
-            return NotebookAverageColumnUpdate(
-                column: column,
-                isIncluded: isIncluded,
-                weight: isIncluded ? (parsedWeight(for: column) ?? 0) : 0
-            )
-        }
-    }
-
-    private func setIncluded(_ isIncluded: Bool, for column: NotebookColumnDefinition) {
-        var draft = draftsByColumnId[column.id] ?? NotebookAverageColumnDraft(isIncluded: false, weightText: "0")
-        draft.isIncluded = isIncluded
-        if isIncluded, (parsedWeight(from: draft.weightText) ?? 0) == 0 {
-            draft.weightText = "10"
-        }
-        draftsByColumnId[column.id] = draft
-    }
-
-    private func setWeightText(_ text: String, for column: NotebookColumnDefinition) {
-        var draft = draftsByColumnId[column.id] ?? NotebookAverageColumnDraft(isIncluded: false, weightText: "0")
-        draft.weightText = text
-        draftsByColumnId[column.id] = draft
-    }
-
-    private func weightBinding(for column: NotebookColumnDefinition) -> Binding<Double> {
-        Binding(
-            get: { parsedWeight(for: column) ?? 0 },
-            set: { setWeightText(Self.formatWeight($0), for: column) }
-        )
-    }
-
-    private func parsedWeight(for column: NotebookColumnDefinition) -> Double? {
-        parsedWeight(from: draftsByColumnId[column.id]?.weightText ?? "")
-    }
-
-    private func parsedWeight(from raw: String) -> Double? {
-        let value = raw
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: ",", with: ".")
-        guard let number = Double(value), number >= 0, number <= 100 else { return nil }
-        return number
-    }
-
-    private static func formatWeight(_ value: Double) -> String {
-        if value.rounded() == value {
-            return String(Int(value))
-        }
-        return String(format: "%.1f", value)
-    }
-}
-
-private struct NotebookColumnOrganizerSheet: View {
-    let columns: [NotebookColumnDefinition]
-    let onToggleHidden: (NotebookColumnDefinition, Bool) -> Void
-    let onRename: (NotebookColumnDefinition) -> Void
-    let onDelete: (NotebookColumnDefinition) -> Void
-    let onAddColumn: () -> Void
-    let onShowAll: () -> Void
-    let onReorder: ([NotebookColumnDefinition]) -> Void
-
-    @Environment(\.dismiss) private var dismiss
-    @State private var orderedColumnIds: [String] = []
-    @State private var hiddenOverrides: [String: Bool] = [:]
-    @State private var searchText = ""
-    @State private var showHiddenOnly = false
-
-    private var orderedColumns: [NotebookColumnDefinition] {
-        let columnById = Dictionary(uniqueKeysWithValues: columns.map { ($0.id, $0) })
-        let ids = orderedColumnIds.isEmpty ? defaultOrderedColumnIds : orderedColumnIds
-        let ordered = ids.compactMap { columnById[$0] }
-        let missing = columns
-            .filter { !ids.contains($0.id) }
-            .sorted { $0.order < $1.order }
-
-        return ordered + missing
-    }
-
-    private var defaultOrderedColumnIds: [String] {
-        columns.sorted { $0.order < $1.order }.map(\.id)
-    }
-
-    private var filteredColumns: [NotebookColumnDefinition] {
-        orderedColumns.filter { column in
-            let trimmedSearch = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-            let matchesSearch = trimmedSearch.isEmpty || column.title.localizedCaseInsensitiveContains(trimmedSearch)
-            let matchesHiddenFilter = !showHiddenOnly || effectiveIsRestorableHidden(column)
-
-            return matchesSearch && matchesHiddenFilter
-        }
-    }
-
-    private var visibleCount: Int {
-        columns.filter { !effectiveIsHidden($0) && !isArchived($0) }.count
-    }
-
-    private var hiddenCount: Int {
-        columns.filter { effectiveIsRestorableHidden($0) }.count
-    }
-
-    private var archivedCount: Int {
-        columns.filter { isArchived($0) }.count
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            header
-
-            Divider()
-
-            controls
-
-            Divider()
-
-            if filteredColumns.isEmpty {
-                NotebookContentUnavailableView(
-                    "Sin columnas",
-                    systemImage: "rectangle.3.group",
-                    description: "No hay columnas que coincidan con el filtro actual."
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                List {
-                    Section {
-                        ForEach(filteredColumns, id: \.id) { column in
-                            columnRow(column)
+                VStack(spacing: 10) {
+                    if impact.kind == .category {
+                        Button {
+                            onPreserveCategory()
+                        } label: {
+                            Label("Eliminar solo la categoría y conservar columnas", systemImage: "folder.badge.minus")
+                                .frame(maxWidth: .infinity)
                         }
-                        .onMove(perform: moveColumns)
-                    } header: {
-                        Text("Columnas del cuaderno")
+                        .buttonStyle(.borderedProminent)
                     }
+
+                    Button(role: .destructive) {
+                        onDelete()
+                    } label: {
+                        Label(destructiveTitle, systemImage: "trash")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!destructiveEnabled)
+
+                    Button("Cancelar", role: .cancel) {
+                        onCancel()
+                    }
+                    .frame(maxWidth: .infinity)
                 }
-                .listStyle(.inset)
             }
-
-            Divider()
-
-            footer
-        }
-        .background(.regularMaterial)
-        .onAppear {
-            syncLocalStateWithColumns()
-        }
-        .onChange(of: columns.map(\.id)) { _ in
-            syncLocalStateWithColumns()
+            .padding(24)
+            .navigationTitle("Borrado seguro")
+            .appInlineNavigationBarTitleDisplayMode()
         }
     }
 
-    private var header: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "rectangle.3.group")
-                .font(.title2.weight(.semibold))
+    private var title: String {
+        switch impact.kind {
+        case .column:
+            return "Eliminar columna \"\(impact.targetName)\""
+        case .category:
+            return "Eliminar categoría \"\(impact.targetName)\""
+        }
+    }
+
+    private var subtitle: String {
+        switch impact.kind {
+        case .column:
+            return "Esta acción eliminará la columna y sus notas de esta clase."
+        case .category:
+            return "La opción recomendada conserva las columnas y solo elimina la categoría."
+        }
+    }
+
+    private var destructiveTitle: String {
+        switch impact.kind {
+        case .column:
+            return "Eliminar columna"
+        case .category:
+            return "Eliminar categoría y columnas"
+        }
+    }
+
+    private func impactRow(_ label: String, value: Int, systemImage: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: systemImage)
+                .frame(width: 22)
                 .foregroundStyle(Color.accentColor)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Organizar columnas")
-                    .font(.title3.weight(.semibold))
-
-                Text("\(visibleCount) visibles · \(hiddenCount) ocultas · \(archivedCount) archivadas")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
+            Text(label)
             Spacer()
-
-            Button("Cerrar") {
-                dismiss()
-            }
-            .keyboardShortcut(.cancelAction)
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 12)
-    }
-
-    private var controls: some View {
-        HStack(spacing: 12) {
-            TextField("Buscar columna…", text: $searchText)
-                .textFieldStyle(.roundedBorder)
-                .frame(maxWidth: 280)
-
-            Toggle("Solo ocultas", isOn: $showHiddenOnly)
-                .toggleStyle(.switch)
-
-            Spacer()
-
-            if hiddenCount > 0 {
-                Button {
-                    showAllColumns()
-                } label: {
-                    Label("Mostrar todas", systemImage: "eye")
-                }
-                .buttonStyle(.bordered)
-            } else {
-                Button {
-                    showAllColumns()
-                } label: {
-                    Label("Mostrar todas", systemImage: "eye")
-                }
-                .buttonStyle(.bordered)
-                .disabled(true)
-                .fixedSize()
-            }
-
-            Button {
-                onAddColumn()
-            } label: {
-                Label("Nueva columna", systemImage: "plus")
-            }
-            .buttonStyle(.borderedProminent)
-            .fixedSize()
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 10)
-    }
-
-    private func columnRow(_ column: NotebookColumnDefinition) -> some View {
-        let isHidden = effectiveIsHidden(column)
-        let isArchived = isArchived(column)
-
-        return HStack(spacing: 10) {
-            Image(systemName: "line.3.horizontal")
-                .font(.body.weight(.semibold))
-                .foregroundStyle(.tertiary)
-                .frame(width: 18)
-
-            Image(systemName: columnIcon(for: column))
-                .frame(width: 24)
-                .foregroundStyle(isHidden ? .secondary : Color.accentColor)
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(column.title)
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(isHidden ? .secondary : .primary)
-
-                HStack(spacing: 6) {
-                    Text(columnTypeLabel(for: column))
-                    if column.isPinned {
-                        Text("Fijada")
-                    }
-                    if isArchived {
-                        Text("Archivada")
-                    }
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            Toggle(
-                "Visible",
-                isOn: Binding(
-                    get: { !effectiveIsHidden(column) },
-                    set: { isVisible in
-                        setColumnHidden(column, isHidden: !isVisible)
-                    }
-                )
-            )
-            .labelsHidden()
-            .disabled(isArchived)
-
-            Menu {
-                Button("Renombrar") {
-                    onRename(column)
-                }
-
-                Button(isHidden ? "Mostrar" : "Ocultar") {
-                    setColumnHidden(column, isHidden: !isHidden)
-                }
-                .disabled(isArchived)
-
-                Divider()
-
-                Button("Eliminar", role: .destructive) {
-                    onDelete(column)
-                }
-            } label: {
-                Image(systemName: "ellipsis.circle")
-            }
-            .menuStyle(.borderlessButton)
-        }
-        .padding(.vertical, 3)
-    }
-
-    private var footer: some View {
-        HStack {
-            Text("Las columnas ocultas no desaparecen: solo dejan de mostrarse en la rejilla.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Spacer()
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 10)
-    }
-
-    private func syncLocalStateWithColumns() {
-        let currentIds = columns.map(\.id)
-        if orderedColumnIds.isEmpty {
-            orderedColumnIds = defaultOrderedColumnIds
-        } else {
-            orderedColumnIds = orderedColumnIds.filter { currentIds.contains($0) }
-            let missingIds = defaultOrderedColumnIds.filter { !orderedColumnIds.contains($0) }
-            orderedColumnIds.append(contentsOf: missingIds)
-        }
-        hiddenOverrides = hiddenOverrides.filter { currentIds.contains($0.key) }
-    }
-
-    private func effectiveIsHidden(_ column: NotebookColumnDefinition) -> Bool {
-        isArchived(column) || effectiveIsRestorableHidden(column)
-    }
-
-    private func effectiveIsRestorableHidden(_ column: NotebookColumnDefinition) -> Bool {
-        hiddenOverrides[column.id] ?? (column.isHidden || column.visibility == .hidden)
-    }
-
-    private func isArchived(_ column: NotebookColumnDefinition) -> Bool {
-        column.visibility == .archived
-    }
-
-    private func setColumnHidden(_ column: NotebookColumnDefinition, isHidden: Bool) {
-        guard !isArchived(column) else { return }
-        hiddenOverrides[column.id] = isHidden
-        onToggleHidden(column, isHidden)
-    }
-
-    private func showAllColumns() {
-        columns.filter { effectiveIsRestorableHidden($0) }.forEach { column in
-            hiddenOverrides[column.id] = false
-        }
-        onShowAll()
-    }
-
-    private func moveColumns(from source: IndexSet, to destination: Int) {
-        let filteredIds = filteredColumns.map(\.id)
-        var reorderedFilteredIds = filteredIds
-        reorderedFilteredIds.move(fromOffsets: source, toOffset: destination)
-
-        let filteredPositions = orderedColumnIds.indices.filter { filteredIds.contains(orderedColumnIds[$0]) }
-        var nextIds = orderedColumnIds
-        for (index, position) in filteredPositions.enumerated() where reorderedFilteredIds.indices.contains(index) {
-            nextIds[position] = reorderedFilteredIds[index]
-        }
-
-        orderedColumnIds = nextIds
-        onReorder(orderedColumns)
-    }
-
-    private func columnTypeLabel(for column: NotebookColumnDefinition) -> String {
-        switch column.type {
-        case .calculated:
-            return "Calculada"
-        case .rubric:
-            return "Rúbrica"
-        case .check:
-            return "Casilla"
-        case .text:
-            return "Texto"
-        case .attendance:
-            return "Asistencia"
-        case .ordinal:
-            return "Ordinal"
-        case .numeric:
-            return "Numérica"
-        default:
-            return String(describing: column.type)
-        }
-    }
-
-    private func columnIcon(for column: NotebookColumnDefinition) -> String {
-        if let icon = column.iconName, !icon.isEmpty {
-            return icon
-        }
-
-        switch column.type {
-        case .numeric:
-            return "number"
-        case .rubric:
-            return "checklist"
-        case .attendance:
-            return "figure.walk.circle"
-        case .calculated:
-            return "function"
-        case .text:
-            return "text.alignleft"
-        default:
-            return "rectangle"
+            Text("\(value)")
+                .font(.headline.monospacedDigit())
         }
     }
 }

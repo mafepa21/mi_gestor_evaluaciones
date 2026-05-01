@@ -2,6 +2,7 @@ package com.migestor.shared.viewmodel
 
 import com.migestor.shared.domain.*
 import com.migestor.shared.formula.FormulaEvaluator
+import com.migestor.shared.notebook.validateFormula
 import com.migestor.shared.repository.*
 import com.migestor.shared.usecase.*
 import com.migestor.shared.util.NotebookRefreshBus
@@ -486,6 +487,9 @@ class NotebookViewModel(
                 }
 
                 val currentState = _state.value as? NotebookUiState.Data
+                if (currentState != null && !isFormulaColumnValid(columnToSave, currentState)) {
+                    return@launch
+                }
                 val tabs = currentState?.sheet?.tabs.orEmpty()
                 val normalizedColumn = normalizeColumnPlacement(
                     column = columnToSave,
@@ -865,6 +869,21 @@ class NotebookViewModel(
         }
     }
 
+    private fun isFormulaColumnValid(
+        column: NotebookColumnDefinition,
+        state: NotebookUiState.Data,
+    ): Boolean {
+        val formula = column.formula?.trim().orEmpty()
+        if (column.type != NotebookColumnType.CALCULATED || formula.isEmpty()) return true
+        val columns = state.sheet.columns.filterNot { it.id == column.id } + column
+        return validateFormula(
+            formula = formula,
+            targetColumnId = column.id,
+            availableColumns = columns,
+            formulaColumns = columns.filter { it.type == NotebookColumnType.CALCULATED },
+        ).isValid
+    }
+
     fun duplicateConfigToClass(targetClassId: Long) {
         val sourceClassId = activeClassId ?: return
         scope.launch {
@@ -876,44 +895,74 @@ class NotebookViewModel(
     fun calculateClassAverage(sheet: NotebookSheet): Double {
         val rows = sheet.rows
         if (rows.isEmpty()) return 0.0
-        
-        val averages = rows.mapNotNull { row ->
-            val values = sheet.columns.filter {
-                (it.type == NotebookColumnType.NUMERIC || it.type == NotebookColumnType.RUBRIC) && it.countsTowardAverage
-            }.mapNotNull { col ->
-                row.cells.find { it.evaluationId == col.evaluationId }?.value
-                ?: row.persistedGrades.find { it.columnId == col.id }?.value
-            }
-            if (values.isNotEmpty()) values.average() else null
-        }
+
+        val evaluableColumns = sheet.columns.filter(::countsTowardWeightedAverage)
+        val averages = rows.mapNotNull { row -> weightedAverageForRow(row, evaluableColumns) }
         return if (averages.isNotEmpty()) averages.average() else 0.0
     }
 
     fun countUnevaluatedStudents(sheet: NotebookSheet): Int {
-        val evaluableCols = sheet.columns.filter {
-            (it.type == NotebookColumnType.NUMERIC || it.type == NotebookColumnType.RUBRIC) && it.countsTowardAverage
-        }
+        val evaluableCols = sheet.columns.filter(::countsTowardWeightedAverage)
         if (evaluableCols.isEmpty()) return 0
         
         return sheet.rows.count { row ->
             evaluableCols.any { col ->
-                row.cells.none { it.evaluationId == col.evaluationId && it.value != null } &&
-                row.persistedGrades.none { it.columnId == col.id && it.value != null }
+                gradeValueFor(row, col) == null
             }
         }
     }
 
     fun countApproved(sheet: NotebookSheet, threshold: Double = 5.0): Int {
+        val evaluableColumns = sheet.columns.filter(::countsTowardWeightedAverage)
         return sheet.rows.count { row ->
-            val values = sheet.columns.filter {
-                (it.type == NotebookColumnType.NUMERIC || it.type == NotebookColumnType.RUBRIC) && it.countsTowardAverage
-            }.mapNotNull { col ->
-                row.cells.find { it.evaluationId == col.evaluationId }?.value
-                ?: row.persistedGrades.find { it.columnId == col.id }?.value
-            }
-            val avg = if (values.isNotEmpty()) values.average() else null
+            val avg = weightedAverageForRow(row, evaluableColumns)
             (avg ?: 0.0) >= threshold
         }
+    }
+
+    private fun weightedAverageForRow(
+        row: NotebookRow,
+        evaluableColumns: List<NotebookColumnDefinition>,
+    ): Double? {
+        val totalWeight = evaluableColumns.sumOf { it.weight }.takeIf { it > 0.0 } ?: return row.weightedAverage
+        val hasAnyValue = evaluableColumns.any { gradeValueFor(row, it) != null }
+        if (!hasAnyValue) return row.weightedAverage
+        val weightedSum = evaluableColumns.sumOf { column ->
+            (gradeValueFor(row, column) ?: 0.0) * column.weight
+        }
+        return weightedSum / totalWeight
+    }
+
+    private fun gradeValueFor(row: NotebookRow, column: NotebookColumnDefinition): Double? {
+        val evaluationValue = column.evaluationId?.let { evaluationId ->
+            row.cells.find { it.evaluationId == evaluationId }?.value
+        }
+        if (evaluationValue != null) return evaluationValue
+        val persistedGrade = row.persistedGrades.find { it.columnId == column.id }?.value
+        if (persistedGrade != null) return persistedGrade
+        return row.persistedCells.find { it.columnId == column.id }?.boolValue?.let { if (it) 10.0 else 0.0 }
+    }
+
+    private fun countsTowardWeightedAverage(column: NotebookColumnDefinition): Boolean {
+        if (!column.countsTowardAverage || column.weight <= 0.0) return false
+        if (column.instrumentKind == NotebookInstrumentKind.PHYSICAL_TEST && column.scaleKind in rawPhysicalScaleKinds) {
+            return false
+        }
+        return when (column.type) {
+            NotebookColumnType.NUMERIC,
+            NotebookColumnType.RUBRIC,
+            NotebookColumnType.CALCULATED,
+            NotebookColumnType.CHECK -> true
+            else -> false
+        }
+    }
+
+    private companion object {
+        val rawPhysicalScaleKinds = setOf(
+            NotebookScaleKind.TIME,
+            NotebookScaleKind.DISTANCE,
+            NotebookScaleKind.REPETITIONS,
+        )
     }
 
     // --- New Methods for iOS Column Management ---
@@ -1007,6 +1056,9 @@ class NotebookViewModel(
                     isLocked = isLocked,
                     isTemplate = isTemplate
                 )
+                if (currentState != null && !isFormulaColumnValid(columnDef, currentState)) {
+                    return@launch
+                }
                 notebookRepository.saveColumn(classId, columnDef)
                 selectClass(classId, force = true)
             } catch (e: Exception) {

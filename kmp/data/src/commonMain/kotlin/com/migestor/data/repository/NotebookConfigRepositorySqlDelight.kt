@@ -218,7 +218,7 @@ class NotebookConfigRepositorySqlDelight(
         }
 
         val resolvedVisibility = when {
-            column.visibility == NotebookColumnVisibility.ARCHIVED -> NotebookColumnVisibility.ARCHIVED
+            column.visibility != NotebookColumnVisibility.VISIBLE -> column.visibility
             column.isHidden -> NotebookColumnVisibility.HIDDEN
             else -> NotebookColumnVisibility.VISIBLE
         }

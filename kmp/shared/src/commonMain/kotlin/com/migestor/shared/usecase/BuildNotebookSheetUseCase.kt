@@ -129,25 +129,14 @@ class BuildNotebookSheetUseCase(
         evaluations: List<Evaluation>,
     ): List<NotebookRow> {
         val calculated = columns.filter { it.type == NotebookColumnType.CALCULATED && !it.formula.isNullOrBlank() }
-        val evaluableColumnsByEvalId = columns
-            .filter { it.countsTowardAverage }
-            .associateBy { it.evaluationId }
+        val evaluableColumns = columns.filter(::countsTowardAverage)
 
         return rows.map { row ->
-            val baseAverage = runCatching {
-                val relevantColumns = evaluations.mapNotNull { evaluation ->
-                    evaluableColumnsByEvalId[evaluation.id]?.let { column -> evaluation to column }
-                }
-                if (relevantColumns.isEmpty()) return@runCatching row.weightedAverage
-
-                val weightedSum = relevantColumns.sumOf { (evaluation, column) ->
-                    val grade = row.cells.firstOrNull { it.evaluationId == evaluation.id }?.value ?: 0.0
-                    grade * column.weight
-                }
-                val totalWeight = relevantColumns.sumOf { (_, column) -> column.weight }
-                    .takeIf { it > 0.0 } ?: return@runCatching row.weightedAverage
-                weightedSum / totalWeight
-            }.getOrNull() ?: row.weightedAverage
+            val baseAverage = computeConfiguredAverage(
+                row = row,
+                evaluableColumns = evaluableColumns,
+                fallbackAverage = row.weightedAverage,
+            )
             if (calculated.isEmpty()) {
                 return@map row.copy(
                     weightedAverage = baseAverage,
@@ -179,5 +168,53 @@ class BuildNotebookSheetUseCase(
                 persistedGrades = row.persistedGrades
             )
         }
+    }
+
+    private fun computeConfiguredAverage(
+        row: NotebookRow,
+        evaluableColumns: List<NotebookColumnDefinition>,
+        fallbackAverage: Double?,
+    ): Double? {
+        if (evaluableColumns.isEmpty()) return fallbackAverage
+        val totalWeight = evaluableColumns.sumOf { it.weight }.takeIf { it > 0.0 } ?: return fallbackAverage
+        val hasAnyValue = evaluableColumns.any { column -> gradeValueFor(row, column) != null }
+        if (!hasAnyValue) return fallbackAverage
+
+        val weightedSum = evaluableColumns.sumOf { column ->
+            (gradeValueFor(row, column) ?: 0.0) * column.weight
+        }
+        return weightedSum / totalWeight
+    }
+
+    private fun gradeValueFor(row: NotebookRow, column: NotebookColumnDefinition): Double? {
+        val evaluationValue = column.evaluationId?.let { evaluationId ->
+            row.cells.firstOrNull { it.evaluationId == evaluationId }?.value
+        }
+        if (evaluationValue != null) return evaluationValue
+        val persistedGrade = row.persistedGrades.firstOrNull { it.columnId == column.id }?.value
+        if (persistedGrade != null) return persistedGrade
+        return row.persistedCells.firstOrNull { it.columnId == column.id }?.boolValue?.let { if (it) 10.0 else 0.0 }
+    }
+
+    private fun countsTowardAverage(column: NotebookColumnDefinition): Boolean {
+        if (!column.countsTowardAverage || column.weight <= 0.0) return false
+        if (column.instrumentKind == NotebookInstrumentKind.PHYSICAL_TEST && column.scaleKind in rawPhysicalScaleKinds) {
+            return false
+        }
+        return when (column.type) {
+            NotebookColumnType.NUMERIC,
+            NotebookColumnType.RUBRIC,
+            NotebookColumnType.CALCULATED,
+            NotebookColumnType.CHECK -> true
+            else -> false
+        }
+    }
+
+    private companion object {
+        val rawPhysicalScaleKinds = setOf(
+            NotebookScaleKind.TIME,
+            NotebookScaleKind.DISTANCE,
+            NotebookScaleKind.REPETITIONS,
+        )
     }
 }

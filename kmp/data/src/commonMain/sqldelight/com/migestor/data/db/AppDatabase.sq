@@ -148,6 +148,9 @@ CREATE TABLE IF NOT EXISTS grades (
     FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
     FOREIGN KEY (evaluation_id) REFERENCES evaluations(id) ON DELETE SET NULL
 );
+CREATE INDEX IF NOT EXISTS idx_grades_class_student ON grades(class_id, student_id);
+CREATE INDEX IF NOT EXISTS idx_grades_class_column ON grades(class_id, column_id);
+CREATE INDEX IF NOT EXISTS idx_grades_evaluation ON grades(evaluation_id);
 
 CREATE TABLE IF NOT EXISTS rubric_assessments (
     student_id INTEGER NOT NULL,
@@ -546,6 +549,11 @@ WHERE class_id = ? AND column_id = ?;
 deleteGradesByColumnId:
 DELETE FROM grades
 WHERE column_id = ?;
+
+countGradesByClassAndColumn:
+SELECT COUNT(*)
+FROM grades
+WHERE class_id = ? AND column_id = ?;
 
 selectAllPeriods:
 SELECT id, name, start_epoch_ms, end_epoch_ms, updated_at_epoch_ms, device_id, sync_version
@@ -1208,6 +1216,17 @@ selectColumnsByEvaluation:
 SELECT id, class_id, title, type, category_kind, instrument_kind, input_kind, evaluation_id, formula, weight, date_epoch_ms, unit_name, competency_criteria_ids_csv, scale_kind, tab_ids_csv, shared_across_tabs, color_hex, icon_name, sort_order, width_dp, category_id, visibility, is_locked, updated_at_epoch_ms, device_id, sync_version
 FROM notebook_columns
 WHERE evaluation_id = ?;
+
+countColumnsByCategory:
+SELECT COUNT(*)
+FROM notebook_columns
+WHERE class_id = ? AND category_id = ?;
+
+selectColumnsByCategory:
+SELECT id, class_id, title, type, category_kind, instrument_kind, input_kind, evaluation_id, formula, weight, date_epoch_ms, unit_name, competency_criteria_ids_csv, scale_kind, tab_ids_csv, shared_across_tabs, color_hex, icon_name, sort_order, width_dp, category_id, visibility, is_locked, updated_at_epoch_ms, device_id, sync_version
+FROM notebook_columns
+WHERE class_id = ? AND category_id = ?
+ORDER BY sort_order, id;
 
 selectColumnCategoriesByClass:
 SELECT id, class_id, tab_id, name, sort_order, is_collapsed, updated_at_epoch_ms, device_id, sync_version

@@ -179,9 +179,13 @@ private class RubricsTestFakeNotebookRepository : NotebookRepository {
     override suspend fun saveTab(classId: Long, tab: NotebookTab) = Unit
     override suspend fun deleteTab(tabId: String) = Unit
     override suspend fun saveColumn(classId: Long, column: NotebookColumnDefinition) = Unit
+    override suspend fun previewDeleteColumn(classId: Long, columnId: String): NotebookDeletionImpact =
+        NotebookDeletionImpact(columnId, columnId, NotebookDeletionTargetKind.COLUMN, 1, 0, 0, 0, false)
     override suspend fun deleteColumn(columnId: String) = Unit
     override suspend fun listColumnCategories(classId: Long, tabId: String?): List<NotebookColumnCategory> = emptyList()
     override suspend fun saveColumnCategory(classId: Long, category: NotebookColumnCategory) = Unit
+    override suspend fun previewDeleteColumnCategory(classId: Long, categoryId: String): NotebookDeletionImpact =
+        NotebookDeletionImpact(categoryId, categoryId, NotebookDeletionTargetKind.CATEGORY, 0, 0, 0, 0, false)
     override suspend fun deleteColumnCategory(classId: Long, categoryId: String, preserveColumns: Boolean) = Unit
     override suspend fun toggleCategoryCollapsed(classId: Long, categoryId: String, isCollapsed: Boolean) = Unit
     override suspend fun reorderCategory(classId: Long, tabId: String, categoryId: String, targetCategoryId: String) = Unit

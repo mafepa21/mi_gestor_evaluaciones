@@ -143,9 +143,11 @@ interface NotebookRepository {
     suspend fun saveTab(classId: Long, tab: NotebookTab)
     suspend fun deleteTab(tabId: String)
     suspend fun saveColumn(classId: Long, column: NotebookColumnDefinition)
+    suspend fun previewDeleteColumn(classId: Long, columnId: String): NotebookDeletionImpact
     suspend fun deleteColumn(columnId: String)
     suspend fun listColumnCategories(classId: Long, tabId: String? = null): List<NotebookColumnCategory>
     suspend fun saveColumnCategory(classId: Long, category: NotebookColumnCategory)
+    suspend fun previewDeleteColumnCategory(classId: Long, categoryId: String): NotebookDeletionImpact
     suspend fun deleteColumnCategory(classId: Long, categoryId: String, preserveColumns: Boolean = true)
     suspend fun toggleCategoryCollapsed(classId: Long, categoryId: String, isCollapsed: Boolean)
     suspend fun reorderCategory(classId: Long, tabId: String, categoryId: String, targetCategoryId: String)

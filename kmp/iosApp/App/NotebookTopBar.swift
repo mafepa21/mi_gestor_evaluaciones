@@ -354,7 +354,7 @@ struct NotebookSummaryGenerationSheet: View {
 
         switch configuration.evidenceSource {
         case .visibleColumns:
-            return allColumns.filter { !$0.isHidden }.map(\.id)
+            return allColumns.filter(\.isVisibleInGrid).map(\.id)
         case .evaluableColumns:
             return allColumns.filter {
                 $0.countsTowardAverage ||

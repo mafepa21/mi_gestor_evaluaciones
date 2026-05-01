@@ -784,6 +784,23 @@ enum class NotebookColumnVisibility {
     ARCHIVED,
 }
 
+enum class NotebookDeletionTargetKind {
+    COLUMN,
+    CATEGORY,
+    TAB,
+}
+
+data class NotebookDeletionImpact(
+    val targetId: String,
+    val targetName: String,
+    val targetKind: NotebookDeletionTargetKind,
+    val affectedColumnCount: Int,
+    val affectedGradeCount: Int,
+    val affectedFormulaColumnCount: Int,
+    val affectedAverageColumnCount: Int,
+    val hasLockedColumns: Boolean,
+)
+
 data class NotebookTab(
     val id: String,
     val title: String,
@@ -1029,7 +1046,7 @@ fun NotebookSheet.tabChildrenMap(): Map<String?, List<NotebookTab>> {
 fun NotebookSheet.visibleColumnsForTab(tabId: String?): List<NotebookColumnDefinition> {
     if (tabId == null) return emptyList()
     return columns.filter { column ->
-        !column.isHidden && (
+        column.visibility == NotebookColumnVisibility.VISIBLE && (
             column.tabIds.contains(tabId) || (column.sharedAcrossTabs && column.tabIds.isEmpty())
         )
     }.sortedWith(compareBy<NotebookColumnDefinition> { it.order }.thenBy { it.id })

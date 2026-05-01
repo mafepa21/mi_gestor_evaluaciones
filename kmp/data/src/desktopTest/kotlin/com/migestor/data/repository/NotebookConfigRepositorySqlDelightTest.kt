@@ -4,6 +4,7 @@ import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.migestor.data.db.AppDatabase
 import com.migestor.shared.domain.NotebookColumnDefinition
 import com.migestor.shared.domain.NotebookColumnType
+import com.migestor.shared.domain.NotebookColumnVisibility
 import com.migestor.shared.domain.NotebookWorkGroup
 import com.migestor.shared.domain.NotebookTab
 import com.migestor.shared.util.NotebookRefreshBus
@@ -66,6 +67,29 @@ class NotebookConfigRepositorySqlDelightTest {
         val columns = repository.listColumns(classId)
         assertEquals(1, columns.size)
         assertEquals("COL_1", columns.first().id)
+    }
+
+    @Test
+    fun `saveColumn preserves explicit archived visibility`() = runTest {
+        val db = createDatabase()
+        val classesRepository = ClassesRepositorySqlDelight(db)
+        val repository = NotebookConfigRepositorySqlDelight(db)
+        val classId = classesRepository.saveClass(name = "3 ESO C", course = 3, description = null)
+
+        repository.saveColumn(
+            classId,
+            NotebookColumnDefinition(
+                id = "COL_ARCHIVED",
+                title = "Archivada",
+                type = NotebookColumnType.NUMERIC,
+                isHidden = false,
+                visibility = NotebookColumnVisibility.ARCHIVED,
+            )
+        )
+
+        val column = repository.listColumns(classId).single()
+        assertEquals(NotebookColumnVisibility.ARCHIVED, column.visibility)
+        assertEquals(true, column.isHidden)
     }
 
     @Test

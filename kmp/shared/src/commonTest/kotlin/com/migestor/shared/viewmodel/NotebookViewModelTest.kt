@@ -1,14 +1,21 @@
 package com.migestor.shared.viewmodel
 
 import com.migestor.shared.domain.Evaluation
+import com.migestor.shared.domain.Grade
+import com.migestor.shared.domain.NotebookCell
 import com.migestor.shared.domain.NotebookColumnDefinition
 import com.migestor.shared.domain.NotebookColumnCategory
+import com.migestor.shared.domain.NotebookInstrumentKind
+import com.migestor.shared.domain.NotebookRow
+import com.migestor.shared.domain.NotebookScaleKind
 import com.migestor.shared.domain.NotebookColumnType
+import com.migestor.shared.domain.NotebookColumnVisibility
 import com.migestor.shared.domain.NotebookSheet
 import com.migestor.shared.domain.NotebookWorkGroup
 import com.migestor.shared.domain.NotebookTab
 import com.migestor.shared.domain.SchoolClass
 import com.migestor.shared.domain.Student
+import com.migestor.shared.domain.visibleColumnsForTab
 import com.migestor.shared.repository.ClassesRepository
 import com.migestor.shared.repository.EvaluationsRepository
 import com.migestor.shared.repository.GradesRepository
@@ -163,13 +170,72 @@ class NotebookViewModelTest {
             name = "Final",
             type = NotebookColumnType.CALCULATED.name,
             weight = 1.0,
-            formula = "ROUND((EX1*0.4)+(TA1*0.6), 2)"
+            formula = "REDONDEAR(1+1, 2)"
         )
         advanceUntilIdle()
 
         val saved = repository.savedColumns.last()
         assertEquals(NotebookColumnType.CALCULATED, saved.type)
-        assertEquals("ROUND((EX1*0.4)+(TA1*0.6), 2)", saved.formula)
+        assertEquals("REDONDEAR(1+1, 2)", saved.formula)
+    }
+
+    @Test
+    fun `invalid formula column is not saved`() = runTest {
+        val classId = 1L
+        val repository = FakeNotebookRepository(
+            snapshot = NotebookSheet(
+                classId = classId,
+                tabs = emptyList(),
+                columns = listOf(NotebookColumnDefinition(id = "eval_1", title = "Examen", type = NotebookColumnType.NUMERIC)),
+                rows = emptyList(),
+            )
+        )
+        val viewModel = createViewModel(repository)
+
+        viewModel.selectClass(classId)
+        advanceUntilIdle()
+        viewModel.saveColumn(
+            NotebookColumnDefinition(
+                id = "formula_1",
+                title = "Media",
+                type = NotebookColumnType.CALCULATED,
+                formula = "PROMEDIO([eval_1],[missing])",
+            )
+        )
+        advanceUntilIdle()
+
+        assertTrue(repository.savedColumns.none { it.id == "formula_1" })
+    }
+
+    @Test
+    fun `circular formula column is not saved`() = runTest {
+        val classId = 1L
+        val repository = FakeNotebookRepository(
+            snapshot = NotebookSheet(
+                classId = classId,
+                tabs = emptyList(),
+                columns = listOf(
+                    NotebookColumnDefinition(id = "eval_1", title = "Examen", type = NotebookColumnType.NUMERIC),
+                    NotebookColumnDefinition(id = "formula_b", title = "B", type = NotebookColumnType.CALCULATED, formula = "[formula_a] + 1"),
+                ),
+                rows = emptyList(),
+            )
+        )
+        val viewModel = createViewModel(repository)
+
+        viewModel.selectClass(classId)
+        advanceUntilIdle()
+        viewModel.saveColumn(
+            NotebookColumnDefinition(
+                id = "formula_a",
+                title = "A",
+                type = NotebookColumnType.CALCULATED,
+                formula = "[formula_b] + 1",
+            )
+        )
+        advanceUntilIdle()
+
+        assertTrue(repository.savedColumns.none { it.id == "formula_a" })
     }
 
     @Test
@@ -205,6 +271,127 @@ class NotebookViewModelTest {
         assertEquals(3, saved.order)
         assertEquals(180.0, saved.widthDp)
         assertEquals("#FFAA00", saved.colorHex)
+    }
+
+    @Test
+    fun `visibleColumnsForTab only returns visible columns`() {
+        val sheet = NotebookSheet(
+            classId = 1L,
+            tabs = listOf(NotebookTab(id = "TAB_1", title = "Evaluación")),
+            columns = listOf(
+                NotebookColumnDefinition(
+                    id = "visible",
+                    title = "Visible",
+                    type = NotebookColumnType.NUMERIC,
+                    tabIds = listOf("TAB_1"),
+                    visibility = NotebookColumnVisibility.VISIBLE,
+                ),
+                NotebookColumnDefinition(
+                    id = "hidden",
+                    title = "Oculta",
+                    type = NotebookColumnType.NUMERIC,
+                    tabIds = listOf("TAB_1"),
+                    visibility = NotebookColumnVisibility.HIDDEN,
+                ),
+                NotebookColumnDefinition(
+                    id = "archived",
+                    title = "Archivada",
+                    type = NotebookColumnType.NUMERIC,
+                    tabIds = listOf("TAB_1"),
+                    visibility = NotebookColumnVisibility.ARCHIVED,
+                    isHidden = true,
+                ),
+            ),
+            rows = emptyList(),
+        )
+
+        assertEquals(listOf("visible"), sheet.visibleColumnsForTab("TAB_1").map { it.id })
+    }
+
+    @Test
+    fun `class average uses configured weights`() {
+        val viewModel = createViewModel(FakeNotebookRepository(emptyNotebookSheet()))
+        val sheet = NotebookSheet(
+            classId = 1L,
+            tabs = emptyList(),
+            columns = listOf(
+                NotebookColumnDefinition(id = "eval_1", title = "Examen", type = NotebookColumnType.NUMERIC, evaluationId = 1L, weight = 40.0),
+                NotebookColumnDefinition(id = "eval_2", title = "Rúbrica", type = NotebookColumnType.RUBRIC, evaluationId = 2L, weight = 60.0),
+            ),
+            rows = listOf(
+                NotebookRow(
+                    student = Student(id = 1L, firstName = "Ana", lastName = "Lopez"),
+                    cells = listOf(NotebookCell(evaluationId = 1L, value = 5.0), NotebookCell(evaluationId = 2L, value = 10.0)),
+                    weightedAverage = null,
+                )
+            )
+        )
+
+        assertEquals(8.0, viewModel.calculateClassAverage(sheet))
+    }
+
+    @Test
+    fun `excluded columns do not affect class average`() {
+        val viewModel = createViewModel(FakeNotebookRepository(emptyNotebookSheet()))
+        val sheet = NotebookSheet(
+            classId = 1L,
+            tabs = emptyList(),
+            columns = listOf(
+                NotebookColumnDefinition(id = "eval_1", title = "Examen", type = NotebookColumnType.NUMERIC, evaluationId = 1L, weight = 100.0),
+                NotebookColumnDefinition(id = "eval_2", title = "Extra", type = NotebookColumnType.NUMERIC, evaluationId = 2L, weight = 100.0, countsTowardAverage = false),
+            ),
+            rows = listOf(
+                NotebookRow(
+                    student = Student(id = 1L, firstName = "Ana", lastName = "Lopez"),
+                    cells = listOf(NotebookCell(evaluationId = 1L, value = 7.0), NotebookCell(evaluationId = 2L, value = 1.0)),
+                    weightedAverage = null,
+                )
+            )
+        )
+
+        assertEquals(7.0, viewModel.calculateClassAverage(sheet))
+    }
+
+    @Test
+    fun `raw physical marks do not affect class average but scaled notes do`() {
+        val viewModel = createViewModel(FakeNotebookRepository(emptyNotebookSheet()))
+        val sheet = NotebookSheet(
+            classId = 1L,
+            tabs = emptyList(),
+            columns = listOf(
+                NotebookColumnDefinition(
+                    id = "raw",
+                    title = "Salto · marca",
+                    type = NotebookColumnType.NUMERIC,
+                    weight = 50.0,
+                    instrumentKind = NotebookInstrumentKind.PHYSICAL_TEST,
+                    scaleKind = NotebookScaleKind.DISTANCE,
+                    countsTowardAverage = true,
+                ),
+                NotebookColumnDefinition(
+                    id = "score",
+                    title = "Salto · nota",
+                    type = NotebookColumnType.NUMERIC,
+                    weight = 50.0,
+                    instrumentKind = NotebookInstrumentKind.PHYSICAL_TEST,
+                    scaleKind = NotebookScaleKind.TEN_POINT,
+                    countsTowardAverage = true,
+                ),
+            ),
+            rows = listOf(
+                NotebookRow(
+                    student = Student(id = 1L, firstName = "Ana", lastName = "Lopez"),
+                    cells = emptyList(),
+                    persistedGrades = listOf(
+                        Grade(id = 1L, classId = 1L, studentId = 1L, columnId = "raw", evaluationId = null, value = 180.0),
+                        Grade(id = 2L, classId = 1L, studentId = 1L, columnId = "score", evaluationId = null, value = 8.5),
+                    ),
+                    weightedAverage = null,
+                )
+            )
+        )
+
+        assertEquals(8.5, viewModel.calculateClassAverage(sheet))
     }
 
     @Test
@@ -246,6 +433,9 @@ class NotebookViewModelTest {
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
         )
     }
+
+    private fun emptyNotebookSheet(): NotebookSheet =
+        NotebookSheet(classId = 1L, tabs = emptyList(), columns = emptyList(), rows = emptyList())
 }
 
 private class FakeNotebookRepository(
@@ -267,9 +457,31 @@ private class FakeNotebookRepository(
     override suspend fun saveColumn(classId: Long, column: NotebookColumnDefinition) {
         savedColumns += column
     }
+    override suspend fun previewDeleteColumn(classId: Long, columnId: String): com.migestor.shared.domain.NotebookDeletionImpact =
+        com.migestor.shared.domain.NotebookDeletionImpact(
+            targetId = columnId,
+            targetName = columnId,
+            targetKind = com.migestor.shared.domain.NotebookDeletionTargetKind.COLUMN,
+            affectedColumnCount = 1,
+            affectedGradeCount = 0,
+            affectedFormulaColumnCount = 0,
+            affectedAverageColumnCount = 0,
+            hasLockedColumns = false,
+        )
     override suspend fun deleteColumn(columnId: String) = Unit
     override suspend fun listColumnCategories(classId: Long, tabId: String?) = emptyList<NotebookColumnCategory>()
     override suspend fun saveColumnCategory(classId: Long, category: NotebookColumnCategory) = Unit
+    override suspend fun previewDeleteColumnCategory(classId: Long, categoryId: String): com.migestor.shared.domain.NotebookDeletionImpact =
+        com.migestor.shared.domain.NotebookDeletionImpact(
+            targetId = categoryId,
+            targetName = categoryId,
+            targetKind = com.migestor.shared.domain.NotebookDeletionTargetKind.CATEGORY,
+            affectedColumnCount = 0,
+            affectedGradeCount = 0,
+            affectedFormulaColumnCount = 0,
+            affectedAverageColumnCount = 0,
+            hasLockedColumns = false,
+        )
     override suspend fun deleteColumnCategory(classId: Long, categoryId: String, preserveColumns: Boolean) = Unit
     override suspend fun toggleCategoryCollapsed(classId: Long, categoryId: String, isCollapsed: Boolean) = Unit
     override suspend fun reorderCategory(classId: Long, tabId: String, categoryId: String, targetCategoryId: String) = Unit

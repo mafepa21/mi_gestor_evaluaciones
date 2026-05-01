@@ -41,35 +41,54 @@ INSERT INTO grades_migration_v16 (
     sync_version
 )
 SELECT
-    id,
-    class_id,
-    student_id,
-    column_id,
-    evaluation_id,
-    value,
-    evidence,
-    evidence_path,
-    rubric_selections,
-    created_at_epoch_ms,
-    updated_at_epoch_ms,
-    device_id,
-    sync_version
-FROM (
-    SELECT
-        *,
-        ROW_NUMBER() OVER (
-            PARTITION BY class_id, student_id, column_id
-            ORDER BY updated_at_epoch_ms DESC, created_at_epoch_ms DESC, id DESC
-        ) AS rn
-    FROM grades
-    WHERE class_id IS NOT NULL
-      AND student_id IS NOT NULL
-      AND column_id IS NOT NULL
-)
-WHERE rn = 1;
+    g.id,
+    g.class_id,
+    g.student_id,
+    g.column_id,
+    g.evaluation_id,
+    g.value,
+    g.evidence,
+    g.evidence_path,
+    g.rubric_selections,
+    g.created_at_epoch_ms,
+    g.updated_at_epoch_ms,
+    g.device_id,
+    g.sync_version
+FROM grades AS g
+WHERE g.class_id IS NOT NULL
+  AND g.student_id IS NOT NULL
+  AND g.column_id IS NOT NULL
+  AND NOT EXISTS (
+      SELECT 1
+      FROM grades AS newer
+      WHERE newer.class_id = g.class_id
+        AND newer.student_id = g.student_id
+        AND newer.column_id = g.column_id
+        AND (
+            newer.updated_at_epoch_ms > g.updated_at_epoch_ms
+            OR (
+                newer.updated_at_epoch_ms = g.updated_at_epoch_ms
+                AND newer.created_at_epoch_ms > g.created_at_epoch_ms
+            )
+            OR (
+                newer.updated_at_epoch_ms = g.updated_at_epoch_ms
+                AND newer.created_at_epoch_ms = g.created_at_epoch_ms
+                AND newer.id > g.id
+            )
+        )
+);
 
 DROP TABLE grades;
 
 ALTER TABLE grades_migration_v16 RENAME TO grades;
+
+CREATE INDEX IF NOT EXISTS idx_grades_class_student
+ON grades(class_id, student_id);
+
+CREATE INDEX IF NOT EXISTS idx_grades_class_column
+ON grades(class_id, column_id);
+
+CREATE INDEX IF NOT EXISTS idx_grades_evaluation
+ON grades(evaluation_id);
 
 PRAGMA foreign_keys = 1;

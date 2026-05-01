@@ -33,10 +33,14 @@
 		3CB4C3CA98572F18CC5D1DA7 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2BAD893EC7E90121671F7BDB /* Assets.xcassets */; };
 		3D42ABE38DAA65311889C449 /* MacFeatureRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 540E9FF031B5425A4147DC64 /* MacFeatureRegistry.swift */; };
 		48055DD8105D96F8A70C7436 /* NotebookTopBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 553BE9C8F245950E744D692A /* NotebookTopBar.swift */; };
+		48F4A85F61A64AFD8C8C9105 /* NotebookAverageEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48F4A85F61A64AFD8C8C9104 /* NotebookAverageEditorSheet.swift */; };
+		48F4A85F61A64AFD8C8C9101 /* NotebookColumnOrganizerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48F4A85F61A64AFD8C8C9100 /* NotebookColumnOrganizerSheet.swift */; };
+		48F4A85F61A64AFD8C8C9103 /* NotebookColumnVisibilityRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48F4A85F61A64AFD8C8C9102 /* NotebookColumnVisibilityRules.swift */; };
 		4A94FBA079B366485372AFC6 /* AppleFoundationAnalyticsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2EB53505ACE7B6CA23A520F /* AppleFoundationAnalyticsService.swift */; };
 		4FC65E1EA9E7488F1442911F /* MiGestorKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D60E195E650E3C66A0B033A6 /* MiGestorKit.framework */; };
 		56234DAACC18188F7C681066 /* AppleLifecycleNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CA5E3F32F725E60EF71507B /* AppleLifecycleNotifications.swift */; };
 		59D57BFC6882311B3CE5FB2A /* NotebookFormulaKeyboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28F88ED1497646466866123A /* NotebookFormulaKeyboard.swift */; };
+		59D57BFC6882311B3CE5FB2C /* NotebookFormulaEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59D57BFC6882311B3CE5FB2B /* NotebookFormulaEditorSheet.swift */; };
 		5C66DE9508311795F6FE0DF8 /* PendingEvaluationPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72D234C2A47232591178F898 /* PendingEvaluationPickerSheet.swift */; };
 		5E3F7337F3A6A0EC2C17DA4E /* AppleBridgeBootstrap.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4DF051FC8473FCD24BCC26C /* AppleBridgeBootstrap.swift */; };
 		61FFEC29461420F26B181A57 /* RubricBulkEvaluationSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53D5C192E36FCFC177FCB496 /* RubricBulkEvaluationSheet.swift */; };
@@ -70,12 +74,16 @@
 		BC651399795A9BCF20664187 /* AppleRoundedCorner.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC0359FA7FD3BF06A0E300F5 /* AppleRoundedCorner.swift */; };
 		BC91ADD74993C72E5A133C3D /* MacCommandCenterCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75913A6148C5D164F2EFA2A7 /* MacCommandCenterCoordinator.swift */; };
 		BC978153E9C1C28BB90F4581 /* NotebookFormulaKeyboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28F88ED1497646466866123A /* NotebookFormulaKeyboard.swift */; };
+		BC978153E9C1C28BB90F4582 /* NotebookFormulaEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59D57BFC6882311B3CE5FB2B /* NotebookFormulaEditorSheet.swift */; };
 		BD47B7FB84E4AAC46BCF34DD /* MacSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98A9F35D6CEDD07FCA45EBA5 /* MacSettingsView.swift */; };
 		BEE09F01DFABE9A8498C8B0E /* AppleViewCompatibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = 466A6EE8F4E0ABF4D24AEDDD /* AppleViewCompatibility.swift */; };
 		BEE5A4B10ED6EF26DC223E17 /* AppleViewCompatibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = 466A6EE8F4E0ABF4D24AEDDD /* AppleViewCompatibility.swift */; };
 		C5E1560FD55A2CDC68B12B61 /* MiGestorKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = D60E195E650E3C66A0B033A6 /* MiGestorKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		CE280AA0131630BF9D889D8E /* NotebookDataGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD165C28F5CF6FD5F43B44DF /* NotebookDataGrid.swift */; };
 		D05BF5462DD0EA3DF89D927B /* NotebookTopBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 553BE9C8F245950E744D692A /* NotebookTopBar.swift */; };
+		D1F9E405B5C8473FB2278803 /* NotebookAverageEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48F4A85F61A64AFD8C8C9104 /* NotebookAverageEditorSheet.swift */; };
+		D1F9E405B5C8473FB2278801 /* NotebookColumnOrganizerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48F4A85F61A64AFD8C8C9100 /* NotebookColumnOrganizerSheet.swift */; };
+		D1F9E405B5C8473FB2278802 /* NotebookColumnVisibilityRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48F4A85F61A64AFD8C8C9102 /* NotebookColumnVisibilityRules.swift */; };
 		D3EBA1E1A169F964D3CA7654 /* NotebookModuleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BA9E95BA74B4D7D8AC2D362 /* NotebookModuleView.swift */; };
 		DAE6053C0723B1F6576BE406 /* NotebookHiddenColumnsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B252E2D9B95CDC6CB59B9A3 /* NotebookHiddenColumnsSheet.swift */; };
 		DE599C50071E5A0823817F7F /* NotebookDataGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD165C28F5CF6FD5F43B44DF /* NotebookDataGrid.swift */; };
@@ -127,9 +135,13 @@
 		467B02D2576A83946B6237BA /* MiGestorKMPiOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = MiGestorKMPiOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		4BA9E95BA74B4D7D8AC2D362 /* NotebookModuleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookModuleView.swift; sourceTree = "<group>"; };
 		4BE36C2FC3CA10A0D5E7F322 /* AppleAppRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleAppRootView.swift; sourceTree = "<group>"; };
+		48F4A85F61A64AFD8C8C9104 /* NotebookAverageEditorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookAverageEditorSheet.swift; sourceTree = "<group>"; };
+		48F4A85F61A64AFD8C8C9100 /* NotebookColumnOrganizerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookColumnOrganizerSheet.swift; sourceTree = "<group>"; };
+		48F4A85F61A64AFD8C8C9102 /* NotebookColumnVisibilityRules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookColumnVisibilityRules.swift; sourceTree = "<group>"; };
 		53D5C192E36FCFC177FCB496 /* RubricBulkEvaluationSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RubricBulkEvaluationSheet.swift; sourceTree = "<group>"; };
 		540E9FF031B5425A4147DC64 /* MacFeatureRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacFeatureRegistry.swift; sourceTree = "<group>"; };
 		553BE9C8F245950E744D692A /* NotebookTopBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookTopBar.swift; sourceTree = "<group>"; };
+		59D57BFC6882311B3CE5FB2B /* NotebookFormulaEditorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookFormulaEditorSheet.swift; sourceTree = "<group>"; };
 		574A36D51DB905768D1450DF /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		583BC23E9E292D736CC9EF49 /* AddColumnSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddColumnSheet.swift; sourceTree = "<group>"; };
 		61DBB79CD6256350F830529A /* EvaluationDesign.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvaluationDesign.swift; sourceTree = "<group>"; };
@@ -259,7 +271,11 @@
 				74BD0F6DDCBB48B737A44D3C /* IPadWorkspaceShell.swift */,
 				B819027ADD26559CC96B1BDB /* KmpBridge.swift */,
 				C20918D0AFE00F50C0378076 /* MiGestorKMPiOSApp.swift */,
+				48F4A85F61A64AFD8C8C9104 /* NotebookAverageEditorSheet.swift */,
+				48F4A85F61A64AFD8C8C9100 /* NotebookColumnOrganizerSheet.swift */,
+				48F4A85F61A64AFD8C8C9102 /* NotebookColumnVisibilityRules.swift */,
 				BD165C28F5CF6FD5F43B44DF /* NotebookDataGrid.swift */,
+				59D57BFC6882311B3CE5FB2B /* NotebookFormulaEditorSheet.swift */,
 				28F88ED1497646466866123A /* NotebookFormulaKeyboard.swift */,
 				7B252E2D9B95CDC6CB59B9A3 /* NotebookHiddenColumnsSheet.swift */,
 				4BA9E95BA74B4D7D8AC2D362 /* NotebookModuleView.swift */,
@@ -451,7 +467,11 @@
 				0D1BC8425E85592907678393 /* MacSqliteCompat.c in Sources */,
 				9546F37A775EA87B30F4F374 /* MacSyncView.swift in Sources */,
 				727DC013672A58DEC4CCB567 /* MiGestorKMPMacApp.swift in Sources */,
+				48F4A85F61A64AFD8C8C9105 /* NotebookAverageEditorSheet.swift in Sources */,
+				48F4A85F61A64AFD8C8C9101 /* NotebookColumnOrganizerSheet.swift in Sources */,
+				48F4A85F61A64AFD8C8C9103 /* NotebookColumnVisibilityRules.swift in Sources */,
 				DE599C50071E5A0823817F7F /* NotebookDataGrid.swift in Sources */,
+				BC978153E9C1C28BB90F4582 /* NotebookFormulaEditorSheet.swift in Sources */,
 				BC978153E9C1C28BB90F4581 /* NotebookFormulaKeyboard.swift in Sources */,
 				DAE6053C0723B1F6576BE406 /* NotebookHiddenColumnsSheet.swift in Sources */,
 				878FB204389D94BB6A912BF6 /* NotebookModuleView.swift in Sources */,
@@ -487,7 +507,11 @@
 				86BC90A2A4604BC6B4545E27 /* IPadWorkspaceShell.swift in Sources */,
 				B7CB07BCB74E309D55528193 /* KmpBridge.swift in Sources */,
 				21BBC6052C42456A62FA3759 /* MiGestorKMPiOSApp.swift in Sources */,
+				D1F9E405B5C8473FB2278803 /* NotebookAverageEditorSheet.swift in Sources */,
+				D1F9E405B5C8473FB2278801 /* NotebookColumnOrganizerSheet.swift in Sources */,
+				D1F9E405B5C8473FB2278802 /* NotebookColumnVisibilityRules.swift in Sources */,
 				CE280AA0131630BF9D889D8E /* NotebookDataGrid.swift in Sources */,
+				59D57BFC6882311B3CE5FB2C /* NotebookFormulaEditorSheet.swift in Sources */,
 				59D57BFC6882311B3CE5FB2A /* NotebookFormulaKeyboard.swift in Sources */,
 				7022D3558D3683BF04051378 /* NotebookHiddenColumnsSheet.swift in Sources */,
 				D3EBA1E1A169F964D3CA7654 /* NotebookModuleView.swift in Sources */,

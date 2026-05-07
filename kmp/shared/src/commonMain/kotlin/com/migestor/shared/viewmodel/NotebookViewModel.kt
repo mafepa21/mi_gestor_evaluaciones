@@ -628,6 +628,11 @@ class NotebookViewModel(
         _importResult.value = null
     }
 
+    fun observeCellAudit(studentId: Long, columnId: String): Flow<List<NotebookCellAuditEvent>> {
+        val classId = activeClassId ?: return emptyFlow()
+        return notebookRepository.observeCellAudit(classId, studentId, columnId)
+    }
+
     fun saveColumnGrade(studentId: Long, column: NotebookColumnDefinition, value: String) {
         activeClassId ?: return
         // Optimistic update for immediate UI feedback without forcing full notebook reloads.

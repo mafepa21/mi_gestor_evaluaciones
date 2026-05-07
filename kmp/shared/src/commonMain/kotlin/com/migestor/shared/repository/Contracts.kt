@@ -129,6 +129,7 @@ interface NotebookCellsRepository {
         deviceId: String? = null,
         syncVersion: Long = 0,
     )
+    fun observeCellAudit(classId: Long, studentId: Long, columnId: String): Flow<List<NotebookCellAuditEvent>>
 }
 
 interface NotebookRepository {
@@ -205,6 +206,7 @@ interface NotebookRepository {
         deviceId: String? = null,
         syncVersion: Long = 0,
     )
+    fun observeCellAudit(classId: Long, studentId: Long, columnId: String): Flow<List<NotebookCellAuditEvent>>
 }
 
 interface PhysicalTestsRepository {

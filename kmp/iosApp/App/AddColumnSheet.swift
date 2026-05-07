@@ -476,7 +476,7 @@ struct AddColumnSheet: View {
                         selectedBlueprintId = blueprints.first?.id
                     }
                 }
-                .onChange(of: selectedBlueprintId) { _ in
+                .onChange(of: selectedBlueprintId) { _, _ in
                     syncBlueprintDefaults()
                     if categoryPlacementMode == .existing, selectedCategoryId == nil {
                         selectedCategoryId = suggestedCategoryId
@@ -982,6 +982,11 @@ struct AddColumnSheet: View {
             resolvedCategoryId = generatedCategoryId
         }
 
+        if selectedBlueprint.instrumentKind == .physicalTest {
+            Task { await saveLinkedPhysicalColumns(blueprint: selectedBlueprint, categoryId: resolvedCategoryId) }
+            return
+        }
+
         if selectedBlueprint.instrumentKind == .physicalTest, selectedPhysicalColumnMode == .rawAndScore {
             bridge.addColumn(
                 name: "\(resolvedColumnName) · marca",
@@ -1055,6 +1060,96 @@ struct AddColumnSheet: View {
             isTemplate: isTemplate
         )
         dismiss()
+    }
+
+    @MainActor
+    private func saveLinkedPhysicalColumns(blueprint: NotebookColumnBlueprint, categoryId: String?) async {
+        guard let classId = bridge.currentNotebookClassId else {
+            bridge.status = "Selecciona una clase antes de crear columnas físicas."
+            return
+        }
+        guard let assignment = selectedPhysicalAssignmentId.flatMap({ id in physicalAssignments.first(where: { $0.id == id }) }) ?? physicalAssignments.first,
+              let testId = selectedPhysicalTestId ?? availablePhysicalTestIds.first else {
+            bridge.status = "Selecciona una asignación y una prueba física antes de crear columnas."
+            return
+        }
+
+        let dateEpochMs = Int64(selectedDate.timeIntervalSince1970 * 1000)
+        let links = (try? await bridge.listPhysicalNotebookLinksForAssignment(assignmentId: assignment.id)) ?? []
+        let existingLink = links.first { $0.testId == testId }
+        var rawColumnId = existingLink?.rawColumnId
+        var scoreColumnId = existingLink?.scoreColumnId
+
+        do {
+            if (selectedPhysicalColumnMode == .raw || selectedPhysicalColumnMode == .rawAndScore) && rawColumnId == nil {
+                let title = "\(resolvedColumnName) · marca"
+                if let existingColumnId = existingNotebookPhysicalColumnId(title: title, categoryId: categoryId) {
+                    rawColumnId = existingColumnId
+                } else {
+                    rawColumnId = try await bridge.createNotebookPhysicalColumnForClass(
+                        classId: classId,
+                        name: title,
+                        categoryId: categoryId,
+                        inputKind: resolvedInputKind,
+                        unitOrSituation: trimmedOrNil(unitOrSituation),
+                        scaleKind: resolvedScaleKind,
+                        iconName: "stopwatch.fill",
+                        weight: 0,
+                        countsTowardAverage: false,
+                        dateEpochMs: dateEpochMs
+                    )
+                }
+            }
+
+            if (selectedPhysicalColumnMode == .score || selectedPhysicalColumnMode == .rawAndScore) && scoreColumnId == nil {
+                let title = selectedPhysicalColumnMode == .score ? resolvedColumnName : "\(resolvedColumnName) · nota"
+                if let existingColumnId = existingNotebookPhysicalColumnId(title: title, categoryId: categoryId) {
+                    scoreColumnId = existingColumnId
+                } else {
+                    scoreColumnId = try await bridge.createNotebookPhysicalColumnForClass(
+                        classId: classId,
+                        name: title,
+                        categoryId: categoryId,
+                        inputKind: .numeric010,
+                        unitOrSituation: selectedPhysicalScaleId.flatMap { id in physicalScales.first(where: { $0.id == id })?.name } ?? "Nota baremada",
+                        scaleKind: .tenPoint,
+                        iconName: "chart.bar.fill",
+                        weight: Double(weight.replacingOccurrences(of: ",", with: ".")) ?? blueprint.defaultWeight,
+                        countsTowardAverage: resolvedCountsTowardAverage,
+                        dateEpochMs: dateEpochMs
+                    )
+                }
+            }
+
+            try await bridge.savePhysicalNotebookLink(
+                MiGestorKit.PhysicalTestNotebookLink(
+                    assignmentId: assignment.id,
+                    testId: testId,
+                    rawColumnId: rawColumnId,
+                    scoreColumnId: scoreColumnId,
+                    trace: auditTrace()
+                )
+            )
+            bridge.status = "Columnas físicas vinculadas con \(physicalName(for: testId))."
+            dismiss()
+        } catch {
+            bridge.status = "No se pudieron crear las columnas físicas: \(error.localizedDescription)"
+        }
+    }
+
+    private func existingNotebookPhysicalColumnId(title: String, categoryId: String?) -> String? {
+        guard let data = bridge.notebookState as? NotebookUiStateData else { return nil }
+        return data.sheet.columns.first { column in
+            column.title == title &&
+            column.categoryId == categoryId &&
+            column.instrumentKind == .physicalTest
+        }?.id
+    }
+
+    private func auditTrace() -> AuditTrace {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let now = Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMs)
+        return AuditTrace(authorUserId: nil, createdAt: now, updatedAt: now, associatedGroupId: bridge.currentNotebookClassId.map { KotlinLong(value: $0) }, deviceId: nil, syncVersion: 0)
     }
 
     private var availablePhysicalTestIds: [String] {
@@ -1145,6 +1240,7 @@ struct AddColumnSheet: View {
             visibility: .visible,
             isLocked: isLocked,
             isTemplate: isTemplate,
+            emptyCellPolicy: createdColumn.emptyCellPolicy,
             trace: createdColumn.trace
         )
         bridge.saveColumn(column: updatedColumn)

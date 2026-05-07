@@ -17,6 +17,7 @@ import com.migestor.shared.domain.NotebookScaleKind
 import com.migestor.shared.domain.NotebookWorkGroup
 import com.migestor.shared.domain.NotebookWorkGroupMember
 import com.migestor.shared.domain.NotebookTab
+import com.migestor.shared.domain.NotebookEmptyCellPolicy
 import com.migestor.shared.repository.NotebookConfigRepository
 import com.migestor.shared.util.NotebookRefreshBus
 import kotlinx.coroutines.Dispatchers
@@ -53,6 +54,10 @@ class NotebookConfigRepositorySqlDelight(
 
     private fun String?.toNotebookVisibility(): NotebookColumnVisibility {
         return runCatching { NotebookColumnVisibility.valueOf(this ?: "") }.getOrDefault(NotebookColumnVisibility.VISIBLE)
+    }
+
+    private fun String?.toNotebookEmptyCellPolicy(): NotebookEmptyCellPolicy {
+        return runCatching { NotebookEmptyCellPolicy.valueOf(this ?: "") }.getOrDefault(NotebookEmptyCellPolicy.EXCLUDE_FROM_AVERAGE)
     }
 
     override fun observeTabs(classId: Long): Flow<List<NotebookTab>> {
@@ -146,6 +151,10 @@ class NotebookConfigRepositorySqlDelight(
                         isHidden = resolvedVisibility != NotebookColumnVisibility.VISIBLE,
                         visibility = resolvedVisibility,
                         isLocked = row.is_locked == 1L,
+                        countsTowardAverage = row.counts_toward_average == 1L,
+                        isPinned = row.is_pinned == 1L,
+                        isTemplate = row.is_template == 1L,
+                        emptyCellPolicy = row.empty_cell_policy.toNotebookEmptyCellPolicy(),
                         trace = AuditTrace(
                             updatedAt = Instant.fromEpochMilliseconds(row.updated_at_epoch_ms),
                             deviceId = row.device_id,
@@ -183,6 +192,10 @@ class NotebookConfigRepositorySqlDelight(
                 isHidden = resolvedVisibility != NotebookColumnVisibility.VISIBLE,
                 visibility = resolvedVisibility,
                 isLocked = row.is_locked == 1L,
+                countsTowardAverage = row.counts_toward_average == 1L,
+                isPinned = row.is_pinned == 1L,
+                isTemplate = row.is_template == 1L,
+                emptyCellPolicy = row.empty_cell_policy.toNotebookEmptyCellPolicy(),
                 trace = AuditTrace(
                     updatedAt = Instant.fromEpochMilliseconds(row.updated_at_epoch_ms),
                     deviceId = row.device_id,
@@ -247,6 +260,11 @@ class NotebookConfigRepositorySqlDelight(
             category_id = column.categoryId,
             visibility = resolvedVisibility.name,
             is_locked = if (column.isLocked) 1L else 0L,
+            counts_toward_average = if (column.countsTowardAverage) 1L else 0L,
+            is_pinned = if (column.isPinned) 1L else 0L,
+            is_hidden = if (resolvedVisibility != NotebookColumnVisibility.VISIBLE) 1L else 0L,
+            is_template = if (column.isTemplate) 1L else 0L,
+            empty_cell_policy = column.emptyCellPolicy.name,
             updated_at_epoch_ms = column.trace.updatedAt.toEpochMilliseconds(),
             device_id = column.trace.deviceId,
             sync_version = column.trace.syncVersion
@@ -355,6 +373,11 @@ class NotebookConfigRepositorySqlDelight(
                         category_id = null,
                         visibility = row.visibility,
                         is_locked = row.is_locked,
+                        counts_toward_average = row.counts_toward_average,
+                        is_pinned = row.is_pinned,
+                        is_hidden = row.is_hidden,
+                        is_template = row.is_template,
+                        empty_cell_policy = row.empty_cell_policy,
                         updated_at_epoch_ms = row.updated_at_epoch_ms,
                         device_id = row.device_id,
                         sync_version = row.sync_version
@@ -434,6 +457,11 @@ class NotebookConfigRepositorySqlDelight(
             category_id = categoryId,
             visibility = row.visibility,
             is_locked = row.is_locked,
+            counts_toward_average = row.counts_toward_average,
+            is_pinned = row.is_pinned,
+            is_hidden = row.is_hidden,
+            is_template = row.is_template,
+            empty_cell_policy = row.empty_cell_policy,
             updated_at_epoch_ms = Clock.System.now().toEpochMilliseconds(),
             device_id = row.device_id,
             sync_version = row.sync_version

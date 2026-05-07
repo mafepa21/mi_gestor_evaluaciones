@@ -1345,6 +1345,7 @@ final class KmpBridge: ObservableObject {
             visibility: .visible,
             isLocked: false,
             isTemplate: false,
+            emptyCellPolicy: .excludeFromAverage,
             trace: AuditTrace(
                 authorUserId: nil,
                 createdAt: nowInstant,
@@ -3237,6 +3238,7 @@ final class KmpBridge: ObservableObject {
             visibility: .visible,
             isLocked: false,
             isTemplate: false,
+            emptyCellPolicy: .excludeFromAverage,
             trace: trace
         )
         try await container.notebookRepository.saveColumn(classId: classId, column: column)
@@ -5839,6 +5841,7 @@ final class KmpBridge: ObservableObject {
                         visibility: notebookColumnVisibility(payloadObject["visibility"] as? String),
                         isLocked: boolValue(payloadObject["isLocked"] ?? payloadObject["is_locked"]) ?? false,
                         isTemplate: boolValue(payloadObject["isTemplate"] ?? payloadObject["is_template"]) ?? false,
+                        emptyCellPolicy: .excludeFromAverage,
                         trace: trace
                     )
                 )
@@ -7885,6 +7888,7 @@ extension KmpBridge {
             visibility: .visible,
             isLocked: false,
             isTemplate: false,
+            emptyCellPolicy: .excludeFromAverage,
             trace: trace
         )
         saveColumn(column: column)
@@ -7951,6 +7955,7 @@ extension KmpBridge {
             visibility: .visible,
             isLocked: false,
             isTemplate: false,
+            emptyCellPolicy: .excludeFromAverage,
             trace: trace
         )
         try await container.notebookRepository.saveColumn(classId: classId, column: column)

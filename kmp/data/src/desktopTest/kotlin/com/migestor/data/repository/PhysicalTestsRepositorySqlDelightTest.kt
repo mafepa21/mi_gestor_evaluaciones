@@ -259,6 +259,91 @@ class PhysicalTestsRepositorySqlDelightTest {
         assertNotNull(attempts.single { it.attempt_number == 2L })
     }
 
+    @Test
+    fun `battery assignment scale capture and notebook links survive reload without duplication`() = runTest {
+        val fixture = createFixture()
+        val classId = fixture.classes.saveClass(name = "1 ESO A", course = 1, description = null)
+        val studentId = fixture.students.saveStudent(
+            firstName = "Ana",
+            lastName = "Lopez",
+            email = null,
+            sex = StudentSex.FEMALE,
+            sexSource = StudentSexSource.MANUAL,
+            birthDate = LocalDate(2012, 3, 1),
+        )
+        fixture.classes.addStudentToClass(classId, studentId)
+        fixture.seedDefinitionAndBattery()
+
+        val assignment = PhysicalTestAssignment(
+            id = "assignment",
+            batteryId = "battery",
+            classId = classId,
+            course = 1,
+            ageFrom = 12,
+            ageTo = 13,
+            termLabel = "Inicial",
+            dateEpochMs = 1_000,
+            rawColumnMode = true,
+            scoreColumnMode = true,
+            trace = trace(),
+        )
+        fixture.physical.assignBatteryToClass(assignment)
+        fixture.physical.saveNotebookLink(
+            PhysicalTestNotebookLink(
+                assignmentId = assignment.id,
+                testId = "speed_30m",
+                rawColumnId = "raw_col",
+                scoreColumnId = "score_col",
+                trace = trace(),
+            )
+        )
+        fixture.physical.saveNotebookLink(
+            PhysicalTestNotebookLink(
+                assignmentId = assignment.id,
+                testId = "speed_30m",
+                rawColumnId = "raw_col",
+                scoreColumnId = "score_col",
+                trace = trace(),
+            )
+        )
+
+        val scale = scale("ios_pe_scale_assignment_speed_30m", course = 1, ageFrom = 12, ageTo = 13, batteryId = "battery", sex = "F")
+        fixture.physical.saveScale(scale)
+        val resolvedScale = fixture.physical.resolveScale("speed_30m", 1, 12, "female", "battery")
+        val rawValue = resolvedPhysicalResult(listOf(6.1, 5.8), PhysicalScaleDirection.LOWER_IS_BETTER, PhysicalResultMode.BEST)
+        val score = rawValue?.let { resolvedScale?.scoreFor(it) }
+
+        fixture.physical.saveResult(
+            PhysicalTestResult(
+                id = "result",
+                assignmentId = assignment.id,
+                testId = "speed_30m",
+                classId = classId,
+                studentId = studentId,
+                rawValue = rawValue,
+                rawText = "6,1 · 5,8",
+                score = score,
+                scaleId = resolvedScale?.id,
+                observedAtEpochMs = 2_000,
+                rawColumnId = "raw_col",
+                scoreColumnId = "score_col",
+                trace = trace(),
+            ),
+            attempts = listOf(
+                PhysicalTestAttempt("a1", "result", 1, 6.1, "6,1"),
+                PhysicalTestAttempt("a2", "result", 2, 5.8, "5,8"),
+            ),
+        )
+
+        val reloaded = PhysicalTestsRepositorySqlDelight(fixture.db)
+        assertEquals("battery", reloaded.listBatteries().single().id)
+        assertEquals(assignment.id, reloaded.listAssignmentsForClass(classId).single().id)
+        assertEquals(scale.id, reloaded.resolveScale("speed_30m", 1, 12, "F", "battery")?.id)
+        assertEquals(1, reloaded.listNotebookLinksForAssignment(assignment.id).size)
+        assertEquals(5.8, reloaded.listResultsForAssignment(assignment.id).single().rawValue)
+        assertEquals(10.0, reloaded.listResultsForStudent(studentId, "speed_30m").single().score)
+    }
+
     private fun createFixture(): Fixture {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         AppDatabase.Schema.create(driver)

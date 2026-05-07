@@ -6,6 +6,8 @@ import com.migestor.data.db.AppDatabase
 import com.migestor.shared.domain.NotebookColumnCategory
 import com.migestor.shared.domain.NotebookColumnDefinition
 import com.migestor.shared.domain.NotebookColumnType
+import com.migestor.shared.domain.NotebookInstrumentKind
+import com.migestor.shared.domain.NotebookScaleKind
 import com.migestor.shared.usecase.BuildNotebookSheetUseCase
 import com.migestor.shared.usecase.GetNotebookUseCase
 import kotlinx.coroutines.test.runTest
@@ -424,6 +426,62 @@ class NotebookRepositorySqlDelightTest {
         assertTrue(indexExists(driver, "idx_grades_class_student"))
         assertTrue(indexExists(driver, "idx_grades_class_column"))
         assertTrue(indexExists(driver, "idx_grades_evaluation"))
+    }
+
+    @Test
+    fun `physical raw mark is excluded from average and scaled score is included`() = runTest {
+        val fixture = createFixture()
+        val classId = fixture.classes.saveClass(name = "1 ESO A", course = 1, description = null)
+        val studentId = fixture.students.saveStudent(firstName = "Ana", lastName = "Lopez", email = null)
+        fixture.classes.addStudentToClass(classId, studentId)
+        fixture.config.saveColumn(
+            classId,
+            NotebookColumnDefinition(
+                id = "raw_col",
+                title = "Velocidad 30 m · marca",
+                type = NotebookColumnType.NUMERIC,
+                instrumentKind = NotebookInstrumentKind.PHYSICAL_TEST,
+                scaleKind = NotebookScaleKind.TIME,
+                weight = 0.0,
+                countsTowardAverage = false,
+            )
+        )
+        fixture.config.saveColumn(
+            classId,
+            NotebookColumnDefinition(
+                id = "score_col",
+                title = "Velocidad 30 m · nota",
+                type = NotebookColumnType.NUMERIC,
+                instrumentKind = NotebookInstrumentKind.PHYSICAL_TEST,
+                scaleKind = NotebookScaleKind.TEN_POINT,
+                weight = 10.0,
+                countsTowardAverage = true,
+            )
+        )
+
+        fixture.notebook.upsertGrade(
+            classId = classId,
+            studentId = studentId,
+            columnId = "raw_col",
+            evaluationId = null,
+            numericValue = 5.8,
+            createdAtEpochMs = 1L,
+            updatedAtEpochMs = 1L,
+        )
+        fixture.notebook.upsertGrade(
+            classId = classId,
+            studentId = studentId,
+            columnId = "score_col",
+            evaluationId = null,
+            numericValue = 8.0,
+            createdAtEpochMs = 2L,
+            updatedAtEpochMs = 2L,
+        )
+
+        val row = fixture.notebook.loadNotebookSnapshot(classId).rows.single()
+        assertEquals(8.0, row.weightedAverage)
+        assertEquals(5.8, row.persistedGrades.single { it.columnId == "raw_col" }.value)
+        assertEquals(8.0, row.persistedGrades.single { it.columnId == "score_col" }.value)
     }
 
     private fun createFixture(): Fixture {

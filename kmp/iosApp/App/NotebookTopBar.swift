@@ -414,6 +414,7 @@ struct NotebookSummaryGenerationSheet: View {
                 visibility: .visible,
                 isLocked: referenceColumn?.isLocked ?? false,
                 isTemplate: referenceColumn?.isTemplate ?? false,
+                emptyCellPolicy: referenceColumn?.emptyCellPolicy ?? createdColumn.emptyCellPolicy,
                 trace: createdColumn.trace
             )
             bridge.saveColumn(column: updatedColumn)

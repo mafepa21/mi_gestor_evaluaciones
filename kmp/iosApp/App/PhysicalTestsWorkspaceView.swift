@@ -168,6 +168,9 @@ struct PhysicalTestsWorkspaceView: View {
     @State private var selectedBatteryId: String?
     @State private var assignments: [MiGestorKit.PhysicalTestAssignment] = []
     @State private var notebookLinks: [MiGestorKit.PhysicalTestNotebookLink] = []
+    @State private var assignmentNotebookTabs: [NotebookTab] = []
+    @State private var selectedAssignmentNotebookTabId: String?
+    @State private var newAssignmentNotebookTabName = "Condición física"
     @State private var assignmentCourse = 1
     @State private var assignmentAgeFrom = 12
     @State private var assignmentAgeTo = 13
@@ -235,6 +238,10 @@ struct PhysicalTestsWorkspaceView: View {
         guard let selectedTest, let activeAssignment else { return nil }
         let definitionId = testDefinitionId(for: selectedTest)
         return notebookLinks.first { $0.assignmentId == activeAssignment.id && $0.testId == definitionId }
+    }
+
+    private var selectedAssignmentNotebookTab: NotebookTab? {
+        selectedAssignmentNotebookTabId.flatMap { id in assignmentNotebookTabs.first(where: { $0.id == id }) }
     }
 
     private var selectedResult: KmpBridge.PhysicalTestSnapshot.StudentResult? {
@@ -368,7 +375,9 @@ struct PhysicalTestsWorkspaceView: View {
             }
             .sheet(isPresented: $showingScaleEditor) {
                 NavigationStack {
-                    PhysicalTestScaleEditor(scale: $scale, context: activeScaleEditorContext)
+                    PhysicalTestScaleEditor(scale: $scale, context: activeScaleEditorContext) { draft in
+                        Task { await saveScale(draft) }
+                    }
                         .toolbar {
                             ToolbarItem(placement: .confirmationAction) {
                                 Button("OK") { showingScaleEditor = false }
@@ -531,7 +540,11 @@ struct PhysicalTestsWorkspaceView: View {
                             .font(.headline)
                         Picker("Clase", selection: Binding<Int64?>(
                             get: { selectedClassId },
-                            set: { selectedClassId = $0 }
+                            set: { newValue in
+                                selectedClassId = newValue
+                                syncSelectedClassDefaults()
+                                Task { await refreshAssignmentNotebookTabs() }
+                            }
                         )) {
                             Text("Selecciona clase").tag(Optional<Int64>.none)
                             ForEach(bridge.classes, id: \.id) { schoolClass in
@@ -554,6 +567,47 @@ struct PhysicalTestsWorkspaceView: View {
                         TextField("Evaluación / trimestre", text: $assignmentTermLabel)
                             .textFieldStyle(.roundedBorder)
                         DatePicker("Fecha de medición", selection: $batteryDate, displayedComponents: .date)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Pestaña del cuaderno")
+                                .font(.subheadline.weight(.semibold))
+                            if assignmentNotebookTabs.isEmpty {
+                                VStack(alignment: .leading, spacing: 10) {
+                                    Text("Esta clase todavía no tiene pestañas para ubicar las columnas.")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                    Button {
+                                        createAssignmentNotebookTab(defaultName: "Condición física")
+                                    } label: {
+                                        Label("Crear pestaña Condición física", systemImage: "plus.rectangle.on.folder")
+                                    }
+                                    .disabled(selectedClassId == nil)
+                                }
+                            } else {
+                                Picker("Pestaña del cuaderno", selection: Binding<String?>(
+                                    get: { selectedAssignmentNotebookTabId ?? assignmentNotebookTabs.first?.id },
+                                    set: { selectedAssignmentNotebookTabId = $0; bridge.setSelectedNotebookTab(id: $0) }
+                                )) {
+                                    ForEach(assignmentNotebookTabs, id: \.id) { tab in
+                                        Text(tab.title).tag(Optional(tab.id))
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                Text("Las columnas de marca y nota se crearán dentro de esta pestaña.")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            HStack(spacing: 8) {
+                                TextField("Nueva pestaña", text: $newAssignmentNotebookTabName)
+                                    .textFieldStyle(.roundedBorder)
+                                Button {
+                                    createAssignmentNotebookTab()
+                                } label: {
+                                    Label("Crear pestaña", systemImage: "plus")
+                                }
+                                .disabled(selectedClassId == nil || trimmedOrNil(newAssignmentNotebookTabName) == nil)
+                            }
+                        }
                         Picker("Columnas", selection: $batteryColumnMode) {
                             ForEach(PhysicalNotebookColumnMode.allCases) { mode in
                                 Text(mode.rawValue).tag(mode)
@@ -568,7 +622,7 @@ struct PhysicalTestsWorkspaceView: View {
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.borderedProminent)
-                        .disabled(selectedClassId == nil || batteries.isEmpty)
+                        .disabled(selectedClassId == nil || batteries.isEmpty || selectedAssignmentNotebookTabId == nil)
                     }
                 }
 
@@ -691,7 +745,9 @@ struct PhysicalTestsWorkspaceView: View {
 
     private var scalesView: some View {
         NavigationStack {
-            PhysicalTestScaleEditor(scale: $scale, context: activeScaleEditorContext)
+            PhysicalTestScaleEditor(scale: $scale, context: activeScaleEditorContext) { draft in
+                Task { await saveScale(draft) }
+            }
                 .navigationTitle("Baremos")
                 .onAppear { resetScaleDraftForActiveTest() }
         }
@@ -758,8 +814,11 @@ struct PhysicalTestsWorkspaceView: View {
             selectedStudentId = nil
             assignments = []
             notebookLinks = []
+            assignmentNotebookTabs = []
+            selectedAssignmentNotebookTabId = nil
             return
         }
+        await refreshAssignmentNotebookTabs()
         definitions = (try? await bridge.listPhysicalDefinitions()) ?? []
         batteries = (try? await bridge.listPhysicalBatteries()) ?? []
         assignments = (try? await bridge.listPhysicalAssignmentsForClass(classId: selectedClassId)) ?? []
@@ -780,6 +839,59 @@ struct PhysicalTestsWorkspaceView: View {
         }
         syncSelectedClassDefaults()
         resetScaleDraftForActiveTest()
+    }
+
+    @MainActor
+    private func refreshAssignmentNotebookTabs() async {
+        guard let selectedClassId else {
+            assignmentNotebookTabs = []
+            selectedAssignmentNotebookTabId = nil
+            return
+        }
+        bridge.selectClass(id: selectedClassId)
+        await Task.yield()
+        let tabs = (bridge.notebookState as? NotebookUiStateData)?.sheet.tabs ?? []
+        assignmentNotebookTabs = tabs.sorted {
+            if $0.order != $1.order { return $0.order < $1.order }
+            return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+        }
+        if let selectedAssignmentNotebookTabId,
+           assignmentNotebookTabs.contains(where: { $0.id == selectedAssignmentNotebookTabId }) {
+            bridge.setSelectedNotebookTab(id: selectedAssignmentNotebookTabId)
+            return
+        }
+        let preferred = assignmentNotebookTabs.first { tab in
+            tab.title.localizedCaseInsensitiveContains("condición") ||
+            tab.title.localizedCaseInsensitiveContains("fis")
+        }
+        selectedAssignmentNotebookTabId = preferred?.id ?? assignmentNotebookTabs.first?.id
+        bridge.setSelectedNotebookTab(id: selectedAssignmentNotebookTabId)
+    }
+
+    @MainActor
+    private func createAssignmentNotebookTab(defaultName: String? = nil) {
+        guard let selectedClassId else {
+            bridge.status = "Selecciona una clase antes de crear una pestaña."
+            return
+        }
+        let requestedName = (defaultName ?? newAssignmentNotebookTabName).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !requestedName.isEmpty else { return }
+        if let existing = assignmentNotebookTabs.first(where: { $0.title.trimmingCharacters(in: .whitespacesAndNewlines).localizedCaseInsensitiveCompare(requestedName) == .orderedSame }) {
+            selectedAssignmentNotebookTabId = existing.id
+            bridge.selectClass(id: selectedClassId)
+            bridge.setSelectedNotebookTab(id: existing.id)
+            bridge.status = "La pestaña \(existing.title) ya existía y queda seleccionada."
+            return
+        }
+        bridge.selectClass(id: selectedClassId)
+        if let createdTabId = bridge.createTab(title: requestedName) {
+            selectedAssignmentNotebookTabId = createdTabId
+            bridge.setSelectedNotebookTab(id: createdTabId)
+            bridge.status = "Pestaña creada: \(requestedName)"
+            Task { await refreshAssignmentNotebookTabs() }
+        } else {
+            bridge.status = "No se pudo crear la pestaña del cuaderno."
+        }
     }
 
     private func createTest(from template: PhysicalTestTemplate) async {
@@ -850,6 +962,12 @@ struct PhysicalTestsWorkspaceView: View {
             bridge.status = "Crea una batería antes de asignarla."
             return
         }
+        guard let selectedAssignmentNotebookTabId else {
+            bridge.status = "Selecciona o crea una pestaña del cuaderno para ubicar las columnas."
+            return
+        }
+        bridge.selectClass(id: selectedClassId)
+        bridge.setSelectedNotebookTab(id: selectedAssignmentNotebookTabId)
         let assignment = MiGestorKit.PhysicalTestAssignment(
             id: "pe_assignment_\(Int64(Date().timeIntervalSince1970 * 1000))",
             batteryId: battery.id,
@@ -875,53 +993,162 @@ struct PhysicalTestsWorkspaceView: View {
     private func createNotebookColumns(for battery: MiGestorKit.PhysicalTestBattery, assignment: MiGestorKit.PhysicalTestAssignment) async throws {
         let selectedClassId = assignment.classId
         bridge.selectClass(id: selectedClassId)
+        guard let selectedAssignmentNotebookTabId else {
+            throw NSError(domain: "PhysicalTestsWorkspaceView", code: 422, userInfo: [NSLocalizedDescriptionKey: "Selecciona una pestaña del cuaderno para crear las columnas."])
+        }
+        bridge.setSelectedNotebookTab(id: selectedAssignmentNotebookTabId)
         let selectedTemplates = PhysicalTestTemplate.defaults.filter { battery.testIds.contains($0.id) }
         let categoryId = assignment.id
         bridge.saveColumnCategory(name: "\(battery.name) · \(assignment.termLabel ?? "Evaluación física")", categoryId: categoryId)
+        let persistedLinks = (try? await bridge.listPhysicalNotebookLinksForAssignment(assignmentId: assignment.id)) ?? []
 
         for template in selectedTemplates {
-            var rawColumnId: String?
-            var scoreColumnId: String?
-            if assignment.rawColumnMode {
-                rawColumnId = try await bridge.createNotebookPhysicalColumnForClass(
-                    classId: selectedClassId,
-                    name: "\(template.name) · marca",
-                    categoryId: categoryId,
-                    inputKind: template.measurement.inputKind,
-                    unitOrSituation: template.unit,
-                    scaleKind: template.measurement.scaleKind,
-                    iconName: "stopwatch.fill",
-                    weight: 0,
-                    countsTowardAverage: false,
-                    dateEpochMs: assignment.dateEpochMs
-                )
+            let existingLink = persistedLinks.first { $0.testId == template.id } ??
+                notebookLinks.first { $0.assignmentId == assignment.id && $0.testId == template.id }
+            var rawColumnId = existingLink?.rawColumnId
+            var scoreColumnId = existingLink?.scoreColumnId
+            if assignment.rawColumnMode && rawColumnId == nil {
+                let title = "\(template.name) · marca"
+                if let existingColumnId = existingNotebookPhysicalColumnId(title: title, categoryId: categoryId) {
+                    rawColumnId = existingColumnId
+                } else {
+                    rawColumnId = try await bridge.createNotebookPhysicalColumnForClass(
+                        classId: selectedClassId,
+                        name: title,
+                        categoryId: categoryId,
+                        inputKind: template.measurement.inputKind,
+                        unitOrSituation: template.unit,
+                        scaleKind: template.measurement.scaleKind,
+                        iconName: "stopwatch.fill",
+                        weight: 0,
+                        countsTowardAverage: false,
+                        dateEpochMs: assignment.dateEpochMs
+                    )
+                }
             }
 
-            if assignment.scoreColumnMode {
-                scoreColumnId = try await bridge.createNotebookPhysicalColumnForClass(
-                    classId: selectedClassId,
-                    name: "\(template.name) · nota",
-                    categoryId: categoryId,
-                    inputKind: .numeric010,
-                    unitOrSituation: "Nota baremada",
-                    scaleKind: .tenPoint,
-                    iconName: "chart.bar.fill",
-                    weight: 10,
-                    countsTowardAverage: scoreCountsTowardAverage,
-                    dateEpochMs: assignment.dateEpochMs
+            if assignment.scoreColumnMode && scoreColumnId == nil {
+                let title = "\(template.name) · nota"
+                if let existingColumnId = existingNotebookPhysicalColumnId(title: title, categoryId: categoryId) {
+                    scoreColumnId = existingColumnId
+                } else {
+                    scoreColumnId = try await bridge.createNotebookPhysicalColumnForClass(
+                        classId: selectedClassId,
+                        name: title,
+                        categoryId: categoryId,
+                        inputKind: .numeric010,
+                        unitOrSituation: "Nota baremada",
+                        scaleKind: .tenPoint,
+                        iconName: "chart.bar.fill",
+                        weight: 10,
+                        countsTowardAverage: scoreCountsTowardAverage,
+                        dateEpochMs: assignment.dateEpochMs
+                    )
+                }
+            }
+            if existingLink?.rawColumnId != rawColumnId || existingLink?.scoreColumnId != scoreColumnId {
+                try await bridge.savePhysicalNotebookLink(
+                    MiGestorKit.PhysicalTestNotebookLink(
+                        assignmentId: assignment.id,
+                        testId: template.id,
+                        rawColumnId: rawColumnId,
+                        scoreColumnId: scoreColumnId,
+                        trace: auditTrace()
+                    )
                 )
             }
-            try await bridge.savePhysicalNotebookLink(
-                MiGestorKit.PhysicalTestNotebookLink(
-                    assignmentId: assignment.id,
-                    testId: template.id,
-                    rawColumnId: rawColumnId,
-                    scoreColumnId: scoreColumnId,
-                    trace: auditTrace()
-                )
+        }
+        let tabName = selectedAssignmentNotebookTab?.title ?? "la pestaña seleccionada"
+        bridge.status = "Asignación creada y columnas preparadas en \(tabName)."
+    }
+
+    @MainActor
+    private func saveScale(_ draft: PhysicalTestScaleDraft) async {
+        guard let context = activeScaleEditorContext,
+              let testId = activeScaleTestId else {
+            bridge.status = "Selecciona una prueba antes de guardar el baremo."
+            return
+        }
+        guard draft.validationMessages.isEmpty, !draft.ranges.isEmpty else {
+            bridge.status = "Revisa los rangos antes de guardar el baremo."
+            return
+        }
+        let assignment = activeAssignment ?? filteredAssignments.first ?? assignments.first
+        let draftBatteryId = trimmedOrNil(draft.batteryId)
+        let batteryId = assignment?.batteryId ?? context.batteryId ?? draftBatteryId
+        let scaleId = draft.persistedScaleId ?? "ios_pe_scale_\(assignment?.id ?? "global")_\(testId)"
+        let ranges = draft.ranges.enumerated().map { index, range in
+            MiGestorKit.PhysicalTestScaleRange(
+                id: "\(scaleId)_range_\(index + 1)",
+                scaleId: scaleId,
+                minValue: range.minValue.map { KotlinDouble(value: $0) },
+                maxValue: range.maxValue.map { KotlinDouble(value: $0) },
+                score: range.score,
+                label: trimmedOrNil(range.label),
+                sortOrder: Int32(index)
             )
         }
-        bridge.status = "Asignación creada y columnas preparadas para \(battery.name)."
+        let persisted = MiGestorKit.PhysicalTestScale(
+            id: scaleId,
+            testId: testId,
+            name: trimmedOrNil(draft.name) ?? "Baremo \(context.testName)",
+            course: assignment?.course ?? context.course.map { KotlinInt(value: Int32($0)) },
+            ageFrom: assignment?.ageFrom ?? context.ageFrom.map { KotlinInt(value: Int32($0)) },
+            ageTo: assignment?.ageTo ?? context.ageTo.map { KotlinInt(value: Int32($0)) },
+            sex: trimmedOrNil(draft.sex),
+            batteryId: batteryId,
+            direction: draft.direction == .lowerIsBetter ? .lowerIsBetter : .higherIsBetter,
+            ranges: ranges,
+            trace: auditTrace()
+        )
+        do {
+            try await bridge.savePhysicalScale(persisted)
+            let resolved = try await bridge.resolvePhysicalScale(
+                testId: testId,
+                course: persisted.course?.intValue,
+                age: persisted.ageFrom?.intValue,
+                sex: persisted.sex,
+                batteryId: persisted.batteryId
+            )
+            await reload()
+            scale = scaleDraft(from: persisted)
+            bridge.status = resolved?.id == persisted.id
+                ? "Baremo guardado y resoluble para \(context.testName)."
+                : "Baremo guardado para \(context.testName), pero no se pudo resolver con el contexto actual."
+        } catch {
+            bridge.status = "No se pudo guardar el baremo: \(error.localizedDescription)"
+        }
+    }
+
+    private func scaleDraft(from persisted: MiGestorKit.PhysicalTestScale) -> PhysicalTestScaleDraft {
+        PhysicalTestScaleDraft(
+            persistedScaleId: persisted.id,
+            name: persisted.name,
+            testId: persisted.testId,
+            course: persisted.course?.intValue,
+            ageFrom: persisted.ageFrom?.intValue,
+            ageTo: persisted.ageTo?.intValue,
+            sex: persisted.sex ?? "",
+            batteryId: persisted.batteryId ?? "",
+            direction: persisted.direction == .lowerIsBetter ? .lowerIsBetter : .higherIsBetter,
+            ranges: persisted.ranges.map {
+                PhysicalTestScaleRange(
+                    minValue: $0.minValue?.doubleValue,
+                    maxValue: $0.maxValue?.doubleValue,
+                    score: $0.score,
+                    label: $0.label ?? ""
+                )
+            }
+        )
+    }
+
+    private func existingNotebookPhysicalColumnId(title: String, categoryId: String) -> String? {
+        guard let data = bridge.notebookState as? NotebookUiStateData else { return nil }
+        return data.sheet.columns.first { column in
+            column.title == title &&
+            column.categoryId == categoryId &&
+            column.instrumentKind == .physicalTest
+        }?.id
     }
 
     private func syncSelectedClassDefaults() {

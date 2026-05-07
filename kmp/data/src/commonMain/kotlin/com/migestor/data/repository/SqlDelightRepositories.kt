@@ -18,6 +18,9 @@ import com.migestor.shared.domain.EvaluationCompetencyLink
 import com.migestor.shared.domain.Grade
 import com.migestor.shared.domain.Incident
 import com.migestor.shared.domain.Period
+import com.migestor.shared.domain.NotebookAverageExplanation
+import com.migestor.shared.domain.NotebookCellAuditAction
+import com.migestor.shared.domain.NotebookCellAuditEvent
 import com.migestor.shared.domain.PersistedNotebookCell
 import com.migestor.shared.domain.PlanningSession
 import com.migestor.shared.domain.Rubric
@@ -455,10 +458,12 @@ class GradesRepositorySqlDelight(
     ): Long {
         val now = if (updatedAtEpochMs > 0) updatedAtEpochMs else Clock.System.now().toEpochMilliseconds()
         val created = if (createdAtEpochMs > 0) createdAtEpochMs else now
-        val existing = db.appDatabaseQueries.selectGradeByStudentClassAndColumn(classId, studentId, columnId).executeAsOneOrNull()
+        val existingRecord = db.appDatabaseQueries.selectGradesByStudentAndClass(studentId, classId).executeAsList().find { it.column_id == columnId }
+        val existingValue = existingRecord?.value_
+        
         val canApply = shouldApplyIncomingChange(
-            existingUpdatedAtEpochMs = existing?.updated_at_epoch_ms,
-            existingDeviceId = existing?.device_id,
+            existingUpdatedAtEpochMs = existingRecord?.updated_at_epoch_ms,
+            existingDeviceId = existingRecord?.device_id,
             incomingUpdatedAtEpochMs = now,
             incomingDeviceId = deviceId
         )
@@ -481,6 +486,24 @@ class GradesRepositorySqlDelight(
                 device_id = deviceId,
                 sync_version = syncVersion
             )
+            
+            if (existingValue != value) {
+                db.appDatabaseQueries.insertNotebookCellAudit(
+                    class_id = classId,
+                    student_id = studentId,
+                    column_id = columnId,
+                    previous_numeric_value = existingValue,
+                    new_numeric_value = value,
+                    previous_text_value = null,
+                    new_text_value = null,
+                    action = if (existingValue == null) NotebookCellAuditAction.CREATED.name else NotebookCellAuditAction.UPDATED.name,
+                    changed_at_epoch_ms = now,
+                    author_user_id = null,
+                    device_id = deviceId,
+                    sync_version = syncVersion
+                )
+            }
+            
             id ?: db.appDatabaseQueries.lastInsertedId().executeAsOne()
         }
     }
@@ -680,6 +703,13 @@ class NotebookCellsRepositorySqlDelight(
     ) {
         val now = if (updatedAtEpochMs > 0) updatedAtEpochMs else Clock.System.now().toEpochMilliseconds()
         val existing = db.appDatabaseQueries.selectNotebookCellEntry(classId, studentId, columnId).executeAsOneOrNull()
+        
+        // Detect changes for audit
+        val textChanged = textValue != null && textValue != existing?.value_text
+        val boolChanged = boolValue != null && (boolValue != (existing?.value_bool == 1L))
+        val iconChanged = iconValue != null && iconValue != existing?.value_icon
+        val ordinalChanged = ordinalValue != null && ordinalValue != existing?.value_ordinal
+        
         db.appDatabaseQueries.upsertNotebookCellEntry(
             class_id = classId,
             student_id = studentId,
@@ -703,6 +733,50 @@ class NotebookCellsRepositorySqlDelight(
             device_id = deviceId,
             sync_version = syncVersion,
         )
+
+        if (textChanged || boolChanged || iconChanged || ordinalChanged) {
+            val prevText = listOfNotNull(existing?.value_text, existing?.value_icon, existing?.value_ordinal).joinToString(" | ")
+            val nextText = listOfNotNull(textValue, iconValue, ordinalValue).joinToString(" | ")
+            
+            db.appDatabaseQueries.insertNotebookCellAudit(
+                class_id = classId,
+                student_id = studentId,
+                column_id = columnId,
+                previous_numeric_value = null,
+                new_numeric_value = null,
+                previous_text_value = prevText.takeIf { it.isNotBlank() },
+                new_text_value = nextText.takeIf { it.isNotBlank() },
+                action = if (existing == null) NotebookCellAuditAction.CREATED.name else NotebookCellAuditAction.UPDATED.name,
+                changed_at_epoch_ms = now,
+                author_user_id = authorUserId,
+                device_id = deviceId,
+                sync_version = syncVersion
+            )
+        }
+    }
+
+    override fun observeCellAudit(
+        classId: Long,
+        studentId: Long,
+        columnId: String
+    ): Flow<List<NotebookCellAuditEvent>> {
+        return db.appDatabaseQueries.selectNotebookCellAudit(classId, studentId, columnId) { id, classIdDb, studentIdDb, columnIdDb, prevNum, nextNum, prevText, nextText, action, changedAt, authorId, deviceId, syncVersion ->
+            NotebookCellAuditEvent(
+                id = id,
+                classId = classIdDb,
+                studentId = studentIdDb,
+                columnId = columnIdDb,
+                previousNumericValue = prevNum,
+                newNumericValue = nextNum,
+                previousTextValue = prevText,
+                newTextValue = nextText,
+                action = runCatching { NotebookCellAuditAction.valueOf(action) }.getOrDefault(NotebookCellAuditAction.UPDATED),
+                changedAtEpochMs = changedAt,
+                authorUserId = authorId,
+                deviceId = deviceId,
+                syncVersion = syncVersion
+            )
+        }.asFlow().mapToList(Dispatchers.Default)
     }
 }
 

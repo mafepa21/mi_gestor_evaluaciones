@@ -784,6 +784,12 @@ enum class NotebookColumnVisibility {
     ARCHIVED,
 }
 
+enum class NotebookEmptyCellPolicy {
+    EXCLUDE_FROM_AVERAGE, // vacío no cuenta
+    COUNT_AS_ZERO,        // vacío cuenta como 0
+    COUNT_AS_PENDING      // vacío no baja la nota, pero aparece como pendiente
+}
+
 enum class NotebookDeletionTargetKind {
     COLUMN,
     CATEGORY,
@@ -868,6 +874,7 @@ data class NotebookColumnDefinition(
     val visibility: NotebookColumnVisibility = NotebookColumnVisibility.VISIBLE,
     val isLocked: Boolean = false,
     val isTemplate: Boolean = false,
+    val emptyCellPolicy: NotebookEmptyCellPolicy = NotebookEmptyCellPolicy.EXCLUDE_FROM_AVERAGE,
     val trace: AuditTrace = AuditTrace(),
 )
 
@@ -921,6 +928,31 @@ data class NotebookTypedCell(
     val ordinalValue: String? = null,
     val iconValue: String? = null,
     val annotation: NotebookCellAnnotation? = null,
+)
+
+enum class NotebookCellAuditAction {
+    CREATED,
+    UPDATED,
+    CLEARED,
+    RESTORED,
+    IMPORTED,
+    SYNC_MERGED,
+}
+
+data class NotebookCellAuditEvent(
+    val id: Long,
+    val classId: Long,
+    val studentId: Long,
+    val columnId: String,
+    val previousNumericValue: Double?,
+    val newNumericValue: Double?,
+    val previousTextValue: String?,
+    val newTextValue: String?,
+    val action: NotebookCellAuditAction,
+    val changedAtEpochMs: Long,
+    val authorUserId: Long?,
+    val deviceId: String?,
+    val syncVersion: Long,
 )
 
 data class PersistedNotebookCell(
@@ -985,9 +1017,41 @@ data class NotebookRow(
     val student: Student,
     val cells: List<NotebookCell>,
     val weightedAverage: Double?,
+    val averageExplanation: NotebookAverageExplanation? = null,
     val persistedCells: List<PersistedNotebookCell> = emptyList(),
     val persistedGrades: List<Grade> = emptyList(),
 )
+
+data class NotebookAverageExplanation(
+    val studentId: Long,
+    val average: Double?,
+    val included: List<NotebookAverageContribution>,
+    val excluded: List<NotebookAverageExclusion>,
+    val totalIncludedWeight: Double,
+    val policy: NotebookEmptyCellPolicy,
+)
+
+data class NotebookAverageContribution(
+    val columnId: String,
+    val title: String,
+    val value: Double,
+    val weight: Double,
+    val weightedValue: Double,
+)
+
+data class NotebookAverageExclusion(
+    val columnId: String,
+    val title: String,
+    val reason: NotebookAverageExclusionReason,
+)
+
+enum class NotebookAverageExclusionReason {
+    EMPTY,
+    COLUMN_DOES_NOT_COUNT,
+    RAW_VALUE_ONLY,
+    LOCKED_OR_ARCHIVED,
+    NON_NUMERIC,
+}
 
 fun List<Grade>.gradeValueFor(evaluationId: Long): Double? {
     return firstOrNull { it.evaluationId == evaluationId }?.value

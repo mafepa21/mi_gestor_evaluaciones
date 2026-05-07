@@ -54,96 +54,6 @@ final class NotebookMacInspectorState: ObservableObject {
     }
 }
 
-@MainActor
-final class NotebookMacToolbarActions: ObservableObject {
-    @Published var canMarkAllPresent = false
-    @Published var canUndo = false
-    @Published var canToggleInspector = false
-    @Published var isAttendanceQuickMode = false
-    @Published var isInspectorPresented = false
-    @Published var addColumnAvailable = false
-    @Published var organizationMenuAvailable = false
-    @Published var exportText: String?
-
-    private var markAllPresentAction: (() -> Void)?
-    private var attendanceQuickModeAction: (() -> Void)?
-    private var undoAction: (() -> Void)?
-    private var toggleInspectorAction: (() -> Void)?
-    private var addColumnAction: (() -> Void)?
-    private var organizationMenuAction: (() -> Void)?
-    private var advancedMenuAction: (() -> Void)?
-    private var summaryAction: (() -> Void)?
-    private var refreshAction: (() -> Void)?
-
-    func configure(
-        canMarkAllPresent: Bool,
-        canUndo: Bool,
-        canToggleInspector: Bool,
-        isAttendanceQuickMode: Bool,
-        isInspectorPresented: Bool,
-        addColumnAvailable: Bool,
-        organizationMenuAvailable: Bool,
-        exportText: String?,
-        onMarkAllPresent: @escaping () -> Void,
-        onToggleAttendanceQuickMode: @escaping () -> Void,
-        onUndo: @escaping () -> Void,
-        onToggleInspector: @escaping () -> Void,
-        onAddColumn: @escaping () -> Void,
-        onOpenOrganizationMenu: @escaping () -> Void,
-        onOpenAdvancedMenu: @escaping () -> Void,
-        onGenerateSummary: @escaping () -> Void,
-        onRefresh: @escaping () -> Void
-    ) {
-        self.canMarkAllPresent = canMarkAllPresent
-        self.canUndo = canUndo
-        self.canToggleInspector = canToggleInspector
-        self.isAttendanceQuickMode = isAttendanceQuickMode
-        self.isInspectorPresented = isInspectorPresented
-        self.addColumnAvailable = addColumnAvailable
-        self.organizationMenuAvailable = organizationMenuAvailable
-        self.exportText = exportText
-        self.markAllPresentAction = onMarkAllPresent
-        self.attendanceQuickModeAction = onToggleAttendanceQuickMode
-        self.undoAction = onUndo
-        self.toggleInspectorAction = onToggleInspector
-        self.addColumnAction = onAddColumn
-        self.organizationMenuAction = onOpenOrganizationMenu
-        self.advancedMenuAction = onOpenAdvancedMenu
-        self.summaryAction = onGenerateSummary
-        self.refreshAction = onRefresh
-    }
-
-    func clear() {
-        canMarkAllPresent = false
-        canUndo = false
-        canToggleInspector = false
-        isAttendanceQuickMode = false
-        isInspectorPresented = false
-        addColumnAvailable = false
-        organizationMenuAvailable = false
-        exportText = nil
-        markAllPresentAction = nil
-        attendanceQuickModeAction = nil
-        undoAction = nil
-        toggleInspectorAction = nil
-        addColumnAction = nil
-        organizationMenuAction = nil
-        advancedMenuAction = nil
-        summaryAction = nil
-        refreshAction = nil
-    }
-
-    func markAllPresent() { markAllPresentAction?() }
-    func toggleAttendanceQuickMode() { attendanceQuickModeAction?() }
-    func undo() { undoAction?() }
-    func toggleInspector() { toggleInspectorAction?() }
-    func addColumn() { addColumnAction?() }
-    func openOrganizationMenu() { organizationMenuAction?() }
-    func openAdvancedMenu() { advancedMenuAction?() }
-    func generateSummary() { summaryAction?() }
-    func refresh() { refreshAction?() }
-}
-
 enum NotebookMacPresentation: Equatable {
     case full
     case content
@@ -471,6 +381,9 @@ struct NotebookModuleView: View {
     @State private var notebookAISheetRequest: NotebookAISheetRequest? = nil
     @State private var notebookSummarySheetRequest: NotebookSummarySheetRequest? = nil
     @State private var isAverageConfigurationPresented = false
+    @State private var averageExplanationRow: NotebookTableRow? = nil
+    @State private var currentSelectionAuditEvents: [NotebookCellAuditEvent] = []
+    @State private var auditObservationTask: Task<Void, Never>? = nil
     @State private var riskLevelCache: [Int64: RiskLevel] = [:]
     @State private var riskComputationKey: String?
     @State private var isPrecomputingRiskLevels = false
@@ -760,9 +673,26 @@ struct NotebookModuleView: View {
                 restoreSeatPositions()
                 Task { await refreshNotebookSignals() }
             }
-            .onChange(of: inspectorSelection) { _ in
+            .onChange(of: inspectorSelection) { newValue in
                 syncInspectorDraft()
-                if inspectorSelection == nil {
+                auditObservationTask?.cancel()
+                currentSelectionAuditEvents = []
+                
+                if let selection = newValue {
+                    auditObservationTask = Task { @MainActor in
+                        let sequence = bridge.notebookViewModel.observeCellAudit(
+                            studentId: selection.studentId,
+                            columnId: selection.columnId
+                        ).asAsyncSequence(type: NSArray.self)
+                        
+                        for await events in sequence {
+                            if Task.isCancelled { break }
+                            currentSelectionAuditEvents = (events as? [NotebookCellAuditEvent]) ?? []
+                        }
+                    }
+                }
+                
+                if newValue == nil {
                     isInspectorPresented = false
                 }
             }
@@ -817,7 +747,9 @@ struct NotebookModuleView: View {
     }
 
     private func centerPanel(data: NotebookUiStateData) -> some View {
-        HStack(spacing: 0) {
+        let rows = filteredRows(data: data)
+
+        return HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 0) {
                 NotebookTopBar(
                     bridge: bridge,
@@ -826,7 +758,7 @@ struct NotebookModuleView: View {
                     navigationDirection: navigationDirection,
                     isInspectorPresented: isInspectorPresented,
                     isAttendanceQuickMode: isAttendanceQuickMode,
-                    canMarkAllPresent: !filteredRows(data: data).isEmpty,
+                    canMarkAllPresent: !rows.isEmpty,
                     canUndo: !undoStack.isEmpty,
                     onSelectClass: selectNotebookClass,
                     onOpenOrganizationMenu: {
@@ -871,13 +803,13 @@ struct NotebookModuleView: View {
                 Divider()
                 notebookTabStrip(data: data)
                 Divider()
-                spreadsheetContent(data: data)
+                spreadsheetContent(data: data, rows: rows)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
             if macPresentation == .full && isInspectorPresented {
                 Divider().opacity(0.16)
-                inspectorPanel(data: data)
+                inspectorPanel(data: data, rows: rows)
                     .frame(width: 360)
                     .background(NotebookStyle.surfaceMuted)
             }
@@ -974,8 +906,7 @@ struct NotebookModuleView: View {
     }
 
     @ViewBuilder
-    private func spreadsheetContent(data: NotebookUiStateData) -> some View {
-        let rows = filteredRows(data: data)
+    private func spreadsheetContent(data: NotebookUiStateData, rows: [NotebookTableRow]) -> some View {
         let segments = displaySegments(data: data)
         let fixedSegments = visibleFixedSegments(in: segments)
         let scrollableSegments = segments.filter { !isFixedSegment($0) }
@@ -985,95 +916,74 @@ struct NotebookModuleView: View {
             return false
         }
 
-        if rows.isEmpty {
+        NotebookGridContainer(
+            rows: rows,
+            surfaceMode: surfaceMode,
+            fixedColumnWidth: fixedZoneWidth,
+            topAccessoryHeight: hasFolders ? notebookGridFolderLaneHeight : 0,
+            headerHeight: notebookGridHeaderHeight,
+            rowHeight: notebookGridRowHeight
+        ) {
             NotebookStateCard(
                 systemImage: "person.3.sequence",
                 title: "Sin alumnos visibles",
                 message: "Ajusta la búsqueda o el filtro de grupo para ver filas del cuaderno."
             )
-        } else if surfaceMode == .seatingPlan {
+        } seatingContent: { rows in
             seatingPlanContent(data: data, rows: rows)
-        } else {
-            NotebookDataGrid(
-                fixedColumnWidth: fixedZoneWidth,
-                topAccessoryHeight: hasFolders ? notebookGridFolderLaneHeight : 0,
-                headerHeight: notebookGridHeaderHeight
-            ) {
-                Color.clear
-            } dividerHandle: {
-                NotebookDividerHandle(isDragging: isDraggingFixedZoneDivider) { translationWidth in
-                    if !isDraggingFixedZoneDivider {
-                        isDraggingFixedZoneDivider = true
-                        fixedZoneDragStartWidth = fixedZoneWidth
-                    }
-                    let newWidth = fixedZoneDragStartWidth + translationWidth
-                    fixedZoneWidthStored = Double(min(maxFixedZoneWidth, max(minFixedZoneWidth, newWidth)))
-                } onDragEnded: {
-                    isDraggingFixedZoneDivider = false
-                    snapFixedZoneWidth()
-                }
-            } scrollTopAccessory: {
-                Group {
-                    if hasFolders {
-                        HStack(alignment: .top, spacing: 8) {
-                            ForEach(laneItems, id: \.id) { item in
-                                switch item {
-                                case .spacer(_, let width):
-                                    Color.clear
-                                        .frame(width: width, height: 1)
-                                case .folder(let category, let columns, let width):
-                                    categoryFolderHeader(category: category, columns: columns, rows: rows, width: width)
-                                }
+        } topAccessory: {
+            Group {
+                if hasFolders {
+                    HStack(alignment: .top, spacing: 8) {
+                        ForEach(laneItems, id: \.id) { item in
+                            switch item {
+                            case .spacer(_, let width):
+                                Color.clear
+                                    .frame(width: width, height: 1)
+                            case .folder(let category, let columns, let width):
+                                categoryFolderHeader(category: category, columns: columns, rows: rows, width: width)
                             }
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 10)
-                        .padding(.bottom, 8)
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 10)
+                    .padding(.bottom, 8)
                 }
-            } fixedHeader: {
-                fixedHeaderRow(segments: fixedSegments, data: data)
-            } scrollHeader: {
-                headerRow(segments: scrollableSegments, data: data)
-            } fixedRows: {
-                LazyVStack(spacing: 0) {
-                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, item in
-                        notebookRowView(
-                            item: item,
-                            data: data,
-                            segments: fixedSegments,
-                            rowIndex: index,
-                            allRows: rows,
-                            navigableSegments: scrollableSegments
-                        )
-                        .frame(height: notebookGridRowHeight)
-                        Divider()
-                            .frame(height: 0.5)
-                            .overlay(NotebookStyle.softBorder.opacity(0.45))
-                            .padding(.horizontal, 16)
-                    }
-                }
-                .padding(.bottom, 16)
-            } scrollRows: {
-                LazyVStack(spacing: 0) {
-                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, item in
-                        notebookRowView(
-                            item: item,
-                            data: data,
-                            segments: scrollableSegments,
-                            rowIndex: index,
-                            allRows: rows,
-                            navigableSegments: scrollableSegments
-                        )
-                        .frame(height: notebookGridRowHeight)
-                        Divider()
-                            .frame(height: 0.5)
-                            .overlay(NotebookStyle.softBorder.opacity(0.45))
-                            .padding(.horizontal, 16)
-                    }
-                }
-                .padding(.bottom, 16)
             }
+        } dividerHandle: {
+            NotebookDividerHandle(isDragging: isDraggingFixedZoneDivider) { translationWidth in
+                if !isDraggingFixedZoneDivider {
+                    isDraggingFixedZoneDivider = true
+                    fixedZoneDragStartWidth = fixedZoneWidth
+                }
+                let newWidth = fixedZoneDragStartWidth + translationWidth
+                fixedZoneWidthStored = Double(min(maxFixedZoneWidth, max(minFixedZoneWidth, newWidth)))
+            } onDragEnded: {
+                isDraggingFixedZoneDivider = false
+                snapFixedZoneWidth()
+            }
+        } fixedHeader: {
+            fixedHeaderRow(segments: fixedSegments, data: data)
+        } scrollHeader: {
+            headerRow(segments: scrollableSegments, data: data)
+        } fixedRow: { index, item in
+            notebookRowView(
+                item: item,
+                data: data,
+                segments: fixedSegments,
+                rowIndex: index,
+                allRows: rows,
+                navigableSegments: scrollableSegments
+            )
+        } scrollRow: { index, item in
+            notebookRowView(
+                item: item,
+                data: data,
+                segments: scrollableSegments,
+                rowIndex: index,
+                allRows: rows,
+                navigableSegments: scrollableSegments
+            )
         }
     }
 
@@ -1210,7 +1120,7 @@ struct NotebookModuleView: View {
             case .full, .content:
                 centerPanel(data: data)
             case .inspector:
-                inspectorPanel(data: data)
+                inspectorPanel(data: data, rows: filteredRows(data: data))
                     .frame(minWidth: 330, idealWidth: 370, maxWidth: 430, maxHeight: .infinity)
                     .background(NotebookStyle.surfaceMuted)
             }
@@ -1355,181 +1265,93 @@ struct NotebookModuleView: View {
         }
     }
 
-    private func inspectorPanel(data: NotebookUiStateData) -> some View {
+    private func inspectorPanel(data: NotebookUiStateData, rows: [NotebookTableRow]) -> some View {
         Group {
             if let selection = inspectorSelection,
-               let item = filteredRows(data: data).first(where: { $0.student.id == selection.studentId }),
+               let item = rows.first(where: { $0.student.id == selection.studentId }),
                let column = data.sheet.columns.first(where: { $0.id == selection.columnId }) {
                 let persistedCell = item.row.persistedCells.first(where: { $0.columnId == selection.columnId })
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        Text("Inspector")
-                            .font(.system(size: 28, weight: .black, design: .rounded))
-                        inspectorInfoRow("Alumno", value: "\(item.student.firstName) \(item.student.lastName)")
-                        inspectorInfoRow("Columna", value: column.title)
-                        inspectorInfoRow("Valor", value: displayValue(for: item, column: column))
-                        inspectorInfoRow("Categoría", value: categoryTitle(for: column, data: data))
-                        inspectorInfoRow("Peso", value: String(format: "%.1f", column.weight))
-                        inspectorInfoRow("Tipo", value: "\(column.instrumentKind.name) · \(column.inputKind.name)")
-                        inspectorInfoRow("Fecha", value: formattedDate(column.dateEpochMs?.int64Value))
-                        inspectorInfoRow("Criterio asociado", value: column.competencyCriteriaIds.isEmpty ? "Sin criterio" : column.competencyCriteriaIds.map(String.init).joined(separator: ", "))
-                        inspectorInfoRow("Evidencia", value: evidenceLabel(for: persistedCell))
-                        inspectorInfoRow("Evaluación", value: evaluationTitle(for: column))
-                        inspectorInfoRow("Rúbrica", value: rubricTitle(for: column))
-
-                        if isNotebookAICommentColumn(column) {
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text(isNotebookIndividualSummaryColumn(column) ? "Síntesis pedagógica" : "Comentario IA")
-                                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                                inspectorInfoRow(
-                                    "Origen",
-                                    value: isNotebookIndividualSummaryColumn(column)
-                                        ? "Columna de síntesis pedagógica editable"
-                                        : "Columna de comentario IA editable"
-                                )
-                                inspectorInfoRow("Regeneración", value: "Disponible desde este inspector o por lote")
-                                Button(isNotebookIndividualSummaryColumn(column) ? "Regenerar síntesis pedagógica" : "Regenerar comentario IA") {
-                                    if isNotebookIndividualSummaryColumn(column) {
-                                        notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: column.id)
-                                    } else {
-                                        notebookAISheetRequest = NotebookAISheetRequest(
-                                            mode: .selection,
-                                            studentIds: [item.student.id],
-                                            targetColumnId: column.id
-                                        )
-                                    }
-                                }
-                                .buttonStyle(.borderedProminent)
-                            }
-                        }
-
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Accesos rápidos")
-                                .font(.system(size: 13, weight: .semibold, design: .rounded))
-
-                            HStack(spacing: 10) {
-                                Button("Abrir alumno") {
-                                    selectedStudentId = item.student.id
-                                    isInspectorPresented = false
-                                    inspectorSelection = nil
-                                    onOpenModule(.students, currentClass?.id, item.student.id)
-                                }
-                                .buttonStyle(.borderedProminent)
-
-                                Button("Ir a evaluación") {
-                                    isInspectorPresented = false
-                                    inspectorSelection = nil
-                                    onOpenModule(.evaluationHub, currentClass?.id, item.student.id)
-                                }
-                                .buttonStyle(.bordered)
-                                .disabled(column.evaluationId == nil)
-
-                                Button("Ver rúbrica") {
-                                    onOpenModule(
-                                        column.categoryKind == .physicalEducation ? .peRubrics : .rubrics,
-                                        currentClass?.id,
-                                        item.student.id
-                                    )
-                                }
-                                .buttonStyle(.bordered)
-                                .disabled(column.rubricId == nil)
-                            }
-
-                            if column.categoryKind == .attendance {
-                                Button("Abrir asistencia") {
-                                    selectedStudentId = item.student.id
-                                    isInspectorPresented = false
-                                    inspectorSelection = nil
-                                    onOpenModule(.attendance, currentClass?.id, item.student.id)
-                                }
-                                .buttonStyle(.bordered)
-                            }
-                        }
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Comentario y evidencia")
-                                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                            TextEditor(
-                                text: Binding(
-                                    get: { inspectorNoteDraft },
-                                    set: { inspectorNoteDraft = $0 }
-                                )
+                let isAIColumn = isNotebookAICommentColumn(column)
+                let isSummaryColumn = isNotebookIndividualSummaryColumn(column)
+                NotebookStudentInspector(
+                    studentName: "\(item.student.firstName) \(item.student.lastName)",
+                    columnTitle: column.title,
+                    valueText: displayValue(for: item, column: column),
+                    categoryText: categoryTitle(for: column, data: data),
+                    weightText: String(format: "%.1f", column.weight),
+                    typeText: "\(column.instrumentKind.name) · \(column.inputKind.name)",
+                    dateText: formattedDate(column.dateEpochMs?.int64Value),
+                    criteriaText: column.competencyCriteriaIds.isEmpty ? "Sin criterio" : column.competencyCriteriaIds.map(String.init).joined(separator: ", "),
+                    evidenceText: evidenceLabel(for: persistedCell),
+                    evaluationText: evaluationTitle(for: column),
+                    rubricText: rubricTitle(for: column),
+                    semanticIcons: semanticInspectorIcons,
+                    aiSectionTitle: isAIColumn ? (isSummaryColumn ? "Síntesis pedagógica" : "Comentario IA") : nil,
+                    aiSectionOrigin: isAIColumn ? (isSummaryColumn ? "Columna de síntesis pedagógica editable" : "Columna de comentario IA editable") : nil,
+                    aiRegenerateTitle: isAIColumn ? (isSummaryColumn ? "Regenerar síntesis pedagógica" : "Regenerar comentario IA") : nil,
+                    canOpenEvaluation: column.evaluationId != nil,
+                    canOpenRubric: column.rubricId != nil,
+                    showsAttendanceShortcut: column.categoryKind == .attendance,
+                    noteDraft: Binding(
+                        get: { inspectorNoteDraft },
+                        set: { inspectorNoteDraft = $0 }
+                    ),
+                    iconDraft: Binding(
+                        get: { inspectorIconDraft },
+                        set: { inspectorIconDraft = $0 }
+                    ),
+                    attachmentUris: Binding(
+                        get: { inspectorAttachmentUris },
+                        set: { inspectorAttachmentUris = $0 }
+                    ),
+                    selectedAttachmentPhoto: $selectedAttachmentPhoto,
+                    onOpenStudent: {
+                        selectedStudentId = item.student.id
+                        isInspectorPresented = false
+                        inspectorSelection = nil
+                        onOpenModule(.students, currentClass?.id, item.student.id)
+                    },
+                    onOpenEvaluation: {
+                        isInspectorPresented = false
+                        inspectorSelection = nil
+                        onOpenModule(.evaluationHub, currentClass?.id, item.student.id)
+                    },
+                    onOpenRubric: {
+                        onOpenModule(
+                            column.categoryKind == .physicalEducation ? .peRubrics : .rubrics,
+                            currentClass?.id,
+                            item.student.id
+                        )
+                    },
+                    onOpenAttendance: {
+                        selectedStudentId = item.student.id
+                        isInspectorPresented = false
+                        inspectorSelection = nil
+                        onOpenModule(.attendance, currentClass?.id, item.student.id)
+                    },
+                    onRegenerateAI: {
+                        if isSummaryColumn {
+                            notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: column.id)
+                        } else {
+                            notebookAISheetRequest = NotebookAISheetRequest(
+                                mode: .selection,
+                                studentIds: [item.student.id],
+                                targetColumnId: column.id
                             )
-                                .frame(minHeight: 140)
-                                .padding(8)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                        .fill(NotebookStyle.surface)
-                                )
-
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text("Icono semántico")
-                                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                                    .foregroundStyle(.secondary)
-                                FlexibleTagRow(items: semanticInspectorIcons, selected: inspectorIconDraft) { icon in
-                                    inspectorIconDraft = icon == inspectorIconDraft ? "" : icon
-                                }
-                            }
-
-                            VStack(alignment: .leading, spacing: 10) {
-                                HStack {
-                                    Text("Adjuntos")
-                                        .font(.system(size: 12, weight: .bold, design: .rounded))
-                                        .foregroundStyle(.secondary)
-                                    Spacer()
-                                    PhotosPicker(selection: $selectedAttachmentPhoto, matching: .images) {
-                                        Label("Añadir foto", systemImage: "photo.badge.plus")
-                                    }
-                                    .buttonStyle(.bordered)
-                                }
-
-                                if inspectorAttachmentUris.isEmpty {
-                                    Text("Sin adjuntos todavía")
-                                        .font(.system(size: 13, weight: .medium, design: .rounded))
-                                        .foregroundStyle(.secondary)
-                                } else {
-                                    ForEach(inspectorAttachmentUris, id: \.self) { uri in
-                                        HStack(spacing: 8) {
-                                            Image(systemName: "paperclip")
-                                                .foregroundStyle(NotebookStyle.primaryTint)
-                                            Text(URL(fileURLWithPath: uri).lastPathComponent)
-                                                .font(.system(size: 13, weight: .medium, design: .rounded))
-                                                .lineLimit(1)
-                                            Spacer()
-                                            Button {
-                                                inspectorAttachmentUris.removeAll { $0 == uri }
-                                            } label: {
-                                                Image(systemName: "xmark.circle.fill")
-                                                    .foregroundStyle(.secondary)
-                                            }
-                                            .buttonStyle(.plain)
-                                        }
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 8)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                                .fill(NotebookStyle.surface)
-                                        )
-                                    }
-                                }
-                            }
-
-                            Button("Guardar contexto") {
-                                bridge.saveNotebookCellAnnotation(
-                                    studentId: item.student.id,
-                                    columnId: column.id,
-                                    note: inspectorNoteDraft,
-                                    iconValue: inspectorIconDraft,
-                                    attachmentUris: inspectorAttachmentUris
-                                )
-                                cellReloadRevision += 1
-                            }
-                            .buttonStyle(.borderedProminent)
                         }
-                    }
-                    .padding(24)
-                }
-                .background(EvaluationBackdrop())
+                    },
+                    onSaveContext: {
+                        bridge.saveNotebookCellAnnotation(
+                            studentId: item.student.id,
+                            columnId: column.id,
+                            note: inspectorNoteDraft,
+                            iconValue: inspectorIconDraft,
+                            attachmentUris: inspectorAttachmentUris
+                        )
+                        cellReloadRevision += 1
+                    },
+                    auditEvents: currentSelectionAuditEvents
+                )
             } else {
                 NotebookStateCard(
                     systemImage: "sidebar.right",
@@ -2408,6 +2230,7 @@ struct NotebookModuleView: View {
             visibility: visibility ?? column.visibility,
             isLocked: column.isLocked,
             isTemplate: column.isTemplate,
+            emptyCellPolicy: column.emptyCellPolicy,
             trace: column.trace
         )
     }
@@ -3900,10 +3723,20 @@ struct NotebookModuleView: View {
                     .foregroundStyle(.primary)
                     .frame(width: resolvedFixedWidth(for: fixed), alignment: .leading)
             case .average:
-                Text(averageText(for: item))
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundStyle(.primary)
-                    .frame(width: resolvedFixedWidth(for: fixed), alignment: .leading)
+                Button {
+                    averageExplanationRow = item
+                } label: {
+                    Text(averageText(for: item))
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .foregroundStyle(.primary)
+                        .frame(width: resolvedFixedWidth(for: fixed), alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .popover(item: $averageExplanationRow) { item in
+                    NotebookAverageExplanationView(explanation: item.row.averageExplanation)
+                        .frame(width: 320)
+                }
             }
         }
     }
@@ -3926,15 +3759,6 @@ struct NotebookModuleView: View {
         }
     }
 
-    private func inspectorInfoRow(_ title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title.uppercased())
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .foregroundStyle(.secondary)
-            Text(value.isEmpty ? "Sin valor" : value)
-                .font(.system(size: 15, weight: .semibold, design: .rounded))
-        }
-    }
 }
 
 private struct NotebookNavigationSubtitleModifier: ViewModifier {
@@ -5383,7 +5207,7 @@ private struct NotebookDeletionImpactSheet: View {
     }
 }
 
-private struct FlexibleTagRow: View {
+struct FlexibleTagRow: View {
     let items: [String]
     let selected: String
     let onTap: (String) -> Void
@@ -5484,5 +5308,120 @@ private struct NotebookStateCard<Accessory: View>: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(24)
+    }
+}
+
+private struct NotebookAverageExplanationView: View {
+    let explanation: NotebookAverageExplanation?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            header
+            
+            if let explanation = explanation {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        if !explanation.included.isEmpty {
+                            sectionHeader(title: "Contribuyen a la media", icon: "plus.circle.fill", color: .green)
+                            ForEach(explanation.included, id: \.columnId) { contribution in
+                                contributionRow(contribution)
+                            }
+                        }
+                        
+                        if !explanation.excluded.isEmpty {
+                            sectionHeader(title: "Excluidos del cálculo", icon: "minus.circle.fill", color: .gray)
+                            ForEach(explanation.excluded, id: \.columnId) { exclusion in
+                                exclusionRow(exclusion)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
+            } else {
+                Text("No hay datos de cálculo disponibles.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .padding()
+            }
+        }
+        .padding(.vertical, 16)
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Desglose de la Media")
+                .font(.headline)
+            if let average = explanation?.average {
+                Text(String(format: "Resultado: %.2f", average.doubleValue))
+                    .font(.title2.bold())
+                    .foregroundStyle(NotebookStyle.primaryTint)
+            } else {
+                Text("Resultado: --")
+                    .font(.title2.bold())
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+
+    private func sectionHeader(title: String, icon: String, color: Color) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.caption.bold())
+                .foregroundStyle(color)
+            Text(title.uppercased())
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+        }
+        .padding(.top, 4)
+    }
+
+    private func contributionRow(_ c: NotebookAverageContribution) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(c.title)
+                    .font(.system(size: 13, weight: .medium))
+                Text(String(format: "Peso: %.0f%%", c.weight * 100))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text(String(format: "%.1f", c.value))
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+        }
+        .padding(10)
+        .background(NotebookStyle.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func exclusionRow(_ e: NotebookAverageExclusion) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(e.title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Text(exclusionReasonText(e.reason))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary.opacity(0.8))
+            }
+            Spacer()
+            Image(systemName: "info.circle")
+                .font(.caption)
+                .foregroundStyle(.secondary.opacity(0.5))
+        }
+        .padding(10)
+        .background(NotebookStyle.surface.opacity(0.5))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func exclusionReasonText(_ reason: NotebookAverageExclusionReason) -> String {
+        switch reason {
+        case .empty: return "Sin calificar"
+        case .columnDoesNotCount: return "No cuenta para media"
+        case .rawValueOnly: return "Dato informativo"
+        case .lockedOrArchived: return "Bloqueado / Archivado"
+        case .nonNumeric: return "Dato no numérico"
+        default: return "Excluido"
+        }
     }
 }

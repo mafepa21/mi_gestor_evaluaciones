@@ -1443,6 +1443,7 @@ struct WeightEditorSheet: View {
             visibility: column.visibility,
             isLocked: column.isLocked,
             isTemplate: column.isTemplate,
+            emptyCellPolicy: column.emptyCellPolicy,
             trace: column.trace
         )
         bridge.saveColumn(column: updated)

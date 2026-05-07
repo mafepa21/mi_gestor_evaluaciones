@@ -486,4 +486,12 @@ class NotebookRepositorySqlDelight(
             it.evaluationId == evaluationId || it.columnId == columnId
         }
     }
+
+    override fun observeCellAudit(
+        classId: Long,
+        studentId: Long,
+        columnId: String
+    ): Flow<List<NotebookCellAuditEvent>> {
+        return notebookCellsRepository.observeCellAudit(classId, studentId, columnId)
+    }
 }

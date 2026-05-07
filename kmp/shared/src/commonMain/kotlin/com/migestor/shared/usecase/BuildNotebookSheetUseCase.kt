@@ -15,6 +15,12 @@ import com.migestor.shared.domain.NotebookSheet
 import com.migestor.shared.domain.NotebookStudentInsight
 import com.migestor.shared.domain.NotebookTab
 import com.migestor.shared.domain.Student
+import com.migestor.shared.domain.NotebookAverageContribution
+import com.migestor.shared.domain.NotebookAverageExclusion
+import com.migestor.shared.domain.NotebookAverageExclusionReason
+import com.migestor.shared.domain.NotebookAverageExplanation
+import com.migestor.shared.domain.NotebookColumnVisibility
+import com.migestor.shared.domain.NotebookEmptyCellPolicy
 import com.migestor.shared.formula.FormulaEvaluator
 
 class BuildNotebookSheetUseCase(
@@ -129,17 +135,16 @@ class BuildNotebookSheetUseCase(
         evaluations: List<Evaluation>,
     ): List<NotebookRow> {
         val calculated = columns.filter { it.type == NotebookColumnType.CALCULATED && !it.formula.isNullOrBlank() }
-        val evaluableColumns = columns.filter(::countsTowardAverage)
-
         return rows.map { row ->
-            val baseAverage = computeConfiguredAverage(
+            val explanation = computeAverageExplanation(
                 row = row,
-                evaluableColumns = evaluableColumns,
-                fallbackAverage = row.weightedAverage,
+                columns = columns,
             )
+            
             if (calculated.isEmpty()) {
                 return@map row.copy(
-                    weightedAverage = baseAverage,
+                    weightedAverage = explanation?.average,
+                    averageExplanation = explanation,
                     persistedCells = row.persistedCells,
                     persistedGrades = row.persistedGrades
                 )
@@ -150,9 +155,7 @@ class BuildNotebookSheetUseCase(
                 evaluation.code to value
             }
             val varsByColumnId = columns.associate { column ->
-                val value = column.evaluationId?.let { evalId ->
-                    row.cells.firstOrNull { it.evaluationId == evalId }?.value ?: 0.0
-                } ?: 0.0
+                val value = gradeValueFor(row, column) ?: 0.0
                 column.id to value
             }
             val vars = varsByCode + varsByColumnId
@@ -163,27 +166,83 @@ class BuildNotebookSheetUseCase(
             }
             val calculatedAverage = calculatedValues.takeIf { it.isNotEmpty() }?.average()
             row.copy(
-                weightedAverage = calculatedAverage ?: baseAverage,
+                weightedAverage = calculatedAverage ?: explanation?.average,
+                averageExplanation = explanation,
                 persistedCells = row.persistedCells,
                 persistedGrades = row.persistedGrades
             )
         }
     }
 
-    private fun computeConfiguredAverage(
+    private fun computeAverageExplanation(
         row: NotebookRow,
-        evaluableColumns: List<NotebookColumnDefinition>,
-        fallbackAverage: Double?,
-    ): Double? {
-        if (evaluableColumns.isEmpty()) return fallbackAverage
-        val totalWeight = evaluableColumns.sumOf { it.weight }.takeIf { it > 0.0 } ?: return fallbackAverage
-        val hasAnyValue = evaluableColumns.any { column -> gradeValueFor(row, column) != null }
-        if (!hasAnyValue) return fallbackAverage
+        columns: List<NotebookColumnDefinition>,
+    ): NotebookAverageExplanation? {
+        val evaluableColumns = columns.filter { it.visibility != NotebookColumnVisibility.ARCHIVED }
+        if (evaluableColumns.isEmpty()) return null
 
-        val weightedSum = evaluableColumns.sumOf { column ->
-            (gradeValueFor(row, column) ?: 0.0) * column.weight
+        val included = mutableListOf<NotebookAverageContribution>()
+        val excluded = mutableListOf<NotebookAverageExclusion>()
+
+        evaluableColumns.forEach { column ->
+            if (!countsTowardAverage(column)) {
+                excluded += NotebookAverageExclusion(
+                    columnId = column.id,
+                    title = column.title,
+                    reason = when {
+                        column.weight <= 0.0 -> NotebookAverageExclusionReason.RAW_VALUE_ONLY
+                        else -> NotebookAverageExclusionReason.COLUMN_DOES_NOT_COUNT
+                    }
+                )
+                return@forEach
+            }
+
+            val value = gradeValueFor(row, column)
+            if (value != null) {
+                included += NotebookAverageContribution(
+                    columnId = column.id,
+                    title = column.title,
+                    value = value,
+                    weight = column.weight,
+                    weightedValue = value * column.weight
+                )
+            } else {
+                when (column.emptyCellPolicy) {
+                    NotebookEmptyCellPolicy.COUNT_AS_ZERO -> {
+                        included += NotebookAverageContribution(
+                            columnId = column.id,
+                            title = column.title,
+                            value = 0.0,
+                            weight = column.weight,
+                            weightedValue = 0.0
+                        )
+                    }
+                    else -> {
+                        excluded += NotebookAverageExclusion(
+                            columnId = column.id,
+                            title = column.title,
+                            reason = NotebookAverageExclusionReason.EMPTY
+                        )
+                    }
+                }
+            }
         }
-        return weightedSum / totalWeight
+
+        val totalWeight = included.sumOf { it.weight }
+        val average = if (totalWeight > 0.0) {
+            included.sumOf { it.weightedValue } / totalWeight
+        } else {
+            null
+        }
+
+        return NotebookAverageExplanation(
+            studentId = row.student.id,
+            average = average,
+            included = included,
+            excluded = excluded,
+            totalIncludedWeight = totalWeight,
+            policy = NotebookEmptyCellPolicy.EXCLUDE_FROM_AVERAGE // Should ideally come from class config
+        )
     }
 
     private fun gradeValueFor(row: NotebookRow, column: NotebookColumnDefinition): Double? {
@@ -198,6 +257,7 @@ class BuildNotebookSheetUseCase(
 
     private fun countsTowardAverage(column: NotebookColumnDefinition): Boolean {
         if (!column.countsTowardAverage || column.weight <= 0.0) return false
+        if (column.visibility == NotebookColumnVisibility.ARCHIVED) return false
         if (column.instrumentKind == NotebookInstrumentKind.PHYSICAL_TEST && column.scaleKind in rawPhysicalScaleKinds) {
             return false
         }

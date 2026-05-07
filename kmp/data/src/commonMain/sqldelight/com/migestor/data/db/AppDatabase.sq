@@ -953,6 +953,11 @@ CREATE TABLE IF NOT EXISTS notebook_columns (
     category_id     TEXT,
     visibility      TEXT NOT NULL DEFAULT 'VISIBLE',
     is_locked       INTEGER NOT NULL DEFAULT 0,
+    counts_toward_average INTEGER NOT NULL DEFAULT 1,
+    is_pinned       INTEGER NOT NULL DEFAULT 0,
+    is_hidden       INTEGER NOT NULL DEFAULT 0,
+    is_template     INTEGER NOT NULL DEFAULT 0,
+    empty_cell_policy TEXT NOT NULL DEFAULT 'EXCLUDE_FROM_AVERAGE',
     updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
     device_id       TEXT,
     sync_version    INTEGER NOT NULL DEFAULT 0,
@@ -1202,18 +1207,18 @@ deleteTab:
 DELETE FROM notebook_tabs WHERE id = ?;
 
 selectColumnsByClass:
-SELECT id, class_id, title, type, category_kind, instrument_kind, input_kind, evaluation_id, formula, weight, date_epoch_ms, unit_name, competency_criteria_ids_csv, scale_kind, tab_ids_csv, shared_across_tabs, color_hex, icon_name, sort_order, width_dp, category_id, visibility, is_locked, updated_at_epoch_ms, device_id, sync_version
+SELECT id, class_id, title, type, category_kind, instrument_kind, input_kind, evaluation_id, formula, weight, date_epoch_ms, unit_name, competency_criteria_ids_csv, scale_kind, tab_ids_csv, shared_across_tabs, color_hex, icon_name, sort_order, width_dp, category_id, visibility, is_locked, counts_toward_average, is_pinned, is_hidden, is_template, empty_cell_policy, updated_at_epoch_ms, device_id, sync_version
 FROM notebook_columns
 WHERE class_id = ?
 ORDER BY sort_order, id;
 
 selectColumnById:
-SELECT id, class_id, title, type, category_kind, instrument_kind, input_kind, evaluation_id, formula, weight, date_epoch_ms, unit_name, competency_criteria_ids_csv, scale_kind, tab_ids_csv, shared_across_tabs, color_hex, icon_name, sort_order, width_dp, category_id, visibility, is_locked, updated_at_epoch_ms, device_id, sync_version
+SELECT id, class_id, title, type, category_kind, instrument_kind, input_kind, evaluation_id, formula, weight, date_epoch_ms, unit_name, competency_criteria_ids_csv, scale_kind, tab_ids_csv, shared_across_tabs, color_hex, icon_name, sort_order, width_dp, category_id, visibility, is_locked, counts_toward_average, is_pinned, is_hidden, is_template, empty_cell_policy, updated_at_epoch_ms, device_id, sync_version
 FROM notebook_columns
 WHERE id = ?;
 
 selectColumnsByEvaluation:
-SELECT id, class_id, title, type, category_kind, instrument_kind, input_kind, evaluation_id, formula, weight, date_epoch_ms, unit_name, competency_criteria_ids_csv, scale_kind, tab_ids_csv, shared_across_tabs, color_hex, icon_name, sort_order, width_dp, category_id, visibility, is_locked, updated_at_epoch_ms, device_id, sync_version
+SELECT id, class_id, title, type, category_kind, instrument_kind, input_kind, evaluation_id, formula, weight, date_epoch_ms, unit_name, competency_criteria_ids_csv, scale_kind, tab_ids_csv, shared_across_tabs, color_hex, icon_name, sort_order, width_dp, category_id, visibility, is_locked, counts_toward_average, is_pinned, is_hidden, is_template, empty_cell_policy, updated_at_epoch_ms, device_id, sync_version
 FROM notebook_columns
 WHERE evaluation_id = ?;
 
@@ -1223,7 +1228,7 @@ FROM notebook_columns
 WHERE class_id = ? AND category_id = ?;
 
 selectColumnsByCategory:
-SELECT id, class_id, title, type, category_kind, instrument_kind, input_kind, evaluation_id, formula, weight, date_epoch_ms, unit_name, competency_criteria_ids_csv, scale_kind, tab_ids_csv, shared_across_tabs, color_hex, icon_name, sort_order, width_dp, category_id, visibility, is_locked, updated_at_epoch_ms, device_id, sync_version
+SELECT id, class_id, title, type, category_kind, instrument_kind, input_kind, evaluation_id, formula, weight, date_epoch_ms, unit_name, competency_criteria_ids_csv, scale_kind, tab_ids_csv, shared_across_tabs, color_hex, icon_name, sort_order, width_dp, category_id, visibility, is_locked, counts_toward_average, is_pinned, is_hidden, is_template, empty_cell_policy, updated_at_epoch_ms, device_id, sync_version
 FROM notebook_columns
 WHERE class_id = ? AND category_id = ?
 ORDER BY sort_order, id;
@@ -1308,9 +1313,11 @@ upsertColumn:
 INSERT OR REPLACE INTO notebook_columns(
     id, class_id, title, type, category_kind, instrument_kind, input_kind, evaluation_id, formula, weight,
     date_epoch_ms, unit_name, competency_criteria_ids_csv, scale_kind, tab_ids_csv, shared_across_tabs,
-    color_hex, icon_name, sort_order, width_dp, category_id, visibility, is_locked, updated_at_epoch_ms, device_id, sync_version
+    color_hex, icon_name, sort_order, width_dp, category_id, visibility, is_locked,
+    counts_toward_average, is_pinned, is_hidden, is_template, empty_cell_policy,
+    updated_at_epoch_ms, device_id, sync_version
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 deleteColumn:
 DELETE FROM notebook_columns WHERE id = ?;
@@ -1482,3 +1489,40 @@ SELECT availability, COUNT(*) AS total_count, MAX(created_at_epoch_ms) AS last_c
 FROM ai_audit_events
 GROUP BY availability
 ORDER BY last_created_at_epoch_ms DESC;
+
+CREATE TABLE IF NOT EXISTS notebook_cell_audit_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    class_id INTEGER NOT NULL,
+    student_id INTEGER NOT NULL,
+    column_id TEXT NOT NULL,
+    previous_numeric_value REAL,
+    new_numeric_value REAL,
+    previous_text_value TEXT,
+    new_text_value TEXT,
+    action TEXT NOT NULL,
+    changed_at_epoch_ms INTEGER NOT NULL,
+    author_user_id INTEGER,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+);
+
+insertNotebookCellAudit:
+INSERT INTO notebook_cell_audit_events(
+    class_id, student_id, column_id,
+    previous_numeric_value, new_numeric_value,
+    previous_text_value, new_text_value,
+    action, changed_at_epoch_ms, author_user_id, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectNotebookCellAudit:
+SELECT id, class_id, student_id, column_id,
+       previous_numeric_value, new_numeric_value,
+       previous_text_value, new_text_value,
+       action, changed_at_epoch_ms, author_user_id, device_id, sync_version
+FROM notebook_cell_audit_events
+WHERE class_id = ? AND student_id = ? AND column_id = ?
+ORDER BY changed_at_epoch_ms DESC;
+

@@ -390,6 +390,7 @@ struct NotebookModuleView: View {
     @AppStorage("notebook.fixedZoneWidth") private var fixedZoneWidthStored = 460.0
     @State private var isDraggingFixedZoneDivider = false
     @State private var fixedZoneDragStartWidth: CGFloat = 0
+    @State private var fixedZoneLiveWidth: CGFloat? = nil
     @State private var columnWidths: [String: CGFloat] = [:]
     @State private var formulaEditRequest: NotebookFormulaEditRequest? = nil
     @State private var formulaDraft = ""
@@ -957,7 +958,7 @@ struct NotebookModuleView: View {
                     fixedZoneDragStartWidth = fixedZoneWidth
                 }
                 let newWidth = fixedZoneDragStartWidth + translationWidth
-                fixedZoneWidthStored = Double(min(maxFixedZoneWidth, max(minFixedZoneWidth, newWidth)))
+                fixedZoneLiveWidth = min(maxFixedZoneWidth, max(minFixedZoneWidth, newWidth))
             } onDragEnded: {
                 isDraggingFixedZoneDivider = false
                 snapFixedZoneWidth()
@@ -1043,7 +1044,7 @@ struct NotebookModuleView: View {
     }
 
     private var fixedZoneWidth: CGFloat {
-        min(maxFixedZoneWidth, max(minFixedZoneWidth, CGFloat(fixedZoneWidthStored)))
+        min(maxFixedZoneWidth, max(minFixedZoneWidth, fixedZoneLiveWidth ?? CGFloat(fixedZoneWidthStored)))
     }
 
     private var minFixedZoneWidth: CGFloat { 220 }
@@ -1061,11 +1062,19 @@ struct NotebookModuleView: View {
     private func snapFixedZoneWidth() {
         let snapPoints: [CGFloat] = [220, 360, 460, 580]
         let current = fixedZoneWidth
-        guard let nearest = snapPoints.min(by: { abs($0 - current) < abs($1 - current) }) else { return }
-        if abs(nearest - current) < 30 {
-            withAnimation(.spring(duration: 0.2, bounce: 0.15)) {
-                fixedZoneWidthStored = Double(nearest)
-            }
+        let snappedWidth: CGFloat
+        if let nearest = snapPoints.min(by: { abs($0 - current) < abs($1 - current) }),
+           abs(nearest - current) < 30 {
+            snappedWidth = nearest
+        } else {
+            snappedWidth = current
+        }
+        withAnimation(.spring(duration: 0.2, bounce: 0.15)) {
+            fixedZoneLiveWidth = snappedWidth
+        }
+        DispatchQueue.main.async {
+            fixedZoneWidthStored = Double(snappedWidth)
+            fixedZoneLiveWidth = nil
         }
     }
 
@@ -2580,6 +2589,69 @@ struct NotebookModuleView: View {
         return IosFormatting.decimal(from: weightedAverage)
     }
 
+    private enum AverageCellState {
+        case complete
+        case pending
+        case insufficient
+    }
+
+    private func averageState(for item: NotebookTableRow) -> AverageCellState {
+        guard let explanation = item.row.averageExplanation,
+              explanation.average != nil,
+              !explanation.included.isEmpty else {
+            return .insufficient
+        }
+        return explanation.excluded.contains { $0.reason == .empty } ? .pending : .complete
+    }
+
+    private func averageBadge(for item: NotebookTableRow) -> some View {
+        let state = averageState(for: item)
+        let tint: Color = {
+            switch state {
+            case .complete: return NotebookStyle.successTint
+            case .pending: return NotebookStyle.warningTint
+            case .insufficient: return .secondary
+            }
+        }()
+        let icon: String = {
+            switch state {
+            case .complete: return "checkmark.circle.fill"
+            case .pending: return "clock.fill"
+            case .insufficient: return "dash.circle"
+            }
+        }()
+
+        return HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(tint)
+            Text(averageText(for: item))
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundStyle(state == .insufficient ? .secondary : .primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(
+            Capsule(style: .continuous)
+                .fill(tint.opacity(state == .insufficient ? 0.08 : 0.12))
+        )
+        .overlay(
+            Capsule(style: .continuous)
+                .stroke(tint.opacity(state == .insufficient ? 0.12 : 0.22), lineWidth: 1)
+        )
+        .help(averageHelpText(for: state))
+    }
+
+    private func averageHelpText(for state: AverageCellState) -> String {
+        switch state {
+        case .complete: return "Media completa"
+        case .pending: return "Media con pendientes"
+        case .insufficient: return "Sin datos suficientes"
+        }
+    }
+
     private func filledCellCount(_ item: NotebookTableRow, columns: [NotebookColumnDefinition]) -> Int {
         columns.filter { !displayValue(for: item, column: $0).isEmpty }.count
     }
@@ -3726,15 +3798,16 @@ struct NotebookModuleView: View {
                 Button {
                     averageExplanationRow = item
                 } label: {
-                    Text(averageText(for: item))
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
-                        .foregroundStyle(.primary)
+                    averageBadge(for: item)
                         .frame(width: resolvedFixedWidth(for: fixed), alignment: .leading)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .popover(item: $averageExplanationRow) { item in
-                    NotebookAverageExplanationView(explanation: item.row.averageExplanation)
+                    NotebookAverageExplanationView(
+                        studentName: "\(item.student.firstName) \(item.student.lastName)",
+                        explanation: item.row.averageExplanation
+                    )
                         .frame(width: 320)
                 }
             }
@@ -5312,6 +5385,7 @@ private struct NotebookStateCard<Accessory: View>: View {
 }
 
 private struct NotebookAverageExplanationView: View {
+    let studentName: String
     let explanation: NotebookAverageExplanation?
 
     var body: some View {
@@ -5349,7 +5423,7 @@ private struct NotebookAverageExplanationView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Desglose de la Media")
+            Text("Media de \(studentName)")
                 .font(.headline)
             if let average = explanation?.average {
                 Text(String(format: "Resultado: %.2f", average.doubleValue))

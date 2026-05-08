@@ -136,12 +136,14 @@ class BuildNotebookSheetUseCase(
     ): List<NotebookRow> {
         val calculated = columns.filter { it.type == NotebookColumnType.CALCULATED && !it.formula.isNullOrBlank() }
         return rows.map { row ->
-            val explanation = computeAverageExplanation(
-                row = row,
-                columns = columns,
-            )
-            
+            val calculatedValuesByColumnId = mutableMapOf<String, Double>()
+
             if (calculated.isEmpty()) {
+                val explanation = computeAverageExplanation(
+                    row = row,
+                    columns = columns,
+                    calculatedValuesByColumnId = emptyMap(),
+                )
                 return@map row.copy(
                     weightedAverage = explanation?.average,
                     averageExplanation = explanation,
@@ -160,13 +162,18 @@ class BuildNotebookSheetUseCase(
             }
             val vars = varsByCode + varsByColumnId
 
-            val calculatedValues = calculated.mapNotNull { column ->
+            calculated.forEach { column ->
                 runCatching { formulaEvaluator.evaluate(column.formula!!, vars) }
                     .getOrNull()
+                    ?.let { calculatedValuesByColumnId[column.id] = it }
             }
-            val calculatedAverage = calculatedValues.takeIf { it.isNotEmpty() }?.average()
+            val explanation = computeAverageExplanation(
+                row = row,
+                columns = columns,
+                calculatedValuesByColumnId = calculatedValuesByColumnId,
+            )
             row.copy(
-                weightedAverage = calculatedAverage ?: explanation?.average,
+                weightedAverage = explanation?.average,
                 averageExplanation = explanation,
                 persistedCells = row.persistedCells,
                 persistedGrades = row.persistedGrades
@@ -177,6 +184,7 @@ class BuildNotebookSheetUseCase(
     private fun computeAverageExplanation(
         row: NotebookRow,
         columns: List<NotebookColumnDefinition>,
+        calculatedValuesByColumnId: Map<String, Double>,
     ): NotebookAverageExplanation? {
         val evaluableColumns = columns.filter { it.visibility != NotebookColumnVisibility.ARCHIVED }
         if (evaluableColumns.isEmpty()) return null
@@ -189,15 +197,12 @@ class BuildNotebookSheetUseCase(
                 excluded += NotebookAverageExclusion(
                     columnId = column.id,
                     title = column.title,
-                    reason = when {
-                        column.weight <= 0.0 -> NotebookAverageExclusionReason.RAW_VALUE_ONLY
-                        else -> NotebookAverageExclusionReason.COLUMN_DOES_NOT_COUNT
-                    }
+                    reason = averageExclusionReason(column)
                 )
                 return@forEach
             }
 
-            val value = gradeValueFor(row, column)
+            val value = gradeValueFor(row, column, calculatedValuesByColumnId)
             if (value != null) {
                 included += NotebookAverageContribution(
                     columnId = column.id,
@@ -245,7 +250,12 @@ class BuildNotebookSheetUseCase(
         )
     }
 
-    private fun gradeValueFor(row: NotebookRow, column: NotebookColumnDefinition): Double? {
+    private fun gradeValueFor(
+        row: NotebookRow,
+        column: NotebookColumnDefinition,
+        calculatedValuesByColumnId: Map<String, Double> = emptyMap(),
+    ): Double? {
+        calculatedValuesByColumnId[column.id]?.let { return it }
         val evaluationValue = column.evaluationId?.let { evaluationId ->
             row.cells.firstOrNull { it.evaluationId == evaluationId }?.value
         }
@@ -267,6 +277,21 @@ class BuildNotebookSheetUseCase(
             NotebookColumnType.CALCULATED,
             NotebookColumnType.CHECK -> true
             else -> false
+        }
+    }
+
+    private fun averageExclusionReason(column: NotebookColumnDefinition): NotebookAverageExclusionReason {
+        if (column.visibility == NotebookColumnVisibility.ARCHIVED) return NotebookAverageExclusionReason.LOCKED_OR_ARCHIVED
+        if (column.instrumentKind == NotebookInstrumentKind.PHYSICAL_TEST && column.scaleKind in rawPhysicalScaleKinds) {
+            return NotebookAverageExclusionReason.RAW_VALUE_ONLY
+        }
+        if (column.weight <= 0.0) return NotebookAverageExclusionReason.RAW_VALUE_ONLY
+        return when (column.type) {
+            NotebookColumnType.NUMERIC,
+            NotebookColumnType.RUBRIC,
+            NotebookColumnType.CALCULATED,
+            NotebookColumnType.CHECK -> NotebookAverageExclusionReason.COLUMN_DOES_NOT_COUNT
+            else -> NotebookAverageExclusionReason.NON_NUMERIC
         }
     }
 

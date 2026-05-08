@@ -233,5 +233,11 @@ class RubricEvaluationViewModelTest {
             deviceId: String?,
             syncVersion: Long,
         ) = Unit
+
+        override fun observeCellAudit(
+            classId: Long,
+            studentId: Long,
+            columnId: String,
+        ): Flow<List<com.migestor.shared.domain.NotebookCellAuditEvent>> = flowOf(emptyList())
     }
 }

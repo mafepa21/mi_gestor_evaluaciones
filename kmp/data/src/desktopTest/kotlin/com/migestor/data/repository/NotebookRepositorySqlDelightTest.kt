@@ -429,6 +429,17 @@ class NotebookRepositorySqlDelightTest {
     }
 
     @Test
+    fun `migration 20 creates missing notebook cell audit table`() {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+
+        AppDatabase.Schema.migrate(driver, 20, AppDatabase.Schema.version)
+        val db = AppDatabase(driver)
+
+        assertTrue(tableExists(driver, "notebook_cell_audit_events"))
+        assertEquals(emptyList(), db.appDatabaseQueries.selectNotebookCellAudit(1L, 1L, "missing").executeAsList())
+    }
+
+    @Test
     fun `physical raw mark is excluded from average and scaled score is included`() = runTest {
         val fixture = createFixture()
         val classId = fixture.classes.saveClass(name = "1 ESO A", course = 1, description = null)
@@ -601,5 +612,12 @@ class NotebookRepositorySqlDelightTest {
             },
             parameters = 0,
         ).value
+    }
+
+    private fun tableExists(driver: JdbcSqliteDriver, tableName: String): Boolean {
+        return countRows(
+            driver,
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = '$tableName'"
+        ) == 1L
     }
 }

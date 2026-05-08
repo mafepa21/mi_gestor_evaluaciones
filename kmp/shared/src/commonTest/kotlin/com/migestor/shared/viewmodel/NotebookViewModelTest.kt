@@ -540,6 +540,12 @@ private class FakeNotebookRepository(
             evidence = evidence,
         )
     }
+
+    override fun observeCellAudit(
+        classId: Long,
+        studentId: Long,
+        columnId: String,
+    ): Flow<List<com.migestor.shared.domain.NotebookCellAuditEvent>> = flowOf(emptyList())
 }
 
 private data class UpsertGradeCall(

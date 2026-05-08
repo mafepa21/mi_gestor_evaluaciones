@@ -21,6 +21,14 @@ final class NotebookMacToolbarActions: ObservableObject {
     private var summaryAction: (() -> Void)?
     private var refreshAction: (() -> Void)?
 
+    private func publishDeferred(_ mutation: @escaping @MainActor () -> Void) {
+        DispatchQueue.main.async {
+            Task { @MainActor in
+                mutation()
+            }
+        }
+    }
+
     func configure(
         canMarkAllPresent: Bool,
         canUndo: Bool,
@@ -40,43 +48,47 @@ final class NotebookMacToolbarActions: ObservableObject {
         onGenerateSummary: @escaping () -> Void,
         onRefresh: @escaping () -> Void
     ) {
-        self.canMarkAllPresent = canMarkAllPresent
-        self.canUndo = canUndo
-        self.canToggleInspector = canToggleInspector
-        self.isAttendanceQuickMode = isAttendanceQuickMode
-        self.isInspectorPresented = isInspectorPresented
-        self.addColumnAvailable = addColumnAvailable
-        self.organizationMenuAvailable = organizationMenuAvailable
-        self.exportText = exportText
-        self.markAllPresentAction = onMarkAllPresent
-        self.attendanceQuickModeAction = onToggleAttendanceQuickMode
-        self.undoAction = onUndo
-        self.toggleInspectorAction = onToggleInspector
-        self.addColumnAction = onAddColumn
-        self.organizationMenuAction = onOpenOrganizationMenu
-        self.advancedMenuAction = onOpenAdvancedMenu
-        self.summaryAction = onGenerateSummary
-        self.refreshAction = onRefresh
+        publishDeferred {
+            self.canMarkAllPresent = canMarkAllPresent
+            self.canUndo = canUndo
+            self.canToggleInspector = canToggleInspector
+            self.isAttendanceQuickMode = isAttendanceQuickMode
+            self.isInspectorPresented = isInspectorPresented
+            self.addColumnAvailable = addColumnAvailable
+            self.organizationMenuAvailable = organizationMenuAvailable
+            self.exportText = exportText
+            self.markAllPresentAction = onMarkAllPresent
+            self.attendanceQuickModeAction = onToggleAttendanceQuickMode
+            self.undoAction = onUndo
+            self.toggleInspectorAction = onToggleInspector
+            self.addColumnAction = onAddColumn
+            self.organizationMenuAction = onOpenOrganizationMenu
+            self.advancedMenuAction = onOpenAdvancedMenu
+            self.summaryAction = onGenerateSummary
+            self.refreshAction = onRefresh
+        }
     }
 
     func clear() {
-        canMarkAllPresent = false
-        canUndo = false
-        canToggleInspector = false
-        isAttendanceQuickMode = false
-        isInspectorPresented = false
-        addColumnAvailable = false
-        organizationMenuAvailable = false
-        exportText = nil
-        markAllPresentAction = nil
-        attendanceQuickModeAction = nil
-        undoAction = nil
-        toggleInspectorAction = nil
-        addColumnAction = nil
-        organizationMenuAction = nil
-        advancedMenuAction = nil
-        summaryAction = nil
-        refreshAction = nil
+        publishDeferred {
+            self.canMarkAllPresent = false
+            self.canUndo = false
+            self.canToggleInspector = false
+            self.isAttendanceQuickMode = false
+            self.isInspectorPresented = false
+            self.addColumnAvailable = false
+            self.organizationMenuAvailable = false
+            self.exportText = nil
+            self.markAllPresentAction = nil
+            self.attendanceQuickModeAction = nil
+            self.undoAction = nil
+            self.toggleInspectorAction = nil
+            self.addColumnAction = nil
+            self.organizationMenuAction = nil
+            self.advancedMenuAction = nil
+            self.summaryAction = nil
+            self.refreshAction = nil
+        }
     }
 
     func markAllPresent() { markAllPresentAction?() }

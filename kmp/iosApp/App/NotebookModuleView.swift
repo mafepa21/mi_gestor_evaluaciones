@@ -2204,6 +2204,7 @@ struct NotebookModuleView: View {
         widthDp: Double? = nil,
         weight: Double? = nil,
         countsTowardAverage: Bool? = nil,
+        isLocked: Bool? = nil,
         colorHex: String? = nil,
         formula: String? = nil,
         updatesFormula: Bool = false
@@ -2237,7 +2238,7 @@ struct NotebookModuleView: View {
             isPinned: column.isPinned,
             isHidden: isHidden ?? column.isHidden,
             visibility: visibility ?? column.visibility,
-            isLocked: column.isLocked,
+            isLocked: isLocked ?? column.isLocked,
             isTemplate: column.isTemplate,
             emptyCellPolicy: column.emptyCellPolicy,
             trace: column.trace
@@ -3296,6 +3297,14 @@ struct NotebookModuleView: View {
                 toggleColumnVisibility(column)
             }
         }
+        Button(column.isLocked ? "Desbloquear" : "Bloquear") {
+            saveColumnMutation(column, isLocked: !column.isLocked)
+            showToast(column.isLocked ? "Columna desbloqueada" : "Columna bloqueada")
+        }
+        Button(column.countsTowardAverage ? "No contar para media" : "Contar para media") {
+            saveColumnMutation(column, countsTowardAverage: !column.countsTowardAverage)
+            showToast(column.countsTowardAverage ? "Columna excluida de la media" : "Columna incluida en la media")
+        }
         Button("Eliminar columna", role: .destructive) {
             presentDeleteColumnImpact(column)
         }
@@ -3549,6 +3558,8 @@ struct NotebookModuleView: View {
     private func saveColumnMutation(
         _ column: NotebookColumnDefinition,
         title: String? = nil,
+        countsTowardAverage: Bool? = nil,
+        isLocked: Bool? = nil,
         colorHex: String? = nil,
         formula: String? = nil,
         updatesFormula: Bool = false
@@ -3556,6 +3567,8 @@ struct NotebookModuleView: View {
         bridge.saveColumn(column: copyNotebookColumn(
             column,
             title: title,
+            countsTowardAverage: countsTowardAverage,
+            isLocked: isLocked,
             colorHex: colorHex,
             formula: formula,
             updatesFormula: updatesFormula

@@ -101,16 +101,17 @@ struct MacRootView: View {
                 onToolbarActionsChange: setDashboardToolbarActions
             )
         case .notebook:
-            NotebookModuleView(
+            MacNotebookView(
                 bridge: session.bridge,
+                layoutState: layoutState,
+                toolbarActions: notebookToolbarActions,
+                inspectorState: notebookInspectorState,
                 selectedClassId: $selectedClassId,
                 selectedStudentId: $selectedStudentId,
                 onOpenModule: open(module:classId:studentId:),
-                macPresentation: .content,
-                macInspectorState: notebookInspectorState,
-                macToolbarActions: notebookToolbarActions
+                presentation: .content,
+                onToggleInspectorColumn: toggleNotebookInspectorColumn
             )
-            .environmentObject(layoutState)
         case .attendance:
             MacAttendanceView(
                 bridge: session.bridge,
@@ -161,15 +162,17 @@ struct MacRootView: View {
     private func featureInspector(for feature: MacFeatureDescriptor.Feature) -> some View {
         switch feature {
         case .notebook:
-            NotebookModuleView(
+            MacNotebookView(
                 bridge: session.bridge,
+                layoutState: layoutState,
+                toolbarActions: notebookToolbarActions,
+                inspectorState: notebookInspectorState,
                 selectedClassId: $selectedClassId,
                 selectedStudentId: $selectedStudentId,
                 onOpenModule: open(module:classId:studentId:),
-                macPresentation: .inspector,
-                macInspectorState: notebookInspectorState
+                presentation: .inspector,
+                onToggleInspectorColumn: toggleNotebookInspectorColumn
             )
-            .environmentObject(layoutState)
         case .students:
             MacStudentsView(
                 bridge: session.bridge,
@@ -224,53 +227,6 @@ struct MacRootView: View {
                 }
                 .help("Activar pase rápido de asistencia")
 
-                Button {
-                    notebookToolbarActions.undo()
-                } label: {
-                    Label("Deshacer", systemImage: "arrow.uturn.backward")
-                }
-                .disabled(!notebookToolbarActions.canUndo)
-                .keyboardShortcut("z", modifiers: .command)
-                .help("Deshacer último cambio del cuaderno")
-
-                Button {
-                    toggleNotebookInspectorColumn()
-                } label: {
-                    Label("Inspector", systemImage: "sidebar.right")
-                }
-                .disabled(!isNotebookInspectorColumnVisible && !notebookToolbarActions.canToggleInspector)
-                .help(notebookToolbarActions.isInspectorPresented ? "Ocultar inspector" : "Mostrar inspector")
-
-                Menu {
-                    Button("Organizar columnas…") {
-                        notebookToolbarActions.openOrganizationMenu()
-                    }
-                    .disabled(!notebookToolbarActions.organizationMenuAvailable)
-
-                    Divider()
-
-                    Button("Generar síntesis…") {
-                        notebookToolbarActions.generateSummary()
-                    }
-
-                    if let exportText = notebookToolbarActions.exportText {
-                        Divider()
-                        ShareLink(item: exportText) {
-                            Label("Exportar…", systemImage: "square.and.arrow.up")
-                        }
-                    }
-                } label: {
-                    Label("Más", systemImage: "ellipsis.circle")
-                }
-                .help("Más opciones del cuaderno")
-
-                Button {
-                    notebookToolbarActions.addColumn()
-                } label: {
-                    Label("Columna", systemImage: "plus.rectangle")
-                }
-                .disabled(!notebookToolbarActions.addColumnAvailable)
-                .help("Nueva columna")
             }
 
             if session.selectedFeature == .dashboard, let dashboardToolbarActions {
@@ -343,23 +299,23 @@ struct MacRootView: View {
                 .help("Crear columnas de marca y nota en el cuaderno")
             }
 
-            Button {
-                if session.selectedFeature == .dashboard, let dashboardToolbarActions {
-                    dashboardToolbarActions.refresh()
-                } else if session.selectedFeature == .notebook {
-                    notebookToolbarActions.refresh()
-                } else if session.selectedFeature == .attendance, let attendanceToolbarActions {
-                    attendanceToolbarActions.refresh()
-                } else if session.selectedFeature == .physicalTests {
-                    physicalTestsToolbarActions.refresh()
-                } else {
-                    Task { await session.bridge.refreshDashboard(mode: .office) }
+            if session.selectedFeature != .notebook {
+                Button {
+                    if session.selectedFeature == .dashboard, let dashboardToolbarActions {
+                        dashboardToolbarActions.refresh()
+                    } else if session.selectedFeature == .attendance, let attendanceToolbarActions {
+                        attendanceToolbarActions.refresh()
+                    } else if session.selectedFeature == .physicalTests {
+                        physicalTestsToolbarActions.refresh()
+                    } else {
+                        Task { await session.bridge.refreshDashboard(mode: .office) }
+                    }
+                } label: {
+                    Label("Refrescar", systemImage: "arrow.clockwise")
                 }
-            } label: {
-                Label("Refrescar", systemImage: "arrow.clockwise")
+                .keyboardShortcut("r", modifiers: [.command])
+                .help("Refrescar datos")
             }
-            .keyboardShortcut("r", modifiers: [.command])
-            .help("Refrescar datos")
         }
 
         ToolbarItem {
@@ -527,6 +483,185 @@ private struct MacModuleInspectorPlaceholder: View {
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(MacAppStyle.cardBackground)
+    }
+}
+
+private struct MacNotebookView: View {
+    @ObservedObject var bridge: KmpBridge
+    @ObservedObject var layoutState: WorkspaceLayoutState
+    @ObservedObject var toolbarActions: NotebookMacToolbarActions
+    @ObservedObject var inspectorState: NotebookMacInspectorState
+    @Binding var selectedClassId: Int64?
+    @Binding var selectedStudentId: Int64?
+
+    let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
+    let presentation: NotebookMacPresentation
+    let onToggleInspectorColumn: () -> Void
+
+    @State private var searchText = ""
+    @FocusState private var isSearchFocused: Bool
+
+    private var isContentPresentation: Bool {
+        presentation == .content || presentation == .full
+    }
+
+    @ViewBuilder
+    var body: some View {
+        let notebook = NotebookModuleView(
+            bridge: bridge,
+            selectedClassId: $selectedClassId,
+            selectedStudentId: $selectedStudentId,
+            onOpenModule: onOpenModule,
+            macPresentation: presentation,
+            macInspectorState: inspectorState,
+            macToolbarActions: isContentPresentation ? toolbarActions : nil
+        )
+        .environmentObject(layoutState)
+
+        if isContentPresentation {
+            notebook
+                .toolbar {
+                notebookToolbar
+                }
+                .searchable(
+                    text: Binding(
+                        get: { searchText },
+                        set: { newValue in
+                            searchText = newValue
+                            layoutState.setNotebookSearchText(newValue)
+                        }
+                    ),
+                    placement: .toolbar,
+                    prompt: "Buscar alumno..."
+                )
+                .searchFocused($isSearchFocused)
+                .onAppear {
+                    searchText = layoutState.notebookSearchText
+                }
+        } else {
+            notebook
+                .onAppear {
+                    searchText = layoutState.notebookSearchText
+                }
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var notebookToolbar: some ToolbarContent {
+        ToolbarItemGroup {
+            Button {
+                DispatchQueue.main.async {
+                    isSearchFocused = true
+                }
+            } label: {
+                Label("Buscar", systemImage: "magnifyingglass")
+            }
+            .keyboardShortcut("f", modifiers: .command)
+            .help("Buscar en el cuaderno")
+
+            Button {
+                toolbarActions.addColumn()
+            } label: {
+                Label("Nueva columna", systemImage: "plus.rectangle")
+            }
+            .disabled(!toolbarActions.addColumnAvailable)
+            .keyboardShortcut("n", modifiers: .command)
+            .help("Nueva columna")
+
+            Button {
+                onToggleInspectorColumn()
+            } label: {
+                Label("Inspector", systemImage: "sidebar.right")
+            }
+            .disabled(!toolbarActions.canToggleInspector && !inspectorState.isPresented)
+            .keyboardShortcut("i", modifiers: [.command, .option])
+            .help(toolbarActions.isInspectorPresented ? "Ocultar inspector" : "Mostrar inspector")
+
+            Menu {
+                Button {
+                    layoutState.setNotebookSurfaceMode(NotebookSurfaceMode.grid.rawValue)
+                } label: {
+                    Label("Rejilla", systemImage: "tablecells")
+                }
+                .keyboardShortcut("1", modifiers: .command)
+
+                Button {
+                    layoutState.setNotebookSurfaceMode(NotebookSurfaceMode.seatingPlan.rawValue)
+                } label: {
+                    Label("Plano", systemImage: "square.grid.3x3.square")
+                }
+                .keyboardShortcut("2", modifiers: .command)
+
+                Divider()
+
+                Button {
+                    toolbarActions.openOrganizationMenu()
+                } label: {
+                    Label("Organizar columnas", systemImage: "folder.badge.gearshape")
+                }
+                .disabled(!toolbarActions.organizationMenuAvailable)
+            } label: {
+                Label("Organizar columnas", systemImage: "rectangle.3.group")
+            }
+            .help("Organizar columnas y cambiar vista")
+
+            Menu {
+                Button {
+                    layoutState.setNotebookGroupFilter(nil)
+                } label: {
+                    Label("Todos los grupos", systemImage: layoutState.notebookSelectedGroupId == nil ? "checkmark" : "line.3.horizontal.decrease.circle")
+                }
+
+                if !layoutState.notebookAvailableGroups.isEmpty {
+                    Divider()
+                }
+
+                ForEach(layoutState.notebookAvailableGroups) { group in
+                    Button {
+                        layoutState.setNotebookGroupFilter(group.id)
+                    } label: {
+                        Label(
+                            "\(group.name) (\(group.studentCount))",
+                            systemImage: layoutState.notebookSelectedGroupId == group.id ? "checkmark" : "person.3"
+                        )
+                    }
+                }
+            } label: {
+                Label("Filtros", systemImage: "line.3.horizontal.decrease.circle")
+            }
+            .help("Filtrar alumnado")
+
+            if let exportText = toolbarActions.exportText {
+                ShareLink(item: exportText) {
+                    Label("Exportar", systemImage: "square.and.arrow.up")
+                }
+                .help("Exportar cuaderno")
+            } else {
+                Button {
+                } label: {
+                    Label("Exportar", systemImage: "square.and.arrow.up")
+                }
+                .disabled(true)
+                .help("Exportar cuaderno")
+            }
+
+            Button {
+                toolbarActions.undo()
+            } label: {
+                Label("Deshacer", systemImage: "arrow.uturn.backward")
+            }
+            .disabled(!toolbarActions.canUndo)
+            .keyboardShortcut("z", modifiers: .command)
+            .help("Deshacer ultimo cambio")
+
+            Button {
+                toolbarActions.refresh()
+            } label: {
+                Label("Refrescar", systemImage: "arrow.clockwise")
+            }
+            .keyboardShortcut("r", modifiers: .command)
+            .help("Refrescar datos")
+        }
     }
 }
 

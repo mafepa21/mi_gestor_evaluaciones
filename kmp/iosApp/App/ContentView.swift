@@ -114,15 +114,15 @@ struct DashboardView: View {
             }
             await applyFiltersAndReload()
         }
-        .onAppear(perform: syncToolbarState)
+        .onAppear(perform: scheduleToolbarStateSync)
         .appOnChange(of: selectedClassId) { _ in triggerDashboardReload() }
         .appOnChange(of: modeRawValue) { _ in triggerDashboardReload() }
         .appOnChange(of: severityFilter) { _ in triggerDashboardReload() }
         .appOnChange(of: priorityFilter) { _ in triggerDashboardReload() }
         .appOnChange(of: sessionStatusFilter) { _ in triggerDashboardReload() }
-        .appOnChange(of: inspectorSelection) { _ in handleInspectorSelectionChange() }
-        .appOnChange(of: isInspectorPresented) { _ in syncToolbarState() }
-        .appOnChange(of: toolbarStateKey) { _ in syncToolbarState() }
+        .appOnChange(of: inspectorSelection) { _ in scheduleInspectorSelectionSync() }
+        .appOnChange(of: isInspectorPresented) { _ in scheduleToolbarStateSync() }
+        .appOnChange(of: toolbarStateKey) { _ in scheduleToolbarStateSync() }
         .onDisappear {
             layoutState.clearDashboardToolbar()
         }
@@ -568,6 +568,18 @@ struct DashboardView: View {
                 Task { await performQuickEvaluation() }
             }
         )
+    }
+
+    private func scheduleToolbarStateSync() {
+        Task { @MainActor in
+            syncToolbarState()
+        }
+    }
+
+    private func scheduleInspectorSelectionSync() {
+        Task { @MainActor in
+            handleInspectorSelectionChange()
+        }
     }
 
     private func toggleInspector() {

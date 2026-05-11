@@ -403,37 +403,43 @@ struct NotebookModuleView: View {
     func notebookSelectionObservationModifiers<Content: View>(_ content: Content) -> some View {
         content
             .appOnChange(of: selectedClassId) { newValue in
-                undoStack.removeAll()
-                guard let newValue else { return }
-                guard bridge.notebookViewModel.currentClassId?.int64Value != newValue else { return }
-                selectNotebookClass(newValue)
+                Task { @MainActor in
+                    undoStack.removeAll()
+                    guard let newValue else { return }
+                    guard bridge.notebookViewModel.currentClassId?.int64Value != newValue else { return }
+                    selectNotebookClass(newValue)
+                }
             }
             .appOnChange(of: bridge.selectedNotebookTabId) { _ in
-                undoStack.removeAll()
-                restoreSeatPositions()
-                Task { await refreshNotebookSignals() }
+                Task { @MainActor in
+                    undoStack.removeAll()
+                    restoreSeatPositions()
+                    await refreshNotebookSignals()
+                }
             }
             .appOnChange(of: inspectorSelection) { newValue in
-                syncInspectorDraft()
-                auditObservationTask?.cancel()
-                currentSelectionAuditEvents = []
-                
-                if let selection = newValue {
-                    auditObservationTask = Task { @MainActor in
-                        let sequence = bridge.notebookViewModel.observeCellAudit(
-                            studentId: selection.studentId,
-                            columnId: selection.columnId
-                        ).asAsyncSequence(type: NSArray.self)
-                        
-                        for await events in sequence {
-                            if Task.isCancelled { break }
-                            currentSelectionAuditEvents = (events as? [NotebookCellAuditEvent]) ?? []
+                Task { @MainActor in
+                    syncInspectorDraft()
+                    auditObservationTask?.cancel()
+                    currentSelectionAuditEvents = []
+
+                    if let selection = newValue {
+                        auditObservationTask = Task { @MainActor in
+                            let sequence = bridge.notebookViewModel.observeCellAudit(
+                                studentId: selection.studentId,
+                                columnId: selection.columnId
+                            ).asAsyncSequence(type: NSArray.self)
+
+                            for await events in sequence {
+                                if Task.isCancelled { break }
+                                currentSelectionAuditEvents = (events as? [NotebookCellAuditEvent]) ?? []
+                            }
                         }
                     }
-                }
-                
-                if newValue == nil {
-                    isInspectorPresented = false
+
+                    if newValue == nil {
+                        isInspectorPresented = false
+                    }
                 }
             }
             .appOnChange(of: selectedAttachmentPhoto) { newValue in
@@ -464,14 +470,18 @@ struct NotebookModuleView: View {
             }
             .appOnChange(of: selectedGroupId) { _ in
                 scheduleToolbarStateSyncIfLoaded()
-                riskComputationKey = nil
+                Task { @MainActor in
+                    riskComputationKey = nil
+                }
             }
             .appOnChange(of: inspectorSelection) { _ in
                 scheduleToolbarStateSyncIfLoaded()
             }
             .appOnChange(of: bridge.notebookState is NotebookUiStateData) { _ in
-                restoreSeatPositions()
-                riskComputationKey = nil
+                Task { @MainActor in
+                    restoreSeatPositions()
+                    riskComputationKey = nil
+                }
                 scheduleToolbarStateSyncIfLoaded()
             }
     }

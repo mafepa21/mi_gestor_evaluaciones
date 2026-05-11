@@ -21,6 +21,7 @@ final class MacCommandCenterCoordinator: ObservableObject {
     private var lastLifecycleState: HelperLifecycleState = .stopped
     private var lastFailureMessage: String?
     private var lastRunningSnapshot: RunningSnapshot?
+    private var lastPublishedPairingPayload: String?
 
     init() {
         observers.append(NotificationCenter.default.addObserver(
@@ -73,6 +74,7 @@ final class MacCommandCenterCoordinator: ObservableObject {
         print("[Pairing] start requested")
         lastFailureMessage = nil
         lastRunningSnapshot = nil
+        lastPublishedPairingPayload = nil
         lastLifecycleState = .starting
         clearHelperBuffers()
         updateState(.starting, message: "Arrancando servicio de enlace en este Mac.")
@@ -378,6 +380,8 @@ final class MacCommandCenterCoordinator: ObservableObject {
                 return
             }
 
+            guard snapshot.payload != lastPublishedPairingPayload else { return }
+            lastPublishedPairingPayload = snapshot.payload
             lastRunningSnapshot = snapshot
             lastLifecycleState = .running
             print("[Pairing] received payload: \(snapshot.payload)")

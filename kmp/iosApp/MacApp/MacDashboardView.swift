@@ -82,14 +82,14 @@ struct MacDashboardView: View {
             scheduleReload()
         }
         .onAppear {
-            syncToolbarActions()
+            scheduleToolbarActionsSync()
         }
         .onDisappear {
             reloadTask?.cancel()
             onToolbarActionsChange(nil)
         }
         .appOnChange(of: toolbarKey) { _ in
-            syncToolbarActions()
+            scheduleToolbarActionsSync()
         }
         .appOnChange(of: bridge.syncPendingChanges) { _ in
             scheduleReload()
@@ -157,6 +157,12 @@ struct MacDashboardView: View {
                 observation: { activeSheet = .observation(classId: activeContext?.classId) }
             )
         )
+    }
+
+    private func scheduleToolbarActionsSync() {
+        Task { @MainActor in
+            syncToolbarActions()
+        }
     }
 
     private func scheduleReload() {

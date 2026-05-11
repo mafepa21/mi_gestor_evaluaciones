@@ -1,0 +1,94 @@
+import SwiftUI
+import MiGestorKit
+
+struct NotebookTabStrip: View {
+    let tabs: [NotebookTab]
+    let activeTabId: String?
+    let onSelect: (String) -> Void
+    let onCreateTab: () -> Void
+    let onRenameTab: (NotebookTab) -> Void
+    let onDeleteTab: (NotebookTab) -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if tabs.isEmpty {
+                Label("Organiza el cuaderno por temas", systemImage: "rectangle.on.rectangle")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+
+                Spacer(minLength: 12)
+
+                Button {
+                    onCreateTab()
+                } label: {
+                    Label("Crear primera pestaña", systemImage: "plus")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(tabs, id: \.id) { tab in
+                            tabButton(tab: tab, isSelected: tab.id == activeTabId)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+
+                Button {
+                    onCreateTab()
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 12, weight: .bold))
+                        .frame(width: 26, height: 26)
+                }
+                .buttonStyle(.borderless)
+                .help("Nueva pestaña")
+                .accessibilityLabel("Nueva pestaña")
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(.bar)
+    }
+
+    private func tabButton(tab: NotebookTab, isSelected: Bool) -> some View {
+        Button {
+            onSelect(tab.id)
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: isSelected ? "rectangle.fill.on.rectangle.fill" : "rectangle.on.rectangle")
+                    .font(.system(size: 11, weight: .semibold))
+
+                Text(tab.title)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(isSelected ? Color.accentColor.opacity(0.13) : Color.clear)
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .stroke(
+                                isSelected ? Color.accentColor.opacity(0.28) : NotebookStyle.softBorder.opacity(0.9),
+                                lineWidth: 1
+                            )
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button("Renombrar") {
+                onRenameTab(tab)
+            }
+
+            Button("Eliminar pestaña", role: .destructive) {
+                onDeleteTab(tab)
+            }
+        }
+        .help("Abrir \(tab.title)")
+    }
+}

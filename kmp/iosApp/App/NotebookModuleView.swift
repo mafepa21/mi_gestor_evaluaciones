@@ -5,331 +5,6 @@ import MiGestorKit
 import UIKit
 #endif
 
-private enum NotebookAttendanceStatus {
-    static let present = "PRESENTE"
-    static let absent = "AUSENTE"
-    static let late = "TARDE"
-    static let justified = "JUSTIFICADO"
-    static let noMaterial = "SIN_MATERIAL"
-    static let exempt = "EXENTO"
-
-    static func canonical(_ value: String) -> String {
-        switch value.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() {
-        case present, "PRESENT", "PRES":
-            return present
-        case absent, "ABSENT", "AUS":
-            return absent
-        case late, "RETRASO", "LATE":
-            return late
-        case justified, "JUSTIFICADA", "JUSTIFIED":
-            return justified
-        case noMaterial:
-            return noMaterial
-        case exempt:
-            return exempt
-        default:
-            return ""
-        }
-    }
-}
-
-struct NotebookInspectorSelection: Identifiable, Hashable {
-    let studentId: Int64
-    let columnId: String
-
-    var id: String { "\(studentId)|\(columnId)" }
-}
-
-final class NotebookMacInspectorState: ObservableObject {
-    @Published var selection: NotebookInspectorSelection?
-    @Published var noteDraft = ""
-    @Published var iconDraft = ""
-    @Published var attachmentUris: [String] = []
-    @Published var isPresented = false
-
-    func resetDrafts() {
-        noteDraft = ""
-        iconDraft = ""
-        attachmentUris = []
-    }
-}
-
-enum NotebookMacPresentation: Equatable {
-    case full
-    case content
-    case inspector
-}
-
-private struct NotebookTableRow: Identifiable {
-    let student: Student
-    let row: NotebookRow
-    let groupName: String
-
-    var id: Int64 { student.id }
-}
-
-private enum NotebookDeletionKind {
-    case column
-    case category
-}
-
-private struct NotebookDeletionImpactDraft: Identifiable {
-    let id = UUID()
-    let kind: NotebookDeletionKind
-    let targetId: String
-    let targetName: String
-    let affectedColumns: [NotebookColumnDefinition]
-    let affectedGradeCount: Int
-    let affectedFormulaColumnCount: Int
-    let affectedAverageColumnCount: Int
-    let hasLockedColumns: Bool
-
-    var affectedColumnCount: Int { affectedColumns.count }
-    var requiresStrongConfirmation: Bool { affectedGradeCount > 0 }
-}
-
-private enum NotebookFixedColumn: String, Identifiable, CaseIterable {
-    case photo
-    case name
-    case group
-    case followUp
-    case attendance
-    case average
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .photo: return "Foto"
-        case .name: return "Nombre"
-        case .group: return "Grupo"
-        case .followUp: return "Seguimiento"
-        case .attendance: return "Asistencia"
-        case .average: return "Media"
-        }
-    }
-
-    var subtitle: String {
-        switch self {
-        case .photo: return "Alumno"
-        case .name: return "Alumno"
-        case .group: return "Contexto"
-        case .followUp: return "Estado"
-        case .attendance: return "Resumen"
-        case .average: return "Promedio"
-        }
-    }
-
-    var width: CGFloat {
-        switch self {
-        case .photo: return 82
-        case .name: return 180
-        case .group: return 110
-        case .followUp: return 120
-        case .attendance: return 120
-        case .average: return 110
-        }
-    }
-}
-
-private enum NotebookDisplaySegment: Identifiable {
-    case fixed(NotebookFixedColumn)
-    case column(NotebookColumnDefinition)
-    case collapsedCategory(NotebookColumnCategory, [NotebookColumnDefinition])
-
-    var id: String {
-        switch self {
-        case .fixed(let fixed):
-            return "fixed_\(fixed.rawValue)"
-        case .column(let column):
-            return "column_\(column.id)"
-        case .collapsedCategory(let category, _):
-            return "collapsed_\(category.id)"
-        }
-    }
-
-    var title: String {
-        switch self {
-        case .fixed(let fixed):
-            return fixed.title
-        case .column(let column):
-            return column.title
-        case .collapsedCategory(let category, _):
-            return category.name
-        }
-    }
-}
-
-private enum NotebookViewPreset: String, CaseIterable, Identifiable {
-    case all
-    case evaluation
-    case followUp
-    case attendance
-    case extras
-    case physicalEducation
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .all: return "Vista completa"
-        case .evaluation: return "Vista evaluación"
-        case .followUp: return "Vista seguimiento"
-        case .attendance: return "Vista asistencia"
-        case .extras: return "Vista extras"
-        case .physicalEducation: return "Vista EF"
-        }
-    }
-}
-
-enum NotebookSurfaceMode: String, CaseIterable, Identifiable {
-    case grid
-    case seatingPlan
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .grid: return "Rejilla"
-        case .seatingPlan: return "Plano"
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .grid: return "tablecells"
-        case .seatingPlan: return "square.grid.3x3.square"
-        }
-    }
-}
-
-private struct NotebookSeatPosition: Codable {
-    var x: Double
-    var y: Double
-}
-
-private struct NotebookAddColumnContext: Identifiable {
-    let categoryId: String?
-    let startsCreatingCategory: Bool
-
-    var id: String {
-        "\(categoryId ?? "none")|\(startsCreatingCategory)"
-    }
-}
-
-enum NotebookToastStyle: Equatable {
-    case success
-    case warning
-
-    var tint: Color {
-        switch self {
-        case .success: return NotebookStyle.successTint
-        case .warning: return NotebookStyle.warningTint
-        }
-    }
-}
-
-private struct NotebookToast: Identifiable {
-    let id = UUID()
-    let message: String
-    let style: NotebookToastStyle
-}
-
-private enum NotebookHeaderLaneItem: Identifiable {
-    case spacer(id: String, width: CGFloat)
-    case folder(NotebookColumnCategory, [NotebookColumnDefinition], CGFloat)
-
-    var id: String {
-        switch self {
-        case .spacer(let id, _): return id
-        case .folder(let category, _, _): return "folder_\(category.id)"
-        }
-    }
-}
-
-private enum NotebookAIFlowMode {
-    case createColumn
-    case selection
-}
-
-private enum NotebookAIColumnScope: String, CaseIterable, Identifiable {
-    case visibleColumns
-    case evaluableColumns
-    case allManagedColumns
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .visibleColumns: return "Columnas visibles"
-        case .evaluableColumns: return "Solo evaluables"
-        case .allManagedColumns: return "Todas las gestionadas"
-        }
-    }
-}
-
-private struct NotebookAISheetRequest: Identifiable {
-    let mode: NotebookAIFlowMode
-    let studentIds: [Int64]
-    let targetColumnId: String?
-
-    var id: String {
-        let modeLabel = mode == .createColumn ? "create" : "selection"
-        return "\(modeLabel)|\(studentIds.map(String.init).joined(separator: ","))|\(targetColumnId ?? "none")"
-    }
-}
-
-private struct NotebookSummarySheetRequest: Identifiable {
-    let targetColumnId: String?
-
-    var id: String { targetColumnId ?? "summary" }
-}
-
-enum NotebookNavigationDirection: String, CaseIterable, Identifiable {
-    case up
-    case down
-    case left
-    case right
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .up: return "Arriba"
-        case .down: return "Abajo"
-        case .left: return "Izquierda"
-        case .right: return "Derecha"
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .up: return "arrow.up"
-        case .down: return "arrow.down"
-        case .left: return "arrow.left"
-        case .right: return "arrow.right"
-        }
-    }
-}
-
-private struct NotebookFormulaEditRequest: Identifiable {
-    let columnId: String
-
-    var id: String { columnId }
-}
-
-private struct NotebookFormulaCellDisplay {
-    let text: String
-    let isError: Bool
-}
-
-private struct NotebookCellUndoEntry {
-    let studentId: Int64
-    let column: NotebookColumnDefinition
-    let previousValue: String
-    let previousDisplayLabel: String?
-}
-
 struct NotebookModuleView: View {
     #if os(macOS)
     private let notebookGridRowHeight: CGFloat = 64
@@ -830,7 +505,22 @@ struct NotebookModuleView: View {
                     showsInlineActions: macPresentation != .content
                 )
                 Divider()
-                notebookTabStrip(data: data)
+                NotebookTabStrip(
+                    tabs: orderedNotebookTabs(data: data),
+                    activeTabId: activeNotebookTabId(data: data),
+                    onSelect: { tabId in
+                        selectNotebookTab(tabId)
+                    },
+                    onCreateTab: {
+                        presentCreateNotebookTab()
+                    },
+                    onRenameTab: { tab in
+                        presentRenameNotebookTab(tab)
+                    },
+                    onDeleteTab: { tab in
+                        pendingDeleteNotebookTab = tab
+                    }
+                )
                 Divider()
                 spreadsheetContent(data: data, rows: rows)
             }
@@ -854,84 +544,6 @@ struct NotebookModuleView: View {
                 syncToolbarState(data: data)
             }
         }
-    }
-
-    private func notebookTabStrip(data: NotebookUiStateData) -> some View {
-        let tabs = orderedNotebookTabs(data: data)
-        let activeTabId = activeNotebookTabId(data: data)
-
-        return HStack(spacing: 10) {
-            if tabs.isEmpty {
-                Label("Organiza el cuaderno por temas", systemImage: "rectangle.on.rectangle")
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 12)
-                Button {
-                    presentCreateNotebookTab()
-                } label: {
-                    Label("Crear primera pestaña", systemImage: "plus")
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(tabs, id: \.id) { tab in
-                            notebookTabButton(tab: tab, isSelected: tab.id == activeTabId)
-                        }
-                    }
-                    .padding(.vertical, 2)
-                }
-
-                Button {
-                    presentCreateNotebookTab()
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 12, weight: .bold))
-                        .frame(width: 26, height: 26)
-                }
-                .buttonStyle(.borderless)
-                .help("Nueva pestaña")
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(.bar)
-    }
-
-    private func notebookTabButton(tab: NotebookTab, isSelected: Bool) -> some View {
-        Button {
-            selectNotebookTab(tab.id)
-        } label: {
-            HStack(spacing: 7) {
-                Image(systemName: isSelected ? "rectangle.fill.on.rectangle.fill" : "rectangle.on.rectangle")
-                    .font(.system(size: 11, weight: .semibold))
-                Text(tab.title)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .lineLimit(1)
-            }
-            .foregroundStyle(isSelected ? Color.accentColor : .secondary)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(isSelected ? Color.accentColor.opacity(0.13) : Color.clear)
-                    .overlay(
-                        Capsule(style: .continuous)
-                            .stroke(isSelected ? Color.accentColor.opacity(0.28) : NotebookStyle.softBorder.opacity(0.9), lineWidth: 1)
-                    )
-            )
-        }
-        .buttonStyle(.plain)
-        .contextMenu {
-            Button("Renombrar") {
-                presentRenameNotebookTab(tab)
-            }
-            Button("Eliminar pestaña", role: .destructive) {
-                pendingDeleteNotebookTab = tab
-            }
-        }
-        .help("Abrir \(tab.title)")
     }
 
     @ViewBuilder
@@ -959,7 +571,46 @@ struct NotebookModuleView: View {
                 message: "Ajusta la búsqueda o el filtro de grupo para ver filas del cuaderno."
             )
         } seatingContent: { rows in
-            seatingPlanContent(data: data, rows: rows)
+            NotebookSeatingPlanView(
+                rows: rows,
+                averageText: { item in
+                    averageText(for: item)
+                },
+                attendanceText: { studentId in
+                    attendanceStatusText(for: studentId)
+                },
+                incidentCount: { studentId in
+                    incidentCountByStudentId[studentId] ?? 0
+                },
+                selectedStudentId: inspectorSelection?.studentId,
+                highlightedStudentId: highlightedRandomStudentId,
+                seatPositions: $seatPositions,
+                onHighlightRandomStudent: {
+                    highlightedRandomStudentId = randomEligibleStudentId(from: rows)
+                },
+                onResetSeats: {
+                    seatPositions = defaultSeatPositions(for: rows)
+                    persistSeatPositions()
+                },
+                onPersistSeats: {
+                    persistSeatPositions()
+                },
+                onOpenStudent: { studentId in
+                    openInspectorForStudent(studentId, data: data)
+                },
+                onMarkPresent: { studentId in
+                    Task { await markAttendance(for: studentId, status: NotebookAttendanceStatus.present) }
+                },
+                onMarkAbsent: { studentId in
+                    Task { await markAttendance(for: studentId, status: NotebookAttendanceStatus.absent) }
+                },
+                onMarkLate: { studentId in
+                    Task { await markAttendance(for: studentId, status: NotebookAttendanceStatus.late) }
+                },
+                onFollowUp: { student in
+                    Task { await createFollowUp(for: student) }
+                }
+            )
         } topAccessory: {
             Group {
                 if hasFolders {
@@ -1395,97 +1046,6 @@ struct NotebookModuleView: View {
                     title: "Inspector contextual",
                     message: "Selecciona una celda para ver alumno, columna, comentario, evidencia y peso."
                 )
-            }
-        }
-    }
-
-    private func seatingPlanContent(data: NotebookUiStateData, rows: [NotebookTableRow]) -> some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                Text("Plano de clase")
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
-                Spacer()
-                Button {
-                    highlightedRandomStudentId = randomEligibleStudentId(from: rows)
-                } label: {
-                    Label("Alumno aleatorio", systemImage: "dice")
-                }
-                .buttonStyle(.borderedProminent)
-
-                Button {
-                    seatPositions = defaultSeatPositions(for: rows)
-                    persistSeatPositions()
-                } label: {
-                    Label("Reordenar", systemImage: "arrow.counterclockwise")
-                }
-                .buttonStyle(.bordered)
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 14)
-            .background(NotebookStyle.surface.opacity(0.92))
-
-            GeometryReader { proxy in
-                ZStack {
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    NotebookStyle.surfaceMuted.opacity(0.96),
-                                    NotebookStyle.surface.opacity(0.92)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
-                        .padding(18)
-
-                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, item in
-                        let position = resolvedSeatPosition(for: item.student.id, index: index, total: rows.count)
-                        NotebookSeatCard(
-                            student: item.student,
-                            averageText: averageText(for: item),
-                            attendanceText: attendanceStatusText(for: item.student.id),
-                            incidentCount: incidentCountByStudentId[item.student.id] ?? 0,
-                            isHighlighted: highlightedRandomStudentId == item.student.id,
-                            isSelected: inspectorSelection?.studentId == item.student.id,
-                            onTap: {
-                                openInspectorForStudent(item.student.id, data: data)
-                            },
-                            onMarkPresent: {
-                                Task { await markAttendance(for: item.student.id, status: NotebookAttendanceStatus.present) }
-                            },
-                            onMarkAbsent: {
-                                Task { await markAttendance(for: item.student.id, status: NotebookAttendanceStatus.absent) }
-                            },
-                            onMarkLate: {
-                                Task { await markAttendance(for: item.student.id, status: NotebookAttendanceStatus.late) }
-                            },
-                            onFollowUp: {
-                                Task { await createFollowUp(for: item.student) }
-                            }
-                        )
-                        .frame(width: 166, height: 138)
-                        .position(
-                            x: max(96, min(proxy.size.width - 96, CGFloat(position.x) * proxy.size.width)),
-                            y: max(86, min(proxy.size.height - 86, CGFloat(position.y) * proxy.size.height))
-                        )
-                        .gesture(
-                            DragGesture()
-                                .onChanged { value in
-                                    let clampedX = min(max(value.location.x / max(proxy.size.width, 1), 0.12), 0.88)
-                                    let clampedY = min(max(value.location.y / max(proxy.size.height, 1), 0.12), 0.88)
-                                    seatPositions[item.student.id] = NotebookSeatPosition(x: clampedX, y: clampedY)
-                                }
-                                .onEnded { _ in
-                                    persistSeatPositions()
-                                }
-                        )
-                    }
-                }
-                .padding(20)
             }
         }
     }
@@ -2877,22 +2437,6 @@ struct NotebookModuleView: View {
             let y = 0.16 + Double(row) * verticalStep
             return (item.student.id, NotebookSeatPosition(x: x, y: y))
         })
-    }
-
-    private func resolvedSeatPosition(for studentId: Int64, index: Int, total: Int) -> NotebookSeatPosition {
-        if let existing = seatPositions[studentId] {
-            return existing
-        }
-        let columns = max(3, Int(ceil(sqrt(Double(max(total, 1))))))
-        let row = index / columns
-        let column = index % columns
-        let horizontalStep = 0.76 / Double(max(columns - 1, 1))
-        let verticalRows = Int(ceil(Double(max(total, 1)) / Double(columns)))
-        let verticalStep = 0.68 / Double(max(verticalRows - 1, 1))
-        return NotebookSeatPosition(
-            x: 0.12 + Double(column) * horizontalStep,
-            y: 0.16 + Double(row) * verticalStep
-        )
     }
 
     private func randomEligibleStudentId(from rows: [NotebookTableRow]) -> Int64? {
@@ -4834,91 +4378,6 @@ private struct NotebookDynamicCellsRow: View {
         default:
             return bridge.cellText(studentId: item.student.id, columnId: column.id)
         }
-    }
-}
-
-private struct NotebookSeatCard: View {
-    let student: Student
-    let averageText: String
-    let attendanceText: String
-    let incidentCount: Int
-    let isHighlighted: Bool
-    let isSelected: Bool
-    let onTap: () -> Void
-    let onMarkPresent: () -> Void
-    let onMarkAbsent: () -> Void
-    let onMarkLate: () -> Void
-    let onFollowUp: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 10) {
-                ZStack {
-                    Circle()
-                        .fill(NotebookStyle.primaryTint.opacity(0.16))
-                    Text(String(student.firstName.prefix(1)) + String(student.lastName.prefix(1)))
-                        .font(.system(size: 14, weight: .black, design: .rounded))
-                        .foregroundStyle(NotebookStyle.primaryTint)
-                }
-                .frame(width: 42, height: 42)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(student.fullName)
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
-                        .lineLimit(2)
-                    Text(attendanceText)
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.secondary)
-                    Text("Media \(averageText)")
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 0)
-                if incidentCount > 0 {
-                    Text("\(incidentCount)")
-                        .font(.system(size: 11, weight: .black, design: .rounded))
-                        .foregroundStyle(.orange)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                        .background(Capsule().fill(Color.orange.opacity(0.14)))
-                }
-            }
-
-            HStack(spacing: 6) {
-                quickAction("P", tint: NotebookStyle.successTint, action: onMarkPresent)
-                quickAction("A", tint: .red, action: onMarkAbsent)
-                quickAction("R", tint: NotebookStyle.warningTint, action: onMarkLate)
-                quickAction("Seg", tint: .orange, action: onFollowUp)
-            }
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(isHighlighted ? NotebookStyle.primaryTint.opacity(0.18) : NotebookStyle.surface)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .strokeBorder((isSelected ? NotebookStyle.primaryTint : Color.white.opacity(0.10)), lineWidth: isSelected ? 2 : 1)
-        )
-        .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: 8)
-        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .onTapGesture(perform: onTap)
-    }
-
-    private func quickAction(_ title: String, tint: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .foregroundStyle(tint)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .background(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(tint.opacity(0.12))
-                )
-        }
-        .buttonStyle(.plain)
     }
 }
 

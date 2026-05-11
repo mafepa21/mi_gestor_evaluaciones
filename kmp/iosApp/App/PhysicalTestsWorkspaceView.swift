@@ -343,10 +343,10 @@ struct PhysicalTestsWorkspaceView: View {
                 }
             }
             .task { await reload() }
-            .onChange(of: selectedClassId) { _ in Task { await reload() } }
-            .onChange(of: selectedClassId) { _ in syncSelectedClassDefaults() }
-            .onChange(of: selectedTestId) { _ in resetScaleDraftForActiveTest() }
-            .onChange(of: selectedFilterTestId) { _ in resetScaleDraftForActiveTest() }
+            .appOnChange(of: selectedClassId) { _ in Task { await reload() } }
+            .appOnChange(of: selectedClassId) { _ in syncSelectedClassDefaults() }
+            .appOnChange(of: selectedTestId) { _ in resetScaleDraftForActiveTest() }
+            .appOnChange(of: selectedFilterTestId) { _ in resetScaleDraftForActiveTest() }
             .sheet(isPresented: $showingCreateSheet) {
                 PhysicalTestCreationSheet(defaultClassId: selectedClassId, templates: PhysicalTestTemplate.defaults) {
                     Task { await reload() }
@@ -1598,7 +1598,7 @@ private struct PhysicalTestCreationSheet: View {
                         Text(template.name).tag(template.id)
                     }
                 }
-                .onChange(of: selectedTemplateId) { _ in syncTemplate() }
+                .appOnChange(of: selectedTemplateId) { _ in syncTemplate() }
 
                 TextField("Código", text: $code)
                 TextField("Nombre", text: $name)

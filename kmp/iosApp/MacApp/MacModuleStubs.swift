@@ -97,10 +97,10 @@ struct MacStudentsView: View {
             guard reloadToken > 0 else { return }
             await reloadRows()
         }
-        .onChange(of: selectedStudentId) { _, _ in
+        .appOnChange(of: selectedStudentId) { _, _ in
             Task { await reloadProfile() }
         }
-        .onChange(of: filteredRows.map(\.id)) { _, visibleIds in
+        .appOnChange(of: filteredRows.map(\.id)) { _, visibleIds in
             guard !visibleIds.isEmpty else {
                 selectedStudentId = nil
                 return
@@ -580,20 +580,20 @@ struct MacRubricsView: View {
             }
             await reloadUsageSummary()
         }
-        .onChange(of: selectedFilterClassId) { newValue in
+        .appOnChange(of: selectedFilterClassId) { newValue in
             bridge.setRubricFilterClass(newValue)
             if selectedRubric == nil {
                 selectedRubricId = filteredRubrics.first?.rubric.id
             }
             Task { await reloadUsageSummary() }
         }
-        .onChange(of: bridge.rubrics.count) { _ in
+        .appOnChange(of: bridge.rubrics.count) { _ in
             if selectedRubric == nil {
                 selectedRubricId = filteredRubrics.first?.rubric.id
             }
             Task { await reloadUsageSummary() }
         }
-        .onChange(of: selectedRubricId) { _ in
+        .appOnChange(of: selectedRubricId) { _ in
             Task { await reloadUsageSummary() }
         }
         .confirmationDialog(
@@ -1164,11 +1164,11 @@ struct MacReportsView: View {
             }
             await refreshWorkspace()
         }
-        .onChange(of: selectedClassId) { _, _ in
+        .appOnChange(of: selectedClassId) { _, _ in
             selectedStudentId = nil
             Task { await refreshWorkspace() }
         }
-        .onChange(of: selectedReportKind) { _, newValue in
+        .appOnChange(of: selectedReportKind) { _, newValue in
             if newValue == .lomloeEvaluationComment {
                 aiAudience = .familia
                 aiTone = .formal
@@ -1178,10 +1178,10 @@ struct MacReportsView: View {
             }
             Task { await reloadReport() }
         }
-        .onChange(of: selectedTerm) { _, _ in
+        .appOnChange(of: selectedTerm) { _, _ in
             Task { await reloadReport() }
         }
-        .onChange(of: selectedStudentId) { _, _ in
+        .appOnChange(of: selectedStudentId) { _, _ in
             Task { await reloadReport() }
         }
     }
@@ -2015,7 +2015,7 @@ struct MacPlannerView: View {
             await vm.bind(bridge: bridge)
             await syncInspectorStudents(for: vm.selectedSession)
         }
-        .onChange(of: selectedTableSessionId) { newValue in
+        .appOnChange(of: selectedTableSessionId) { newValue in
             guard let newValue,
                   let session = vm.filteredSessions.first(where: { $0.id == newValue }) ?? vm.sessions.first(where: { $0.id == newValue }) else { return }
             Task {
@@ -2024,7 +2024,7 @@ struct MacPlannerView: View {
                 isInspectorVisible = true
             }
         }
-        .onChange(of: vm.selectedSession?.id) { newValue in
+        .appOnChange(of: vm.selectedSession?.id) { newValue in
             selectedTableSessionId = newValue
             Task {
                 await syncInspectorStudents(for: vm.selectedSession)
@@ -2110,7 +2110,7 @@ struct MacPlannerView: View {
 
                 TextField("Buscar sesión, unidad u objetivo", text: $vm.searchText)
                     .textFieldStyle(.roundedBorder)
-                    .onChange(of: vm.searchText) { _ in
+                    .appOnChange(of: vm.searchText) { _ in
                         vm.applySearch()
                     }
 

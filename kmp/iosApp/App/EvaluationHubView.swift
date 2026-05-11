@@ -1,0 +1,219 @@
+import SwiftUI
+import MiGestorKit
+
+struct EvaluationHubView: View {
+    @EnvironmentObject var bridge: KmpBridge
+    @Environment(\.colorScheme) var colorScheme
+    @Binding var selectedClassId: Int64?
+    let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
+    @State var evaluations: [Evaluation] = []
+    @State var selectedEvaluationId: Int64?
+    @State var searchText = ""
+    @State var selectedTypeFilter = "Todas"
+
+    var availableTypes: [String] {
+        ["Todas"] + Array(Set(evaluations.map(\.type))).sorted()
+    }
+
+    var filteredEvaluations: [Evaluation] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return evaluations.filter { evaluation in
+            let matchesType = selectedTypeFilter == "Todas" || evaluation.type == selectedTypeFilter
+            let matchesText = query.isEmpty
+                || evaluation.name.localizedCaseInsensitiveContains(query)
+                || evaluation.code.localizedCaseInsensitiveContains(query)
+                || (evaluation.description_?.localizedCaseInsensitiveContains(query) ?? false)
+            return matchesType && matchesText
+        }
+        .sorted { lhs, rhs in
+            if lhs.weight == rhs.weight {
+                return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+            }
+            return lhs.weight > rhs.weight
+        }
+    }
+
+    var selectedEvaluation: Evaluation? {
+        filteredEvaluations.first(where: { $0.id == selectedEvaluationId }) ?? evaluations.first(where: { $0.id == selectedEvaluationId })
+    }
+
+    var selectedPresentation: EvaluationInspectorModel? {
+        guard let selectedEvaluation else { return nil }
+        return evaluationPresentation(
+            evaluation: selectedEvaluation,
+            rubrics: bridge.rubrics,
+            rubricClassLinks: bridge.rubricClassLinks
+        )
+    }
+
+    var rubricName: String {
+        guard let rubricId = selectedEvaluation?.rubricId?.int64Value else { return "Sin asignar" }
+        return bridge.rubrics.first(where: { $0.rubric.id == rubricId })?.rubric.name ?? "Rúbrica #\(rubricId)"
+    }
+
+    var linkedClassCountText: String {
+        guard let rubricId = selectedEvaluation?.rubricId?.int64Value else { return "0" }
+        return "\(bridge.rubricClassLinks[rubricId]?.count ?? 0)"
+    }
+
+    var evaluationMetrics: (total: Int, linkedRubrics: Int, averageWeight: Double) {
+        let total = filteredEvaluations.count
+        let linkedRubrics = filteredEvaluations.filter { $0.rubricId != nil }.count
+        let averageWeight = filteredEvaluations.isEmpty ? 0 : filteredEvaluations.map(\.weight).reduce(0, +) / Double(filteredEvaluations.count)
+        return (total, linkedRubrics, averageWeight)
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                VStack(spacing: 12) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(.secondary)
+                        TextField("Buscar evaluación o código…", text: $searchText)
+                            .textFieldStyle(.plain)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                    Picker("Tipo", selection: $selectedTypeFilter) {
+                        ForEach(availableTypes, id: \.self) { type in
+                            Text(type).tag(type)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    HStack(spacing: 10) {
+                        WorkspaceCompactStat(title: "Total", value: "\(evaluationMetrics.total)", tint: .blue)
+                        WorkspaceCompactStat(title: "Con rúbrica", value: "\(evaluationMetrics.linkedRubrics)", tint: .green)
+                        WorkspaceCompactStat(title: "Peso medio", value: String(format: "%.1f", evaluationMetrics.averageWeight), tint: .orange)
+                    }
+                }
+                .padding(16)
+
+                List {
+                    Section("Evaluaciones") {
+                        ForEach(filteredEvaluations, id: \.id) { evaluation in
+                            Button {
+                                selectedEvaluationId = evaluation.id
+                            } label: {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(evaluation.name)
+                                        .font(.headline)
+                                    Text("\(evaluation.type) · Peso \(String(format: "%.1f", evaluation.weight))")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .listStyle(.plain)
+            }
+            .frame(minWidth: 320, maxWidth: 360)
+
+            Divider().opacity(0.2)
+
+            Group {
+                if selectedEvaluation != nil, let presentation = selectedPresentation {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 18) {
+                            WorkspaceInspectorHero(title: presentation.title, subtitle: presentation.subtitle)
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 16)], spacing: 16) {
+                                WorkspaceMetricCard(title: "Peso", value: presentation.weightText, systemImage: "scalemass")
+                                WorkspaceMetricCard(title: "Código", value: presentation.code, systemImage: "number")
+                                WorkspaceMetricCard(title: "Rúbrica", value: presentation.rubricName, systemImage: "checklist")
+                                WorkspaceMetricCard(
+                                    title: "Clases con rúbrica",
+                                    value: presentation.linkedClassCountText,
+                                    systemImage: "rectangle.3.group"
+                                )
+                            }
+
+                            HStack(spacing: 12) {
+                                Button("Abrir cuaderno") {
+                                    onOpenModule(.notebook, selectedClassId, nil)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                Button("Ir a rúbricas") {
+                                    onOpenModule(.rubrics, selectedClassId, nil)
+                                }
+                                .buttonStyle(.bordered)
+                            }
+
+                            WorkspaceDetailBlock(title: "Resumen del instrumento", content: presentation.summary)
+
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Contexto evaluativo")
+                                    .font(.headline)
+                                WorkspaceFlowLayout(spacing: 10) {
+                                    WorkspaceTag(text: selectedClassId == nil ? "Clase global" : "Clase activa", systemImage: "rectangle.3.group")
+                                    ForEach(Array(presentation.readinessTags.enumerated()), id: \.offset) { _, tag in
+                                        WorkspaceTag(text: tag, systemImage: "tag.fill")
+                                    }
+                                }
+                            }
+
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Acciones rápidas")
+                                    .font(.headline)
+                                WorkspaceActionRow(title: "Abrir cuaderno del grupo", systemImage: "book.closed.fill") {
+                                    onOpenModule(.notebook, selectedClassId, nil)
+                                }
+                                WorkspaceActionRow(title: "Ir a banco de rúbricas", systemImage: "checklist") {
+                                    onOpenModule(.rubrics, selectedClassId, nil)
+                                }
+                            }
+                        }
+                        .padding(24)
+                    }
+                } else {
+                    VStack(spacing: 18) {
+                        WorkspaceEmptyState(
+                            title: "Selecciona una evaluación",
+                            subtitle: "Revisa instrumentos, peso, rúbrica asociada y acceso directo a cuaderno o banco de rúbricas."
+                        )
+                        HStack(spacing: 12) {
+                            Button("Crear evaluación") {
+                                bridge.status = "Usa el botón superior para crear una evaluación nueva."
+                            }
+                            .buttonStyle(.borderedProminent)
+                            Button("Abrir cuaderno") {
+                                onOpenModule(.notebook, selectedClassId, nil)
+                            }
+                            .buttonStyle(.bordered)
+                            Button("Abrir rúbricas") {
+                                onOpenModule(.rubrics, selectedClassId, nil)
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(appPageBackground(for: colorScheme))
+        }
+        .task { await reload() }
+        .appOnChange(of: selectedClassId) { _ in
+            Task { await reload() }
+        }
+    }
+
+    @MainActor
+    func reload() async {
+        guard let selectedClassId else {
+            evaluations = []
+            selectedEvaluationId = nil
+            return
+        }
+        evaluations = (try? await bridge.evaluations(for: selectedClassId)) ?? []
+        if selectedEvaluationId == nil {
+            selectedEvaluationId = evaluations.first?.id
+        } else if !evaluations.contains(where: { $0.id == selectedEvaluationId }) {
+            selectedEvaluationId = evaluations.first?.id
+        }
+    }
+}
+

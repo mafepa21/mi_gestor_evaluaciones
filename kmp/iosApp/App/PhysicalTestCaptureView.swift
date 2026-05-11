@@ -124,7 +124,7 @@ struct PhysicalTestCaptureView: View {
                 }
             }
             .onAppear(perform: loadCurrentValue)
-            .onChange(of: selectedIndex) { _ in loadCurrentValue() }
+            .appOnChange(of: selectedIndex) { _ in loadCurrentValue() }
         }
     }
 

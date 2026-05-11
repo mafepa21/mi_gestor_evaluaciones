@@ -235,7 +235,7 @@ struct NotebookSummaryGenerationSheet: View {
                     configuration = NotebookIndividualSummaryPreferences.load(columnId: first.id)
                 }
             }
-            .onChange(of: selectedExistingColumnId) { newValue in
+            .appOnChange(of: selectedExistingColumnId) { newValue in
                 configuration = NotebookIndividualSummaryPreferences.load(columnId: newValue.isEmpty ? nil : newValue)
             }
         }

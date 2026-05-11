@@ -99,7 +99,7 @@ struct NotebookColumnOrganizerSheet: View {
         .onAppear {
             syncLocalStateWithColumns()
         }
-        .onChange(of: columns.map(\.id)) { _ in
+        .appOnChange(of: columns.map(\.id)) { _ in
             syncLocalStateWithColumns()
         }
     }

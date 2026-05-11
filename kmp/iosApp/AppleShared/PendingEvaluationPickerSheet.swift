@@ -79,7 +79,7 @@ struct AgendaRubricEvaluationSheet: View {
                 hasOpenedTarget = true
                 bridge.openAgendaNavigationTarget(target)
             }
-            .onChange(of: bridge.rubricEvaluationState.rubricDetail != nil) { isVisible in
+            .appOnChange(of: bridge.rubricEvaluationState.rubricDetail != nil) { isVisible in
                 if isVisible {
                     hasRenderedDetail = true
                 } else if hasRenderedDetail {

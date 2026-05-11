@@ -181,18 +181,18 @@ struct MacAttendanceView: View {
             await reloadClassOverviews()
             await reloadAttendance()
         }
-        .onChange(of: selectedStudentId) { _, _ in
+        .appOnChange(of: selectedStudentId) { _, _ in
             noteDraft = selectedInspectionAttendance?.note ?? ""
             publishToolbarActions()
         }
-        .onChange(of: mode) { _, newValue in
+        .appOnChange(of: mode) { _, newValue in
             if newValue == .courses {
                 selectedStudentId = nil
                 historySelection = nil
             }
             publishToolbarActions()
         }
-        .onChange(of: toolbarStateKey) { _, _ in
+        .appOnChange(of: toolbarStateKey) { _, _ in
             publishToolbarActions()
         }
         .onDisappear {

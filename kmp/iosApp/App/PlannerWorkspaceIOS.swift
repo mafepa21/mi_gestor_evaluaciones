@@ -1189,7 +1189,7 @@ struct PlannerWorkspaceIOS: View {
             syncNavigationContext()
         }
         .onAppear(perform: configurePlannerToolbar)
-        .onChange(of: context) { newValue in
+        .appOnChange(of: context) { newValue in
             Task {
                 await vm.applyExternalContext(
                     week: newValue.week,
@@ -1200,12 +1200,12 @@ struct PlannerWorkspaceIOS: View {
                 syncNavigationContext()
             }
         }
-        .onChange(of: vm.selectedSession?.id) { _ in configurePlannerToolbar() }
-        .onChange(of: vm.activeSection) { _ in configurePlannerToolbar() }
-        .onChange(of: vm.week) { _ in syncNavigationContext() }
-        .onChange(of: vm.year) { _ in syncNavigationContext() }
-        .onChange(of: vm.selectedGroupId) { _ in syncNavigationContext() }
-        .onChange(of: vm.selectedSession?.id) { _ in syncNavigationContext() }
+        .appOnChange(of: vm.selectedSession?.id) { _ in configurePlannerToolbar() }
+        .appOnChange(of: vm.activeSection) { _ in configurePlannerToolbar() }
+        .appOnChange(of: vm.week) { _ in syncNavigationContext() }
+        .appOnChange(of: vm.year) { _ in syncNavigationContext() }
+        .appOnChange(of: vm.selectedGroupId) { _ in syncNavigationContext() }
+        .appOnChange(of: vm.selectedSession?.id) { _ in syncNavigationContext() }
         .sheet(isPresented: $vm.showingComposer) {
             PlannerSessionComposerSheet(vm: vm)
         }
@@ -1310,7 +1310,7 @@ private struct PlannerToolbar: View {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .fill(EvaluationDesign.surfaceSoft)
                 )
-                .onChange(of: vm.searchText) { _ in vm.applySearch() }
+                .appOnChange(of: vm.searchText) { _ in vm.applySearch() }
 
                 Menu {
                     Button(vm.selectionMode ? "Salir de selección" : "Seleccionar sesiones") {
@@ -1866,10 +1866,10 @@ struct PlannerJournalDetailPane: View {
                     }
                     .padding(EvaluationDesign.screenPadding)
                 }
-                .onChange(of: vm.journalDraft) { _ in
+                .appOnChange(of: vm.journalDraft) { _ in
                     vm.scheduleAutosave()
                 }
-                .onChange(of: selectedPhoto) { item in
+                .appOnChange(of: selectedPhoto) { item in
                     guard let item else { return }
                     Task {
                         if let data = try? await item.loadTransferable(type: Data.self),
@@ -2591,11 +2591,11 @@ struct PlannerSessionComposerSheet: View {
             .task {
                 await vm.refreshComposerContext()
             }
-            .onChange(of: vm.composerDraft.groupId) { _ in
+            .appOnChange(of: vm.composerDraft.groupId) { _ in
                 vm.composerDraft.teachingUnitId = nil
                 Task { await vm.refreshComposerContext() }
             }
-            .onChange(of: vm.composerDraft.teachingUnitId) { newValue in
+            .appOnChange(of: vm.composerDraft.teachingUnitId) { newValue in
                 if let newValue,
                    let unit = vm.composerTeachingUnits.first(where: { $0.id == newValue }) {
                     vm.composerDraft.unitTitle = unit.name

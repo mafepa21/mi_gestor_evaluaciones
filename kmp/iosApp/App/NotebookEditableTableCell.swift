@@ -91,7 +91,7 @@ struct NotebookEditableTableCell: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)
         .onAppear(perform: loadDrafts)
-        .onChange(of: reloadToken) { _ in
+        .appOnChange(of: reloadToken) { _ in
             loadDraftsUnlessEditing()
         }
         .onReceive(bridge.$notebookState) { state in
@@ -203,7 +203,7 @@ struct NotebookEditableTableCell: View {
                 Toggle("", isOn: $checkDraft)
                     .labelsHidden()
                     .tint(tint)
-                    .onChange(of: checkDraft) { newValue in
+                    .appOnChange(of: checkDraft) { newValue in
                         guard hasLoadedDrafts else { return }
                         onSelect()
                         let previousValue = originalCheckDraft ? "true" : "false"

@@ -14,6 +14,7 @@ struct NotebookGridContent<
     let topAccessoryHeight: CGFloat
     let headerHeight: CGFloat
     let rowHeight: CGFloat
+    let rowInvalidationKey: String
     let fixedSegments: [NotebookDisplaySegment]
     let scrollableSegments: [NotebookDisplaySegment]
     let emptyContent: () -> EmptyContent
@@ -44,9 +45,58 @@ struct NotebookGridContent<
         } scrollHeader: {
             header(scrollableSegments)
         } fixedRow: { index, item in
-            rowContent(index, item, fixedSegments)
+            NotebookEquatableGridRow(signature: rowSignature(index: index, item: item, segments: fixedSegments)) {
+                rowContent(index, item, fixedSegments)
+            }
         } scrollRow: { index, item in
-            rowContent(index, item, scrollableSegments)
+            NotebookEquatableGridRow(signature: rowSignature(index: index, item: item, segments: scrollableSegments)) {
+                rowContent(index, item, scrollableSegments)
+            }
         }
+    }
+
+    private func rowSignature(index: Int, item: NotebookTableRow, segments: [NotebookDisplaySegment]) -> String {
+        let segmentKey = segments.map(\.id).joined(separator: ",")
+        let cellKey = item.row.persistedCells
+            .sorted { lhs, rhs in
+                if lhs.columnId != rhs.columnId { return lhs.columnId < rhs.columnId }
+                return lhs.studentId < rhs.studentId
+            }
+            .map { cell in
+                [
+                    cell.columnId,
+                    cell.textValue ?? "",
+                    cell.boolValue.map(String.init) ?? "",
+                    cell.iconValue ?? "",
+                    cell.ordinalValue ?? "",
+                    cell.displayValue ?? "",
+                    cell.annotation?.note ?? "",
+                    cell.annotation?.icon ?? "",
+                    cell.annotation?.attachmentUris.joined(separator: ",") ?? ""
+                ].joined(separator: ":")
+            }
+            .joined(separator: "|")
+        return [
+            "\(index)",
+            "\(item.student.id)",
+            item.groupName,
+            String(describing: item.row.weightedAverage),
+            segmentKey,
+            cellKey,
+            rowInvalidationKey
+        ].joined(separator: "¬")
+    }
+}
+
+private struct NotebookEquatableGridRow<Content: View>: View, Equatable {
+    let signature: String
+    let content: () -> Content
+
+    var body: some View {
+        content()
+    }
+
+    static func == (lhs: NotebookEquatableGridRow<Content>, rhs: NotebookEquatableGridRow<Content>) -> Bool {
+        lhs.signature == rhs.signature
     }
 }

@@ -476,7 +476,7 @@ struct AddColumnSheet: View {
                         selectedBlueprintId = blueprints.first?.id
                     }
                 }
-                .onChange(of: selectedBlueprintId) { _ in
+                .appOnChange(of: selectedBlueprintId) { _ in
                     syncBlueprintDefaults()
                     if categoryPlacementMode == .existing, selectedCategoryId == nil {
                         selectedCategoryId = suggestedCategoryId

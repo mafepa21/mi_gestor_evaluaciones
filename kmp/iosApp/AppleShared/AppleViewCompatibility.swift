@@ -83,6 +83,36 @@ extension View {
         self.hoverEffect(.lift)
 #endif
     }
+
+    @ViewBuilder
+    func appOnChange<Value: Equatable>(
+        of value: Value,
+        perform action: @escaping (Value) -> Void
+    ) -> some View {
+        if #available(iOS 17.0, macOS 14.0, *) {
+            self.onChange(of: value) { _, newValue in
+                action(newValue)
+            }
+        } else {
+            self.onChange(of: value, perform: action)
+        }
+    }
+
+    @ViewBuilder
+    func appOnChange<Value: Equatable>(
+        of value: Value,
+        perform action: @escaping (Value, Value) -> Void
+    ) -> some View {
+        if #available(iOS 17.0, macOS 14.0, *) {
+            self.onChange(of: value) { oldValue, newValue in
+                action(oldValue, newValue)
+            }
+        } else {
+            self.onChange(of: value) { newValue in
+                action(newValue, newValue)
+            }
+        }
+    }
 }
 
 #if os(macOS)

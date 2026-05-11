@@ -7,76 +7,76 @@ import UIKit
 
 struct NotebookModuleView: View {
     #if os(macOS)
-    private let notebookGridRowHeight: CGFloat = 64
+    let notebookGridRowHeight: CGFloat = 64
     #else
-    private let notebookGridRowHeight: CGFloat = 72
+    let notebookGridRowHeight: CGFloat = 72
     #endif
-    private let notebookGridHeaderHeight: CGFloat = 68
-    private let notebookGridFolderLaneHeight: CGFloat = 64
+    let notebookGridHeaderHeight: CGFloat = 68
+    let notebookGridFolderLaneHeight: CGFloat = 64
 
-    @EnvironmentObject private var layoutState: WorkspaceLayoutState
+    @EnvironmentObject var layoutState: WorkspaceLayoutState
     @ObservedObject var bridge: KmpBridge
     @Binding var selectedClassId: Int64?
     @Binding var selectedStudentId: Int64?
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
-    private let macToolbarActions: NotebookMacToolbarActions?
-    @StateObject private var inspectorState: NotebookMacInspectorState
-    private let macPresentation: NotebookMacPresentation
-    @State private var addColumnContext: NotebookAddColumnContext? = nil
-    @State private var searchText = ""
-    @State private var selectedGroupId: Int64? = nil
-    @State private var viewPreset: NotebookViewPreset = .all
-    @State private var surfaceMode: NotebookSurfaceMode = .grid
-    @State private var todayAttendanceByStudentId: [Int64: String] = [:]
-    @State private var incidentCountByStudentId: [Int64: Int] = [:]
-    @State private var seatPositions: [Int64: NotebookSeatPosition] = [:]
-    @State private var highlightedRandomStudentId: Int64? = nil
-    @State private var selectedAttachmentPhoto: PhotosPickerItem?
-    @State private var isCreateCategoryAlertPresented = false
-    @State private var categoryDraft = ""
-    @State private var editingCategoryId: String? = nil
-    @State private var isNotebookTabAlertPresented = false
-    @State private var notebookTabDraft = ""
-    @State private var editingNotebookTabId: String? = nil
-    @State private var pendingDeleteNotebookTab: NotebookTab? = nil
-    @State private var isRenameColumnAlertPresented = false
-    @State private var columnDraft = ""
-    @State private var editingColumnId: String? = nil
-    @State private var pendingDeleteColumn: NotebookColumnDefinition? = nil
-    @State private var pendingDeleteCategory: NotebookColumnCategory? = nil
-    @State private var pendingDeletionImpact: NotebookDeletionImpactDraft? = nil
-    @State private var deletionConfirmationText = ""
-    @State private var isOrganizationMenuPresented = false
-    @State private var isHiddenColumnsSheetPresented = false
-    @State private var toast: NotebookToast? = nil
-    @State private var isAttendanceQuickMode = false
-    @State private var isMarkAllPresentDialogPresented = false
-    @State private var undoStack: [NotebookCellUndoEntry] = []
-    @State private var cellReloadRevision = 0
-    @State private var highlightedCategoryId: String? = nil
-    @State private var notebookAISheetRequest: NotebookAISheetRequest? = nil
-    @State private var notebookSummarySheetRequest: NotebookSummarySheetRequest? = nil
-    @State private var isAverageConfigurationPresented = false
-    @State private var averageExplanationRow: NotebookTableRow? = nil
-    @State private var currentSelectionAuditEvents: [NotebookCellAuditEvent] = []
-    @State private var auditObservationTask: Task<Void, Never>? = nil
-    @State private var riskLevelCache: [Int64: RiskLevel] = [:]
-    @State private var riskComputationKey: String?
-    @State private var isPrecomputingRiskLevels = false
-    @AppStorage("notebook.fixedZoneWidth") private var fixedZoneWidthStored = 460.0
-    @State private var isDraggingFixedZoneDivider = false
-    @State private var fixedZoneDragStartWidth: CGFloat = 0
-    @State private var fixedZoneLiveWidth: CGFloat? = nil
-    @State private var columnWidths: [String: CGFloat] = [:]
-    @State private var formulaEditRequest: NotebookFormulaEditRequest? = nil
-    @State private var formulaDraft = ""
-    @State private var formulaAIPrompt = ""
-    @State private var formulaAIMessage: String? = nil
-    @State private var isFormulaAIGenerating = false
-    @State private var activeChoiceCellId: String? = nil
-    @AppStorage("notebook.navigationDirection") private var navigationDirectionRaw = NotebookNavigationDirection.down.rawValue
-    @FocusState private var focusedCellId: String?
-    private let formulaAIService = AppleFoundationFormulaService()
+    let macToolbarActions: NotebookMacToolbarActions?
+    @StateObject var inspectorState: NotebookMacInspectorState
+    let macPresentation: NotebookMacPresentation
+    @State var addColumnContext: NotebookAddColumnContext? = nil
+    @State var searchText = ""
+    @State var selectedGroupId: Int64? = nil
+    @State var viewPreset: NotebookViewPreset = .all
+    @State var surfaceMode: NotebookSurfaceMode = .grid
+    @State var todayAttendanceByStudentId: [Int64: String] = [:]
+    @State var incidentCountByStudentId: [Int64: Int] = [:]
+    @State var seatPositions: [Int64: NotebookSeatPosition] = [:]
+    @State var highlightedRandomStudentId: Int64? = nil
+    @State var selectedAttachmentPhoto: PhotosPickerItem?
+    @State var isCreateCategoryAlertPresented = false
+    @State var categoryDraft = ""
+    @State var editingCategoryId: String? = nil
+    @State var isNotebookTabAlertPresented = false
+    @State var notebookTabDraft = ""
+    @State var editingNotebookTabId: String? = nil
+    @State var pendingDeleteNotebookTab: NotebookTab? = nil
+    @State var isRenameColumnAlertPresented = false
+    @State var columnDraft = ""
+    @State var editingColumnId: String? = nil
+    @State var pendingDeleteColumn: NotebookColumnDefinition? = nil
+    @State var pendingDeleteCategory: NotebookColumnCategory? = nil
+    @State var pendingDeletionImpact: NotebookDeletionImpactDraft? = nil
+    @State var deletionConfirmationText = ""
+    @State var isOrganizationMenuPresented = false
+    @State var isHiddenColumnsSheetPresented = false
+    @State var toast: NotebookToast? = nil
+    @State var isAttendanceQuickMode = false
+    @State var isMarkAllPresentDialogPresented = false
+    @State var undoStack: [NotebookCellUndoEntry] = []
+    @State var cellReloadRevision = 0
+    @State var highlightedCategoryId: String? = nil
+    @State var notebookAISheetRequest: NotebookAISheetRequest? = nil
+    @State var notebookSummarySheetRequest: NotebookSummarySheetRequest? = nil
+    @State var isAverageConfigurationPresented = false
+    @State var averageExplanationRow: NotebookTableRow? = nil
+    @State var currentSelectionAuditEvents: [NotebookCellAuditEvent] = []
+    @State var auditObservationTask: Task<Void, Never>? = nil
+    @State var riskLevelCache: [Int64: RiskLevel] = [:]
+    @State var riskComputationKey: String?
+    @State var isPrecomputingRiskLevels = false
+    @AppStorage("notebook.fixedZoneWidth") var fixedZoneWidthStored = 460.0
+    @State var isDraggingFixedZoneDivider = false
+    @State var fixedZoneDragStartWidth: CGFloat = 0
+    @State var fixedZoneLiveWidth: CGFloat? = nil
+    @State var columnWidths: [String: CGFloat] = [:]
+    @State var formulaEditRequest: NotebookFormulaEditRequest? = nil
+    @State var formulaDraft = ""
+    @State var formulaAIPrompt = ""
+    @State var formulaAIMessage: String? = nil
+    @State var isFormulaAIGenerating = false
+    @State var activeChoiceCellId: String? = nil
+    @AppStorage("notebook.navigationDirection") var navigationDirectionRaw = NotebookNavigationDirection.down.rawValue
+    @FocusState var focusedCellId: String?
+    let formulaAIService = AppleFoundationFormulaService()
 
     init(
         bridge: KmpBridge,
@@ -96,69 +96,69 @@ struct NotebookModuleView: View {
         self._inspectorState = StateObject(wrappedValue: macInspectorState ?? NotebookMacInspectorState())
     }
 
-    private var navigationDirection: NotebookNavigationDirection {
+    var navigationDirection: NotebookNavigationDirection {
         get { NotebookNavigationDirection(rawValue: navigationDirectionRaw) ?? .down }
         nonmutating set { navigationDirectionRaw = newValue.rawValue }
     }
 
-    private var inspectorSelection: NotebookInspectorSelection? {
+    var inspectorSelection: NotebookInspectorSelection? {
         get { inspectorState.selection }
         nonmutating set { inspectorState.selection = newValue }
     }
 
-    private var inspectorNoteDraft: String {
+    var inspectorNoteDraft: String {
         get { inspectorState.noteDraft }
         nonmutating set { inspectorState.noteDraft = newValue }
     }
 
-    private var inspectorIconDraft: String {
+    var inspectorIconDraft: String {
         get { inspectorState.iconDraft }
         nonmutating set { inspectorState.iconDraft = newValue }
     }
 
-    private var inspectorAttachmentUris: [String] {
+    var inspectorAttachmentUris: [String] {
         get { inspectorState.attachmentUris }
         nonmutating set { inspectorState.attachmentUris = newValue }
     }
 
-    private var isInspectorPresented: Bool {
+    var isInspectorPresented: Bool {
         get { inspectorState.isPresented }
         nonmutating set { inspectorState.isPresented = newValue }
     }
 
-    private var isMacInspectorOnly: Bool {
+    var isMacInspectorOnly: Bool {
         macPresentation == .inspector
     }
 
-    private var inspectorSelectionBinding: Binding<NotebookInspectorSelection?> {
+    var inspectorSelectionBinding: Binding<NotebookInspectorSelection?> {
         Binding(
             get: { inspectorSelection },
             set: { inspectorSelection = $0 }
         )
     }
 
-    private var inspectorNoteDraftBinding: Binding<String> {
+    var inspectorNoteDraftBinding: Binding<String> {
         Binding(
             get: { inspectorNoteDraft },
             set: { inspectorNoteDraft = $0 }
         )
     }
 
-    private var inspectorIconDraftBinding: Binding<String> {
+    var inspectorIconDraftBinding: Binding<String> {
         Binding(
             get: { inspectorIconDraft },
             set: { inspectorIconDraft = $0 }
         )
     }
 
-    private var inspectorAttachmentUrisBinding: Binding<[String]> {
+    var inspectorAttachmentUrisBinding: Binding<[String]> {
         Binding(
             get: { inspectorAttachmentUris },
             set: { inspectorAttachmentUris = $0 }
         )
     }
 
-    private var isInspectorPresentedBinding: Binding<Bool> {
+    var isInspectorPresentedBinding: Binding<Bool> {
         Binding(
             get: { isInspectorPresented },
             set: { isInspectorPresented = $0 }
@@ -173,7 +173,7 @@ struct NotebookModuleView: View {
         )
     }
 
-    private var notebookContentWithDialogs: some View {
+    var notebookContentWithDialogs: some View {
         Group {
             if let data = bridge.notebookState as? NotebookUiStateData {
                 notebookLoadedContent(data: data)
@@ -301,7 +301,7 @@ struct NotebookModuleView: View {
         }
     }
 
-    private func notebookSheetAndTaskModifiers<Content: View>(_ content: Content) -> some View {
+    func notebookSheetAndTaskModifiers<Content: View>(_ content: Content) -> some View {
         content
             .sheet(isPresented: $isOrganizationMenuPresented) {
                 if let data = bridge.notebookState as? NotebookUiStateData {
@@ -393,26 +393,26 @@ struct NotebookModuleView: View {
             }
     }
 
-    private func notebookObservationModifiers<Content: View>(_ content: Content) -> some View {
+    func notebookObservationModifiers<Content: View>(_ content: Content) -> some View {
         notebookToolbarObservationModifiers(
             notebookSelectionObservationModifiers(content)
         )
     }
 
-    private func notebookSelectionObservationModifiers<Content: View>(_ content: Content) -> some View {
+    func notebookSelectionObservationModifiers<Content: View>(_ content: Content) -> some View {
         content
-            .onChange(of: selectedClassId) { newValue in
+            .appOnChange(of: selectedClassId) { newValue in
                 undoStack.removeAll()
                 guard let newValue else { return }
                 guard bridge.notebookViewModel.currentClassId?.int64Value != newValue else { return }
                 selectNotebookClass(newValue)
             }
-            .onChange(of: bridge.selectedNotebookTabId) { _ in
+            .appOnChange(of: bridge.selectedNotebookTabId) { _ in
                 undoStack.removeAll()
                 restoreSeatPositions()
                 Task { await refreshNotebookSignals() }
             }
-            .onChange(of: inspectorSelection) { newValue in
+            .appOnChange(of: inspectorSelection) { newValue in
                 syncInspectorDraft()
                 auditObservationTask?.cancel()
                 currentSelectionAuditEvents = []
@@ -435,47 +435,47 @@ struct NotebookModuleView: View {
                     isInspectorPresented = false
                 }
             }
-            .onChange(of: selectedAttachmentPhoto) { newValue in
+            .appOnChange(of: selectedAttachmentPhoto) { newValue in
                 guard let newValue else { return }
                 Task { await importSelectedAttachment(from: newValue) }
             }
     }
 
-    private func notebookToolbarObservationModifiers<Content: View>(_ content: Content) -> some View {
+    func notebookToolbarObservationModifiers<Content: View>(_ content: Content) -> some View {
         content
             .onAppear {
                 syncToolbarStateIfLoaded()
             }
-            .onChange(of: isInspectorPresented) { _ in
+            .appOnChange(of: isInspectorPresented) { _ in
                 syncToolbarStateIfLoaded()
             }
-            .onChange(of: surfaceMode) { _ in
+            .appOnChange(of: surfaceMode) { _ in
                 syncToolbarStateIfLoaded()
             }
-            .onChange(of: undoStack.count) { _ in
+            .appOnChange(of: undoStack.count) { _ in
                 syncToolbarStateIfLoaded()
             }
-            .onChange(of: isAttendanceQuickMode) { _ in
+            .appOnChange(of: isAttendanceQuickMode) { _ in
                 syncToolbarStateIfLoaded()
             }
-            .onChange(of: searchText) { _ in
+            .appOnChange(of: searchText) { _ in
                 syncToolbarStateIfLoaded()
             }
-            .onChange(of: selectedGroupId) { _ in
+            .appOnChange(of: selectedGroupId) { _ in
                 syncToolbarStateIfLoaded()
                 riskComputationKey = nil
             }
-            .onChange(of: inspectorSelection) { _ in
+            .appOnChange(of: inspectorSelection) { _ in
                 syncToolbarStateIfLoaded()
             }
-            .onChange(of: bridge.notebookState is NotebookUiStateData) { _ in
+            .appOnChange(of: bridge.notebookState is NotebookUiStateData) { _ in
                 restoreSeatPositions()
                 riskComputationKey = nil
                 syncToolbarStateIfLoaded()
             }
     }
 
-    private func notebookLifecycleCleanup<Content: View>(_ content: Content) -> some View {
+    func notebookLifecycleCleanup<Content: View>(_ content: Content) -> some View {
         content
             .onDisappear {
                 if !isMacInspectorOnly {
@@ -485,7 +485,7 @@ struct NotebookModuleView: View {
             }
     }
 
-    private func centerPanel(data: NotebookUiStateData) -> some View {
+    func centerPanel(data: NotebookUiStateData) -> some View {
         let rows = filteredRows(data: data)
 
         return HStack(spacing: 0) {
@@ -574,7 +574,7 @@ struct NotebookModuleView: View {
                 syncToolbarState(data: data)
             }
         }
-        .onChange(of: toolbarStateKey(data: data)) { _ in
+        .appOnChange(of: toolbarStateKey(data: data)) { _ in
             if !isMacInspectorOnly {
                 syncToolbarState(data: data)
             }
@@ -582,7 +582,7 @@ struct NotebookModuleView: View {
     }
 
     @ViewBuilder
-    private func spreadsheetContent(data: NotebookUiStateData, rows: [NotebookTableRow]) -> some View {
+    func spreadsheetContent(data: NotebookUiStateData, rows: [NotebookTableRow]) -> some View {
         let segments = displaySegments(data: data)
         let fixedSegments = visibleFixedSegments(in: segments)
         let scrollableSegments = segments.filter { !isFixedSegment($0) }
@@ -599,6 +599,7 @@ struct NotebookModuleView: View {
             topAccessoryHeight: hasFolders ? notebookGridFolderLaneHeight : 0,
             headerHeight: notebookGridHeaderHeight,
             rowHeight: notebookGridRowHeight,
+            rowInvalidationKey: gridRowInvalidationKey(data: data),
             fixedSegments: fixedSegments,
             scrollableSegments: scrollableSegments
         ) {
@@ -694,7 +695,7 @@ struct NotebookModuleView: View {
     }
 
     @ViewBuilder
-    private func headerRow(segments: [NotebookDisplaySegment], data: NotebookUiStateData) -> some View {
+    func headerRow(segments: [NotebookDisplaySegment], data: NotebookUiStateData) -> some View {
         HStack(alignment: .top, spacing: 8) {
             ForEach(segments, id: \.id) { segment in
                 headerChip(for: segment, data: data)
@@ -713,14 +714,14 @@ struct NotebookModuleView: View {
         )
     }
 
-    private func isFixedSegment(_ segment: NotebookDisplaySegment) -> Bool {
+    func isFixedSegment(_ segment: NotebookDisplaySegment) -> Bool {
         if case .fixed = segment {
             return true
         }
         return false
     }
 
-    private func visibleFixedSegments(in segments: [NotebookDisplaySegment]) -> [NotebookDisplaySegment] {
+    func visibleFixedSegments(in segments: [NotebookDisplaySegment]) -> [NotebookDisplaySegment] {
         let allowedColumns = visibleFixedColumns
         return segments.filter { segment in
             guard case .fixed(let fixed) = segment else { return false }
@@ -728,14 +729,14 @@ struct NotebookModuleView: View {
         }
     }
 
-    private var fixedZoneWidth: CGFloat {
+    var fixedZoneWidth: CGFloat {
         min(maxFixedZoneWidth, max(minFixedZoneWidth, fixedZoneLiveWidth ?? CGFloat(fixedZoneWidthStored)))
     }
 
-    private var minFixedZoneWidth: CGFloat { 220 }
-    private var maxFixedZoneWidth: CGFloat { 700 }
+    var minFixedZoneWidth: CGFloat { 220 }
+    var maxFixedZoneWidth: CGFloat { 700 }
 
-    private var visibleFixedColumns: [NotebookFixedColumn] {
+    var visibleFixedColumns: [NotebookFixedColumn] {
         var columns: [NotebookFixedColumn] = [.photo, .name]
         if fixedZoneWidth > 290 { columns.append(.followUp) }
         if fixedZoneWidth > 400 { columns.append(.attendance) }
@@ -744,7 +745,7 @@ struct NotebookModuleView: View {
         return columns
     }
 
-    private func snapFixedZoneWidth() {
+    func snapFixedZoneWidth() {
         let snapPoints: [CGFloat] = [220, 360, 460, 580]
         let current = fixedZoneWidth
         let snappedWidth: CGFloat
@@ -763,7 +764,7 @@ struct NotebookModuleView: View {
         }
     }
 
-    private func segmentWidth(_ segment: NotebookDisplaySegment) -> CGFloat {
+    func segmentWidth(_ segment: NotebookDisplaySegment) -> CGFloat {
         switch segment {
         case .fixed(let fixed):
             return resolvedFixedWidth(for: fixed)
@@ -774,7 +775,7 @@ struct NotebookModuleView: View {
         }
     }
 
-    private func resolvedFixedWidth(for fixed: NotebookFixedColumn) -> CGFloat {
+    func resolvedFixedWidth(for fixed: NotebookFixedColumn) -> CGFloat {
         let visibleColumns = visibleFixedColumns
         let trailingColumns = visibleColumns.filter { $0 != .photo && $0 != .name }
         let trailingWidth = trailingColumns.reduce(CGFloat.zero) { partial, column in
@@ -793,7 +794,7 @@ struct NotebookModuleView: View {
         }
     }
 
-    private func defaultFixedWidth(for fixed: NotebookFixedColumn) -> CGFloat {
+    func defaultFixedWidth(for fixed: NotebookFixedColumn) -> CGFloat {
         switch fixed {
         case .photo: return 52
         case .name: return 180
@@ -804,11 +805,11 @@ struct NotebookModuleView: View {
         }
     }
 
-    private func resolvedColumnWidth(for column: NotebookColumnDefinition) -> CGFloat {
+    func resolvedColumnWidth(for column: NotebookColumnDefinition) -> CGFloat {
         columnWidths[column.id] ?? CGFloat(max(column.widthDp, 140))
     }
 
-    private func notebookLoadedContent(data: NotebookUiStateData) -> some View {
+    func notebookLoadedContent(data: NotebookUiStateData) -> some View {
         Group {
             switch macPresentation {
             case .full, .content:
@@ -876,12 +877,12 @@ struct NotebookModuleView: View {
                     syncToolbarState(data: data)
                 }
             }
-            .onChange(of: notebookTabsStateKey(data: data)) { _ in
+            .appOnChange(of: notebookTabsStateKey(data: data)) { _ in
                 if !isMacInspectorOnly {
                     ensureActiveNotebookTab(data: data)
                 }
             }
-            .onChange(of: toolbarStateKey(data: data)) { _ in
+            .appOnChange(of: toolbarStateKey(data: data)) { _ in
                 if !isMacInspectorOnly {
                     syncToolbarState(data: data)
                 }
@@ -889,7 +890,7 @@ struct NotebookModuleView: View {
     }
 
     @ViewBuilder
-    private func addColumnSheetPresentation(for context: NotebookAddColumnContext) -> some View {
+    func addColumnSheetPresentation(for context: NotebookAddColumnContext) -> some View {
         let content = AddColumnSheet(
             bridge: bridge,
             initialCategoryId: context.categoryId,
@@ -906,7 +907,7 @@ struct NotebookModuleView: View {
     }
 
     @ViewBuilder
-    private func formulaEditorSheet(request: NotebookFormulaEditRequest, data: NotebookUiStateData) -> some View {
+    func formulaEditorSheet(request: NotebookFormulaEditRequest, data: NotebookUiStateData) -> some View {
         if let column = data.sheet.columns.first(where: { $0.id == request.columnId }) {
             NotebookFormulaEditorSheet(
                 column: column,
@@ -927,25 +928,49 @@ struct NotebookModuleView: View {
         }
     }
 
-    private func formulaReferenceColumns(for column: NotebookColumnDefinition, data: NotebookUiStateData) -> [NotebookColumnDefinition] {
+    func formulaReferenceColumns(for column: NotebookColumnDefinition, data: NotebookUiStateData) -> [NotebookColumnDefinition] {
         visibleNotebookSourceColumns(data: data)
             .filter { $0.id != column.id }
     }
 
-    private func notebookNavigationSubtitle(data: NotebookUiStateData) -> String {
+    func notebookNavigationSubtitle(data: NotebookUiStateData) -> String {
         let context = headerContextLine(in: data)
         let studentCount = filteredRows(data: data).count
         return "\(context) · \(studentCount) alumnos"
     }
 
-    private func notebookTabsStateKey(data: NotebookUiStateData) -> String {
+    func gridRowInvalidationKey(data: NotebookUiStateData) -> String {
+        [
+            inspectorSelection?.id ?? "none",
+            "\(isInspectorPresented)",
+            "\(isAttendanceQuickMode)",
+            "\(cellReloadRevision)",
+            activeChoiceCellId ?? "none",
+            focusedCellId ?? "none",
+            todayAttendanceByStudentId
+                .sorted { $0.key < $1.key }
+                .map { "\($0.key):\($0.value)" }
+                .joined(separator: ","),
+            incidentCountByStudentId
+                .sorted { $0.key < $1.key }
+                .map { "\($0.key):\($0.value)" }
+                .joined(separator: ","),
+            riskLevelCache
+                .sorted { $0.key < $1.key }
+                .map { "\($0.key):\($0.value)" }
+                .joined(separator: ","),
+            "\(data.sheet.columns.count)"
+        ].joined(separator: "¬")
+    }
+
+    func notebookTabsStateKey(data: NotebookUiStateData) -> String {
         data.sheet.tabs
             .sorted { $0.id < $1.id }
             .map { "\($0.id)|\($0.title)|\($0.order)|\($0.parentTabId ?? "")" }
             .joined(separator: "¬")
     }
 
-    private func notebookAISheet(request: NotebookAISheetRequest, data: NotebookUiStateData) -> some View {
+    func notebookAISheet(request: NotebookAISheetRequest, data: NotebookUiStateData) -> some View {
         NotebookAICommentSheet(
             bridge: bridge,
             data: data,
@@ -959,7 +984,7 @@ struct NotebookModuleView: View {
         }
     }
 
-    private func inspectorPanel(data: NotebookUiStateData, rows: [NotebookTableRow]) -> some View {
+    func inspectorPanel(data: NotebookUiStateData, rows: [NotebookTableRow]) -> some View {
         NotebookInspectorPanel(
             bridge: bridge,
             data: data,
@@ -1008,2329 +1033,6 @@ struct NotebookModuleView: View {
                 cellReloadRevision += 1
             }
         )
-    }
-
-    private var currentClass: SchoolClass? {
-        bridge.classes.first(where: { $0.id == bridge.notebookViewModel.currentClassId?.int64Value ?? 0 })
-    }
-
-    private var notebookSupportRefreshKey: String {
-        "\(selectedClassId ?? -1)|\(bridge.selectedNotebookTabId ?? "all")"
-    }
-
-    private var semanticInspectorIcons: [String] {
-        ["", "✅", "⭐", "⚠️", "🏠", "🧩", "📌", "💬"]
-    }
-
-    private var sortedClasses: [SchoolClass] {
-        bridge.classes.sorted {
-            if $0.course != $1.course { return $0.course < $1.course }
-            return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-        }
-    }
-
-    private var activeClassLabel: String {
-        guard let currentClass else { return "Seleccionar clase" }
-        return classLabel(for: currentClass)
-    }
-
-    private func classLabel(for schoolClass: SchoolClass) -> String {
-        "\(schoolClass.name) · \(schoolClass.course)º"
-    }
-
-    private func headerContextLine(in data: NotebookUiStateData) -> String {
-        let classText = activeClassLabel
-        let groupText = selectedGroupId.flatMap { groupName(for: $0, in: data) } ?? "Grupo completo"
-        let tabText = activeNotebookTab(data: data)?.title
-        return [classText, tabText, groupText]
-            .compactMap { value in
-                let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                return trimmed.isEmpty ? nil : trimmed
-            }
-            .joined(separator: " · ")
-    }
-
-    private func orderedNotebookTabs(data: NotebookUiStateData) -> [NotebookTab] {
-        let rootTabs = data.sheet.tabs.filter { $0.parentTabId == nil }
-        let source = rootTabs.isEmpty ? data.sheet.tabs : rootTabs
-        return source.sorted {
-            if $0.order != $1.order { return $0.order < $1.order }
-            return $0.id < $1.id
-        }
-    }
-
-    private func activeNotebookTabId(data: NotebookUiStateData) -> String? {
-        let tabs = orderedNotebookTabs(data: data)
-        if let selected = bridge.selectedNotebookTabId,
-           tabs.contains(where: { $0.id == selected }) {
-            return selected
-        }
-        return tabs.first?.id
-    }
-
-    private func activeNotebookTab(data: NotebookUiStateData) -> NotebookTab? {
-        guard let activeTabId = activeNotebookTabId(data: data) else { return nil }
-        return data.sheet.tabs.first { $0.id == activeTabId }
-    }
-
-    private func ensureActiveNotebookTab(data: NotebookUiStateData) {
-        guard let activeTabId = activeNotebookTabId(data: data) else {
-            if bridge.selectedNotebookTabId != nil {
-                bridge.setSelectedNotebookTab(id: nil)
-            }
-            return
-        }
-        if bridge.selectedNotebookTabId != activeTabId {
-            bridge.setSelectedNotebookTab(id: activeTabId)
-        }
-    }
-
-    private func selectNotebookTab(_ tabId: String) {
-        selectedGroupId = nil
-        inspectorSelection = nil
-        isInspectorPresented = false
-        highlightedRandomStudentId = nil
-        bridge.setSelectedNotebookTab(id: tabId)
-    }
-
-    private func selectNotebookClass(_ classId: Int64) {
-        guard bridge.notebookViewModel.currentClassId?.int64Value != classId else { return }
-        selectedGroupId = nil
-        isInspectorPresented = false
-        inspectorSelection = nil
-        inspectorNoteDraft = ""
-        inspectorIconDraft = ""
-        inspectorAttachmentUris = []
-        highlightedRandomStudentId = nil
-        searchText = ""
-        selectedClassId = classId
-        bridge.selectClass(id: classId)
-    }
-
-    private func syncToolbarState(data: NotebookUiStateData) {
-        let inspectorAvailable = inspectorSelection != nil || !managedColumns(data: data).isEmpty
-        let canMarkAllPresent = !filteredRows(data: data).isEmpty
-
-        layoutState.configureNotebookToolbar(
-            inspectorAvailable: inspectorAvailable,
-            isInspectorPresented: isInspectorPresented,
-            addColumnAvailable: true,
-            searchText: searchText,
-            surfaceMode: surfaceMode.rawValue,
-            selectedGroupId: selectedGroupId,
-            availableGroups: groupedRows(data: data).map {
-                NotebookToolbarGroupOption(id: $0.id, name: $0.name, studentCount: memberCount($0.id, in: data))
-            },
-            organizationMenuAvailable: true,
-            onToggleInspector: {
-                if inspectorSelection == nil {
-                    openInspectorForSelection(data)
-                }
-                if inspectorSelection != nil {
-                    isInspectorPresented.toggle()
-                }
-            },
-            onAddColumn: {
-                addColumnContext = NotebookAddColumnContext(categoryId: nil, startsCreatingCategory: false)
-            },
-            onSearchChange: { value in
-                searchText = value
-            },
-            onSurfaceModeChange: { value in
-                surfaceMode = NotebookSurfaceMode(rawValue: value) ?? .grid
-            },
-            onGroupFilterChange: { value in
-                selectedGroupId = value
-            },
-            onOpenOrganizationMenu: {
-                isOrganizationMenuPresented = true
-            }
-        )
-
-        macToolbarActions?.configure(
-            canMarkAllPresent: canMarkAllPresent,
-            canUndo: !undoStack.isEmpty,
-            canToggleInspector: inspectorAvailable,
-            isAttendanceQuickMode: isAttendanceQuickMode,
-            isInspectorPresented: isInspectorPresented,
-            addColumnAvailable: true,
-            organizationMenuAvailable: true,
-            exportText: exportText(data: data),
-            onMarkAllPresent: {
-                requestMarkAllVisibleStudentsPresent(data: data)
-            },
-            onToggleAttendanceQuickMode: {
-                isAttendanceQuickMode.toggle()
-                if isAttendanceQuickMode {
-                    activeChoiceCellId = nil
-                    focusedCellId = nil
-                }
-            },
-            onUndo: {
-                undoLastCellChange()
-            },
-            onToggleInspector: {
-                if inspectorSelection == nil {
-                    openInspectorForSelection(data)
-                }
-                if inspectorSelection != nil {
-                    isInspectorPresented.toggle()
-                }
-            },
-            onAddColumn: {
-                addColumnContext = NotebookAddColumnContext(categoryId: nil, startsCreatingCategory: false)
-            },
-            onOpenOrganizationMenu: {
-                isOrganizationMenuPresented = true
-            },
-            onOpenAdvancedMenu: {
-                isOrganizationMenuPresented = true
-            },
-            onGenerateSummary: {
-                notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: nil)
-            },
-            onRefresh: {
-                Task { await refreshNotebookSignals() }
-            }
-        )
-    }
-
-    private func syncToolbarStateIfLoaded() {
-        guard !isMacInspectorOnly,
-              let data = bridge.notebookState as? NotebookUiStateData else { return }
-        syncToolbarState(data: data)
-    }
-
-    private func toolbarStateKey(data: NotebookUiStateData) -> String {
-        let classKey = currentClass?.id ?? -1
-        let groupKey = selectedGroupId ?? -1
-        let inspectorKey = inspectorSelection?.id ?? "none"
-        return "\(classKey)|\(groupKey)|\(surfaceMode.rawValue)|\(managedColumns(data: data).count)|\(filteredRows(data: data).count)|\(inspectorKey)|\(isInspectorPresented)|\(undoStack.count)|\(isAttendanceQuickMode)|\(bridge.notebookSaveState)"
-    }
-
-    private var notebookRiskRefreshKey: String {
-        guard let data = bridge.notebookState as? NotebookUiStateData else {
-            return "empty|\(selectedClassId ?? -1)"
-        }
-        let rows = filteredRows(data: data)
-        return "\(selectedClassId ?? -1)|\(selectedGroupId ?? -1)|\(bridge.selectedNotebookTabId ?? "all")|\(rows.map { String($0.student.id) }.joined(separator: ","))"
-    }
-
-    @MainActor
-    private func precomputeRiskLevelsForVisibleRows() async {
-        guard !isPrecomputingRiskLevels,
-              let classId = selectedClassId,
-              let data = bridge.notebookState as? NotebookUiStateData
-        else { return }
-        let rows = filteredRows(data: data)
-        guard !rows.isEmpty else {
-            riskLevelCache = [:]
-            riskComputationKey = nil
-            return
-        }
-        let key = notebookRiskRefreshKey
-        guard riskComputationKey != key else { return }
-        riskComputationKey = key
-        isPrecomputingRiskLevels = true
-        defer { isPrecomputingRiskLevels = false }
-
-        var nextCache = riskLevelCache.filter { cached in
-            rows.contains { $0.student.id == cached.key }
-        }
-
-        for item in rows where nextCache[item.student.id] == nil {
-            if Task.isCancelled { return }
-            do {
-                let profile = try await bridge.loadStudentProfile(studentId: item.student.id, classId: classId)
-                nextCache[item.student.id] = StudentRiskEvidenceBuilder.classify(profile: profile)
-                riskLevelCache = nextCache
-            } catch {
-                nextCache[item.student.id] = .seguimientoNormal
-            }
-            await Task.yield()
-        }
-        riskLevelCache = nextCache
-    }
-
-    private func openInspectorForSelection(_ data: NotebookUiStateData) {
-        if inspectorSelection != nil { return }
-        if let firstColumn = managedColumns(data: data).first,
-           let firstRow = filteredRows(data: data).first {
-            inspectorSelection = NotebookInspectorSelection(studentId: firstRow.student.id, columnId: firstColumn.id)
-        }
-    }
-
-    private func openInspectorForStudent(_ studentId: Int64, data: NotebookUiStateData) {
-        if let existingSelection = inspectorSelection,
-           existingSelection.studentId == studentId,
-           !existingSelection.columnId.isEmpty {
-            inspectorSelection = existingSelection
-        } else if let firstColumn = managedColumns(data: data).first {
-            inspectorSelection = NotebookInspectorSelection(studentId: studentId, columnId: firstColumn.id)
-        }
-        isInspectorPresented = true
-    }
-
-    private func evaluationTitle(for column: NotebookColumnDefinition) -> String {
-        guard let evaluationId = column.evaluationId?.int64Value else { return "Sin evaluación asociada" }
-        if let schoolClass = currentClass,
-           let evaluation = bridge.evaluationsInClass.first(where: { $0.id == evaluationId }),
-           !bridge.evaluationsInClass.isEmpty {
-            return "\(evaluation.name) · \(schoolClass.name)"
-        }
-        return "Evaluación #\(evaluationId)"
-    }
-
-    private func rubricTitle(for column: NotebookColumnDefinition) -> String {
-        guard let rubricId = column.rubricId?.int64Value else { return "Sin rúbrica asociada" }
-        return bridge.rubrics.first(where: { $0.rubric.id == rubricId })?.rubric.name ?? "Rúbrica #\(rubricId)"
-    }
-
-    private func filteredRows(data: NotebookUiStateData) -> [NotebookTableRow] {
-        let rows = data.sheet.groupedRowsFor(tabId: activeNotebookTabId(data: data)).flatMap { section in
-            let groupName = section.group?.name ?? "Sin grupo"
-            return section.rows.map { NotebookTableRow(student: $0.student, row: $0, groupName: groupName) }
-        }
-
-        return rows.filter { item in
-            let matchesSearch = searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || "\(item.student.firstName) \(item.student.lastName)".localizedCaseInsensitiveContains(searchText)
-            let matchesGroup = selectedGroupId == nil || groupId(for: item.student.id, in: data) == selectedGroupId
-            return matchesSearch && matchesGroup
-        }
-    }
-
-    private func notebookRowView(
-        item: NotebookTableRow,
-        data: NotebookUiStateData,
-        segments: [NotebookDisplaySegment],
-        rowIndex: Int,
-        allRows: [NotebookTableRow],
-        navigableSegments: [NotebookDisplaySegment]
-    ) -> some View {
-        HStack(alignment: .center, spacing: 8) {
-            if segments.isEmpty {
-                emptyNotebookCellPlaceholder(width: 180)
-            } else {
-                ForEach(segments, id: \.id) { segment in
-                    rowCell(
-                        for: segment,
-                        item: item,
-                        data: data,
-                        rowIndex: rowIndex,
-                        allRows: allRows,
-                        navigableSegments: navigableSegments
-                    )
-                    .frame(width: segmentWidth(segment), height: notebookGridRowHeight, alignment: .center)
-                }
-            }
-        }
-        .frame(height: notebookGridRowHeight, alignment: .center)
-        .padding(.horizontal, 16)
-        .background(
-            (rowIndex.isMultiple(of: 2) ? NotebookStyle.surfaceSoft.opacity(0.38) : Color.clear)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(
-                            inspectorSelection?.studentId == item.student.id ? NotebookStyle.primaryTint.opacity(0.18) : .clear,
-                            lineWidth: 1
-                        )
-                )
-        )
-    }
-
-    private func emptyNotebookCellPlaceholder(width: CGFloat) -> some View {
-        RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .fill(NotebookStyle.surfaceSoft.opacity(0.16))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(NotebookStyle.softBorder.opacity(0.65), lineWidth: 0.8)
-            )
-            .frame(width: width, height: 44)
-            .frame(height: notebookGridRowHeight, alignment: .center)
-    }
-
-    private func groupedRows(data: NotebookUiStateData) -> [NotebookWorkGroup] {
-        let activeTabId = activeNotebookTabId(data: data)
-        return data.sheet.workGroups
-            .filter { activeTabId == nil || $0.tabId == activeTabId }
-            .sorted { $0.order < $1.order }
-    }
-
-    private func groupId(for studentId: Int64, in data: NotebookUiStateData) -> Int64? {
-        let activeTabId = activeNotebookTabId(data: data)
-        return data.sheet.workGroupMembers
-            .first(where: { $0.studentId == studentId && (activeTabId == nil || $0.tabId == activeTabId) })?
-            .groupId
-    }
-
-    private func groupName(for groupId: Int64, in data: NotebookUiStateData) -> String? {
-        let activeTabId = activeNotebookTabId(data: data)
-        return data.sheet.workGroups
-            .first(where: { $0.id == groupId && (activeTabId == nil || $0.tabId == activeTabId) })?
-            .name
-    }
-
-    private func memberCount(_ groupId: Int64, in data: NotebookUiStateData) -> Int {
-        let activeTabId = activeNotebookTabId(data: data)
-        return data.sheet.workGroupMembers
-            .filter { $0.groupId == groupId && (activeTabId == nil || $0.tabId == activeTabId) }
-            .count
-    }
-
-    private func columns(in category: NotebookColumnCategory, data: NotebookUiStateData, includeHidden: Bool = false) -> [NotebookColumnDefinition] {
-        data.sheet.columns
-            .filter { $0.categoryId == category.id }
-            .filter { includeHidden || $0.isVisibleInGrid }
-            .filter { columnMatchesActiveTab($0, data: data) }
-            .filter { columnMatchesCurrentView($0) }
-            .sorted {
-                if $0.order != $1.order { return $0.order < $1.order }
-                return $0.id < $1.id
-            }
-    }
-
-    private func managedColumns(data: NotebookUiStateData) -> [NotebookColumnDefinition] {
-        data.sheet.columns
-            .filter { columnMatchesActiveTab($0, data: data) }
-            .filter { columnMatchesCurrentView($0) }
-            .sorted {
-            if $0.order != $1.order { return $0.order < $1.order }
-            return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
-        }
-    }
-
-    private func relevantCategories(data: NotebookUiStateData) -> [NotebookColumnCategory] {
-        visibleCategories(data: data)
-            .filter { !columns(in: $0, data: data, includeHidden: true).isEmpty }
-    }
-
-    private func visibleCategories(data: NotebookUiStateData) -> [NotebookColumnCategory] {
-        let activeTabId = activeNotebookTabId(data: data)
-        return data.sheet.columnCategories
-            .filter { activeTabId == nil || $0.tabId == activeTabId }
-            .sorted { $0.order < $1.order }
-    }
-
-    private func displaySegments(data: NotebookUiStateData) -> [NotebookDisplaySegment] {
-        var segments = fixedSegmentsForCurrentView().map(NotebookDisplaySegment.fixed)
-        let categoriesById = Dictionary(
-            data.sheet.columnCategories.map { ($0.id, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
-        let orderedColumns = data.sheet.columns
-            .filter(\.isVisibleInGrid)
-            .filter { columnMatchesActiveTab($0, data: data) }
-            .filter { columnMatchesCurrentView($0) }
-            .sorted {
-                if $0.isPinned != $1.isPinned { return $0.isPinned && !$1.isPinned }
-                if $0.order != $1.order { return $0.order < $1.order }
-                return $0.id < $1.id
-            }
-
-        var emittedCollapsedCategories = Set<String>()
-        for column in orderedColumns {
-            guard let categoryId = column.categoryId, let category = categoriesById[categoryId] else {
-                segments.append(.column(column))
-                continue
-            }
-            if category.isCollapsed {
-                if emittedCollapsedCategories.insert(category.id).inserted {
-                    let categoryColumns = columns(in: category, data: data)
-                    if !categoryColumns.isEmpty {
-                        segments.append(.collapsedCategory(category, categoryColumns))
-                    }
-                }
-            } else {
-                segments.append(.column(column))
-            }
-        }
-        return segments
-    }
-
-    private func notebookSourceColumns(data: NotebookUiStateData) -> [NotebookColumnDefinition] {
-        managedColumns(data: data)
-    }
-
-    private func visibleNotebookSourceColumns(data: NotebookUiStateData) -> [NotebookColumnDefinition] {
-        displaySegments(data: data).compactMap { segment in
-            guard case .column(let column) = segment else { return nil }
-            return column
-        }
-    }
-
-    private func notebookEvidenceSourceColumns(_ columns: [NotebookColumnDefinition]) -> [NotebookColumnDefinition] {
-        columns.filter { !isNotebookIndividualSummaryColumn($0) }
-    }
-
-    private func selectedNotebookAIStudentIds(in data: NotebookUiStateData) -> [Int64] {
-        if let selectedStudentId {
-            return [selectedStudentId]
-        }
-        if let inspectorSelection {
-            return [inspectorSelection.studentId]
-        }
-        return filteredRows(data: data).map(\.student.id)
-    }
-
-    private func cellFocusId(studentId: Int64, columnId: String) -> String {
-        "\(studentId)|\(columnId)"
-    }
-
-    private func presentFormulaEditor(for column: NotebookColumnDefinition) {
-        formulaDraft = column.formula ?? ""
-        formulaAIPrompt = ""
-        formulaAIMessage = nil
-        isFormulaAIGenerating = false
-        focusedCellId = nil
-        activeChoiceCellId = nil
-        formulaEditRequest = NotebookFormulaEditRequest(columnId: column.id)
-    }
-
-    private func saveFormula(_ column: NotebookColumnDefinition) {
-        let trimmed = formulaDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let data = bridge.notebookState as? NotebookUiStateData else { return }
-        let validation = NotebookFormulaEditorValidator.validate(
-            formula: trimmed,
-            targetColumn: column,
-            availableColumns: data.sheet.columns,
-            formulaColumns: data.sheet.columns.filter { $0.type == .calculated },
-            previewRow: data.sheet.rows.first
-        )
-        guard validation.isValid else {
-            formulaAIMessage = validation.errors.first?.message ?? "Revisa la fórmula antes de guardar."
-            return
-        }
-        saveColumnMutation(
-            column,
-            formula: trimmed.isEmpty ? nil : trimmed,
-            updatesFormula: true
-        )
-        formulaEditRequest = nil
-        showToast(trimmed.isEmpty ? "Fórmula eliminada" : "Fórmula actualizada")
-    }
-
-    private func generateFormulaWithAI(column: NotebookColumnDefinition, data: NotebookUiStateData) {
-        let prompt = formulaAIPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !prompt.isEmpty else { return }
-        isFormulaAIGenerating = true
-        formulaAIMessage = nil
-        let columns = formulaReferenceColumns(for: column, data: data)
-        let currentFormula = formulaDraft
-        Task {
-            do {
-                let formula = try await formulaAIService.generateFormula(
-                    request: prompt,
-                    currentFormula: currentFormula,
-                    availableColumns: columns
-                )
-                await MainActor.run {
-                    formulaDraft = formula
-                    formulaAIMessage = "Propuesta insertada. Revísala antes de guardar."
-                    isFormulaAIGenerating = false
-                }
-            } catch {
-                await MainActor.run {
-                    formulaAIMessage = error.localizedDescription
-                    isFormulaAIGenerating = false
-                }
-            }
-        }
-    }
-
-    private func openRubricIndividual(column: NotebookColumnDefinition, item: NotebookTableRow) {
-        guard let rubricId = column.rubricId?.int64Value,
-              let evaluationId = column.evaluationId?.int64Value else {
-            showToast("Esta columna no tiene una rúbrica asociada", style: .warning)
-            return
-        }
-        withAnimation(.spring(response: 0.18, dampingFraction: 0.9)) {
-            focusedCellId = nil
-            activeChoiceCellId = nil
-            inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
-        }
-        DispatchQueue.main.async {
-            bridge.loadForNotebookCell(
-                studentId: item.student.id,
-                columnId: column.id,
-                rubricId: rubricId,
-                evaluationId: evaluationId
-            )
-        }
-    }
-
-    private func openRubricBulk(column: NotebookColumnDefinition, data: NotebookUiStateData) {
-        guard let evaluationId = column.evaluationId?.int64Value,
-              let rubricId = column.rubricId?.int64Value else {
-            showToast("Esta columna no tiene una rúbrica asociada", style: .warning)
-            return
-        }
-        focusedCellId = nil
-        activeChoiceCellId = nil
-        bridge.startBulkRubricEvaluation(
-            classId: data.sheet.classId,
-            evaluationId: evaluationId,
-            rubricId: rubricId,
-            columnId: column.id,
-            tabId: activeNotebookTabId(data: data)
-        )
-    }
-
-    private func navigateFromFocused(direction: NotebookNavigationDirection, data: NotebookUiStateData) {
-        let currentCellId = focusedCellId ?? activeChoiceCellId
-        guard let currentCellId else { return }
-        let parts = currentCellId.split(separator: "|", maxSplits: 1).map(String.init)
-        guard parts.count == 2,
-              let studentId = Int64(parts[0]),
-              let column = data.sheet.columns.first(where: { $0.id == parts[1] }) else {
-            return
-        }
-        navigateCell(
-            from: studentId,
-            column: column,
-            direction: direction,
-            rows: filteredRows(data: data),
-            segments: displaySegments(data: data).filter { !isFixedSegment($0) }
-        )
-    }
-
-    private func navigateCell(
-        from studentId: Int64,
-        column: NotebookColumnDefinition,
-        direction: NotebookNavigationDirection,
-        rows: [NotebookTableRow],
-        segments: [NotebookDisplaySegment]
-    ) {
-        let navigableColumns = segments.compactMap { segment -> NotebookColumnDefinition? in
-            guard case .column(let candidate) = segment else { return nil }
-            return candidate
-        }
-
-        guard !rows.isEmpty,
-              !navigableColumns.isEmpty,
-              let currentRowIndex = rows.firstIndex(where: { $0.student.id == studentId }),
-              let currentColumnIndex = navigableColumns.firstIndex(where: { $0.id == column.id }) else {
-            return
-        }
-
-        var nextRowIndex = currentRowIndex
-        var nextColumnIndex = currentColumnIndex
-        switch direction {
-        case .up:
-            nextRowIndex = max(currentRowIndex - 1, 0)
-        case .down:
-            nextRowIndex = min(currentRowIndex + 1, rows.count - 1)
-        case .left:
-            nextColumnIndex = max(currentColumnIndex - 1, 0)
-        case .right:
-            nextColumnIndex = min(currentColumnIndex + 1, navigableColumns.count - 1)
-        }
-
-        let nextStudentId = rows[nextRowIndex].student.id
-        let nextColumn = navigableColumns[nextColumnIndex]
-        let nextCellId = cellFocusId(studentId: nextStudentId, columnId: nextColumn.id)
-
-        withAnimation(.spring(response: 0.18, dampingFraction: 0.9)) {
-            inspectorSelection = NotebookInspectorSelection(studentId: nextStudentId, columnId: nextColumn.id)
-            focusedCellId = nil
-            activeChoiceCellId = nil
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-            withAnimation(.spring(response: 0.18, dampingFraction: 0.9)) {
-                if nextColumn.type == .ordinal || nextColumn.type == .attendance || nextColumn.categoryKind == .attendance {
-                    activeChoiceCellId = nextCellId
-                } else if nextColumn.type != .calculated && nextColumn.type != .rubric && nextColumn.type != .check {
-                    focusedCellId = nextCellId
-                }
-            }
-        }
-    }
-
-    private func isNotebookAICommentColumn(_ column: NotebookColumnDefinition) -> Bool {
-        bridge.isNotebookAICommentColumn(column)
-    }
-
-    private func headerLaneItems(data: NotebookUiStateData, segments: [NotebookDisplaySegment]) -> [NotebookHeaderLaneItem] {
-        var items: [NotebookHeaderLaneItem] = []
-        let categoriesById = Dictionary(
-            visibleCategories(data: data).map { ($0.id, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
-        var emittedCategoryIds = Set<String>()
-
-        for segment in segments {
-            switch segment {
-            case .fixed(let fixed):
-                items.append(.spacer(id: "fixed_\(fixed.id)", width: fixed.width))
-            case .collapsedCategory(let category, _):
-                items.append(.spacer(id: "collapsed_\(category.id)", width: 150))
-            case .column(let column):
-                guard let categoryId = column.categoryId,
-                      let category = categoriesById[categoryId],
-                      !category.isCollapsed else {
-                    items.append(.spacer(id: "column_\(column.id)", width: CGFloat(max(column.widthDp, 120))))
-                    continue
-                }
-                guard emittedCategoryIds.insert(category.id).inserted else { continue }
-                let categoryColumns = columns(in: category, data: data)
-                let totalWidth = categoryColumns.reduce(CGFloat(0)) { partial, column in
-                    partial + CGFloat(max(column.widthDp, 120))
-                } + CGFloat(max(categoryColumns.count - 1, 0) * 8)
-                items.append(.folder(category, categoryColumns, totalWidth))
-            }
-        }
-
-        let emptyCategories = visibleCategories(data: data)
-            .filter { columns(in: $0, data: data, includeHidden: true).isEmpty }
-        for category in emptyCategories where emittedCategoryIds.insert(category.id).inserted {
-            items.append(.folder(category, [], 168))
-        }
-        return items
-    }
-
-    private func fixedSegmentsForCurrentView() -> [NotebookFixedColumn] {
-        switch viewPreset {
-        case .all:
-            return [.photo, .name, .group, .followUp, .attendance, .average]
-        case .evaluation:
-            return [.photo, .name, .average]
-        case .followUp:
-            return [.photo, .name, .group, .followUp]
-        case .attendance:
-            return [.photo, .name, .group, .attendance]
-        case .extras:
-            return [.photo, .name]
-        case .physicalEducation:
-            return [.photo, .name]
-        }
-    }
-
-    private func columnMatchesCurrentView(_ column: NotebookColumnDefinition) -> Bool {
-        switch viewPreset {
-        case .all:
-            return true
-        case .evaluation:
-            return column.categoryKind == .evaluation
-        case .followUp:
-            return column.categoryKind == .followUp
-        case .attendance:
-            return column.categoryKind == .attendance
-        case .extras:
-            return column.categoryKind == .extras
-        case .physicalEducation:
-            return column.categoryKind == .physicalEducation
-        }
-    }
-
-    private func columnMatchesActiveTab(_ column: NotebookColumnDefinition, data: NotebookUiStateData) -> Bool {
-        guard let activeTabId = activeNotebookTabId(data: data) else { return true }
-        return column.tabIds.contains(activeTabId) || (column.sharedAcrossTabs && column.tabIds.isEmpty)
-    }
-
-    private func isColumnHidden(_ column: NotebookColumnDefinition) -> Bool {
-        !column.isVisibleInGrid
-    }
-
-    private func isColumnRestorableHidden(_ column: NotebookColumnDefinition) -> Bool {
-        column.canBeShownWithShowAll
-    }
-
-    private func isColumnArchived(_ column: NotebookColumnDefinition) -> Bool {
-        column.isArchived
-    }
-
-    private func toggleColumnVisibility(_ column: NotebookColumnDefinition) {
-        setNotebookColumnHidden(column, isHidden: !isColumnHidden(column))
-    }
-
-    private func copyNotebookColumn(
-        _ column: NotebookColumnDefinition,
-        title: String? = nil,
-        isHidden: Bool? = nil,
-        visibility: NotebookColumnVisibility? = nil,
-        order: Int32? = nil,
-        widthDp: Double? = nil,
-        weight: Double? = nil,
-        countsTowardAverage: Bool? = nil,
-        isLocked: Bool? = nil,
-        colorHex: String? = nil,
-        formula: String? = nil,
-        updatesFormula: Bool = false
-    ) -> NotebookColumnDefinition {
-        NotebookColumnDefinition(
-            id: column.id,
-            title: title?.isEmpty == false ? title! : column.title,
-            type: column.type,
-            categoryKind: column.categoryKind,
-            instrumentKind: column.instrumentKind,
-            inputKind: column.inputKind,
-            evaluationId: column.evaluationId,
-            rubricId: column.rubricId,
-            formula: updatesFormula ? formula : column.formula,
-            weight: weight ?? column.weight,
-            dateEpochMs: column.dateEpochMs,
-            unitOrSituation: column.unitOrSituation,
-            competencyCriteriaIds: column.competencyCriteriaIds,
-            scaleKind: column.scaleKind,
-            tabIds: column.tabIds,
-            sessions: column.sessions,
-            sharedAcrossTabs: column.sharedAcrossTabs,
-            colorHex: colorHex ?? column.colorHex,
-            iconName: column.iconName,
-            order: order ?? column.order,
-            widthDp: widthDp ?? column.widthDp,
-            categoryId: column.categoryId,
-            ordinalLevels: column.ordinalLevels,
-            availableIcons: column.availableIcons,
-            countsTowardAverage: countsTowardAverage ?? column.countsTowardAverage,
-            isPinned: column.isPinned,
-            isHidden: isHidden ?? column.isHidden,
-            visibility: visibility ?? column.visibility,
-            isLocked: isLocked ?? column.isLocked,
-            isTemplate: column.isTemplate,
-            emptyCellPolicy: column.emptyCellPolicy,
-            trace: column.trace
-        )
-    }
-
-    private func setNotebookColumnHidden(_ column: NotebookColumnDefinition, isHidden: Bool) {
-        setNotebookColumnVisibility(column, visibility: isHidden ? .hidden : .visible)
-    }
-
-    private func setNotebookColumnVisibility(_ column: NotebookColumnDefinition, visibility: NotebookColumnVisibility) {
-        if column.isArchived && visibility == .hidden {
-            showToast("La columna archivada debe restaurarse antes de ocultarse", style: .warning)
-            return
-        }
-        if visibility == .archived && !column.canBeArchived {
-            showToast("Esta columna no se puede archivar", style: .warning)
-            return
-        }
-        let updated = copyNotebookColumn(
-            column,
-            isHidden: visibility != .visible,
-            visibility: visibility
-        )
-
-        bridge.saveColumn(column: updated)
-        switch visibility {
-        case .visible:
-            showToast("Columna visible")
-        case .hidden:
-            showToast("Columna ocultada")
-        case .archived:
-            showToast("Columna archivada")
-        default:
-            showToast("Visibilidad actualizada")
-        }
-        syncToolbarStateIfLoaded()
-    }
-
-    private func showAllManagedColumns(data: NotebookUiStateData) {
-        let columns = managedColumns(data: data).filter(isColumnRestorableHidden)
-        guard !columns.isEmpty else {
-            showToast("No hay columnas ocultas para mostrar", style: .warning)
-            return
-        }
-        // TODO(backend-batch): replace per-column saves with a single batch visibility mutation.
-        columns.forEach { column in
-            bridge.saveColumn(column: copyNotebookColumn(
-                column,
-                isHidden: false,
-                visibility: .visible
-            ))
-        }
-        showToast(columns.count == 1 ? "Columna visible" : "Columnas ocultas visibles")
-        syncToolbarStateIfLoaded()
-    }
-
-    private func saveAverageConfiguration(_ updates: [NotebookAverageColumnUpdate]) {
-        guard !updates.isEmpty else { return }
-        // TODO(backend-batch): persist average column configuration in one backend batch instead of many saves.
-        updates.forEach { update in
-            bridge.saveColumn(column: copyNotebookColumn(
-                update.column,
-                weight: update.isIncluded ? update.weight : 0,
-                countsTowardAverage: update.isIncluded
-            ))
-        }
-        showToast("Media actualizada")
-        syncToolbarStateIfLoaded()
-    }
-
-    private func reorderManagedColumns(_ reorderedColumns: [NotebookColumnDefinition]) {
-        // TODO(backend-batch): persist reordered columns in one backend batch instead of many saves.
-        reorderedColumns.enumerated().forEach { index, column in
-            let nextOrder = Int32(index)
-            if column.order != nextOrder {
-                bridge.saveColumn(column: copyNotebookColumn(column, order: nextOrder))
-            }
-        }
-        showToast("Columnas reordenadas")
-        syncToolbarStateIfLoaded()
-    }
-
-    private func exportText(data: NotebookUiStateData) -> String {
-        let segments = displaySegments(data: data)
-        let header = segments.map(exportHeaderTitle(for:)).joined(separator: "\t")
-        let columnLettersById = exportColumnLettersById(segments: segments)
-
-        let body = filteredRows(data: data).enumerated().map { rowIndex, item in
-            segments.map {
-                exportValue(
-                    for: $0,
-                    item: item,
-                    spreadsheetRowIndex: rowIndex + 2,
-                    columnLettersById: columnLettersById
-                )
-            }
-            .joined(separator: "\t")
-        }
-
-        return ([header] + body).joined(separator: "\n")
-    }
-
-    private func exportColumnLettersById(segments: [NotebookDisplaySegment]) -> [String: String] {
-        var result: [String: String] = [:]
-        for (index, segment) in segments.enumerated() {
-            if case .column(let column) = segment {
-                result[column.id] = spreadsheetColumnName(for: index + 1)
-            }
-        }
-        return result
-    }
-
-    private func spreadsheetColumnName(for oneBasedIndex: Int) -> String {
-        var index = max(oneBasedIndex, 1)
-        var result = ""
-        while index > 0 {
-            let remainder = (index - 1) % 26
-            result = String(UnicodeScalar(65 + remainder)!) + result
-            index = (index - 1) / 26
-        }
-        return result
-    }
-
-    private func exportHeaderTitle(for segment: NotebookDisplaySegment) -> String {
-        switch segment {
-        case .fixed(let fixed):
-            return fixed.title
-        case .column(let column):
-            return column.title
-        case .collapsedCategory(let category, _):
-            return category.name
-        }
-    }
-
-    private func exportValue(
-        for segment: NotebookDisplaySegment,
-        item: NotebookTableRow,
-        spreadsheetRowIndex: Int,
-        columnLettersById: [String: String]
-    ) -> String {
-        switch segment {
-        case .fixed(let fixed):
-            switch fixed {
-            case .photo:
-                return initials(for: item.student)
-            case .name:
-                return "\(item.student.firstName) \(item.student.lastName)"
-            case .group:
-                return item.groupName
-            case .followUp:
-                return item.student.isInjured ? "Atención" : "Normal"
-            case .attendance:
-                return attendanceSummary(for: item)
-            case .average:
-                return averageText(for: item)
-            }
-        case .column(let column):
-            if column.type == .calculated,
-               let formula = column.formula?.trimmingCharacters(in: .whitespacesAndNewlines),
-               !formula.isEmpty {
-                return NotebookFormulaDisplay.spreadsheetFormula(
-                    formula,
-                    rowIndex: spreadsheetRowIndex,
-                    columnLettersById: columnLettersById
-                )
-            }
-            return displayValue(for: item, column: column)
-        case .collapsedCategory(_, let columns):
-            return "\(filledCellCount(item, columns: columns))/\(columns.count)"
-        }
-    }
-
-    private func formulaDisplay(
-        for item: NotebookTableRow,
-        column: NotebookColumnDefinition,
-        data: NotebookUiStateData
-    ) -> NotebookFormulaCellDisplay? {
-        guard column.type == .calculated else { return nil }
-        return NotebookFormulaDisplay.display(
-            formula: column.formula,
-            item: item,
-            data: data,
-            numericText: { studentId, columnId in
-                bridge.numericGradeText(studentId: studentId, columnId: columnId)
-            },
-            rubricText: { studentId, column in
-                bridge.rubricGradeText(studentId: studentId, column: column)
-            }
-        )
-    }
-
-    private func categoryTitle(for column: NotebookColumnDefinition, data: NotebookUiStateData) -> String {
-        if let categoryId = column.categoryId,
-           let category = data.sheet.columnCategories.first(where: { $0.id == categoryId }) {
-            return category.name
-        }
-        switch column.categoryKind {
-        case .evaluation: return "Evaluación"
-        case .followUp: return "Seguimiento"
-        case .attendance: return "Asistencia"
-        case .extras: return "Extras"
-        case .physicalEducation: return "EF"
-        case .custom: return "Sin categoría"
-        default: return "Sin categoría"
-        }
-    }
-
-    private func columnHeaderSubtitle(
-        for column: NotebookColumnDefinition,
-        data: NotebookUiStateData,
-        rows: [NotebookTableRow]
-    ) -> String {
-        var parts = [categoryTitle(for: column, data: data)]
-        if let epochMs = column.dateEpochMs?.int64Value {
-            let date = Date(timeIntervalSince1970: TimeInterval(epochMs) / 1000.0)
-            parts.append(date.formatted(.dateTime.day().month(.abbreviated)))
-        }
-        if let average = columnAverageText(for: column, rows: rows) {
-            parts.append(average)
-        }
-        return parts.joined(separator: " · ")
-    }
-
-    private func columnAverageText(for column: NotebookColumnDefinition, rows: [NotebookTableRow]) -> String? {
-        guard column.type == .numeric || column.type == .rubric else { return nil }
-        let values = rows.compactMap { item -> Double? in
-            let raw = column.type == .rubric
-                ? bridge.rubricGradeOnTenText(studentId: item.student.id, column: column)
-                : bridge.numericGradeText(studentId: item.student.id, columnId: column.id)
-            return NotebookFormulaDisplay.parseNumber(raw)
-        }
-        guard !values.isEmpty else { return nil }
-        let average = values.reduce(0, +) / Double(values.count)
-        return String(format: "x̄ %.1f", average)
-    }
-
-    private func tint(for category: NotebookColumnCategory) -> Color {
-        tint(forName: category.name)
-    }
-
-    private func tint(for column: NotebookColumnDefinition) -> Color {
-        if let colorHex = column.colorHex {
-            return Color(hex: colorHex)
-        }
-        switch column.categoryKind {
-        case .evaluation: return NotebookStyle.primaryTint
-        case .followUp: return NotebookStyle.successTint
-        case .attendance: return NotebookStyle.warningTint
-        case .extras: return .pink
-        case .physicalEducation: return .orange
-        case .custom: return .secondary
-        default: return .secondary
-        }
-    }
-
-    private func tint(forName name: String) -> Color {
-        if name.localizedCaseInsensitiveContains("evalu") { return NotebookStyle.primaryTint }
-        if name.localizedCaseInsensitiveContains("segu") { return NotebookStyle.successTint }
-        if name.localizedCaseInsensitiveContains("asist") { return NotebookStyle.warningTint }
-        if name.localizedCaseInsensitiveContains("extra") { return .pink }
-        if name.localizedCaseInsensitiveContains("ef") { return .orange }
-        return .secondary
-    }
-
-    private func studentAvatar(for student: Student) -> some View {
-        ZStack {
-            Circle()
-                .fill(NotebookStyle.primaryTint.opacity(0.15))
-            Text(initials(for: student))
-                .font(.system(size: 12, weight: .bold, design: .rounded))
-                .foregroundStyle(NotebookStyle.primaryTint)
-        }
-        .frame(width: 36, height: 36)
-    }
-
-    private func initials(for student: Student) -> String {
-        String(student.firstName.prefix(1)) + String(student.lastName.prefix(1))
-    }
-
-    private func followUpBadge(for student: Student) -> some View {
-        Text(student.isInjured ? "Atención" : "Normal")
-            .font(.system(size: 12, weight: .bold, design: .rounded))
-            .foregroundStyle(student.isInjured ? .orange : NotebookStyle.successTint)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                Capsule(style: .continuous)
-                    .fill((student.isInjured ? Color.orange : NotebookStyle.successTint).opacity(0.12))
-            )
-    }
-
-    private func attendanceSummary(for item: NotebookTableRow) -> String {
-        if let status = todayAttendanceByStudentId[item.student.id], !status.isEmpty {
-            return status
-        }
-        let attendanceColumns = item.row.persistedCells.filter { $0.columnId.localizedCaseInsensitiveContains("attendance") || $0.columnId.localizedCaseInsensitiveContains("asist") }
-        if attendanceColumns.isEmpty { return "Sin datos" }
-        let present = attendanceColumns.filter { ($0.textValue ?? "").localizedCaseInsensitiveContains("pres") }.count
-        return "\(present)/\(attendanceColumns.count)"
-    }
-
-    private func averageText(for item: NotebookTableRow) -> String {
-        guard let weightedAverage = item.row.weightedAverage else { return "Sin media" }
-        return IosFormatting.decimal(from: weightedAverage)
-    }
-
-    private enum AverageCellState {
-        case complete
-        case pending
-        case insufficient
-    }
-
-    private func averageState(for item: NotebookTableRow) -> AverageCellState {
-        guard let explanation = item.row.averageExplanation,
-              explanation.average != nil,
-              !explanation.included.isEmpty else {
-            return .insufficient
-        }
-        return explanation.excluded.contains { $0.reason == .empty } ? .pending : .complete
-    }
-
-    private func averageBadge(for item: NotebookTableRow) -> some View {
-        let state = averageState(for: item)
-        let tint: Color = {
-            switch state {
-            case .complete: return NotebookStyle.successTint
-            case .pending: return NotebookStyle.warningTint
-            case .insufficient: return .secondary
-            }
-        }()
-        let icon: String = {
-            switch state {
-            case .complete: return "checkmark.circle.fill"
-            case .pending: return "clock.fill"
-            case .insufficient: return "dash.circle"
-            }
-        }()
-
-        return HStack(spacing: 6) {
-            Image(systemName: icon)
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(tint)
-            Text(averageText(for: item))
-                .font(.system(size: 14, weight: .bold, design: .rounded))
-                .foregroundStyle(state == .insufficient ? .secondary : .primary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.82)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .background(
-            Capsule(style: .continuous)
-                .fill(tint.opacity(state == .insufficient ? 0.08 : 0.12))
-        )
-        .overlay(
-            Capsule(style: .continuous)
-                .stroke(tint.opacity(state == .insufficient ? 0.12 : 0.22), lineWidth: 1)
-        )
-        .help(averageHelpText(for: state))
-    }
-
-    private func averageHelpText(for state: AverageCellState) -> String {
-        switch state {
-        case .complete: return "Media completa"
-        case .pending: return "Media con pendientes"
-        case .insufficient: return "Sin datos suficientes"
-        }
-    }
-
-    private func filledCellCount(_ item: NotebookTableRow, columns: [NotebookColumnDefinition]) -> Int {
-        columns.filter { !displayValue(for: item, column: $0).isEmpty }.count
-    }
-
-    private func displayValue(for item: NotebookTableRow, column: NotebookColumnDefinition) -> String {
-        switch column.type {
-        case .numeric, .calculated:
-            return bridge.numericGradeText(studentId: item.student.id, columnId: column.id)
-        case .rubric:
-            return bridge.rubricGradeOnTenText(studentId: item.student.id, column: column)
-        case .check:
-            return bridge.cellCheck(studentId: item.student.id, columnId: column.id) ? "Sí" : ""
-        default:
-            return bridge.cellText(studentId: item.student.id, columnId: column.id)
-        }
-    }
-
-    private func evidenceLabel(for persistedCell: PersistedNotebookCell?) -> String {
-        let count = persistedCell?.annotation?.attachmentUris.count ?? 0
-        let icon = persistedCell?.annotation?.icon ?? persistedCell?.iconValue ?? ""
-        if count == 0 && icon.isEmpty { return "Sin evidencia" }
-        if count == 0 { return "Icono \(icon)" }
-        return icon.isEmpty ? "\(count) archivo(s)" : "\(count) archivo(s) · \(icon)"
-    }
-
-    private func formattedDate(_ epochMs: Int64?) -> String {
-        guard let epochMs else { return "Sin fecha" }
-        return Date(timeIntervalSince1970: TimeInterval(epochMs) / 1000).formatted(date: .abbreviated, time: .omitted)
-    }
-
-    private func syncInspectorDraft() {
-        guard let selection = inspectorSelection,
-              let data = bridge.notebookState as? NotebookUiStateData,
-              let item = filteredRows(data: data).first(where: { $0.student.id == selection.studentId }) else {
-            inspectorState.resetDrafts()
-            return
-        }
-        let persisted = item.row.persistedCells.first(where: { $0.columnId == selection.columnId })
-        inspectorNoteDraft = persisted?.annotation?.note ?? ""
-        inspectorIconDraft = persisted?.annotation?.icon ?? persisted?.iconValue ?? ""
-        inspectorAttachmentUris = persisted?.annotation?.attachmentUris ?? []
-    }
-
-    private func refreshNotebookSignals() async {
-        guard let classId = selectedClassId ?? bridge.notebookViewModel.currentClassId?.int64Value else { return }
-        do {
-            let attendance = try await bridge.attendanceRecords(for: classId, on: Date())
-            await MainActor.run {
-                todayAttendanceByStudentId = Dictionary(
-                    attendance.map { ($0.studentId, $0.status) },
-                    uniquingKeysWith: { _, latest in latest }
-                )
-            }
-        } catch {
-            await MainActor.run { todayAttendanceByStudentId = [:] }
-        }
-
-        do {
-            let incidents = try await bridge.incidents(for: classId)
-            let counts = Dictionary(grouping: incidents.compactMap { $0.studentId?.int64Value }, by: { $0 }).mapValues(\.count)
-            await MainActor.run {
-                incidentCountByStudentId = counts
-            }
-        } catch {
-            await MainActor.run { incidentCountByStudentId = [:] }
-        }
-    }
-
-    private func attendanceStatusText(for studentId: Int64) -> String {
-        todayAttendanceByStudentId[studentId] ?? "Sin pasar"
-    }
-
-    private func markAttendance(for studentId: Int64, status: String) async {
-        guard let classId = selectedClassId ?? bridge.notebookViewModel.currentClassId?.int64Value else { return }
-        let canonicalStatus = NotebookAttendanceStatus.canonical(status)
-        do {
-            try await bridge.saveAttendance(studentId: studentId, classId: classId, on: Date(), status: canonicalStatus)
-            await refreshNotebookSignals()
-        } catch {
-        }
-    }
-
-    private func requestMarkAllVisibleStudentsPresent(data: NotebookUiStateData) {
-        let visibleRows = filteredRows(data: data)
-        guard !visibleRows.isEmpty else { return }
-        if visibleRows.count > 5 {
-            isMarkAllPresentDialogPresented = true
-        } else {
-            markAllVisibleStudentsPresent(data: data)
-        }
-    }
-
-    private func markAllVisibleStudentsPresent(data: NotebookUiStateData) {
-        let visibleRows = filteredRows(data: data)
-        guard !visibleRows.isEmpty else { return }
-        Task {
-            for row in visibleRows {
-                await markAttendance(for: row.student.id, status: NotebookAttendanceStatus.present)
-            }
-            await MainActor.run {
-                showToast("\(visibleRows.count) alumnos marcados como presentes")
-            }
-        }
-    }
-
-    private func recordCellUndo(studentId: Int64, column: NotebookColumnDefinition, previousValue: String, previousDisplayLabel: String?) {
-        undoStack.append(
-            NotebookCellUndoEntry(
-                studentId: studentId,
-                column: column,
-                previousValue: previousValue,
-                previousDisplayLabel: previousDisplayLabel
-            )
-        )
-        if undoStack.count > 10 {
-            undoStack.removeFirst(undoStack.count - 10)
-        }
-    }
-
-    private func undoLastCellChange() {
-        guard let entry = undoStack.popLast() else {
-            showToast("No hay cambios que deshacer", style: .warning)
-            return
-        }
-        bridge.flushPendingColumnGradeSave(studentId: entry.studentId, columnId: entry.column.id)
-        bridge.saveColumnGrade(studentId: entry.studentId, column: entry.column, value: entry.previousValue)
-        cellReloadRevision += 1
-        withAnimation(.spring(response: 0.18, dampingFraction: 0.9)) {
-            inspectorSelection = NotebookInspectorSelection(studentId: entry.studentId, columnId: entry.column.id)
-            focusedCellId = nil
-            activeChoiceCellId = nil
-        }
-        let label = entry.previousDisplayLabel ?? entry.previousValue
-        showToast(label.isEmpty ? "Cambio deshecho" : "Cambio deshecho: \(label)")
-    }
-
-    private func createFollowUp(for student: Student) async {
-        guard let classId = selectedClassId ?? bridge.notebookViewModel.currentClassId?.int64Value else { return }
-        do {
-            _ = try await bridge.createIncident(
-                classId: classId,
-                studentId: student.id,
-                title: "Seguimiento desde plano",
-                detail: "Marcado desde el plano de clase del cuaderno."
-            )
-            try await bridge.saveAttendance(
-                studentId: student.id,
-                classId: classId,
-                on: Date(),
-                status: NotebookAttendanceStatus.canonical(todayAttendanceByStudentId[student.id] ?? NotebookAttendanceStatus.present),
-                note: "Seguimiento abierto desde el plano.",
-                hasIncident: true
-            )
-            await refreshNotebookSignals()
-        } catch {
-        }
-    }
-
-    private func importSelectedAttachment(from item: PhotosPickerItem) async {
-        guard let data = try? await item.loadTransferable(type: Data.self),
-              let classId = selectedClassId ?? bridge.notebookViewModel.currentClassId?.int64Value,
-              let selection = inspectorSelection else { return }
-
-        let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?
-            .appendingPathComponent("NotebookEvidence", isDirectory: true)
-            .appendingPathComponent("\(classId)", isDirectory: true)
-        guard let directory else { return }
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let filename = "\(selection.studentId)_\(selection.columnId)_\(Int(Date().timeIntervalSince1970)).jpg"
-        let url = directory.appendingPathComponent(filename)
-        do {
-            try data.write(to: url, options: .atomic)
-            await MainActor.run {
-                inspectorAttachmentUris.append(url.path)
-                selectedAttachmentPhoto = nil
-            }
-        } catch {
-            await MainActor.run {
-                selectedAttachmentPhoto = nil
-            }
-        }
-    }
-
-    private func defaultSeatPositions(for rows: [NotebookTableRow]) -> [Int64: NotebookSeatPosition] {
-        guard !rows.isEmpty else { return [:] }
-        let columns = max(3, Int(ceil(sqrt(Double(rows.count)))))
-        let horizontalStep = 0.76 / Double(max(columns - 1, 1))
-        let verticalRows = Int(ceil(Double(rows.count) / Double(columns)))
-        let verticalStep = 0.68 / Double(max(verticalRows - 1, 1))
-        return Dictionary(uniqueKeysWithValues: rows.enumerated().map { index, item in
-            let row = index / columns
-            let column = index % columns
-            let x = 0.12 + Double(column) * horizontalStep
-            let y = 0.16 + Double(row) * verticalStep
-            return (item.student.id, NotebookSeatPosition(x: x, y: y))
-        })
-    }
-
-    private func randomEligibleStudentId(from rows: [NotebookTableRow]) -> Int64? {
-        let eligible = rows
-            .map(\.student.id)
-            .filter { !attendanceStatusText(for: $0).localizedCaseInsensitiveContains("aus") }
-        return (eligible.isEmpty ? rows.map(\.student.id) : eligible).randomElement()
-    }
-
-    private func seatStorageKey() -> String? {
-        guard let classId = selectedClassId ?? bridge.notebookViewModel.currentClassId?.int64Value else { return nil }
-        return "notebook.seating.\(classId).\(bridge.selectedNotebookTabId ?? "all")"
-    }
-
-    private func persistSeatPositions() {
-        guard let key = seatStorageKey(),
-              let encoded = try? JSONEncoder().encode(seatPositions) else { return }
-        UserDefaults.standard.set(encoded, forKey: key)
-    }
-
-    private func restoreSeatPositions() {
-        guard let key = seatStorageKey() else {
-            seatPositions = [:]
-            return
-        }
-        if let data = UserDefaults.standard.data(forKey: key),
-           let decoded = try? JSONDecoder().decode([Int64: NotebookSeatPosition].self, from: data) {
-            seatPositions = decoded
-        } else if let data = bridge.notebookState as? NotebookUiStateData {
-            seatPositions = defaultSeatPositions(for: filteredRows(data: data))
-        } else {
-            seatPositions = [:]
-        }
-    }
-
-    private func headerChip(
-        title: String,
-        subtitle: String,
-        width: CGFloat,
-        tint: Color,
-        folderStyle: Bool = false,
-        hasColumnColor: Bool = false,
-        isHighlighted: Bool = false
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.caption2.weight(.medium))
-                .tracking(0.3)
-                .textCase(.uppercase)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(tint.opacity(folderStyle ? 0.8 : 0.5))
-                    .frame(width: 6, height: 6)
-
-                Text(subtitle)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-            }
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 8)
-        .frame(width: width)
-        .frame(minHeight: 52, alignment: .topLeading)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(headerChipFill(tint: tint, folderStyle: folderStyle, hasColumnColor: hasColumnColor))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(
-                            headerChipStroke(tint: tint, folderStyle: folderStyle, hasColumnColor: hasColumnColor, isHighlighted: isHighlighted),
-                            lineWidth: isHighlighted ? 1.4 : 0.6
-                        )
-                )
-        )
-    }
-
-    private func headerChipFill(tint: Color, folderStyle: Bool, hasColumnColor: Bool) -> Color {
-        if hasColumnColor { return tint.opacity(0.18) }
-        return folderStyle ? NotebookStyle.surfaceSoft.opacity(0.55) : Color.clear
-    }
-
-    private func headerChipStroke(tint: Color, folderStyle: Bool, hasColumnColor: Bool, isHighlighted: Bool) -> Color {
-        if isHighlighted { return tint.opacity(0.32) }
-        if hasColumnColor { return tint.opacity(0.30) }
-        return folderStyle ? NotebookStyle.softBorder.opacity(0.80) : Color.clear
-    }
-
-    private func headerChip(for segment: NotebookDisplaySegment, data: NotebookUiStateData) -> some View {
-        let visibleRows = filteredRows(data: data)
-        switch segment {
-        case .fixed(let fixed):
-            let chip = headerChip(
-                title: fixed.title,
-                subtitle: fixed.subtitle,
-                width: resolvedFixedWidth(for: fixed),
-                tint: tint(for: fixed)
-            )
-            if fixed == .average {
-                return AnyView(
-                    Button {
-                        isAverageConfigurationPresented = true
-                    } label: {
-                        chip
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Configurar media")
-                )
-            }
-            return AnyView(chip)
-        case .column(let column):
-            return AnyView(
-                NotebookResizableHeader(
-                    width: resolvedColumnWidth(for: column),
-                    minWidth: 80,
-                    maxWidth: 400
-                ) { newWidth in
-                    columnWidths[column.id] = newWidth
-                } content: {
-                    headerChip(
-                        title: column.title,
-                        subtitle: columnHeaderSubtitle(for: column, data: data, rows: visibleRows),
-                        width: resolvedColumnWidth(for: column),
-                        tint: displayTint(for: column),
-                        folderStyle: column.categoryId != nil,
-                        hasColumnColor: hasCustomColumnColor(column),
-                        isHighlighted: highlightedCategoryId == column.categoryId
-                    )
-                }
-                .contextMenu {
-                    columnContextMenu(column, data: data)
-                }
-            )
-        case .collapsedCategory(let category, let columns):
-            return AnyView(
-                headerChip(
-                    title: category.name,
-                    subtitle: collapsedCategoryProgressText(columns: columns, rows: visibleRows),
-                    width: 150,
-                    tint: tint(for: category),
-                    folderStyle: true,
-                    isHighlighted: highlightedCategoryId == category.id
-                )
-                .contextMenu {
-                    categoryContextMenu(category, data: data)
-                }
-            )
-        }
-    }
-
-    private func tint(for fixed: NotebookFixedColumn) -> Color {
-        switch fixed {
-        case .photo, .name, .group:
-            return .secondary
-        case .followUp:
-            return NotebookStyle.successTint
-        case .attendance:
-            return NotebookStyle.warningTint
-        case .average:
-            return NotebookStyle.primaryTint
-        }
-    }
-
-    private func displayTint(for column: NotebookColumnDefinition) -> Color {
-        hasCustomColumnColor(column) ? Color(hex: column.colorHex ?? "") : tint(for: column)
-    }
-
-    private func hasCustomColumnColor(_ column: NotebookColumnDefinition) -> Bool {
-        guard let rawHex = column.colorHex?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !rawHex.isEmpty else {
-            return false
-        }
-        let normalized = rawHex.replacingOccurrences(of: "#", with: "").uppercased()
-        return normalized != "FFFFFF" && normalized != "FFFFFFFF"
-    }
-
-    private func notebookColumnCellFill(for column: NotebookColumnDefinition, rowIndex: Int, isActive: Bool) -> Color {
-        if hasCustomColumnColor(column) {
-            return displayTint(for: column).opacity(isActive ? 0.20 : 0.10)
-        }
-        return rowIndex.isMultiple(of: 2) ? NotebookStyle.surfaceMuted.opacity(0.34) : Color.clear
-    }
-
-    private func notebookColumnCellBorder(for column: NotebookColumnDefinition, isActive: Bool) -> Color {
-        if isActive { return Color.accentColor.opacity(0.85) }
-        if hasCustomColumnColor(column) { return displayTint(for: column).opacity(0.24) }
-        return NotebookStyle.softBorder.opacity(0.45)
-    }
-
-    private func rowCell(
-        for segment: NotebookDisplaySegment,
-        item: NotebookTableRow,
-        data: NotebookUiStateData,
-        rowIndex: Int,
-        allRows: [NotebookTableRow],
-        navigableSegments: [NotebookDisplaySegment]
-    ) -> some View {
-        switch segment {
-        case .fixed(let fixed):
-            return AnyView(fixedRowCell(for: fixed, item: item, data: data))
-        case .column(let column):
-            let isCellSelected = inspectorSelection == NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
-            return AnyView(
-                ZStack {
-                    Rectangle()
-                        .fill(notebookColumnCellFill(for: column, rowIndex: rowIndex, isActive: isCellSelected))
-
-                    NotebookEditableTableCell(
-                        bridge: bridge,
-                        item: item,
-                        column: column,
-                        classId: data.sheet.classId,
-                        width: resolvedColumnWidth(for: column),
-                        tint: displayTint(for: column),
-                        categoryTint: column.categoryId.flatMap { id in
-                            data.sheet.columnCategories.first(where: { $0.id == id }).map { tint(for: $0) }
-                        },
-                        hasColumnColor: hasCustomColumnColor(column),
-                        focusedCellId: $focusedCellId,
-                        activeChoiceCellId: $activeChoiceCellId,
-                        navigationDirection: navigationDirection,
-                        formulaDisplay: formulaDisplay(for: item, column: column, data: data),
-                        isSelected: isCellSelected,
-                        isAttendanceQuickMode: isAttendanceQuickMode,
-                        reloadToken: cellReloadRevision,
-                        onSelect: {
-                            inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
-                        },
-                        onPrepareUndo: { previousValue, previousDisplayLabel in
-                            recordCellUndo(
-                                studentId: item.student.id,
-                                column: column,
-                                previousValue: previousValue,
-                                previousDisplayLabel: previousDisplayLabel
-                            )
-                        },
-                        onOpenFormula: {
-                            presentFormulaEditor(for: column)
-                        },
-                        onOpenRubricIndividual: {
-                            openRubricIndividual(column: column, item: item)
-                        },
-                        onOpenRubricBulk: {
-                            openRubricBulk(column: column, data: data)
-                        },
-                        onNavigate: { direction in
-                            navigateCell(
-                                from: item.student.id,
-                                column: column,
-                                direction: direction,
-                                rows: allRows,
-                                segments: navigableSegments
-                            )
-                        },
-                        onCellSaved: {
-                            cellReloadRevision += 1
-                        },
-                        onAttendanceSaved: {
-                            Task { await refreshNotebookSignals() }
-                        }
-                    )
-                }
-                .frame(width: resolvedColumnWidth(for: column), height: notebookGridRowHeight)
-                .overlay(
-                    Rectangle()
-                        .stroke(notebookColumnCellBorder(for: column, isActive: isCellSelected), lineWidth: isCellSelected ? 1.4 : 0.5)
-                )
-            )
-        case .collapsedCategory(let category, let columns):
-            return AnyView(
-                Button {
-                    bridge.toggleColumnCategory(id: category.id, collapsed: false)
-                } label: {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(category.name)
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
-                            .foregroundStyle(.primary)
-                        Text("\(filledCellCount(item, columns: columns)) / \(columns.count)")
-                            .font(.system(size: 12, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(width: 150, alignment: .leading)
-                    .padding(10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(tint(for: category).opacity(0.10))
-                    )
-                }
-                .buttonStyle(.plain)
-                .frame(width: 150, height: notebookGridRowHeight)
-                .background(tint(for: category).opacity(0.08))
-                .overlay(
-                    Rectangle()
-                        .stroke(NotebookStyle.softBorder.opacity(0.45), lineWidth: 0.5)
-                )
-                .contextMenu {
-                    categoryContextMenu(category, data: data)
-                }
-            )
-        }
-    }
-
-    private func categoryFolderHeader(category: NotebookColumnCategory, columns: [NotebookColumnDefinition], rows: [NotebookTableRow], width: CGFloat) -> some View {
-        let categoryTint = tint(for: category)
-        let completed = completedCollapsedCategoryCount(columns, rows: rows)
-
-        return HStack(alignment: .top, spacing: 10) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    Image(systemName: category.isCollapsed ? "folder.fill" : "folder.fill.badge.minus")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(categoryTint)
-                    Text(category.name)
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    Spacer(minLength: 0)
-                    Text("\(columns.count)")
-                        .font(.system(size: 11, weight: .black, design: .rounded))
-                        .foregroundStyle(categoryTint)
-                }
-
-                Text(columns.isEmpty ? "Carpeta vacía lista para nuevas columnas" : "\(completed)/\(visibleColumnCount(columns)) con datos")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-
-            VStack(spacing: 6) {
-                Button {
-                    openAddColumn(in: category)
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 12, weight: .bold))
-                }
-                .buttonStyle(.plain)
-
-                Menu {
-                    categoryContextMenu(category, data: bridge.notebookState as? NotebookUiStateData)
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .font(.system(size: 14, weight: .semibold))
-                }
-                .buttonStyle(.plain)
-            }
-            .foregroundStyle(categoryTint)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .frame(width: width, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.white.opacity(0.030))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(categoryTint.opacity(highlightedCategoryId == category.id ? 0.48 : 0.20), lineWidth: highlightedCategoryId == category.id ? 1.5 : 1)
-                )
-                .overlay(alignment: .topLeading) {
-                    RoundedRectangle(cornerRadius: 999, style: .continuous)
-                        .fill(categoryTint.opacity(0.72))
-                        .frame(width: min(108, width * 0.48), height: 4)
-                        .offset(x: 12, y: 8)
-                }
-        )
-        .contextMenu {
-            categoryContextMenu(category, data: bridge.notebookState as? NotebookUiStateData)
-        }
-    }
-
-    @ViewBuilder
-    private func columnContextMenu(_ column: NotebookColumnDefinition, data: NotebookUiStateData) -> some View {
-        if isNotebookIndividualSummaryColumn(column) {
-            Button(summaryActionTitle(for: column, data: data)) {
-                notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: column.id)
-            }
-        }
-        if column.type == .calculated {
-            Button("Editar fórmula…") {
-                presentFormulaEditor(for: column)
-            }
-        }
-        if column.type == .rubric {
-            Button("Evaluar alumno…") {
-                let targetRow = inspectorSelection
-                    .flatMap { selection in filteredRows(data: data).first { $0.student.id == selection.studentId } }
-                    ?? filteredRows(data: data).first
-                if let targetRow {
-                    openRubricIndividual(column: column, item: targetRow)
-                } else {
-                    showToast("No hay alumnos disponibles para evaluar", style: .warning)
-                }
-            }
-            Button("Evaluar grupo…") {
-                openRubricBulk(column: column, data: data)
-            }
-        }
-        Button("Renombrar") {
-            editingColumnId = column.id
-            columnDraft = column.title
-            isRenameColumnAlertPresented = true
-        }
-        Menu("Mover a categoría") {
-            Button("Sin categoría") {
-                bridge.assignColumn(column.id, toCategory: nil)
-                showToast("Columna movida fuera de la carpeta")
-            }
-            ForEach(visibleCategories(data: data), id: \.id) { category in
-                Button(category.name) {
-                    bridge.assignColumn(column.id, toCategory: category.id)
-                    highlightedCategoryId = category.id
-                    showToast("Columna movida a \(category.name)")
-                }
-            }
-        }
-        Menu("Cambiar color") {
-            ForEach(columnColorOptions, id: \.hex) { option in
-                Button(option.label) {
-                    saveColumnMutation(column, colorHex: option.hex)
-                    showToast("Color actualizado")
-                }
-            }
-        }
-        Button(column.isArchived ? "Restaurar" : (column.isTemporarilyHidden ? "Mostrar" : "Ocultar")) {
-            if column.isArchived {
-                setNotebookColumnVisibility(column, visibility: .visible)
-            } else {
-                toggleColumnVisibility(column)
-            }
-        }
-        Button(column.isLocked ? "Desbloquear" : "Bloquear") {
-            saveColumnMutation(column, isLocked: !column.isLocked)
-            showToast(column.isLocked ? "Columna desbloqueada" : "Columna bloqueada")
-        }
-        Button(column.countsTowardAverage ? "No contar para media" : "Contar para media") {
-            saveColumnMutation(column, countsTowardAverage: !column.countsTowardAverage)
-            showToast(column.countsTowardAverage ? "Columna excluida de la media" : "Columna incluida en la media")
-        }
-        Button("Eliminar columna", role: .destructive) {
-            presentDeleteColumnImpact(column)
-        }
-    }
-
-    private func summaryActionTitle(for column: NotebookColumnDefinition, data: NotebookUiStateData) -> String {
-        let hasExistingText = filteredRows(data: data).contains { row in
-            !bridge.cellText(studentId: row.student.id, columnId: column.id)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .isEmpty
-        }
-        return hasExistingText ? "Regenerar síntesis…" : "Generar síntesis…"
-    }
-
-    @ViewBuilder
-    private func categoryContextMenu(_ category: NotebookColumnCategory, data: NotebookUiStateData?) -> some View {
-        Button("Renombrar categoría") {
-            editingCategoryId = category.id
-            categoryDraft = category.name
-            isCreateCategoryAlertPresented = true
-        }
-        Button(category.isCollapsed ? "Expandir" : "Colapsar") {
-            bridge.toggleColumnCategory(id: category.id, collapsed: !category.isCollapsed)
-        }
-        Button("Nueva columna dentro") {
-            openAddColumn(in: category)
-        }
-        if let data {
-            Menu("Mover columnas a") {
-                ForEach(visibleCategories(data: data).filter { $0.id != category.id }, id: \.id) { target in
-                    Button(target.name) {
-                        columns(in: category, data: data, includeHidden: true).forEach { column in
-                            bridge.assignColumn(column.id, toCategory: target.id)
-                        }
-                        highlightedCategoryId = target.id
-                        showToast("Columnas movidas a \(target.name)")
-                    }
-                }
-                Button("Sin categoría") {
-                    columns(in: category, data: data, includeHidden: true).forEach { column in
-                        bridge.assignColumn(column.id, toCategory: nil)
-                    }
-                    showToast("Columnas liberadas de la carpeta")
-                }
-            }
-        }
-        Button("Eliminar categoría", role: .destructive) {
-            presentDeleteCategoryImpact(category)
-        }
-    }
-
-    private func notebookOrganizationSheet(data: NotebookUiStateData?) -> some View {
-        NavigationStack {
-            List {
-                Section("Organización") {
-                    Button {
-                        isOrganizationMenuPresented = false
-                        presentCreateCategory()
-                    } label: {
-                        Label("Nueva categoría", systemImage: "folder.badge.plus")
-                    }
-
-                    if let data {
-                        ForEach(managedColumns(data: data), id: \.id) { column in
-                            Button {
-                                if column.isArchived {
-                                    setNotebookColumnVisibility(column, visibility: .visible)
-                                } else {
-                                    toggleColumnVisibility(column)
-                                }
-                            } label: {
-                                HStack {
-                                    Label(column.title, systemImage: column.isArchived ? "archivebox" : (isColumnHidden(column) ? "eye.slash" : "eye"))
-                                    Spacer()
-                                    Text(column.isArchived ? "Archivada" : (column.isTemporarilyHidden ? "Oculta" : "Visible"))
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Section("Vista") {
-                    ForEach(NotebookViewPreset.allCases) { preset in
-                        Button {
-                            viewPreset = preset
-                        } label: {
-                            HStack {
-                                Text(preset.title)
-                                Spacer()
-                                if viewPreset == preset {
-                                    Image(systemName: "checkmark")
-                                        .foregroundStyle(NotebookStyle.primaryTint)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if let data, !relevantCategories(data: data).isEmpty {
-                    Section("Categorías") {
-                        ForEach(relevantCategories(data: data), id: \.id) { category in
-                            Button(category.isCollapsed ? "Mostrar \(category.name)" : "Plegar \(category.name)") {
-                                bridge.toggleColumnCategory(id: category.id, collapsed: !category.isCollapsed)
-                            }
-                        }
-                    }
-                }
-
-                if let data {
-                    Section("IA y exportación") {
-                        Button {
-                            addColumnContext = NotebookAddColumnContext(categoryId: nil, startsCreatingCategory: false)
-                        } label: {
-                            Label("Crear síntesis pedagógica", systemImage: "plus.bubble")
-                        }
-
-                        Button {
-                            notebookSummarySheetRequest = NotebookSummarySheetRequest(
-                                targetColumnId: inspectorSelection.flatMap { selection in
-                                    data.sheet.columns.first(where: { $0.id == selection.columnId && isNotebookIndividualSummaryColumn($0) })?.id
-                                }
-                            )
-                        } label: {
-                            Label("Generar síntesis pedagógica", systemImage: "apple.intelligence")
-                        }
-                        .disabled(data.sheet.columns.filter(isNotebookIndividualSummaryColumn).isEmpty)
-
-                        ShareLink(item: exportText(data: data)) {
-                            Label("Exportar cuaderno", systemImage: "square.and.arrow.up")
-                        }
-                    }
-                }
-            }
-            .navigationTitle("Columnas")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cerrar") {
-                        isOrganizationMenuPresented = false
-                    }
-                }
-            }
-        }
-    }
-
-    private func presentCreateCategory() {
-        editingCategoryId = nil
-        categoryDraft = defaultCategoryDraft()
-        isCreateCategoryAlertPresented = true
-    }
-
-    private func openAddColumn(in category: NotebookColumnCategory) {
-        highlightedCategoryId = category.id
-        addColumnContext = NotebookAddColumnContext(categoryId: category.id, startsCreatingCategory: false)
-    }
-
-    private func presentCreateNotebookTab() {
-        editingNotebookTabId = nil
-        notebookTabDraft = defaultNotebookTabDraft()
-        isNotebookTabAlertPresented = true
-    }
-
-    private func presentRenameNotebookTab(_ tab: NotebookTab) {
-        editingNotebookTabId = tab.id
-        notebookTabDraft = tab.title
-        isNotebookTabAlertPresented = true
-    }
-
-    private func presentRenameColumn(_ column: NotebookColumnDefinition) {
-        editingColumnId = column.id
-        columnDraft = column.title
-        isRenameColumnAlertPresented = true
-    }
-
-    private func defaultNotebookTabDraft() -> String {
-        guard let data = bridge.notebookState as? NotebookUiStateData else { return "Nuevo tema" }
-        let nextIndex = orderedNotebookTabs(data: data).count + 1
-        return "Tema \(nextIndex)"
-    }
-
-    private func resetNotebookTabDraft() {
-        editingNotebookTabId = nil
-        notebookTabDraft = ""
-    }
-
-    private func saveNotebookTabDraft() {
-        let draft = notebookTabDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !draft.isEmpty else { return }
-
-        if let editingNotebookTabId,
-           let data = bridge.notebookState as? NotebookUiStateData,
-           let tab = data.sheet.tabs.first(where: { $0.id == editingNotebookTabId }) {
-            bridge.saveTab(tab: NotebookTab(
-                id: tab.id,
-                title: draft,
-                description: tab.description,
-                order: tab.order,
-                parentTabId: tab.parentTabId,
-                trace: tab.trace
-            ))
-            showToast("Pestaña renombrada")
-        } else if let createdId = bridge.createTab(title: draft) {
-            selectNotebookTab(createdId)
-            showToast("Pestaña creada")
-        }
-
-        resetNotebookTabDraft()
-    }
-
-    private func deleteNotebookTab(_ tab: NotebookTab) {
-        let nextTabId: String? = {
-            guard let data = bridge.notebookState as? NotebookUiStateData else { return nil }
-            let remainingTabs = orderedNotebookTabs(data: data).filter { $0.id != tab.id }
-            if let selectedIndex = orderedNotebookTabs(data: data).firstIndex(where: { $0.id == tab.id }),
-               remainingTabs.indices.contains(selectedIndex) {
-                return remainingTabs[selectedIndex].id
-            }
-            return remainingTabs.last?.id
-        }()
-
-        bridge.deleteTab(id: tab.id)
-        bridge.setSelectedNotebookTab(id: nextTabId)
-        pendingDeleteNotebookTab = nil
-        showToast("Pestaña eliminada", style: .warning)
-    }
-
-    private func saveCategoryFromDraft() {
-        let draft = categoryDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        bridge.saveColumnCategory(name: draft, categoryId: editingCategoryId)
-        highlightedCategoryId = editingCategoryId
-        showToast(editingCategoryId == nil ? "Categoría creada" : "Categoría renombrada")
-        editingCategoryId = nil
-        categoryDraft = ""
-    }
-
-    private func saveColumnRename() {
-        guard let editingColumnId,
-              let data = bridge.notebookState as? NotebookUiStateData,
-              let column = data.sheet.columns.first(where: { $0.id == editingColumnId }) else {
-            self.editingColumnId = nil
-            columnDraft = ""
-            return
-        }
-        saveColumnMutation(column, title: columnDraft.trimmingCharacters(in: .whitespacesAndNewlines))
-        showToast("Columna renombrada")
-        self.editingColumnId = nil
-        columnDraft = ""
-    }
-
-    private func saveColumnMutation(
-        _ column: NotebookColumnDefinition,
-        title: String? = nil,
-        countsTowardAverage: Bool? = nil,
-        isLocked: Bool? = nil,
-        colorHex: String? = nil,
-        formula: String? = nil,
-        updatesFormula: Bool = false
-    ) {
-        bridge.saveColumn(column: copyNotebookColumn(
-            column,
-            title: title,
-            countsTowardAverage: countsTowardAverage,
-            isLocked: isLocked,
-            colorHex: colorHex,
-            formula: formula,
-            updatesFormula: updatesFormula
-        ))
-    }
-
-    private func deleteColumn(_ column: NotebookColumnDefinition) {
-        guard column.canBeDeleted else {
-            showToast("Esta columna está bloqueada y no se puede eliminar", style: .warning)
-            pendingDeleteColumn = nil
-            return
-        }
-        bridge.deleteColumn(id: column.id, evaluationId: column.evaluationId?.int64Value)
-        showToast("Columna eliminada", style: .warning)
-        pendingDeleteColumn = nil
-    }
-
-    private func presentDeleteColumnImpact(_ column: NotebookColumnDefinition) {
-        guard let data = bridge.notebookState as? NotebookUiStateData else {
-            pendingDeleteColumn = column
-            return
-        }
-        pendingDeleteColumn = column
-        pendingDeleteCategory = nil
-        deletionConfirmationText = ""
-        pendingDeletionImpact = deletionImpact(
-            kind: .column,
-            targetId: column.id,
-            targetName: column.title,
-            columns: [column],
-            data: data
-        )
-    }
-
-    private func presentDeleteCategoryImpact(_ category: NotebookColumnCategory) {
-        guard let data = bridge.notebookState as? NotebookUiStateData else {
-            pendingDeleteCategory = category
-            return
-        }
-        pendingDeleteCategory = category
-        pendingDeleteColumn = nil
-        deletionConfirmationText = ""
-        pendingDeletionImpact = deletionImpact(
-            kind: .category,
-            targetId: category.id,
-            targetName: category.name,
-            columns: columns(in: category, data: data, includeHidden: true),
-            data: data
-        )
-    }
-
-    private func preserveCategoryFromImpact(_ impact: NotebookDeletionImpactDraft) {
-        guard impact.kind == .category else { return }
-        bridge.deleteColumnCategory(id: impact.targetId, preserveColumns: true)
-        showToast("Categoría eliminada; las columnas se han conservado")
-        pendingDeletionImpact = nil
-        pendingDeleteCategory = nil
-        deletionConfirmationText = ""
-    }
-
-    private func performDestructiveDeletion(_ impact: NotebookDeletionImpactDraft) {
-        guard !impact.hasLockedColumns else {
-            showToast("Hay columnas bloqueadas. No se puede eliminar destructivamente.", style: .warning)
-            return
-        }
-        if impact.requiresStrongConfirmation && deletionConfirmationText != "ELIMINAR" {
-            showToast("Escribe ELIMINAR para confirmar", style: .warning)
-            return
-        }
-
-        switch impact.kind {
-        case .column:
-            if let column = impact.affectedColumns.first {
-                deleteColumn(column)
-            }
-        case .category:
-            bridge.deleteColumnCategory(id: impact.targetId, preserveColumns: false)
-            showToast("Categoría y columnas eliminadas", style: .warning)
-            pendingDeleteCategory = nil
-        }
-
-        pendingDeletionImpact = nil
-        deletionConfirmationText = ""
-    }
-
-    private func deletionImpact(
-        kind: NotebookDeletionKind,
-        targetId: String,
-        targetName: String,
-        columns: [NotebookColumnDefinition],
-        data: NotebookUiStateData
-    ) -> NotebookDeletionImpactDraft {
-        let columnIds = Set(columns.map(\.id))
-        let gradeCount = data.sheet.rows.reduce(0) { total, row in
-            total + row.persistedGrades.filter { grade in
-                columnIds.contains(grade.columnId) && grade.value != nil
-            }.count
-        }
-        let formulaCount = data.sheet.columns
-            .filter { $0.type == .calculated && !columnIds.contains($0.id) }
-            .filter { column in
-                let formula = column.formula ?? ""
-                return columnIds.contains(where: { id in
-                    formula.contains("[\(id)]") || formula.contains(id)
-                })
-            }
-            .count
-        let averageCount = columns.filter(\.countsTowardAverage).count
-
-        return NotebookDeletionImpactDraft(
-            kind: kind,
-            targetId: targetId,
-            targetName: targetName,
-            affectedColumns: columns,
-            affectedGradeCount: gradeCount,
-            affectedFormulaColumnCount: formulaCount,
-            affectedAverageColumnCount: averageCount,
-            hasLockedColumns: columns.contains { $0.isLocked }
-        )
-    }
-
-    private func showToast(_ message: String, style: NotebookToastStyle = .success) {
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
-            toast = NotebookToast(message: message, style: style)
-        }
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
-            if toast?.message == message {
-                withAnimation(.easeOut(duration: 0.2)) {
-                    toast = nil
-                }
-            }
-        }
-    }
-
-    private func notebookToastView(_ toast: NotebookToast) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: toast.style == .success ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                .foregroundStyle(toast.style.tint)
-            Text(toast.message)
-                .font(.system(size: 13, weight: .bold, design: .rounded))
-                .foregroundStyle(.primary)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(
-            Capsule(style: .continuous)
-                .fill(NotebookStyle.surface)
-                .overlay(
-                    Capsule(style: .continuous)
-                        .stroke(toast.style.tint.opacity(0.22), lineWidth: 1)
-                )
-        )
-        .shadow(color: Color.black.opacity(0.12), radius: 12, x: 0, y: 8)
-    }
-
-    private func defaultCategoryDraft() -> String {
-        switch viewPreset {
-        case .evaluation: return "Evaluación"
-        case .followUp: return "Seguimiento"
-        case .attendance: return "Asistencia"
-        case .extras: return "Extras"
-        case .physicalEducation: return "EF"
-        case .all: return "Nueva categoría"
-        }
-    }
-
-    private func completedCollapsedCategoryCount(_ columns: [NotebookColumnDefinition], rows: [NotebookTableRow]) -> Int {
-        columns.filter(\.isVisibleInGrid).filter { column in
-            rows.contains { row in
-                !displayValue(for: row, column: column)
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                    .isEmpty
-            }
-        }.count
-    }
-
-    private func visibleColumnCount(_ columns: [NotebookColumnDefinition]) -> Int {
-        columns.filter(\.isVisibleInGrid).count
-    }
-
-    private func collapsedCategoryProgressText(columns: [NotebookColumnDefinition], rows: [NotebookTableRow]) -> String {
-        "\(completedCollapsedCategoryCount(columns, rows: rows)) / \(visibleColumnCount(columns)) con datos"
-    }
-
-    private var columnColorOptions: [(label: String, hex: String)] {
-        [
-            ("Azul", "#4A90D9"),
-            ("Verde", "#2E9B6F"),
-            ("Ámbar", "#D28C1D"),
-            ("Coral", "#D95C5C"),
-            ("Violeta", "#7B6FF1"),
-            ("Grafito", "#6B7280"),
-        ]
-    }
-
-    private func fixedRowCell(for fixed: NotebookFixedColumn, item: NotebookTableRow, data: NotebookUiStateData) -> some View {
-        Group {
-            switch fixed {
-            case .photo:
-                studentAvatar(for: item.student)
-                    .frame(width: resolvedFixedWidth(for: fixed), alignment: .center)
-            case .name:
-                Button {
-                    openInspectorForStudent(item.student.id, data: data)
-                } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 6) {
-                            Text("\(item.student.firstName) \(item.student.lastName)")
-                                .font(.system(size: 14, weight: .semibold, design: .rounded))
-                                .foregroundStyle(.primary)
-                                .lineLimit(1)
-                            riskBadge(for: item.student.id)
-                        }
-                        if item.student.isInjured {
-                            Text("Seguimiento físico")
-                                .font(.system(size: 11, weight: .medium, design: .rounded))
-                                .foregroundStyle(.orange)
-                        }
-                    }
-                    .frame(width: resolvedFixedWidth(for: fixed), alignment: .leading)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            case .group:
-                Text(item.groupName)
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
-                    .foregroundStyle(.primary)
-                    .lineLimit(2)
-                    .frame(width: resolvedFixedWidth(for: fixed), alignment: .leading)
-            case .followUp:
-                followUpBadge(for: item.student)
-                    .frame(width: resolvedFixedWidth(for: fixed), alignment: .leading)
-            case .attendance:
-                Text(attendanceSummary(for: item))
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.primary)
-                    .frame(width: resolvedFixedWidth(for: fixed), alignment: .leading)
-            case .average:
-                Button {
-                    averageExplanationRow = item
-                } label: {
-                    averageBadge(for: item)
-                        .frame(width: resolvedFixedWidth(for: fixed), alignment: .leading)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .popover(item: $averageExplanationRow) { item in
-                    NotebookAverageExplanationView(
-                        studentName: "\(item.student.firstName) \(item.student.lastName)",
-                        explanation: item.row.averageExplanation
-                    )
-                        .frame(width: 320)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func riskBadge(for studentId: Int64) -> some View {
-        switch riskLevelCache[studentId] {
-        case .atencionPrioritaria:
-            Image(systemName: "exclamationmark.circle.fill")
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(.orange)
-                .help("Atención prioritaria")
-        case .atencionPuntual:
-            Image(systemName: "exclamationmark.circle")
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(NotebookStyle.warningTint)
-                .help("Atención puntual")
-        case .seguimientoNormal, .none:
-            EmptyView()
-        }
     }
 
 }

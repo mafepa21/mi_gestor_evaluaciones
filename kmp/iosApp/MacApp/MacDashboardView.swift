@@ -88,13 +88,13 @@ struct MacDashboardView: View {
             reloadTask?.cancel()
             onToolbarActionsChange(nil)
         }
-        .onChange(of: toolbarKey) { _ in
+        .appOnChange(of: toolbarKey) { _ in
             syncToolbarActions()
         }
-        .onChange(of: bridge.syncPendingChanges) { _ in
+        .appOnChange(of: bridge.syncPendingChanges) { _ in
             scheduleReload()
         }
-        .onChange(of: bridge.pairedSyncHost) { _ in
+        .appOnChange(of: bridge.pairedSyncHost) { _ in
             scheduleReload()
         }
     }
@@ -1094,7 +1094,7 @@ private struct QuickEvaluationSheet: View {
             selectedClassId = initialClassId
             loadSelection()
         }
-        .onChange(of: selectedClassId) { _ in
+        .appOnChange(of: selectedClassId) { _ in
             loadSelection()
         }
     }
@@ -1166,7 +1166,7 @@ private struct ObservationComposerSheet: View {
             selectedClassId = initialClassId
             loadStudents()
         }
-        .onChange(of: selectedClassId) { _ in
+        .appOnChange(of: selectedClassId) { _ in
             loadStudents()
         }
     }

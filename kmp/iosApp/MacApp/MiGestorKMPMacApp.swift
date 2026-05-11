@@ -16,7 +16,7 @@ struct MiGestorKMPMacApp: App {
                 .environment(\.appThemeMode, themeMode)
                 .preferredColorScheme(themeMode.colorSchemeOverride)
                 .frame(minWidth: 900, minHeight: 600)
-                .onChange(of: scenePhase) { _, newPhase in
+                .appOnChange(of: scenePhase) { _, newPhase in
                     handleScenePhase(newPhase)
                 }
         }

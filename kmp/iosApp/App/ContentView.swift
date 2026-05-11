@@ -115,14 +115,14 @@ struct DashboardView: View {
             await applyFiltersAndReload()
         }
         .onAppear(perform: syncToolbarState)
-        .onChange(of: selectedClassId) { _ in triggerDashboardReload() }
-        .onChange(of: modeRawValue) { _ in triggerDashboardReload() }
-        .onChange(of: severityFilter) { _ in triggerDashboardReload() }
-        .onChange(of: priorityFilter) { _ in triggerDashboardReload() }
-        .onChange(of: sessionStatusFilter) { _ in triggerDashboardReload() }
-        .onChange(of: inspectorSelection) { _ in handleInspectorSelectionChange() }
-        .onChange(of: isInspectorPresented) { _ in syncToolbarState() }
-        .onChange(of: toolbarStateKey) { _ in syncToolbarState() }
+        .appOnChange(of: selectedClassId) { _ in triggerDashboardReload() }
+        .appOnChange(of: modeRawValue) { _ in triggerDashboardReload() }
+        .appOnChange(of: severityFilter) { _ in triggerDashboardReload() }
+        .appOnChange(of: priorityFilter) { _ in triggerDashboardReload() }
+        .appOnChange(of: sessionStatusFilter) { _ in triggerDashboardReload() }
+        .appOnChange(of: inspectorSelection) { _ in handleInspectorSelectionChange() }
+        .appOnChange(of: isInspectorPresented) { _ in syncToolbarState() }
+        .appOnChange(of: toolbarStateKey) { _ in syncToolbarState() }
         .onDisappear {
             layoutState.clearDashboardToolbar()
         }
@@ -1607,7 +1607,7 @@ struct RubricEvaluationView: View {
                             .padding(EvaluationDesign.screenPadding)
                         }
                     }
-                    .onChange(of: state.isSaveSuccessful) { saved in
+                    .appOnChange(of: state.isSaveSuccessful) { saved in
                         guard saved else { return }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                             closeRubric()

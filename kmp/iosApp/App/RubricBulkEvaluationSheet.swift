@@ -68,7 +68,7 @@ struct RubricBulkEvaluationSheet: View {
                             }
                             .padding(EvaluationDesign.screenPadding)
                         }
-                        .onChange(of: state.isSaveSuccessful) { saved in
+                        .appOnChange(of: state.isSaveSuccessful) { saved in
                             guard saved else { return }
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                                 bridge.refreshCurrentNotebook()

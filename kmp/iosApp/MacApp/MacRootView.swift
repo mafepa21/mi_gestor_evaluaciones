@@ -56,7 +56,7 @@ struct MacRootView: View {
         .toolbar {
             macToolbar
         }
-        .onChange(of: session.selectedFeature) { newFeature in
+        .appOnChange(of: session.selectedFeature) { newFeature in
             columnVisibility = .all
             if newFeature == .notebook {
                 isNotebookInspectorColumnVisible = true
@@ -101,7 +101,7 @@ struct MacRootView: View {
                 onToolbarActionsChange: setDashboardToolbarActions
             )
         case .notebook:
-            MacNotebookView(
+            NotebookMacLayout(
                 bridge: session.bridge,
                 layoutState: layoutState,
                 toolbarActions: notebookToolbarActions,
@@ -109,8 +109,7 @@ struct MacRootView: View {
                 selectedClassId: $selectedClassId,
                 selectedStudentId: $selectedStudentId,
                 onOpenModule: open(module:classId:studentId:),
-                presentation: .content,
-                onToggleInspectorColumn: toggleNotebookInspectorColumn
+                presentation: .content
             )
         case .attendance:
             MacAttendanceView(
@@ -146,7 +145,7 @@ struct MacRootView: View {
                 selectedStudentId: $selectedStudentId
             )
         case .planner:
-            MacPlannerView(bridge: session.bridge)
+            PlannerMacLayout(bridge: session.bridge)
         case .sync:
             MacSyncView(bridge: session.bridge, commandCenter: commandCenter)
         case .backups:
@@ -162,7 +161,7 @@ struct MacRootView: View {
     private func featureInspector(for feature: MacFeatureDescriptor.Feature) -> some View {
         switch feature {
         case .notebook:
-            MacNotebookView(
+            NotebookMacLayout(
                 bridge: session.bridge,
                 layoutState: layoutState,
                 toolbarActions: notebookToolbarActions,
@@ -170,8 +169,7 @@ struct MacRootView: View {
                 selectedClassId: $selectedClassId,
                 selectedStudentId: $selectedStudentId,
                 onOpenModule: open(module:classId:studentId:),
-                presentation: .inspector,
-                onToggleInspectorColumn: toggleNotebookInspectorColumn
+                presentation: .inspector
             )
         case .students:
             MacStudentsView(

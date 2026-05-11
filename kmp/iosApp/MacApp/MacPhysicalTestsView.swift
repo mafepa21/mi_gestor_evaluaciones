@@ -336,11 +336,11 @@ struct MacPhysicalTestsView: View {
             .background(MacAppStyle.pageBackground)
         }
         .task { await reload() }
-        .onChange(of: selectedClassId) { _ in Task { await reload() } }
-        .onChange(of: selectedTestId) { _ in syncSelectedStudent() }
+        .appOnChange(of: selectedClassId) { _ in Task { await reload() } }
+        .appOnChange(of: selectedTestId) { _ in syncSelectedStudent() }
         .onAppear(perform: configureToolbar)
-        .onChange(of: section) { _ in configureToolbar() }
-        .onChange(of: selectedClassId) { _ in configureToolbar() }
+        .appOnChange(of: section) { _ in configureToolbar() }
+        .appOnChange(of: selectedClassId) { _ in configureToolbar() }
     }
 
     @ViewBuilder
@@ -906,7 +906,7 @@ struct MacPhysicalTestsView: View {
                     }
                 }
                 .listStyle(.sidebar)
-                .onChange(of: selectedScaleTestId) { _ in syncScaleDraftFromSelection() }
+                .appOnChange(of: selectedScaleTestId) { _ in syncScaleDraftFromSelection() }
             }
 
             Spacer(minLength: 0)

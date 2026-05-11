@@ -54,6 +54,7 @@ struct NotebookModuleView: View {
     @State var undoStack: [NotebookCellUndoEntry] = []
     @State var cellReloadRevision = 0
     @State var highlightedCategoryId: String? = nil
+    @State var expandedEmptyCategoryIds: Set<String> = []
     @State var notebookAISheetRequest: NotebookAISheetRequest? = nil
     @State var notebookSummarySheetRequest: NotebookSummarySheetRequest? = nil
     @State var isAverageConfigurationPresented = false
@@ -444,34 +445,34 @@ struct NotebookModuleView: View {
     func notebookToolbarObservationModifiers<Content: View>(_ content: Content) -> some View {
         content
             .onAppear {
-                syncToolbarStateIfLoaded()
+                scheduleToolbarStateSyncIfLoaded()
             }
             .appOnChange(of: isInspectorPresented) { _ in
-                syncToolbarStateIfLoaded()
+                scheduleToolbarStateSyncIfLoaded()
             }
             .appOnChange(of: surfaceMode) { _ in
-                syncToolbarStateIfLoaded()
+                scheduleToolbarStateSyncIfLoaded()
             }
             .appOnChange(of: undoStack.count) { _ in
-                syncToolbarStateIfLoaded()
+                scheduleToolbarStateSyncIfLoaded()
             }
             .appOnChange(of: isAttendanceQuickMode) { _ in
-                syncToolbarStateIfLoaded()
+                scheduleToolbarStateSyncIfLoaded()
             }
             .appOnChange(of: searchText) { _ in
-                syncToolbarStateIfLoaded()
+                scheduleToolbarStateSyncIfLoaded()
             }
             .appOnChange(of: selectedGroupId) { _ in
-                syncToolbarStateIfLoaded()
+                scheduleToolbarStateSyncIfLoaded()
                 riskComputationKey = nil
             }
             .appOnChange(of: inspectorSelection) { _ in
-                syncToolbarStateIfLoaded()
+                scheduleToolbarStateSyncIfLoaded()
             }
             .appOnChange(of: bridge.notebookState is NotebookUiStateData) { _ in
                 restoreSeatPositions()
                 riskComputationKey = nil
-                syncToolbarStateIfLoaded()
+                scheduleToolbarStateSyncIfLoaded()
             }
     }
 
@@ -571,12 +572,12 @@ struct NotebookModuleView: View {
         .background(EvaluationBackdrop())
         .onAppear {
             if !isMacInspectorOnly {
-                syncToolbarState(data: data)
+                scheduleToolbarStateSync(data: data)
             }
         }
         .appOnChange(of: toolbarStateKey(data: data)) { _ in
             if !isMacInspectorOnly {
-                syncToolbarState(data: data)
+                scheduleToolbarStateSync(data: data)
             }
         }
     }
@@ -585,6 +586,8 @@ struct NotebookModuleView: View {
     func spreadsheetContent(data: NotebookUiStateData, rows: [NotebookTableRow]) -> some View {
         let segments = displaySegments(data: data)
         let fixedSegments = visibleFixedSegments(in: segments)
+        let leadingFixedSegments = fixedSegments.filter { !isTrailingFixedSegment($0) }
+        let trailingFixedSegments = fixedSegments.filter(isTrailingFixedSegment)
         let scrollableSegments = segments.filter { !isFixedSegment($0) }
         let laneItems = headerLaneItems(data: data, segments: scrollableSegments)
         let hasFolders = laneItems.contains {
@@ -596,11 +599,13 @@ struct NotebookModuleView: View {
             rows: rows,
             surfaceMode: surfaceMode,
             fixedColumnWidth: fixedZoneWidth,
+            trailingFixedColumnWidth: trailingFixedSegments.isEmpty ? 0 : defaultFixedWidth(for: .average) + 32,
             topAccessoryHeight: hasFolders ? notebookGridFolderLaneHeight : 0,
             headerHeight: notebookGridHeaderHeight,
             rowHeight: notebookGridRowHeight,
             rowInvalidationKey: gridRowInvalidationKey(data: data),
-            fixedSegments: fixedSegments,
+            fixedSegments: leadingFixedSegments,
+            trailingFixedSegments: trailingFixedSegments,
             scrollableSegments: scrollableSegments
         ) {
             NotebookStateCard(
@@ -721,6 +726,13 @@ struct NotebookModuleView: View {
         return false
     }
 
+    func isTrailingFixedSegment(_ segment: NotebookDisplaySegment) -> Bool {
+        if case .fixed(.average) = segment {
+            return true
+        }
+        return false
+    }
+
     func visibleFixedSegments(in segments: [NotebookDisplaySegment]) -> [NotebookDisplaySegment] {
         let allowedColumns = visibleFixedColumns
         return segments.filter { segment in
@@ -740,8 +752,7 @@ struct NotebookModuleView: View {
         var columns: [NotebookFixedColumn] = [.photo, .name]
         if fixedZoneWidth > 290 { columns.append(.followUp) }
         if fixedZoneWidth > 400 { columns.append(.attendance) }
-        if fixedZoneWidth > 490 { columns.append(.average) }
-        if fixedZoneWidth > 610 { columns.append(.group) }
+        if fixedZoneWidth > 490 { columns.append(.group) }
         return columns
     }
 
@@ -874,7 +885,7 @@ struct NotebookModuleView: View {
             .onAppear {
                 if !isMacInspectorOnly {
                     ensureActiveNotebookTab(data: data)
-                    syncToolbarState(data: data)
+                    scheduleToolbarStateSync(data: data)
                 }
             }
             .appOnChange(of: notebookTabsStateKey(data: data)) { _ in
@@ -884,7 +895,7 @@ struct NotebookModuleView: View {
             }
             .appOnChange(of: toolbarStateKey(data: data)) { _ in
                 if !isMacInspectorOnly {
-                    syncToolbarState(data: data)
+                    scheduleToolbarStateSync(data: data)
                 }
             }
     }

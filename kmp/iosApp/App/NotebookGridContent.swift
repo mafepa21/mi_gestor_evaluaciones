@@ -11,11 +11,13 @@ struct NotebookGridContent<
     let rows: [NotebookTableRow]
     let surfaceMode: NotebookSurfaceMode
     let fixedColumnWidth: CGFloat
+    let trailingFixedColumnWidth: CGFloat
     let topAccessoryHeight: CGFloat
     let headerHeight: CGFloat
     let rowHeight: CGFloat
     let rowInvalidationKey: String
     let fixedSegments: [NotebookDisplaySegment]
+    let trailingFixedSegments: [NotebookDisplaySegment]
     let scrollableSegments: [NotebookDisplaySegment]
     let emptyContent: () -> EmptyContent
     let seatingContent: ([NotebookTableRow]) -> SeatingContent
@@ -29,6 +31,7 @@ struct NotebookGridContent<
             rows: rows,
             surfaceMode: surfaceMode,
             fixedColumnWidth: fixedColumnWidth,
+            trailingFixedColumnWidth: trailingFixedColumnWidth,
             topAccessoryHeight: topAccessoryHeight,
             headerHeight: headerHeight,
             rowHeight: rowHeight
@@ -42,11 +45,17 @@ struct NotebookGridContent<
             dividerHandle()
         } fixedHeader: {
             header(fixedSegments)
+        } trailingFixedHeader: {
+            header(trailingFixedSegments)
         } scrollHeader: {
             header(scrollableSegments)
         } fixedRow: { index, item in
             NotebookEquatableGridRow(signature: rowSignature(index: index, item: item, segments: fixedSegments)) {
                 rowContent(index, item, fixedSegments)
+            }
+        } trailingFixedRow: { index, item in
+            NotebookEquatableGridRow(signature: rowSignature(index: index, item: item, segments: trailingFixedSegments)) {
+                rowContent(index, item, trailingFixedSegments)
             }
         } scrollRow: { index, item in
             NotebookEquatableGridRow(signature: rowSignature(index: index, item: item, segments: scrollableSegments)) {

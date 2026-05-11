@@ -94,39 +94,51 @@ private struct NotebookResizeCursorModifier: ViewModifier {
     }
 }
 
-struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, ScrollTopAccessory: View, FixedHeader: View, ScrollHeader: View, FixedRows: View, ScrollRows: View>: View {
+struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, TrailingFixedTopAccessory: View, ScrollTopAccessory: View, FixedHeader: View, TrailingFixedHeader: View, ScrollHeader: View, FixedRows: View, TrailingFixedRows: View, ScrollRows: View>: View {
     let fixedColumnWidth: CGFloat
+    let trailingFixedColumnWidth: CGFloat
     let topAccessoryHeight: CGFloat
     let headerHeight: CGFloat
     let fixedTopAccessory: FixedTopAccessory
     let dividerHandle: DividerHandle
+    let trailingFixedTopAccessory: TrailingFixedTopAccessory
     let scrollTopAccessory: ScrollTopAccessory
     let fixedHeader: FixedHeader
+    let trailingFixedHeader: TrailingFixedHeader
     let scrollHeader: ScrollHeader
     let fixedRows: FixedRows
+    let trailingFixedRows: TrailingFixedRows
     let scrollRows: ScrollRows
 
     init(
         fixedColumnWidth: CGFloat,
+        trailingFixedColumnWidth: CGFloat,
         topAccessoryHeight: CGFloat,
         headerHeight: CGFloat,
         @ViewBuilder fixedTopAccessory: () -> FixedTopAccessory,
         @ViewBuilder dividerHandle: () -> DividerHandle,
+        @ViewBuilder trailingFixedTopAccessory: () -> TrailingFixedTopAccessory,
         @ViewBuilder scrollTopAccessory: () -> ScrollTopAccessory,
         @ViewBuilder fixedHeader: () -> FixedHeader,
+        @ViewBuilder trailingFixedHeader: () -> TrailingFixedHeader,
         @ViewBuilder scrollHeader: () -> ScrollHeader,
         @ViewBuilder fixedRows: () -> FixedRows,
+        @ViewBuilder trailingFixedRows: () -> TrailingFixedRows,
         @ViewBuilder scrollRows: () -> ScrollRows
     ) {
         self.fixedColumnWidth = fixedColumnWidth
+        self.trailingFixedColumnWidth = trailingFixedColumnWidth
         self.topAccessoryHeight = topAccessoryHeight
         self.headerHeight = headerHeight
         self.fixedTopAccessory = fixedTopAccessory()
         self.dividerHandle = dividerHandle()
+        self.trailingFixedTopAccessory = trailingFixedTopAccessory()
         self.scrollTopAccessory = scrollTopAccessory()
         self.fixedHeader = fixedHeader()
+        self.trailingFixedHeader = trailingFixedHeader()
         self.scrollHeader = scrollHeader()
         self.fixedRows = fixedRows()
+        self.trailingFixedRows = trailingFixedRows()
         self.scrollRows = scrollRows()
     }
 
@@ -158,6 +170,24 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, ScrollTopA
                             .frame(height: headerHeight, alignment: .topLeading)
                         scrollRows
                     }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                if trailingFixedColumnWidth > 0 {
+                    VStack(alignment: .leading, spacing: 0) {
+                        trailingFixedTopAccessory
+                            .frame(height: topAccessoryHeight, alignment: .topLeading)
+                        trailingFixedHeader
+                            .frame(height: headerHeight, alignment: .topLeading)
+                        trailingFixedRows
+                    }
+                    .frame(width: trailingFixedColumnWidth, alignment: .topLeading)
+                    .background(fixedColumnBackground)
+                    .overlay(alignment: .leading) {
+                        fixedColumnSeparator
+                    }
+                    .shadow(color: fixedColumnShadowColor, radius: fixedColumnShadowRadius, x: -1, y: 0)
+                    .zIndex(1)
                 }
             }
         }

@@ -569,6 +569,7 @@ struct AppWorkspaceShell: View {
     var body: some View {
         NavigationSplitView(columnVisibility: $rootSplitVisibility) {
             workspaceSidebar
+                .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 280)
         } detail: {
             ZStack(alignment: .top) {
                 VStack(spacing: 0) {
@@ -591,6 +592,9 @@ struct AppWorkspaceShell: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
+        #if os(macOS)
+        .ignoresSafeArea(.all, edges: .leading)
+        #endif
         .sheet(item: $createSheet) { sheet in
             switch sheet {
             case .course:

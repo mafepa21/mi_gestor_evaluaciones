@@ -163,6 +163,7 @@ extension NotebookModuleView {
 
     func displaySegments(data: NotebookUiStateData) -> [NotebookDisplaySegment] {
         var segments = fixedSegmentsForCurrentView().map(NotebookDisplaySegment.fixed)
+        let rows = filteredRows(data: data)
         let categoriesById = Dictionary(
             data.sheet.columnCategories.map { ($0.id, $0) },
             uniquingKeysWith: { first, _ in first }
@@ -183,9 +184,11 @@ extension NotebookModuleView {
                 segments.append(.column(column))
                 continue
             }
-            if category.isCollapsed {
+            let categoryColumns = columns(in: category, data: data)
+            let isEmptyCategory = completedCollapsedCategoryCount(categoryColumns, rows: rows) == 0
+            let isCollapsed = category.isCollapsed || (isEmptyCategory && !expandedEmptyCategoryIds.contains(category.id))
+            if isCollapsed {
                 if emittedCollapsedCategories.insert(category.id).inserted {
-                    let categoryColumns = columns(in: category, data: data)
                     if !categoryColumns.isEmpty {
                         segments.append(.collapsedCategory(category, categoryColumns))
                     }

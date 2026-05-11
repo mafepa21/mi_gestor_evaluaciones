@@ -7,13 +7,16 @@ struct NotebookGridContainer<
     TopAccessory: View,
     DividerHandle: View,
     FixedHeader: View,
+    TrailingFixedHeader: View,
     ScrollHeader: View,
     FixedRow: View,
+    TrailingFixedRow: View,
     ScrollRow: View
 >: View {
     let rows: [Row]
     let surfaceMode: NotebookSurfaceMode
     let fixedColumnWidth: CGFloat
+    let trailingFixedColumnWidth: CGFloat
     let topAccessoryHeight: CGFloat
     let headerHeight: CGFloat
     let rowHeight: CGFloat
@@ -22,8 +25,10 @@ struct NotebookGridContainer<
     let topAccessory: () -> TopAccessory
     let dividerHandle: () -> DividerHandle
     let fixedHeader: () -> FixedHeader
+    let trailingFixedHeader: () -> TrailingFixedHeader
     let scrollHeader: () -> ScrollHeader
     let fixedRow: (Int, Row) -> FixedRow
+    let trailingFixedRow: (Int, Row) -> TrailingFixedRow
     let scrollRow: (Int, Row) -> ScrollRow
 
     var body: some View {
@@ -34,20 +39,27 @@ struct NotebookGridContainer<
         } else {
             NotebookDataGrid(
                 fixedColumnWidth: fixedColumnWidth,
+                trailingFixedColumnWidth: trailingFixedColumnWidth,
                 topAccessoryHeight: topAccessoryHeight,
                 headerHeight: headerHeight
             ) {
                 Color.clear
             } dividerHandle: {
                 dividerHandle()
+            } trailingFixedTopAccessory: {
+                Color.clear
             } scrollTopAccessory: {
                 topAccessory()
             } fixedHeader: {
                 fixedHeader()
+            } trailingFixedHeader: {
+                trailingFixedHeader()
             } scrollHeader: {
                 scrollHeader()
             } fixedRows: {
                 rowStack(rows: rows, rowContent: fixedRow)
+            } trailingFixedRows: {
+                rowStack(rows: rows, rowContent: trailingFixedRow)
             } scrollRows: {
                 rowStack(rows: rows, rowContent: scrollRow)
             }

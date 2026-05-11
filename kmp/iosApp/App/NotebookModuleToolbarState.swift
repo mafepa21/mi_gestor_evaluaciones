@@ -193,6 +193,18 @@ extension NotebookModuleView {
         syncToolbarState(data: data)
     }
 
+    func scheduleToolbarStateSync(data: NotebookUiStateData) {
+        Task { @MainActor in
+            syncToolbarState(data: data)
+        }
+    }
+
+    func scheduleToolbarStateSyncIfLoaded() {
+        Task { @MainActor in
+            syncToolbarStateIfLoaded()
+        }
+    }
+
     func toolbarStateKey(data: NotebookUiStateData) -> String {
         let classKey = currentClass?.id ?? -1
         let groupKey = selectedGroupId ?? -1

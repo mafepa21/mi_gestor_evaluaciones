@@ -254,7 +254,7 @@ extension NotebookModuleView {
             switch state {
             case .complete: return "checkmark.circle.fill"
             case .pending: return "clock.fill"
-            case .insufficient: return "dash.circle"
+            case .insufficient: return "minus.circle"
             }
         }()
 

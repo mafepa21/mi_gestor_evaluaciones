@@ -7,17 +7,33 @@ extension NotebookModuleView {
         subtitle: String,
         width: CGFloat,
         tint: Color,
+        typeBadge: String? = nil,
+        isSystemColumn: Bool = false,
         folderStyle: Bool = false,
         hasColumnColor: Bool = false,
         isHighlighted: Bool = false
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.caption2.weight(.medium))
-                .tracking(0.3)
-                .textCase(.uppercase)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+            HStack(spacing: 6) {
+                if let typeBadge {
+                    Text(typeBadge)
+                        .font(.system(size: 9, weight: .black, design: .rounded))
+                        .foregroundStyle(tint)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(tint.opacity(0.14))
+                        )
+                }
+
+                Text(title)
+                    .font(.caption2.weight(isSystemColumn ? .medium : .semibold))
+                    .tracking(0.3)
+                    .textCase(.uppercase)
+                    .foregroundStyle(isSystemColumn ? .secondary : tint)
+                    .lineLimit(1)
+            }
 
             HStack(spacing: 6) {
                 Circle()
@@ -36,25 +52,27 @@ extension NotebookModuleView {
         .frame(minHeight: 52, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(headerChipFill(tint: tint, folderStyle: folderStyle, hasColumnColor: hasColumnColor))
+                .fill(headerChipFill(tint: tint, folderStyle: folderStyle, hasColumnColor: hasColumnColor, isSystemColumn: isSystemColumn))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .stroke(
-                            headerChipStroke(tint: tint, folderStyle: folderStyle, hasColumnColor: hasColumnColor, isHighlighted: isHighlighted),
+                            headerChipStroke(tint: tint, folderStyle: folderStyle, hasColumnColor: hasColumnColor, isSystemColumn: isSystemColumn, isHighlighted: isHighlighted),
                             lineWidth: isHighlighted ? 1.4 : 0.6
                         )
                 )
         )
     }
 
-    func headerChipFill(tint: Color, folderStyle: Bool, hasColumnColor: Bool) -> Color {
+    func headerChipFill(tint: Color, folderStyle: Bool, hasColumnColor: Bool, isSystemColumn: Bool) -> Color {
+        if isSystemColumn { return NotebookStyle.surfaceSoft.opacity(0.72) }
         if hasColumnColor { return tint.opacity(0.18) }
         return folderStyle ? NotebookStyle.surfaceSoft.opacity(0.55) : Color.clear
     }
 
-    func headerChipStroke(tint: Color, folderStyle: Bool, hasColumnColor: Bool, isHighlighted: Bool) -> Color {
+    func headerChipStroke(tint: Color, folderStyle: Bool, hasColumnColor: Bool, isSystemColumn: Bool, isHighlighted: Bool) -> Color {
         if isHighlighted { return tint.opacity(0.32) }
         if hasColumnColor { return tint.opacity(0.30) }
+        if isSystemColumn { return NotebookStyle.softBorder.opacity(0.70) }
         return folderStyle ? NotebookStyle.softBorder.opacity(0.80) : Color.clear
     }
 
@@ -66,7 +84,8 @@ extension NotebookModuleView {
                 title: fixed.title,
                 subtitle: fixed.subtitle,
                 width: resolvedFixedWidth(for: fixed),
-                tint: tint(for: fixed)
+                tint: tint(for: fixed),
+                isSystemColumn: true
             )
             if fixed == .average {
                 return AnyView(
@@ -94,6 +113,7 @@ extension NotebookModuleView {
                         subtitle: columnHeaderSubtitle(for: column, data: data, rows: visibleRows),
                         width: resolvedColumnWidth(for: column),
                         tint: displayTint(for: column),
+                        typeBadge: typeBadge(for: column),
                         folderStyle: column.categoryId != nil,
                         hasColumnColor: hasCustomColumnColor(column),
                         isHighlighted: highlightedCategoryId == column.categoryId
@@ -105,14 +125,20 @@ extension NotebookModuleView {
             )
         case .collapsedCategory(let category, let columns):
             return AnyView(
-                headerChip(
-                    title: category.name,
-                    subtitle: collapsedCategoryProgressText(columns: columns, rows: visibleRows),
-                    width: 150,
-                    tint: tint(for: category),
-                    folderStyle: true,
-                    isHighlighted: highlightedCategoryId == category.id
-                )
+                Button {
+                    expandedEmptyCategoryIds.insert(category.id)
+                    bridge.toggleColumnCategory(id: category.id, collapsed: false)
+                } label: {
+                    headerChip(
+                        title: category.name,
+                        subtitle: collapsedCategoryProgressText(columns: columns, rows: visibleRows),
+                        width: 150,
+                        tint: tint(for: category),
+                        folderStyle: true,
+                        isHighlighted: highlightedCategoryId == category.id
+                    )
+                }
+                .buttonStyle(.plain)
                 .contextMenu {
                     categoryContextMenu(category, data: data)
                 }
@@ -130,6 +156,29 @@ extension NotebookModuleView {
             return NotebookStyle.warningTint
         case .average:
             return NotebookStyle.primaryTint
+        }
+    }
+
+    func typeBadge(for column: NotebookColumnDefinition) -> String {
+        switch column.type {
+        case .numeric:
+            return column.evaluationId == nil ? "NT" : "EV"
+        case .rubric:
+            return "RB"
+        case .calculated:
+            return "CF"
+        case .attendance:
+            return "AS"
+        case .text:
+            return isNotebookAICommentColumn(column) ? "AI" : "TX"
+        case .check:
+            return "OK"
+        case .ordinal:
+            return "OR"
+        case .icon:
+            return "IC"
+        default:
+            return "CL"
         }
     }
 
@@ -241,6 +290,7 @@ extension NotebookModuleView {
         case .collapsedCategory(let category, let columns):
             return AnyView(
                 Button {
+                    expandedEmptyCategoryIds.insert(category.id)
                     bridge.toggleColumnCategory(id: category.id, collapsed: false)
                 } label: {
                     VStack(alignment: .leading, spacing: 4) {

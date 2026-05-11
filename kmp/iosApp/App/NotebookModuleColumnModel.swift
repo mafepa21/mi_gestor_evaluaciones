@@ -179,7 +179,7 @@ extension NotebookModuleView {
         default:
             showToast("Visibilidad actualizada")
         }
-        syncToolbarStateIfLoaded()
+        scheduleToolbarStateSyncIfLoaded()
     }
 
     func showAllManagedColumns(data: NotebookUiStateData) {
@@ -197,7 +197,7 @@ extension NotebookModuleView {
             ))
         }
         showToast(columns.count == 1 ? "Columna visible" : "Columnas ocultas visibles")
-        syncToolbarStateIfLoaded()
+        scheduleToolbarStateSyncIfLoaded()
     }
 
     func saveAverageConfiguration(_ updates: [NotebookAverageColumnUpdate]) {
@@ -211,7 +211,7 @@ extension NotebookModuleView {
             ))
         }
         showToast("Media actualizada")
-        syncToolbarStateIfLoaded()
+        scheduleToolbarStateSyncIfLoaded()
     }
 
     func reorderManagedColumns(_ reorderedColumns: [NotebookColumnDefinition]) {
@@ -223,7 +223,7 @@ extension NotebookModuleView {
             }
         }
         showToast("Columnas reordenadas")
-        syncToolbarStateIfLoaded()
+        scheduleToolbarStateSyncIfLoaded()
     }
 
 }

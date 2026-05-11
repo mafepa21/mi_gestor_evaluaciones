@@ -194,14 +194,18 @@ extension NotebookModuleView {
     }
 
     func scheduleToolbarStateSync(data: NotebookUiStateData) {
-        Task { @MainActor in
-            syncToolbarState(data: data)
+        DispatchQueue.main.async {
+            Task { @MainActor in
+                syncToolbarState(data: data)
+            }
         }
     }
 
     func scheduleToolbarStateSyncIfLoaded() {
-        Task { @MainActor in
-            syncToolbarStateIfLoaded()
+        DispatchQueue.main.async {
+            Task { @MainActor in
+                syncToolbarStateIfLoaded()
+            }
         }
     }
 

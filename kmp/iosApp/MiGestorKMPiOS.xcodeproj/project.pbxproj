@@ -166,6 +166,13 @@
 		FAF9D1F8EE5E77D85E248623 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 574A36D51DB905768D1450DF /* ContentView.swift */; };
 		FCFCDB058F5AC765537750B3 /* NotebookModuleOrganization.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEEB5AEB802B224689F0882B /* NotebookModuleOrganization.swift */; };
 		FEF8B70AE33C8ABB44582F1C /* WorkspaceLayoutState+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FB9B3E078267BD94A53D6B2 /* WorkspaceLayoutState+Extensions.swift */; };
+		D5BB1D91290537EA0BC28CA3 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33B105CA98415BD0EFA20D10 /* DashboardView.swift */; };
+		56F636E1C3D680F750C33311 /* MacStudentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C8A27BB5E3E79EDDAB5876E /* MacStudentsView.swift */; };
+		16EFD32B61589F93F642CCA3 /* MacRubricsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 448C0C665CA0D2A9103755E6 /* MacRubricsView.swift */; };
+		85563D4B4B63EB3F461F07E1 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33B105CA98415BD0EFA20D10 /* DashboardView.swift */; };
+		CCEB4E802D09365A2383F567 /* MacAttendanceDayRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 619FDA3F8714E35269F211BC /* MacAttendanceDayRow.swift */; };
+		4E83DB450BEDE6FD4654E362 /* NotebookModuleDialogs.swift in Sources */ = {isa = PBXBuildFile; fileRef = D12F831284F3F5B88552DC9B /* NotebookModuleDialogs.swift */; };
+		D03702A363D70DB580E54A54 /* NotebookModuleDialogs.swift in Sources */ = {isa = PBXBuildFile; fileRef = D12F831284F3F5B88552DC9B /* NotebookModuleDialogs.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -283,6 +290,11 @@
 		F0BFD8699A1E65C7A09163CF /* NotebookAverageEditorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookAverageEditorSheet.swift; sourceTree = "<group>"; };
 		F7414896A8713DD61AE874FC /* NotebookDynamicCellsRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookDynamicCellsRow.swift; sourceTree = "<group>"; };
 		FBDA814F8187BFDA3302D347 /* NotebookGridContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookGridContainer.swift; sourceTree = "<group>"; };
+		33B105CA98415BD0EFA20D10 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
+		9C8A27BB5E3E79EDDAB5876E /* MacStudentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacStudentsView.swift; sourceTree = "<group>"; };
+		448C0C665CA0D2A9103755E6 /* MacRubricsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacRubricsView.swift; sourceTree = "<group>"; };
+		619FDA3F8714E35269F211BC /* MacAttendanceDayRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacAttendanceDayRow.swift; sourceTree = "<group>"; };
+		D12F831284F3F5B88552DC9B /* NotebookModuleDialogs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookModuleDialogs.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -311,9 +323,12 @@
 				C66F3C885EB6EAF74EACD0D6 /* MacAppSessionController.swift */,
 				E57AA10D4F5A9A3199288A4C /* MacAppStyle.swift */,
 				A5FCBA2AF2D125D2CD13CFF5 /* MacAttendanceView.swift */,
+				619FDA3F8714E35269F211BC /* MacAttendanceDayRow.swift */,
 				75913A6148C5D164F2EFA2A7 /* MacCommandCenterCoordinator.swift */,
 				D7030138D429F12877D448CD /* MacDashboardView.swift */,
 				540E9FF031B5425A4147DC64 /* MacFeatureRegistry.swift */,
+				9C8A27BB5E3E79EDDAB5876E /* MacStudentsView.swift */,
+				448C0C665CA0D2A9103755E6 /* MacRubricsView.swift */,
 				09D87D21656FDFADF58B2FBA /* MacModuleStubs.swift */,
 				418B317080940EE2A662D215 /* MacPhysicalTestsToolbarActions.swift */,
 				B928B856CB84C9E4660F8B34 /* MacPhysicalTestsView.swift */,
@@ -383,6 +398,7 @@
 				27176C9EB76172D41191833D /* AppleFoundationReportService.swift */,
 				2BAD893EC7E90121671F7BDB /* Assets.xcassets */,
 				284EFC5D21CE71AE69E43094 /* AttendanceWorkspaceView.swift */,
+				33B105CA98415BD0EFA20D10 /* DashboardView.swift */,
 				574A36D51DB905768D1450DF /* ContentView.swift */,
 				DC6FF32972AD484A9FAEABBC /* CoursesWorkspaceView.swift */,
 				4ED9D8451FE6172EFBD59BC5 /* DiaryWorkspaceView.swift */,
@@ -418,6 +434,7 @@
 				5BA1F288BF073BB3431CF16E /* NotebookModuleSupportActions.swift */,
 				8A4E8D89679CED5E074F1005 /* NotebookModuleToolbarState.swift */,
 				78D342F2953510BDA01694A6 /* NotebookModuleTypes.swift */,
+				D12F831284F3F5B88552DC9B /* NotebookModuleDialogs.swift */,
 				4BA9E95BA74B4D7D8AC2D362 /* NotebookModuleView.swift */,
 				C5BB221D33601136CB3F7F0F /* NotebookSeatingPlanView.swift */,
 				152F4A693C9E37077F51E2F8 /* NotebookStudentInspector.swift */,
@@ -622,6 +639,7 @@
 				7B200C717CDA9324BBC303F3 /* AppleSharedBridge.swift in Sources */,
 				BEE09F01DFABE9A8498C8B0E /* AppleViewCompatibility.swift in Sources */,
 				5AA56A1A703EDF8406F8B991 /* AttendanceWorkspaceView.swift in Sources */,
+				85563D4B4B63EB3F461F07E1 /* DashboardView.swift in Sources */,
 				FAF9D1F8EE5E77D85E248623 /* ContentView.swift in Sources */,
 				288029144DAFFC789B765F85 /* CoursesWorkspaceView.swift in Sources */,
 				CAF67FA20CA5E389338EA49A /* DiaryWorkspaceView.swift in Sources */,
@@ -633,9 +651,12 @@
 				F1D09F5DF977701D749A19AD /* MacAppSessionController.swift in Sources */,
 				636BFAF254D3F3711AE5CF10 /* MacAppStyle.swift in Sources */,
 				B3F0FF57249376955AE83723 /* MacAttendanceView.swift in Sources */,
+				CCEB4E802D09365A2383F567 /* MacAttendanceDayRow.swift in Sources */,
 				BC91ADD74993C72E5A133C3D /* MacCommandCenterCoordinator.swift in Sources */,
 				303A136D412D596B99BB06A8 /* MacDashboardView.swift in Sources */,
 				3D42ABE38DAA65311889C449 /* MacFeatureRegistry.swift in Sources */,
+				56F636E1C3D680F750C33311 /* MacStudentsView.swift in Sources */,
+				16EFD32B61589F93F642CCA3 /* MacRubricsView.swift in Sources */,
 				042FE630464B6D6C17B475DC /* MacModuleStubs.swift in Sources */,
 				1680A7159701320DC112E710 /* MacPhysicalTestsToolbarActions.swift in Sources */,
 				25BA7CFC8B77B20BCAEC638E /* MacPhysicalTestsView.swift in Sources */,
@@ -671,6 +692,7 @@
 				D6723E23F4F90F03E1E999E7 /* NotebookModuleSupportActions.swift in Sources */,
 				A5180F527898A05083E23CF0 /* NotebookModuleToolbarState.swift in Sources */,
 				3EB980B5E6F11D4DFD90A1F2 /* NotebookModuleTypes.swift in Sources */,
+				D03702A363D70DB580E54A54 /* NotebookModuleDialogs.swift in Sources */,
 				878FB204389D94BB6A912BF6 /* NotebookModuleView.swift in Sources */,
 				774C8481CFDCFE2829E7ACA5 /* NotebookSeatingPlanView.swift in Sources */,
 				E74AE25F006ADDD1045FE4F6 /* NotebookStudentInspector.swift in Sources */,
@@ -713,6 +735,7 @@
 				9D01F457DE02D070677CF7CC /* AppleSharedBridge.swift in Sources */,
 				BEE5A4B10ED6EF26DC223E17 /* AppleViewCompatibility.swift in Sources */,
 				9AA8BC06ED560D826F02901B /* AttendanceWorkspaceView.swift in Sources */,
+				D5BB1D91290537EA0BC28CA3 /* DashboardView.swift in Sources */,
 				E491CBE20486EA0E556C3F9B /* ContentView.swift in Sources */,
 				C3F8BC42806F5865C3CBF99B /* CoursesWorkspaceView.swift in Sources */,
 				E11C883BCE69B05FE0FBC324 /* DiaryWorkspaceView.swift in Sources */,
@@ -748,6 +771,7 @@
 				6877F85FFE101D346660E09C /* NotebookModuleSupportActions.swift in Sources */,
 				2F72D4E14B451CD4EE6F131C /* NotebookModuleToolbarState.swift in Sources */,
 				D361AF85734491324E76B258 /* NotebookModuleTypes.swift in Sources */,
+				4E83DB450BEDE6FD4654E362 /* NotebookModuleDialogs.swift in Sources */,
 				D3EBA1E1A169F964D3CA7654 /* NotebookModuleView.swift in Sources */,
 				8177D8D46978C81F4594E4B4 /* NotebookSeatingPlanView.swift in Sources */,
 				64ED5CF4B69A2A8645CA448C /* NotebookStudentInspector.swift in Sources */,

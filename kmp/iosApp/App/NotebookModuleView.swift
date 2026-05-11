@@ -372,6 +372,7 @@ struct NotebookModuleView: View {
     @State private var pendingDeletionImpact: NotebookDeletionImpactDraft? = nil
     @State private var deletionConfirmationText = ""
     @State private var isOrganizationMenuPresented = false
+    @State private var isHiddenColumnsSheetPresented = false
     @State private var toast: NotebookToast? = nil
     @State private var isAttendanceQuickMode = false
     @State private var isMarkAllPresentDialogPresented = false
@@ -620,6 +621,12 @@ struct NotebookModuleView: View {
                                 )
                             }
                         },
+                        onOpenHiddenColumns: {
+                            isOrganizationMenuPresented = false
+                            DispatchQueue.main.async {
+                                isHiddenColumnsSheetPresented = true
+                            }
+                        },
                         onShowAll: {
                             showAllManagedColumns(data: data)
                         },
@@ -633,6 +640,27 @@ struct NotebookModuleView: View {
                         "Sin datos del cuaderno",
                         systemImage: "rectangle.3.group",
                         description: "Carga una clase para organizar sus columnas."
+                    )
+                    .frame(minWidth: 420, minHeight: 260)
+                }
+            }
+            .sheet(isPresented: $isHiddenColumnsSheetPresented) {
+                if let data = bridge.notebookState as? NotebookUiStateData {
+                    NotebookHiddenColumnsSheet(
+                        columns: managedColumns(data: data),
+                        onShowColumn: { column in
+                            setNotebookColumnVisibility(column, visibility: .visible)
+                        },
+                        onShowAll: {
+                            showAllManagedColumns(data: data)
+                        }
+                    )
+                    .frame(minWidth: 420, minHeight: 360)
+                } else {
+                    NotebookContentUnavailableView(
+                        "Sin datos del cuaderno",
+                        systemImage: "eye.slash",
+                        description: "Carga una clase para revisar columnas ocultas."
                     )
                     .frame(minWidth: 420, minHeight: 260)
                 }

@@ -7,6 +7,7 @@ struct NotebookColumnOrganizerSheet: View {
     let onRename: (NotebookColumnDefinition) -> Void
     let onDelete: (NotebookColumnDefinition) -> Void
     let onAddColumn: () -> Void
+    let onOpenHiddenColumns: () -> Void
     let onShowAll: () -> Void
     let onReorder: ([NotebookColumnDefinition]) -> Void
 
@@ -144,6 +145,15 @@ struct NotebookColumnOrganizerSheet: View {
             .frame(maxWidth: 360)
 
             Spacer()
+
+            Button {
+                onOpenHiddenColumns()
+            } label: {
+                Label("Ocultas", systemImage: "eye.slash")
+            }
+            .buttonStyle(.bordered)
+            .disabled(hiddenCount == 0)
+            .fixedSize()
 
             Button {
                 showAllColumns()

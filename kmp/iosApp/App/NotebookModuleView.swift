@@ -1948,7 +1948,7 @@ struct NotebookModuleView: View {
             if column.type == .calculated,
                let formula = column.formula?.trimmingCharacters(in: .whitespacesAndNewlines),
                !formula.isEmpty {
-                return spreadsheetFormula(
+                return NotebookFormulaDisplay.spreadsheetFormula(
                     formula,
                     rowIndex: spreadsheetRowIndex,
                     columnLettersById: columnLettersById
@@ -1966,61 +1966,17 @@ struct NotebookModuleView: View {
         data: NotebookUiStateData
     ) -> NotebookFormulaCellDisplay? {
         guard column.type == .calculated else { return nil }
-        let formula = column.formula?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !formula.isEmpty else {
-            return NotebookFormulaCellDisplay(text: "Sin fórmula", isError: true)
-        }
-
-        do {
-            let variables = formulaVariables(for: item, data: data)
-            let value = try NotebookFormulaEvaluator.evaluate(formula, variables: variables)
-            return NotebookFormulaCellDisplay(text: formatFormulaResult(value), isError: false)
-        } catch {
-            return NotebookFormulaCellDisplay(text: error.localizedDescription, isError: true)
-        }
-    }
-
-    private func formulaVariables(for item: NotebookTableRow, data: NotebookUiStateData) -> [String: Double] {
-        var variables: [String: Double] = [:]
-        for column in data.sheet.columns where column.type != .calculated {
-            let raw: String
-            if column.type == .rubric {
-                raw = bridge.rubricGradeText(studentId: item.student.id, column: column)
-            } else {
-                raw = bridge.numericGradeText(studentId: item.student.id, columnId: column.id)
+        return NotebookFormulaDisplay.display(
+            formula: column.formula,
+            item: item,
+            data: data,
+            numericText: { studentId, columnId in
+                bridge.numericGradeText(studentId: studentId, columnId: columnId)
+            },
+            rubricText: { studentId, column in
+                bridge.rubricGradeText(studentId: studentId, column: column)
             }
-            let value = parseFormulaNumber(raw) ?? 0
-            variables[column.id] = value
-            variables[NotebookFormulaEvaluator.safeIdentifier(for: column.id)] = value
-        }
-        return variables
-    }
-
-    private func parseFormulaNumber(_ raw: String) -> Double? {
-        let normalized = raw
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: ",", with: ".")
-        return Double(normalized)
-    }
-
-    private func formatFormulaResult(_ value: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.locale = .current
-        formatter.minimumFractionDigits = 0
-        formatter.maximumFractionDigits = 2
-        return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.2f", value)
-    }
-
-    private func spreadsheetFormula(
-        _ formula: String,
-        rowIndex: Int,
-        columnLettersById: [String: String]
-    ) -> String {
-        var output = formula.hasPrefix("=") ? formula : "=\(formula)"
-        for (columnId, letter) in columnLettersById {
-            output = output.replacingOccurrences(of: "[\(columnId)]", with: "\(letter)\(rowIndex)")
-        }
-        return output
+        )
     }
 
     private func categoryTitle(for column: NotebookColumnDefinition, data: NotebookUiStateData) -> String {
@@ -2061,7 +2017,7 @@ struct NotebookModuleView: View {
             let raw = column.type == .rubric
                 ? bridge.rubricGradeOnTenText(studentId: item.student.id, column: column)
                 : bridge.numericGradeText(studentId: item.student.id, columnId: column.id)
-            return parseFormulaNumber(raw)
+            return NotebookFormulaDisplay.parseNumber(raw)
         }
         guard !values.isEmpty else { return nil }
         let average = values.reduce(0, +) / Double(values.count)
@@ -3377,130 +3333,4 @@ struct NotebookModuleView: View {
         }
     }
 
-}
-
-private struct NotebookNavigationSubtitleModifier: ViewModifier {
-    let subtitle: String
-
-    func body(content: Content) -> some View {
-        if #available(iOS 26.0, macOS 26.0, *) {
-            content.navigationSubtitle(subtitle)
-        } else {
-            content
-        }
-    }
-}
-
-private struct NotebookKeyboardNavigationModifier: ViewModifier {
-    let onNext: () -> Void
-
-    func body(content: Content) -> some View {
-        if #available(iOS 17.0, macOS 14.0, *) {
-            content
-                .focusable()
-                .onKeyPress(.return) {
-                    onNext()
-                    return .handled
-                }
-                .onKeyPress(.tab) {
-                    onNext()
-                    return .handled
-                }
-        } else {
-            content
-        }
-    }
-}
-
-private extension View {
-    func notebookNavigationSubtitle(_ subtitle: String) -> some View {
-        modifier(NotebookNavigationSubtitleModifier(subtitle: subtitle))
-    }
-
-    func notebookKeyboardNavigation(onNext: @escaping () -> Void) -> some View {
-        modifier(NotebookKeyboardNavigationModifier(onNext: onNext))
-    }
-}
-
-private struct NotebookDynamicCellsRow: View {
-    @ObservedObject var bridge: KmpBridge
-    let item: NotebookTableRow
-    let segments: [NotebookDisplaySegment]
-    let inspectorSelection: NotebookInspectorSelection?
-    let onSelect: (NotebookInspectorSelection) -> Void
-    @FocusState private var focusedCellId: String?
-    @State private var activeChoiceCellId: String? = nil
-
-    var body: some View {
-        HStack(spacing: 10) {
-            ForEach(segments, id: \.id) { segment in
-                switch segment {
-                case .fixed:
-                    EmptyView()
-                case .column(let column):
-                    NotebookEditableTableCell(
-                        bridge: bridge,
-                        item: item,
-                        column: column,
-                        classId: nil,
-                        width: max(column.widthDp, 120),
-                        tint: column.colorHex.map { Color(hex: $0) } ?? NotebookStyle.primaryTint,
-                        categoryTint: nil,
-                        hasColumnColor: column.colorHex?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false,
-                        focusedCellId: $focusedCellId,
-                        activeChoiceCellId: $activeChoiceCellId,
-                        navigationDirection: .down,
-                        formulaDisplay: nil,
-                        isSelected: inspectorSelection == NotebookInspectorSelection(studentId: item.student.id, columnId: column.id),
-                        isAttendanceQuickMode: false,
-                        reloadToken: 0,
-                        onSelect: {
-                            onSelect(NotebookInspectorSelection(studentId: item.student.id, columnId: column.id))
-                        },
-                        onPrepareUndo: { _, _ in },
-                        onOpenFormula: {},
-                        onOpenRubricIndividual: {},
-                        onOpenRubricBulk: {},
-                        onNavigate: { _ in },
-                        onCellSaved: {},
-                        onAttendanceSaved: {}
-                    )
-                    .frame(width: max(column.widthDp, 120))
-                case .collapsedCategory(let category, let columns):
-                    Button {
-                        bridge.toggleColumnCategory(id: category.id, collapsed: false)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(category.name)
-                                .font(.system(size: 12, weight: .bold, design: .rounded))
-                                .foregroundStyle(.primary)
-                            Text("\(columns.filter { !cellValue(for: $0).isEmpty }.count) / \(columns.count)")
-                                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                                .foregroundStyle(.secondary)
-                        }
-                        .frame(width: 150, alignment: .leading)
-                        .padding(10)
-                        .background(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(NotebookStyle.surfaceMuted)
-                        )
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-    }
-
-    private func cellValue(for column: NotebookColumnDefinition) -> String {
-        switch column.type {
-        case .numeric, .calculated:
-            return bridge.numericGradeText(studentId: item.student.id, columnId: column.id)
-        case .rubric:
-            return bridge.rubricGradeOnTenText(studentId: item.student.id, column: column)
-        case .check:
-            return bridge.cellCheck(studentId: item.student.id, columnId: column.id) ? "true" : ""
-        default:
-            return bridge.cellText(studentId: item.student.id, columnId: column.id)
-        }
-    }
 }

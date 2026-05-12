@@ -568,9 +568,28 @@ struct NotebookEditableTableCell: View {
         let cell = persistedCell
         switch column.type {
         case .check:
-            checkDraft = (cell?.textValue ?? "").lowercased() == "true"
+            if let boolValue = cell?.boolValue?.boolValue {
+                checkDraft = boolValue
+            } else {
+                let textValue = cell?.textValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let displayValue = cell?.displayValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let raw = (textValue.isEmpty ? displayValue : textValue).lowercased()
+                checkDraft = ["true", "1", "sí", "si", "yes", "y", "✓"].contains(raw)
+            }
             originalCheckDraft = checkDraft
-        case .ordinal, .text, .icon, .attendance:
+        case .attendance:
+            let textValue = cell?.textValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let displayValue = cell?.displayValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let raw = textValue.isEmpty ? displayValue : textValue
+            let canonical = NotebookAttendanceStatus.canonical(raw)
+            if !raw.isEmpty, canonical.isEmpty {
+                let bridgeValue = bridge.cellText(studentId: item.student.id, columnId: column.id)
+                textDraft = NotebookAttendanceStatus.canonical(bridgeValue)
+            } else {
+                textDraft = canonical
+            }
+            originalTextDraft = textDraft
+        case .ordinal, .text, .icon:
             textDraft = cell?.textValue ?? cell?.displayValue ?? ""
             originalTextDraft = textDraft
         case .numeric:

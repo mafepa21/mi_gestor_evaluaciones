@@ -4,6 +4,18 @@ import MiGestorKit
 import UIKit
 #endif
 
+private enum NotebookCellKeyboardKind {
+    case numeric010
+    case time
+    case distance
+    case repetitions
+    case quickSelector
+    case rubric
+    case check
+    case readOnlyFormula
+    case text
+}
+
 struct NotebookEditableTableCell: View {
     @ObservedObject var bridge: KmpBridge
     let item: NotebookTableRow
@@ -131,7 +143,7 @@ struct NotebookEditableTableCell: View {
         } else {
             switch column.type {
             case .numeric:
-                if usesNotebookNumericKeyboard {
+                if keyboardKind != .text {
                     Button {
                         onSelect()
                         focusedCellId.wrappedValue = nil
@@ -152,15 +164,7 @@ struct NotebookEditableTableCell: View {
                     }
                     .buttonStyle(.plain)
                     .popover(isPresented: $isNumericKeyboardPresented, arrowEdge: .bottom) {
-                        NotebookNumericCellKeyboard(
-                            value: $numericDraft,
-                            tint: tint,
-                            onSave: { saveNumeric() },
-                            onNavigate: { direction in
-                                saveNumericAndNavigate(direction)
-                                isNumericKeyboardPresented = false
-                            }
-                        )
+                        cellKeyboardPopover
                     }
                 } else {
                     let field = TextField("", text: $numericDraft)
@@ -206,22 +210,7 @@ struct NotebookEditableTableCell: View {
                 .buttonStyle(.plain)
                 .help(formulaDisplay?.isError == true ? (formulaDisplay?.text ?? "Error en la fórmula") : "Editar fórmula")
             case .check:
-                Toggle("", isOn: $checkDraft)
-                    .labelsHidden()
-                    .tint(tint)
-                    .appOnChange(of: checkDraft) { newValue in
-                        guard hasLoadedDrafts else { return }
-                        onSelect()
-                        let previousValue = originalCheckDraft ? "true" : "false"
-                        let nextValue = newValue ? "true" : "false"
-                        if previousValue != nextValue {
-                            onPrepareUndo(previousValue, originalCheckDraft ? "Sí" : "No")
-                            originalCheckDraft = newValue
-                        }
-                        bridge.saveColumnGrade(studentId: item.student.id, column: column, value: newValue ? "true" : "false")
-                        onCellSaved()
-                        onNavigate(navigationDirection)
-                    }
+                checkButton
             case .ordinal:
                 Button {
                     onSelect()
@@ -239,7 +228,17 @@ struct NotebookEditableTableCell: View {
                 }
             case .rubric:
                 let rubricText = displayRubricText()
-                Menu {
+                Button {
+                    onSelect()
+                    onOpenRubricIndividual()
+                } label: {
+                    Text(rubricText)
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundStyle(rubricText == "—" ? .tertiary : .primary)
+                        .frame(maxWidth: .infinity, minHeight: 30)
+                }
+                .buttonStyle(.plain)
+                .contextMenu {
                     Button("Evaluar alumno…") {
                         onSelect()
                         onOpenRubricIndividual()
@@ -248,12 +247,7 @@ struct NotebookEditableTableCell: View {
                         onSelect()
                         onOpenRubricBulk()
                     }
-                } label: {
-                    Text(rubricText)
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundStyle(rubricText == "—" ? .tertiary : .primary)
                 }
-                .menuStyle(.borderlessButton)
             default:
                 HStack(spacing: 6) {
                     TextField("", text: $textDraft)
@@ -312,8 +306,92 @@ struct NotebookEditableTableCell: View {
         column.type == .attendance || column.categoryKind == .attendance
     }
 
-    private var usesNotebookNumericKeyboard: Bool {
-        column.instrumentKind == .writtenTest && column.inputKind == .numeric010
+    private var keyboardKind: NotebookCellKeyboardKind {
+        switch column.inputKind {
+        case .numeric010:
+            return .numeric010
+        case .time:
+            return .time
+        case .distance:
+            return .distance
+        case .repetitions:
+            return .repetitions
+        case .quickSelector:
+            return .quickSelector
+        case .rubric:
+            return .rubric
+        case .check:
+            return .check
+        case .calculated:
+            return .readOnlyFormula
+        default:
+            return .text
+        }
+    }
+
+    @ViewBuilder
+    private var cellKeyboardPopover: some View {
+        switch keyboardKind {
+        case .numeric010:
+            NotebookNumericCellKeyboard(
+                value: $numericDraft,
+                tint: tint,
+                onSave: { saveNumeric() },
+                onNavigate: { direction in
+                    saveNumericAndNavigate(direction)
+                    isNumericKeyboardPresented = false
+                }
+            )
+        case .time:
+            NotebookTimeCellKeyboard(
+                value: $numericDraft,
+                tint: tint,
+                onSave: { saveNumeric() },
+                onNavigate: { direction in
+                    saveNumericAndNavigate(direction)
+                    isNumericKeyboardPresented = false
+                }
+            )
+        case .distance:
+            NotebookDistanceCellKeyboard(
+                value: $numericDraft,
+                tint: tint,
+                unitLabel: column.unitOrSituation ?? "m",
+                onSave: { saveNumeric() },
+                onNavigate: { direction in
+                    saveNumericAndNavigate(direction)
+                    isNumericKeyboardPresented = false
+                }
+            )
+        case .repetitions:
+            NotebookRepetitionCellKeyboard(
+                value: $numericDraft,
+                tint: tint,
+                onSave: { saveNumeric() },
+                onNavigate: { direction in
+                    saveNumericAndNavigate(direction)
+                    isNumericKeyboardPresented = false
+                }
+            )
+        default:
+            EmptyView()
+        }
+    }
+
+    private var checkButton: some View {
+        Button {
+            cycleCheckValue()
+        } label: {
+            Text(checkDraft ? "✓" : "—")
+                .font(.system(size: 20, weight: .bold, design: .rounded))
+                .frame(maxWidth: .infinity, minHeight: 32)
+                .foregroundStyle(checkDraft ? NotebookStyle.successTint : .secondary)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(checkDraft ? NotebookStyle.successTint.opacity(0.12) : Color.clear)
+                )
+        }
+        .buttonStyle(.plain)
     }
 
     private var choicePopoverBinding: Binding<Bool> {
@@ -557,6 +635,21 @@ struct NotebookEditableTableCell: View {
             originalTextDraft = option
         }
         bridge.saveColumnGrade(studentId: item.student.id, column: column, value: option)
+        onCellSaved()
+        onNavigate(navigationDirection)
+    }
+
+    private func cycleCheckValue() {
+        guard hasLoadedDrafts else { return }
+        let previousValue = checkDraft ? "true" : "false"
+        checkDraft.toggle()
+        let nextValue = checkDraft ? "true" : "false"
+        onSelect()
+        if previousValue != nextValue {
+            onPrepareUndo(previousValue, previousValue == "true" ? "Sí" : "No")
+            originalCheckDraft = checkDraft
+        }
+        bridge.saveColumnGrade(studentId: item.student.id, column: column, value: nextValue)
         onCellSaved()
         onNavigate(navigationDirection)
     }

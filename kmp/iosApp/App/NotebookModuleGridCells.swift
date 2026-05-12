@@ -90,7 +90,7 @@ extension NotebookModuleView {
                 } content: {
                     headerChip(
                         title: column.title,
-                        subtitle: columnHeaderSubtitle(for: column, data: data, rows: visibleRows),
+                        subtitle: columnHeaderMeta(for: column),
                         width: resolvedColumnWidth(for: column),
                         tint: displayTint(for: column),
                         folderStyle: column.categoryId != nil,
@@ -105,8 +105,7 @@ extension NotebookModuleView {
         case .collapsedCategory(let category, let columns):
             return AnyView(
                 Button {
-                    expandedEmptyCategoryIds.insert(category.id)
-                    bridge.toggleColumnCategory(id: category.id, collapsed: false)
+                    setCategoryCollapsed(category, collapsed: false)
                 } label: {
                     headerChip(
                         title: category.name,
@@ -159,6 +158,32 @@ extension NotebookModuleView {
         default:
             return "CL"
         }
+    }
+
+    func columnHeaderMeta(for column: NotebookColumnDefinition) -> String {
+        let mediaText = column.countsTowardAverage
+            ? "\(Int(column.weight))%"
+            : "No media"
+
+        let typeText: String
+        switch column.type {
+        case .numeric:
+            typeText = "Nota"
+        case .rubric:
+            typeText = "Rúbrica"
+        case .check:
+            typeText = "Lista"
+        case .ordinal:
+            typeText = "Nivel"
+        case .text:
+            typeText = "Texto"
+        case .calculated:
+            typeText = "Fórmula"
+        default:
+            typeText = "Columna"
+        }
+
+        return "\(mediaText) · \(typeText)"
     }
 
     func displayTint(for column: NotebookColumnDefinition) -> Color {
@@ -269,8 +294,7 @@ extension NotebookModuleView {
         case .collapsedCategory(let category, let columns):
             return AnyView(
                 Button {
-                    expandedEmptyCategoryIds.insert(category.id)
-                    bridge.toggleColumnCategory(id: category.id, collapsed: false)
+                    setCategoryCollapsed(category, collapsed: false)
                 } label: {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(category.name)
@@ -438,8 +462,8 @@ extension NotebookModuleView {
             categoryDraft = category.name
             isCreateCategoryAlertPresented = true
         }
-        Button(category.isCollapsed ? "Expandir" : "Colapsar") {
-            bridge.toggleColumnCategory(id: category.id, collapsed: !category.isCollapsed)
+        Button(isCategoryCollapsed(category) ? "Expandir" : "Colapsar") {
+            setCategoryCollapsed(category, collapsed: !isCategoryCollapsed(category))
         }
         Button("Nueva columna dentro") {
             openAddColumn(in: category)

@@ -102,6 +102,35 @@ struct NotebookModuleView: View {
         nonmutating set { navigationDirectionRaw = newValue.rawValue }
     }
 
+    var collapsedCategoryStorageKey: String {
+        "notebook.collapsed.categories.\(selectedClassId.map(String.init) ?? "no-class")"
+    }
+
+    func collapsedCategoryIds() -> Set<String> {
+        Set(
+            UserDefaults.standard
+                .string(forKey: collapsedCategoryStorageKey)?
+                .split(separator: ",")
+                .map(String.init) ?? []
+        )
+    }
+
+    func isCategoryCollapsed(_ category: NotebookColumnCategory) -> Bool {
+        category.isCollapsed || collapsedCategoryIds().contains(category.id)
+    }
+
+    func setCategoryCollapsed(_ category: NotebookColumnCategory, collapsed: Bool) {
+        var ids = collapsedCategoryIds()
+        if collapsed {
+            ids.insert(category.id)
+        } else {
+            ids.remove(category.id)
+            expandedEmptyCategoryIds.insert(category.id)
+        }
+        UserDefaults.standard.set(ids.sorted().joined(separator: ","), forKey: collapsedCategoryStorageKey)
+        bridge.toggleColumnCategory(id: category.id, collapsed: collapsed)
+    }
+
     var inspectorSelection: NotebookInspectorSelection? {
         get { inspectorState.selection }
         nonmutating set { inspectorState.selection = newValue }

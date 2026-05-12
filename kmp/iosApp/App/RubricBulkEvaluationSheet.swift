@@ -59,7 +59,7 @@ struct RubricBulkEvaluationSheet: View {
                                     .animation(.spring(response: 0.4, dampingFraction: 0.8), value: hasInjured)
                                 } else {
                                     VStack(spacing: EvaluationDesign.sectionSpacing) {
-                                        evaluationTable(state: state, rubric: rubric)
+                                        compactEvaluationByCriterion(state: state, rubric: rubric)
                                         if hasInjured {
                                             injuredSidebar(state: state)
                                         }
@@ -122,7 +122,7 @@ struct RubricBulkEvaluationSheet: View {
                     }
                     .frame(width: 180)
 
-                    Text(state.isSaving ? "Guardando cambios..." : "Auto-guardado activo")
+                    Text(state.isSaving ? "Guardando cambios..." : "Cambios listos para guardar")
                         .font(.system(size: 11, weight: .bold, design: .rounded))
                         .foregroundStyle(state.isSaving ? EvaluationDesign.accent : .secondary.opacity(0.6))
                         .padding(.trailing, 8)
@@ -130,6 +130,52 @@ struct RubricBulkEvaluationSheet: View {
             }
         }
         .padding(.bottom, 8)
+    }
+
+    private func compactEvaluationByCriterion(
+        state: BulkRubricEvaluationUiState,
+        rubric: RubricDetail
+    ) -> some View {
+        EvaluationGlassCard(cornerRadius: EvaluationDesign.cardRadius, fillOpacity: 0.92) {
+            VStack(alignment: .leading, spacing: 24) {
+                HStack(spacing: 16) {
+                    EvaluationChip(label: "\(state.students.count) alumnos", systemImage: "person.3.fill")
+                    EvaluationChip(label: "\(rubric.criteria.count) criterios", systemImage: "checklist")
+                }
+
+                ForEach(rubric.criteria, id: \.criterion.id) { criterion in
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text(criterion.criterion.description_)
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+
+                        ForEach(state.students, id: \.id) { student in
+                            HStack(alignment: .center, spacing: 12) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(student.firstName + " " + student.lastName)
+                                        .font(.subheadline.weight(.bold))
+                                        .lineLimit(1)
+                                    scorePill(for: student.id, width: 72)
+                                }
+                                .frame(width: 144, alignment: .leading)
+
+                                criterionCell(
+                                    studentId: student.id,
+                                    criterion: criterion,
+                                    criterionWidth: 220
+                                )
+                            }
+                            .padding(12)
+                            .background(
+                                RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
+                                    .fill(appCardBackground(for: colorScheme))
+                            )
+                        }
+                    }
+                    .padding(.top, 8)
+                }
+            }
+        }
     }
 
     private func evaluationTable(

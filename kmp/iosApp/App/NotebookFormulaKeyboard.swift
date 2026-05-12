@@ -154,6 +154,20 @@ struct NotebookNumericCellKeyboard: View {
                 .buttonStyle(.bordered)
             }
 
+            HStack(spacing: 8) {
+                Button("0") {
+                    value = "0"
+                    onSave()
+                }
+                .buttonStyle(.bordered)
+
+                Button("-0,5") { adjustValue(-0.5) }
+                    .buttonStyle(.bordered)
+
+                Button("+0,5") { adjustValue(0.5) }
+                    .buttonStyle(.bordered)
+            }
+
             VStack(spacing: 8) {
                 ForEach(rows, id: \.self) { row in
                     HStack(spacing: 8) {
@@ -200,15 +214,29 @@ struct NotebookNumericCellKeyboard: View {
                 }
                 .buttonStyle(.bordered)
 
-                Button("Guardar") {
-                    onSave()
+                Button("Guardar y siguiente") {
+                    onNavigate(.down)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(tint)
+
+                Button("Guardar") {
+                    onSave()
+                }
+                .buttonStyle(.bordered)
             }
         }
         .padding(12)
         .frame(width: 260)
+    }
+
+    private func adjustValue(_ delta: Double) {
+        let current = Double(value.replacingOccurrences(of: ",", with: ".")) ?? 0
+        let next = min(10, max(0, current + delta))
+        value = next.truncatingRemainder(dividingBy: 1) == 0
+            ? String(Int(next))
+            : String(format: "%.1f", next).replacingOccurrences(of: ".", with: ",")
+        onSave()
     }
 
     private func press(_ key: String) {
@@ -232,6 +260,152 @@ struct NotebookNumericCellKeyboard: View {
         } else {
             value += key
         }
+        onSave()
+    }
+}
+
+struct NotebookTimeCellKeyboard: View {
+    @Binding var value: String
+    let tint: Color
+    let onSave: () -> Void
+    let onNavigate: (NotebookNavigationDirection) -> Void
+
+    var body: some View {
+        steppedKeyboard(
+            title: value.isEmpty ? "00:00,00" : value,
+            actions: [
+                ("-1 s", { adjustSeconds(-1) }),
+                ("+1 s", { adjustSeconds(1) }),
+                ("+10 s", { adjustSeconds(10) }),
+                ("Limpiar", { value = ""; onSave() })
+            ]
+        )
+    }
+
+    private func steppedKeyboard(title: String, actions: [(String, () -> Void)]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .monospacedDigit()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.quaternary.opacity(0.24)))
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                ForEach(actions, id: \.0) { label, action in
+                    Button(label, action: action)
+                        .buttonStyle(.bordered)
+                }
+            }
+
+            Button("Guardar y siguiente") { onNavigate(.down) }
+                .buttonStyle(.borderedProminent)
+                .tint(tint)
+        }
+        .padding(12)
+        .frame(width: 260)
+    }
+
+    private func adjustSeconds(_ delta: Int) {
+        let next = max(0, parsedCentiseconds() + delta * 100)
+        let minutes = next / 6000
+        let seconds = (next / 100) % 60
+        let centiseconds = next % 100
+        value = String(format: "%02d:%02d,%02d", minutes, seconds, centiseconds)
+        onSave()
+    }
+
+    private func parsedCentiseconds() -> Int {
+        let normalized = value.replacingOccurrences(of: ".", with: ",")
+        let minuteParts = normalized.split(separator: ":", omittingEmptySubsequences: false)
+        guard minuteParts.count == 2 else { return 0 }
+        let minutes = Int(minuteParts[0]) ?? 0
+        let secondParts = minuteParts[1].split(separator: ",", omittingEmptySubsequences: false)
+        let seconds = Int(secondParts.first ?? "0") ?? 0
+        let centiseconds = Int(secondParts.dropFirst().first ?? "0") ?? 0
+        return max(0, minutes * 6000 + seconds * 100 + centiseconds)
+    }
+}
+
+struct NotebookDistanceCellKeyboard: View {
+    @Binding var value: String
+    let tint: Color
+    let unitLabel: String
+    let onSave: () -> Void
+    let onNavigate: (NotebookNavigationDirection) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(value.isEmpty ? "0" : value)
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                Spacer()
+                Text(unitLabel)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(12)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.quaternary.opacity(0.24)))
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                Button("-0,1") { adjustValue(-0.1) }.buttonStyle(.bordered)
+                Button("+0,1") { adjustValue(0.1) }.buttonStyle(.bordered)
+                Button("-1") { adjustValue(-1) }.buttonStyle(.bordered)
+                Button("+1") { adjustValue(1) }.buttonStyle(.bordered)
+            }
+
+            Button("Guardar y siguiente") { onNavigate(.down) }
+                .buttonStyle(.borderedProminent)
+                .tint(tint)
+        }
+        .padding(12)
+        .frame(width: 260)
+    }
+
+    private func adjustValue(_ delta: Double) {
+        let current = Double(value.replacingOccurrences(of: ",", with: ".")) ?? 0
+        let next = max(0, current + delta)
+        value = next.truncatingRemainder(dividingBy: 1) == 0
+            ? String(Int(next))
+            : String(format: "%.1f", next).replacingOccurrences(of: ".", with: ",")
+        onSave()
+    }
+}
+
+struct NotebookRepetitionCellKeyboard: View {
+    @Binding var value: String
+    let tint: Color
+    let onSave: () -> Void
+    let onNavigate: (NotebookNavigationDirection) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(value.isEmpty ? "0" : value)
+                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .monospacedDigit()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.quaternary.opacity(0.24)))
+
+            HStack(spacing: 8) {
+                Button("-5") { adjustValue(-5) }.buttonStyle(.bordered)
+                Button("-1") { adjustValue(-1) }.buttonStyle(.bordered)
+                Button("+1") { adjustValue(1) }.buttonStyle(.bordered)
+                Button("+5") { adjustValue(5) }.buttonStyle(.bordered)
+            }
+
+            Button("Guardar y siguiente") { onNavigate(.down) }
+                .buttonStyle(.borderedProminent)
+                .tint(tint)
+        }
+        .padding(12)
+        .frame(width: 260)
+    }
+
+    private func adjustValue(_ delta: Int) {
+        let current = Int(value) ?? 0
+        value = String(max(0, current + delta))
         onSave()
     }
 }

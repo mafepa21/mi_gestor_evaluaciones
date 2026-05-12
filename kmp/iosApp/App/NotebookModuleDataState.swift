@@ -186,7 +186,7 @@ extension NotebookModuleView {
             }
             let categoryColumns = columns(in: category, data: data)
             let isEmptyCategory = completedCollapsedCategoryCount(categoryColumns, rows: rows) == 0
-            let isCollapsed = category.isCollapsed || (isEmptyCategory && !expandedEmptyCategoryIds.contains(category.id))
+            let isCollapsed = isCategoryCollapsed(category) || (isEmptyCategory && !expandedEmptyCategoryIds.contains(category.id))
             if isCollapsed {
                 if emittedCollapsedCategories.insert(category.id).inserted {
                     if !categoryColumns.isEmpty {

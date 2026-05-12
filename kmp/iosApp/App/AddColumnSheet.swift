@@ -149,64 +149,6 @@ private struct NotebookColumnBlueprint: Identifiable {
     }
 }
 
-private enum NotebookPhysicalTestMeasurement: String, CaseIterable, Identifiable {
-    case time
-    case distance
-    case repetitions
-    case level
-    case score
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .time: return "Tiempo"
-        case .distance: return "Distancia"
-        case .repetitions: return "Repeticiones"
-        case .level: return "Nivel"
-        case .score: return "Puntuación"
-        }
-    }
-
-    var subtitle: String {
-        switch self {
-        case .time: return "Cronos, marcas o duración."
-        case .distance: return "Metros, saltos o lanzamientos."
-        case .repetitions: return "Conteo de repeticiones."
-        case .level: return "Periodos, niveles o etapas."
-        case .score: return "Resultado numérico propio de la prueba."
-        }
-    }
-
-    var inputKind: NotebookCellInputKind {
-        switch self {
-        case .time: return .time
-        case .distance: return .distance
-        case .repetitions: return .repetitions
-        case .level: return .numeric010
-        case .score: return .numeric010
-        }
-    }
-
-    var scaleKind: NotebookScaleKind {
-        switch self {
-        case .time: return .time
-        case .distance: return .distance
-        case .repetitions: return .repetitions
-        case .level: return .tenPoint
-        case .score: return .tenPoint
-        }
-    }
-}
-
-private enum NotebookPhysicalColumnMode: String, CaseIterable, Identifiable {
-    case raw = "Marca"
-    case score = "Nota"
-    case rawAndScore = "Marca + nota"
-
-    var id: String { rawValue }
-}
-
 private struct ColumnBlueprintCard: View {
     let blueprint: NotebookColumnBlueprint
     let isSelected: Bool
@@ -376,6 +318,8 @@ struct AddColumnSheet: View {
     var initialCategoryId: String? = nil
     var startsCreatingCategory: Bool = false
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("notebook.addColumn.lastBlueprintId") private var lastBlueprintId: String = "written_test"
+    @FocusState private var isNameFocused: Bool
 
     @State private var columnName: String = ""
     @State private var selectedBlueprintId: String? = nil
@@ -392,15 +336,6 @@ struct AddColumnSheet: View {
     @State private var isTemplate = false
     @State private var isLocked = false
     @State private var summaryConfiguration = NotebookIndividualSummaryConfiguration()
-    @State private var selectedPhysicalMeasurement: NotebookPhysicalTestMeasurement = .distance
-    @State private var physicalAssignments: [MiGestorKit.PhysicalTestAssignment] = []
-    @State private var physicalBatteries: [MiGestorKit.PhysicalTestBattery] = []
-    @State private var physicalDefinitions: [MiGestorKit.PhysicalTestDefinition] = []
-    @State private var physicalScales: [MiGestorKit.PhysicalTestScale] = []
-    @State private var selectedPhysicalAssignmentId: String?
-    @State private var selectedPhysicalTestId: String?
-    @State private var selectedPhysicalScaleId: String?
-    @State private var selectedPhysicalColumnMode: NotebookPhysicalColumnMode = .rawAndScore
 
     private let blueprints: [NotebookColumnBlueprint] = [
         .init(id: "written_test", title: "Prueba escrita", subtitle: "Nota numérica 0-10", icon: "doc.text.magnifyingglass", type: .numeric, categoryKind: .evaluation, instrumentKind: .writtenTest, inputKind: .numeric010, scaleKind: .tenPoint, defaultWeight: 10),
@@ -479,11 +414,17 @@ struct AddColumnSheet: View {
                     selectedCategoryId = initialCategoryId ?? selectedCategoryId ?? suggestedCategoryId
                     categoryPlacementMode = startsCreatingCategory ? .createNew : .existing
                     if selectedBlueprintId == nil {
-                        selectedBlueprintId = basicBlueprints.first?.id
+                        selectedBlueprintId = blueprints.contains(where: { $0.id == lastBlueprintId }) ? lastBlueprintId : "written_test"
                     }
+                    #if os(iOS)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        isNameFocused = true
+                    }
+                    #endif
                 }
                 .appOnChange(of: selectedBlueprintId) { _ in
                     syncBlueprintDefaults()
+                    syncRubricNameIfNeeded()
                     if categoryPlacementMode == .existing, selectedCategoryId == nil {
                         selectedCategoryId = suggestedCategoryId
                     }
@@ -526,11 +467,13 @@ struct AddColumnSheet: View {
 
                 TextField((selectedBlueprint?.isIndividualSummary ?? false) ? "Nombre de la síntesis pedagógica" : "Nombre de la columna", text: $columnName)
                     .font(.title2.weight(.bold))
-
-                TextField("Unidad / situación de aprendizaje", text: $unitOrSituation)
-                    .font(.subheadline.weight(.medium))
-
-                DatePicker("Fecha", selection: $selectedDate, displayedComponents: .date)
+                    .focused($isNameFocused)
+                    .submitLabel(.done)
+                    .onSubmit {
+                        if canSave {
+                            saveColumn()
+                        }
+                    }
 
                 categorySelector
             }
@@ -542,25 +485,26 @@ struct AddColumnSheet: View {
             Text("Tipo de columna")
                 .font(.headline)
 
-            Text("Elige una columna diaria para evaluar rápido. Lo especializado queda en su módulo o en Avanzado.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-            let columns = [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)]
-
-            LazyVGrid(columns: columns, spacing: 16) {
-                ForEach(basicBlueprints) { blueprint in
-                    ColumnBlueprintCard(
-                        blueprint: blueprint,
-                        isSelected: blueprint.id == selectedBlueprint?.id,
-                        tint: color(for: blueprint.categoryKind)
-                    ) {
-                        selectedBlueprintId = blueprint.id
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(basicBlueprints) { blueprint in
+                        NotebookPill(
+                            label: blueprint.title,
+                            systemImage: blueprint.icon,
+                            active: blueprint.id == selectedBlueprint?.id,
+                            tint: color(for: blueprint.categoryKind),
+                            compact: true
+                        )
+                        .onTapGesture {
+                            selectedBlueprintId = blueprint.id
+                        }
                     }
                 }
+                .padding(.vertical, 2)
             }
 
             DisclosureGroup {
+                let columns = [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)]
                 VStack(alignment: .leading, spacing: 16) {
                     LazyVGrid(columns: columns, spacing: 16) {
                         ForEach(advancedBlueprints) { blueprint in
@@ -578,7 +522,7 @@ struct AddColumnSheet: View {
                 }
                 .padding(.top, 12)
             } label: {
-                Label("Avanzado", systemImage: "slider.horizontal.3")
+                Label("Más opciones", systemImage: "slider.horizontal.3")
                     .font(.headline)
             }
         }
@@ -647,15 +591,25 @@ struct AddColumnSheet: View {
 
     private var genericConfiguration: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Peso")
-                        .font(.headline)
-                    TextField("0", text: $weight)
-                        .appKeyboardType(.decimalPad)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                }
+            if selectedBlueprint?.type == .rubric {
+                selectedRubricCard
+            }
 
+            if shouldShowWeightControls {
+                HStack(spacing: 16) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Peso")
+                            .font(.headline)
+                        TextField("0", text: $weight)
+                            .appKeyboardType(.decimalPad)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                    }
+
+                    Toggle("Cuenta para la media", isOn: $countsTowardAverage)
+                }
+            }
+
+            HStack(spacing: 16) {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Entrada")
                         .font(.headline)
@@ -665,10 +619,6 @@ struct AddColumnSheet: View {
                 }
             }
 
-            if selectedBlueprint?.instrumentKind == .physicalTest {
-                physicalTestAssignmentPicker
-            }
-
             if selectedBlueprint?.type == .calculated {
                 NotebookFormulaKeyboard(
                     formula: $formula,
@@ -676,109 +626,30 @@ struct AddColumnSheet: View {
                 )
             }
 
-            if selectedBlueprint?.type == .rubric {
-                Picker("Rúbrica", selection: Binding<Int64>(
-                    get: { selectedRubricId ?? 0 },
-                    set: { selectedRubricId = $0 == 0 ? nil : $0 }
-                )) {
-                    Text("Selecciona una rúbrica").tag(Int64(0))
-                    ForEach(bridge.rubrics, id: \.rubric.id) { rubric in
-                        Text(rubric.rubric.name).tag(rubric.rubric.id)
-                    }
+            DisclosureGroup {
+                VStack(alignment: .leading, spacing: 16) {
+                    TextField("Unidad / situación de aprendizaje", text: $unitOrSituation)
+                        .font(.subheadline.weight(.medium))
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+
+                    DatePicker("Fecha", selection: $selectedDate, displayedComponents: .date)
+                    Toggle("Fijar al inicio", isOn: $isPinned)
+                    Toggle("Columna bloqueada", isOn: $isLocked)
+                    Toggle("Guardar como plantilla", isOn: $isTemplate)
+
+                    externalDestinationCard(
+                        title: "Pruebas físicas",
+                        subtitle: "Se gestionan desde EF · Condición física.",
+                        icon: "figure.run",
+                        tint: .orange
+                    )
                 }
-                .pickerStyle(.menu)
-            }
-
-            if selectedBlueprint?.instrumentKind != .physicalTest {
-                Toggle("Cuenta para la media", isOn: $countsTowardAverage)
-            }
-
-            Toggle("Fijar al inicio", isOn: $isPinned)
-            Toggle("Columna bloqueada", isOn: $isLocked)
-            Toggle("Guardar como plantilla", isOn: $isTemplate)
-        }
-    }
-
-    private var physicalMeasurementPicker: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Medida física")
-                .font(.headline)
-
-            Picker("Medida física", selection: $selectedPhysicalMeasurement) {
-                ForEach(NotebookPhysicalTestMeasurement.allCases) { measurement in
-                    Text(measurement.title).tag(measurement)
-                }
-            }
-            .pickerStyle(.segmented)
-
-            Text(selectedPhysicalMeasurement.subtitle)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private var physicalTestAssignmentPicker: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Prueba física asignada")
-                .font(.headline)
-
-            if physicalAssignments.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Label("Abrir EF · Condición física", systemImage: "figure.run.circle.fill")
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.orange)
-                    Text("Crea una batería y asígnala a esta clase para generar columnas de marca y nota conectadas.")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                }
-            } else {
-                Picker("Asignación", selection: Binding<String?>(
-                    get: { selectedPhysicalAssignmentId ?? physicalAssignments.first?.id },
-                    set: { selectedPhysicalAssignmentId = $0; syncPhysicalTestsForSelection() }
-                )) {
-                    ForEach(physicalAssignments, id: \.id) { assignment in
-                        Text(assignment.termLabel ?? assignment.batteryId).tag(Optional(assignment.id))
-                    }
-                }
-                .pickerStyle(.menu)
-
-                Picker("Test", selection: Binding<String?>(
-                    get: { selectedPhysicalTestId ?? availablePhysicalTestIds.first },
-                    set: { selectedPhysicalTestId = $0; Task { await loadPhysicalScalesForSelectedTest() } }
-                )) {
-                    ForEach(availablePhysicalTestIds, id: \.self) { testId in
-                        Text(physicalName(for: testId)).tag(Optional(testId))
-                    }
-                }
-                .pickerStyle(.menu)
-
-                Picker("Baremo", selection: Binding<String?>(
-                    get: { selectedPhysicalScaleId },
-                    set: { selectedPhysicalScaleId = $0 }
-                )) {
-                    Text("Sin baremo").tag(Optional<String>.none)
-                    ForEach(physicalScales, id: \.id) { scale in
-                        Text(scale.name).tag(Optional(scale.id))
-                    }
-                }
-                .pickerStyle(.menu)
-
-                Picker("Modo", selection: $selectedPhysicalColumnMode) {
-                    ForEach(NotebookPhysicalColumnMode.allCases) { mode in
-                        Text(mode.rawValue).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-
-                physicalMeasurementPicker
+                .padding(.top, 8)
+            } label: {
+                Label("Más opciones", systemImage: "slider.horizontal.3")
+                    .font(.headline)
             }
         }
-        .padding(12)
-        .background(Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color.orange.opacity(0.22), lineWidth: 1)
-        )
     }
 
     private var individualSummaryConfiguration: some View {
@@ -847,17 +718,72 @@ struct AddColumnSheet: View {
         }
     }
 
+    private var selectedRubricCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Rúbrica")
+                .font(.headline)
+
+            if let selected = bridge.rubrics.first(where: { $0.rubric.id == selectedRubricId }) {
+                DisclosureGroup {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(selected.criteria.prefix(4), id: \.criterion.id) { criterion in
+                            Text("• \(criterion.criterion.description_)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.top, 8)
+                } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(selected.rubric.name)
+                            .font(.subheadline.weight(.bold))
+                        Text("\(selected.criteria.count) criterios")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(NotebookStyle.surfaceSoft)
+                )
+            }
+
+            Picker("Cambiar rúbrica", selection: Binding<Int64>(
+                get: { selectedRubricId ?? 0 },
+                set: { newValue in
+                    selectedRubricId = newValue == 0 ? nil : newValue
+                    syncRubricNameIfNeeded()
+                }
+            )) {
+                Text("Selecciona una rúbrica").tag(Int64(0))
+                ForEach(bridge.rubrics, id: \.rubric.id) { rubric in
+                    Text(rubric.rubric.name).tag(rubric.rubric.id)
+                }
+            }
+            .pickerStyle(.menu)
+        }
+    }
+
     private var footerActions: some View {
-        HStack {
-            Button("Cancelar") { dismiss() }
-                .buttonStyle(.borderless)
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Button("Cancelar") { dismiss() }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.secondary)
 
-            Spacer()
+                Spacer()
 
-            Button("Crear columna", action: saveColumn)
-                .buttonStyle(.borderedProminent)
-                .disabled(!canSave)
+                Button("Crear", action: saveColumn)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!canSave)
+            }
+
+            if let canSaveReason {
+                Text(canSaveReason)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -983,21 +909,52 @@ struct AddColumnSheet: View {
             }
     }
 
+    private var canSaveReason: String? {
+        guard let selectedBlueprint else {
+            return "Selecciona un tipo de columna."
+        }
+        if resolvedColumnName.isEmpty {
+            return "Escribe un nombre para la columna."
+        }
+        if selectedBlueprint.type == .rubric && selectedRubricId == nil {
+            return "Selecciona una rúbrica."
+        }
+        if selectedBlueprint.type == .calculated && formula.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "Escribe una fórmula."
+        }
+        if shouldShowWeightControls && parsedWeight == nil {
+            return "Revisa el peso de la columna."
+        }
+        if categoryPlacementMode == .createNew && resolvedNewCategoryName.isEmpty {
+            return "Escribe un nombre para la categoría."
+        }
+        return nil
+    }
+
     private var canSave: Bool {
+        canSaveReason == nil
+    }
+
+    private var parsedWeight: Double? {
+        let normalized = weight
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: ",", with: ".")
+
+        guard let value = Double(normalized), value >= 0 else {
+            return nil
+        }
+
+        return value
+    }
+
+    private var shouldShowWeightControls: Bool {
         guard let selectedBlueprint else { return false }
-        if resolvedColumnName.isEmpty { return false }
-        if selectedBlueprint.type == .rubric && selectedRubricId == nil { return false }
-        if selectedBlueprint.type == .calculated && formula.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return false }
-        if categoryPlacementMode == .createNew && resolvedNewCategoryName.isEmpty { return false }
-        return true
+        return selectedBlueprint.type != .text && !selectedBlueprint.isIndividualSummary
     }
 
     private var resolvedColumnName: String {
         let trimmed = columnName.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
-            if selectedBlueprint?.instrumentKind == .physicalTest, let selectedPhysicalTestId {
-                return physicalName(for: selectedPhysicalTestId)
-            }
             return selectedBlueprint?.isIndividualSummary == true ? "Síntesis pedagógica" : ""
         }
         return trimmed
@@ -1013,17 +970,11 @@ struct AddColumnSheet: View {
     }
 
     private var resolvedInputKind: NotebookCellInputKind {
-        guard selectedBlueprint?.instrumentKind == .physicalTest else {
-            return selectedBlueprint?.inputKind ?? .text
-        }
-        return selectedPhysicalMeasurement.inputKind
+        selectedBlueprint?.inputKind ?? .text
     }
 
     private var resolvedScaleKind: NotebookScaleKind {
-        guard selectedBlueprint?.instrumentKind == .physicalTest else {
-            return selectedBlueprint?.scaleKind ?? .custom
-        }
-        return selectedPhysicalMeasurement.scaleKind
+        selectedBlueprint?.scaleKind ?? .custom
     }
 
     private var resolvedCountsTowardAverage: Bool {
@@ -1033,16 +984,12 @@ struct AddColumnSheet: View {
             return false
         }
 
-        if selectedBlueprint.instrumentKind == .physicalTest {
-            return selectedPhysicalColumnMode == .score ||
-                   selectedPhysicalColumnMode == .rawAndScore
-        }
-
-        return countsTowardAverage
+        return shouldShowWeightControls && countsTowardAverage
     }
 
     private func saveColumn() {
         guard let selectedBlueprint else { return }
+        lastBlueprintId = selectedBlueprint.id
         if selectedBlueprint.isIndividualSummary {
             saveIndividualSummaryColumn()
             return
@@ -1055,76 +1002,21 @@ struct AddColumnSheet: View {
             resolvedCategoryId = generatedCategoryId
         }
 
-        if selectedBlueprint.instrumentKind == .physicalTest {
-            Task { await saveLinkedPhysicalColumns(blueprint: selectedBlueprint, categoryId: resolvedCategoryId) }
-            return
-        }
-
-        if selectedBlueprint.instrumentKind == .physicalTest, selectedPhysicalColumnMode == .rawAndScore {
-            bridge.addColumn(
-                name: "\(resolvedColumnName) · marca",
-                type: selectedBlueprint.type.name,
-                weight: 0,
-                formula: nil,
-                rubricId: selectedRubricId,
-                categoryId: resolvedCategoryId,
-                categoryKind: selectedBlueprint.categoryKind,
-                instrumentKind: selectedBlueprint.instrumentKind,
-                inputKind: resolvedInputKind,
-                dateEpochMs: Int64(selectedDate.timeIntervalSince1970 * 1000),
-                unitOrSituation: trimmedOrNil(unitOrSituation),
-                competencyCriteriaIds: [],
-                scaleKind: resolvedScaleKind,
-                iconName: "stopwatch.fill",
-                countsTowardAverage: false,
-                isPinned: isPinned,
-                isHidden: false,
-                visibility: .visible,
-                isLocked: isLocked,
-                isTemplate: isTemplate
-            )
-            bridge.addColumn(
-                name: "\(resolvedColumnName) · nota",
-                type: selectedBlueprint.type.name,
-                weight: Double(weight.replacingOccurrences(of: ",", with: ".")) ?? selectedBlueprint.defaultWeight,
-                formula: nil,
-                rubricId: selectedRubricId,
-                categoryId: resolvedCategoryId,
-                categoryKind: selectedBlueprint.categoryKind,
-                instrumentKind: selectedBlueprint.instrumentKind,
-                inputKind: .numeric010,
-                dateEpochMs: Int64(selectedDate.timeIntervalSince1970 * 1000),
-                unitOrSituation: selectedPhysicalScaleId.flatMap { id in physicalScales.first(where: { $0.id == id })?.name } ?? "Nota baremada",
-                competencyCriteriaIds: [],
-                scaleKind: .tenPoint,
-                iconName: "chart.bar.fill",
-                countsTowardAverage: resolvedCountsTowardAverage,
-                isPinned: isPinned,
-                isHidden: false,
-                visibility: .visible,
-                isLocked: isLocked,
-                isTemplate: isTemplate
-            )
-            dismiss()
-            return
-        }
-
-        let isPhysicalScoreColumn = selectedBlueprint.instrumentKind == .physicalTest && selectedPhysicalColumnMode == .score
         bridge.addColumn(
-            name: selectedBlueprint.instrumentKind == .physicalTest && selectedPhysicalColumnMode == .raw ? "\(resolvedColumnName) · marca" : resolvedColumnName,
+            name: resolvedColumnName,
             type: selectedBlueprint.type.name,
-            weight: isPhysicalScoreColumn ? (Double(weight.replacingOccurrences(of: ",", with: ".")) ?? selectedBlueprint.defaultWeight) : (selectedBlueprint.instrumentKind == .physicalTest ? 0 : (Double(weight.replacingOccurrences(of: ",", with: ".")) ?? selectedBlueprint.defaultWeight)),
+            weight: shouldShowWeightControls ? (parsedWeight ?? selectedBlueprint.defaultWeight) : 0,
             formula: trimmedOrNil(formula),
             rubricId: selectedRubricId,
             categoryId: resolvedCategoryId,
             categoryKind: selectedBlueprint.categoryKind,
             instrumentKind: selectedBlueprint.instrumentKind,
-            inputKind: isPhysicalScoreColumn ? .numeric010 : resolvedInputKind,
+            inputKind: resolvedInputKind,
             dateEpochMs: Int64(selectedDate.timeIntervalSince1970 * 1000),
-            unitOrSituation: isPhysicalScoreColumn ? (selectedPhysicalScaleId.flatMap { id in physicalScales.first(where: { $0.id == id })?.name } ?? "Nota baremada") : trimmedOrNil(unitOrSituation),
+            unitOrSituation: trimmedOrNil(unitOrSituation),
             competencyCriteriaIds: [],
-            scaleKind: isPhysicalScoreColumn ? .tenPoint : resolvedScaleKind,
-            iconName: selectedBlueprint.instrumentKind == .physicalTest ? (isPhysicalScoreColumn ? "chart.bar.fill" : "stopwatch.fill") : selectedBlueprint.icon,
+            scaleKind: resolvedScaleKind,
+            iconName: selectedBlueprint.icon,
             countsTowardAverage: resolvedCountsTowardAverage,
             isPinned: isPinned,
             isHidden: false,
@@ -1133,138 +1025,6 @@ struct AddColumnSheet: View {
             isTemplate: isTemplate
         )
         dismiss()
-    }
-
-    @MainActor
-    private func saveLinkedPhysicalColumns(blueprint: NotebookColumnBlueprint, categoryId: String?) async {
-        guard let classId = bridge.currentNotebookClassId else {
-            bridge.status = "Selecciona una clase antes de crear columnas físicas."
-            return
-        }
-        guard let assignment = selectedPhysicalAssignmentId.flatMap({ id in physicalAssignments.first(where: { $0.id == id }) }) ?? physicalAssignments.first,
-              let testId = selectedPhysicalTestId ?? availablePhysicalTestIds.first else {
-            bridge.status = "Selecciona una asignación y una prueba física antes de crear columnas."
-            return
-        }
-
-        let dateEpochMs = Int64(selectedDate.timeIntervalSince1970 * 1000)
-        let links = (try? await bridge.listPhysicalNotebookLinksForAssignment(assignmentId: assignment.id)) ?? []
-        let existingLink = links.first { $0.testId == testId }
-        var rawColumnId = existingLink?.rawColumnId
-        var scoreColumnId = existingLink?.scoreColumnId
-
-        do {
-            if (selectedPhysicalColumnMode == .raw || selectedPhysicalColumnMode == .rawAndScore) && rawColumnId == nil {
-                let title = "\(resolvedColumnName) · marca"
-                if let existingColumnId = existingNotebookPhysicalColumnId(title: title, categoryId: categoryId) {
-                    rawColumnId = existingColumnId
-                } else {
-                    rawColumnId = try await bridge.createNotebookPhysicalColumnForClass(
-                        classId: classId,
-                        name: title,
-                        categoryId: categoryId,
-                        inputKind: resolvedInputKind,
-                        unitOrSituation: trimmedOrNil(unitOrSituation),
-                        scaleKind: resolvedScaleKind,
-                        iconName: "stopwatch.fill",
-                        weight: 0,
-                        countsTowardAverage: false,
-                        dateEpochMs: dateEpochMs
-                    )
-                }
-            }
-
-            if (selectedPhysicalColumnMode == .score || selectedPhysicalColumnMode == .rawAndScore) && scoreColumnId == nil {
-                let title = selectedPhysicalColumnMode == .score ? resolvedColumnName : "\(resolvedColumnName) · nota"
-                if let existingColumnId = existingNotebookPhysicalColumnId(title: title, categoryId: categoryId) {
-                    scoreColumnId = existingColumnId
-                } else {
-                    scoreColumnId = try await bridge.createNotebookPhysicalColumnForClass(
-                        classId: classId,
-                        name: title,
-                        categoryId: categoryId,
-                        inputKind: .numeric010,
-                        unitOrSituation: selectedPhysicalScaleId.flatMap { id in physicalScales.first(where: { $0.id == id })?.name } ?? "Nota baremada",
-                        scaleKind: .tenPoint,
-                        iconName: "chart.bar.fill",
-                        weight: Double(weight.replacingOccurrences(of: ",", with: ".")) ?? blueprint.defaultWeight,
-                        countsTowardAverage: resolvedCountsTowardAverage,
-                        dateEpochMs: dateEpochMs
-                    )
-                }
-            }
-
-            try await bridge.savePhysicalNotebookLink(
-                MiGestorKit.PhysicalTestNotebookLink(
-                    assignmentId: assignment.id,
-                    testId: testId,
-                    rawColumnId: rawColumnId,
-                    scoreColumnId: scoreColumnId,
-                    trace: auditTrace()
-                )
-            )
-            bridge.status = "Columnas físicas vinculadas con \(physicalName(for: testId))."
-            dismiss()
-        } catch {
-            bridge.status = "No se pudieron crear las columnas físicas: \(error.localizedDescription)"
-        }
-    }
-
-    private func existingNotebookPhysicalColumnId(title: String, categoryId: String?) -> String? {
-        guard let data = bridge.notebookState as? NotebookUiStateData else { return nil }
-        return data.sheet.columns.first { column in
-            column.title == title &&
-            column.categoryId == categoryId &&
-            column.instrumentKind == .physicalTest
-        }?.id
-    }
-
-    private func auditTrace() -> AuditTrace {
-        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
-        let now = Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMs)
-        return AuditTrace(authorUserId: nil, createdAt: now, updatedAt: now, associatedGroupId: bridge.currentNotebookClassId.map { KotlinLong(value: $0) }, deviceId: nil, syncVersion: 0)
-    }
-
-    private var availablePhysicalTestIds: [String] {
-        guard let assignment = selectedPhysicalAssignmentId.flatMap({ id in physicalAssignments.first(where: { $0.id == id }) }) ?? physicalAssignments.first,
-              let battery = physicalBatteries.first(where: { $0.id == assignment.batteryId }) else {
-            return []
-        }
-        return battery.testIds
-    }
-
-    private func loadPhysicalColumnOptions() async {
-        guard let classId = bridge.currentNotebookClassId else { return }
-        physicalDefinitions = (try? await bridge.listPhysicalDefinitions()) ?? []
-        physicalBatteries = (try? await bridge.listPhysicalBatteries()) ?? []
-        physicalAssignments = (try? await bridge.listPhysicalAssignmentsForClass(classId: classId)) ?? []
-        syncPhysicalTestsForSelection()
-        await loadPhysicalScalesForSelectedTest()
-    }
-
-    private func syncPhysicalTestsForSelection() {
-        if selectedPhysicalAssignmentId == nil {
-            selectedPhysicalAssignmentId = physicalAssignments.first?.id
-        }
-        if selectedPhysicalTestId == nil || !availablePhysicalTestIds.contains(selectedPhysicalTestId ?? "") {
-            selectedPhysicalTestId = availablePhysicalTestIds.first
-        }
-    }
-
-    private func loadPhysicalScalesForSelectedTest() async {
-        guard let testId = selectedPhysicalTestId else {
-            physicalScales = []
-            selectedPhysicalScaleId = nil
-            return
-        }
-        physicalScales = (try? await bridge.listPhysicalScalesForTest(testId: testId)) ?? []
-        if selectedPhysicalScaleId == nil || !physicalScales.contains(where: { $0.id == selectedPhysicalScaleId }) {
-            selectedPhysicalScaleId = physicalScales.first?.id
-        }
-    }
-
-    private func physicalName(for testId: String) -> String {
-        physicalDefinitions.first(where: { $0.id == testId })?.name ?? testId
     }
 
     private func saveIndividualSummaryColumn() {
@@ -1325,9 +1085,6 @@ struct AddColumnSheet: View {
         guard let selectedBlueprint else { return }
         weight = String(Int(selectedBlueprint.defaultWeight))
         countsTowardAverage = defaultCountsTowardAverage(for: selectedBlueprint)
-        if selectedBlueprint.instrumentKind == .physicalTest {
-            selectedPhysicalMeasurement = .distance
-        }
         if selectedBlueprint.isIndividualSummary {
             if columnName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || columnName == "Comentario IA" {
                 columnName = "Síntesis pedagógica"
@@ -1418,6 +1175,16 @@ struct AddColumnSheet: View {
     private func trimmedOrNil(_ value: String) -> String? {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func syncRubricNameIfNeeded() {
+        guard selectedBlueprint?.type == .rubric,
+              columnName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let selectedRubricId,
+              let rubric = bridge.rubrics.first(where: { $0.rubric.id == selectedRubricId })
+        else { return }
+
+        columnName = rubric.rubric.name
     }
 
     private var suggestedCategoryId: String? {

@@ -642,39 +642,6 @@ struct NotebookTopBar: View {
             .frame(minWidth: 180, maxWidth: 260)
     }
 
-    private var surfaceModePicker: some View {
-        Picker("Vista", selection: $surfaceMode) {
-            Label("Rejilla", systemImage: "rectangle.grid.2x2").tag(NotebookSurfaceMode.grid)
-            Label("Plano", systemImage: "list.bullet").tag(NotebookSurfaceMode.seatingPlan)
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .frame(width: 138)
-    }
-
-    private var markAllPresentButton: some View {
-        Button(action: onMarkAllPresent) {
-            Image(systemName: "checkmark.circle.fill")
-                .frame(width: 28, height: 28)
-        }
-        .buttonStyle(.borderless)
-        .foregroundStyle(canMarkAllPresent ? .green : .secondary)
-        .disabled(!canMarkAllPresent)
-        .help("Todos presentes")
-        .accessibilityLabel("Todos presentes")
-    }
-
-    private var attendanceQuickModeButton: some View {
-        Button(action: onToggleAttendanceQuickMode) {
-            Image(systemName: isAttendanceQuickMode ? "figure.walk.circle.fill" : "figure.walk.circle")
-                .frame(width: 28, height: 28)
-        }
-        .buttonStyle(.borderless)
-        .foregroundStyle(isAttendanceQuickMode ? NotebookStyle.warningTint : .secondary)
-        .help("Pase rápido")
-        .accessibilityLabel("Pase rápido")
-    }
-
     private var undoButton: some View {
         Button(action: onUndo) {
             Image(systemName: "arrow.uturn.backward")
@@ -716,53 +683,6 @@ struct NotebookTopBar: View {
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.small)
-    }
-
-    private var overflowMenu: some View {
-        Menu {
-            Button("Organizar columnas…", action: onOpenOrganizationMenu)
-
-            if let onGenerateSummaryFallback {
-                Divider()
-                Button("Generar síntesis…", action: onGenerateSummaryFallback)
-            }
-
-            if let exportText {
-                Divider()
-                ShareLink(item: exportText) {
-                    Label("Exportar…", systemImage: "square.and.arrow.up")
-                }
-            }
-        } label: {
-            Image(systemName: "ellipsis.circle")
-                .frame(width: 28, height: 28)
-        }
-        .menuStyle(.borderlessButton)
-        .foregroundStyle(.secondary)
-        .help("Más opciones")
-        .accessibilityLabel("Más opciones")
-    }
-
-    private var navigationDirectionMenu: some View {
-        Menu {
-            ForEach(NotebookNavigationDirection.allCases) { direction in
-                Button {
-                    onNavigationDirectionChange(direction)
-                } label: {
-                    Label(direction.title, systemImage: direction.systemImage)
-                    if direction == navigationDirection {
-                        Image(systemName: "checkmark")
-                    }
-                }
-            }
-        } label: {
-            Image(systemName: navigationDirection.systemImage)
-                .frame(width: 28, height: 28)
-        }
-        .menuStyle(.borderlessButton)
-        .foregroundStyle(.secondary)
-        .help("Dirección al guardar")
-        .accessibilityLabel("Dirección al guardar")
     }
 
     private var classPicker: some View {

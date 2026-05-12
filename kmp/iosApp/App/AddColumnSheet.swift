@@ -408,12 +408,18 @@ struct AddColumnSheet: View {
         .init(id: "checklist", title: "Lista de control", subtitle: "Sí / No rápido", icon: "checkmark.square", type: .check, categoryKind: .evaluation, instrumentKind: .checklist, inputKind: .check, scaleKind: .yesNo, defaultWeight: 5),
         .init(id: "observation", title: "Observación", subtitle: "Nota corta con inspector", icon: "note.text", type: .text, categoryKind: .followUp, instrumentKind: .systematicObservation, inputKind: .shortNote, scaleKind: .custom, defaultWeight: 0),
         .init(id: "participation", title: "Participación", subtitle: "Selector rápido por chips", icon: "person.2.wave.2", type: .ordinal, categoryKind: .followUp, instrumentKind: .participation, inputKind: .quickSelector, scaleKind: .achievement, defaultWeight: 5),
-        .init(id: "attendance", title: "Asistencia", subtitle: "Presente, ausente o retraso", icon: "person.badge.clock", type: .attendance, categoryKind: .attendance, instrumentKind: .systematicObservation, inputKind: .attendanceStatus, scaleKind: .custom, defaultWeight: 0),
-        .init(id: "physical_test", title: "Prueba física", subtitle: "Tiempo, distancia o repeticiones", icon: "figure.run", type: .numeric, categoryKind: .physicalEducation, instrumentKind: .physicalTest, inputKind: .distance, scaleKind: .distance, defaultWeight: 10),
-        .init(id: "evidence", title: "Evidencia", subtitle: "Archivo o multimedia", icon: "paperclip.circle", type: .text, categoryKind: .extras, instrumentKind: .multimediaEvidence, inputKind: .evidence, scaleKind: .custom, defaultWeight: 0),
         .init(id: "calculated", title: "Cálculo / Fórmula", subtitle: "Fórmula con referencias a columnas", icon: "function", type: .calculated, categoryKind: .evaluation, instrumentKind: .custom, inputKind: .calculated, scaleKind: .tenPoint, defaultWeight: 0),
+        .init(id: "evidence", title: "Evidencia", subtitle: "Adjunto desde inspector o celda", icon: "paperclip.circle", type: .text, categoryKind: .extras, instrumentKind: .multimediaEvidence, inputKind: .evidence, scaleKind: .custom, defaultWeight: 0),
         .init(id: "individual_summary", title: "Síntesis pedagógica", subtitle: "Columna IA editable y regenerable por alumno", icon: "apple.intelligence", type: .text, categoryKind: .followUp, instrumentKind: .privateComment, inputKind: .text, scaleKind: .custom, defaultWeight: 0),
     ]
+
+    private var basicBlueprints: [NotebookColumnBlueprint] {
+        blueprints.filter { ["written_test", "rubric", "checklist", "observation", "participation"].contains($0.id) }
+    }
+
+    private var advancedBlueprints: [NotebookColumnBlueprint] {
+        blueprints.filter { ["calculated", "evidence", "individual_summary"].contains($0.id) }
+    }
 
     private var selectedBlueprint: NotebookColumnBlueprint? {
         guard let selectedBlueprintId else { return nil }
@@ -473,7 +479,7 @@ struct AddColumnSheet: View {
                     selectedCategoryId = initialCategoryId ?? selectedCategoryId ?? suggestedCategoryId
                     categoryPlacementMode = startsCreatingCategory ? .createNew : .existing
                     if selectedBlueprintId == nil {
-                        selectedBlueprintId = blueprints.first?.id
+                        selectedBlueprintId = basicBlueprints.first?.id
                     }
                 }
                 .appOnChange(of: selectedBlueprintId) { _ in
@@ -482,7 +488,6 @@ struct AddColumnSheet: View {
                         selectedCategoryId = suggestedCategoryId
                     }
                 }
-                .task { await loadPhysicalColumnOptions() }
             }
             #if os(iOS)
             .presentationDetents([.large])
@@ -537,25 +542,93 @@ struct AddColumnSheet: View {
             Text("Tipo de columna")
                 .font(.headline)
 
-            Text("Selecciona el tipo que quieres añadir al cuaderno. La síntesis pedagógica también se crea desde aquí.")
+            Text("Elige una columna diaria para evaluar rápido. Lo especializado queda en su módulo o en Avanzado.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
-            VStack(alignment: .leading, spacing: 16) {
-                let columns = [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)]
-                LazyVGrid(columns: columns, spacing: 16) {
-                    ForEach(blueprints) { blueprint in
-                        ColumnBlueprintCard(
-                            blueprint: blueprint,
-                            isSelected: blueprint.id == selectedBlueprint?.id,
-                            tint: color(for: blueprint.categoryKind)
-                        ) {
-                            selectedBlueprintId = blueprint.id
-                        }
+            let columns = [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)]
+
+            LazyVGrid(columns: columns, spacing: 16) {
+                ForEach(basicBlueprints) { blueprint in
+                    ColumnBlueprintCard(
+                        blueprint: blueprint,
+                        isSelected: blueprint.id == selectedBlueprint?.id,
+                        tint: color(for: blueprint.categoryKind)
+                    ) {
+                        selectedBlueprintId = blueprint.id
                     }
                 }
             }
+
+            DisclosureGroup {
+                VStack(alignment: .leading, spacing: 16) {
+                    LazyVGrid(columns: columns, spacing: 16) {
+                        ForEach(advancedBlueprints) { blueprint in
+                            ColumnBlueprintCard(
+                                blueprint: blueprint,
+                                isSelected: blueprint.id == selectedBlueprint?.id,
+                                tint: color(for: blueprint.categoryKind)
+                            ) {
+                                selectedBlueprintId = blueprint.id
+                            }
+                        }
+                    }
+
+                    externalColumnDestinations
+                }
+                .padding(.top, 12)
+            } label: {
+                Label("Avanzado", systemImage: "slider.horizontal.3")
+                    .font(.headline)
+            }
         }
+    }
+
+    private var externalColumnDestinations: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            externalDestinationCard(
+                title: "Asistencia",
+                subtitle: "Los estados de asistencia se gestionan desde el módulo Asistencia.",
+                icon: "person.badge.clock",
+                tint: NotebookStyle.warningTint
+            )
+
+            externalDestinationCard(
+                title: "Pruebas físicas",
+                subtitle: "Crea baterías, asignaciones, marcas y baremos desde EF · Condición física.",
+                icon: "figure.run",
+                tint: .orange
+            )
+        }
+    }
+
+    private func externalDestinationCard(title: String, subtitle: String, icon: String, tint: Color) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(tint)
+                .frame(width: 32, height: 32)
+                .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.subheadline.weight(.bold))
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(NotebookStyle.surfaceSoft)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(NotebookStyle.softBorder, lineWidth: 1)
+        )
     }
 
     private var configurationSection: some View {

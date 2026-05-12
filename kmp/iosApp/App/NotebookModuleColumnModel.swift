@@ -45,20 +45,7 @@ extension NotebookModuleView {
     }
 
     func fixedSegmentsForCurrentView() -> [NotebookFixedColumn] {
-        switch viewPreset {
-        case .all:
-            return [.photo, .name, .group, .followUp, .attendance, .average]
-        case .evaluation:
-            return [.photo, .name, .average]
-        case .followUp:
-            return [.photo, .name, .group, .followUp]
-        case .attendance:
-            return [.photo, .name, .group, .attendance]
-        case .extras:
-            return [.photo, .name]
-        case .physicalEducation:
-            return [.photo, .name]
-        }
+        [.name, .average]
     }
 
     func columnMatchesCurrentView(_ column: NotebookColumnDefinition) -> Bool {

@@ -120,21 +120,6 @@ struct NotebookMacLayout: View {
     @ToolbarContentBuilder
     private var notebookToolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
-            Toggle(isOn: Binding(
-                get: { toolbarActions.isAttendanceQuickMode },
-                set: { _ in toolbarActions.toggleAttendanceQuickMode() }
-            )) {
-                Label("Pase rápido", systemImage: "checklist")
-            }
-            .disabled(!toolbarActions.canMarkAllPresent)
-
-            Button {
-                toolbarActions.markAllPresent()
-            } label: {
-                Label("Todos presentes", systemImage: "person.3.sequence.fill")
-            }
-            .disabled(!toolbarActions.canMarkAllPresent)
-
             Button {
                 toolbarActions.undo()
             } label: {
@@ -156,15 +141,17 @@ struct NotebookMacLayout: View {
             }
 
             Button {
-                toolbarActions.generateSummary()
+                toolbarActions.toggleInspector()
             } label: {
-                Label("Resumen IA", systemImage: "sparkles")
+                Label("Inspector", systemImage: toolbarActions.isInspectorPresented ? "sidebar.right" : "sidebar.right")
             }
+            .disabled(!toolbarActions.canToggleInspector && !toolbarActions.isInspectorPresented)
 
-            ShareLink(item: toolbarActions.exportText ?? "") {
-                Label("Exportar", systemImage: "square.and.arrow.up")
+            Button {
+                toolbarActions.refresh()
+            } label: {
+                Label("Refrescar", systemImage: "arrow.clockwise")
             }
-            .disabled((toolbarActions.exportText ?? "").isEmpty)
         }
     }
 }

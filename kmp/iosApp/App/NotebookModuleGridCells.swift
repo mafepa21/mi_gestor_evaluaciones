@@ -14,32 +14,12 @@ extension NotebookModuleView {
         isHighlighted: Bool = false
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                if let typeBadge {
-                    Text(typeBadge)
-                        .font(.system(size: 9, weight: .black, design: .rounded))
-                        .foregroundStyle(tint)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(
-                            Capsule(style: .continuous)
-                                .fill(tint.opacity(0.14))
-                        )
-                }
-
-                Text(title)
-                    .font(.caption2.weight(isSystemColumn ? .medium : .semibold))
-                    .tracking(0.3)
-                    .textCase(.uppercase)
-                    .foregroundStyle(isSystemColumn ? .secondary : tint)
-                    .lineLimit(1)
-            }
+            Text(title)
+                .font(.caption.weight(isSystemColumn ? .medium : .semibold))
+                .foregroundStyle(isSystemColumn ? .secondary : .primary)
+                .lineLimit(1)
 
             HStack(spacing: 6) {
-                Circle()
-                    .fill(tint.opacity(folderStyle ? 0.8 : 0.5))
-                    .frame(width: 6, height: 6)
-
                 Text(subtitle)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.tertiary)
@@ -113,7 +93,6 @@ extension NotebookModuleView {
                         subtitle: columnHeaderSubtitle(for: column, data: data, rows: visibleRows),
                         width: resolvedColumnWidth(for: column),
                         tint: displayTint(for: column),
-                        typeBadge: typeBadge(for: column),
                         folderStyle: column.categoryId != nil,
                         hasColumnColor: hasCustomColumnColor(column),
                         isHighlighted: highlightedCategoryId == column.categoryId
@@ -324,12 +303,10 @@ extension NotebookModuleView {
 
     func categoryFolderHeader(category: NotebookColumnCategory, columns: [NotebookColumnDefinition], rows: [NotebookTableRow], width: CGFloat) -> some View {
         let categoryTint = tint(for: category)
-        let completed = completedCollapsedCategoryCount(columns, rows: rows)
-
         return HStack(alignment: .top, spacing: 10) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
-                    Image(systemName: category.isCollapsed ? "folder.fill" : "folder.fill.badge.minus")
+                    Image(systemName: "folder.fill")
                         .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(categoryTint)
                     Text(category.name)
@@ -342,30 +319,11 @@ extension NotebookModuleView {
                         .foregroundStyle(categoryTint)
                 }
 
-                Text(columns.isEmpty ? "Carpeta vacía lista para nuevas columnas" : "\(completed)/\(visibleColumnCount(columns)) con datos")
+                Text(columns.isEmpty ? "Sin columnas visibles" : "\(visibleColumnCount(columns)) columnas")
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
-
-            VStack(spacing: 6) {
-                Button {
-                    openAddColumn(in: category)
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 12, weight: .bold))
-                }
-                .buttonStyle(.plain)
-
-                Menu {
-                    categoryContextMenu(category, data: bridge.notebookState as? NotebookUiStateData)
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .font(.system(size: 14, weight: .semibold))
-                }
-                .buttonStyle(.plain)
-            }
-            .foregroundStyle(categoryTint)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -391,56 +349,14 @@ extension NotebookModuleView {
 
     @ViewBuilder
     func columnContextMenu(_ column: NotebookColumnDefinition, data: NotebookUiStateData) -> some View {
-        if isNotebookIndividualSummaryColumn(column) {
-            Button(summaryActionTitle(for: column, data: data)) {
-                notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: column.id)
-            }
-        }
-        if column.type == .calculated {
-            Button("Editar fórmula…") {
-                presentFormulaEditor(for: column)
-            }
-        }
-        if column.type == .rubric {
-            Button("Evaluar alumno…") {
-                let targetRow = inspectorSelection
-                    .flatMap { selection in filteredRows(data: data).first { $0.student.id == selection.studentId } }
-                    ?? filteredRows(data: data).first
-                if let targetRow {
-                    openRubricIndividual(column: column, item: targetRow)
-                } else {
-                    showToast("No hay alumnos disponibles para evaluar", style: .warning)
-                }
-            }
-            Button("Evaluar grupo…") {
-                openRubricBulk(column: column, data: data)
-            }
-        }
         Button("Renombrar") {
             editingColumnId = column.id
             columnDraft = column.title
             isRenameColumnAlertPresented = true
         }
-        Menu("Mover a categoría") {
-            Button("Sin categoría") {
-                bridge.assignColumn(column.id, toCategory: nil)
-                showToast("Columna movida fuera de la carpeta")
-            }
-            ForEach(visibleCategories(data: data), id: \.id) { category in
-                Button(category.name) {
-                    bridge.assignColumn(column.id, toCategory: category.id)
-                    highlightedCategoryId = category.id
-                    showToast("Columna movida a \(category.name)")
-                }
-            }
-        }
-        Menu("Cambiar color") {
-            ForEach(columnColorOptions, id: \.hex) { option in
-                Button(option.label) {
-                    saveColumnMutation(column, colorHex: option.hex)
-                    showToast("Color actualizado")
-                }
-            }
+        Button(column.countsTowardAverage ? "No contar para media" : "Contar para media") {
+            saveColumnMutation(column, countsTowardAverage: !column.countsTowardAverage)
+            showToast(column.countsTowardAverage ? "Columna excluida de la media" : "Columna incluida en la media")
         }
         Button(column.isArchived ? "Restaurar" : (column.isTemporarilyHidden ? "Mostrar" : "Ocultar")) {
             if column.isArchived {
@@ -449,13 +365,57 @@ extension NotebookModuleView {
                 toggleColumnVisibility(column)
             }
         }
-        Button(column.isLocked ? "Desbloquear" : "Bloquear") {
-            saveColumnMutation(column, isLocked: !column.isLocked)
-            showToast(column.isLocked ? "Columna desbloqueada" : "Columna bloqueada")
-        }
-        Button(column.countsTowardAverage ? "No contar para media" : "Contar para media") {
-            saveColumnMutation(column, countsTowardAverage: !column.countsTowardAverage)
-            showToast(column.countsTowardAverage ? "Columna excluida de la media" : "Columna incluida en la media")
+        Menu("Avanzado") {
+            if isNotebookIndividualSummaryColumn(column) {
+                Button(summaryActionTitle(for: column, data: data)) {
+                    notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: column.id)
+                }
+            }
+            if column.type == .calculated {
+                Button("Editar fórmula…") {
+                    presentFormulaEditor(for: column)
+                }
+            }
+            if column.type == .rubric {
+                Button("Evaluar alumno…") {
+                    let targetRow = inspectorSelection
+                        .flatMap { selection in filteredRows(data: data).first { $0.student.id == selection.studentId } }
+                        ?? filteredRows(data: data).first
+                    if let targetRow {
+                        openRubricIndividual(column: column, item: targetRow)
+                    } else {
+                        showToast("No hay alumnos disponibles para evaluar", style: .warning)
+                    }
+                }
+                Button("Evaluar grupo…") {
+                    openRubricBulk(column: column, data: data)
+                }
+            }
+            Menu("Mover a categoría") {
+                Button("Sin categoría") {
+                    bridge.assignColumn(column.id, toCategory: nil)
+                    showToast("Columna movida fuera de la carpeta")
+                }
+                ForEach(visibleCategories(data: data), id: \.id) { category in
+                    Button(category.name) {
+                        bridge.assignColumn(column.id, toCategory: category.id)
+                        highlightedCategoryId = category.id
+                        showToast("Columna movida a \(category.name)")
+                    }
+                }
+            }
+            Menu("Cambiar color") {
+                ForEach(columnColorOptions, id: \.hex) { option in
+                    Button(option.label) {
+                        saveColumnMutation(column, colorHex: option.hex)
+                        showToast("Color actualizado")
+                    }
+                }
+            }
+            Button(column.isLocked ? "Desbloquear" : "Bloquear") {
+                saveColumnMutation(column, isLocked: !column.isLocked)
+                showToast(column.isLocked ? "Columna desbloqueada" : "Columna bloqueada")
+            }
         }
         Button("Eliminar columna", role: .destructive) {
             presentDeleteColumnImpact(column)

@@ -553,19 +553,26 @@ struct NotebookTopBar: View {
     }
 
     var body: some View {
+        Group {
         #if os(macOS)
-        if showsInlineActions {
-            regularTopBar(showAddColumnAction: true)
-        } else {
-            macContextTopBar
-        }
+            if showsInlineActions {
+                regularTopBar(showAddColumnAction: true)
+            } else {
+                macContextTopBar
+            }
         #else
-        if horizontalSizeClass == .compact {
-            compactTopBar
-        } else {
-            regularTopBar(showAddColumnAction: true)
-        }
+            if horizontalSizeClass == .compact {
+                compactTopBar
+            } else {
+                regularTopBar(showAddColumnAction: true)
+            }
         #endif
+        }
+        .onAppear {
+            if surfaceMode != .grid {
+                surfaceMode = .grid
+            }
+        }
     }
 
     private var macContextTopBar: some View {
@@ -574,7 +581,6 @@ struct NotebookTopBar: View {
 
             Spacer(minLength: 0)
 
-            surfaceModePicker
             saveStatusChip
         }
         .padding(.horizontal, 16)
@@ -588,25 +594,13 @@ struct NotebookTopBar: View {
                 classPicker
                 saveStatusChip
                 Spacer(minLength: 0)
-                overflowMenu
+                organizationButton
+                inspectorButton
+                addColumnButton
             }
 
             HStack(spacing: 8) {
                 searchField
-                surfaceModePicker
-            }
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    navigationDirectionMenu
-                    markAllPresentButton
-                    attendanceQuickModeButton
-                    undoButton
-                    organizationButton
-                    inspectorButton
-                    addColumnButton
-                }
-                .padding(.vertical, 2)
             }
         }
         .padding(.horizontal, 16)
@@ -623,20 +617,15 @@ struct NotebookTopBar: View {
             Spacer(minLength: 0)
 
             HStack(spacing: 8) {
-                surfaceModePicker
                 saveStatusChip
             }
 
             Spacer(minLength: 0)
 
             HStack(spacing: 8) {
-                navigationDirectionMenu
-                markAllPresentButton
-                attendanceQuickModeButton
                 undoButton
                 organizationButton
                 inspectorButton
-                overflowMenu
                 if showAddColumnAction {
                     addColumnButton
                 }

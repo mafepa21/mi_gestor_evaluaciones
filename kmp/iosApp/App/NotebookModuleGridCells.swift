@@ -41,23 +41,33 @@ extension NotebookModuleView {
                         )
                 )
         )
+        .overlay(alignment: .topLeading) {
+            if !isSystemColumn {
+                Capsule()
+                    .fill(tint.opacity(hasColumnColor || folderStyle ? 0.65 : 0.28))
+                    .frame(width: 42, height: 3)
+                    .padding(.leading, 8)
+                    .padding(.top, 6)
+            }
+        }
     }
 
     func headerChipFill(tint: Color, folderStyle: Bool, hasColumnColor: Bool, isSystemColumn: Bool) -> Color {
-        if isSystemColumn { return NotebookStyle.surfaceSoft.opacity(0.72) }
-        if hasColumnColor { return tint.opacity(0.18) }
-        return folderStyle ? NotebookStyle.surfaceSoft.opacity(0.55) : Color.clear
+        if isSystemColumn { return NotebookStyle.surfaceSoft.opacity(0.50) }
+        if hasColumnColor { return tint.opacity(0.055) }
+        if folderStyle { return NotebookStyle.surfaceSoft.opacity(0.28) }
+        return NotebookStyle.surfaceSoft.opacity(0.20)
     }
 
     func headerChipStroke(tint: Color, folderStyle: Bool, hasColumnColor: Bool, isSystemColumn: Bool, isHighlighted: Bool) -> Color {
-        if isHighlighted { return tint.opacity(0.32) }
-        if hasColumnColor { return tint.opacity(0.30) }
-        if isSystemColumn { return NotebookStyle.softBorder.opacity(0.70) }
-        return folderStyle ? NotebookStyle.softBorder.opacity(0.80) : Color.clear
+        if isHighlighted { return tint.opacity(0.34) }
+        if hasColumnColor { return tint.opacity(0.16) }
+        if isSystemColumn { return NotebookStyle.softBorder.opacity(0.55) }
+        if folderStyle { return tint.opacity(0.10) }
+        return NotebookStyle.softBorder.opacity(0.35)
     }
 
     func headerChip(for segment: NotebookDisplaySegment, data: NotebookUiStateData) -> some View {
-        let visibleRows = filteredRows(data: data)
         switch segment {
         case .fixed(let fixed):
             let chip = headerChip(
@@ -105,15 +115,14 @@ extension NotebookModuleView {
         case .collapsedCategory(let category, let columns):
             return AnyView(
                 Button {
-                    setCategoryCollapsed(category, collapsed: false)
+                    withAnimation(.snappy(duration: 0.18)) {
+                        setCategoryCollapsed(category, collapsed: false)
+                    }
                 } label: {
-                    headerChip(
-                        title: category.name,
-                        subtitle: collapsedCategoryProgressText(columns: columns, rows: visibleRows),
-                        width: 150,
-                        tint: tint(for: category),
-                        folderStyle: true,
-                        isHighlighted: highlightedCategoryId == category.id
+                    collapsedCategoryHeader(
+                        category: category,
+                        columns: columns,
+                        width: 132
                     )
                 }
                 .buttonStyle(.plain)
@@ -122,6 +131,69 @@ extension NotebookModuleView {
                 }
             )
         }
+    }
+
+    func collapsedCategoryHeader(
+        category: NotebookColumnCategory,
+        columns: [NotebookColumnDefinition],
+        width: CGFloat
+    ) -> some View {
+        let categoryTint = tint(for: category)
+
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 7) {
+                Image(systemName: "rectangle.stack.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(categoryTint)
+                    .accessibilityHidden(true)
+
+                Text(category.name)
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+
+                Spacer(minLength: 4)
+
+                Text("\(columns.count)")
+                    .font(.system(size: 10, weight: .black, design: .rounded))
+                    .foregroundStyle(categoryTint)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(categoryTint.opacity(0.14))
+                    )
+
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+
+            Text(columns.count == 1 ? "Categoría cerrada · 1 columna" : "Categoría cerrada · \(columns.count) columnas")
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(width: width, height: 52, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(categoryTint.opacity(0.075))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(categoryTint.opacity(0.24), lineWidth: 1)
+                )
+        )
+        .overlay(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 999, style: .continuous)
+                .fill(categoryTint.opacity(0.70))
+                .frame(width: 4)
+                .padding(.vertical, 8)
+        }
+        .help("Categoría colapsada. Contiene \(columns.count) columna(s). Haz clic para abrir.")
+        .accessibilityLabel("Categoría colapsada \(category.name). Contiene \(columns.count) columna(s). Haz clic para abrir.")
     }
 
     func tint(for fixed: NotebookFixedColumn) -> Color {
@@ -200,16 +272,19 @@ extension NotebookModuleView {
     }
 
     func notebookColumnCellFill(for column: NotebookColumnDefinition, rowIndex: Int, isActive: Bool) -> Color {
-        if hasCustomColumnColor(column) {
-            return displayTint(for: column).opacity(isActive ? 0.20 : 0.10)
+        if isActive {
+            return Color.accentColor.opacity(0.10)
         }
-        return rowIndex.isMultiple(of: 2) ? NotebookStyle.surfaceMuted.opacity(0.34) : Color.clear
+        if hasCustomColumnColor(column) {
+            return displayTint(for: column).opacity(0.035)
+        }
+        return rowIndex.isMultiple(of: 2) ? NotebookStyle.surfaceSoft.opacity(0.18) : Color.clear
     }
 
     func notebookColumnCellBorder(for column: NotebookColumnDefinition, isActive: Bool) -> Color {
-        if isActive { return Color.accentColor.opacity(0.85) }
-        if hasCustomColumnColor(column) { return displayTint(for: column).opacity(0.24) }
-        return NotebookStyle.softBorder.opacity(0.45)
+        if isActive { return Color.accentColor.opacity(0.75) }
+        if hasCustomColumnColor(column) { return displayTint(for: column).opacity(0.10) }
+        return NotebookStyle.softBorder.opacity(0.26)
     }
 
     func rowCell(
@@ -292,80 +367,91 @@ extension NotebookModuleView {
                 )
             )
         case .collapsedCategory(let category, let columns):
+            let filled = filledCellCount(item, columns: columns)
+            let total = columns.count
+            let categoryTint = tint(for: category)
+
             return AnyView(
                 Button {
-                    setCategoryCollapsed(category, collapsed: false)
+                    withAnimation(.snappy(duration: 0.18)) {
+                        setCategoryCollapsed(category, collapsed: false)
+                    }
                 } label: {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(category.name)
+                    HStack(spacing: 6) {
+                        Image(systemName: "rectangle.stack")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(categoryTint.opacity(0.82))
+                            .accessibilityHidden(true)
+
+                        Text("\(filled)/\(total)")
                             .font(.system(size: 12, weight: .bold, design: .rounded))
                             .foregroundStyle(.primary)
-                        Text("\(filledCellCount(item, columns: columns)) / \(columns.count)")
-                            .font(.system(size: 12, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+
+                        Spacer(minLength: 0)
                     }
-                    .frame(width: 150, alignment: .leading)
-                    .padding(10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(tint(for: category).opacity(0.10))
-                    )
+                        .padding(.horizontal, 10)
+                        .frame(width: 132, height: 34)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(categoryTint.opacity(0.055))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .stroke(categoryTint.opacity(0.12), lineWidth: 1)
+                        )
                 }
                 .buttonStyle(.plain)
-                .frame(width: 150, height: notebookGridRowHeight)
-                .background(tint(for: category).opacity(0.08))
-                .overlay(
-                    Rectangle()
-                        .stroke(NotebookStyle.softBorder.opacity(0.45), lineWidth: 0.5)
-                )
+                .frame(width: 132, height: notebookGridRowHeight)
                 .contextMenu {
                     categoryContextMenu(category, data: data)
                 }
+                .help("Resumen de categoría colapsada: \(filled) de \(total) columnas con datos.")
             )
         }
     }
 
     func categoryFolderHeader(category: NotebookColumnCategory, columns: [NotebookColumnDefinition], rows: [NotebookTableRow], width: CGFloat) -> some View {
         let categoryTint = tint(for: category)
-        return HStack(alignment: .top, spacing: 10) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    Image(systemName: "folder.fill")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(categoryTint)
-                    Text(category.name)
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    Spacer(minLength: 0)
-                    Text("\(columns.count)")
-                        .font(.system(size: 11, weight: .black, design: .rounded))
-                        .foregroundStyle(categoryTint)
-                }
+        return Button {
+            withAnimation(.snappy(duration: 0.18)) {
+                setCategoryCollapsed(category, collapsed: true)
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Capsule()
+                    .fill(categoryTint.opacity(0.75))
+                    .frame(width: 5, height: 18)
 
-                Text(columns.isEmpty ? "Sin columnas visibles" : "\(visibleColumnCount(columns)) columnas")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                Text(category.name)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+
+                Spacer(minLength: 8)
+
+                Text("\(columns.count) columnas")
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+
+                Image(systemName: "chevron.up")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
             }
+            .padding(.horizontal, 10)
+            .frame(width: width, height: 30, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(NotebookStyle.surfaceSoft.opacity(0.42))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .stroke(categoryTint.opacity(0.14), lineWidth: 1)
+            )
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .frame(width: width, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.white.opacity(0.030))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(categoryTint.opacity(highlightedCategoryId == category.id ? 0.48 : 0.20), lineWidth: highlightedCategoryId == category.id ? 1.5 : 1)
-                )
-                .overlay(alignment: .topLeading) {
-                    RoundedRectangle(cornerRadius: 999, style: .continuous)
-                        .fill(categoryTint.opacity(0.72))
-                        .frame(width: min(108, width * 0.48), height: 4)
-                        .offset(x: 12, y: 8)
-                }
-        )
+        .buttonStyle(.plain)
         .contextMenu {
             categoryContextMenu(category, data: bridge.notebookState as? NotebookUiStateData)
         }

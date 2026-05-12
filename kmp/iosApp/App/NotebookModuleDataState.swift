@@ -163,38 +163,36 @@ extension NotebookModuleView {
 
     func displaySegments(data: NotebookUiStateData) -> [NotebookDisplaySegment] {
         var segments = fixedSegmentsForCurrentView().map(NotebookDisplaySegment.fixed)
-        let rows = filteredRows(data: data)
-        let categoriesById = Dictionary(
-            data.sheet.columnCategories.map { ($0.id, $0) },
-            uniquingKeysWith: { first, _ in first }
+        let visibleCategorizedIds = Set(
+            visibleCategories(data: data).map(\.id)
         )
-        let orderedColumns = data.sheet.columns
+
+        let uncategorizedColumns = data.sheet.columns
             .filter(\.isVisibleInGrid)
             .filter { columnMatchesActiveTab($0, data: data) }
             .filter { columnMatchesCurrentView($0) }
+            .filter { column in
+                guard let categoryId = column.categoryId else { return true }
+                return !visibleCategorizedIds.contains(categoryId)
+            }
             .sorted {
                 if $0.isPinned != $1.isPinned { return $0.isPinned && !$1.isPinned }
                 if $0.order != $1.order { return $0.order < $1.order }
                 return $0.id < $1.id
             }
 
-        var emittedCollapsedCategories = Set<String>()
-        for column in orderedColumns {
-            guard let categoryId = column.categoryId, let category = categoriesById[categoryId] else {
-                segments.append(.column(column))
+        segments.append(contentsOf: uncategorizedColumns.map(NotebookDisplaySegment.column))
+
+        for category in visibleCategories(data: data) {
+            let categoryColumns = columns(in: category, data: data)
+            guard !categoryColumns.isEmpty else {
                 continue
             }
-            let categoryColumns = columns(in: category, data: data)
-            let isEmptyCategory = completedCollapsedCategoryCount(categoryColumns, rows: rows) == 0
-            let isCollapsed = isCategoryCollapsed(category) || (isEmptyCategory && !expandedEmptyCategoryIds.contains(category.id))
-            if isCollapsed {
-                if emittedCollapsedCategories.insert(category.id).inserted {
-                    if !categoryColumns.isEmpty {
-                        segments.append(.collapsedCategory(category, categoryColumns))
-                    }
-                }
+
+            if isCategoryCollapsed(category) {
+                segments.append(.collapsedCategory(category, categoryColumns))
             } else {
-                segments.append(.column(column))
+                segments.append(contentsOf: categoryColumns.map(NotebookDisplaySegment.column))
             }
         }
         return segments

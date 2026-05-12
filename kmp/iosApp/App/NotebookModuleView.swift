@@ -12,7 +12,7 @@ struct NotebookModuleView: View {
     let notebookGridRowHeight: CGFloat = 60
     #endif
     let notebookGridHeaderHeight: CGFloat = 56
-    let notebookGridFolderLaneHeight: CGFloat = 40
+    let notebookGridFolderLaneHeight: CGFloat = 34
 
     @EnvironmentObject var layoutState: WorkspaceLayoutState
     @ObservedObject var bridge: KmpBridge
@@ -120,15 +120,17 @@ struct NotebookModuleView: View {
     }
 
     func setCategoryCollapsed(_ category: NotebookColumnCategory, collapsed: Bool) {
-        var ids = collapsedCategoryIds()
-        if collapsed {
-            ids.insert(category.id)
-        } else {
-            ids.remove(category.id)
-            expandedEmptyCategoryIds.insert(category.id)
+        withAnimation(.snappy(duration: 0.18)) {
+            var ids = collapsedCategoryIds()
+            if collapsed {
+                ids.insert(category.id)
+            } else {
+                ids.remove(category.id)
+                expandedEmptyCategoryIds.insert(category.id)
+            }
+            UserDefaults.standard.set(ids.sorted().joined(separator: ","), forKey: collapsedCategoryStorageKey)
+            bridge.toggleColumnCategory(id: category.id, collapsed: collapsed)
         }
-        UserDefaults.standard.set(ids.sorted().joined(separator: ","), forKey: collapsedCategoryStorageKey)
-        bridge.toggleColumnCategory(id: category.id, collapsed: collapsed)
     }
 
     var inspectorSelection: NotebookInspectorSelection? {
@@ -423,8 +425,8 @@ struct NotebookModuleView: View {
                         }
                     }
                     .padding(.horizontal, 16)
-                    .padding(.top, 10)
-                    .padding(.bottom, 8)
+                    .padding(.top, 4)
+                    .padding(.bottom, 2)
                 }
             }
         } dividerHandle: {
@@ -532,7 +534,7 @@ struct NotebookModuleView: View {
         case .column(let column):
             return resolvedColumnWidth(for: column)
         case .collapsedCategory:
-            return 150
+            return 132
         }
     }
 

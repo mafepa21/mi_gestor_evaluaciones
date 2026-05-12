@@ -12,34 +12,47 @@ extension NotebookModuleView {
             visibleCategories(data: data).map { ($0.id, $0) },
             uniquingKeysWith: { first, _ in first }
         )
-        var emittedCategoryIds = Set<String>()
 
-        for segment in segments {
+        var index = 0
+        while index < segments.count {
+            let segment = segments[index]
             switch segment {
             case .fixed(let fixed):
                 items.append(.spacer(id: "fixed_\(fixed.id)", width: fixed.width))
-            case .collapsedCategory(let category, _):
-                items.append(.spacer(id: "collapsed_\(category.id)", width: 150))
+                index += 1
+            case .collapsedCategory:
+                items.append(.spacer(id: segment.id, width: segmentWidth(segment)))
+                index += 1
             case .column(let column):
                 guard let categoryId = column.categoryId,
                       let category = categoriesById[categoryId],
-                      !category.isCollapsed else {
-                    items.append(.spacer(id: "column_\(column.id)", width: CGFloat(max(column.widthDp, 120))))
+                      !isCategoryCollapsed(category) else {
+                    items.append(.spacer(id: segment.id, width: segmentWidth(segment)))
+                    index += 1
                     continue
                 }
-                guard emittedCategoryIds.insert(category.id).inserted else { continue }
-                let categoryColumns = columns(in: category, data: data)
-                let totalWidth = categoryColumns.reduce(CGFloat(0)) { partial, column in
-                    partial + CGFloat(max(column.widthDp, 120))
-                } + CGFloat(max(categoryColumns.count - 1, 0) * 8)
-                items.append(.folder(category, categoryColumns, totalWidth))
-            }
-        }
 
-        let emptyCategories = visibleCategories(data: data)
-            .filter { columns(in: $0, data: data, includeHidden: true).isEmpty }
-        for category in emptyCategories where emittedCategoryIds.insert(category.id).inserted {
-            items.append(.folder(category, [], 168))
+                var runColumns: [NotebookColumnDefinition] = []
+                var runWidth: CGFloat = 0
+                var cursor = index
+
+                while cursor < segments.count {
+                    guard case .column(let runColumn) = segments[cursor],
+                          runColumn.categoryId == categoryId else {
+                        break
+                    }
+
+                    if !runColumns.isEmpty {
+                        runWidth += 8
+                    }
+                    runColumns.append(runColumn)
+                    runWidth += segmentWidth(.column(runColumn))
+                    cursor += 1
+                }
+
+                items.append(.folder(category, runColumns, runWidth))
+                index = cursor
+            }
         }
         return items
     }

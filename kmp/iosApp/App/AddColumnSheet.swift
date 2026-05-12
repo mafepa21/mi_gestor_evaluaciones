@@ -997,7 +997,7 @@ struct AddColumnSheet: View {
 
         var resolvedCategoryId = categoryPlacementMode == .existing ? selectedCategoryId : nil
         if categoryPlacementMode == .createNew {
-            let generatedCategoryId = "cat_\(Int64(Date().timeIntervalSince1970 * 1000))"
+            let generatedCategoryId = UUID().uuidString
             bridge.saveColumnCategory(name: resolvedNewCategoryName, categoryId: generatedCategoryId)
             resolvedCategoryId = generatedCategoryId
         }
@@ -1031,10 +1031,12 @@ struct AddColumnSheet: View {
         guard let selectedBlueprint else { return }
         var resolvedCategoryId = categoryPlacementMode == .existing ? selectedCategoryId : nil
         if categoryPlacementMode == .createNew {
-            let generatedCategoryId = "cat_\(Int64(Date().timeIntervalSince1970 * 1000))"
+            let generatedCategoryId = UUID().uuidString
             bridge.saveColumnCategory(name: resolvedNewCategoryName, categoryId: generatedCategoryId)
             resolvedCategoryId = generatedCategoryId
         }
+
+        let activeTabIds: [String] = bridge.selectedNotebookTabId.map { [$0] } ?? []
 
         guard let columnId = bridge.createNotebookAICommentColumn(name: resolvedColumnName),
               let data = bridge.notebookState as? NotebookUiStateData,
@@ -1057,9 +1059,9 @@ struct AddColumnSheet: View {
             unitOrSituation: NotebookIndividualSummaryPreferences.marker,
             competencyCriteriaIds: createdColumn.competencyCriteriaIds,
             scaleKind: createdColumn.scaleKind,
-            tabIds: createdColumn.tabIds,
+            tabIds: activeTabIds,
             sessions: createdColumn.sessions,
-            sharedAcrossTabs: createdColumn.sharedAcrossTabs,
+            sharedAcrossTabs: activeTabIds.isEmpty,
             colorHex: createdColumn.colorHex,
             iconName: createdColumn.iconName,
             order: createdColumn.order,

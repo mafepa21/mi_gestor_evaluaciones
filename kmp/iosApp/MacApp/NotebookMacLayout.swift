@@ -11,9 +11,32 @@ struct NotebookMacLayout: View {
 
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
     let presentation: NotebookMacPresentation
+    let onToggleInspectorColumn: (() -> Void)?
 
     @State private var searchText = ""
     @FocusState private var isSearchFocused: Bool
+
+    init(
+        bridge: KmpBridge,
+        layoutState: WorkspaceLayoutState,
+        toolbarActions: NotebookMacToolbarActions,
+        inspectorState: NotebookMacInspectorState,
+        selectedClassId: Binding<Int64?>,
+        selectedStudentId: Binding<Int64?>,
+        onOpenModule: @escaping (AppWorkspaceModule, Int64?, Int64?) -> Void,
+        presentation: NotebookMacPresentation,
+        onToggleInspectorColumn: (() -> Void)? = nil
+    ) {
+        self.bridge = bridge
+        self.layoutState = layoutState
+        self.toolbarActions = toolbarActions
+        self.inspectorState = inspectorState
+        self._selectedClassId = selectedClassId
+        self._selectedStudentId = selectedStudentId
+        self.onOpenModule = onOpenModule
+        self.presentation = presentation
+        self.onToggleInspectorColumn = onToggleInspectorColumn
+    }
 
     private var showsNotebookToolbar: Bool {
         presentation == .content || presentation == .full
@@ -141,11 +164,15 @@ struct NotebookMacLayout: View {
             }
 
             Button {
-                toolbarActions.toggleInspector()
+                if let onToggleInspectorColumn {
+                    onToggleInspectorColumn()
+                } else {
+                    toolbarActions.toggleInspector()
+                }
             } label: {
-                Label("Inspector", systemImage: toolbarActions.isInspectorPresented ? "sidebar.right" : "sidebar.right")
+                Label("Inspector", systemImage: "sidebar.right")
             }
-            .disabled(!toolbarActions.canToggleInspector && !toolbarActions.isInspectorPresented)
+            .disabled(!toolbarActions.canToggleInspector && !inspectorState.isPresented && !toolbarActions.isInspectorPresented)
 
             Button {
                 toolbarActions.refresh()

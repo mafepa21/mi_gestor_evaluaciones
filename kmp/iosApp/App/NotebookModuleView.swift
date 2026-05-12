@@ -7,12 +7,12 @@ import UIKit
 
 struct NotebookModuleView: View {
     #if os(macOS)
-    let notebookGridRowHeight: CGFloat = 64
+    let notebookGridRowHeight: CGFloat = 50
     #else
-    let notebookGridRowHeight: CGFloat = 72
+    let notebookGridRowHeight: CGFloat = 60
     #endif
-    let notebookGridHeaderHeight: CGFloat = 68
-    let notebookGridFolderLaneHeight: CGFloat = 64
+    let notebookGridHeaderHeight: CGFloat = 56
+    let notebookGridFolderLaneHeight: CGFloat = 40
 
     @EnvironmentObject var layoutState: WorkspaceLayoutState
     @ObservedObject var bridge: KmpBridge
@@ -156,6 +156,40 @@ struct NotebookModuleView: View {
         nonmutating set { inspectorState.isPresented = newValue }
     }
 
+    func closeInspectorAndTransientState() {
+        isInspectorPresented = false
+        inspectorSelection = nil
+        inspectorNoteDraft = ""
+        inspectorIconDraft = ""
+        inspectorAttachmentUris = []
+
+        selectedAttachmentPhoto = nil
+        averageExplanationRow = nil
+        currentSelectionAuditEvents = []
+
+        auditObservationTask?.cancel()
+        auditObservationTask = nil
+    }
+
+    func resetNotebookTransientStateForClassChange() {
+        closeInspectorAndTransientState()
+
+        selectedStudentId = nil
+        selectedGroupId = nil
+        highlightedRandomStudentId = nil
+        activeChoiceCellId = nil
+        focusedCellId = nil
+
+        undoStack = []
+        todayAttendanceByStudentId = [:]
+        incidentCountByStudentId = [:]
+        riskLevelCache = [:]
+        riskComputationKey = nil
+        isPrecomputingRiskLevels = false
+
+        cellReloadRevision += 1
+    }
+
     var isMacInspectorOnly: Bool {
         macPresentation == .inspector
     }
@@ -223,11 +257,13 @@ struct NotebookModuleView: View {
                         isOrganizationMenuPresented = true
                     },
                     onToggleInspector: {
-                        if inspectorSelection == nil {
-                            openInspectorForSelection(data)
-                        }
-                        if inspectorSelection != nil {
-                            isInspectorPresented.toggle()
+                        if isInspectorPresented {
+                            closeInspectorAndTransientState()
+                        } else {
+                            if inspectorSelection == nil {
+                                openInspectorForSelection(data)
+                            }
+                            isInspectorPresented = inspectorSelection != nil
                         }
                     },
                     onOpenAdvancedMenu: {
@@ -467,11 +503,7 @@ struct NotebookModuleView: View {
     var maxFixedZoneWidth: CGFloat { 700 }
 
     var visibleFixedColumns: [NotebookFixedColumn] {
-        var columns: [NotebookFixedColumn] = [.photo, .name]
-        if fixedZoneWidth > 290 { columns.append(.followUp) }
-        if fixedZoneWidth > 400 { columns.append(.attendance) }
-        if fixedZoneWidth > 490 { columns.append(.group) }
-        return columns
+        [.name]
     }
 
     func snapFixedZoneWidth() {
@@ -512,12 +544,14 @@ struct NotebookModuleView: View {
         }
         let spacing = CGFloat(max(visibleColumns.count - 1, 0)) * 8
         let horizontalPadding: CGFloat = 32
+        let photoWidth: CGFloat = visibleColumns.contains(.photo) ? 52 : 0
 
         switch fixed {
         case .photo:
             return 52
         case .name:
-            return max(156, fixedZoneWidth - trailingWidth - spacing - horizontalPadding - 52)
+            let availableWidth = fixedZoneWidth - trailingWidth - spacing - horizontalPadding - photoWidth
+            return max(CGFloat(156), availableWidth)
         default:
             return defaultFixedWidth(for: fixed)
         }
@@ -606,6 +640,9 @@ struct NotebookModuleView: View {
                     scheduleToolbarStateSync(data: data)
                 }
             }
+            .appOnChange(of: "\(data.sheet.classId)") { _ in
+                resetNotebookTransientStateForClassChange()
+            }
             .appOnChange(of: notebookTabsStateKey(data: data)) { _ in
                 if !isMacInspectorOnly {
                     scheduleActiveNotebookTabSync(data: data)
@@ -671,21 +708,15 @@ struct NotebookModuleView: View {
     func gridRowInvalidationKey(data: NotebookUiStateData) -> String {
         [
             inspectorSelection?.id ?? "none",
-            "\(isInspectorPresented)",
             "\(isAttendanceQuickMode)",
             "\(cellReloadRevision)",
             activeChoiceCellId ?? "none",
             focusedCellId ?? "none",
-            todayAttendanceByStudentId
-                .sorted { $0.key < $1.key }
-                .map { "\($0.key):\($0.value)" }
-                .joined(separator: ","),
-            incidentCountByStudentId
-                .sorted { $0.key < $1.key }
-                .map { "\($0.key):\($0.value)" }
-                .joined(separator: ","),
-            "\(riskLevelCache.count)",
-            "\(data.sheet.columns.count)"
+            "attendance:\(todayAttendanceByStudentId.count)",
+            "incidents:\(incidentCountByStudentId.count)",
+            "risk:\(riskLevelCache.count)",
+            "columns:\(data.sheet.columns.count)",
+            "rows:\(data.sheet.rows.count)"
         ].joined(separator: "¬")
     }
 

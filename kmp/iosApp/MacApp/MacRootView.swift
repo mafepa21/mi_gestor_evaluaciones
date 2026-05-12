@@ -63,7 +63,19 @@ struct MacRootView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(MacAppStyle.pageBackground)
         } detail: {
-            featureInspectorColumn(for: selectedFeature)
+            if selectedFeature == .notebook {
+                if isNotebookInspectorColumnVisible {
+                    featureInspector(for: selectedFeature)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(MacAppStyle.pageBackground)
+                } else {
+                    EmptyView()
+                }
+            } else {
+                featureInspector(for: selectedFeature)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(MacAppStyle.pageBackground)
+            }
         }
         .navigationSplitViewStyle(.balanced)
         .toolbar {
@@ -117,10 +129,12 @@ struct MacRootView: View {
     ) {
         guard selectedFeature != feature || session.selectedFeature != feature else { return }
         selectedFeature = feature
-        columnVisibility = .all
         if feature == .notebook {
             isNotebookInspectorColumnVisible = false
             closeNotebookInspectorStateAfterViewUpdate()
+            columnVisibility = .doubleColumn
+        } else {
+            columnVisibility = .all
         }
         guard propagateToSession else { return }
         Task { @MainActor in
@@ -150,7 +164,8 @@ struct MacRootView: View {
                 selectedClassId: $selectedClassId,
                 selectedStudentId: $selectedStudentId,
                 onOpenModule: open(module:classId:studentId:),
-                presentation: .content
+                presentation: .content,
+                onToggleInspectorColumn: toggleNotebookInspectorColumn
             )
         case .attendance:
             MacAttendanceView(
@@ -402,8 +417,8 @@ struct MacRootView: View {
 
         if isNotebookInspectorColumnVisible {
             isNotebookInspectorColumnVisible = false
+            columnVisibility = .doubleColumn
             closeNotebookInspectorStateAfterViewUpdate()
-            columnVisibility = .all
             return
         }
 

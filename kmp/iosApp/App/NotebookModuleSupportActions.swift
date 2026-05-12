@@ -18,26 +18,19 @@ extension NotebookModuleView {
 
     func refreshNotebookSignals() async {
         guard let classId = selectedClassId ?? bridge.notebookViewModel.currentClassId?.int64Value else { return }
-        do {
-            let attendance = try await bridge.attendanceRecords(for: classId, on: Date())
-            await MainActor.run {
-                todayAttendanceByStudentId = Dictionary(
-                    attendance.map { ($0.studentId, $0.status) },
-                    uniquingKeysWith: { _, latest in latest }
-                )
-            }
-        } catch {
-            await MainActor.run { todayAttendanceByStudentId = [:] }
-        }
+        async let attendanceResult = try? bridge.attendanceRecords(for: classId, on: Date())
+        async let incidentsResult = try? bridge.incidents(for: classId)
 
-        do {
-            let incidents = try await bridge.incidents(for: classId)
+        let attendance = await attendanceResult ?? []
+        let incidents = await incidentsResult ?? []
+
+        await MainActor.run {
+            todayAttendanceByStudentId = Dictionary(
+                attendance.map { ($0.studentId, $0.status) },
+                uniquingKeysWith: { _, latest in latest }
+            )
             let counts = Dictionary(grouping: incidents.compactMap { $0.studentId?.int64Value }, by: { $0 }).mapValues(\.count)
-            await MainActor.run {
-                incidentCountByStudentId = counts
-            }
-        } catch {
-            await MainActor.run { incidentCountByStudentId = [:] }
+            incidentCountByStudentId = counts
         }
     }
 

@@ -66,28 +66,13 @@ struct NotebookGridContent<
 
     private func rowSignature(index: Int, item: NotebookTableRow, segments: [NotebookDisplaySegment]) -> String {
         let segmentKey = segments.map(\.id).joined(separator: ",")
-        let visibleColumnIds = Set(segments.compactMap { segment -> String? in
-            if case .column(let column) = segment { return column.id }
-            return nil
-        })
-        let cellKey = item.row.persistedCells
-            .filter { visibleColumnIds.contains($0.columnId) }
-            .map { cell in
-                [
-                    cell.columnId,
-                    cell.textValue ?? "",
-                    cell.iconValue ?? "",
-                    cell.displayValue ?? ""
-                ].joined(separator: ":")
-            }
-            .joined(separator: "|")
+        let cellCount = item.row.persistedCells.count
+        let average = item.row.weightedAverage.map { String(format: "%.2f", $0.doubleValue) } ?? "nil"
         return [
-            "\(index)",
             "\(item.student.id)",
-            item.groupName,
-            String(describing: item.row.weightedAverage),
+            average,
+            "\(cellCount)",
             segmentKey,
-            cellKey,
             rowInvalidationKey
         ].joined(separator: "¬")
     }

@@ -41,6 +41,10 @@ struct NotebookEditableTableCell: View {
     let onCellSaved: () -> Void
     let onAttendanceSaved: () -> Void
 
+    private var persistedCell: PersistedNotebookCell? {
+        item.row.persistedCells.first(where: { $0.columnId == column.id })
+    }
+
     @State private var numericDraft = ""
     @State private var textDraft = ""
     @State private var checkDraft = false
@@ -57,7 +61,6 @@ struct NotebookEditableTableCell: View {
     }
 
     var body: some View {
-        let persistedCell = item.row.persistedCells.first(where: { $0.columnId == column.id })
         ZStack {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(editableCellFill)
@@ -562,14 +565,26 @@ struct NotebookEditableTableCell: View {
 
     private func loadDrafts() {
         hasLoadedDrafts = false
-        numericDraft = bridge.numericGradeText(studentId: item.student.id, columnId: column.id)
-        textDraft = bridge.cellText(studentId: item.student.id, columnId: column.id)
-        checkDraft = bridge.cellCheck(studentId: item.student.id, columnId: column.id)
-        originalNumericDraft = numericDraft
-        originalTextDraft = textDraft
-        originalCheckDraft = checkDraft
+        let cell = persistedCell
+        switch column.type {
+        case .check:
+            checkDraft = (cell?.textValue ?? "").lowercased() == "true"
+            originalCheckDraft = checkDraft
+        case .ordinal, .text, .icon, .attendance:
+            textDraft = cell?.textValue ?? cell?.displayValue ?? ""
+            originalTextDraft = textDraft
+        case .numeric:
+            if let cell, !(cell.textValue ?? "").isEmpty {
+                numericDraft = bridge.numericGradeText(studentId: item.student.id, columnId: column.id)
+            } else {
+                numericDraft = ""
+            }
+            originalNumericDraft = numericDraft
+        default:
+            break
+        }
         DispatchQueue.main.async {
-            hasLoadedDrafts = true
+            self.hasLoadedDrafts = true
         }
     }
 

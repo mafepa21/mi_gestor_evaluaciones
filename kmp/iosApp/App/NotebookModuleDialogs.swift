@@ -8,13 +8,7 @@ extension NotebookModuleView {
             if let data = bridge.notebookState as? NotebookUiStateData {
                 notebookLoadedContent(data: data)
             } else if bridge.notebookState is NotebookUiStateLoading {
-                NotebookStateCard(
-                    systemImage: "tablecells",
-                    title: "Cargando cuaderno",
-                    message: "Estamos preparando el cuaderno iPad."
-                ) {
-                    ProgressView()
-                }
+                NotebookSkeletonGridView(rowCount: 14, columnCount: 7)
             } else if let error = bridge.notebookState as? NotebookUiStateError {
                 NotebookStateCard(
                     systemImage: "exclamationmark.triangle",
@@ -218,7 +212,8 @@ extension NotebookModuleView {
                 restoreSeatPositions()
                 await refreshNotebookSignals()
             }
-            .task(id: notebookRiskRefreshKey) {
+            .task(id: isInspectorPresented ? inspectorSelection?.id : nil) {
+                guard isInspectorPresented, inspectorSelection != nil else { return }
                 await precomputeRiskLevelsForVisibleRows()
             }
     }
@@ -249,25 +244,21 @@ extension NotebookModuleView {
             .appOnChange(of: inspectorSelection) { newValue in
                 Task { @MainActor in
                     syncInspectorDraft()
-                    auditObservationTask?.cancel()
-                    currentSelectionAuditEvents = []
-
-                    if let selection = newValue {
-                        auditObservationTask = Task { @MainActor in
-                            let sequence = bridge.notebookViewModel.observeCellAudit(
-                                studentId: selection.studentId,
-                                columnId: selection.columnId
-                            ).asAsyncSequence(type: NSArray.self)
-
-                            for await events in sequence {
-                                if Task.isCancelled { break }
-                                currentSelectionAuditEvents = (events as? [NotebookCellAuditEvent]) ?? []
-                            }
-                        }
-                    }
+                    startSelectionAuditObservationIfNeeded(for: newValue)
 
                     if newValue == nil {
                         isInspectorPresented = false
+                    }
+                }
+            }
+            .appOnChange(of: isInspectorPresented) { presented in
+                Task { @MainActor in
+                    if presented {
+                        startSelectionAuditObservationIfNeeded(for: inspectorSelection)
+                    } else {
+                        auditObservationTask?.cancel()
+                        auditObservationTask = nil
+                        currentSelectionAuditEvents = []
                     }
                 }
             }
@@ -275,6 +266,28 @@ extension NotebookModuleView {
                 guard let newValue else { return }
                 Task { await importSelectedAttachment(from: newValue) }
             }
+    }
+
+    private func startSelectionAuditObservationIfNeeded(for selection: NotebookInspectorSelection?) {
+        auditObservationTask?.cancel()
+        auditObservationTask = nil
+        guard isInspectorPresented, let selection else {
+            currentSelectionAuditEvents = []
+            return
+        }
+
+        currentSelectionAuditEvents = []
+        auditObservationTask = Task { @MainActor in
+            let sequence = bridge.notebookViewModel.observeCellAudit(
+                studentId: selection.studentId,
+                columnId: selection.columnId
+            ).asAsyncSequence(type: NSArray.self)
+
+            for await events in sequence {
+                if Task.isCancelled { break }
+                currentSelectionAuditEvents = (events as? [NotebookCellAuditEvent]) ?? []
+            }
+        }
     }
 
     func notebookToolbarObservationModifiers<Content: View>(_ content: Content) -> some View {

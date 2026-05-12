@@ -1,6 +1,6 @@
 import Foundation
 
-#if canImport(FoundationModels)
+#if canImport(FoundationModels) && !os(macOS)
 import FoundationModels
 #endif
 
@@ -489,7 +489,8 @@ struct AppleFoundationModelMessages {
 enum AppleFoundationModelSupport {
     private static var cachedAvailability: (checkedAt: Date, value: AppleFoundationModelAvailability)?
     private static var runtimeUnavailableUntil: Date?
-    private static let availabilityCacheWindow: TimeInterval = 30
+    private static let availableCacheWindow: TimeInterval = 30
+    private static let unavailableCacheWindow: TimeInterval = 300
     private static let runtimeFailureCooldown: TimeInterval = 300
 
     static func resolveAvailability(isEnabled: Bool) -> AppleFoundationModelAvailability {
@@ -497,15 +498,22 @@ enum AppleFoundationModelSupport {
             return .disabled
         }
 
+        #if os(macOS)
+        guard UserDefaults.standard.bool(forKey: "apple.foundation.models.macos.enabled") else {
+            return .disabled
+        }
+        #endif
+
         let now = Date()
         if let runtimeUnavailableUntil, runtimeUnavailableUntil > now {
             return .unavailable("Apple Foundation Models no está respondiendo ahora mismo. Se usará el flujo manual y se reintentará más tarde.")
         }
-        if let cachedAvailability, now.timeIntervalSince(cachedAvailability.checkedAt) < availabilityCacheWindow {
+        if let cachedAvailability,
+           now.timeIntervalSince(cachedAvailability.checkedAt) < cacheWindow(for: cachedAvailability.value) {
             return cachedAvailability.value
         }
 
-        #if canImport(FoundationModels)
+        #if canImport(FoundationModels) && !os(macOS)
         if #available(iOS 26.0, macOS 26.0, *) {
             let resolved: AppleFoundationModelAvailability
             switch SystemLanguageModel.default.availability {
@@ -533,6 +541,10 @@ enum AppleFoundationModelSupport {
         #else
         return .frameworkUnavailable
         #endif
+    }
+
+    private static func cacheWindow(for availability: AppleFoundationModelAvailability) -> TimeInterval {
+        availability == .available ? availableCacheWindow : unavailableCacheWindow
     }
 
     static func recordRuntimeFailure(_ error: Error) {
@@ -568,7 +580,7 @@ enum AppleFoundationModelSupport {
         return knownGenerationErrors.first { description.contains($0.needle) }?.label ?? "runtimeFailure"
     }
 
-    #if canImport(FoundationModels)
+    #if canImport(FoundationModels) && !os(macOS)
     @available(iOS 26.0, macOS 26.0, *)
     static func generationOptions(temperature: Double) -> GenerationOptions {
         GenerationOptions(temperature: temperature)
@@ -982,13 +994,16 @@ final class AppleFoundationContextualAIService {
     )
     private var availabilityRetryTask: Task<Void, Never>?
 
-    #if canImport(FoundationModels)
+    #if canImport(FoundationModels) && !os(macOS)
     private var cachedContextualSessionStorage: Any?
     private var cachedNotebookSessionStorage: Any?
     private var activeTeachingSessionStorage: Any?
+    #endif
+
     private var activeTeachingRiskLevel: RiskLevel?
     private var activeTeachingConfidenceFallback: String?
 
+    #if canImport(FoundationModels) && !os(macOS)
     @available(iOS 26.0, macOS 26.0, *)
     private func makeContextualSession() -> LanguageModelSession {
         LanguageModelSession(
@@ -1047,7 +1062,7 @@ final class AppleFoundationContextualAIService {
         let resolved = AppleFoundationModelSupport.resolveAvailability(isEnabled: AIContextualFeatureFlags.isEnabled)
         scheduleAvailabilityRetryIfNeeded(for: resolved)
 
-        #if canImport(FoundationModels)
+        #if canImport(FoundationModels) && !os(macOS)
         if #available(iOS 26.0, macOS 26.0, *), resolved == .available {
             if cachedContextualSessionStorage == nil {
                 cachedContextualSessionStorage = makeContextualSession()
@@ -1060,7 +1075,7 @@ final class AppleFoundationContextualAIService {
     }
 
     func clearActiveConversation() {
-        #if canImport(FoundationModels)
+        #if canImport(FoundationModels) && !os(macOS)
         if #available(iOS 26.0, macOS 26.0, *) {
             activeTeachingSessionStorage = nil
         }
@@ -1086,7 +1101,7 @@ final class AppleFoundationContextualAIService {
             return fallbackResult(from: context, action: action)
         }
 
-        #if canImport(FoundationModels)
+        #if canImport(FoundationModels) && !os(macOS)
         if #available(iOS 26.0, macOS 26.0, *) {
             do {
                 let result = try await generateLocalResult(
@@ -1122,7 +1137,7 @@ final class AppleFoundationContextualAIService {
             return fallbackNotebookComment(from: context)
         }
 
-        #if canImport(FoundationModels)
+        #if canImport(FoundationModels) && !os(macOS)
         if #available(iOS 26.0, macOS 26.0, *) {
             do {
                 let result = try await generateLocalNotebookComment(from: context, audience: audience, tone: tone)
@@ -1153,7 +1168,7 @@ final class AppleFoundationContextualAIService {
             return fallbackTeachingDraft(from: evidence)
         }
 
-        #if canImport(FoundationModels)
+        #if canImport(FoundationModels) && !os(macOS)
         if #available(iOS 26.0, macOS 26.0, *) {
             do {
                 return try await generateLocalTeachingDraft(
@@ -1181,7 +1196,7 @@ final class AppleFoundationContextualAIService {
             throw AIContextualServiceError.unavailable(availability.message)
         }
 
-        #if canImport(FoundationModels)
+        #if canImport(FoundationModels) && !os(macOS)
         if #available(iOS 26.0, macOS 26.0, *) {
             return try await refineActiveTeachingDraftLocally(with: cleaned)
         }
@@ -1198,7 +1213,7 @@ final class AppleFoundationContextualAIService {
             return fallbackPhysicalScaleRecommendation(from: input, seedRanges: seedRanges)
         }
 
-        #if canImport(FoundationModels)
+        #if canImport(FoundationModels) && !os(macOS)
         if #available(iOS 26.0, macOS 26.0, *) {
             return try await generateLocalPhysicalScaleRecommendation(from: input, seedRanges: seedRanges)
         }
@@ -1216,7 +1231,7 @@ final class AppleFoundationContextualAIService {
         )
     }
 
-    #if canImport(FoundationModels)
+    #if canImport(FoundationModels) && !os(macOS)
     @available(iOS 26.0, macOS 26.0, *)
     private func refineActiveTeachingDraftLocally(with cleaned: String) async throws -> TeachingAssistantDraft {
         guard let session = activeTeachingSessionStorage as? LanguageModelSession else {
@@ -1645,6 +1660,8 @@ final class AppleFoundationContextualAIService {
         )
     }
 
+    #endif
+
     private func fallbackPhysicalScaleRecommendation(
         from input: PhysicalScaleRecommendationInput,
         seedRanges: [PhysicalScaleRecommendedRange]
@@ -1788,6 +1805,7 @@ final class AppleFoundationContextualAIService {
         _ = currentAvailability()
     }
 
+    #if canImport(FoundationModels) && !os(macOS)
     @available(iOS 26.0, macOS 26.0, *)
     @Generable
     struct GeneratedContextualAIResult {

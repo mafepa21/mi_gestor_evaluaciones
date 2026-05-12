@@ -22,6 +22,7 @@ final class MacCommandCenterCoordinator: ObservableObject {
     private var lastFailureMessage: String?
     private var lastRunningSnapshot: RunningSnapshot?
     private var lastPublishedPairingPayload: String?
+    private var stateUpdateGeneration = 0
 
     init() {
         observers.append(NotificationCenter.default.addObserver(
@@ -259,8 +260,14 @@ final class MacCommandCenterCoordinator: ObservableObject {
     }
 
     private func updateState(_ newState: ApplePairingServiceState, message: String) {
-        serviceState = newState
-        statusMessage = message
+        stateUpdateGeneration += 1
+        let generation = stateUpdateGeneration
+        Task { @MainActor in
+            await Task.yield()
+            guard generation == stateUpdateGeneration else { return }
+            serviceState = newState
+            statusMessage = message
+        }
     }
 
     private func terminateStaleHelperProcesses(executableURL: URL) {

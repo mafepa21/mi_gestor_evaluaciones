@@ -77,6 +77,13 @@ extension NotebookModuleView {
         }
     }
 
+    func scheduleActiveNotebookTabSync(data: NotebookUiStateData) {
+        Task { @MainActor in
+            await Task.yield()
+            ensureActiveNotebookTab(data: data)
+        }
+    }
+
     func selectNotebookTab(_ tabId: String) {
         selectedGroupId = nil
         inspectorSelection = nil
@@ -194,18 +201,16 @@ extension NotebookModuleView {
     }
 
     func scheduleToolbarStateSync(data: NotebookUiStateData) {
-        DispatchQueue.main.async {
-            Task { @MainActor in
-                syncToolbarState(data: data)
-            }
+        Task { @MainActor in
+            await Task.yield()
+            syncToolbarState(data: data)
         }
     }
 
     func scheduleToolbarStateSyncIfLoaded() {
-        DispatchQueue.main.async {
-            Task { @MainActor in
-                syncToolbarStateIfLoaded()
-            }
+        Task { @MainActor in
+            await Task.yield()
+            syncToolbarStateIfLoaded()
         }
     }
 
@@ -251,7 +256,6 @@ extension NotebookModuleView {
             do {
                 let profile = try await bridge.loadStudentProfile(studentId: item.student.id, classId: classId)
                 nextCache[item.student.id] = StudentRiskEvidenceBuilder.classify(profile: profile)
-                riskLevelCache = nextCache
             } catch {
                 nextCache[item.student.id] = .seguimientoNormal
             }

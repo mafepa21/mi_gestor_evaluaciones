@@ -569,10 +569,11 @@ struct NotebookTopBar: View {
     }
 
     private var macContextTopBar: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 12) {
             classPicker
-            searchField
+
             Spacer(minLength: 0)
+
             surfaceModePicker
             saveStatusChip
         }

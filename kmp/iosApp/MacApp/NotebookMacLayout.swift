@@ -15,14 +15,15 @@ struct NotebookMacLayout: View {
     @State private var searchText = ""
     @FocusState private var isSearchFocused: Bool
 
-    private var isContentPresentation: Bool {
+    private var showsNotebookToolbar: Bool {
         presentation == .content || presentation == .full
     }
 
     @ViewBuilder
     var body: some View {
         Group {
-            if isContentPresentation {
+            switch presentation {
+            case .full:
                 HSplitView {
                     classSidebar
                         .frame(minWidth: 208, idealWidth: 232, maxWidth: 280)
@@ -30,13 +31,14 @@ struct NotebookMacLayout: View {
                     notebookContent
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-            } else {
+            case .content, .inspector:
                 notebookContent
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .background(MacAppStyle.pageBackground)
         .toolbar {
-            if isContentPresentation {
+            if showsNotebookToolbar {
                 notebookToolbar
             }
         }
@@ -44,7 +46,7 @@ struct NotebookMacLayout: View {
             searchText = layoutState.notebookSearchText
         }
         .modifier(NotebookMacSearchModifier(
-            isEnabled: isContentPresentation,
+            isEnabled: showsNotebookToolbar,
             searchText: Binding(
                 get: { searchText },
                 set: { newValue in
@@ -64,7 +66,7 @@ struct NotebookMacLayout: View {
             onOpenModule: onOpenModule,
             macPresentation: presentation,
             macInspectorState: inspectorState,
-            macToolbarActions: isContentPresentation ? toolbarActions : nil
+            macToolbarActions: showsNotebookToolbar ? toolbarActions : nil
         )
         .environmentObject(layoutState)
     }

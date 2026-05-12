@@ -1,6 +1,6 @@
 import Foundation
 
-#if canImport(FoundationModels)
+#if canImport(FoundationModels) && !os(macOS)
 import FoundationModels
 #endif
 
@@ -170,7 +170,7 @@ final class AppleFoundationReportService {
     )
     private var availabilityRetryTask: Task<Void, Never>?
 
-    #if canImport(FoundationModels)
+    #if canImport(FoundationModels) && !os(macOS)
     private var cachedReportSessionStorage: Any?
     private var activeReportSessionStorage: Any?
 
@@ -210,7 +210,7 @@ final class AppleFoundationReportService {
         let resolved = AppleFoundationModelSupport.resolveAvailability(isEnabled: AIReportFeatureFlags.isEnabled)
         scheduleAvailabilityRetryIfNeeded(for: resolved)
 
-        #if canImport(FoundationModels)
+        #if canImport(FoundationModels) && !os(macOS)
         if #available(iOS 26.0, macOS 26.0, *), resolved == .available {
             if cachedReportSessionStorage == nil {
                 cachedReportSessionStorage = makeReportSession()
@@ -220,7 +220,7 @@ final class AppleFoundationReportService {
     }
 
     func clearActiveConversation() {
-        #if canImport(FoundationModels)
+        #if canImport(FoundationModels) && !os(macOS)
         if #available(iOS 26.0, macOS 26.0, *) {
             activeReportSessionStorage = nil
         }
@@ -244,7 +244,7 @@ final class AppleFoundationReportService {
         }
 
         do {
-            #if canImport(FoundationModels)
+            #if canImport(FoundationModels) && !os(macOS)
             if #available(iOS 26.0, macOS 26.0, *) {
                 let draft = try await generateLocalDraft(from: context, audience: audience, tone: tone)
                 AIReportTelemetry.recordGeneration(kind: context.kind)
@@ -273,7 +273,7 @@ final class AppleFoundationReportService {
             throw AIReportServiceError.unavailable(availability.message)
         }
 
-        #if canImport(FoundationModels)
+        #if canImport(FoundationModels) && !os(macOS)
         if #available(iOS 26.0, macOS 26.0, *) {
             do {
                 return try await refineActiveDraftLocally(with: cleaned, context: context)
@@ -287,7 +287,7 @@ final class AppleFoundationReportService {
         return fallbackDraft(from: context)
     }
 
-    #if canImport(FoundationModels)
+    #if canImport(FoundationModels) && !os(macOS)
     @available(iOS 26.0, macOS 26.0, *)
     private func refineActiveDraftLocally(
         with cleaned: String,
@@ -442,6 +442,8 @@ final class AppleFoundationReportService {
         """
     }
 
+    #endif
+
     private func fallbackDraft(from context: KmpBridge.ReportGenerationContext) -> AIReportDraft {
         let strengths = Array((context.strengths.isEmpty ? context.factLines : context.strengths).prefix(4))
         let needsAttention = Array((context.needsAttention.isEmpty ? context.supportNotes : context.needsAttention).prefix(4))
@@ -513,6 +515,7 @@ final class AppleFoundationReportService {
         _ = currentAvailability()
     }
 
+    #if canImport(FoundationModels) && !os(macOS)
     @available(iOS 26.0, macOS 26.0, *)
     @Generable
     struct GeneratedAIReportDraft {

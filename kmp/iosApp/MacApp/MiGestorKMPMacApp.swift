@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 @main
 struct MiGestorKMPMacApp: App {
@@ -8,6 +9,10 @@ struct MiGestorKMPMacApp: App {
 
     private var themeMode: AppThemeMode {
         AppThemeMode(rawValue: themeModeRawValue) ?? .system
+    }
+
+    init() {
+        MacWritingToolsMenuSanitizer.install()
     }
 
     var body: some Scene {
@@ -21,6 +26,8 @@ struct MiGestorKMPMacApp: App {
                 }
         }
         .commands {
+            CommandGroup(replacing: .textFormatting) {}
+
             CommandGroup(after: .newItem) {
                 Button("Refrescar dashboard") {}
                 .keyboardShortcut("r", modifiers: [.command, .shift])
@@ -44,6 +51,47 @@ struct MiGestorKMPMacApp: App {
             break
         @unknown default:
             break
+        }
+    }
+}
+
+private enum MacWritingToolsMenuSanitizer {
+    private static var observers: [NSObjectProtocol] = []
+
+    static func install() {
+        observers.append(NotificationCenter.default.addObserver(
+            forName: NSApplication.didFinishLaunchingNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            sanitizeMainMenu()
+        })
+        observers.append(NotificationCenter.default.addObserver(
+            forName: NSMenu.didAddItemNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            sanitizeMainMenu()
+        })
+    }
+
+    private static func sanitizeMainMenu() {
+        guard let mainMenu = NSApplication.shared.mainMenu else { return }
+        removeWritingToolsItems(from: mainMenu)
+    }
+
+    private static func removeWritingToolsItems(from menu: NSMenu) {
+        for item in menu.items.reversed() {
+            if item.action == #selector(NSResponder.showWritingTools(_:)) {
+                menu.removeItem(item)
+                continue
+            }
+            if let submenu = item.submenu {
+                removeWritingToolsItems(from: submenu)
+                if submenu.items.isEmpty && item.title.localizedCaseInsensitiveContains("writing") {
+                    menu.removeItem(item)
+                }
+            }
         }
     }
 }

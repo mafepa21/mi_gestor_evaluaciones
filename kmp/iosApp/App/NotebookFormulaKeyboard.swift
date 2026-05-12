@@ -1,6 +1,6 @@
 import SwiftUI
 import MiGestorKit
-#if canImport(FoundationModels)
+#if canImport(FoundationModels) && !os(macOS)
 import FoundationModels
 #endif
 
@@ -251,7 +251,7 @@ enum NotebookFormulaAIError: LocalizedError {
 }
 
 final class AppleFoundationFormulaService {
-    #if canImport(FoundationModels)
+    #if canImport(FoundationModels) && !os(macOS)
     @available(iOS 26.0, macOS 26.0, *)
     private var formulaSession: LanguageModelSession {
         LanguageModelSession(
@@ -281,7 +281,7 @@ final class AppleFoundationFormulaService {
             throw NotebookFormulaAIError.unavailable(message(for: availability))
         }
 
-        #if canImport(FoundationModels)
+        #if canImport(FoundationModels) && !os(macOS)
         if #available(iOS 26.0, macOS 26.0, *) {
             let response = try await formulaSession.respond(
                 to: prompt(request: request, currentFormula: currentFormula, availableColumns: availableColumns),

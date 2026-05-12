@@ -2,6 +2,11 @@ import SwiftUI
 
 @MainActor
 final class MacAppSessionController: ObservableObject {
+    private enum Defaults {
+        static let selectedFeature = "mac.selectedFeature"
+        static let inspectorVisible = "mac.inspectorVisible"
+    }
+
     enum BootstrapState: Equatable {
         case idle
         case loading
@@ -9,12 +14,33 @@ final class MacAppSessionController: ObservableObject {
         case failed(String)
     }
 
-    @Published var selectedFeature: MacFeatureDescriptor.Feature = .dashboard
+    @Published var selectedFeature: MacFeatureDescriptor.Feature {
+        didSet {
+            UserDefaults.standard.set(selectedFeature.rawValue, forKey: Defaults.selectedFeature)
+        }
+    }
     @Published var bootstrapState: BootstrapState = .idle
-    @Published var inspectorVisible = true
+    @Published var inspectorVisible: Bool {
+        didSet {
+            UserDefaults.standard.set(inspectorVisible, forKey: Defaults.inspectorVisible)
+        }
+    }
 
     let bridge = KmpBridge()
     let bootstrap = AppleBridgeBootstrap.current()
+
+    init() {
+        let defaults = UserDefaults.standard
+        let storedFeature = defaults.string(forKey: Defaults.selectedFeature)
+            .flatMap(MacFeatureDescriptor.Feature.init(rawValue:))
+        selectedFeature = storedFeature ?? .dashboard
+
+        if defaults.object(forKey: Defaults.inspectorVisible) == nil {
+            inspectorVisible = true
+        } else {
+            inspectorVisible = defaults.bool(forKey: Defaults.inspectorVisible)
+        }
+    }
 
     func start() {
         guard bootstrapState == .idle else { return }

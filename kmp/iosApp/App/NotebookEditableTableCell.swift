@@ -91,12 +91,18 @@ struct NotebookEditableTableCell: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)
         .onAppear(perform: loadDrafts)
+        .onDisappear {
+            saveFocusedDraftIfNeeded(requireFocusReleased: false)
+        }
         .appOnChange(of: reloadToken) { _ in
             loadDraftsUnlessEditing()
         }
-        .onReceive(bridge.$notebookState) { state in
-            guard state is NotebookUiStateData else { return }
-            loadDraftsUnlessEditing()
+        .appOnChange(of: focusedCellId.wrappedValue) { newValue in
+            if newValue == cellId {
+                onSelect()
+            } else {
+                saveFocusedDraftIfNeeded()
+            }
         }
     }
 
@@ -149,7 +155,7 @@ struct NotebookEditableTableCell: View {
                         NotebookNumericCellKeyboard(
                             value: $numericDraft,
                             tint: tint,
-                            onSave: saveNumeric,
+                            onSave: { saveNumeric() },
                             onNavigate: { direction in
                                 saveNumericAndNavigate(direction)
                                 isNumericKeyboardPresented = false
@@ -497,14 +503,21 @@ struct NotebookEditableTableCell: View {
         loadDrafts()
     }
 
-    private func saveNumeric() {
-        onSelect()
+    private func saveNumeric(selectsCell: Bool = true, immediate: Bool = false) {
+        if selectsCell {
+            onSelect()
+        }
         if originalNumericDraft != numericDraft {
             onPrepareUndo(originalNumericDraft, originalNumericDraft)
             originalNumericDraft = numericDraft
+            if immediate {
+                bridge.flushPendingColumnGradeSave(studentId: item.student.id, columnId: column.id)
+                bridge.saveColumnGrade(studentId: item.student.id, column: column, value: numericDraft)
+            } else {
+                bridge.saveColumnGradeDebounced(studentId: item.student.id, column: column, value: numericDraft)
+            }
+            onCellSaved()
         }
-        bridge.saveColumnGradeDebounced(studentId: item.student.id, column: column, value: numericDraft)
-        onCellSaved()
     }
 
     private func saveNumericAndNavigate(_ direction: NotebookNavigationDirection) {
@@ -512,14 +525,21 @@ struct NotebookEditableTableCell: View {
         onNavigate(direction)
     }
 
-    private func saveText() {
-        onSelect()
+    private func saveText(selectsCell: Bool = true, immediate: Bool = false) {
+        if selectsCell {
+            onSelect()
+        }
         if originalTextDraft != textDraft {
             onPrepareUndo(originalTextDraft, originalTextDraft)
             originalTextDraft = textDraft
+            if immediate {
+                bridge.flushPendingColumnGradeSave(studentId: item.student.id, columnId: column.id)
+                bridge.saveColumnGrade(studentId: item.student.id, column: column, value: textDraft)
+            } else {
+                bridge.saveColumnGradeDebounced(studentId: item.student.id, column: column, value: textDraft)
+            }
+            onCellSaved()
         }
-        bridge.saveColumnGradeDebounced(studentId: item.student.id, column: column, value: textDraft)
-        onCellSaved()
     }
 
     private func saveTextAndNavigate() {
@@ -577,6 +597,26 @@ struct NotebookEditableTableCell: View {
         saveAttendanceValue(nextStatus)
     }
 
+    private func saveFocusedDraftIfNeeded(requireFocusReleased: Bool = true) {
+        guard hasLoadedDrafts,
+              activeChoiceCellId != cellId,
+              !isNumericKeyboardPresented,
+              !showTextPopover
+        else { return }
+        if requireFocusReleased && focusedCellId.wrappedValue == cellId {
+            return
+        }
+
+        switch column.type {
+        case .numeric:
+            saveNumeric(selectsCell: false, immediate: true)
+        case .text, .icon:
+            saveText(selectsCell: false, immediate: true)
+        default:
+            break
+        }
+    }
+
     private func displayRubricText() -> String {
         let value = bridge.rubricGradeOnTenText(studentId: item.student.id, column: column).trimmingCharacters(in: .whitespacesAndNewlines)
         return value.isEmpty ? "—" : value
@@ -600,4 +640,3 @@ struct NotebookEditableTableCell: View {
         #endif
     }
 }
-

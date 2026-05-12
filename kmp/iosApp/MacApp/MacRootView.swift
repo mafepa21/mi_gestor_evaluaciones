@@ -14,7 +14,9 @@ struct MacRootView: View {
     @State private var dashboardToolbarActions: MacDashboardToolbarActions? = nil
     @State private var studentsReloadToken = 0
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
-    @State private var isNotebookInspectorColumnVisible = true
+    @State private var isNotebookInspectorColumnVisible = false
+    @State private var selectedFeature: MacFeatureDescriptor.Feature = .dashboard
+    @State private var didRequestCommandCenterStart = false
 
     var body: some View {
         Group {
@@ -35,10 +37,21 @@ struct MacRootView: View {
                 navigationSplit
             }
         }
+        .onAppear {
+            selectedFeature = session.selectedFeature
+        }
         .task {
             session.start()
-            commandCenter.startIfNeeded()
+            await startCommandCenterAfterInitialLayout()
         }
+        .appWritingToolsDisabled()
+    }
+
+    private func startCommandCenterAfterInitialLayout() async {
+        guard !didRequestCommandCenterStart else { return }
+        didRequestCommandCenterStart = true
+        await Task.yield()
+        commandCenter.startIfNeeded()
     }
 
     @ViewBuilder
@@ -46,26 +59,27 @@ struct MacRootView: View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             macSidebar
         } content: {
-            featureContent(for: session.selectedFeature)
+            featureContent(for: selectedFeature)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(MacAppStyle.pageBackground)
         } detail: {
-            featureInspectorColumn(for: session.selectedFeature)
+            featureInspectorColumn(for: selectedFeature)
         }
         .navigationSplitViewStyle(.balanced)
         .toolbar {
             macToolbar
         }
         .appOnChange(of: session.selectedFeature) { newFeature in
-            columnVisibility = .all
-            if newFeature == .notebook {
-                isNotebookInspectorColumnVisible = true
+            guard selectedFeature != newFeature else { return }
+            Task { @MainActor in
+                await Task.yield()
+                selectFeature(newFeature, propagateToSession: false)
             }
         }
     }
 
     private var macSidebar: some View {
-        List(MacFeatureRegistry.all, selection: $session.selectedFeature) { feature in
+        List(MacFeatureRegistry.all, selection: selectedFeatureBinding) { feature in
             HStack(spacing: 10) {
                 Image(systemName: feature.systemImage)
                     .frame(width: 20, height: 20)
@@ -88,6 +102,33 @@ struct MacRootView: View {
         .listStyle(.sidebar)
         .navigationTitle("MiGestor")
         .navigationSubtitle(session.bridge.statsText)
+    }
+
+    private var selectedFeatureBinding: Binding<MacFeatureDescriptor.Feature> {
+        Binding(
+            get: { selectedFeature },
+            set: { selectFeature($0) }
+        )
+    }
+
+    private func selectFeature(
+        _ feature: MacFeatureDescriptor.Feature,
+        propagateToSession: Bool = true
+    ) {
+        guard selectedFeature != feature || session.selectedFeature != feature else { return }
+        selectedFeature = feature
+        columnVisibility = .all
+        if feature == .notebook {
+            isNotebookInspectorColumnVisible = false
+            closeNotebookInspectorStateAfterViewUpdate()
+        }
+        guard propagateToSession else { return }
+        Task { @MainActor in
+            await Task.yield()
+            if session.selectedFeature != feature {
+                session.selectedFeature = feature
+            }
+        }
     }
 
     @ViewBuilder
@@ -152,7 +193,7 @@ struct MacRootView: View {
             MacBackupsView(bridge: session.bridge)
         case .settings:
             MacSettingsView(session: session, commandCenter: commandCenter) {
-                session.selectedFeature = .sync
+                selectFeature(.sync)
             }
         }
     }
@@ -188,9 +229,8 @@ struct MacRootView: View {
     @ViewBuilder
     private func featureInspectorColumn(for feature: MacFeatureDescriptor.Feature) -> some View {
         if feature == .notebook && !isNotebookInspectorColumnVisible {
-            Color.clear
-                .frame(minWidth: 0, idealWidth: 0, maxWidth: 0, maxHeight: .infinity)
-                .navigationSplitViewColumnWidth(min: 0, ideal: 0, max: 1)
+            MacModuleInspectorPlaceholder(feature: MacFeatureRegistry.descriptor(for: feature))
+                .frame(minWidth: 240, idealWidth: 280, maxWidth: .infinity, maxHeight: .infinity)
                 .background(MacAppStyle.pageBackground)
         } else {
             featureInspector(for: feature)
@@ -209,7 +249,7 @@ struct MacRootView: View {
             }
             .help("Sincronizar con desktop")
 
-            if session.selectedFeature == .notebook {
+            if selectedFeature == .notebook {
                 Button {
                     notebookToolbarActions.markAllPresent()
                 } label: {
@@ -227,7 +267,7 @@ struct MacRootView: View {
 
             }
 
-            if session.selectedFeature == .dashboard, let dashboardToolbarActions {
+            if selectedFeature == .dashboard, let dashboardToolbarActions {
                 Button {
                     dashboardToolbarActions.passList()
                 } label: {
@@ -246,7 +286,7 @@ struct MacRootView: View {
                 .help("Registrar una observación rápida")
             }
 
-            if session.selectedFeature == .attendance, let attendanceToolbarActions {
+            if selectedFeature == .attendance, let attendanceToolbarActions {
                 Button {
                     attendanceToolbarActions.markAllPresent()
                 } label: {
@@ -271,7 +311,7 @@ struct MacRootView: View {
                 }
             }
 
-            if session.selectedFeature == .physicalTests {
+            if selectedFeature == .physicalTests {
                 Button {
                     physicalTestsToolbarActions.newBattery()
                 } label: {
@@ -297,13 +337,13 @@ struct MacRootView: View {
                 .help("Crear columnas de marca y nota en el cuaderno")
             }
 
-            if session.selectedFeature != .notebook {
+            if selectedFeature != .notebook {
                 Button {
-                    if session.selectedFeature == .dashboard, let dashboardToolbarActions {
+                    if selectedFeature == .dashboard, let dashboardToolbarActions {
                         dashboardToolbarActions.refresh()
-                    } else if session.selectedFeature == .attendance, let attendanceToolbarActions {
+                    } else if selectedFeature == .attendance, let attendanceToolbarActions {
                         attendanceToolbarActions.refresh()
-                    } else if session.selectedFeature == .physicalTests {
+                    } else if selectedFeature == .physicalTests {
                         physicalTestsToolbarActions.refresh()
                     } else {
                         Task { await session.bridge.refreshDashboard(mode: .office) }
@@ -345,25 +385,24 @@ struct MacRootView: View {
 
     private func setDashboardToolbarActions(_ actions: MacDashboardToolbarActions?) {
         DispatchQueue.main.async {
-            guard session.selectedFeature == .dashboard else { return }
+            guard selectedFeature == .dashboard else { return }
             dashboardToolbarActions = actions
         }
     }
 
     private func setAttendanceToolbarActions(_ actions: MacAttendanceToolbarActions?) {
         DispatchQueue.main.async {
-            guard session.selectedFeature == .attendance else { return }
+            guard selectedFeature == .attendance else { return }
             attendanceToolbarActions = actions
         }
     }
 
     private func toggleNotebookInspectorColumn() {
-        guard session.selectedFeature == .notebook else { return }
+        guard selectedFeature == .notebook else { return }
 
         if isNotebookInspectorColumnVisible {
             isNotebookInspectorColumnVisible = false
-            notebookInspectorState.isPresented = false
-            notebookToolbarActions.isInspectorPresented = false
+            closeNotebookInspectorStateAfterViewUpdate()
             columnVisibility = .all
             return
         }
@@ -379,6 +418,18 @@ struct MacRootView: View {
         }
     }
 
+    private func closeNotebookInspectorStateAfterViewUpdate() {
+        Task { @MainActor in
+            await Task.yield()
+            if notebookInspectorState.isPresented {
+                notebookInspectorState.isPresented = false
+            }
+            if notebookToolbarActions.isInspectorPresented {
+                notebookToolbarActions.isInspectorPresented = false
+            }
+        }
+    }
+
     private func navigateFromDashboard(_ destination: MacDashboardDestination) {
         switch destination {
         case .attendance(let classId):
@@ -389,11 +440,11 @@ struct MacRootView: View {
             if let classId {
                 selectedClassId = classId
             }
-            session.selectedFeature = .rubrics
+            selectFeature(.rubrics)
         case .plannerAgenda:
-            session.selectedFeature = .planner
+            selectFeature(.planner)
         case .plannerSession(let sessionId):
-            session.selectedFeature = .planner
+            selectFeature(.planner)
             if let sessionId {
                 session.bridge.status = "Abriendo Planner para la sesión \(sessionId)."
             }
@@ -410,7 +461,7 @@ struct MacRootView: View {
         case .notebook:
             if layoutState.notebookAddColumnAvailable {
                 Button {
-                    session.selectedFeature = .notebook
+                    selectFeature(.notebook)
                     layoutState.showNotebookAddColumn()
                 } label: {
                     Label("Nueva columna", systemImage: "plus.rectangle")
@@ -418,7 +469,7 @@ struct MacRootView: View {
             }
             if layoutState.notebookOrganizationMenuAvailable {
                 Button {
-                    session.selectedFeature = .notebook
+                    selectFeature(.notebook)
                     layoutState.openNotebookOrganizationMenu()
                 } label: {
                     Label("Abrir organización", systemImage: "folder.badge.gearshape")
@@ -426,7 +477,7 @@ struct MacRootView: View {
             }
         case .students:
             Button {
-                session.selectedFeature = .students
+                selectFeature(.students)
                 studentsReloadToken += 1
             } label: {
                 Label("Recargar alumnado", systemImage: "arrow.clockwise")
@@ -434,7 +485,7 @@ struct MacRootView: View {
         case .attendance:
             if let attendanceToolbarActions {
                 Button {
-                    session.selectedFeature = .attendance
+                    selectFeature(.attendance)
                     attendanceToolbarActions.markAllPresent()
                 } label: {
                     Label("Todos presentes", systemImage: "checkmark.circle.fill")
@@ -455,15 +506,15 @@ struct MacRootView: View {
 
         switch module {
         case .notebook:
-            session.selectedFeature = .notebook
+            selectFeature(.notebook)
         case .students:
-            session.selectedFeature = .students
+            selectFeature(.students)
         case .reports:
-            session.selectedFeature = .reports
+            selectFeature(.reports)
         case .attendance:
-            session.selectedFeature = .attendance
+            selectFeature(.attendance)
         case .peTests:
-            session.selectedFeature = .physicalTests
+            selectFeature(.physicalTests)
         default:
             session.bridge.status = "El módulo \(module.title) todavía no está disponible en la shell Mac."
         }

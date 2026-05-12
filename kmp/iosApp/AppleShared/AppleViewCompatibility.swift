@@ -85,6 +85,15 @@ extension View {
     }
 
     @ViewBuilder
+    func appWritingToolsDisabled() -> some View {
+        if #available(iOS 18.0, macOS 15.0, *) {
+            self.writingToolsBehavior(.disabled)
+        } else {
+            self
+        }
+    }
+
+    @ViewBuilder
     func appOnChange<Value: Equatable>(
         of value: Value,
         perform action: @escaping (Value) -> Void

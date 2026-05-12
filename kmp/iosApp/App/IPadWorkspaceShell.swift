@@ -54,10 +54,9 @@ final class WorkspaceLayoutState: ObservableObject {
     var attendanceClearSelectionAction: (() -> Void)?
 
     func publishDeferred(_ mutation: @escaping @MainActor () -> Void) {
-        DispatchQueue.main.async {
-            Task { @MainActor in
-                mutation()
-            }
+        Task { @MainActor in
+            await Task.yield()
+            mutation()
         }
     }
 

@@ -573,13 +573,13 @@ struct NotebookModuleView: View {
             }
             .onAppear {
                 if !isMacInspectorOnly {
-                    ensureActiveNotebookTab(data: data)
+                    scheduleActiveNotebookTabSync(data: data)
                     scheduleToolbarStateSync(data: data)
                 }
             }
             .appOnChange(of: notebookTabsStateKey(data: data)) { _ in
                 if !isMacInspectorOnly {
-                    ensureActiveNotebookTab(data: data)
+                    scheduleActiveNotebookTabSync(data: data)
                 }
             }
             .appOnChange(of: toolbarStateKey(data: data)) { _ in
@@ -655,10 +655,7 @@ struct NotebookModuleView: View {
                 .sorted { $0.key < $1.key }
                 .map { "\($0.key):\($0.value)" }
                 .joined(separator: ","),
-            riskLevelCache
-                .sorted { $0.key < $1.key }
-                .map { "\($0.key):\($0.value)" }
-                .joined(separator: ","),
+            "\(riskLevelCache.count)",
             "\(data.sheet.columns.count)"
         ].joined(separator: "¬")
     }

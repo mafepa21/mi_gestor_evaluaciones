@@ -67,11 +67,18 @@ extension NotebookModuleView {
 
     func markAllVisibleStudentsPresent(data: NotebookUiStateData) {
         let visibleRows = filteredRows(data: data)
-        guard !visibleRows.isEmpty else { return }
+        guard !visibleRows.isEmpty,
+              let classId = selectedClassId ?? bridge.notebookViewModel.currentClassId?.int64Value else { return }
         Task {
             for row in visibleRows {
-                await markAttendance(for: row.student.id, status: NotebookAttendanceStatus.present)
+                try? await bridge.saveAttendance(
+                    studentId: row.student.id,
+                    classId: classId,
+                    on: Date(),
+                    status: NotebookAttendanceStatus.present
+                )
             }
+            await refreshNotebookSignals()
             await MainActor.run {
                 showToast("\(visibleRows.count) alumnos marcados como presentes")
             }

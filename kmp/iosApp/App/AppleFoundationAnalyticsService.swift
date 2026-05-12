@@ -1,6 +1,6 @@
 import Foundation
 
-#if canImport(FoundationModels)
+#if canImport(FoundationModels) && !os(macOS)
 import FoundationModels
 #endif
 
@@ -101,7 +101,7 @@ final class AppleFoundationAnalyticsService {
     )
     private var availabilityRetryTask: Task<Void, Never>?
 
-    #if canImport(FoundationModels)
+    #if canImport(FoundationModels) && !os(macOS)
     @available(iOS 26.0, macOS 26.0, *)
     private var insightSession: LanguageModelSession {
         LanguageModelSession(
@@ -140,7 +140,7 @@ final class AppleFoundationAnalyticsService {
         let resolved = AppleFoundationModelSupport.resolveAvailability(isEnabled: AIAnalyticsFeatureFlags.isEnabled)
         scheduleAvailabilityRetryIfNeeded(for: resolved)
 
-        #if canImport(FoundationModels)
+        #if canImport(FoundationModels) && !os(macOS)
         if #available(iOS 26.0, macOS 26.0, *), resolved == .available {
             _ = insightSession
             _ = interpretationSession
@@ -159,7 +159,7 @@ final class AppleFoundationAnalyticsService {
             return fallbackInsight(from: facts)
         }
 
-        #if canImport(FoundationModels)
+        #if canImport(FoundationModels) && !os(macOS)
         if #available(iOS 26.0, macOS 26.0, *) {
             do {
                 let result = try await generateLocalInsight(from: facts)
@@ -185,7 +185,7 @@ final class AppleFoundationAnalyticsService {
             return fallbackInterpretation(prompt: cleaned, availableCharts: availableCharts)
         }
 
-        #if canImport(FoundationModels)
+        #if canImport(FoundationModels) && !os(macOS)
         if #available(iOS 26.0, macOS 26.0, *) {
             do {
                 let result = try await interpretLocally(prompt: cleaned, availableCharts: availableCharts)
@@ -201,7 +201,7 @@ final class AppleFoundationAnalyticsService {
         return fallbackInterpretation(prompt: cleaned, availableCharts: availableCharts)
     }
 
-    #if canImport(FoundationModels)
+    #if canImport(FoundationModels) && !os(macOS)
     @available(iOS 26.0, macOS 26.0, *)
     private func generateLocalInsight(from facts: KmpBridge.ChartFacts) async throws -> AIChartInsight {
         let response = try await insightSession.respond(
@@ -288,6 +288,8 @@ final class AppleFoundationAnalyticsService {
         """
     }
 
+    #endif
+
     private func fallbackInsight(from facts: KmpBridge.ChartFacts) -> AIChartInsight {
         let highlights = Array(facts.highlights.prefix(3))
         let warnings = Array(facts.warnings.prefix(3))
@@ -366,6 +368,7 @@ final class AppleFoundationAnalyticsService {
         _ = currentAvailability()
     }
 
+    #if canImport(FoundationModels) && !os(macOS)
     @available(iOS 26.0, macOS 26.0, *)
     @Generable
     struct GeneratedAnalyticsInsight {

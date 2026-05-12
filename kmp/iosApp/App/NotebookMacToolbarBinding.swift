@@ -22,10 +22,9 @@ final class NotebookMacToolbarActions: ObservableObject {
     private var refreshAction: (() -> Void)?
 
     private func publishDeferred(_ mutation: @escaping @MainActor () -> Void) {
-        DispatchQueue.main.async {
-            Task { @MainActor in
-                mutation()
-            }
+        Task { @MainActor in
+            await Task.yield()
+            mutation()
         }
     }
 

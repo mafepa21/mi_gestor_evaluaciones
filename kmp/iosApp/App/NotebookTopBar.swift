@@ -194,10 +194,6 @@ struct NotebookSummaryGenerationSheet: View {
         return data.sheet.columns.filter { isNotebookIndividualSummaryColumn($0) }
     }
 
-    private var availability: AIContextualAvailabilityState {
-        aiService.currentAvailability()
-    }
-
     private var hasExistingSummary: Bool {
         !summaryColumns.isEmpty
     }
@@ -225,7 +221,6 @@ struct NotebookSummaryGenerationSheet: View {
                 }
             }
             .onAppear {
-                aiService.prewarm()
                 if let initialTargetColumnId,
                    summaryColumns.contains(where: { $0.id == initialTargetColumnId }) {
                     selectedExistingColumnId = initialTargetColumnId
@@ -261,9 +256,9 @@ struct NotebookSummaryGenerationSheet: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(hasExistingSummary ? "Refina o actualiza la síntesis pedagógica del cuaderno." : "Genera una columna de síntesis pedagógica lista para cada alumno.")
                             .font(.title2.weight(.bold))
-                        Text(availability.message)
+                        Text("Síntesis local editable disponible aunque Apple Intelligence no responda.")
                             .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(availability.isAvailable ? NotebookStyle.successTint : NotebookStyle.warningTint)
+                            .foregroundStyle(NotebookStyle.successTint)
                     }
                 }
 
@@ -383,9 +378,16 @@ struct NotebookSummaryGenerationSheet: View {
             }
 
             // The SwiftUI/KMP snapshot can lag right after creation; generation can use the returned id immediately.
-            if let data = notebookData,
-               let createdColumn = data.sheet.columns.first(where: { $0.id == newColumnId }) {
-                let referenceColumn = summaryColumns.first(where: { $0.id == selectedExistingColumnId }) ?? summaryColumns.first
+            NotebookIndividualSummaryPreferences.save(configuration, columnId: newColumnId)
+            Task { @MainActor in
+                await Task.yield()
+                guard let data = notebookData,
+                      let createdColumn = data.sheet.columns.first(where: { $0.id == newColumnId }) else {
+                    return
+                }
+
+                let currentSummaryColumns = data.sheet.columns.filter { isNotebookIndividualSummaryColumn($0) }
+                let referenceColumn = currentSummaryColumns.first(where: { $0.id == selectedExistingColumnId }) ?? currentSummaryColumns.first
                 let updatedColumn = NotebookColumnDefinition(
                     id: createdColumn.id,
                     title: createdColumn.title,
@@ -422,7 +424,6 @@ struct NotebookSummaryGenerationSheet: View {
                 )
                 bridge.saveColumn(column: updatedColumn)
             }
-            NotebookIndividualSummaryPreferences.save(configuration, columnId: newColumnId)
             return newColumnId
         }
 
@@ -443,7 +444,7 @@ struct NotebookSummaryGenerationSheet: View {
         )
 
         guard !contexts.isEmpty else {
-            feedbackMessage = "No hay contexto suficiente para generar síntesis."
+            feedbackMessage = "No hay datos suficientes en las columnas seleccionadas."
             return
         }
 
@@ -453,8 +454,9 @@ struct NotebookSummaryGenerationSheet: View {
         }
 
         let onlyEmptyCells = configuration.generationMode == .onlyEmptyCells
+        let canUseAppleAI = false
         isGenerating = true
-        feedbackMessage = availability.isAvailable ? nil : "Apple Intelligence no disponible; se generará un borrador editable por reglas."
+        feedbackMessage = "Apple Intelligence no disponible; usando síntesis local editable."
         progressMessage = nil
 
         Task {
@@ -474,32 +476,75 @@ struct NotebookSummaryGenerationSheet: View {
                     continue
                 }
 
-                do {
-                    let draft = try await aiService.generateNotebookComment(
-                        from: context,
-                        audience: .docente,
-                        tone: .claro
-                    )
-                    let text = notebookIndividualSummaryText(from: draft, length: configuration.length)
-                    bridge.saveNotebookAIComment(studentId: context.studentId, columnId: targetColumnId, text: text)
-                    savedCount += 1
-                } catch {
-                    skippedCount += 1
+                let draft: NotebookAICommentDraft
+                if canUseAppleAI {
+                    do {
+                        draft = try await aiService.generateNotebookComment(
+                            from: context,
+                            audience: .docente,
+                            tone: .claro
+                        )
+                    } catch {
+                        AppleFoundationModelSupport.recordRuntimeFailure(error)
+                        draft = fallbackPedagogicalSummary(from: context)
+                    }
+                } else {
+                    draft = fallbackPedagogicalSummary(from: context)
                 }
+
+                let text = notebookIndividualSummaryText(from: draft, length: configuration.length)
+                bridge.saveNotebookAIComment(studentId: context.studentId, columnId: targetColumnId, text: text)
+                savedCount += 1
             }
 
             await MainActor.run {
                 isGenerating = false
-                let completionMessage = "Síntesis generadas: \(savedCount). Omitidas: \(skippedCount)."
                 if savedCount > 0 {
-                    onComplete(completionMessage, .success)
+                    onComplete("Síntesis guardadas: \(savedCount). Omitidas: \(skippedCount).", .success)
                     dismiss()
                 } else {
                     progressMessage = nil
-                    feedbackMessage = completionMessage
+                    feedbackMessage = "No se ha generado ninguna síntesis. Revisa que existan datos en las columnas seleccionadas."
                 }
             }
         }
+    }
+
+    private func fallbackPedagogicalSummary(
+        from context: KmpBridge.NotebookAICommentContext
+    ) -> NotebookAICommentDraft {
+        let averageText = context.averageScore.map { IosFormatting.decimal(from: $0) } ?? "sin media consolidada"
+        let relevantValues = context.relevantValues
+            .prefix(5)
+            .map { "\($0.title): \($0.value)" }
+        let valuesText = relevantValues.isEmpty
+            ? "no hay suficientes valores registrados en las columnas seleccionadas"
+            : relevantValues.joined(separator: "; ")
+        let attendanceText = context.attendanceStatus.map { "Última asistencia: \($0)." } ?? ""
+        let followUpText = context.followUpCount > 0 ? "Seguimientos activos: \(context.followUpCount)." : ""
+        let incidentText = context.incidentCount > 0 ? "Incidencias registradas: \(context.incidentCount)." : ""
+        let evidenceText = context.evidenceCount > 0 ? "Evidencias adjuntas: \(context.evidenceCount)." : "No constan evidencias adjuntas."
+        let warningText = context.relevantValues.isEmpty
+            ? "La síntesis es prudente porque todavía hay pocos datos registrados."
+            : "La síntesis se basa en las columnas disponibles del cuaderno."
+        let comment = """
+        \(context.studentName) presenta una media de \(averageText). A partir de las evidencias registradas en el cuaderno, destacan estos datos: \(valuesText). \(attendanceText) \(followUpText) \(incidentText) \(evidenceText)
+
+        Lectura pedagógica: el rendimiento debe interpretarse con prudencia y vincularse a las evidencias disponibles. Conviene revisar la evolución en las próximas sesiones y completar la información si faltan registros relevantes.
+        """
+
+        return NotebookAICommentDraft(
+            summary: "Síntesis pedagógica generada a partir del cuaderno.",
+            strengths: relevantValues.isEmpty ? [] : Array(relevantValues.prefix(2)),
+            needsAttention: context.dataQualityNote.map { [$0] } ?? [],
+            nextSteps: [
+                "Revisar la evolución del alumno en la próxima sesión.",
+                "Completar evidencias si hay columnas sin datos."
+            ],
+            factsUsed: relevantValues,
+            warnings: [warningText, "Generado por reglas porque Apple Intelligence no está disponible."],
+            commentText: comment
+        )
     }
 
     private func formattedRunStamp() -> String {

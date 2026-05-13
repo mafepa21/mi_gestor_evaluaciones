@@ -74,7 +74,7 @@ enum NotebookIndividualSummaryGenerationMode: String, CaseIterable, Identifiable
 }
 
 struct NotebookIndividualSummaryConfiguration: Equatable, Codable {
-    var evidenceSource: NotebookIndividualSummaryEvidenceSource = .visibleColumns
+    var evidenceSource: NotebookIndividualSummaryEvidenceSource = .allManagedColumns
     var length: NotebookIndividualSummaryLength = .balanced
     var generationMode: NotebookIndividualSummaryGenerationMode = .onlyEmptyCells
 }

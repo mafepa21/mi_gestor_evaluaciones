@@ -1,11 +1,16 @@
 import SwiftUI
 import MiGestorKit
+#if canImport(UIKit)
+import UIKit
+#endif
 
 struct RubricBulkEvaluationSheet: View {
     @ObservedObject var bridge: KmpBridge
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
     @State private var horizontalScrollOffset: CGFloat = 0
+    @State private var hoveredLevelKey: BulkHoveredLevelKey?
+    @State private var levelHoverTask: Task<Void, Never>?
 
     private var state: BulkRubricEvaluationUiState? {
         bridge.bulkRubricEvaluationState
@@ -81,6 +86,10 @@ struct RubricBulkEvaluationSheet: View {
             .onAppear {
                 // Si existía una evaluación individual previa, la cerramos antes de mostrar la masiva.
                 bridge.closeRubricEvaluation()
+            }
+            .onDisappear {
+                levelHoverTask?.cancel()
+                hoveredLevelKey = nil
             }
         }
     }
@@ -413,6 +422,11 @@ struct RubricBulkEvaluationSheet: View {
         return VStack(spacing: 8) {
             HStack(spacing: 8) {
                 ForEach(criterion.levels, id: \.id) { level in
+                    let levelKey = BulkHoveredLevelKey(
+                        studentId: studentId,
+                        criterionId: criterion.criterion.id,
+                        levelId: level.id
+                    )
                     let isSelected = selectedLevelId == level.id
                     let tint = levelColor(for: level, in: criterion)
                     Button {
@@ -444,6 +458,36 @@ struct RubricBulkEvaluationSheet: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("\(criterion.criterion.description_), \(level.name)")
                     .help(levelHelpText(level))
+                    .onHover { isHovering in
+                        if isHovering {
+                            scheduleLevelPopover(for: levelKey)
+                        } else {
+                            cancelLevelPopover(for: levelKey)
+                        }
+                    }
+                    .simultaneousGesture(
+                        LongPressGesture(minimumDuration: 0.5)
+                            .onEnded { _ in
+                                presentLevelPopover(for: levelKey)
+                                #if canImport(UIKit)
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                #endif
+                            }
+                    )
+                    .popover(
+                        isPresented: Binding(
+                            get: { hoveredLevelKey == levelKey },
+                            set: { if !$0 { cancelLevelPopover(for: levelKey) } }
+                        ),
+                        arrowEdge: .bottom
+                    ) {
+                        RubricLevelDescriptionPopover(level: level)
+                            .padding(4)
+                            #if os(iOS)
+                            .presentationDetents([.height(168)])
+                            .presentationDragIndicator(.visible)
+                            #endif
+                    }
                 }
             }
 
@@ -475,6 +519,35 @@ struct RubricBulkEvaluationSheet: View {
         let description = level.description_?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !description.isEmpty else { return level.name }
         return "\(level.name): \(description)"
+    }
+
+    private func scheduleLevelPopover(for levelKey: BulkHoveredLevelKey) {
+        levelHoverTask?.cancel()
+        levelHoverTask = Task {
+            do {
+                try await Task.sleep(nanoseconds: 600_000_000)
+                await MainActor.run {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        hoveredLevelKey = levelKey
+                    }
+                }
+            } catch {}
+        }
+    }
+
+    private func presentLevelPopover(for levelKey: BulkHoveredLevelKey) {
+        levelHoverTask?.cancel()
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+            hoveredLevelKey = levelKey
+        }
+    }
+
+    private func cancelLevelPopover(for levelKey: BulkHoveredLevelKey) {
+        levelHoverTask?.cancel()
+        guard hoveredLevelKey == levelKey else { return }
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+            hoveredLevelKey = nil
+        }
     }
 
     private func levelColor(for level: RubricLevel?, in criterion: RubricCriterionWithLevels) -> Color {
@@ -607,5 +680,58 @@ struct RubricBulkEvaluationSheet: View {
         static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
             value = nextValue()
         }
+    }
+}
+
+private struct BulkHoveredLevelKey: Hashable {
+    let studentId: Int64
+    let criterionId: Int64
+    let levelId: Int64
+}
+
+struct RubricLevelDescriptionPopover: View {
+    let level: RubricLevel
+
+    private var trimmedDescription: String {
+        level.description_?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text(level.name)
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+
+                Spacer(minLength: 8)
+
+                Text("\(Int(level.points)) pts")
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundStyle(EvaluationDesign.accent)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(EvaluationDesign.accent.opacity(0.12))
+                    )
+            }
+
+            EvaluationDivider()
+
+            if trimmedDescription.isEmpty {
+                Text("Sin descripción adicional para este nivel.")
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(.secondary)
+            } else {
+                Text(trimmedDescription)
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(.secondary)
+                    .lineSpacing(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(16)
+        .frame(minWidth: 240, maxWidth: 320)
     }
 }

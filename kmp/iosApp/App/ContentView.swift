@@ -1134,6 +1134,16 @@ struct RubricCriterionRow: View {
     let item: RubricCriterionWithLevels
     let selectedLevelId: Int64?
     let onSelectLevel: (Int64) -> Void
+    @State private var hoveredLevelId: Int64?
+    @State private var hoverTask: Task<Void, Never>?
+
+    private var selectedLevel: RubricLevel? {
+        item.levels.first { $0.id == selectedLevelId }
+    }
+
+    private var selectedLevelDescription: String {
+        selectedLevel?.description_?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
 
     var body: some View {
         EvaluationGlassCard(cornerRadius: 24, fillOpacity: 0.96) {
@@ -1169,10 +1179,88 @@ struct RubricCriterionRow: View {
                                     .padding(.trailing, 12)
                                     .padding(.bottom, 10)
                             }
+                            .help(levelHelpText(level))
+                            .onHover { isHovering in
+                                if isHovering {
+                                    schedulePopover(for: level.id)
+                                } else {
+                                    cancelPopover(for: level.id)
+                                }
+                            }
+                            .popover(
+                                isPresented: Binding(
+                                    get: { hoveredLevelId == level.id },
+                                    set: { if !$0 { cancelPopover(for: level.id) } }
+                                ),
+                                arrowEdge: .bottom
+                            ) {
+                                RubricLevelDescriptionPopover(level: level)
+                                    .padding(4)
+                            }
                         }
                     }
                 }
+
+                if !selectedLevelDescription.isEmpty {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "text.quote")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(EvaluationDesign.accent.opacity(0.72))
+                            .padding(.top, 2)
+
+                        Text(selectedLevelDescription)
+                            .font(.system(size: 12, weight: .regular))
+                            .foregroundStyle(.secondary)
+                            .lineSpacing(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(EvaluationDesign.accent.opacity(0.08))
+                    )
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: .top).combined(with: .opacity),
+                            removal: .move(edge: .bottom).combined(with: .opacity)
+                        )
+                    )
+                }
             }
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.75), value: selectedLevelId)
+        .onDisappear {
+            hoverTask?.cancel()
+            hoveredLevelId = nil
+        }
+    }
+
+    private func levelHelpText(_ level: RubricLevel) -> String {
+        let description = level.description_?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !description.isEmpty else { return level.name }
+        return "\(level.name): \(description)"
+    }
+
+    private func schedulePopover(for levelId: Int64) {
+        hoverTask?.cancel()
+        hoverTask = Task {
+            do {
+                try await Task.sleep(nanoseconds: 500_000_000)
+                await MainActor.run {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        hoveredLevelId = levelId
+                    }
+                }
+            } catch {}
+        }
+    }
+
+    private func cancelPopover(for levelId: Int64) {
+        hoverTask?.cancel()
+        guard hoveredLevelId == levelId else { return }
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+            hoveredLevelId = nil
         }
     }
 }

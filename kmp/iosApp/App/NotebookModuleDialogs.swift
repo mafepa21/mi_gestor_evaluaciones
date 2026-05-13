@@ -125,9 +125,13 @@ extension NotebookModuleView {
         }
     }
 
+    @ViewBuilder
     func notebookSheetAndTaskModifiers<Content: View>(_ content: Content) -> some View {
-        content
-            .sheet(isPresented: $isOrganizationMenuPresented) {
+        if isMacInspectorOnly {
+            content
+        } else {
+            content
+                .sheet(isPresented: $isOrganizationMenuPresented) {
                 if let data = bridge.notebookState as? NotebookUiStateData {
                     NotebookColumnOrganizerSheet(
                         columns: managedColumns(data: data),
@@ -194,44 +198,41 @@ extension NotebookModuleView {
                     .frame(minWidth: 420, minHeight: 260)
                 }
             }
-            .sheet(isPresented: $isHiddenColumnsSheetPresented) {
-                if let data = bridge.notebookState as? NotebookUiStateData {
-                    NotebookHiddenColumnsSheet(
-                        columns: managedColumns(data: data),
-                        onShowColumn: { column in
-                            setNotebookColumnVisibility(column, visibility: .visible)
-                        },
-                        onShowAll: {
-                            showAllManagedColumns(data: data)
-                        }
-                    )
-                    .frame(minWidth: 420, minHeight: 360)
-                } else {
-                    NotebookContentUnavailableView(
-                        "Sin datos del cuaderno",
-                        systemImage: "eye.slash",
-                        description: "Carga una clase para revisar columnas ocultas."
-                    )
-                    .frame(minWidth: 420, minHeight: 260)
+                .sheet(isPresented: $isHiddenColumnsSheetPresented) {
+                    if let data = bridge.notebookState as? NotebookUiStateData {
+                        NotebookHiddenColumnsSheet(
+                            columns: managedColumns(data: data),
+                            onShowColumn: { column in
+                                setNotebookColumnVisibility(column, visibility: .visible)
+                            },
+                            onShowAll: {
+                                showAllManagedColumns(data: data)
+                            }
+                        )
+                        .frame(minWidth: 420, minHeight: 360)
+                    } else {
+                        NotebookContentUnavailableView(
+                            "Sin datos del cuaderno",
+                            systemImage: "eye.slash",
+                            description: "Carga una clase para revisar columnas ocultas."
+                        )
+                        .frame(minWidth: 420, minHeight: 260)
+                    }
                 }
-            }
-            .task {
-                if let selectedClassId,
-                   bridge.notebookViewModel.currentClassId?.int64Value != selectedClassId {
-                    bridge.selectClass(id: selectedClassId)
-                } else if selectedClassId == nil,
-                          let notebookClassId = bridge.notebookViewModel.currentClassId?.int64Value {
-                    self.selectedClassId = notebookClassId
+                .task {
+                    if let selectedClassId,
+                       bridge.notebookViewModel.currentClassId?.int64Value != selectedClassId {
+                        bridge.selectClass(id: selectedClassId)
+                    } else if selectedClassId == nil,
+                              let notebookClassId = bridge.notebookViewModel.currentClassId?.int64Value {
+                        self.selectedClassId = notebookClassId
+                    }
                 }
-            }
-            .task(id: notebookSupportRefreshKey) {
-                restoreSeatPositions()
-                await refreshNotebookSignals()
-            }
-            .task(id: isInspectorPresented ? inspectorSelection?.id : nil) {
-                guard isInspectorPresented, inspectorSelection != nil else { return }
-                await precomputeRiskLevelsForVisibleRows()
-            }
+                .task(id: notebookSupportRefreshKey) {
+                    restoreSeatPositions()
+                    await refreshNotebookSignals()
+                }
+        }
     }
 
     func notebookObservationModifiers<Content: View>(_ content: Content) -> some View {

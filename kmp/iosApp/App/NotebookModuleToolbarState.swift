@@ -201,17 +201,25 @@ extension NotebookModuleView {
     }
 
     func scheduleToolbarStateSync(data: NotebookUiStateData) {
-        Task { @MainActor in
-            await Task.yield()
+        guard !isMacInspectorOnly else { return }
+
+        let nextKey = toolbarStateKey(data: data)
+        guard lastToolbarStateKey != nextKey else { return }
+
+        toolbarSyncTask?.cancel()
+        toolbarSyncTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            guard !Task.isCancelled else { return }
+
+            lastToolbarStateKey = nextKey
             syncToolbarState(data: data)
         }
     }
 
     func scheduleToolbarStateSyncIfLoaded() {
-        Task { @MainActor in
-            await Task.yield()
-            syncToolbarStateIfLoaded()
-        }
+        guard !isMacInspectorOnly,
+              let data = bridge.notebookState as? NotebookUiStateData else { return }
+        scheduleToolbarStateSync(data: data)
     }
 
     func toolbarStateKey(data: NotebookUiStateData) -> String {

@@ -63,19 +63,21 @@ struct MacRootView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(MacAppStyle.pageBackground)
         } detail: {
-            if selectedFeature == .notebook {
-                if isNotebookInspectorColumnVisible {
-                    featureInspector(for: selectedFeature)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(MacAppStyle.pageBackground)
+            Group {
+                if selectedFeature == .notebook {
+                    if isNotebookInspectorColumnVisible {
+                        featureInspector(for: selectedFeature)
+                    } else {
+                        MacModuleInspectorPlaceholder(
+                            feature: MacFeatureRegistry.descriptor(for: selectedFeature)
+                        )
+                    }
                 } else {
-                    EmptyView()
+                    featureInspector(for: selectedFeature)
                 }
-            } else {
-                featureInspector(for: selectedFeature)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(MacAppStyle.pageBackground)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(MacAppStyle.pageBackground)
         }
         .navigationSplitViewStyle(.balanced)
         .toolbar {
@@ -415,21 +417,24 @@ struct MacRootView: View {
     private func toggleNotebookInspectorColumn() {
         guard selectedFeature == .notebook else { return }
 
-        if isNotebookInspectorColumnVisible {
-            isNotebookInspectorColumnVisible = false
-            columnVisibility = .doubleColumn
-            closeNotebookInspectorStateAfterViewUpdate()
-            return
-        }
+        let nextValue = !isNotebookInspectorColumnVisible
 
-        isNotebookInspectorColumnVisible = true
-        columnVisibility = .all
+        Task { @MainActor in
+            await Task.yield()
 
-        if notebookInspectorState.selection == nil {
-            notebookToolbarActions.toggleInspector()
-        } else {
-            notebookInspectorState.isPresented = true
-            notebookToolbarActions.isInspectorPresented = true
+            isNotebookInspectorColumnVisible = nextValue
+            columnVisibility = nextValue ? .all : .doubleColumn
+
+            if nextValue {
+                if notebookInspectorState.selection == nil {
+                    notebookToolbarActions.toggleInspector()
+                } else {
+                    notebookInspectorState.isPresented = true
+                    notebookToolbarActions.isInspectorPresented = true
+                }
+            } else {
+                closeNotebookInspectorStateAfterViewUpdate()
+            }
         }
     }
 

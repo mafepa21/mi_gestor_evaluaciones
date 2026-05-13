@@ -194,6 +194,10 @@ struct NotebookSummaryGenerationSheet: View {
         return data.sheet.columns.filter { isNotebookIndividualSummaryColumn($0) }
     }
 
+    private var availability: AIContextualAvailabilityState {
+        aiService.currentAvailability()
+    }
+
     private var hasExistingSummary: Bool {
         !summaryColumns.isEmpty
     }
@@ -221,6 +225,7 @@ struct NotebookSummaryGenerationSheet: View {
                 }
             }
             .onAppear {
+                aiService.prewarm()
                 if let initialTargetColumnId,
                    summaryColumns.contains(where: { $0.id == initialTargetColumnId }) {
                     selectedExistingColumnId = initialTargetColumnId
@@ -256,9 +261,9 @@ struct NotebookSummaryGenerationSheet: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(hasExistingSummary ? "Refina o actualiza la síntesis pedagógica del cuaderno." : "Genera una columna de síntesis pedagógica lista para cada alumno.")
                             .font(.title2.weight(.bold))
-                        Text("Síntesis local editable disponible aunque Apple Intelligence no responda.")
+                        Text(availability.message)
                             .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(NotebookStyle.successTint)
+                            .foregroundStyle(availability.isAvailable ? NotebookStyle.successTint : NotebookStyle.warningTint)
                     }
                 }
 
@@ -454,9 +459,9 @@ struct NotebookSummaryGenerationSheet: View {
         }
 
         let onlyEmptyCells = configuration.generationMode == .onlyEmptyCells
-        let canUseAppleAI = false
+        let canUseAppleAI = availability.isAvailable
         isGenerating = true
-        feedbackMessage = "Apple Intelligence no disponible; usando síntesis local editable."
+        feedbackMessage = canUseAppleAI ? nil : "Apple Intelligence no disponible; usando síntesis local editable."
         progressMessage = nil
 
         Task {

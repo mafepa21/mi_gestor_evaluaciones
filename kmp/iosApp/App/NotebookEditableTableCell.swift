@@ -602,9 +602,7 @@ struct NotebookEditableTableCell: View {
         default:
             break
         }
-        DispatchQueue.main.async {
-            self.hasLoadedDrafts = true
-        }
+        hasLoadedDrafts = true
     }
 
     private func loadDraftsUnlessEditing() {

@@ -61,6 +61,8 @@ struct NotebookModuleView: View {
     @State var averageExplanationRow: NotebookTableRow? = nil
     @State var currentSelectionAuditEvents: [NotebookCellAuditEvent] = []
     @State var auditObservationTask: Task<Void, Never>? = nil
+    @State var toolbarSyncTask: Task<Void, Never>? = nil
+    @State var lastToolbarStateKey: String? = nil
     @State var riskLevelCache: [Int64: RiskLevel] = [:]
     @State var riskComputationKey: String?
     @State var isPrecomputingRiskLevels = false
@@ -232,11 +234,15 @@ struct NotebookModuleView: View {
     }
 
     var body: some View {
-        notebookLifecycleCleanup(
-            notebookObservationModifiers(
-                notebookSheetAndTaskModifiers(notebookContentWithDialogs)
+        if isMacInspectorOnly {
+            notebookLifecycleCleanup(notebookContentWithDialogs)
+        } else {
+            notebookLifecycleCleanup(
+                notebookObservationModifiers(
+                    notebookSheetAndTaskModifiers(notebookContentWithDialogs)
+                )
             )
-        )
+        }
     }
 
 
@@ -583,8 +589,9 @@ struct NotebookModuleView: View {
         columnWidths[column.id] ?? CGFloat(max(column.widthDp, 140))
     }
 
+    @ViewBuilder
     func notebookLoadedContent(data: NotebookUiStateData) -> some View {
-        Group {
+        let content = Group {
             switch macPresentation {
             case .full, .content:
                 centerPanel(data: data)
@@ -594,76 +601,76 @@ struct NotebookModuleView: View {
                     .background(NotebookStyle.surfaceMuted)
             }
         }
-            .sheet(item: $addColumnContext) { context in
-                addColumnSheetPresentation(for: context)
-            }
-            .sheet(item: $notebookAISheetRequest) { request in
-                notebookAISheet(request: request, data: data)
-            }
-            .sheet(item: $notebookSummarySheetRequest) { request in
-                NotebookSummaryGenerationSheet(
-                    bridge: bridge,
-                    initialTargetColumnId: request.targetColumnId
-                ) { message, style in
-                    showToast(message, style: style)
+
+        if isMacInspectorOnly {
+            content
+        } else {
+            content
+                .sheet(item: $addColumnContext) { context in
+                    addColumnSheetPresentation(for: context)
                 }
-            }
-            .sheet(isPresented: $isAverageConfigurationPresented) {
-                NotebookAverageEditorSheet(
-                    classTitle: activeClassLabel,
-                    columns: data.sheet.columns,
-                    rows: data.sheet.rows
-                ) { updates in
-                    saveAverageConfiguration(updates)
+                .sheet(item: $notebookAISheetRequest) { request in
+                    notebookAISheet(request: request, data: data)
                 }
-                #if os(macOS)
-                .frame(width: 560, height: 640)
-                #else
-                .presentationDetents([.large])
-                #endif
-            }
-            .sheet(item: $formulaEditRequest) { request in
-                formulaEditorSheet(request: request, data: data)
-            }
-            .sheet(isPresented: Binding(
-                get: { bridge.showingBulkRubricEvaluation },
-                set: { isPresented in
-                    if !isPresented {
-                        bridge.closeBulkRubricEvaluation()
+                .sheet(item: $notebookSummarySheetRequest) { request in
+                    NotebookSummaryGenerationSheet(
+                        bridge: bridge,
+                        initialTargetColumnId: request.targetColumnId
+                    ) { message, style in
+                        showToast(message, style: style)
                     }
                 }
-            )) {
-                RubricBulkEvaluationSheet(bridge: bridge)
+                .sheet(isPresented: $isAverageConfigurationPresented) {
+                    NotebookAverageEditorSheet(
+                        classTitle: activeClassLabel,
+                        columns: data.sheet.columns,
+                        rows: data.sheet.rows
+                    ) { updates in
+                        saveAverageConfiguration(updates)
+                    }
                     #if os(macOS)
-                    .frame(width: 1180, height: 760)
+                    .frame(width: 560, height: 640)
                     #else
                     .presentationDetents([.large])
                     #endif
-            }
-            .navigationTitle("Cuaderno")
-            .notebookNavigationSubtitle(notebookNavigationSubtitle(data: data))
-            .notebookKeyboardNavigation {
-                navigateFromFocused(direction: navigationDirection, data: data)
-            }
-            .onAppear {
-                if !isMacInspectorOnly {
+                }
+                .sheet(item: $formulaEditRequest) { request in
+                    formulaEditorSheet(request: request, data: data)
+                }
+                .sheet(isPresented: Binding(
+                    get: { bridge.showingBulkRubricEvaluation },
+                    set: { isPresented in
+                        if !isPresented {
+                            bridge.closeBulkRubricEvaluation()
+                        }
+                    }
+                )) {
+                    RubricBulkEvaluationSheet(bridge: bridge)
+                        #if os(macOS)
+                        .frame(width: 1180, height: 760)
+                        #else
+                        .presentationDetents([.large])
+                        #endif
+                }
+                .navigationTitle("Cuaderno")
+                .notebookNavigationSubtitle(notebookNavigationSubtitle(data: data))
+                .notebookKeyboardNavigation {
+                    navigateFromFocused(direction: navigationDirection, data: data)
+                }
+                .onAppear {
                     scheduleActiveNotebookTabSync(data: data)
                     scheduleToolbarStateSync(data: data)
                 }
-            }
-            .appOnChange(of: "\(data.sheet.classId)") { _ in
-                resetNotebookTransientStateForClassChange()
-            }
-            .appOnChange(of: notebookTabsStateKey(data: data)) { _ in
-                if !isMacInspectorOnly {
+                .appOnChange(of: "\(data.sheet.classId)") { _ in
+                    resetNotebookTransientStateForClassChange()
+                }
+                .appOnChange(of: notebookTabsStateKey(data: data)) { _ in
                     scheduleActiveNotebookTabSync(data: data)
                 }
-            }
-            .appOnChange(of: toolbarStateKey(data: data)) { _ in
-                if !isMacInspectorOnly {
+                .appOnChange(of: toolbarStateKey(data: data)) { _ in
                     scheduleToolbarStateSync(data: data)
                 }
-            }
+        }
     }
 
     @ViewBuilder
@@ -737,9 +744,6 @@ struct NotebookModuleView: View {
             "\(cellReloadRevision)",
             activeChoiceCellId ?? "none",
             focusedCellId ?? "none",
-            "attendance:\(todayAttendanceByStudentId.count)",
-            "incidents:\(incidentCountByStudentId.count)",
-            "risk:\(riskLevelCache.count)",
             "columns:\(data.sheet.columns.count)",
             "rows:\(data.sheet.rows.count)"
         ].joined(separator: "¬")

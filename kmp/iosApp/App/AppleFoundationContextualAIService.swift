@@ -569,7 +569,11 @@ enum AppleFoundationModelSupport {
             ("concurrent requests", "concurrentRequests"),
             ("unsupportedlanguageorlocale", "unsupportedLanguageOrLocale"),
             ("unsupported language", "unsupportedLanguageOrLocale"),
-            ("com.apple.modelcatalog.catalog code=4097", "assetsUnavailable")
+            ("com.apple.modelcatalog.catalog code=4097", "assetsUnavailable"),
+            ("connection to service named com.apple.modelcatalog.catalog", "assetsUnavailable"),
+            ("modelcatalog.catalog", "assetsUnavailable"),
+            ("nscocoaerrordomain code=4097", "assetsUnavailable"),
+            ("xpc server interrupted", "assetsUnavailable")
         ]
         return knownGenerationErrors.first { description.contains($0.needle) }?.label ?? "runtimeFailure"
     }

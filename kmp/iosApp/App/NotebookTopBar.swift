@@ -378,48 +378,50 @@ struct NotebookSummaryGenerationSheet: View {
                 ?? summaryColumns.first?.title
                 ?? "Síntesis pedagógica"
             let resolvedTitle = mode == .createNewVersion ? "\(baseTitle) \(formattedRunStamp())" : baseTitle
-            guard let newColumnId = bridge.createNotebookAICommentColumn(name: resolvedTitle),
-                  let data = notebookData,
-                  let createdColumn = data.sheet.columns.first(where: { $0.id == newColumnId }) else {
+            guard let newColumnId = bridge.createNotebookAICommentColumn(name: resolvedTitle) else {
                 return nil
             }
 
-            let referenceColumn = summaryColumns.first(where: { $0.id == selectedExistingColumnId }) ?? summaryColumns.first
-            let updatedColumn = NotebookColumnDefinition(
-                id: createdColumn.id,
-                title: createdColumn.title,
-                type: .text,
-                categoryKind: referenceColumn?.categoryKind ?? .followUp,
-                instrumentKind: .privateComment,
-                inputKind: .text,
-                evaluationId: createdColumn.evaluationId,
-                rubricId: createdColumn.rubricId,
-                formula: createdColumn.formula,
-                weight: 0,
-                dateEpochMs: createdColumn.dateEpochMs,
-                unitOrSituation: NotebookIndividualSummaryPreferences.marker,
-                competencyCriteriaIds: createdColumn.competencyCriteriaIds,
-                scaleKind: .custom,
-                tabIds: createdColumn.tabIds,
-                sessions: createdColumn.sessions,
-                sharedAcrossTabs: createdColumn.sharedAcrossTabs,
-                colorHex: createdColumn.colorHex,
-                iconName: "apple.intelligence",
-                order: createdColumn.order,
-                widthDp: createdColumn.widthDp,
-                categoryId: referenceColumn?.categoryId,
-                ordinalLevels: createdColumn.ordinalLevels,
-                availableIcons: createdColumn.availableIcons,
-                countsTowardAverage: false,
-                isPinned: referenceColumn?.isPinned ?? false,
-                isHidden: false,
-                visibility: .visible,
-                isLocked: referenceColumn?.isLocked ?? false,
-                isTemplate: referenceColumn?.isTemplate ?? false,
-                emptyCellPolicy: referenceColumn?.emptyCellPolicy ?? createdColumn.emptyCellPolicy,
-                trace: createdColumn.trace
-            )
-            bridge.saveColumn(column: updatedColumn)
+            // The SwiftUI/KMP snapshot can lag right after creation; generation can use the returned id immediately.
+            if let data = notebookData,
+               let createdColumn = data.sheet.columns.first(where: { $0.id == newColumnId }) {
+                let referenceColumn = summaryColumns.first(where: { $0.id == selectedExistingColumnId }) ?? summaryColumns.first
+                let updatedColumn = NotebookColumnDefinition(
+                    id: createdColumn.id,
+                    title: createdColumn.title,
+                    type: .text,
+                    categoryKind: referenceColumn?.categoryKind ?? .followUp,
+                    instrumentKind: .privateComment,
+                    inputKind: .text,
+                    evaluationId: createdColumn.evaluationId,
+                    rubricId: createdColumn.rubricId,
+                    formula: createdColumn.formula,
+                    weight: 0,
+                    dateEpochMs: createdColumn.dateEpochMs,
+                    unitOrSituation: NotebookIndividualSummaryPreferences.marker,
+                    competencyCriteriaIds: createdColumn.competencyCriteriaIds,
+                    scaleKind: .custom,
+                    tabIds: createdColumn.tabIds,
+                    sessions: createdColumn.sessions,
+                    sharedAcrossTabs: createdColumn.sharedAcrossTabs,
+                    colorHex: createdColumn.colorHex,
+                    iconName: "apple.intelligence",
+                    order: createdColumn.order,
+                    widthDp: createdColumn.widthDp,
+                    categoryId: referenceColumn?.categoryId,
+                    ordinalLevels: createdColumn.ordinalLevels,
+                    availableIcons: createdColumn.availableIcons,
+                    countsTowardAverage: false,
+                    isPinned: referenceColumn?.isPinned ?? false,
+                    isHidden: false,
+                    visibility: .visible,
+                    isLocked: referenceColumn?.isLocked ?? false,
+                    isTemplate: referenceColumn?.isTemplate ?? false,
+                    emptyCellPolicy: referenceColumn?.emptyCellPolicy ?? createdColumn.emptyCellPolicy,
+                    trace: createdColumn.trace
+                )
+                bridge.saveColumn(column: updatedColumn)
+            }
             NotebookIndividualSummaryPreferences.save(configuration, columnId: newColumnId)
             return newColumnId
         }
@@ -434,6 +436,17 @@ struct NotebookSummaryGenerationSheet: View {
             return
         }
 
+        let studentIds = resolvedStudentIds
+        let contexts = bridge.generateNotebookAICommentContexts(
+            includedColumnIds: includedColumnIds,
+            studentIds: studentIds
+        )
+
+        guard !contexts.isEmpty else {
+            feedbackMessage = "No hay contexto suficiente para generar síntesis."
+            return
+        }
+
         guard let targetColumnId = resolveTargetColumnId() else {
             feedbackMessage = "No se pudo crear o resolver la columna de síntesis."
             return
@@ -441,31 +454,10 @@ struct NotebookSummaryGenerationSheet: View {
 
         let onlyEmptyCells = configuration.generationMode == .onlyEmptyCells
         isGenerating = true
-        feedbackMessage = nil
+        feedbackMessage = availability.isAvailable ? nil : "Apple Intelligence no disponible; se generará un borrador editable por reglas."
         progressMessage = nil
 
         Task {
-            if !availability.isAvailable {
-                await MainActor.run {
-                    feedbackMessage = availability.message
-                    isGenerating = false
-                }
-                return
-            }
-
-            let contexts = bridge.generateNotebookAICommentContexts(
-                includedColumnIds: includedColumnIds,
-                studentIds: resolvedStudentIds
-            )
-
-            if contexts.isEmpty {
-                await MainActor.run {
-                    feedbackMessage = "No hay suficiente contexto de cuaderno para generar síntesis."
-                    isGenerating = false
-                }
-                return
-            }
-
             var savedCount = 0
             var skippedCount = 0
 
@@ -497,12 +489,15 @@ struct NotebookSummaryGenerationSheet: View {
             }
 
             await MainActor.run {
-                onComplete(
-                    "Síntesis guardadas: \(savedCount). Omitidas: \(skippedCount).",
-                    savedCount > 0 ? .success : .warning
-                )
                 isGenerating = false
-                dismiss()
+                let completionMessage = "Síntesis generadas: \(savedCount). Omitidas: \(skippedCount)."
+                if savedCount > 0 {
+                    onComplete(completionMessage, .success)
+                    dismiss()
+                } else {
+                    progressMessage = nil
+                    feedbackMessage = completionMessage
+                }
             }
         }
     }

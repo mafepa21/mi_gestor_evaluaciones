@@ -208,6 +208,19 @@ struct NotebookAICommentSheet: View {
         progressMessage = nil
 
         Task {
+            let contexts = bridge.generateNotebookAICommentContexts(
+                includedColumnIds: includedColumnIds,
+                studentIds: effectiveStudentIds
+            )
+
+            if contexts.isEmpty {
+                await MainActor.run {
+                    feedbackMessage = "No hay contexto suficiente para generar comentarios."
+                    isGenerating = false
+                }
+                return
+            }
+
             var targetColumnId = createColumnIfNeeded(forceNew: mode == .createColumn)
             guard let resolvedColumnId = targetColumnId else {
                 await MainActor.run {
@@ -220,24 +233,8 @@ struct NotebookAICommentSheet: View {
 
             if !availability.isAvailable {
                 await MainActor.run {
-                    onComplete("Columna IA creada, pero la generación local no está disponible en este dispositivo.", .warning)
-                    isGenerating = false
-                    dismiss()
+                    feedbackMessage = "Apple Intelligence no disponible; se generará un borrador editable por reglas."
                 }
-                return
-            }
-
-            let contexts = bridge.generateNotebookAICommentContexts(
-                includedColumnIds: includedColumnIds,
-                studentIds: effectiveStudentIds
-            )
-
-            if contexts.isEmpty {
-                await MainActor.run {
-                    feedbackMessage = "No hay suficiente contexto de cuaderno para generar comentarios."
-                    isGenerating = false
-                }
-                return
             }
 
             var savedCount = 0
@@ -271,12 +268,15 @@ struct NotebookAICommentSheet: View {
             }
 
             await MainActor.run {
-                onComplete(
-                    "Comentarios IA guardados: \(savedCount). Omitidos: \(skippedCount).",
-                    savedCount > 0 ? .success : .warning
-                )
                 isGenerating = false
-                dismiss()
+                let completionMessage = "Comentarios IA generados: \(savedCount). Omitidos: \(skippedCount)."
+                if savedCount > 0 {
+                    onComplete(completionMessage, .success)
+                    dismiss()
+                } else {
+                    progressMessage = nil
+                    feedbackMessage = completionMessage
+                }
             }
         }
     }

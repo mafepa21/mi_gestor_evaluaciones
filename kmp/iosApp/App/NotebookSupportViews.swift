@@ -116,16 +116,27 @@ struct NotebookAverageExplanationView: View {
             if let explanation = explanation {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
+                        resultSection(explanation)
+
                         if !explanation.included.isEmpty {
-                            sectionHeader(title: "Contribuyen a la media", icon: "plus.circle.fill", color: .green)
+                            sectionHeader(title: "Incluidas", icon: "plus.circle.fill", color: .green)
                             ForEach(explanation.included, id: \.columnId) { contribution in
                                 contributionRow(contribution)
                             }
                         }
 
-                        if !explanation.excluded.isEmpty {
-                            sectionHeader(title: "Excluidos del cálculo", icon: "minus.circle.fill", color: .gray)
-                            ForEach(explanation.excluded, id: \.columnId) { exclusion in
+                        let pending = explanation.excluded.filter { $0.reason == .empty }
+                        if !pending.isEmpty {
+                            sectionHeader(title: "Pendientes", icon: "clock.fill", color: NotebookStyle.warningTint)
+                            ForEach(pending, id: \.columnId) { exclusion in
+                                exclusionRow(exclusion)
+                            }
+                        }
+
+                        let excluded = explanation.excluded.filter { $0.reason != .empty }
+                        if !excluded.isEmpty {
+                            sectionHeader(title: "Excluidas", icon: "minus.circle.fill", color: .gray)
+                            ForEach(excluded, id: \.columnId) { exclusion in
                                 exclusionRow(exclusion)
                             }
                         }
@@ -157,6 +168,37 @@ struct NotebookAverageExplanationView: View {
             }
         }
         .padding(.horizontal, 16)
+    }
+
+    private func resultSection(_ explanation: NotebookAverageExplanation) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Resultado")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+                Text(resultDetailText(explanation))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Text(explanation.average.map { String(format: "%.2f", $0.doubleValue) } ?? "--")
+                .font(.title3.bold())
+                .foregroundStyle(explanation.average == nil ? .secondary : NotebookStyle.primaryTint)
+                .monospacedDigit()
+        }
+        .padding(12)
+        .background(NotebookStyle.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func resultDetailText(_ explanation: NotebookAverageExplanation) -> String {
+        let included = explanation.included.count
+        let pending = explanation.excluded.filter { $0.reason == .empty }.count
+        if included == 0 { return "Sin columnas con datos suficientes." }
+        if pending == 0 { return "\(included) columnas incluidas." }
+        return "\(included) incluidas · \(pending) pendientes."
     }
 
     private func sectionHeader(title: String, icon: String, color: Color) -> some View {

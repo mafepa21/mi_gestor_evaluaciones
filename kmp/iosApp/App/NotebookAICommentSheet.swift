@@ -17,7 +17,7 @@ struct NotebookAICommentSheet: View {
     @State private var audience: AIReportAudience = .docente
     @State private var tone: AIReportTone = .claro
     @State private var onlyEmptyCells = true
-    @State private var selectedExistingColumnId = ""
+    @State private var selectedExistingColumnId: String?
     @State private var isGenerating = false
     @State private var progressMessage: String?
     @State private var feedbackMessage: String?
@@ -60,6 +60,8 @@ struct NotebookAICommentSheet: View {
                     selectedExistingColumnId = targetColumnId
                 } else if let first = existingAIColumns.first {
                     selectedExistingColumnId = first.id
+                } else {
+                    selectedExistingColumnId = nil
                 }
             }
         }
@@ -80,7 +82,7 @@ struct NotebookAICommentSheet: View {
                 } else if !existingAIColumns.isEmpty {
                     Picker("Columna destino", selection: $selectedExistingColumnId) {
                         ForEach(existingAIColumns, id: \.id) { column in
-                            Text(column.title).tag(column.id)
+                            Text(column.title).tag(Optional(column.id))
                         }
                     }
                     .pickerStyle(.menu)
@@ -184,7 +186,7 @@ struct NotebookAICommentSheet: View {
             if let targetColumnId, !targetColumnId.isEmpty {
                 return targetColumnId
             }
-            if !selectedExistingColumnId.isEmpty {
+            if let selectedExistingColumnId {
                 return selectedExistingColumnId
             }
             if let existing = existingAIColumns.first {
@@ -279,4 +281,3 @@ struct NotebookAICommentSheet: View {
         }
     }
 }
-

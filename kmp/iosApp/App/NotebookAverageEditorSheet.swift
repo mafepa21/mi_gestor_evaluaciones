@@ -318,17 +318,18 @@ struct NotebookAverageEditorSheet: View {
     private func previewAverage(for row: NotebookRow, columns: [NotebookColumnDefinition]) -> Double? {
         var weightedSum = 0.0
         var total = 0.0
-        var hasAnyValue = false
 
         for column in columns {
             guard let weight = parsedWeight(for: column), weight > 0 else { continue }
-            let value = numericValue(for: row, column: column)
-            if value != nil { hasAnyValue = true }
-            weightedSum += (value ?? 0) * weight
-            total += weight
+            if let value = numericValue(for: row, column: column) {
+                weightedSum += value * weight
+                total += weight
+            } else if column.emptyCellPolicy == .countAsZero {
+                total += weight
+            }
         }
 
-        guard hasAnyValue, total > 0 else { return nil }
+        guard total > 0 else { return nil }
         return weightedSum / total
     }
 

@@ -173,7 +173,9 @@ struct NotebookMacLayout: View {
                 Label("Inspector", systemImage: "sidebar.right")
             }
             .disabled(!toolbarActions.canToggleInspector && !inspectorState.isPresented && !toolbarActions.isInspectorPresented)
+        }
 
+        ToolbarItem(placement: .secondaryAction) {
             Button {
                 toolbarActions.refresh()
             } label: {

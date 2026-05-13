@@ -207,12 +207,14 @@ extension NotebookModuleView {
         countsTowardAverage: Bool? = nil,
         isLocked: Bool? = nil,
         colorHex: String? = nil,
+        widthDp: Double? = nil,
         formula: String? = nil,
         updatesFormula: Bool = false
     ) {
         bridge.saveColumn(column: copyNotebookColumn(
             column,
             title: title,
+            widthDp: widthDp,
             countsTowardAverage: countsTowardAverage,
             isLocked: isLocked,
             colorHex: colorHex,

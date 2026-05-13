@@ -149,6 +149,12 @@ extension NotebookModuleView {
         )
     }
 
+    func updateColumnWidth(_ column: NotebookColumnDefinition, width: CGFloat) {
+        let clampedWidth = min(400, max(80, width))
+        columnWidths[column.id] = clampedWidth
+        saveColumnMutation(column, widthDp: Double(clampedWidth))
+    }
+
     func setNotebookColumnHidden(_ column: NotebookColumnDefinition, isHidden: Bool) {
         setNotebookColumnVisibility(column, visibility: isHidden ? .hidden : .visible)
     }

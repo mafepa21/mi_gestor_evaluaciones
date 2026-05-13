@@ -294,7 +294,8 @@ struct NotebookModuleView: View {
                         notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: nil)
                     },
                     exportText: exportText(data: data),
-                    showsInlineActions: macPresentation != .content
+                    showsInlineActions: showsNotebookInlineActions,
+                    showsClassPicker: macPresentation != .full
                 )
                 Divider()
                 NotebookTabStrip(
@@ -508,6 +509,14 @@ struct NotebookModuleView: View {
         [.name]
     }
 
+    var showsNotebookInlineActions: Bool {
+        #if os(macOS)
+        return false
+        #else
+        return true
+        #endif
+    }
+
     func snapFixedZoneWidth() {
         let snapPoints: [CGFloat] = [220, 360, 460, 580]
         let current = fixedZoneWidth
@@ -566,7 +575,7 @@ struct NotebookModuleView: View {
         case .group: return 90
         case .followUp: return 100
         case .attendance: return 90
-        case .average: return 90
+        case .average: return 110
         }
     }
 

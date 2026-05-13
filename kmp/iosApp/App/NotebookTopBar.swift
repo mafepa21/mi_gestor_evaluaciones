@@ -177,7 +177,7 @@ struct NotebookSummaryGenerationSheet: View {
     let onComplete: (String, NotebookToastStyle) -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @State private var selectedExistingColumnId = ""
+    @State private var selectedExistingColumnId: String?
     @State private var configuration = NotebookIndividualSummaryConfiguration()
     @State private var isGenerating = false
     @State private var progressMessage: String?
@@ -233,10 +233,12 @@ struct NotebookSummaryGenerationSheet: View {
                 } else if let first = summaryColumns.first {
                     selectedExistingColumnId = first.id
                     configuration = NotebookIndividualSummaryPreferences.load(columnId: first.id)
+                } else {
+                    selectedExistingColumnId = nil
                 }
             }
             .appOnChange(of: selectedExistingColumnId) { newValue in
-                configuration = NotebookIndividualSummaryPreferences.load(columnId: newValue.isEmpty ? nil : newValue)
+                configuration = NotebookIndividualSummaryPreferences.load(columnId: newValue)
             }
         }
     }
@@ -281,7 +283,7 @@ struct NotebookSummaryGenerationSheet: View {
                 if hasExistingSummary {
                     Picker("Columna destino", selection: $selectedExistingColumnId) {
                         ForEach(summaryColumns, id: \.id) { column in
-                            Text(column.title).tag(column.id)
+                            Text(column.title).tag(Optional(column.id))
                         }
                     }
                     .pickerStyle(.menu)
@@ -371,7 +373,7 @@ struct NotebookSummaryGenerationSheet: View {
     private func resolveTargetColumnId() -> String? {
         let mode = configuration.generationMode
 
-        if mode == .createNewVersion || selectedExistingColumnId.isEmpty {
+        if mode == .createNewVersion || selectedExistingColumnId == nil {
             let baseTitle = summaryColumns.first(where: { $0.id == selectedExistingColumnId })?.title
                 ?? summaryColumns.first?.title
                 ?? "Síntesis pedagógica"
@@ -422,7 +424,7 @@ struct NotebookSummaryGenerationSheet: View {
             return newColumnId
         }
 
-        return selectedExistingColumnId.isEmpty ? summaryColumns.first?.id : selectedExistingColumnId
+        return selectedExistingColumnId ?? summaryColumns.first?.id
     }
 
     private func performGeneration() {
@@ -536,6 +538,7 @@ struct NotebookTopBar: View {
     var onGenerateSummaryFallback: (() -> Void)? = nil
     var exportText: String? = nil
     var showsInlineActions: Bool = true
+    var showsClassPicker: Bool = true
 
     private var selectedClass: SchoolClass? {
         bridge.classes.first(where: { $0.id == bridge.notebookViewModel.currentClassId?.int64Value ?? 0 })
@@ -568,16 +571,13 @@ struct NotebookTopBar: View {
             }
         #endif
         }
-        .onAppear {
-            if surfaceMode != .grid {
-                surfaceMode = .grid
-            }
-        }
     }
 
     private var macContextTopBar: some View {
         HStack(spacing: 12) {
-            classPicker
+            if showsClassPicker {
+                classPicker
+            }
 
             Spacer(minLength: 0)
 
@@ -591,7 +591,9 @@ struct NotebookTopBar: View {
     private var compactTopBar: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                classPicker
+                if showsClassPicker {
+                    classPicker
+                }
                 saveStatusChip
                 Spacer(minLength: 0)
                 organizationButton
@@ -610,7 +612,9 @@ struct NotebookTopBar: View {
 
     private func regularTopBar(showAddColumnAction: Bool) -> some View {
         HStack(spacing: 16) {
-            classPicker
+            if showsClassPicker {
+                classPicker
+            }
 
             searchField
 

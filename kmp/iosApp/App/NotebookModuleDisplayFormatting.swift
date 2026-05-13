@@ -241,8 +241,13 @@ extension NotebookModuleView {
         return explanation.excluded.contains { $0.reason == .empty } ? .pending : .complete
     }
 
+    func averagePendingCount(for item: NotebookTableRow) -> Int {
+        item.row.averageExplanation?.excluded.filter { $0.reason == .empty }.count ?? 0
+    }
+
     func averageBadge(for item: NotebookTableRow) -> some View {
         let state = averageState(for: item)
+        let pendingCount = averagePendingCount(for: item)
         let tint: Color = {
             switch state {
             case .complete: return NotebookStyle.successTint
@@ -257,25 +262,40 @@ extension NotebookModuleView {
             case .insufficient: return "minus.circle"
             }
         }()
+        let statusText: String = {
+            switch state {
+            case .complete: return "Completa"
+            case .pending: return pendingCount == 1 ? "1 pendiente" : "\(pendingCount) pendientes"
+            case .insufficient: return "Sin datos"
+            }
+        }()
 
-        return HStack(spacing: 6) {
-            Image(systemName: icon)
-                .font(.system(size: 11, weight: .bold))
+        return VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(tint)
+                Text(averageText(for: item))
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundStyle(state == .insufficient ? .secondary : .primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+            }
+
+            Text(statusText)
+                .font(.system(size: 9, weight: .semibold, design: .rounded))
                 .foregroundStyle(tint)
-            Text(averageText(for: item))
-                .font(.system(size: 14, weight: .bold, design: .rounded))
-                .foregroundStyle(state == .insufficient ? .secondary : .primary)
                 .lineLimit(1)
-                .minimumScaleFactor(0.82)
+                .minimumScaleFactor(0.75)
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 5)
+        .padding(.vertical, 4)
         .background(
-            Capsule(style: .continuous)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(tint.opacity(state == .insufficient ? 0.08 : 0.12))
         )
         .overlay(
-            Capsule(style: .continuous)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(tint.opacity(state == .insufficient ? 0.12 : 0.22), lineWidth: 1)
         )
         .help(averageHelpText(for: state))

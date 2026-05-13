@@ -96,7 +96,7 @@ extension NotebookModuleView {
                     minWidth: 80,
                     maxWidth: 400
                 ) { newWidth in
-                    columnWidths[column.id] = newWidth
+                    updateColumnWidth(column, width: newWidth)
                 } content: {
                     headerChip(
                         title: column.title,
@@ -240,7 +240,22 @@ extension NotebookModuleView {
         let typeText: String
         switch column.type {
         case .numeric:
-            typeText = "Nota"
+            if column.instrumentKind == .physicalTest {
+                switch column.scaleKind {
+                case .time:
+                    typeText = "Tiempo"
+                case .distance:
+                    typeText = "Distancia"
+                case .repetitions:
+                    typeText = "Repeticiones"
+                case .tenPoint:
+                    typeText = "Nota baremada"
+                default:
+                    typeText = "Nota"
+                }
+            } else {
+                typeText = "Nota"
+            }
         case .rubric:
             typeText = "Rúbrica"
         case .check:

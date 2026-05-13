@@ -55,6 +55,9 @@ struct NotebookModuleView: View {
     @State var cellReloadRevision = 0
     @State var highlightedCategoryId: String? = nil
     @State var expandedEmptyCategoryIds: Set<String> = []
+    @State var pendingRubricColumnId: String? = nil
+    @State var pendingRubricStudentOrder: [Int64] = []
+    @State var pendingRubricCurrentStudentId: Int64? = nil
     @State var notebookAISheetRequest: NotebookAISheetRequest? = nil
     @State var notebookSummarySheetRequest: NotebookSummarySheetRequest? = nil
     @State var isAverageConfigurationPresented = false
@@ -669,6 +672,10 @@ struct NotebookModuleView: View {
                 }
                 .appOnChange(of: toolbarStateKey(data: data)) { _ in
                     scheduleToolbarStateSync(data: data)
+                }
+                .appOnChange(of: bridge.rubricEvaluationState.isSaveSuccessful) { saved in
+                    guard saved, bridge.isNotebookRubricAutoAdvanceActive else { return }
+                    openNextRubricStudentIfPossible()
                 }
         }
     }

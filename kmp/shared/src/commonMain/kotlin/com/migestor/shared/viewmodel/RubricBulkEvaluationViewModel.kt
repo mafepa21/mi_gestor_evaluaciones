@@ -207,12 +207,14 @@ class RubricBulkEvaluationViewModel(
             _uiState.update { it.copy(isSaving = true, isSaveSuccessful = false) }
             try {
                 val state = _uiState.value
-                for (student in state.students) {
-                    saveStudentEvaluation(student.id)
+                autoSaveJobs.values.forEach { it.cancel() }
+                autoSaveJobs.clear()
+                for (studentId in state.assessments.keys) {
+                    saveStudentEvaluation(studentId, emitRefresh = false)
                 }
                 _uiState.update { it.copy(isSaving = false, isSaveSuccessful = true) }
                 NotebookRefreshBus.emitRefresh()
-                delay(3000) // Give UI time to show success
+                delay(350)
                 _uiState.update { it.copy(isSaveSuccessful = false) }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isSaving = false, error = "Error al guardar todo: ${e.message}") }
@@ -220,7 +222,7 @@ class RubricBulkEvaluationViewModel(
         }
     }
 
-    private suspend fun saveStudentEvaluation(studentId: Long) {
+    private suspend fun saveStudentEvaluation(studentId: Long, emitRefresh: Boolean = true) {
         val state = _uiState.value
         val studentAssessments = state.assessments[studentId] ?: return
         val score = state.scores[studentId] ?: 0.0
@@ -252,7 +254,9 @@ class RubricBulkEvaluationViewModel(
             }
 
             // Notify notebook of changes
-            NotebookRefreshBus.emitRefresh()
+            if (emitRefresh) {
+                NotebookRefreshBus.emitRefresh()
+            }
             
             // NOTIFICAR AL BUS PARA SINCRONIZACIÓN REACTIVA
             RubricEvaluationBus.emit(

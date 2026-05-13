@@ -238,7 +238,8 @@ struct NotebookEditableTableCell: View {
                     Text(rubricText)
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
                         .foregroundStyle(rubricText == "—" ? .tertiary : .primary)
-                        .frame(maxWidth: .infinity, minHeight: 30)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .contextMenu {

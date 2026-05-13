@@ -5,17 +5,7 @@ struct RubricBulkEvaluationSheet: View {
     @ObservedObject var bridge: KmpBridge
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
-    @State private var hoveredLevelKey: HoveredLevelKey?
-    @State private var popoverDismissalTask: Task<Void, Never>? = nil
-    @State private var hoverAnchorPoint: CGPoint?
-    @State private var suppressedLevelKey: HoveredLevelKey?
     @State private var horizontalScrollOffset: CGFloat = 0
-
-    private struct HoveredLevelKey: Hashable {
-        let studentId: Int64
-        let criterionId: Int64
-        let levelId: Int64
-    }
 
     private var state: BulkRubricEvaluationUiState? {
         bridge.bulkRubricEvaluationState
@@ -71,7 +61,6 @@ struct RubricBulkEvaluationSheet: View {
                         .appOnChange(of: state.isSaveSuccessful) { saved in
                             guard saved else { return }
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                                bridge.refreshCurrentNotebook()
                                 bridge.closeBulkRubricEvaluation()
                                 dismiss()
                             }
@@ -159,10 +148,10 @@ struct RubricBulkEvaluationSheet: View {
                                 }
                                 .frame(width: 144, alignment: .leading)
 
-                                criterionCell(
+                                inlineCriterionCell(
                                     studentId: student.id,
                                     criterion: criterion,
-                                    criterionWidth: 220
+                                    width: 220
                                 )
                             }
                             .padding(12)
@@ -366,10 +355,10 @@ struct RubricBulkEvaluationSheet: View {
 
             HStack(spacing: 16) {
                 ForEach(rubric.criteria, id: \.criterion.id) { criterion in
-                    criterionCell(
+                    inlineCriterionCell(
                         studentId: student.id,
                         criterion: criterion,
-                        criterionWidth: criterionWidth
+                        width: criterionWidth
                     )
                 }
 
@@ -409,27 +398,20 @@ struct RubricBulkEvaluationSheet: View {
         )
     }
 
-    private func criterionCell(
+    private func inlineCriterionCell(
         studentId: Int64,
         criterion: RubricCriterionWithLevels,
-        criterionWidth: CGFloat
+        width: CGFloat
     ) -> some View {
         let selectedLevelId = bridge.bulkSelectedLevelId(
             studentId: studentId,
             criterionId: criterion.criterion.id
         )
+        let selectedLevel = criterion.levels.first { $0.id == selectedLevelId }
 
-        return HStack(spacing: 4) {
+        return HStack(spacing: 5) {
             ForEach(criterion.levels, id: \.id) { level in
                 let isSelected = selectedLevelId == level.id
-                let levelKey = HoveredLevelKey(
-                    studentId: studentId,
-                    criterionId: criterion.criterion.id,
-                    levelId: level.id
-                )
-                let hasDescription = !(level.description_?
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                    .isEmpty ?? true)
                 Button {
                     bridge.bulkSelectLevel(
                         studentId: studentId,
@@ -437,94 +419,39 @@ struct RubricBulkEvaluationSheet: View {
                         levelId: level.id
                     )
                 } label: {
-                    VStack(spacing: 4) {
-                        Text(level.name)
-                            .font(.system(size: 9, weight: .bold, design: .rounded))
-                            .multilineTextAlignment(.center)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.5)
-                        
-                        if level.points > 0 {
-                            Text("\(Int(level.points)) pts")
-                                .font(.system(size: 10, weight: .bold, design: .rounded))
-                                .opacity(0.6)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 56)
-                    .padding(.horizontal, 4)
-                    .foregroundStyle(isSelected ? .white : .primary.opacity(0.8))
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(isSelected ? EvaluationDesign.accent : Color(.systemFill).opacity(0.3))
-                    )
+                    Text(levelButtonTitle(level))
+                        .font(.system(size: 11, weight: .black, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.62)
+                        .frame(maxWidth: .infinity, minHeight: 38)
+                        .foregroundStyle(isSelected ? .white : .primary.opacity(0.72))
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(isSelected ? EvaluationDesign.accent : appMutedCardBackground(for: colorScheme).opacity(0.88))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .stroke(isSelected ? EvaluationDesign.accent.opacity(0.35) : EvaluationDesign.border.opacity(0.75), lineWidth: 1)
+                        )
                 }
                 .buttonStyle(.plain)
-                .appHoverLiftEffect()
-                .zIndex(hoveredLevelKey == levelKey ? 100 : 0)
-                .onHover { isHovering in
-                    guard hasDescription else { return }
-                    if isHovering {
-                        guard suppressedLevelKey != levelKey else { return }
-                        activateHover(for: levelKey)
-                    } else {
-                        clearHover(for: levelKey)
-                        if suppressedLevelKey == levelKey {
-                            suppressedLevelKey = nil
-                        }
-                    }
-                }
-                .modifier(ContinuousHoverIfAvailable { phase in
-                    guard hasDescription else { return }
-                    switch phase {
-                    case .active(let location):
-                        guard suppressedLevelKey != levelKey else { return }
-
-                        if hoveredLevelKey != levelKey {
-                            hoverAnchorPoint = location
-                            activateHover(for: levelKey)
-                            return
-                        }
-
-                        guard let anchor = hoverAnchorPoint else {
-                            hoverAnchorPoint = location
-                            return
-                        }
-
-                        let deltaX = location.x - anchor.x
-                        let deltaY = location.y - anchor.y
-                        let moved = (deltaX * deltaX + deltaY * deltaY) > 4 // 2pt
-                        if moved {
-                            suppressedLevelKey = levelKey
-                            clearHover(for: levelKey)
-                        }
-                    case .ended:
-                        clearHover(for: levelKey)
-                        if suppressedLevelKey == levelKey {
-                            suppressedLevelKey = nil
-                        }
-                    }
-                })
-                .overlay(alignment: .center) {
-                    Color.clear
-                        .frame(width: 1, height: 1)
-                        .offset(y: -68) // Anclaje sobre la fila anterior
-                        .popover(
-                            isPresented: Binding(
-                                get: { hoveredLevelKey == levelKey && hasDescription },
-                                set: { if !$0 { withAnimation { hoveredLevelKey = nil } } }
-                            ),
-                            arrowEdge: .bottom
-                        ) {
-                            levelHoverPopover(level: level)
-                                .padding(4)
-                                .modifier(PresentationCompactAdaptationIfAvailable())
-                        }
-                }
+                .accessibilityLabel("\(criterion.criterion.description_), \(level.name)")
             }
         }
-        .padding(8)
-        .frame(width: criterionWidth)
-        .background(appMutedCardBackground(for: colorScheme).opacity(0.88), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(6)
+        .frame(width: width)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(selectedLevel == nil ? Color.clear : EvaluationDesign.accent.opacity(0.06))
+        )
+    }
+
+    private func levelButtonTitle(_ level: RubricLevel) -> String {
+        let trimmed = level.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.count <= 7 {
+            return trimmed
+        }
+        return String(trimmed.prefix(7))
     }
 
     private func scorePill(for studentId: Int64, width: CGFloat) -> some View {
@@ -626,37 +553,6 @@ struct RubricBulkEvaluationSheet: View {
         }
     }
 
-    // We use level.name directly now instead of levelLabel method to show the real valuation.
-    @ViewBuilder
-    private func levelHoverPopover(level: RubricLevel) -> some View {
-        let description = level.description_?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        
-        VStack(alignment: .leading, spacing: 8) {
-            Text(level.name)
-                .font(.system(size: 14, weight: .bold, design: .rounded))
-                .foregroundStyle(.primary)
-
-            Text("\(Int(level.points)) puntos")
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundStyle(EvaluationDesign.accent)
-
-            if !description.isEmpty {
-                Text(description)
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                Text("Este nivel no tiene una descripción detallada definida.")
-                    .font(.system(size: 12, weight: .regular))
-                    .italic()
-                    .foregroundStyle(.secondary.opacity(0.6))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .frame(width: 250, alignment: .leading)
-        .padding(12)
-    }
-
     private func className(for state: BulkRubricEvaluationUiState) -> String {
         bridge.classes.first(where: { $0.id == state.classId })?.name ?? "Clase"
     }
@@ -667,54 +563,6 @@ struct RubricBulkEvaluationSheet: View {
         return String(first + last)
     }
     
-    private struct PresentationCompactAdaptationIfAvailable: ViewModifier {
-        func body(content: Content) -> some View {
-            if #available(iOS 16.4, *) {
-                content.presentationCompactAdaptation(.popover)
-            } else {
-                content
-            }
-        }
-    }
-
-    private func activateHover(for levelKey: HoveredLevelKey) {
-        popoverDismissalTask?.cancel()
-        hoveredLevelKey = levelKey
-        popoverDismissalTask = Task {
-            try? await Task.sleep(nanoseconds: 10_000_000_000) // Máximo 10 segundos visible por posición.
-            if Task.isCancelled { return }
-            await MainActor.run {
-                if hoveredLevelKey == levelKey {
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-                        hoveredLevelKey = nil
-                        hoverAnchorPoint = nil
-                    }
-                }
-            }
-        }
-    }
-
-    private func clearHover(for levelKey: HoveredLevelKey) {
-        guard hoveredLevelKey == levelKey else { return }
-        popoverDismissalTask?.cancel()
-        popoverDismissalTask = nil
-        withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-            hoveredLevelKey = nil
-            hoverAnchorPoint = nil
-        }
-    }
-
-    private struct ContinuousHoverIfAvailable: ViewModifier {
-        let onPhase: (HoverPhase) -> Void
-
-        func body(content: Content) -> some View {
-            if #available(iOS 17.0, *) {
-                content.onContinuousHover(coordinateSpace: .local, perform: onPhase)
-            } else {
-                content
-            }
-        }
-    }
     private struct BulkScrollOffsetKey: PreferenceKey {
         static var defaultValue: CGFloat = 0
         static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {

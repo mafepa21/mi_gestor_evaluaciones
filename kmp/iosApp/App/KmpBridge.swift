@@ -110,6 +110,7 @@ final class KmpBridge: ObservableObject {
     
     // Rubric Evaluation State (Bridged from RubricEvaluationViewModel)
     @Published var rubricEvaluationState: RubricEvaluationUiState = RubricEvaluationUiState.companion.default()
+    @Published var isNotebookRubricAutoAdvanceActive: Bool = false
     
     // Bulk Rubric Evaluation State
     @Published var bulkRubricEvaluationState: BulkRubricEvaluationUiState? = nil
@@ -857,7 +858,7 @@ final class KmpBridge: ObservableObject {
             for await state in sequence {
                 let wasSaveSuccessful = self.rubricEvaluationState.isSaveSuccessful
                 self.rubricEvaluationState = state
-                if state.isSaveSuccessful && !wasSaveSuccessful {
+                if state.isSaveSuccessful && !wasSaveSuccessful && !self.isNotebookRubricAutoAdvanceActive {
                     self.refreshCurrentNotebook()
                     if let classId = self.notebookViewModel.currentClassId?.int64Value {
                         self.scheduleNotebookSnapshotSync(forClassId: classId)
@@ -874,7 +875,6 @@ final class KmpBridge: ObservableObject {
                 let wasSaveSuccessful = self.bulkRubricEvaluationState?.isSaveSuccessful ?? false
                 self.bulkRubricEvaluationState = state
                 if state.isSaveSuccessful && !wasSaveSuccessful {
-                    self.refreshCurrentNotebook()
                     if let classId = self.notebookViewModel.currentClassId?.int64Value {
                         self.scheduleNotebookSnapshotSync(forClassId: classId)
                     }
@@ -4330,6 +4330,13 @@ final class KmpBridge: ObservableObject {
         rubricEvaluationViewModel.loadForNotebookCell(studentId: studentId, columnId: columnId, rubricId: rubricId, evaluationId: evaluationId)
     }
 
+    @MainActor
+    func openRubricEvaluationFromNotebook(studentId: Int64, columnId: String, rubricId: Int64, evaluationId: Int64) {
+        closeBulkRubricEvaluation()
+        isNotebookRubricAutoAdvanceActive = true
+        rubricEvaluationViewModel.loadForNotebookCell(studentId: studentId, columnId: columnId, rubricId: rubricId, evaluationId: evaluationId)
+    }
+
     func openAgendaNavigationTarget(_ target: AgendaNavigationTarget) {
         guard let studentId = target.studentId?.int64Value,
               let classId = target.classId?.int64Value,
@@ -4355,13 +4362,19 @@ final class KmpBridge: ObservableObject {
         )
     }
 
-    func saveRubricEvaluation(manual: Bool = true, onSuccess: @escaping () -> Void = {}) {
-        rubricEvaluationViewModel.save(manual: manual) { [weak self] in
+    func saveRubricEvaluation(
+        manual: Bool = true,
+        emitNotebookRefresh: Bool = true,
+        onSuccess: @escaping () -> Void = {}
+    ) {
+        rubricEvaluationViewModel.save(manual: manual, emitNotebookRefresh: emitNotebookRefresh) { [weak self] in
             Task { @MainActor in
                 guard let self else { return }
-                self.refreshCurrentNotebook()
-                if let classId = self.notebookViewModel.currentClassId?.int64Value {
-                    self.scheduleNotebookSnapshotSync(forClassId: classId)
+                if emitNotebookRefresh {
+                    self.refreshCurrentNotebook()
+                    if let classId = self.notebookViewModel.currentClassId?.int64Value {
+                        self.scheduleNotebookSnapshotSync(forClassId: classId)
+                    }
                 }
                 onSuccess()
             }
@@ -4476,6 +4489,7 @@ final class KmpBridge: ObservableObject {
 
     func closeRubricEvaluation() {
         rubricEvaluationState = RubricEvaluationUiState.companion.default()
+        isNotebookRubricAutoAdvanceActive = false
     }
 
     func refreshCurrentNotebook() {

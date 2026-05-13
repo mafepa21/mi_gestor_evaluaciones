@@ -13,10 +13,12 @@ struct ContentView: View {
         AppWorkspaceShell()
         .tint(.accentColor)
         .overlay(alignment: .bottom) {
-            if bridge.rubricEvaluationState.rubricDetail != nil {
+            if bridge.rubricEvaluationState.isLoading ||
+                bridge.rubricEvaluationState.rubricDetail != nil ||
+                bridge.rubricEvaluationState.error != nil {
                 Color.black.opacity(0.4)
                     .ignoresSafeArea()
-                    .onTapGesture { bridge.rubricEvaluationState = RubricEvaluationUiState.companion.default() }
+                    .onTapGesture { bridge.closeRubricEvaluation() }
                 
                 RubricEvaluationView()
                     .frame(height: 650)
@@ -25,7 +27,12 @@ struct ContentView: View {
                     .shadow(radius: 20)
             }
         }
-        .animation(uiFeatureFlags.reduceMotion ? .none : .spring(), value: bridge.rubricEvaluationState.rubricDetail != nil)
+        .animation(
+            uiFeatureFlags.reduceMotion ? .none : .spring(),
+            value: bridge.rubricEvaluationState.isLoading ||
+                bridge.rubricEvaluationState.rubricDetail != nil ||
+                bridge.rubricEvaluationState.error != nil
+        )
     }
 }
 
@@ -959,10 +966,29 @@ struct RubricEvaluationView: View {
                     }
                     .appOnChange(of: state.isSaveSuccessful) { saved in
                         guard saved else { return }
+                        guard !bridge.isNotebookRubricAutoAdvanceActive else { return }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                             closeRubric()
                         }
                     }
+                } else if let error = state.error {
+                    VStack(spacing: 14) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 28, weight: .bold))
+                            .foregroundStyle(EvaluationDesign.danger)
+                        Text("No se pudo abrir la rúbrica")
+                            .font(.system(size: 18, weight: .black, design: .rounded))
+                        Text(error)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 24)
+                        EvaluationPrimaryButton(label: "Cerrar", systemImage: "xmark") {
+                            closeRubric()
+                        }
+                        .frame(width: 160)
+                    }
+                    .padding()
                 } else {
                     ProgressView("Cargando rúbrica...")
                         .font(.system(size: 14, weight: .medium))
@@ -1006,9 +1032,12 @@ struct RubricEvaluationView: View {
                 EvaluationPrimaryButton(label: "Guardar evaluación", systemImage: "square.and.arrow.down.fill") {
                     bridge.saveRubricEvaluation(
                         manual: true,
+                        emitNotebookRefresh: !bridge.isNotebookRubricAutoAdvanceActive,
                         onSuccess: {
-                            bridge.refreshCurrentNotebook()
-                            closeRubric()
+                            if !bridge.isNotebookRubricAutoAdvanceActive {
+                                bridge.refreshCurrentNotebook()
+                                closeRubric()
+                            }
                         }
                     )
                 }

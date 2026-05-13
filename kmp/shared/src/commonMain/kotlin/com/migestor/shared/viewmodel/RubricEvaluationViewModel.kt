@@ -55,7 +55,17 @@ class RubricEvaluationViewModel(
 
 
     fun loadEvaluation(studentId: Long, evaluationId: Long, rubricId: Long) {
-        _uiState.update { it.copy(isLoading = true, error = null, studentId = studentId, evaluationId = evaluationId, columnId = null) }
+        _uiState.update {
+            it.copy(
+                isLoading = true,
+                error = null,
+                studentId = studentId,
+                evaluationId = evaluationId,
+                columnId = null,
+                isSaveSuccessful = false,
+                shouldDismissDialog = false
+            )
+        }
         scope.launch {
             try {
                 val evaluation = evaluationsRepository.getEvaluation(evaluationId)
@@ -93,7 +103,9 @@ class RubricEvaluationViewModel(
             error = null,
             studentId = studentId, 
             evaluationId = evaluationId,
-            columnId = columnId
+            columnId = columnId,
+            isSaveSuccessful = false,
+            shouldDismissDialog = false
         ) }
         
         scope.launch {
@@ -169,7 +181,7 @@ class RubricEvaluationViewModel(
         }
     }
 
-    fun save(manual: Boolean = true, onSuccess: () -> Unit) {
+    fun save(manual: Boolean = true, emitNotebookRefresh: Boolean = true, onSuccess: () -> Unit) {
         val state = _uiState.value
         if (state.isSaving) return
         
@@ -225,7 +237,9 @@ class RubricEvaluationViewModel(
                 // No llamamos a notebookRepository.upsertGrade de nuevo si state.columnId es redundante con effectiveColumnId
                 
                 // NOTIFICAR REFRESH
-                NotebookRefreshBus.emitRefresh()
+                if (emitNotebookRefresh) {
+                    NotebookRefreshBus.emitRefresh()
+                }
                 
                 // NOTIFICAR AL BUS PARA SINCRONIZACIÓN REACTIVA
                 RubricEvaluationBus.emit(

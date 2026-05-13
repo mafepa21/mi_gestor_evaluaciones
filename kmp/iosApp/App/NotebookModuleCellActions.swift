@@ -70,22 +70,83 @@ extension NotebookModuleView {
     func openRubricIndividual(column: NotebookColumnDefinition, item: NotebookTableRow) {
         guard let rubricId = column.rubricId?.int64Value,
               let evaluationId = column.evaluationId?.int64Value else {
-            showToast("Esta columna no tiene una rúbrica asociada", style: .warning)
+            showToast("Esta columna no tiene rúbrica/evaluación asociada.", style: .warning)
             return
         }
+        if let data = bridge.notebookState as? NotebookUiStateData {
+            pendingRubricStudentOrder = filteredRows(data: data).map { $0.student.id }
+        } else {
+            pendingRubricStudentOrder = [item.student.id]
+        }
+        pendingRubricColumnId = column.id
+        pendingRubricCurrentStudentId = item.student.id
+        bridge.isNotebookRubricAutoAdvanceActive = true
         withAnimation(.spring(response: 0.18, dampingFraction: 0.9)) {
             focusedCellId = nil
             activeChoiceCellId = nil
             inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
         }
         DispatchQueue.main.async {
-            bridge.loadForNotebookCell(
+            bridge.closeBulkRubricEvaluation()
+            bridge.openRubricEvaluationFromNotebook(
                 studentId: item.student.id,
                 columnId: column.id,
                 rubricId: rubricId,
                 evaluationId: evaluationId
             )
         }
+    }
+
+    func openNextRubricStudentIfPossible() {
+        guard let columnId = pendingRubricColumnId,
+              let currentStudentId = pendingRubricCurrentStudentId,
+              let data = bridge.notebookState as? NotebookUiStateData,
+              let column = data.sheet.columns.first(where: { $0.id == columnId }),
+              let rubricId = column.rubricId?.int64Value,
+              let evaluationId = column.evaluationId?.int64Value else {
+            resetPendingRubricSequence()
+            bridge.closeRubricEvaluation()
+            return
+        }
+
+        let rows = filteredRows(data: data)
+        let orderedIds = pendingRubricStudentOrder.isEmpty
+            ? rows.map { $0.student.id }
+            : pendingRubricStudentOrder.filter { id in rows.contains { $0.student.id == id } }
+
+        guard let currentIndex = orderedIds.firstIndex(of: currentStudentId) else {
+            resetPendingRubricSequence()
+            bridge.closeRubricEvaluation()
+            return
+        }
+
+        let nextIds = orderedIds.dropFirst(currentIndex + 1)
+        guard let nextStudentId = nextIds.first else {
+            resetPendingRubricSequence()
+            showToast("Rúbrica completada para los alumnos visibles.")
+            bridge.closeRubricEvaluation()
+            bridge.refreshCurrentNotebook()
+            return
+        }
+
+        pendingRubricCurrentStudentId = nextStudentId
+        bridge.rubricEvaluationState = RubricEvaluationUiState.companion.default()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            bridge.openRubricEvaluationFromNotebook(
+                studentId: nextStudentId,
+                columnId: column.id,
+                rubricId: rubricId,
+                evaluationId: evaluationId
+            )
+        }
+    }
+
+    func resetPendingRubricSequence() {
+        pendingRubricColumnId = nil
+        pendingRubricCurrentStudentId = nil
+        pendingRubricStudentOrder = []
+        bridge.isNotebookRubricAutoAdvanceActive = false
     }
 
     func openRubricBulk(column: NotebookColumnDefinition, data: NotebookUiStateData) {

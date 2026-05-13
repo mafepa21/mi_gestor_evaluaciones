@@ -655,6 +655,23 @@ struct NotebookModuleView: View {
                         .presentationDetents([.large])
                         #endif
                 }
+                .sheet(isPresented: Binding(
+                    get: { isRubricEvaluationPresented },
+                    set: { isPresented in
+                        if !isPresented {
+                            resetPendingRubricSequence()
+                            bridge.closeRubricEvaluation()
+                        }
+                    }
+                )) {
+                    RubricEvaluationView()
+                        .environmentObject(bridge)
+                        #if os(macOS)
+                        .frame(minWidth: 980, minHeight: 700)
+                        #else
+                        .presentationDetents([.large])
+                        #endif
+                }
                 .navigationTitle("Cuaderno")
                 .notebookNavigationSubtitle(notebookNavigationSubtitle(data: data))
                 .notebookKeyboardNavigation {
@@ -678,6 +695,13 @@ struct NotebookModuleView: View {
                     openNextRubricStudentIfPossible()
                 }
         }
+    }
+
+    var isRubricEvaluationPresented: Bool {
+        guard !bridge.showingBulkRubricEvaluation else { return false }
+        return bridge.rubricEvaluationState.isLoading ||
+            bridge.rubricEvaluationState.rubricDetail != nil ||
+            bridge.rubricEvaluationState.error != nil
     }
 
     @ViewBuilder

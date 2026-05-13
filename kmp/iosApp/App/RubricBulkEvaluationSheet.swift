@@ -280,6 +280,7 @@ struct RubricBulkEvaluationSheet: View {
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                         .frame(width: criterionWidth, alignment: .leading)
+                        .help(criterion.criterion.description_)
                 }
 
                 Text("Nota")
@@ -409,40 +410,56 @@ struct RubricBulkEvaluationSheet: View {
         )
         let selectedLevel = criterion.levels.first { $0.id == selectedLevelId }
 
-        return HStack(spacing: 5) {
-            ForEach(criterion.levels, id: \.id) { level in
-                let isSelected = selectedLevelId == level.id
-                Button {
-                    bridge.bulkSelectLevel(
-                        studentId: studentId,
-                        criterionId: criterion.criterion.id,
-                        levelId: level.id
-                    )
-                } label: {
-                    Text(levelButtonTitle(level))
-                        .font(.system(size: 11, weight: .black, design: .rounded))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.62)
-                        .frame(maxWidth: .infinity, minHeight: 38)
-                        .foregroundStyle(isSelected ? .white : .primary.opacity(0.72))
-                        .background(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(isSelected ? EvaluationDesign.accent : appMutedCardBackground(for: colorScheme).opacity(0.88))
+        return VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                ForEach(criterion.levels, id: \.id) { level in
+                    let isSelected = selectedLevelId == level.id
+                    let tint = levelColor(for: level, in: criterion)
+                    Button {
+                        bridge.bulkSelectLevel(
+                            studentId: studentId,
+                            criterionId: criterion.criterion.id,
+                            levelId: level.id
                         )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .stroke(isSelected ? EvaluationDesign.accent.opacity(0.35) : EvaluationDesign.border.opacity(0.75), lineWidth: 1)
-                        )
+                    } label: {
+                        Circle()
+                            .fill(isSelected ? tint : appMutedCardBackground(for: colorScheme).opacity(0.92))
+                            .frame(width: 32, height: 32)
+                            .overlay {
+                                if isSelected {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 12, weight: .black))
+                                        .foregroundStyle(.white)
+                                } else {
+                                    Text(levelButtonTitle(level))
+                                        .font(.system(size: 10, weight: .black, design: .rounded))
+                                        .foregroundStyle(.primary.opacity(0.62))
+                                }
+                            }
+                            .overlay(
+                                Circle()
+                                    .stroke(isSelected ? tint.opacity(0.35) : EvaluationDesign.border.opacity(0.75), lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(criterion.criterion.description_), \(level.name)")
+                    .help(levelHelpText(level))
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("\(criterion.criterion.description_), \(level.name)")
+            }
+
+            if let selectedLevel {
+                Text(selectedLevel.name)
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundStyle(levelColor(for: selectedLevel, in: criterion))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
         }
-        .padding(6)
+        .padding(8)
         .frame(width: width)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(selectedLevel == nil ? Color.clear : EvaluationDesign.accent.opacity(0.06))
+                .fill(selectedLevel == nil ? Color.clear : levelColor(for: selectedLevel, in: criterion).opacity(0.08))
         )
     }
 
@@ -454,23 +471,44 @@ struct RubricBulkEvaluationSheet: View {
         return String(trimmed.prefix(7))
     }
 
+    private func levelHelpText(_ level: RubricLevel) -> String {
+        let description = level.description_?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !description.isEmpty else { return level.name }
+        return "\(level.name): \(description)"
+    }
+
+    private func levelColor(for level: RubricLevel?, in criterion: RubricCriterionWithLevels) -> Color {
+        guard let level else { return EvaluationDesign.accent }
+        let maxPoints = criterion.levels.map(\.points).max() ?? 0
+        guard maxPoints > 0 else { return EvaluationDesign.accent }
+        let ratio = Double(level.points) / Double(maxPoints)
+
+        switch ratio {
+        case 0.8...:
+            return EvaluationDesign.success
+        case 0.6..<0.8:
+            return EvaluationDesign.accent
+        case 0.4..<0.6:
+            return .orange
+        default:
+            return EvaluationDesign.danger
+        }
+    }
+
     private func scorePill(for studentId: Int64, width: CGFloat) -> some View {
         let score = bridge.bulkScore(studentId: studentId)
         let scoreText = score.map { String(format: "%.1f", $0) } ?? "—"
         let tint = (score ?? 0) >= 5 ? EvaluationDesign.success : EvaluationDesign.danger
 
-        return VStack(alignment: .leading, spacing: 4) {
-            Text("Nota")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.secondary)
-
-            Text(scoreText)
-                .font(.system(size: 18, weight: .black, design: .rounded))
-                .foregroundStyle(tint)
-                .frame(maxWidth: .infinity, minHeight: 48)
-                .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        }
-        .frame(width: width, alignment: .leading)
+        return Text(scoreText)
+            .font(.system(size: 20, weight: .black, design: .rounded))
+            .foregroundStyle(score == nil ? .secondary : tint)
+            .frame(width: width, alignment: .center)
+            .frame(minHeight: 44)
+            .background(
+                score == nil ? Color.clear : tint.opacity(0.12),
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+            )
     }
 
     private func rowActionButton(
@@ -493,6 +531,7 @@ struct RubricBulkEvaluationSheet: View {
         .buttonStyle(.plain)
         .disabled(!isEnabled)
         .accessibilityLabel(title)
+        .help(title)
     }
 
     private func injuredSidebar(state: BulkRubricEvaluationUiState) -> some View {

@@ -671,7 +671,10 @@ struct NotebookModuleView: View {
         let content = AddColumnSheet(
             bridge: bridge,
             initialCategoryId: context.categoryId,
-            startsCreatingCategory: context.startsCreatingCategory
+            startsCreatingCategory: context.startsCreatingCategory,
+            onCreatedSummaryColumn: { columnId in
+                handleCreatedSummaryColumn(columnId)
+            }
         )
 
         #if os(macOS)
@@ -681,6 +684,17 @@ struct NotebookModuleView: View {
         content
             .presentationDetents([.large])
         #endif
+    }
+
+    func handleCreatedSummaryColumn(_ columnId: String) {
+        let availability = AppleFoundationContextualAIService().currentAvailability()
+        if !availability.isAvailable {
+            showToast("Columna creada. La generación IA no está disponible en este dispositivo.", style: .warning)
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: columnId)
+        }
     }
 
     @ViewBuilder

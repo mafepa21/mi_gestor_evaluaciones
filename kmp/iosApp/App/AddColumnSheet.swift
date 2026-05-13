@@ -317,6 +317,7 @@ struct AddColumnSheet: View {
     @ObservedObject var bridge: KmpBridge
     var initialCategoryId: String? = nil
     var startsCreatingCategory: Bool = false
+    var onCreatedSummaryColumn: ((String) -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @AppStorage("notebook.addColumn.lastBlueprintId") private var lastBlueprintId: String = "written_test"
     @FocusState private var isNameFocused: Bool
@@ -336,6 +337,7 @@ struct AddColumnSheet: View {
     @State private var isTemplate = false
     @State private var isLocked = false
     @State private var summaryConfiguration = NotebookIndividualSummaryConfiguration()
+    @State private var summaryAvailability: AIContextualAvailabilityState = .unavailable("Apple Intelligence no está disponible en este dispositivo. Podrás rellenarla manualmente.")
 
     private let blueprints: [NotebookColumnBlueprint] = [
         .init(id: "written_test", title: "Prueba escrita", subtitle: "Nota numérica 0-10", icon: "doc.text.magnifyingglass", type: .numeric, categoryKind: .evaluation, instrumentKind: .writtenTest, inputKind: .numeric010, scaleKind: .tenPoint, defaultWeight: 10),
@@ -416,6 +418,7 @@ struct AddColumnSheet: View {
                     if selectedBlueprintId == nil {
                         selectedBlueprintId = blueprints.contains(where: { $0.id == lastBlueprintId }) ? lastBlueprintId : "written_test"
                     }
+                    refreshSummaryAvailability()
                     #if os(iOS)
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                         isNameFocused = true
@@ -424,6 +427,7 @@ struct AddColumnSheet: View {
                 }
                 .appOnChange(of: selectedBlueprintId) { _ in
                     syncBlueprintDefaults()
+                    refreshSummaryAvailability()
                     syncRubricNameIfNeeded()
                     if categoryPlacementMode == .existing, selectedCategoryId == nil {
                         selectedCategoryId = suggestedCategoryId
@@ -774,9 +778,15 @@ struct AddColumnSheet: View {
 
                 Spacer()
 
-                Button("Crear", action: saveColumn)
+                Button(primaryActionTitle, action: saveColumn)
                     .buttonStyle(.borderedProminent)
                     .disabled(!canSave)
+            }
+
+            if selectedBlueprint?.isIndividualSummary == true {
+                Text(summaryFooterMessage)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
             }
 
             if let canSaveReason {
@@ -935,6 +945,18 @@ struct AddColumnSheet: View {
         canSaveReason == nil
     }
 
+    private var primaryActionTitle: String {
+        guard selectedBlueprint?.isIndividualSummary == true else { return "Crear" }
+        return summaryAvailability.isAvailable ? "Crear y generar" : "Crear columna"
+    }
+
+    private var summaryFooterMessage: String {
+        if summaryAvailability.isAvailable {
+            return "Se creará una columna editable y después podrás generar una síntesis por alumno."
+        }
+        return "Apple Intelligence no está disponible en este dispositivo. Podrás rellenarla manualmente."
+    }
+
     private var parsedWeight: Double? {
         let normalized = weight
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1027,6 +1049,11 @@ struct AddColumnSheet: View {
         dismiss()
     }
 
+    private func refreshSummaryAvailability() {
+        guard selectedBlueprint?.isIndividualSummary == true else { return }
+        summaryAvailability = AppleFoundationContextualAIService().currentAvailability()
+    }
+
     private func saveIndividualSummaryColumn() {
         guard let selectedBlueprint else { return }
         var resolvedCategoryId = categoryPlacementMode == .existing ? selectedCategoryId : nil
@@ -1047,10 +1074,10 @@ struct AddColumnSheet: View {
         let updatedColumn = NotebookColumnDefinition(
             id: createdColumn.id,
             title: resolvedColumnName,
-            type: createdColumn.type,
+            type: .text,
             categoryKind: selectedBlueprint.categoryKind,
-            instrumentKind: createdColumn.instrumentKind,
-            inputKind: createdColumn.inputKind,
+            instrumentKind: .privateComment,
+            inputKind: .text,
             evaluationId: createdColumn.evaluationId,
             rubricId: createdColumn.rubricId,
             formula: createdColumn.formula,
@@ -1058,12 +1085,12 @@ struct AddColumnSheet: View {
             dateEpochMs: KotlinLong(value: Int64(selectedDate.timeIntervalSince1970 * 1000)),
             unitOrSituation: NotebookIndividualSummaryPreferences.marker,
             competencyCriteriaIds: createdColumn.competencyCriteriaIds,
-            scaleKind: createdColumn.scaleKind,
+            scaleKind: .custom,
             tabIds: activeTabIds,
             sessions: createdColumn.sessions,
             sharedAcrossTabs: activeTabIds.isEmpty,
             colorHex: createdColumn.colorHex,
-            iconName: createdColumn.iconName,
+            iconName: "apple.intelligence",
             order: createdColumn.order,
             widthDp: createdColumn.widthDp,
             categoryId: resolvedCategoryId,
@@ -1081,6 +1108,7 @@ struct AddColumnSheet: View {
         bridge.saveColumn(column: updatedColumn)
         NotebookIndividualSummaryPreferences.save(summaryConfiguration, columnId: columnId)
         dismiss()
+        onCreatedSummaryColumn?(columnId)
     }
 
     private func syncBlueprintDefaults() {

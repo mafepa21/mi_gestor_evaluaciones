@@ -7,6 +7,8 @@ struct NotebookColumnOrganizerSheet: View {
     let onRename: (NotebookColumnDefinition) -> Void
     let onDelete: (NotebookColumnDefinition) -> Void
     let onAddColumn: () -> Void
+    let onCreateSummary: () -> Void
+    let onGenerateSummary: (String?) -> Void
     let onOpenHiddenColumns: () -> Void
     let onShowAll: () -> Void
     let onReorder: ([NotebookColumnDefinition]) -> Void
@@ -64,6 +66,10 @@ struct NotebookColumnOrganizerSheet: View {
         columns.filter(\.isArchived).count
     }
 
+    private var summaryColumns: [NotebookColumnDefinition] {
+        columns.filter(isNotebookIndividualSummaryColumn)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -71,6 +77,10 @@ struct NotebookColumnOrganizerSheet: View {
             Divider()
 
             controls
+
+            Divider()
+
+            aiActions
 
             Divider()
 
@@ -171,6 +181,36 @@ struct NotebookColumnOrganizerSheet: View {
             }
             .buttonStyle(.borderedProminent)
             .fixedSize()
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 10)
+    }
+
+    private var aiActions: some View {
+        HStack(spacing: 12) {
+            Label("IA y exportación", systemImage: "apple.intelligence")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            Spacer(minLength: 0)
+
+            if let summaryColumn = summaryColumns.first {
+                Button {
+                    onGenerateSummary(summaryColumn.id)
+                } label: {
+                    Label("Generar síntesis pedagógica", systemImage: "apple.intelligence")
+                }
+                .buttonStyle(.bordered)
+                .fixedSize()
+            } else {
+                Button {
+                    onCreateSummary()
+                } label: {
+                    Label("Crear síntesis pedagógica", systemImage: "plus.bubble")
+                }
+                .buttonStyle(.bordered)
+                .fixedSize()
+            }
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 10)

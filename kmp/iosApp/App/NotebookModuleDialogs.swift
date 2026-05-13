@@ -155,6 +155,22 @@ extension NotebookModuleView {
                                 )
                             }
                         },
+                        onCreateSummary: {
+                            isOrganizationMenuPresented = false
+                            UserDefaults.standard.set("individual_summary", forKey: "notebook.addColumn.lastBlueprintId")
+                            DispatchQueue.main.async {
+                                addColumnContext = NotebookAddColumnContext(
+                                    categoryId: nil,
+                                    startsCreatingCategory: false
+                                )
+                            }
+                        },
+                        onGenerateSummary: { columnId in
+                            isOrganizationMenuPresented = false
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                                notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: columnId)
+                            }
+                        },
                         onOpenHiddenColumns: {
                             isOrganizationMenuPresented = false
                             DispatchQueue.main.async {

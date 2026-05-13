@@ -185,7 +185,7 @@ class NotebookRepositorySqlDelight(
             ?.removePrefix("eval_")
             ?.toLongOrNull()
         val evaluationId = columnRow?.evaluation_id ?: evaluationIdFromId
-        if (evaluationId == null) {
+        if (evaluationId == null && columnId.startsWith("eval_")) {
             println("NotebookRepositorySqlDelight.deleteColumn could not resolve evaluationId for columnId=$columnId")
         }
 

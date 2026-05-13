@@ -593,11 +593,7 @@ struct NotebookEditableTableCell: View {
             textDraft = cell?.textValue ?? cell?.displayValue ?? ""
             originalTextDraft = textDraft
         case .numeric:
-            if let cell, !(cell.textValue ?? "").isEmpty {
-                numericDraft = bridge.numericGradeText(studentId: item.student.id, columnId: column.id)
-            } else {
-                numericDraft = ""
-            }
+            numericDraft = bridge.numericGradeText(studentId: item.student.id, columnId: column.id).trimmingCharacters(in: .whitespacesAndNewlines)
             originalNumericDraft = numericDraft
         default:
             break

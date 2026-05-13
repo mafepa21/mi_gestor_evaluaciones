@@ -65,7 +65,7 @@ class RubricBulkEvaluationViewModel(
     }
 
     private var autoSaveJobs = mutableMapOf<Long, Job>()
-    private val AUTO_SAVE_DELAY_MS = 1000L
+    private val AUTO_SAVE_DELAY_MS = 400L
 
     fun load(classId: Long, evaluationId: Long, rubricId: Long, columnId: String?, tabId: String? = null) {
         _uiState.update { it.copy(isLoading = true, error = null, classId = classId, evaluationId = evaluationId, columnId = columnId, tabId = tabId) }

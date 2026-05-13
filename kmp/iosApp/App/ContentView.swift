@@ -940,7 +940,7 @@ struct RubricEvaluationView: View {
                 if let rubric = state.rubricDetail {
                     GeometryReader { proxy in
                         let isWide = proxy.size.width >= 960
-                        let selectedScore = rubric.calculateScore(selectedLevelIds: state.selectedLevels)
+                        let selectedScore = state.totalScore
 
                         ScrollView {
                             VStack(alignment: .leading, spacing: EvaluationDesign.sectionSpacing) {

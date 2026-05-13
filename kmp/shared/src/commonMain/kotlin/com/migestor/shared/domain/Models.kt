@@ -203,15 +203,14 @@ data class RubricDetail(
 ) {
     /**
      * Calculates the total score (0-10) based on selected level IDs for each criterion.
-     * Each criterion is weighted equally (1/N).
-     * If a criterion is not evaluated, it contributes 0.0 to the total.
-     * The final score is always scaled to a 10.0 maximum.
+     * Only evaluated criteria contribute to the denominator, so partial in-progress
+     * rubric evaluations can still reach 10.0 over the criteria already assessed.
      */
     fun calculateScore(selectedLevelIds: Map<Long, Long>): Double {
         if (criteria.isEmpty()) return 0.0
 
-        val weightPerCriterion = 1.0 / criteria.size
-        var totalPercentage = 0.0
+        var totalWeightedPercentage = 0.0
+        var totalWeightUsed = 0.0
 
         for (criterionWithLevels in criteria) {
             val selectedLevelId = selectedLevelIds[criterionWithLevels.criterion.id]
@@ -226,13 +225,18 @@ data class RubricDetail(
                     if (it.points > 0) it.points.toDouble() else it.order.toDouble() 
                 }.coerceAtLeast(1.0)
                 
+                val criterionWeight = criterionWithLevels.criterion.weight
+                    .takeIf { it > 0.0 } ?: 1.0
                 val criterionPercentage = (points / maxPossiblePoints).coerceIn(0.0, 1.0)
-                totalPercentage += criterionPercentage * weightPerCriterion
+                totalWeightedPercentage += criterionPercentage * criterionWeight
+                totalWeightUsed += criterionWeight
             }
         }
 
+        if (totalWeightUsed == 0.0) return 0.0
+
         // Return score scaled to 10.0, rounded to 2 decimal places for storage safety
-        val rawScore = totalPercentage * 10.0
+        val rawScore = (totalWeightedPercentage / totalWeightUsed) * 10.0
         return kotlin.math.round(rawScore * 100.0) / 100.0
     }
 }

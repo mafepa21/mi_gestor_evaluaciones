@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.Flow
 interface StudentsRepository {
     fun observeStudents(): Flow<List<Student>>
     suspend fun listStudents(): List<Student>
+    suspend fun getStudent(studentId: Long): Student? = listStudents().find { it.id == studentId }
     suspend fun saveStudent(
         id: Long? = null,
         firstName: String,
@@ -284,6 +285,7 @@ data class ConflictPreview(
 interface RubricsRepository {
     fun observeRubrics(): Flow<List<RubricDetail>>
     suspend fun listRubrics(): List<RubricDetail>
+    suspend fun getRubricDetail(rubricId: Long): RubricDetail? = listRubrics().find { it.rubric.id == rubricId }
     suspend fun saveRubric(
         id: Long? = null, 
         name: String, 

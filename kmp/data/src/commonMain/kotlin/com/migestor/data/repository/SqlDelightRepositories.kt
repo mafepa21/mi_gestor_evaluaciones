@@ -121,6 +121,27 @@ class StudentsRepositorySqlDelight(
         }
     }
 
+    override suspend fun getStudent(studentId: Long): Student? {
+        return db.appDatabaseQueries.selectStudentById(studentId).executeAsOneOrNull()?.let {
+            Student(
+                id = it.id,
+                firstName = it.first_name,
+                lastName = it.last_name,
+                email = it.email,
+                photoPath = it.photo_path,
+                isInjured = it.is_injured != 0L,
+                sex = studentSexOrDefault(it.sex),
+                sexSource = studentSexSourceOrDefault(it.sex_source),
+                birthDate = localDateOrNull(it.birth_date_iso),
+                trace = AuditTrace(
+                    updatedAt = Instant.fromEpochMilliseconds(it.updated_at_epoch_ms),
+                    deviceId = it.device_id,
+                    syncVersion = it.sync_version,
+                )
+            )
+        }
+    }
+
     override suspend fun saveStudent(
         id: Long?,
         firstName: String,
@@ -895,6 +916,31 @@ class RubricsRepositorySqlDelight(
             )
         }
         return buildRubrics(rubrics, criteria, levels)
+    }
+
+    override suspend fun getRubricDetail(rubricId: Long): RubricDetail? {
+        val rubric = db.appDatabaseQueries.selectRubricById(rubricId).executeAsOneOrNull()?.let {
+            Rubric(
+                id = it.id,
+                name = it.name,
+                description = it.description,
+                classId = it.class_id,
+                teachingUnitId = it.teaching_unit_id,
+                trace = AuditTrace(
+                    updatedAt = Instant.fromEpochMilliseconds(it.updated_at_epoch_ms),
+                    deviceId = it.device_id,
+                    syncVersion = it.sync_version,
+                )
+            )
+        } ?: return null
+
+        val criteria = listCriteriaByRubric(rubricId).map { criterion ->
+            RubricCriterionWithLevels(
+                criterion = criterion,
+                levels = listLevelsByCriterion(criterion.id)
+            )
+        }
+        return RubricDetail(rubric = rubric, criteria = criteria)
     }
 
     override suspend fun saveRubric(

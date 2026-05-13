@@ -68,16 +68,16 @@ class RubricEvaluationViewModel(
         }
         scope.launch {
             try {
-                val evaluation = evaluationsRepository.getEvaluation(evaluationId)
+                val evaluationDeferred = async { evaluationsRepository.getEvaluation(evaluationId) }
+                val studentDeferred = async { studentsRepository.getStudent(studentId) }
+                val rubricDeferred = async { rubricsRepository.getRubricDetail(rubricId) }
+                val assessmentsDeferred = async { rubricsRepository.listRubricAssessments(studentId, evaluationId) }
+
+                val evaluation = evaluationDeferred.await()
                 val classId = evaluation?.classId ?: 0L
-                
-                val students = studentsRepository.listStudents()
-                val student = students.find { it.id == studentId }
-                
-                val rubrics = rubricsRepository.listRubrics()
-                val rubricDetail = rubrics.find { it.rubric.id == rubricId }
-                
-                val initialAssessments = rubricsRepository.listRubricAssessments(studentId, evaluationId)
+                val student = studentDeferred.await()
+                val rubricDetail = rubricDeferred.await()
+                val initialAssessments = assessmentsDeferred.await()
                 val initialSelectedLevels = initialAssessments.associate { it.criterionId to it.levelId }
                 
                 _uiState.update { state ->
@@ -110,17 +110,16 @@ class RubricEvaluationViewModel(
         
         scope.launch {
             try {
-                val evaluation = evaluationsRepository.getEvaluation(evaluationId)
-                val classId = evaluation?.classId ?: 0L
+                val evaluationDeferred = async { evaluationsRepository.getEvaluation(evaluationId) }
+                val studentDeferred = async { studentsRepository.getStudent(studentId) }
+                val rubricDeferred = async { rubricsRepository.getRubricDetail(rubricId) }
+                val gradeDeferred = async { notebookRepository.getGradeForColumn(studentId, columnId) }
 
-                val students = studentsRepository.listStudents()
-                val student = students.find { it.id == studentId }
-                
-                val rubrics = rubricsRepository.listRubrics()
-                val rubricDetail = rubrics.find { it.rubric.id == rubricId }
-                
-                // Intentar cargar evaluación previa desde Grades (sistema Cuaderno)
-                val previousGrade = notebookRepository.getGradeForColumn(studentId, columnId)
+                val evaluation = evaluationDeferred.await()
+                val classId = evaluation?.classId ?: 0L
+                val student = studentDeferred.await()
+                val rubricDetail = rubricDeferred.await()
+                val previousGrade = gradeDeferred.await()
                 
                 // Si hay rubricSelections (JSON/String), parsearlo
                 val initialSelectedLevels = if (!previousGrade?.rubricSelections.isNullOrBlank()) {

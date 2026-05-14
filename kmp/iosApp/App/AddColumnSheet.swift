@@ -313,6 +313,62 @@ private struct NotebookSummaryPreviewCard: View {
     }
 }
 
+private struct NotebookChecklistPreviewCard: View {
+    let tint: Color
+
+    var body: some View {
+        NotebookSurface(cornerRadius: NotebookStyle.cardRadius, fill: NotebookStyle.surfaceMuted, padding: 16) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 12) {
+                    Image(systemName: "checkmark.square.fill")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundStyle(tint)
+                        .frame(width: 36, height: 36)
+                        .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .accessibilityHidden(true)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Vista previa")
+                            .font(.headline)
+                        Text("Cada celda se marcará como Sí o No.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                HStack(spacing: 12) {
+                    checklistSampleCell(title: "Completado", isChecked: true)
+                    checklistSampleCell(title: "Pendiente", isChecked: false)
+                }
+            }
+        }
+    }
+
+    private func checklistSampleCell(title: String, isChecked: Bool) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: isChecked ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(isChecked ? tint : .secondary)
+                .accessibilityHidden(true)
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.primary)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(NotebookStyle.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(NotebookStyle.softBorder, lineWidth: 1)
+        )
+    }
+}
+
 struct AddColumnSheet: View {
     @ObservedObject var bridge: KmpBridge
     var initialCategoryId: String? = nil
@@ -418,7 +474,9 @@ struct AddColumnSheet: View {
                     if selectedBlueprintId == nil {
                         selectedBlueprintId = blueprints.contains(where: { $0.id == lastBlueprintId }) ? lastBlueprintId : "written_test"
                     }
+                    syncBlueprintDefaults()
                     refreshSummaryAvailability()
+                    syncRubricNameIfNeeded()
                     #if os(iOS)
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                         isNameFocused = true
@@ -597,6 +655,10 @@ struct AddColumnSheet: View {
         VStack(alignment: .leading, spacing: 16) {
             if selectedBlueprint?.type == .rubric {
                 selectedRubricCard
+            }
+
+            if selectedBlueprint?.type == .check {
+                NotebookChecklistPreviewCard(tint: tintForSelectedBlueprint)
             }
 
             if shouldShowWeightControls {
@@ -1191,7 +1253,7 @@ struct AddColumnSheet: View {
         switch inputKind {
         case .numeric010: return "Numérica 0-10"
         case .rubric: return "Rúbrica"
-        case .check: return "Check"
+        case .check: return "Sí / No"
         case .quickSelector: return "Selector rápido"
         case .attendanceStatus: return "Estado de asistencia"
         case .distance: return "Distancia"

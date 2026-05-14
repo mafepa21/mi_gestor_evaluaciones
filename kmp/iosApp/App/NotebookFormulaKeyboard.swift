@@ -1,6 +1,6 @@
 import SwiftUI
 import MiGestorKit
-#if canImport(FoundationModels) && !os(macOS)
+#if canImport(FoundationModels)
 import FoundationModels
 #endif
 
@@ -424,10 +424,11 @@ enum NotebookFormulaAIError: LocalizedError {
     }
 }
 
+@MainActor
 final class AppleFoundationFormulaService {
-    #if canImport(FoundationModels) && !os(macOS)
+    #if canImport(FoundationModels)
     @available(iOS 26.0, macOS 26.0, *)
-    private var formulaSession: LanguageModelSession {
+    private lazy var formulaSession: LanguageModelSession = {
         LanguageModelSession(
             instructions: """
             Eres un asistente local para crear y corregir fórmulas de un cuaderno docente.
@@ -438,7 +439,7 @@ final class AppleFoundationFormulaService {
             Si corriges una fórmula, conserva la intención docente.
             """
         )
-    }
+    }()
     #endif
 
     func generateFormula(
@@ -455,7 +456,7 @@ final class AppleFoundationFormulaService {
             throw NotebookFormulaAIError.unavailable(message(for: availability))
         }
 
-        #if canImport(FoundationModels) && !os(macOS)
+        #if canImport(FoundationModels)
         if #available(iOS 26.0, macOS 26.0, *) {
             let response = try await formulaSession.respond(
                 to: prompt(request: request, currentFormula: currentFormula, availableColumns: availableColumns),
@@ -612,11 +613,15 @@ final class AppleFoundationFormulaService {
             let references = columns.map { "[\($0.id)]" }.joined(separator: ",")
             return "REDONDEAR(PROMEDIO(\(references)),2)"
         }
+        let totalWeight = weights.reduce(0, +)
+        guard totalWeight > 0 else {
+            let references = columns.map { "[\($0.id)]" }.joined(separator: ",")
+            return "REDONDEAR(PROMEDIO(\(references)),2)"
+        }
         let weightedTerms = zip(columns, weights).map { column, weight in
             let weightText = cleanWeight(weight)
             return "([\(column.id)]*\(weightText))"
         }
-        let totalWeight = weights.reduce(0, +)
         let totalWeightText = cleanWeight(totalWeight)
         return "REDONDEAR((\(weightedTerms.joined(separator: "+")))/\(totalWeightText),2)"
     }

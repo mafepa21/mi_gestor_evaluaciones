@@ -200,8 +200,8 @@ enum NotebookFormulaEditorValidator {
         let referencedIds = referencedColumnIds(in: expression)
         let availableIds = Set(availableColumns.map(\.id))
 
-        referencedIds.filter { !availableIds.contains($0) }.forEach {
-            errors.append(.init(message: "La columna [\($0)] no existe."))
+        referencedIds.filter { !availableIds.contains($0) }.forEach { missingId in
+            errors.append(.init(message: missingColumnMessage(for: missingId, availableColumns: availableColumns)))
         }
 
         unsupportedFunctions(in: expression).forEach {
@@ -303,9 +303,27 @@ enum NotebookFormulaEditorValidator {
         }
         if column.type == .check,
            let value = row.persistedCells.first(where: { $0.columnId == column.id })?.boolValue?.boolValue {
-            return value ? 10 : 0
+            return value ? checkPositiveValue(for: column) : 0
         }
         return nil
+    }
+
+    private static func checkPositiveValue(for column: NotebookColumnDefinition) -> Double {
+        column.weight > 0 ? column.weight : 1
+    }
+
+    private static func missingColumnMessage(for reference: String, availableColumns: [NotebookColumnDefinition]) -> String {
+        if let column = availableColumns.first(where: { normalize($0.title) == normalize(reference) }) {
+            return "La columna [\(reference)] no existe. Usa [\(column.id)] para “\(column.title)”."
+        }
+        return "La columna [\(reference)] no existe. Inserta la referencia desde la lista de columnas."
+    }
+
+    private static func normalize(_ value: String) -> String {
+        value
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 

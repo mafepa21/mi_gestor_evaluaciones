@@ -15,6 +15,16 @@ class FormulaEvaluatorTest {
     }
 
     @Test
+    fun `evaluates bracketed column references`() {
+        val result = evaluator.evaluate(
+            "REDONDEAR((([eval_1]*0.6)+([rubric_1]*0.4)),2)",
+            mapOf("eval_1" to 8.0, "rubric_1" to 6.0),
+        )
+
+        assertEquals(7.2, result)
+    }
+
+    @Test
     fun `throws when missing variable`() {
         assertFailsWith<IllegalStateException> {
             evaluator.evaluate("EX1 + EX2", mapOf("EX1" to 5.0))

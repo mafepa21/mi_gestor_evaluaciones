@@ -51,6 +51,7 @@ struct NotebookEditableTableCell: View {
     @State private var originalNumericDraft = ""
     @State private var originalTextDraft = ""
     @State private var originalCheckDraft = false
+    @State private var pendingCheckDraft: Bool?
     @State private var numericDragStartValue: Double?
     @State private var showTextPopover = false
     @State private var isNumericKeyboardPresented = false
@@ -569,14 +570,18 @@ struct NotebookEditableTableCell: View {
         let cell = persistedCell
         switch column.type {
         case .check:
-            if let boolValue = cell?.boolValue?.boolValue {
-                checkDraft = boolValue
-            } else {
-                let textValue = cell?.textValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                let displayValue = cell?.displayValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                let raw = (textValue.isEmpty ? displayValue : textValue).lowercased()
-                checkDraft = ["true", "1", "sí", "si", "yes", "y", "✓"].contains(raw)
+            if let pendingCheckDraft {
+                let persistedBool = cell?.boolValue?.boolValue
+                if persistedBool == pendingCheckDraft {
+                    self.pendingCheckDraft = nil
+                } else {
+                    checkDraft = pendingCheckDraft
+                    originalCheckDraft = pendingCheckDraft
+                    hasLoadedDrafts = true
+                    return
+                }
             }
+            checkDraft = bridge.cellCheck(studentId: item.student.id, columnId: column.id)
             originalCheckDraft = checkDraft
         case .attendance:
             let textValue = cell?.textValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -672,6 +677,7 @@ struct NotebookEditableTableCell: View {
         guard hasLoadedDrafts else { return }
         let previousValue = checkDraft ? "true" : "false"
         checkDraft.toggle()
+        pendingCheckDraft = checkDraft
         let nextValue = checkDraft ? "true" : "false"
         onSelect()
         if previousValue != nextValue {

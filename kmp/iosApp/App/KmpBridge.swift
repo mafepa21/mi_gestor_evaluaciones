@@ -6404,19 +6404,22 @@ final class KmpBridge: ObservableObject {
     func cellText(studentId: Int64, columnId: String) -> String {
         guard let index = notebookCellValueIndex() else { return "" }
         let key = cellKey(studentId: studentId, columnId: columnId)
-        return index.textByKey[key] ?? index.textDraftByKey[key] ?? ""
+        return index.textDraftByKey[key] ?? index.textByKey[key] ?? ""
     }
     
     func numericGradeText(studentId: Int64, columnId: String) -> String {
         guard let index = notebookCellValueIndex() else { return "" }
         let key = cellKey(studentId: studentId, columnId: columnId)
+        if let draft = index.numericDraftByKey[key] {
+            return draft
+        }
         if let persisted = index.numericByKey[key] {
             return persisted
         }
         if let persistedEval = index.numericByEvalKey[key] {
             return persistedEval
         }
-        return index.numericDraftByKey[key] ?? ""
+        return ""
     }
 
     func numericGradeOnTenText(studentId: Int64, columnId: String) -> String {
@@ -6455,11 +6458,11 @@ final class KmpBridge: ObservableObject {
     func cellCheck(studentId: Int64, columnId: String) -> Bool {
         guard let index = notebookCellValueIndex() else { return false }
         let key = cellKey(studentId: studentId, columnId: columnId)
-        if let persisted = index.checkByKey[key] {
-            return persisted
-        }
         if let draft = index.checkDraftByKey[key] {
             return draft
+        }
+        if let persisted = index.checkByKey[key] {
+            return persisted
         }
         return false
     }

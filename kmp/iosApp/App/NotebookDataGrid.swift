@@ -143,12 +143,14 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, TrailingFi
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            headerBand
-                .zIndex(2)
+        ScrollView(.horizontal, showsIndicators: true) {
+            VStack(alignment: .leading, spacing: 0) {
+                headerBand
+                    .zIndex(2)
 
-            ScrollView(.vertical, showsIndicators: true) {
-                rowsBand
+                ScrollView(.vertical, showsIndicators: true) {
+                    rowsBand
+                }
             }
         }
     }
@@ -172,13 +174,11 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, TrailingFi
             Color.clear
                 .frame(width: 1)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
-                    scrollTopAccessory
-                        .frame(height: topAccessoryHeight, alignment: .topLeading)
-                    scrollHeader
-                        .frame(height: headerHeight, alignment: .topLeading)
-                }
+            VStack(alignment: .leading, spacing: 0) {
+                scrollTopAccessory
+                    .frame(height: topAccessoryHeight, alignment: .topLeading)
+                scrollHeader
+                    .frame(height: headerHeight, alignment: .topLeading)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -215,9 +215,7 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, TrailingFi
 
             dividerHandle
 
-            ScrollView(.horizontal, showsIndicators: true) {
-                scrollRows
-            }
+            scrollRows
             .frame(maxWidth: .infinity, alignment: .leading)
 
             if trailingFixedColumnWidth > 0 {

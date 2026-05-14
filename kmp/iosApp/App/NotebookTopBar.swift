@@ -183,7 +183,7 @@ struct NotebookSummaryGenerationSheet: View {
     @State private var progressMessage: String?
     @State private var feedbackMessage: String?
 
-    private let aiService = AppleFoundationContextualAIService()
+    @State private var aiService = AppleFoundationContextualAIService()
 
     private var notebookData: NotebookUiStateData? {
         bridge.notebookState as? NotebookUiStateData
@@ -342,12 +342,22 @@ struct NotebookSummaryGenerationSheet: View {
     }
 
     private var targetSummaryText: String {
-        "\(resolvedStudentIds.count) alumnos preparados para síntesis individual."
+        let evidenceCount = studentIdsWithEvidence(in: resolvedIncludedColumnIds()).count
+        return "\(evidenceCount) alumnos con datos preparados para síntesis individual."
     }
 
     private var resolvedStudentIds: [Int64] {
         guard let data = notebookData else { return [] }
         return data.sheet.rows.map { $0.student.id }
+    }
+
+    private func studentIdsWithEvidence(in includedColumnIds: [String]) -> [Int64] {
+        bridge.generateNotebookAICommentContexts(
+            includedColumnIds: includedColumnIds,
+            studentIds: resolvedStudentIds
+        )
+        .filter(\.hasEnoughData)
+        .map(\.studentId)
     }
 
     private func resolvedIncludedColumnIds() -> [String] {
@@ -442,7 +452,13 @@ struct NotebookSummaryGenerationSheet: View {
             return
         }
 
-        let studentIds = resolvedStudentIds
+        let studentIds = studentIdsWithEvidence(in: includedColumnIds)
+        guard !studentIds.isEmpty else {
+            progressMessage = nil
+            feedbackMessage = "No hay datos suficientes para generar síntesis."
+            return
+        }
+
         let contexts = bridge.generateNotebookAICommentContexts(
             includedColumnIds: includedColumnIds,
             studentIds: studentIds
@@ -588,16 +604,15 @@ struct NotebookTopBar: View {
     }
 
     private var saveBadge: (text: String, icon: String, color: Color) {
-        switch bridge.notebookSaveState {
-        case .saved:
+        if bridge.notebookSaveState == .saved {
             return ("Guardado", "checkmark.circle.fill", .secondary)
-        case .saving:
+        } else if bridge.notebookSaveState == .saving {
             return ("Guardando…", "arrow.triangle.2.circlepath", .secondary)
-        case .unsaved:
+        } else if bridge.notebookSaveState == .unsaved {
             return ("Sin guardar", "circle.dotted", NotebookStyle.warningTint)
-        default:
-            return ("Estado pendiente", "circle", .secondary)
         }
+
+        return ("Estado pendiente", "circle", .secondary)
     }
 
     var body: some View {
@@ -656,33 +671,38 @@ struct NotebookTopBar: View {
     }
 
     private func regularTopBar(showAddColumnAction: Bool) -> some View {
-        HStack(spacing: 16) {
-            if showsClassPicker {
-                classPicker
-            }
+        VStack(spacing: 0) {
+            HStack(spacing: 16) {
+                if showsClassPicker {
+                    classPicker
+                }
 
-            searchField
+                searchField
 
-            Spacer(minLength: 0)
+                Spacer(minLength: 0)
 
-            HStack(spacing: 8) {
-                saveStatusChip
-            }
+                HStack(spacing: 8) {
+                    saveStatusChip
+                }
 
-            Spacer(minLength: 0)
+                Spacer(minLength: 0)
 
-            HStack(spacing: 8) {
-                undoButton
-                organizationButton
-                inspectorButton
-                if showAddColumnAction {
-                    addColumnButton
+                HStack(spacing: 8) {
+                    undoButton
+                    organizationButton
+                    inspectorButton
+                    if showAddColumnAction {
+                        addColumnButton
+                    }
                 }
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+
+            quickAttendanceBanner
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
         .background(.bar)
+        .animation(.easeInOut(duration: 0.22), value: isAttendanceQuickMode)
     }
 
     private var searchField: some View {
@@ -723,7 +743,7 @@ struct NotebookTopBar: View {
         .buttonStyle(.borderless)
         .foregroundStyle(isInspectorPresented ? NotebookStyle.primaryTint : .secondary)
         .keyboardShortcut("i", modifiers: [.command, .option])
-        .help("Inspector")
+        .help("Mostrar/ocultar inspector (⌘⌥I)")
         .accessibilityLabel("Inspector")
     }
 
@@ -733,7 +753,30 @@ struct NotebookTopBar: View {
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.small)
-        .help("Añadir columna de evaluación, seguimiento o fórmula")
+        .help("Añadir nueva columna de evaluación")
+    }
+
+    @ViewBuilder
+    private var quickAttendanceBanner: some View {
+        if isAttendanceQuickMode {
+            HStack(spacing: 8) {
+                Image(systemName: "bolt.fill")
+                    .foregroundStyle(NotebookStyle.warningTint)
+                Text("Modo asistencia rápida activo")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(NotebookStyle.warningTint)
+                Spacer(minLength: 0)
+                Button("Salir") {
+                    onToggleAttendanceQuickMode()
+                }
+                .font(.caption.weight(.semibold))
+                .buttonStyle(.borderless)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 6)
+            .background(NotebookStyle.warningTint.opacity(0.12))
+            .transition(.move(edge: .top).combined(with: .opacity))
+        }
     }
 
     private var classPicker: some View {
@@ -763,7 +806,7 @@ struct NotebookTopBar: View {
             .foregroundStyle(.primary)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .frame(minWidth: 120, idealWidth: 160, maxWidth: 240, alignment: .leading)
+            .frame(maxWidth: 220, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(NotebookStyle.surfaceSoft)

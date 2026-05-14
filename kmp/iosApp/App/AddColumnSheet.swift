@@ -394,6 +394,7 @@ struct AddColumnSheet: View {
     @State private var isLocked = false
     @State private var summaryConfiguration = NotebookIndividualSummaryConfiguration()
     @State private var summaryAvailability: AIContextualAvailabilityState = .unavailable("Apple Intelligence no está disponible en este dispositivo. Podrás rellenarla manualmente.")
+    @State private var summaryAIService = AppleFoundationContextualAIService()
 
     private let blueprints: [NotebookColumnBlueprint] = [
         .init(id: "written_test", title: "Nota numérica", subtitle: "Calificación 0-10", icon: "number.circle", type: .numeric, categoryKind: .evaluation, instrumentKind: .writtenTest, inputKind: .numeric010, scaleKind: .tenPoint, defaultWeight: 10),
@@ -1113,7 +1114,7 @@ struct AddColumnSheet: View {
 
     private func refreshSummaryAvailability() {
         guard selectedBlueprint?.isIndividualSummary == true else { return }
-        summaryAvailability = AppleFoundationContextualAIService().currentAvailability()
+        summaryAvailability = summaryAIService.currentAvailability()
     }
 
     private func saveIndividualSummaryColumn() {

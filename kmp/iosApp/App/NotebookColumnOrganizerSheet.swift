@@ -99,6 +99,7 @@ struct NotebookColumnOrganizerSheet: View {
                     }
                 }
                 .listStyle(.inset)
+                .searchable(text: $searchText, placement: .toolbar, prompt: "Buscar columna")
             }
 
             Divider()

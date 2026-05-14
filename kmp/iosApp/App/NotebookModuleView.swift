@@ -5,6 +5,10 @@ import MiGestorKit
 import UIKit
 #endif
 
+private enum NotebookGridMetrics {
+    static let fixedZoneHorizontalPadding: CGFloat = 32
+}
+
 struct NotebookModuleView: View {
     #if os(macOS)
     let notebookGridRowHeight: CGFloat = 50
@@ -564,7 +568,7 @@ struct NotebookModuleView: View {
             partial + defaultFixedWidth(for: column)
         }
         let spacing = CGFloat(max(visibleColumns.count - 1, 0)) * 8
-        let horizontalPadding: CGFloat = 32
+        let horizontalPadding = NotebookGridMetrics.fixedZoneHorizontalPadding
         let photoWidth: CGFloat = visibleColumns.contains(.photo) ? 52 : 0
 
         switch fixed {
@@ -731,7 +735,8 @@ struct NotebookModuleView: View {
             showToast("Columna creada. La generación IA no está disponible en este dispositivo.", style: .warning)
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 250_000_000)
             notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: columnId)
         }
     }

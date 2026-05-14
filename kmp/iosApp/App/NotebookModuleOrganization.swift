@@ -14,7 +14,10 @@ extension NotebookModuleView {
                     }
 
                     if let data {
-                        ForEach(managedColumns(data: data), id: \.id) { column in
+                        TextField("Buscar columna", text: $organizationColumnSearchText)
+                            .textFieldStyle(.roundedBorder)
+
+                        ForEach(filteredOrganizationColumns(data: data), id: \.id) { column in
                             Button {
                                 if column.isArchived {
                                     setNotebookColumnVisibility(column, visibility: .visible)
@@ -30,6 +33,9 @@ extension NotebookModuleView {
                                         .foregroundStyle(.secondary)
                                 }
                             }
+                        }
+                        .onMove { source, destination in
+                            moveOrganizationColumns(data: data, from: source, to: destination)
                         }
                     }
                 }
@@ -78,7 +84,7 @@ extension NotebookModuleView {
                         } label: {
                             Label("Generar síntesis pedagógica", systemImage: "apple.intelligence")
                         }
-                        .disabled(data.sheet.columns.filter(isNotebookIndividualSummaryColumn).isEmpty)
+                        .disabled(data.sheet.rows.isEmpty || data.sheet.columns.filter(isNotebookIndividualSummaryColumn).isEmpty)
 
                         ShareLink(item: exportText(data: data)) {
                             Label("Exportar cuaderno", systemImage: "square.and.arrow.up")
@@ -86,7 +92,7 @@ extension NotebookModuleView {
                     }
                 }
             }
-            .navigationTitle("Columnas")
+            .navigationTitle("Organización")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cerrar") {
@@ -95,6 +101,40 @@ extension NotebookModuleView {
                 }
             }
         }
+    }
+
+    func filteredOrganizationColumns(data: NotebookUiStateData) -> [NotebookColumnDefinition] {
+        let columns = managedColumns(data: data)
+        let query = organizationColumnSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return columns }
+        return columns.filter { column in
+            column.title.localizedCaseInsensitiveContains(query)
+                || column.id.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    func moveOrganizationColumns(data: NotebookUiStateData, from source: IndexSet, to destination: Int) {
+        let managed = managedColumns(data: data)
+        let filtered = filteredOrganizationColumns(data: data)
+        guard !filtered.isEmpty else { return }
+
+        if organizationColumnSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            var reordered = managed
+            reordered.move(fromOffsets: source, toOffset: destination)
+            reorderManagedColumns(reordered)
+            return
+        }
+
+        let filteredIds = Set(filtered.map(\.id))
+        let managedFilteredIndices = managed.indices.filter { filteredIds.contains(managed[$0].id) }
+        var reorderedFiltered = filtered
+        reorderedFiltered.move(fromOffsets: source, toOffset: destination)
+
+        var merged = managed
+        for (index, column) in zip(managedFilteredIndices, reorderedFiltered) {
+            merged[index] = column
+        }
+        reorderManagedColumns(merged)
     }
 
     func presentCreateCategory() {
@@ -320,7 +360,7 @@ extension NotebookModuleView {
             .filter { column in
                 let formula = column.formula ?? ""
                 return columnIds.contains(where: { id in
-                    formula.contains("[\(id)]") || formula.contains(id)
+                    formula.contains("[\(id)]")
                 })
             }
             .count

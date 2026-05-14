@@ -425,11 +425,21 @@ enum NotebookFormulaAIError: LocalizedError {
 }
 
 @MainActor
+final class AppleFoundationFormulaServiceStore: ObservableObject {
+    let service = AppleFoundationFormulaService()
+}
+
+@MainActor
 final class AppleFoundationFormulaService {
     #if canImport(FoundationModels)
+    private var formulaSessionStorage: Any?
+
     @available(iOS 26.0, macOS 26.0, *)
-    private lazy var formulaSession: LanguageModelSession = {
-        LanguageModelSession(
+    private func formulaSession() -> LanguageModelSession {
+        if let session = formulaSessionStorage as? LanguageModelSession {
+            return session
+        }
+        return LanguageModelSession(
             instructions: """
             Eres un asistente local para crear y corregir fórmulas de un cuaderno docente.
             Devuelve SOLO una fórmula, sin explicación, sin markdown y sin comillas.
@@ -439,7 +449,7 @@ final class AppleFoundationFormulaService {
             Si corriges una fórmula, conserva la intención docente.
             """
         )
-    }()
+    }
     #endif
 
     func generateFormula(
@@ -458,7 +468,9 @@ final class AppleFoundationFormulaService {
 
         #if canImport(FoundationModels)
         if #available(iOS 26.0, macOS 26.0, *) {
-            let response = try await formulaSession.respond(
+            let session = formulaSession()
+            formulaSessionStorage = session
+            let response = try await session.respond(
                 to: prompt(request: request, currentFormula: currentFormula, availableColumns: availableColumns),
                 generating: String.self,
                 includeSchemaInPrompt: false,

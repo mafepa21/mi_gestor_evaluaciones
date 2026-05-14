@@ -580,8 +580,6 @@ struct NotebookTopBar: View {
     let onToggleAttendanceQuickMode: () -> Void
     let onMarkAllPresent: () -> Void
     let onUndo: () -> Void
-    var onGenerateSummaryFallback: (() -> Void)? = nil
-    var exportText: String? = nil
     var showsInlineActions: Bool = true
     var showsClassPicker: Bool = true
 
@@ -595,8 +593,10 @@ struct NotebookTopBar: View {
             return ("Guardado", "checkmark.circle.fill", .secondary)
         case .saving:
             return ("Guardando…", "arrow.triangle.2.circlepath", .secondary)
-        default:
+        case .unsaved:
             return ("Sin guardar", "circle.dotted", NotebookStyle.warningTint)
+        default:
+            return ("Estado pendiente", "circle", .secondary)
         }
     }
 
@@ -717,11 +717,12 @@ struct NotebookTopBar: View {
 
     private var inspectorButton: some View {
         Button(action: onToggleInspector) {
-            Image(systemName: isInspectorPresented ? "sidebar.right" : "sidebar.right")
+            Image(systemName: isInspectorPresented ? "sidebar.right" : "sidebar.squares.right")
                 .frame(width: 28, height: 28)
         }
         .buttonStyle(.borderless)
         .foregroundStyle(isInspectorPresented ? NotebookStyle.primaryTint : .secondary)
+        .keyboardShortcut("i", modifiers: [.command, .option])
         .help("Inspector")
         .accessibilityLabel("Inspector")
     }
@@ -732,6 +733,7 @@ struct NotebookTopBar: View {
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.small)
+        .help("Añadir columna de evaluación, seguimiento o fórmula")
     }
 
     private var classPicker: some View {
@@ -752,14 +754,16 @@ struct NotebookTopBar: View {
             HStack(spacing: 8) {
                 Text(selectedClass?.name ?? "Seleccionar clase")
                     .lineLimit(1)
+                    .truncationMode(.middle)
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.caption.weight(.semibold))
             }
+            .fixedSize(horizontal: true, vertical: false)
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(.primary)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .frame(width: 160, alignment: .leading)
+            .frame(minWidth: 120, idealWidth: 160, maxWidth: 240, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(NotebookStyle.surfaceSoft)

@@ -80,9 +80,15 @@ struct NotebookModuleView: View {
     @State var formulaAIMessage: String? = nil
     @State var isFormulaAIGenerating = false
     @State var activeChoiceCellId: String? = nil
+    @State var organizationColumnSearchText = ""
+    @State private var contextualAIService = AppleFoundationContextualAIService()
+    @StateObject private var formulaAIServiceStore = AppleFoundationFormulaServiceStore()
     @AppStorage("notebook.navigationDirection") var navigationDirectionRaw = NotebookNavigationDirection.down.rawValue
     @FocusState var focusedCellId: String?
-    let formulaAIService = AppleFoundationFormulaService()
+
+    var formulaAIService: AppleFoundationFormulaService {
+        formulaAIServiceStore.service
+    }
 
     init(
         bridge: KmpBridge,
@@ -299,10 +305,6 @@ struct NotebookModuleView: View {
                     onUndo: {
                         undoLastCellChange()
                     },
-                    onGenerateSummaryFallback: {
-                        notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: nil)
-                    },
-                    exportText: exportText(data: data),
                     showsInlineActions: showsNotebookInlineActions,
                     showsClassPicker: macPresentation != .full
                 )
@@ -356,6 +358,7 @@ struct NotebookModuleView: View {
         let trailingFixedSegments = fixedSegments.filter(isTrailingFixedSegment)
         let scrollableSegments = segments.filter { !isFixedSegment($0) }
         let laneItems = headerLaneItems(data: data, segments: scrollableSegments)
+        let trailingPaddingCompensation = NotebookStyle.outerPadding * 2
         let hasFolders = laneItems.contains {
             if case .folder = $0 { return true }
             return false
@@ -365,7 +368,7 @@ struct NotebookModuleView: View {
             rows: rows,
             surfaceMode: surfaceMode,
             fixedColumnWidth: fixedZoneWidth,
-            trailingFixedColumnWidth: trailingFixedSegments.isEmpty ? 0 : defaultFixedWidth(for: .average) + 32,
+            trailingFixedColumnWidth: trailingFixedSegments.isEmpty ? 0 : defaultFixedWidth(for: .average) + trailingPaddingCompensation,
             topAccessoryHeight: hasFolders ? notebookGridFolderLaneHeight : 0,
             headerHeight: notebookGridHeaderHeight,
             rowHeight: notebookGridRowHeight,
@@ -538,8 +541,6 @@ struct NotebookModuleView: View {
         }
         withAnimation(.spring(duration: 0.2, bounce: 0.15)) {
             fixedZoneLiveWidth = snappedWidth
-        }
-        DispatchQueue.main.async {
             fixedZoneWidthStored = Double(snappedWidth)
             fixedZoneLiveWidth = nil
         }
@@ -725,7 +726,7 @@ struct NotebookModuleView: View {
     }
 
     func handleCreatedSummaryColumn(_ columnId: String) {
-        let availability = AppleFoundationContextualAIService().currentAvailability()
+        let availability = contextualAIService.currentAvailability()
         if !availability.isAvailable {
             showToast("Columna creada. La generación IA no está disponible en este dispositivo.", style: .warning)
         }

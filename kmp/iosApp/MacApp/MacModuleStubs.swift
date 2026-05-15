@@ -951,6 +951,7 @@ struct MacPlannerView: View {
     @State private var selectedTableSessionId: Int64?
     @State private var showingScheduleSettings = false
     @State private var showingExportConfirmation = false
+    @State private var showingMoveFilteredConfirmation = false
     @State private var transientMessage: String?
     @State private var isInspectorVisible = true
     @State private var inspectorWidth: CGFloat = 380
@@ -1001,6 +1002,9 @@ struct MacPlannerView: View {
                 await syncInspectorStudents(for: vm.selectedSession)
             }
         }
+        .appOnChange(of: sessionFilter) { _ in
+            Task { await normalizeSelectionForDisplayedSessions() }
+        }
         .sheet(isPresented: $vm.showingComposer) {
             PlannerSessionComposerSheet(vm: vm)
                 .frame(minWidth: 920, minHeight: 720)
@@ -1021,6 +1025,14 @@ struct MacPlannerView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text("El resumen actual de planificación se ha copiado al portapapeles.")
+        }
+        .alert("Mover sesiones filtradas", isPresented: $showingMoveFilteredConfirmation) {
+            Button("Cancelar", role: .cancel) {}
+            Button("Mover \(displayedSessions.count) sesiones", role: .destructive) {
+                Task { await moveFilteredSessions() }
+            }
+        } message: {
+            Text("Se moverán todas las sesiones visibles con los filtros actuales un día hacia delante.")
         }
     }
 
@@ -1071,7 +1083,10 @@ struct MacPlannerView: View {
 
                 Picker("Grupo", selection: Binding(
                     get: { vm.selectedGroupId },
-                    set: { vm.selectGroup($0) }
+                    set: { newValue in
+                        vm.selectGroup(newValue)
+                        Task { await normalizeSelectionForDisplayedSessions() }
+                    }
                 )) {
                     Text("Todos los grupos").tag(Optional<Int64>.none)
                     ForEach(vm.groups, id: \.id) { group in
@@ -1083,6 +1098,7 @@ struct MacPlannerView: View {
                     .textFieldStyle(.roundedBorder)
                     .appOnChange(of: vm.searchText) { _ in
                         vm.applySearch()
+                        Task { await normalizeSelectionForDisplayedSessions() }
                     }
 
                 Picker("Estado", selection: $sessionFilter) {
@@ -1114,8 +1130,8 @@ struct MacPlannerView: View {
                 .buttonStyle(.bordered)
                 .disabled(displayedSessions.isEmpty)
 
-                Button("Mover selección") {
-                    Task { await moveFilteredSelection() }
+                Button("Mover sesiones filtradas") {
+                    showingMoveFilteredConfirmation = true
                 }
                 .buttonStyle(.bordered)
                 .disabled(displayedSessions.isEmpty)
@@ -1305,10 +1321,25 @@ struct MacPlannerView: View {
         await vm.bulkCopyToNextWeek()
     }
 
-    private func moveFilteredSelection() async {
+    private func moveFilteredSessions() async {
         guard !displayedSessions.isEmpty else { return }
         vm.selectedSessionIds = Set(displayedSessions.map(\.id))
         await vm.bulkMoveOneDay()
+    }
+
+    private func normalizeSelectionForDisplayedSessions() async {
+        let visible = displayedSessions
+        if let selectedSession = vm.selectedSession,
+           visible.contains(where: { $0.id == selectedSession.id }) {
+            return
+        }
+        if let first = visible.first {
+            await vm.select(session: first)
+            selectedTableSessionId = first.id
+        } else {
+            vm.clearSelection()
+            selectedTableSessionId = nil
+        }
     }
 
     private func exportCurrentContext() {

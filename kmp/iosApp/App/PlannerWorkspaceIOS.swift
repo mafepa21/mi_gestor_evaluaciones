@@ -33,6 +33,13 @@ struct PlannerJournalDraftNote: Identifiable, Equatable {
     var studentName = ""
     var note = ""
     var tag = ""
+
+    static func == (lhs: PlannerJournalDraftNote, rhs: PlannerJournalDraftNote) -> Bool {
+        lhs.studentId == rhs.studentId
+            && lhs.studentName == rhs.studentName
+            && lhs.note == rhs.note
+            && lhs.tag == rhs.tag
+    }
 }
 
 struct PlannerJournalDraftAction: Identifiable, Equatable {
@@ -40,6 +47,12 @@ struct PlannerJournalDraftAction: Identifiable, Equatable {
     var title = ""
     var detail = ""
     var isCompleted = false
+
+    static func == (lhs: PlannerJournalDraftAction, rhs: PlannerJournalDraftAction) -> Bool {
+        lhs.title == rhs.title
+            && lhs.detail == rhs.detail
+            && lhs.isCompleted == rhs.isCompleted
+    }
 }
 
 struct PlannerJournalDraftMedia: Identifiable, Equatable {
@@ -48,6 +61,13 @@ struct PlannerJournalDraftMedia: Identifiable, Equatable {
     var uri = ""
     var transcript = ""
     var caption = ""
+
+    static func == (lhs: PlannerJournalDraftMedia, rhs: PlannerJournalDraftMedia) -> Bool {
+        lhs.type == rhs.type
+            && lhs.uri == rhs.uri
+            && lhs.transcript == rhs.transcript
+            && lhs.caption == rhs.caption
+    }
 }
 
 struct PlannerJournalDraftLink: Identifiable, Equatable {
@@ -55,6 +75,12 @@ struct PlannerJournalDraftLink: Identifiable, Equatable {
     var type: SessionJournalLinkType
     var targetId = ""
     var label = ""
+
+    static func == (lhs: PlannerJournalDraftLink, rhs: PlannerJournalDraftLink) -> Bool {
+        lhs.type == rhs.type
+            && lhs.targetId == rhs.targetId
+            && lhs.label == rhs.label
+    }
 }
 
 struct PlannerJournalDraft: Equatable {
@@ -186,6 +212,13 @@ struct PlannerComposerDraft {
     var selectedInstrumentIds: Set<String> = []
 }
 
+enum PlannerJournalSaveState: Equatable {
+    case idle
+    case saving
+    case saved(Date)
+    case failed(String)
+}
+
 struct PlannerSectionPreview: Identifiable, Hashable {
     let title: String
     let value: String
@@ -297,6 +330,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     @Published var filteredSessions: [PlanningSession] = []
     @Published var selectedSession: PlanningSession?
     @Published var journalDraft: PlannerJournalDraft = .empty
+    @Published var journalSaveState: PlannerJournalSaveState = .idle
     @Published var journalSummaryBySessionId: [Int64: SessionJournalSummary] = [:]
     @Published var timeSlots: [TimeSlotConfig] = []
     @Published var visibleSlots: [PlannerVisibleSlot] = []
@@ -330,6 +364,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     @Published var composerTeachingUnits: [TeachingUnit] = []
     @Published var composerAvailableInstruments: [PlannerAssessmentInstrument] = []
     @Published var composerContextError = ""
+    @Published var isSavingComposer = false
 
     private weak var bridge: KmpBridge?
     private var autosaveTask: Task<Void, Never>?
@@ -415,9 +450,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
             selectedSession = first
             await loadJournalForSelectedSession()
         } else {
-            selectedSession = nil
-            journalDraft = .empty
-            loadedAggregate = nil
+            clearSelection()
         }
     }
 
@@ -443,8 +476,8 @@ final class PlannerWorkspaceViewModel: ObservableObject {
 
     func previousWeek() async {
         if week <= 1 {
-            week = 52
             year -= 1
+            week = Self.isoWeeks(in: year)
         } else {
             week -= 1
         }
@@ -452,7 +485,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     }
 
     func nextWeek() async {
-        if week >= 52 {
+        if week >= Self.isoWeeks(in: year) {
             week = 1
             year += 1
         } else {
@@ -489,6 +522,14 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         await loadJournalForSelectedSession()
     }
 
+    func clearSelection() {
+        autosaveTask?.cancel()
+        selectedSession = nil
+        journalDraft = .empty
+        loadedAggregate = nil
+        journalSaveState = .idle
+    }
+
     func applyExternalContext(week: Int?, year: Int?, groupId: Int64?, sessionId: Int64?) async {
         var shouldReload = false
 
@@ -517,16 +558,16 @@ final class PlannerWorkspaceViewModel: ObservableObject {
 
     func loadJournalForSelectedSession() async {
         guard let bridge, let selectedSession else { return }
+        autosaveTask?.cancel()
         do {
             let aggregate = try await bridge.plannerJournal(for: selectedSession)
             loadedAggregate = aggregate
-            isHydratingDraft = true
-            journalDraft = PlannerJournalDraft(aggregate: aggregate)
-            isHydratingDraft = false
+            replaceJournalDraft(PlannerJournalDraft(aggregate: aggregate))
+            journalSaveState = .idle
         } catch {
             loadedAggregate = nil
-            isHydratingDraft = false
-            journalDraft = .empty
+            replaceJournalDraft(.empty)
+            journalSaveState = .failed("No se pudo cargar el diario.")
         }
     }
 
@@ -542,7 +583,10 @@ final class PlannerWorkspaceViewModel: ObservableObject {
 
     func saveJournal() async {
         guard let bridge, let session = selectedSession else { return }
+        autosaveTask?.cancel()
+        journalSaveState = .saving
         let journalId = loadedAggregate?.journal.id ?? 0
+        let status = computedStatus()
         let aggregate = SessionJournalAggregate(
             journal: SessionJournal(
                 id: journalId,
@@ -579,7 +623,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
                 cooldownMinutes: Int32(journalDraft.cooldownMinutes),
                 stationObservationsText: journalDraft.stationObservationsText,
                 incidentTags: journalDraft.incidentTags,
-                status: computedStatus()
+                status: status
             ),
             individualNotes: journalDraft.notes.map {
                 SessionJournalIndividualNote(
@@ -625,13 +669,16 @@ final class PlannerWorkspaceViewModel: ObservableObject {
             _ = try await bridge.plannerSaveJournal(aggregate)
             loadedAggregate = try await bridge.plannerJournal(for: session)
             if let loadedAggregate {
-                isHydratingDraft = true
-                journalDraft = PlannerJournalDraft(aggregate: loadedAggregate)
-                isHydratingDraft = false
+                let refreshedDraft = PlannerJournalDraft(aggregate: loadedAggregate)
+                if refreshedDraft != journalDraft {
+                    replaceJournalDraft(refreshedDraft)
+                }
             }
             let refreshedSummaries = (try? await bridge.plannerJournalSummaries(sessionIds: sessions.map(\.id))) ?? []
             journalSummaryBySessionId = Dictionary(uniqueKeysWithValues: refreshedSummaries.map { ($0.planningSessionId, $0) })
+            journalSaveState = .saved(Date())
         } catch {
+            journalSaveState = .failed(error.localizedDescription)
         }
     }
 
@@ -727,26 +774,39 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         showingComposer = true
     }
 
-    func saveComposer() async {
-        guard let bridge, let groupId = composerDraft.groupId else { return }
+    @discardableResult
+    func saveComposer() async -> Bool {
+        guard let bridge, let groupId = composerDraft.groupId else {
+            composerContextError = "Selecciona un grupo antes de guardar."
+            return false
+        }
         let groupName = groups.first(where: { $0.id == groupId })?.name ?? "Grupo \(groupId)"
         let selectedInstruments = composerAvailableInstruments.filter { composerDraft.selectedInstrumentIds.contains($0.id) }
-        _ = try? await bridge.plannerSaveSessionWithLinks(
-            id: composerDraft.sessionId,
-            groupId: groupId,
-            groupName: groupName,
-            dayOfWeek: composerDraft.dayOfWeek,
-            period: composerDraft.period,
-            weekNumber: week,
-            year: year,
-            teachingUnitId: composerDraft.teachingUnitId,
-            newTeachingUnitName: composerDraft.unitTitle,
-            objectives: composerDraft.objectives,
-            activities: composerDraft.activities,
-            selectedInstruments: selectedInstruments
-        )
-        showingComposer = false
-        await reloadAll(keepSelection: false)
+        isSavingComposer = true
+        defer { isSavingComposer = false }
+        do {
+            _ = try await bridge.plannerSaveSessionWithLinks(
+                id: composerDraft.sessionId,
+                groupId: groupId,
+                groupName: groupName,
+                dayOfWeek: composerDraft.dayOfWeek,
+                period: composerDraft.period,
+                weekNumber: week,
+                year: year,
+                teachingUnitId: composerDraft.teachingUnitId,
+                newTeachingUnitName: composerDraft.unitTitle,
+                objectives: composerDraft.objectives,
+                activities: composerDraft.activities,
+                selectedInstruments: selectedInstruments
+            )
+            composerContextError = ""
+            showingComposer = false
+            await reloadAll(keepSelection: false)
+            return true
+        } catch {
+            composerContextError = "No se pudo guardar la sesión: \(error.localizedDescription)"
+            return false
+        }
     }
 
     func toggleComposerInstrument(_ instrumentId: String) {
@@ -967,6 +1027,24 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         } catch {
             scheduleError = error.localizedDescription
         }
+    }
+
+    private func replaceJournalDraft(_ draft: PlannerJournalDraft) {
+        autosaveTask?.cancel()
+        isHydratingDraft = true
+        journalDraft = draft
+        Task { @MainActor [weak self] in
+            await Task.yield()
+            self?.isHydratingDraft = false
+        }
+    }
+
+    private static func isoWeeks(in year: Int) -> Int {
+        var calendar = Calendar(identifier: .iso8601)
+        calendar.firstWeekday = 2
+        calendar.minimumDaysInFirstWeek = 4
+        let date = DateComponents(calendar: calendar, year: year, month: 12, day: 28).date ?? Date()
+        return calendar.component(.weekOfYear, from: date)
     }
 
     private func rebuildVisiblePlannerStructure() {
@@ -2314,12 +2392,13 @@ private struct JournalActionBar: View {
             }
 
             HStack(spacing: 10) {
-                Text("Usa el dictado nativo del teclado en cualquier campo de texto para capturar voz.")
+                saveStateLabel
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(saveStateColor)
                 Spacer()
                 Button("Guardar ahora") { Task { await vm.saveJournal() } }
                     .buttonStyle(.borderedProminent)
+                    .disabled(vm.journalSaveState == .saving)
             }
 
             ForEach(vm.journalDraft.links) { link in
@@ -2332,6 +2411,29 @@ private struct JournalActionBar: View {
                 }
                 .padding(.vertical, 2)
             }
+        }
+    }
+
+    private var saveStateLabel: Text {
+        switch vm.journalSaveState {
+        case .idle:
+            return Text("Usa el dictado nativo del teclado en cualquier campo de texto para capturar voz.")
+        case .saving:
+            return Text("Guardando...")
+        case .saved(let date):
+            let seconds = max(0, Int(Date().timeIntervalSince(date)))
+            return Text(seconds < 3 ? "Guardado ahora" : "Guardado hace \(seconds) s")
+        case .failed(let message):
+            return Text("Error al guardar: \(message)")
+        }
+    }
+
+    private var saveStateColor: Color {
+        switch vm.journalSaveState {
+        case .failed:
+            return .red
+        default:
+            return .secondary
         }
     }
 }
@@ -2581,11 +2683,12 @@ struct PlannerSessionComposerSheet: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Guardar") {
                         Task {
-                            await vm.saveComposer()
-                            dismiss()
+                            if await vm.saveComposer() {
+                                dismiss()
+                            }
                         }
                     }
-                    .disabled(vm.composerDraft.groupId == nil)
+                    .disabled(vm.composerDraft.groupId == nil || vm.isSavingComposer)
                 }
             }
             .task {

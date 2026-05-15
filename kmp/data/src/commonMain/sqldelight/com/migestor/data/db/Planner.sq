@@ -19,13 +19,17 @@ CREATE TABLE IF NOT EXISTS planner_session (
     activities  TEXT    DEFAULT '',
     evaluation  TEXT    DEFAULT '',
     linked_assessment_ids_csv TEXT NOT NULL DEFAULT '',
+    teacher_schedule_slot_id INTEGER,
+    start_time TEXT,
+    end_time TEXT,
     status      TEXT    DEFAULT 'PENDING',
     updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
     device_id   TEXT,
     sync_version INTEGER NOT NULL DEFAULT 0,
     UNIQUE(date, group_id, period),        -- evita colisiones
     FOREIGN KEY (group_id) REFERENCES classes(id) ON DELETE CASCADE,
-    FOREIGN KEY (unit_id) REFERENCES teaching_unit(id) ON DELETE SET NULL
+    FOREIGN KEY (unit_id) REFERENCES teaching_unit(id) ON DELETE SET NULL,
+    FOREIGN KEY (teacher_schedule_slot_id) REFERENCES teacher_schedule_slots(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS session_journal (
@@ -207,16 +211,20 @@ WHERE s.id = :id;
 
 upsertSession:
 INSERT INTO planner_session(
-    id, date, group_id, period, unit_id, objectives, activities, evaluation, linked_assessment_ids_csv, status, 
+    id, date, group_id, period, unit_id, objectives, activities, evaluation, linked_assessment_ids_csv,
+    teacher_schedule_slot_id, start_time, end_time, status,
     updated_at_epoch_ms, device_id, sync_version
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(date, group_id, period) DO UPDATE SET
     unit_id = excluded.unit_id,
     objectives = excluded.objectives,
     activities = excluded.activities,
     evaluation = excluded.evaluation,
     linked_assessment_ids_csv = excluded.linked_assessment_ids_csv,
+    teacher_schedule_slot_id = excluded.teacher_schedule_slot_id,
+    start_time = excluded.start_time,
+    end_time = excluded.end_time,
     status = excluded.status,
     updated_at_epoch_ms = excluded.updated_at_epoch_ms,
     device_id = excluded.device_id,

@@ -209,10 +209,13 @@ struct PlannerComposerDraft {
     var activities = ""
     var dayOfWeek = 1
     var period = 1
+    var teacherScheduleSlotId: Int64? = nil
+    var startTime: String? = nil
+    var endTime: String? = nil
     var selectedInstrumentIds: Set<String> = []
 }
 
-enum PlannerJournalSaveState: Equatable {
+enum PlannerSaveState: Equatable {
     case idle
     case saving
     case saved(Date)
@@ -258,6 +261,15 @@ struct PlannerWeekCellEntry: Identifiable, Hashable {
     let journalStatus: SessionJournalStatus?
     let scheduledSlotId: Int64?
     let isCompleted: Bool
+}
+
+struct PlannerScheduleGenerationPreviewRow: Identifiable, Hashable {
+    let classId: Int64
+    let className: String
+    let detectedSessions: Int
+    let existingSessions: Int
+
+    var id: Int64 { classId }
 }
 
 @MainActor
@@ -330,7 +342,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     @Published var filteredSessions: [PlanningSession] = []
     @Published var selectedSession: PlanningSession?
     @Published var journalDraft: PlannerJournalDraft = .empty
-    @Published var journalSaveState: PlannerJournalSaveState = .idle
+    @Published var journalSaveState: PlannerSaveState = .idle
     @Published var journalSummaryBySessionId: [Int64: SessionJournalSummary] = [:]
     @Published var timeSlots: [TimeSlotConfig] = []
     @Published var visibleSlots: [PlannerVisibleSlot] = []
@@ -357,6 +369,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     @Published var scheduleFormSubject = ""
     @Published var scheduleFormUnit = ""
     @Published var scheduleError = ""
+    @Published var scheduleSaveState: PlannerSaveState = .idle
     @Published var evaluationFormName = ""
     @Published var evaluationFormStart = ""
     @Published var evaluationFormEnd = ""
@@ -365,6 +378,10 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     @Published var composerAvailableInstruments: [PlannerAssessmentInstrument] = []
     @Published var composerContextError = ""
     @Published var isSavingComposer = false
+    @Published var composerSaveState: PlannerSaveState = .idle
+    @Published var scheduleGenerationPreview: [PlannerScheduleGenerationPreviewRow] = []
+    @Published var scheduleGenerationSummary = ""
+    @Published var isGeneratingScheduleSessions = false
 
     private weak var bridge: KmpBridge?
     private var autosaveTask: Task<Void, Never>?
@@ -411,6 +428,13 @@ final class PlannerWorkspaceViewModel: ObservableObject {
 
     var isUsingLegacyWeeklySlots: Bool {
         teacherScheduleSlots.isEmpty && !weeklySlots.isEmpty
+    }
+
+    var generationPreviewTotals: (detected: Int, omitted: Int) {
+        scheduleGenerationPreview.reduce(into: (detected: 0, omitted: 0)) { result, row in
+            result.detected += row.detectedSessions
+            result.omitted += row.existingSessions
+        }
     }
 
     func bind(bridge: KmpBridge) async {
@@ -739,6 +763,10 @@ final class PlannerWorkspaceViewModel: ObservableObject {
             objectives: session.objectives,
             activities: session.activities,
             evaluation: session.evaluation,
+            linkedAssessmentIdsCsv: session.linkedAssessmentIdsCsv,
+            teacherScheduleSlotId: session.teacherScheduleSlotId?.int64Value,
+            startTime: session.startTime,
+            endTime: session.endTime,
             status: .completed
         )
         await reloadAll()
@@ -755,21 +783,31 @@ final class PlannerWorkspaceViewModel: ObservableObject {
                 activities: session.activities,
                 dayOfWeek: Int(session.dayOfWeek),
                 period: Int(session.period),
+                teacherScheduleSlotId: session.teacherScheduleSlotId?.int64Value,
+                startTime: session.startTime,
+                endTime: session.endTime,
                 selectedInstrumentIds: Set(session.linkedAssessmentIdsCsv.split(separator: ",").map(String.init))
             )
         } else {
             let firstVisibleDay = visibleWeekdays.first ?? 1
             let firstVisiblePeriod = visibleSlots.first?.period ?? 1
+            let resolvedDay = day ?? firstVisibleDay
+            let resolvedPeriod = period ?? firstVisiblePeriod
+            let slotMetadata = composerSlotMetadata(day: resolvedDay, period: resolvedPeriod, groupId: selectedGroupId ?? groups.first?.id)
             composerDraft = PlannerComposerDraft(
                 groupId: selectedGroupId ?? groups.first?.id,
                 teachingUnitId: nil,
                 unitTitle: "",
                 objectives: "",
                 activities: "",
-                dayOfWeek: day ?? firstVisibleDay,
-                period: period ?? firstVisiblePeriod
+                dayOfWeek: resolvedDay,
+                period: resolvedPeriod,
+                teacherScheduleSlotId: slotMetadata.slotId,
+                startTime: slotMetadata.startTime,
+                endTime: slotMetadata.endTime
             )
         }
+        composerSaveState = .idle
         Task { await refreshComposerContext() }
         showingComposer = true
     }
@@ -778,11 +816,14 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     func saveComposer() async -> Bool {
         guard let bridge, let groupId = composerDraft.groupId else {
             composerContextError = "Selecciona un grupo antes de guardar."
+            composerSaveState = .failed(composerContextError)
             return false
         }
         let groupName = groups.first(where: { $0.id == groupId })?.name ?? "Grupo \(groupId)"
         let selectedInstruments = composerAvailableInstruments.filter { composerDraft.selectedInstrumentIds.contains($0.id) }
+        let slotMetadata = composerSlotMetadata(day: composerDraft.dayOfWeek, period: composerDraft.period, groupId: groupId)
         isSavingComposer = true
+        composerSaveState = .saving
         defer { isSavingComposer = false }
         do {
             _ = try await bridge.plannerSaveSessionWithLinks(
@@ -797,14 +838,19 @@ final class PlannerWorkspaceViewModel: ObservableObject {
                 newTeachingUnitName: composerDraft.unitTitle,
                 objectives: composerDraft.objectives,
                 activities: composerDraft.activities,
+                teacherScheduleSlotId: slotMetadata.slotId,
+                startTime: slotMetadata.startTime,
+                endTime: slotMetadata.endTime,
                 selectedInstruments: selectedInstruments
             )
             composerContextError = ""
+            composerSaveState = .saved(Date())
             showingComposer = false
             await reloadAll(keepSelection: false)
             return true
         } catch {
             composerContextError = "No se pudo guardar la sesión: \(error.localizedDescription)"
+            composerSaveState = .failed(composerContextError)
             return false
         }
     }
@@ -836,8 +882,26 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         }
     }
 
+    private func composerSlotMetadata(day: Int, period: Int, groupId: Int64?) -> (slotId: Int64?, startTime: String?, endTime: String?) {
+        let visibleSlot = visibleSlots.first(where: { $0.period == period })
+        let scheduleSlot = teacherScheduleSlots.first { slot in
+            guard Int(slot.dayOfWeek) == day else { return false }
+            if let groupId, slot.schoolClassId != groupId { return false }
+            if let visibleSlot {
+                return slot.startTime == visibleSlot.startTime && slot.endTime == visibleSlot.endTime
+            }
+            return false
+        }
+        return (
+            scheduleSlot?.id,
+            scheduleSlot?.startTime ?? visibleSlot?.startTime,
+            scheduleSlot?.endTime ?? visibleSlot?.endTime
+        )
+    }
+
     func addScheduleSlot() async {
         guard let bridge, let schedule = teacherSchedule, let groupId = scheduleFormGroupId else { return }
+        scheduleSaveState = .saving
         do {
             _ = try await bridge.plannerSaveTeacherScheduleSlot(
                 scheduleId: schedule.id,
@@ -853,20 +917,137 @@ final class PlannerWorkspaceViewModel: ObservableObject {
             scheduleFormUnit = ""
             await reloadScheduleConfiguration()
             weeklySlots = bridge.plannerWeeklySlots(classId: nil)
+            scheduleSaveState = .saved(Date())
         } catch {
             scheduleError = error.localizedDescription
+            scheduleSaveState = .failed(scheduleError)
         }
+    }
+
+    func buildScheduleGenerationPreview(groupId: Int64? = nil) {
+        let targetSlots = effectiveScheduleSlots.filter { slot in
+            guard let groupId else { return true }
+            return slot.schoolClassId == groupId
+        }
+        let rows = Dictionary(grouping: targetSlots, by: \.schoolClassId)
+            .compactMap { classId, slots -> PlannerScheduleGenerationPreviewRow? in
+                let className = groups.first(where: { $0.id == classId })?.name ?? "Grupo \(classId)"
+                let detected = slots.count
+                let existing = slots.filter { slot in
+                    sessions.contains { session in
+                        session.groupId == slot.schoolClassId &&
+                        Int(session.dayOfWeek) == Int(slot.dayOfWeek) &&
+                        (
+                            session.teacherScheduleSlotId?.int64Value == slot.id ||
+                            (session.startTime == slot.startTime && session.endTime == slot.endTime) ||
+                            Int(session.period) == period(for: slot)
+                        )
+                    }
+                }.count
+                return PlannerScheduleGenerationPreviewRow(
+                    classId: classId,
+                    className: className,
+                    detectedSessions: detected,
+                    existingSessions: existing
+                )
+            }
+            .sorted { $0.className < $1.className }
+        scheduleGenerationPreview = rows
+        let totals = rows.reduce(into: (detected: 0, omitted: 0)) { result, row in
+            result.detected += row.detectedSessions
+            result.omitted += row.existingSessions
+        }
+        scheduleGenerationSummary = "\(totals.detected) franjas detectadas · \(totals.omitted) sesiones ya existentes omitidas"
+    }
+
+    func generateSessionsFromSchedule(groupId: Int64? = nil) async {
+        guard let bridge else { return }
+        let targetSlots = effectiveScheduleSlots.filter { slot in
+            guard let groupId else { return true }
+            return slot.schoolClassId == groupId
+        }
+        guard !targetSlots.isEmpty else {
+            scheduleGenerationSummary = "No hay franjas para generar sesiones."
+            return
+        }
+        isGeneratingScheduleSessions = true
+        defer { isGeneratingScheduleSessions = false }
+
+        var created = 0
+        var omitted = 0
+        for slot in targetSlots {
+            let slotPeriod = period(for: slot)
+            let alreadyExists = sessions.contains { session in
+                session.groupId == slot.schoolClassId &&
+                Int(session.dayOfWeek) == Int(slot.dayOfWeek) &&
+                (
+                    session.teacherScheduleSlotId?.int64Value == slot.id ||
+                    (session.startTime == slot.startTime && session.endTime == slot.endTime) ||
+                    Int(session.period) == slotPeriod
+                )
+            }
+            if alreadyExists {
+                omitted += 1
+                continue
+            }
+
+            do {
+                _ = try await bridge.plannerSaveSessionWithLinks(
+                    id: 0,
+                    groupId: slot.schoolClassId,
+                    groupName: groups.first(where: { $0.id == slot.schoolClassId })?.name ?? "Grupo \(slot.schoolClassId)",
+                    dayOfWeek: Int(slot.dayOfWeek),
+                    period: slotPeriod,
+                    weekNumber: week,
+                    year: year,
+                    teachingUnitId: nil,
+                    newTeachingUnitName: slot.unitLabel?.nilIfBlank ?? slot.subjectLabel.nilIfBlank ?? "Planificación semanal",
+                    objectives: "",
+                    activities: "",
+                    teacherScheduleSlotId: slot.id,
+                    startTime: slot.startTime,
+                    endTime: slot.endTime,
+                    selectedInstruments: []
+                )
+                created += 1
+            } catch {
+                omitted += 1
+                scheduleGenerationSummary = "No se pudo generar una sesión: \(error.localizedDescription)"
+            }
+        }
+
+        await reloadAll(keepSelection: false)
+        buildScheduleGenerationPreview(groupId: groupId)
+        scheduleGenerationSummary = "\(created) sesiones creadas · \(omitted) omitidas"
+    }
+
+    private func period(for slot: TeacherScheduleSlot) -> Int {
+        if let visibleSlot = visibleSlots.first(where: { $0.startTime == slot.startTime && $0.endTime == slot.endTime }) {
+            return visibleSlot.period
+        }
+        if let defaultSlot = timeSlots.first(where: { $0.startTime == slot.startTime && $0.endTime == slot.endTime }) {
+            return Int(defaultSlot.period)
+        }
+        return Int(slot.dayOfWeek) * 100 + Int(slot.id % 100)
     }
 
     func deleteScheduleSlot(_ slotId: Int64) async {
         guard let bridge else { return }
-        try? await bridge.plannerDeleteTeacherScheduleSlot(slotId: slotId)
-        await reloadScheduleConfiguration()
-        weeklySlots = bridge.plannerWeeklySlots(classId: nil)
+        scheduleSaveState = .saving
+        do {
+            try await bridge.plannerDeleteTeacherScheduleSlot(slotId: slotId)
+            await reloadScheduleConfiguration()
+            weeklySlots = bridge.plannerWeeklySlots(classId: nil)
+            scheduleSaveState = .saved(Date())
+        } catch {
+            scheduleError = error.localizedDescription
+            scheduleSaveState = .failed(scheduleError)
+        }
     }
 
     func saveTeacherSchedule() async {
         guard let bridge, let schedule = teacherSchedule else { return }
+        scheduleSaveState = .saving
         do {
             let savedId = try await bridge.plannerSaveTeacherSchedule(
                 scheduleId: schedule.id,
@@ -889,8 +1070,10 @@ final class PlannerWorkspaceViewModel: ObservableObject {
                 trace: schedule.trace
             )
             await reloadScheduleConfiguration()
+            scheduleSaveState = .saved(Date())
         } catch {
             scheduleError = error.localizedDescription
+            scheduleSaveState = .failed(scheduleError)
         }
     }
 
@@ -899,8 +1082,10 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         let normalizedName = evaluationFormName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedName.isEmpty else {
             scheduleError = "Añade un nombre para la evaluación."
+            scheduleSaveState = .failed(scheduleError)
             return
         }
+        scheduleSaveState = .saving
         do {
             _ = try await bridge.plannerSaveEvaluationPeriod(
                 periodId: 0,
@@ -915,15 +1100,24 @@ final class PlannerWorkspaceViewModel: ObservableObject {
             evaluationFormEnd = ""
             scheduleError = ""
             await reloadScheduleConfiguration()
+            scheduleSaveState = .saved(Date())
         } catch {
             scheduleError = error.localizedDescription
+            scheduleSaveState = .failed(scheduleError)
         }
     }
 
     func deleteEvaluationPeriod(_ periodId: Int64) async {
         guard let bridge else { return }
-        try? await bridge.plannerDeleteEvaluationPeriod(periodId: periodId)
-        await reloadScheduleConfiguration()
+        scheduleSaveState = .saving
+        do {
+            try await bridge.plannerDeleteEvaluationPeriod(periodId: periodId)
+            await reloadScheduleConfiguration()
+            scheduleSaveState = .saved(Date())
+        } catch {
+            scheduleError = error.localizedDescription
+            scheduleSaveState = .failed(scheduleError)
+        }
     }
 
     func toggleActiveWeekday(_ day: Int) {
@@ -1066,6 +1260,12 @@ final class PlannerWorkspaceViewModel: ObservableObject {
                     period: Int(session.period),
                     startTime: matchingDefault.startTime,
                     endTime: matchingDefault.endTime
+                )
+            } else if let startTime = session.startTime, let endTime = session.endTime {
+                rangesByPeriod[Int(session.period)] = PlannerVisibleSlot(
+                    period: Int(session.period),
+                    startTime: startTime,
+                    endTime: endTime
                 )
             }
         }
@@ -2569,7 +2769,7 @@ struct PlannerSessionComposerSheet: View {
             MacPopupActionBar(
                 title: vm.composerDraft.sessionId == 0 ? "Nueva sesión" : "Editar sesión",
                 subtitle: "Planificación",
-                saveTitle: "Guardar",
+                saveTitle: vm.composerSaveState == .saving ? "Guardando..." : "Guardar",
                 canSave: canSave,
                 onClose: { dismiss() },
                 onSave: saveAndDismiss
@@ -2581,6 +2781,7 @@ struct PlannerSessionComposerSheet: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .safeAreaInset(edge: .bottom) {
                     HStack(spacing: 10) {
+                        PlannerSaveStateInlineStatus(state: vm.composerSaveState)
                         Spacer()
                         Button("Cancelar") {
                             dismiss()
@@ -2666,6 +2867,8 @@ struct PlannerSessionComposerSheet: View {
             VStack(alignment: .leading, spacing: 18) {
                 EvaluationGlassCard {
                     VStack(alignment: .leading, spacing: 14) {
+                        PlannerSaveStateInlineStatus(state: vm.composerSaveState)
+
                         EvaluationSectionTitle(
                             eyebrow: "Sesión",
                             title: vm.composerDraft.sessionId == 0 ? "Nueva sesión" : "Editar sesión",
@@ -2781,6 +2984,59 @@ struct PlannerSessionComposerSheet: View {
             if await vm.saveComposer() {
                 dismiss()
             }
+        }
+    }
+}
+
+private struct PlannerSaveStateInlineStatus: View {
+    let state: PlannerSaveState
+
+    var body: some View {
+        if let message {
+            HStack(spacing: 8) {
+                if state == .saving {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: iconName)
+                }
+                Text(message)
+                    .font(.caption.weight(.semibold))
+            }
+            .foregroundStyle(tint)
+        }
+    }
+
+    private var message: String? {
+        switch state {
+        case .idle:
+            return nil
+        case .saving:
+            return "Guardando..."
+        case .saved:
+            return "Guardado"
+        case .failed(let text):
+            return text
+        }
+    }
+
+    private var iconName: String {
+        switch state {
+        case .failed:
+            return "exclamationmark.triangle.fill"
+        default:
+            return "checkmark.circle.fill"
+        }
+    }
+
+    private var tint: Color {
+        switch state {
+        case .failed:
+            return EvaluationDesign.danger
+        case .saving:
+            return EvaluationDesign.accent
+        default:
+            return EvaluationDesign.success
         }
     }
 }

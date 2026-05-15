@@ -1684,6 +1684,9 @@ final class KmpBridge: ObservableObject {
         activities: String,
         evaluation: String,
         linkedAssessmentIdsCsv: String = "",
+        teacherScheduleSlotId: Int64? = nil,
+        startTime: String? = nil,
+        endTime: String? = nil,
         status: SessionStatus
     ) async throws -> Int64 {
         let session = PlanningSession(
@@ -1701,31 +1704,44 @@ final class KmpBridge: ObservableObject {
             activities: activities,
             evaluation: evaluation,
             linkedAssessmentIdsCsv: linkedAssessmentIdsCsv,
+            teacherScheduleSlotId: teacherScheduleSlotId.map { KotlinLong(value: $0) },
+            startTime: startTime,
+            endTime: endTime,
             status: status
         )
         let sessionId = try await container.plannerRepository.upsertSession(session: session).int64Value
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        var payload: [String: Any] = [
+            "id": sessionId,
+            "teachingUnitId": teachingUnitId,
+            "teachingUnitName": teachingUnitName,
+            "teachingUnitColor": teachingUnitColor,
+            "groupId": groupId,
+            "groupName": groupName,
+            "dayOfWeek": dayOfWeek,
+            "period": period,
+            "weekNumber": weekNumber,
+            "year": year,
+            "objectives": objectives,
+            "activities": activities,
+            "evaluation": evaluation,
+            "linkedAssessmentIdsCsv": linkedAssessmentIdsCsv,
+            "status": status.name
+        ]
+        if let teacherScheduleSlotId {
+            payload["teacherScheduleSlotId"] = teacherScheduleSlotId
+        }
+        if let startTime {
+            payload["startTime"] = startTime
+        }
+        if let endTime {
+            payload["endTime"] = endTime
+        }
         enqueueLocalChange(
             entity: "planning_session",
             id: "\(sessionId)",
             updatedAtEpochMs: nowMs,
-            payload: [
-                "id": sessionId,
-                "teachingUnitId": teachingUnitId,
-                "teachingUnitName": teachingUnitName,
-                "teachingUnitColor": teachingUnitColor,
-                "groupId": groupId,
-                "groupName": groupName,
-                "dayOfWeek": dayOfWeek,
-                "period": period,
-                "weekNumber": weekNumber,
-                "year": year,
-                "objectives": objectives,
-                "activities": activities,
-                "evaluation": evaluation,
-                "linkedAssessmentIdsCsv": linkedAssessmentIdsCsv,
-                "status": status.name
-            ]
+            payload: payload
         )
         return sessionId
     }
@@ -4925,6 +4941,9 @@ final class KmpBridge: ObservableObject {
         newTeachingUnitName: String?,
         objectives: String,
         activities: String,
+        teacherScheduleSlotId: Int64? = nil,
+        startTime: String? = nil,
+        endTime: String? = nil,
         selectedInstruments: [PlannerAssessmentInstrument]
     ) async throws -> PlannerSessionSaveResult {
         let resolvedTeachingUnit = try await resolvePlannerTeachingUnit(
@@ -4954,6 +4973,9 @@ final class KmpBridge: ObservableObject {
             activities: activities,
             evaluation: evaluationSummary,
             linkedAssessmentIdsCsv: linkedIds,
+            teacherScheduleSlotId: teacherScheduleSlotId,
+            startTime: startTime,
+            endTime: endTime,
             status: .planned
         )
 
@@ -4999,6 +5021,9 @@ final class KmpBridge: ObservableObject {
             activities: sessionDescription,
             evaluation: "",
             linkedAssessmentIdsCsv: "",
+            teacherScheduleSlotId: nil,
+            startTime: nil,
+            endTime: nil,
             status: SessionStatus.planned
         )
         
@@ -5938,6 +5963,9 @@ final class KmpBridge: ObservableObject {
                     activities: payloadObject["activities"] as? String ?? "",
                     evaluation: payloadObject["evaluation"] as? String ?? "",
                     linkedAssessmentIdsCsv: payloadObject["linkedAssessmentIdsCsv"] as? String ?? "",
+                    teacherScheduleSlotId: int64Value(payloadObject["teacherScheduleSlotId"]).map { KotlinLong(value: $0) },
+                    startTime: payloadObject["startTime"] as? String,
+                    endTime: payloadObject["endTime"] as? String,
                     status: status
                 )
                 do {

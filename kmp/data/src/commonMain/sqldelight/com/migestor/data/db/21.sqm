@@ -1,0 +1,6 @@
+-- Migration from version 21 to 22.
+-- Keep planner sessions linked to their real teacher schedule slot when available,
+-- with persisted start/end fallback for custom or legacy ranges.
+ALTER TABLE planner_session ADD COLUMN teacher_schedule_slot_id INTEGER;
+ALTER TABLE planner_session ADD COLUMN start_time TEXT;
+ALTER TABLE planner_session ADD COLUMN end_time TEXT;

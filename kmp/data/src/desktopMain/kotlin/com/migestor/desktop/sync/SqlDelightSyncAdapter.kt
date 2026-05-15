@@ -1011,6 +1011,9 @@ class SqlDelightSyncAdapter(
                             activities = payload.string("activities") ?: "",
                             evaluation = payload.string("evaluation") ?: "",
                             linkedAssessmentIdsCsv = payload.string("linkedAssessmentIdsCsv") ?: "",
+                            teacherScheduleSlotId = payload.long("teacherScheduleSlotId"),
+                            startTime = payload.string("startTime"),
+                            endTime = payload.string("endTime"),
                             status = SessionStatus.entries.firstOrNull {
                                 it.name == payload.string("status")
                             } ?: SessionStatus.PLANNED,

@@ -23,6 +23,7 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
     @Published var scheduleFormSubject = ""
     @Published var scheduleFormUnit = ""
     @Published var scheduleError = ""
+    @Published var scheduleSaveState: PlannerSaveState = .idle
     @Published var editingScheduleSlotId: Int64?
     @Published var editingScheduleSlotWeeklyTemplateId: Int64?
     @Published var evaluationFormName = ""
@@ -135,14 +136,17 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
             nonTeachingEvents = try await bridge.plannerNonTeachingCalendarEvents(classId: selectedClassId)
             await refreshForecastForSelection()
             scheduleError = ""
+            scheduleSaveState = .idle
         } catch {
             scheduleError = error.localizedDescription
+            scheduleSaveState = .failed(scheduleError)
         }
     }
 
     func saveTeacherSchedule() async {
         guard let bridge, let schedule = teacherSchedule else { return }
         syncScheduleDatesFromPicker()
+        scheduleSaveState = .saving
         do {
             let savedId = try await bridge.plannerSaveTeacherSchedule(
                 scheduleId: schedule.id,
@@ -165,14 +169,17 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
                 trace: schedule.trace
             )
             await reload()
+            scheduleSaveState = .saved(Date())
         } catch {
             scheduleError = error.localizedDescription
+            scheduleSaveState = .failed(scheduleError)
         }
     }
 
     func addScheduleSlot() async {
         guard let bridge, let schedule = teacherSchedule, let groupId = scheduleFormGroupId else { return }
         syncScheduleSlotTimesFromPicker()
+        scheduleSaveState = .saving
         do {
             _ = try await bridge.plannerSaveTeacherScheduleSlot(
                 scheduleId: schedule.id,
@@ -191,8 +198,10 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
             editingScheduleSlotWeeklyTemplateId = nil
             scheduleError = ""
             await reload()
+            scheduleSaveState = .saved(Date())
         } catch {
             scheduleError = error.localizedDescription
+            scheduleSaveState = .failed(scheduleError)
         }
     }
 
@@ -231,11 +240,14 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
 
     func deleteScheduleSlot(_ slotId: Int64) async {
         guard let bridge else { return }
+        scheduleSaveState = .saving
         do {
             try await bridge.plannerDeleteTeacherScheduleSlot(slotId: slotId)
             await reload()
+            scheduleSaveState = .saved(Date())
         } catch {
             scheduleError = error.localizedDescription
+            scheduleSaveState = .failed(scheduleError)
         }
     }
 
@@ -244,9 +256,11 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
         let normalizedName = evaluationFormName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedName.isEmpty else {
             scheduleError = "Añade un nombre para la evaluación."
+            scheduleSaveState = .failed(scheduleError)
             return
         }
         syncEvaluationDatesFromPicker()
+        scheduleSaveState = .saving
         do {
             _ = try await bridge.plannerSaveEvaluationPeriod(
                 periodId: 0,
@@ -263,18 +277,23 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
             evaluationFormEndDateValue = .now
             scheduleError = ""
             await reload()
+            scheduleSaveState = .saved(Date())
         } catch {
             scheduleError = error.localizedDescription
+            scheduleSaveState = .failed(scheduleError)
         }
     }
 
     func deleteEvaluationPeriod(_ periodId: Int64) async {
         guard let bridge else { return }
+        scheduleSaveState = .saving
         do {
             try await bridge.plannerDeleteEvaluationPeriod(periodId: periodId)
             await reload()
+            scheduleSaveState = .saved(Date())
         } catch {
             scheduleError = error.localizedDescription
+            scheduleSaveState = .failed(scheduleError)
         }
     }
 
@@ -347,6 +366,7 @@ struct MacTeacherScheduleSettingsPanel: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(EvaluationDesign.danger.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
+            PlannerSaveStateStatusLine(state: vm.scheduleSaveState, idleText: "")
 
             summaryCard
             courseCard
@@ -439,6 +459,7 @@ struct MacTeacherScheduleSettingsPanel: View {
                         Task { await vm.saveTeacherSchedule() }
                     }
                     .buttonStyle(.borderedProminent)
+                    .disabled(vm.scheduleSaveState == .saving)
                 }
 
                 HStack(spacing: 8) {
@@ -558,7 +579,7 @@ struct MacTeacherScheduleSettingsPanel: View {
                 Task { await vm.addScheduleSlot() }
             }
             .buttonStyle(.borderedProminent)
-            .disabled(vm.scheduleFormGroupId == nil)
+            .disabled(vm.scheduleFormGroupId == nil || vm.scheduleSaveState == .saving)
         }
     }
 
@@ -772,6 +793,65 @@ struct MacTeacherScheduleSettingsPanel: View {
             return start.formatted(date: .abbreviated, time: .omitted)
         }
         return "\(start.formatted(date: .abbreviated, time: .omitted)) - \(end.formatted(date: .abbreviated, time: .omitted))"
+    }
+}
+
+private struct PlannerSaveStateStatusLine: View {
+    let state: PlannerSaveState
+    let idleText: String
+
+    var body: some View {
+        if !message.isEmpty {
+            HStack(spacing: 8) {
+                if state == .saving {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: iconName)
+                        .foregroundStyle(tint)
+                }
+                Text(message)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(tint)
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+    }
+
+    private var message: String {
+        switch state {
+        case .idle:
+            return idleText
+        case .saving:
+            return "Guardando..."
+        case .saved:
+            return "Guardado"
+        case .failed(let text):
+            return text
+        }
+    }
+
+    private var iconName: String {
+        switch state {
+        case .failed:
+            return "exclamationmark.triangle.fill"
+        default:
+            return "checkmark.circle.fill"
+        }
+    }
+
+    private var tint: Color {
+        switch state {
+        case .failed:
+            return EvaluationDesign.danger
+        case .saving:
+            return EvaluationDesign.accent
+        default:
+            return EvaluationDesign.success
+        }
     }
 }
 #endif

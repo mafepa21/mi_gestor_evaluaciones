@@ -1210,6 +1210,9 @@ data class PlanningSession(
     val activities: String = "",
     val evaluation: String = "",
     val linkedAssessmentIdsCsv: String = "",
+    val teacherScheduleSlotId: Long? = null,
+    val startTime: String? = null,
+    val endTime: String? = null,
     val status: SessionStatus = SessionStatus.PLANNED
 )
 

@@ -112,6 +112,9 @@ class PlannerRepositorySqlDelight(
                 activities = session.activities,
                 evaluation = session.evaluation,
                 linked_assessment_ids_csv = session.linkedAssessmentIdsCsv,
+                teacher_schedule_slot_id = session.teacherScheduleSlotId,
+                start_time = session.startTime,
+                end_time = session.endTime,
                 status = session.status.name,
                 updated_at_epoch_ms = now,
                 device_id = null,
@@ -137,6 +140,9 @@ class PlannerRepositorySqlDelight(
                     activities = session.activities,
                     evaluation = session.evaluation,
                     linked_assessment_ids_csv = session.linkedAssessmentIdsCsv,
+                    teacher_schedule_slot_id = session.teacherScheduleSlotId,
+                    start_time = session.startTime,
+                    end_time = session.endTime,
                     status = session.status.name,
                     updated_at_epoch_ms = now,
                     device_id = null,
@@ -380,6 +386,9 @@ class PlannerRepositorySqlDelight(
             activities = session.activities,
             evaluation = session.evaluation,
             linked_assessment_ids_csv = session.linkedAssessmentIdsCsv,
+            teacher_schedule_slot_id = session.teacherScheduleSlotId,
+            start_time = session.startTime,
+            end_time = session.endTime,
             status = session.status.name,
             updated_at_epoch_ms = now,
             device_id = null,
@@ -405,6 +414,9 @@ class PlannerRepositorySqlDelight(
             activities = row.activities ?: "",
             evaluation = row.evaluation ?: "",
             linkedAssessmentIdsCsv = row.linked_assessment_ids_csv,
+            teacherScheduleSlotId = row.teacher_schedule_slot_id,
+            startTime = row.start_time,
+            endTime = row.end_time,
             status = try { SessionStatus.valueOf(row.status ?: "PLANNED") } catch (e: Exception) { SessionStatus.PLANNED }
         )
     }
@@ -426,6 +438,9 @@ class PlannerRepositorySqlDelight(
             activities = row.activities ?: "",
             evaluation = row.evaluation ?: "",
             linkedAssessmentIdsCsv = row.linked_assessment_ids_csv,
+            teacherScheduleSlotId = row.teacher_schedule_slot_id,
+            startTime = row.start_time,
+            endTime = row.end_time,
             status = try { SessionStatus.valueOf(row.status ?: "PLANNED") } catch (e: Exception) { SessionStatus.PLANNED }
         )
     }

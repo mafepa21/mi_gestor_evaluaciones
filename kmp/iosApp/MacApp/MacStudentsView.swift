@@ -32,6 +32,7 @@ struct MacStudentsView: View {
     @State private var isInspectorPresented = true
     @State private var didBootstrap = false
     @State private var profileLoadTask: Task<Void, Never>?
+    @State private var profileLoadingStudentId: Int64?
     @State private var studentEditorMode: MacStudentEditorMode?
     @FocusState private var isSearchFocused: Bool
 
@@ -117,11 +118,16 @@ struct MacStudentsView: View {
         .appOnChange(of: localSelectedStudentId) { _, _ in
             scheduleProfileReload()
         }
+        .appOnChange(of: selectedStudentId) { _, newValue in
+            guard didBootstrap, let newValue, rows.contains(where: { $0.id == newValue }) else { return }
+            localSelectedStudentId = newValue
+        }
         .appOnChange(of: filteredRows.map(\.id)) { _, visibleIds in
             guard !visibleIds.isEmpty else {
                 localSelectedStudentId = nil
                 profileLoadTask?.cancel()
                 isLoadingProfile = false
+                profileLoadingStudentId = nil
                 profile = nil
                 riskPack = nil
                 profileErrorMessage = nil
@@ -390,10 +396,20 @@ struct MacStudentsView: View {
                                 Label("Editar datos", systemImage: "pencil")
                             }
                             .buttonStyle(.bordered)
+
+                            Button {
+                                Task { await toggleInjuryStatus(for: selectedRow) }
+                            } label: {
+                                Label(
+                                    selectedRow.isInjured ? "Quitar lesión" : "Marcar lesión",
+                                    systemImage: selectedRow.isInjured ? "heart.slash" : "bandage"
+                                )
+                            }
+                            .buttonStyle(.bordered)
                         }
                     }
 
-                    if isLoadingProfile {
+                    if profileLoadingStudentId == selectedRow.id {
                         ProgressView("Cargando ficha…")
                     } else if let profileErrorMessage {
                         ContentUnavailableView(
@@ -401,7 +417,7 @@ struct MacStudentsView: View {
                             systemImage: "exclamationmark.triangle",
                             description: Text(profileErrorMessage)
                         )
-                    } else if let profile {
+                    } else if let profile, profile.student.id == selectedRow.id {
                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                             MacMetricCard(label: "Asistencia", value: "\(profile.attendanceRate)%", systemImage: "checklist.checked")
                             MacMetricCard(label: "Media", value: IosFormatting.decimal(profile.averageScore), systemImage: "sum")
@@ -571,6 +587,7 @@ struct MacStudentsView: View {
         profileLoadTask?.cancel()
         guard let studentId = localSelectedStudentId else {
             isLoadingProfile = false
+            profileLoadingStudentId = nil
             profile = nil
             riskPack = nil
             profileErrorMessage = nil
@@ -582,25 +599,49 @@ struct MacStudentsView: View {
         riskPack = nil
         profileErrorMessage = nil
         isLoadingProfile = true
+        profileLoadingStudentId = studentId
 
-        profileLoadTask = Task { @MainActor in
+        profileLoadTask = Task {
             do {
-                let loadedProfile = try await bridge.loadStudentProfile(studentId: studentId, classId: requestedClassId)
-                guard !Task.isCancelled,
-                      localSelectedStudentId == studentId,
-                      selectedRowClassId == requestedClassId else { return }
-                profile = loadedProfile
-                riskPack = try? await StudentRiskEvidenceBuilder.build(bridge: bridge, classId: requestedClassId, studentId: studentId)
-                isLoadingProfile = false
+                async let loadedProfile = bridge.loadStudentProfile(studentId: studentId, classId: requestedClassId)
+                async let loadedRiskPack = StudentRiskEvidenceBuilder.build(bridge: bridge, classId: requestedClassId, studentId: studentId)
+                let resultProfile = try await loadedProfile
+                let resultRiskPack = try? await loadedRiskPack
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    guard localSelectedStudentId == studentId,
+                          selectedRowClassId == requestedClassId else { return }
+                    profile = resultProfile
+                    riskPack = resultRiskPack
+                    profileLoadingStudentId = nil
+                    isLoadingProfile = false
+                }
             } catch {
-                guard !Task.isCancelled,
-                      localSelectedStudentId == studentId,
-                      selectedRowClassId == requestedClassId else { return }
-                profile = nil
-                riskPack = nil
-                profileErrorMessage = error.localizedDescription
-                isLoadingProfile = false
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    guard localSelectedStudentId == studentId,
+                          selectedRowClassId == requestedClassId else { return }
+                    profile = nil
+                    riskPack = nil
+                    profileLoadingStudentId = nil
+                    profileErrorMessage = error.localizedDescription
+                    isLoadingProfile = false
+                }
             }
+        }
+    }
+
+    @MainActor
+    private func toggleInjuryStatus(for row: KmpBridge.MacStudentRowSnapshot) async {
+        do {
+            try await bridge.updateStudentInjuryStatus(
+                studentId: row.id,
+                isInjured: !row.isInjured,
+                classId: row.classId
+            )
+            await reloadRows(preferredStudentId: row.id)
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 

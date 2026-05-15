@@ -48,6 +48,23 @@ extension NotebookModuleView {
         }
     }
 
+    @MainActor
+    func toggleStudentInjuryStatus(_ student: Student) async {
+        guard let classId = selectedClassId ?? bridge.notebookViewModel.currentClassId?.int64Value else { return }
+        do {
+            try await bridge.updateStudentInjuryStatus(
+                studentId: student.id,
+                isInjured: !student.isInjured,
+                classId: classId
+            )
+            await bridge.selectStudentsClass(classId: classId)
+            cellReloadRevision += 1
+            showToast(student.isInjured ? "Lesión retirada" : "Alumno marcado con lesión")
+        } catch {
+            showToast("No se pudo actualizar la lesión", style: .warning)
+        }
+    }
+
     func requestMarkAllVisibleStudentsPresent(data: NotebookUiStateData) {
         let visibleRows = filteredRows(data: data)
         guard !visibleRows.isEmpty else { return }

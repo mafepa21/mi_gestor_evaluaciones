@@ -479,6 +479,22 @@ extension NotebookModuleView {
                     }
                     .frame(width: resolvedFixedWidth(for: fixed), alignment: .leading)
                     .contentShape(Rectangle())
+                    .contextMenu {
+                        Button {
+                            Task { await toggleStudentInjuryStatus(item.student) }
+                        } label: {
+                            Label(
+                                item.student.isInjured ? "Quitar lesión" : "Marcar lesión",
+                                systemImage: item.student.isInjured ? "heart.slash" : "bandage"
+                            )
+                        }
+
+                        Button {
+                            openInspectorForStudent(item.student.id, data: data)
+                        } label: {
+                            Label("Abrir ficha", systemImage: "person.text.rectangle")
+                        }
+                    }
                 }
                 .buttonStyle(.plain)
             case .group:

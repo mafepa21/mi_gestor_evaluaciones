@@ -71,6 +71,7 @@ struct MacAttendanceView: View {
     @State private var incidents: [Incident] = []
     @State private var sessions: [KmpBridge.AttendanceSessionSnapshot] = []
     @State private var savingStudentIds: Set<Int64> = []
+    @State private var savingInjuryStudentIds: Set<Int64> = []
     @State private var saveRevisionByStudentId: [Int64: Int] = [:]
     @State private var historySelection: MacAttendanceHistorySelection?
     @State private var noteDraft = ""
@@ -406,7 +407,7 @@ struct MacAttendanceView: View {
                             MacAttendanceDayRow(
                                 row: row,
                                 isSelected: selectedStudentId == row.student.id,
-                                isSaving: savingStudentIds.contains(row.student.id),
+                                isSaving: savingStudentIds.contains(row.student.id) || savingInjuryStudentIds.contains(row.student.id),
                                 onSelect: {
                                     historySelection = nil
                                     selectedStudentId = row.student.id
@@ -415,6 +416,16 @@ struct MacAttendanceView: View {
                                     Task { await updateAttendance(for: row.student, status: status.id) }
                                 }
                             )
+                            .contextMenu {
+                                Button {
+                                    Task { await toggleInjuryStatus(for: row.student) }
+                                } label: {
+                                    Label(
+                                        row.student.isInjured ? "Quitar lesión" : "Marcar lesión",
+                                        systemImage: row.student.isInjured ? "heart.slash" : "bandage"
+                                    )
+                                }
+                            }
                         }
                     }
                     .padding(.vertical, 8)
@@ -488,6 +499,18 @@ struct MacAttendanceView: View {
                     }
 
                     inspectorStatusCard(record: selectedInspectionAttendance ?? recentRecords.first)
+
+                    Button {
+                        Task { await toggleInjuryStatus(for: student) }
+                    } label: {
+                        Label(
+                            student.isInjured ? "Quitar lesión" : "Marcar lesión",
+                            systemImage: student.isInjured ? "heart.slash" : "bandage"
+                        )
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(savingInjuryStudentIds.contains(student.id))
 
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Histórico reciente")
@@ -738,6 +761,27 @@ struct MacAttendanceView: View {
                 savingStudentIds.remove(student.id)
             }
             bridge.status = "No se pudo guardar la asistencia: \(error.localizedDescription)"
+        }
+    }
+
+    @MainActor
+    private func toggleInjuryStatus(for student: Student) async {
+        guard let selectedClassId else { return }
+        savingInjuryStudentIds.insert(student.id)
+        defer { savingInjuryStudentIds.remove(student.id) }
+
+        do {
+            try await bridge.updateStudentInjuryStatus(
+                studentId: student.id,
+                isInjured: !student.isInjured,
+                classId: selectedClassId
+            )
+            await bridge.selectStudentsClass(classId: selectedClassId)
+            await reloadAttendance()
+            selectedStudentId = student.id
+            bridge.status = student.isInjured ? "Lesión retirada." : "Alumno marcado con lesión."
+        } catch {
+            bridge.status = "No se pudo actualizar la lesión: \(error.localizedDescription)"
         }
     }
 

@@ -2100,6 +2100,54 @@ final class KmpBridge: ObservableObject {
         )
     }
 
+    func updateStudentInjuryStatus(
+        studentId: Int64,
+        isInjured: Bool,
+        classId: Int64?
+    ) async throws {
+        guard let student = try await container.studentsRepository.listStudents().first(where: { $0.id == studentId }) else {
+            throw NSError(domain: "KmpBridge", code: 404, userInfo: [NSLocalizedDescriptionKey: "No se encontró el alumno \(studentId)."])
+        }
+
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        _ = try await container.studentsRepository.saveStudent(
+            id: KotlinLong(value: student.id),
+            firstName: student.firstName,
+            lastName: student.lastName,
+            email: student.email,
+            photoPath: student.photoPath,
+            isInjured: isInjured,
+            sex: student.sex,
+            sexSource: student.sexSource,
+            birthDate: student.birthDate,
+            updatedAtEpochMs: nowMs,
+            deviceId: localDeviceId,
+            syncVersion: student.trace.syncVersion + 1
+        )
+        try await refreshStudentsDirectory()
+        try await refreshDashboard()
+        enqueueLocalChange(
+            entity: "student",
+            id: "\(student.id)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "id": student.id,
+                "firstName": student.firstName,
+                "lastName": student.lastName,
+                "email": student.email ?? NSNull(),
+                "photoPath": student.photoPath ?? NSNull(),
+                "isInjured": isInjured,
+                "sex": student.sex.name,
+                "sexSource": student.sexSource.name,
+                "birthDate": student.birthDate == nil ? NSNull() : student.birthDate!.description()
+            ]
+        )
+
+        if let classId {
+            enqueueRosterSnapshot(forClassId: classId, updatedAtEpochMs: nowMs)
+        }
+    }
+
     private func resolvedStudentSex(
         firstName: String,
         lastName: String,

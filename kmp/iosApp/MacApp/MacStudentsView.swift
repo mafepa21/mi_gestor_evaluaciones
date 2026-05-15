@@ -115,12 +115,25 @@ struct MacStudentsView: View {
                 await reloadRows()
             }
         }
-        .appOnChange(of: localSelectedStudentId) { _, _ in
-            scheduleProfileReload()
+        .appOnChange(of: localSelectedStudentId) { _, newValue in
+            if selectedStudentId != newValue {
+                selectedStudentId = newValue
+            }
+            loadProfileForSelection(newValue)
         }
         .appOnChange(of: selectedStudentId) { _, newValue in
-            guard didBootstrap, let newValue, rows.contains(where: { $0.id == newValue }) else { return }
-            localSelectedStudentId = newValue
+            guard didBootstrap else { return }
+            guard let newValue else {
+                localSelectedStudentId = nil
+                loadProfileForSelection(nil)
+                return
+            }
+            guard rows.contains(where: { $0.id == newValue }) else { return }
+            if localSelectedStudentId != newValue {
+                localSelectedStudentId = newValue
+            } else {
+                loadProfileForSelection(newValue)
+            }
         }
         .appOnChange(of: filteredRows.map(\.id)) { _, visibleIds in
             guard !visibleIds.isEmpty else {
@@ -397,26 +410,13 @@ struct MacStudentsView: View {
                             }
                             .buttonStyle(.bordered)
 
-                            Button {
-                                Task { await toggleInjuryStatus(for: selectedRow) }
-                            } label: {
-                                Label(
-                                    selectedRow.isInjured ? "Quitar lesión" : "Marcar lesión",
-                                    systemImage: selectedRow.isInjured ? "heart.slash" : "bandage"
-                                )
-                            }
-                            .buttonStyle(.bordered)
                         }
                     }
 
+                    injuryToggleButton(for: selectedRow)
+
                     if profileLoadingStudentId == selectedRow.id {
                         ProgressView("Cargando ficha…")
-                    } else if let profileErrorMessage {
-                        ContentUnavailableView(
-                            "No se pudo cargar la ficha",
-                            systemImage: "exclamationmark.triangle",
-                            description: Text(profileErrorMessage)
-                        )
                     } else if let profile, profile.student.id == selectedRow.id {
                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                             MacMetricCard(label: "Asistencia", value: "\(profile.attendanceRate)%", systemImage: "checklist.checked")
@@ -424,7 +424,17 @@ struct MacStudentsView: View {
                             MacMetricCard(label: "Incidencias", value: "\(profile.incidentCount)", systemImage: "exclamationmark.bubble")
                             MacMetricCard(label: "Evidencias", value: "\(profile.evidenceCount)", systemImage: "paperclip")
                         }
+                    } else if let profileErrorMessage {
+                        ContentUnavailableView(
+                            "No se pudo cargar la ficha",
+                            systemImage: "exclamationmark.triangle",
+                            description: Text(profileErrorMessage)
+                        )
+                    } else {
+                        ProgressView("Cargando ficha…")
+                    }
 
+                    if let profile, profile.student.id == selectedRow.id {
                         if let riskPack, let level = riskPack.riskLevel {
                             inspectorSection("Radar de riesgo") {
                                 VStack(alignment: .leading, spacing: 10) {
@@ -551,6 +561,27 @@ struct MacStudentsView: View {
         }
     }
 
+    @ViewBuilder
+    private func injuryToggleButton(for row: KmpBridge.MacStudentRowSnapshot) -> some View {
+        if row.isInjured {
+            Button {
+                Task { await toggleSelectedStudentInjury(row) }
+            } label: {
+                Label("Quitar lesión", systemImage: "heart.slash")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+        } else {
+            Button {
+                Task { await toggleSelectedStudentInjury(row) }
+            } label: {
+                Label("Marcar lesión", systemImage: "bandage")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+        }
+    }
+
     @MainActor
     private func bootstrapStudents() async {
         if selectedClassId == nil {
@@ -576,16 +607,18 @@ struct MacStudentsView: View {
             } else {
                 localSelectedStudentId = visibleIds.first
             }
-            scheduleProfileReload()
+            selectedStudentId = localSelectedStudentId
+            loadProfileForSelection(localSelectedStudentId)
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
     @MainActor
-    private func scheduleProfileReload() {
+    private func loadProfileForSelection(_ studentId: Int64?) {
         profileLoadTask?.cancel()
-        guard let studentId = localSelectedStudentId else {
+        profileErrorMessage = nil
+        guard let studentId else {
             isLoadingProfile = false
             profileLoadingStudentId = nil
             profile = nil
@@ -594,10 +627,9 @@ struct MacStudentsView: View {
             return
         }
 
-        let requestedClassId = selectedRowClassId
+        let requestedClassId = selectedClassId ?? rows.first(where: { $0.id == studentId })?.classId
         profile = nil
         riskPack = nil
-        profileErrorMessage = nil
         isLoadingProfile = true
         profileLoadingStudentId = studentId
 
@@ -610,7 +642,8 @@ struct MacStudentsView: View {
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
                     guard localSelectedStudentId == studentId,
-                          selectedRowClassId == requestedClassId else { return }
+                          selectedStudentId == studentId,
+                          (selectedClassId ?? rows.first(where: { $0.id == studentId })?.classId) == requestedClassId else { return }
                     profile = resultProfile
                     riskPack = resultRiskPack
                     profileLoadingStudentId = nil
@@ -620,7 +653,8 @@ struct MacStudentsView: View {
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
                     guard localSelectedStudentId == studentId,
-                          selectedRowClassId == requestedClassId else { return }
+                          selectedStudentId == studentId,
+                          (selectedClassId ?? rows.first(where: { $0.id == studentId })?.classId) == requestedClassId else { return }
                     profile = nil
                     riskPack = nil
                     profileLoadingStudentId = nil
@@ -632,15 +666,53 @@ struct MacStudentsView: View {
     }
 
     @MainActor
-    private func toggleInjuryStatus(for row: KmpBridge.MacStudentRowSnapshot) async {
+    private func applyInjuryLocally(studentId: Int64, isInjured: Bool) {
+        rows = rows.map { row in
+            guard row.id == studentId else { return row }
+            let followUpLabel: String
+            if isInjured {
+                followUpLabel = "Lesión"
+            } else if row.incidentCount > 0 {
+                followUpLabel = "Incidencias"
+            } else {
+                followUpLabel = "Normal"
+            }
+
+            return KmpBridge.MacStudentRowSnapshot(
+                id: row.id,
+                student: row.student,
+                classId: row.classId,
+                className: row.className,
+                allClassMemberships: row.allClassMemberships,
+                followUpLabel: followUpLabel,
+                recentAttendanceLabel: row.recentAttendanceLabel,
+                averageText: row.averageText,
+                incidentCount: row.incidentCount,
+                lastObservationText: row.lastObservationText,
+                isInjured: isInjured,
+                isFollowUp: isInjured || row.incidentCount > 0,
+                workGroupName: row.workGroupName
+            )
+        }
+    }
+
+    @MainActor
+    private func toggleSelectedStudentInjury(_ row: KmpBridge.MacStudentRowSnapshot) async {
+        let previousValue = row.isInjured
+        let newValue = !previousValue
+        selectedStudentId = row.id
+        localSelectedStudentId = row.id
+        applyInjuryLocally(studentId: row.id, isInjured: newValue)
+
         do {
             try await bridge.updateStudentInjuryStatus(
                 studentId: row.id,
-                isInjured: !row.isInjured,
-                classId: row.classId
+                isInjured: newValue,
+                classId: selectedClassId ?? row.classId
             )
-            await reloadRows(preferredStudentId: row.id)
+            loadProfileForSelection(row.id)
         } catch {
+            applyInjuryLocally(studentId: row.id, isInjured: previousValue)
             errorMessage = error.localizedDescription
         }
     }

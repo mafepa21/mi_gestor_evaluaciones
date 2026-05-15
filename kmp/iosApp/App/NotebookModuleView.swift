@@ -510,6 +510,11 @@ struct NotebookModuleView: View {
         let allowedColumns = visibleFixedColumns
         return segments.filter { segment in
             guard case .fixed(let fixed) = segment else { return false }
+            // La media no debe depender de visibleFixedColumns,
+            // porque se renderiza como zona fija derecha.
+            if fixed == .average {
+                return true
+            }
             return allowedColumns.contains(fixed)
         }
     }

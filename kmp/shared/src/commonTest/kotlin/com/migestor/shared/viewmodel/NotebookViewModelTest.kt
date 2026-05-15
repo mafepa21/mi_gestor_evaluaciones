@@ -395,6 +395,63 @@ class NotebookViewModelTest {
     }
 
     @Test
+    fun `average column is recalculated with only the active tab columns`() = runTest {
+        val classId = 1L
+        val tabs = listOf(
+            NotebookTab(id = "TAB_1", title = "Tema 1"),
+            NotebookTab(id = "TAB_2", title = "Tema 2"),
+        )
+        val student = Student(id = 1L, firstName = "Ana", lastName = "Lopez")
+        val repository = FakeNotebookRepository(
+            snapshot = NotebookSheet(
+                classId = classId,
+                tabs = tabs,
+                columns = listOf(
+                    NotebookColumnDefinition(
+                        id = "tema_1",
+                        title = "Prueba tema 1",
+                        type = NotebookColumnType.NUMERIC,
+                        tabIds = listOf("TAB_1"),
+                        weight = 1.0,
+                    ),
+                    NotebookColumnDefinition(
+                        id = "tema_2",
+                        title = "Prueba tema 2",
+                        type = NotebookColumnType.NUMERIC,
+                        tabIds = listOf("TAB_2"),
+                        weight = 1.0,
+                    ),
+                ),
+                rows = listOf(
+                    NotebookRow(
+                        student = student,
+                        cells = emptyList(),
+                        weightedAverage = null,
+                        persistedGrades = listOf(
+                            Grade(id = 1L, classId = classId, studentId = student.id, columnId = "tema_1", evaluationId = null, value = 6.0),
+                            Grade(id = 2L, classId = classId, studentId = student.id, columnId = "tema_2", evaluationId = null, value = 9.0),
+                        ),
+                    )
+                ),
+            )
+        )
+        val viewModel = createViewModel(repository)
+
+        viewModel.selectClass(classId)
+        advanceUntilIdle()
+
+        var data = viewModel.state.value as NotebookUiState.Data
+        assertEquals(6.0, data.sheet.rows.first().weightedAverage)
+        assertEquals(listOf("tema_1"), data.sheet.rows.first().averageExplanation?.included?.map { it.columnId })
+
+        viewModel.setSelectedTabId("TAB_2")
+
+        data = viewModel.state.value as NotebookUiState.Data
+        assertEquals(9.0, data.sheet.rows.first().weightedAverage)
+        assertEquals(listOf("tema_2"), data.sheet.rows.first().averageExplanation?.included?.map { it.columnId })
+    }
+
+    @Test
     fun `saveWorkGroup keeps names unique within the same tab`() = runTest {
         val classId = 1L
         val tabs = listOf(NotebookTab(id = "TAB_1", title = "Evaluación"))

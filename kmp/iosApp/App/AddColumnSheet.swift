@@ -992,8 +992,14 @@ struct AddColumnSheet: View {
         if selectedBlueprint.type == .rubric && selectedRubricId == nil {
             return "Selecciona una rúbrica."
         }
-        if selectedBlueprint.type == .calculated && formula.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return "Escribe una fórmula."
+        if selectedBlueprint.type == .calculated {
+            let trimmedFormula = formula.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmedFormula.isEmpty {
+                return "Escribe una fórmula."
+            }
+            if !trimmedFormula.contains("[") || !trimmedFormula.contains("]") {
+                return "Añade al menos una columna usando los botones de referencia."
+            }
         }
         if shouldShowWeightControls && parsedWeight == nil {
             return "Revisa el peso de la columna."

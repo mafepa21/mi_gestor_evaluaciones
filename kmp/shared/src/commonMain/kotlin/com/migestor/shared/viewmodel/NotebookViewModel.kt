@@ -122,7 +122,7 @@ class NotebookViewModel(
                     currentState.copy(
                         sheet = currentState.sheet.copy(rows = updatedRows),
                         numericDrafts = _numericDrafts.value
-                    )
+                    ).withActiveTabAverages()
                 }
             }
         }
@@ -184,7 +184,7 @@ class NotebookViewModel(
             checkDrafts = chkDrafts,
             workGroups = snapshot.workGroups,
             workGroupMembers = snapshot.workGroupMembers
-        )
+        ).withActiveTabAverages()
     }
 
     val currentClassId: Long? get() = activeClassId
@@ -223,7 +223,7 @@ class NotebookViewModel(
                         numericDrafts = mergedNumeric,
                         textDrafts = mergedText,
                         checkDrafts = mergedCheck
-                    )
+                    ).withActiveTabAverages()
                 } else {
                     _numericDrafts.value = freshDataState.numericDrafts
                     _textDrafts.value = freshDataState.textDrafts
@@ -277,7 +277,7 @@ class NotebookViewModel(
                                 numericDrafts = mergedNumeric,
                                 textDrafts = mergedText,
                                 checkDrafts = mergedCheck
-                            )
+                            ).withActiveTabAverages()
                         } else {
                             _numericDrafts.value = freshState.numericDrafts
                             _textDrafts.value = freshState.textDrafts
@@ -366,6 +366,7 @@ class NotebookViewModel(
                         } else row
                     }
                     _state.value = currentState.copy(sheet = currentState.sheet.copy(rows = updatedRows))
+                        .withActiveTabAverages()
                     markClean()
                 }
             } catch (e: Exception) {
@@ -614,6 +615,7 @@ class NotebookViewModel(
 
     fun setSelectedTabId(tabId: String?) {
         _selectedTabId.value = tabId?.takeIf { it.isNotBlank() }
+        updateDataState { it }
     }
 
     fun clearColumnSelection() {
@@ -870,7 +872,131 @@ class NotebookViewModel(
 
     private fun updateDataState(transform: (NotebookUiState.Data) -> NotebookUiState.Data) {
         _state.update { currentState ->
-            if (currentState is NotebookUiState.Data) transform(currentState) else currentState
+            if (currentState is NotebookUiState.Data) transform(currentState).withActiveTabAverages() else currentState
+        }
+    }
+
+    private fun NotebookUiState.Data.withActiveTabAverages(): NotebookUiState.Data {
+        val tabId = activeAverageTabId(sheet.tabs)
+        val averageColumns = sheet.columns.filter { columnIsVisibleInAverageTab(it, tabId) }
+        val updatedRows = sheet.rows.map { row ->
+            val explanation = computeActiveTabAverageExplanation(
+                row = row,
+                columns = averageColumns,
+                numericDrafts = numericDrafts,
+            )
+            row.copy(
+                weightedAverage = explanation?.average,
+                averageExplanation = explanation,
+            )
+        }
+        return copy(sheet = sheet.copy(rows = updatedRows))
+    }
+
+    private fun activeAverageTabId(tabs: List<NotebookTab>): String? {
+        return _selectedTabId.value
+            ?.takeIf { selected -> tabs.any { it.id == selected } }
+            ?: tabs.firstOrNull()?.id
+    }
+
+    private fun columnIsVisibleInAverageTab(
+        column: NotebookColumnDefinition,
+        tabId: String?,
+    ): Boolean {
+        if (tabId == null) return true
+        return column.tabIds.contains(tabId) || (column.sharedAcrossTabs && column.tabIds.isEmpty())
+    }
+
+    private fun computeActiveTabAverageExplanation(
+        row: NotebookRow,
+        columns: List<NotebookColumnDefinition>,
+        numericDrafts: Map<Pair<Long, String>, String>,
+    ): NotebookAverageExplanation? {
+        val evaluableColumns = columns.filter { it.visibility != NotebookColumnVisibility.ARCHIVED }
+        if (evaluableColumns.isEmpty()) return null
+
+        val included = mutableListOf<NotebookAverageContribution>()
+        val excluded = mutableListOf<NotebookAverageExclusion>()
+
+        evaluableColumns.forEach { column ->
+            if (!countsTowardWeightedAverage(column)) {
+                excluded += NotebookAverageExclusion(
+                    columnId = column.id,
+                    title = column.title,
+                    reason = activeAverageExclusionReason(column),
+                )
+                return@forEach
+            }
+
+            val value = activeAverageValueForRow(row, column, numericDrafts)
+            if (value != null) {
+                included += NotebookAverageContribution(
+                    columnId = column.id,
+                    title = column.title,
+                    value = value,
+                    weight = column.weight,
+                    weightedValue = value * column.weight,
+                )
+            } else {
+                when (column.emptyCellPolicy) {
+                    NotebookEmptyCellPolicy.COUNT_AS_ZERO -> {
+                        included += NotebookAverageContribution(
+                            columnId = column.id,
+                            title = column.title,
+                            value = 0.0,
+                            weight = column.weight,
+                            weightedValue = 0.0,
+                        )
+                    }
+                    else -> {
+                        excluded += NotebookAverageExclusion(
+                            columnId = column.id,
+                            title = column.title,
+                            reason = NotebookAverageExclusionReason.EMPTY,
+                        )
+                    }
+                }
+            }
+        }
+
+        val totalWeight = included.sumOf { it.weight }
+        val average = if (totalWeight > 0.0) {
+            included.sumOf { it.weightedValue } / totalWeight
+        } else {
+            null
+        }
+
+        return NotebookAverageExplanation(
+            studentId = row.student.id,
+            average = average,
+            included = included,
+            excluded = excluded,
+            totalIncludedWeight = totalWeight,
+            policy = NotebookEmptyCellPolicy.EXCLUDE_FROM_AVERAGE,
+        )
+    }
+
+    private fun activeAverageValueForRow(
+        row: NotebookRow,
+        column: NotebookColumnDefinition,
+        numericDrafts: Map<Pair<Long, String>, String>,
+    ): Double? {
+        return resolveColumnNumericValue(row, column, numericDrafts)
+            ?: row.persistedCells.firstOrNull { it.columnId == column.id }?.boolValue?.let { if (it) 10.0 else 0.0 }
+    }
+
+    private fun activeAverageExclusionReason(column: NotebookColumnDefinition): NotebookAverageExclusionReason {
+        if (column.visibility == NotebookColumnVisibility.ARCHIVED) return NotebookAverageExclusionReason.LOCKED_OR_ARCHIVED
+        if (column.instrumentKind == NotebookInstrumentKind.PHYSICAL_TEST && column.scaleKind in rawPhysicalScaleKinds) {
+            return NotebookAverageExclusionReason.RAW_VALUE_ONLY
+        }
+        if (column.weight <= 0.0) return NotebookAverageExclusionReason.RAW_VALUE_ONLY
+        return when (column.type) {
+            NotebookColumnType.NUMERIC,
+            NotebookColumnType.RUBRIC,
+            NotebookColumnType.CALCULATED,
+            NotebookColumnType.CHECK -> NotebookAverageExclusionReason.COLUMN_DOES_NOT_COUNT
+            else -> NotebookAverageExclusionReason.NON_NUMERIC
         }
     }
 
@@ -901,7 +1027,7 @@ class NotebookViewModel(
         val rows = sheet.rows
         if (rows.isEmpty()) return 0.0
 
-        val averages = rows.mapNotNull { row -> weightedAverageForRow(row) }
+        val averages = rows.mapNotNull { row -> weightedAverageForRow(row, sheet.columns) }
         return if (averages.isNotEmpty()) averages.average() else 0.0
     }
 
@@ -918,13 +1044,28 @@ class NotebookViewModel(
 
     fun countApproved(sheet: NotebookSheet, threshold: Double = 5.0): Int {
         return sheet.rows.count { row ->
-            val avg = weightedAverageForRow(row)
+            val avg = weightedAverageForRow(row, sheet.columns)
             (avg ?: 0.0) >= threshold
         }
     }
 
-    private fun weightedAverageForRow(row: NotebookRow): Double? {
-        return row.averageExplanation?.average ?: row.weightedAverage
+    private fun weightedAverageForRow(
+        row: NotebookRow,
+        columns: List<NotebookColumnDefinition>,
+    ): Double? {
+        row.averageExplanation?.average?.let { return it }
+        row.weightedAverage?.let { return it }
+
+        val included = columns
+            .filter(::countsTowardWeightedAverage)
+            .mapNotNull { column ->
+                val value = gradeValueFor(row, column)
+                    ?: if (column.emptyCellPolicy == NotebookEmptyCellPolicy.COUNT_AS_ZERO) 0.0 else null
+                value?.let { it to column.weight }
+            }
+        val totalWeight = included.sumOf { it.second }
+        if (totalWeight <= 0.0) return null
+        return included.sumOf { (value, weight) -> value * weight } / totalWeight
     }
 
     private fun gradeValueFor(row: NotebookRow, column: NotebookColumnDefinition): Double? {
@@ -939,6 +1080,7 @@ class NotebookViewModel(
 
     private fun countsTowardWeightedAverage(column: NotebookColumnDefinition): Boolean {
         if (!column.countsTowardAverage || column.weight <= 0.0) return false
+        if (column.visibility == NotebookColumnVisibility.ARCHIVED) return false
         if (column.instrumentKind == NotebookInstrumentKind.PHYSICAL_TEST && column.scaleKind in rawPhysicalScaleKinds) {
             return false
         }
@@ -1021,6 +1163,15 @@ class NotebookViewModel(
                     "COL_${Clock.System.now().toEpochMilliseconds()}"
                 }
 
+                val normalizedFormula = if (columnType == NotebookColumnType.CALCULATED) {
+                    normalizeFormulaReferencesForSave(
+                        formula = formula,
+                        columns = currentState?.sheet?.columns.orEmpty()
+                    )
+                } else {
+                    null
+                }
+
                 // 2. Create and save column definition
                 val columnDef = NotebookColumnDefinition(
                     id = columnId,
@@ -1032,7 +1183,7 @@ class NotebookViewModel(
                     evaluationId = evaluationId,
                     rubricId = rubricId,
                     weight = weight,
-                    formula = if (columnType == NotebookColumnType.CALCULATED) formula else null,
+                    formula = normalizedFormula,
                     dateEpochMs = dateEpochMs,
                     unitOrSituation = unitOrSituation,
                     competencyCriteriaIds = competencyCriteriaIds,
@@ -1051,6 +1202,7 @@ class NotebookViewModel(
                     isTemplate = isTemplate
                 )
                 if (currentState != null && !isFormulaColumnValid(columnDef, currentState)) {
+                    println("Invalid formula column '${columnDef.title}': ${columnDef.formula}")
                     return@launch
                 }
                 notebookRepository.saveColumn(classId, columnDef)
@@ -1523,6 +1675,29 @@ class NotebookViewModel(
 
     private fun parseDraftNumber(raw: String?): Double? {
         return raw?.replace(",", ".")?.toDoubleOrNull()
+    }
+
+    private fun normalizeFormulaReferencesForSave(
+        formula: String?,
+        columns: List<NotebookColumnDefinition>,
+    ): String? {
+        val rawFormula = formula
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?: return null
+        val columnsById = columns.associateBy { it.id }
+        val columnsByTitle = columns.associateBy { it.title.trim().lowercase() }
+        val referenceRegex = Regex("""\[([^\]]+)]""")
+        return referenceRegex.replace(rawFormula) { match ->
+            val rawReference = match.groupValues[1].trim()
+            val resolvedColumn = columnsById[rawReference]
+                ?: columnsByTitle[rawReference.lowercase()]
+            if (resolvedColumn != null) {
+                "[${resolvedColumn.id}]"
+            } else {
+                match.value
+            }
+        }
     }
 
     private fun columnIsVisibleInTab(column: NotebookColumnDefinition, tabId: String?): Boolean {

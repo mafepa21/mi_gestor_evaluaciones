@@ -23,6 +23,8 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
     @Published var scheduleFormSubject = ""
     @Published var scheduleFormUnit = ""
     @Published var scheduleError = ""
+    @Published var editingScheduleSlotId: Int64?
+    @Published var editingScheduleSlotWeeklyTemplateId: Int64?
     @Published var evaluationFormName = ""
     @Published var evaluationFormStart = ""
     @Published var evaluationFormEnd = ""
@@ -179,15 +181,52 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
                 unitLabel: scheduleFormUnit._nilIfBlank,
                 dayOfWeek: scheduleFormDay,
                 startTime: scheduleFormStart,
-                endTime: scheduleFormEnd
+                endTime: scheduleFormEnd,
+                editingSlotId: editingScheduleSlotId,
+                existingWeeklyTemplateId: editingScheduleSlotWeeklyTemplateId
             )
             scheduleFormSubject = ""
             scheduleFormUnit = ""
+            editingScheduleSlotId = nil
+            editingScheduleSlotWeeklyTemplateId = nil
             scheduleError = ""
             await reload()
         } catch {
             scheduleError = error.localizedDescription
         }
+    }
+
+    func beginEditingScheduleSlot(_ slot: TeacherScheduleSlot) {
+        scheduleFormGroupId = slot.schoolClassId
+        scheduleFormDay = Int(slot.dayOfWeek)
+        scheduleFormStart = slot.startTime
+        scheduleFormEnd = slot.endTime
+        scheduleFormStartTimeValue = AppDateTimeSupport.time(from: slot.startTime, fallback: scheduleFormStartTimeValue)
+        scheduleFormEndTimeValue = AppDateTimeSupport.time(from: slot.endTime, fallback: scheduleFormEndTimeValue)
+        scheduleFormSubject = slot.subjectLabel
+        scheduleFormUnit = slot.unitLabel ?? ""
+        editingScheduleSlotId = slot.id
+        editingScheduleSlotWeeklyTemplateId = slot.weeklyTemplateId?.int64Value
+    }
+
+    func duplicateScheduleSlot(_ slot: TeacherScheduleSlot) {
+        scheduleFormGroupId = slot.schoolClassId
+        scheduleFormDay = Int(slot.dayOfWeek)
+        scheduleFormStart = slot.startTime
+        scheduleFormEnd = slot.endTime
+        scheduleFormStartTimeValue = AppDateTimeSupport.time(from: slot.startTime, fallback: scheduleFormStartTimeValue)
+        scheduleFormEndTimeValue = AppDateTimeSupport.time(from: slot.endTime, fallback: scheduleFormEndTimeValue)
+        scheduleFormSubject = slot.subjectLabel
+        scheduleFormUnit = slot.unitLabel ?? ""
+        editingScheduleSlotId = nil
+        editingScheduleSlotWeeklyTemplateId = nil
+    }
+
+    func cancelEditingScheduleSlot() {
+        scheduleFormSubject = ""
+        scheduleFormUnit = ""
+        editingScheduleSlotId = nil
+        editingScheduleSlotWeeklyTemplateId = nil
     }
 
     func deleteScheduleSlot(_ slotId: Int64) async {
@@ -290,6 +329,452 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
         classColorHexById[classId] = bridge.plannerCourseColor(for: classId)
     }
 }
+
+#if os(macOS)
+struct MacTeacherScheduleSettingsPanel: View {
+    @ObservedObject var bridge: KmpBridge
+    @Binding var selectedClassId: Int64?
+    @StateObject private var vm = TeacherScheduleSettingsViewModel()
+
+    var body: some View {
+        LazyVStack(alignment: .leading, spacing: 14) {
+            if !vm.scheduleError.isEmpty {
+                Text(vm.scheduleError)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(EvaluationDesign.danger)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(EvaluationDesign.danger.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+
+            summaryCard
+            courseCard
+            slotsCard
+
+            macCard {
+                DisclosureGroup("Evaluaciones") {
+                    evaluationsContent
+                        .padding(.top, 12)
+                }
+            }
+
+            macCard {
+                DisclosureGroup("Colores") {
+                    colorsContent
+                        .padding(.top, 12)
+                }
+            }
+
+            macCard {
+                DisclosureGroup("No lectivos") {
+                    nonTeachingContent
+                        .padding(.top, 12)
+                }
+            }
+        }
+        .controlSize(.regular)
+        .task {
+            await vm.bind(bridge: bridge, selectedClassId: selectedClassId)
+        }
+        .appOnChange(of: selectedClassId) { newValue in
+            Task { await vm.updateSelectedClass(newValue) }
+        }
+    }
+
+    private var summaryCard: some View {
+        macCard {
+            HStack(spacing: 18) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Resumen")
+                        .font(MacAppStyle.sectionTitle)
+                    Text(vm.scheduleName)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                metric("Curso", "\(vm.scheduleStartDate) - \(vm.scheduleEndDate)")
+                metric("Franjas", "\(vm.effectiveScheduleSlots.count)")
+                metric("Evaluaciones", "\(vm.evaluationPeriods.count)")
+                metric("No lectivos", "\(vm.nonTeachingEvents.count)")
+            }
+        }
+    }
+
+    private var courseCard: some View {
+        macCard {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Curso")
+                        .font(MacAppStyle.sectionTitle)
+                    Spacer()
+                    Picker(
+                        "Grupo",
+                        selection: Binding(
+                            get: { selectedClassId ?? -1 },
+                            set: { selectedClassId = $0 > 0 ? $0 : nil }
+                        )
+                    ) {
+                        Text("Todos").tag(Int64(-1))
+                        ForEach(vm.groups, id: \.id) { group in
+                            Text(group.name).tag(group.id)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(width: 220)
+                }
+
+                HStack(alignment: .bottom, spacing: 12) {
+                    TextField("Nombre de agenda", text: $vm.scheduleName)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(minWidth: 220)
+
+                    labeledDatePicker("Inicio", selection: $vm.scheduleStartDateValue)
+                    labeledDatePicker("Fin", selection: $vm.scheduleEndDateValue)
+
+                    Button("Guardar") {
+                        Task { await vm.saveTeacherSchedule() }
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+
+                HStack(spacing: 8) {
+                    Text("Días")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    ForEach([1, 2, 3, 4, 5, 6, 7], id: \.self) { day in
+                        if vm.activeWeekdays.contains(day) {
+                            Button {
+                                vm.toggleActiveWeekday(day)
+                            } label: {
+                                Text(vm.dayLabel(for: day))
+                                    .font(.caption.weight(.bold))
+                                    .frame(width: 36)
+                            }
+                            .buttonStyle(.borderedProminent)
+                        } else {
+                            Button {
+                                vm.toggleActiveWeekday(day)
+                            } label: {
+                                Text(vm.dayLabel(for: day))
+                                    .font(.caption.weight(.bold))
+                                    .frame(width: 36)
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                    Text(vm.activeWeekdaySummary)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.leading, 4)
+                    Spacer()
+                }
+            }
+        }
+    }
+
+    private var slotsCard: some View {
+        macCard {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Text("Franjas")
+                        .font(MacAppStyle.sectionTitle)
+                    Spacer()
+                    if vm.editingScheduleSlotId != nil {
+                        Button("Cancelar edición") {
+                            vm.cancelEditingScheduleSlot()
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+
+                slotEditorRow
+
+                if vm.usingLegacyWeeklySlots {
+                    Text("Mostrando franjas heredadas del horario original.")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+
+                if vm.effectiveScheduleSlots.isEmpty {
+                    Text("Todavía no hay franjas definidas.")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 8)
+                } else {
+                    VStack(spacing: 0) {
+                        ForEach(vm.effectiveScheduleSlots, id: \.id) { slot in
+                            slotRow(slot)
+                            if slot.id != vm.effectiveScheduleSlots.last?.id {
+                                Divider()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var slotEditorRow: some View {
+        HStack(alignment: .bottom, spacing: 10) {
+            Picker(
+                "Grupo",
+                selection: Binding(
+                    get: { vm.scheduleFormGroupId ?? -1 },
+                    set: { vm.scheduleFormGroupId = $0 > 0 ? $0 : nil }
+                )
+            ) {
+                ForEach(vm.groups, id: \.id) { group in
+                    Text(group.name).tag(group.id)
+                }
+            }
+            .pickerStyle(.menu)
+            .frame(width: 170)
+
+            Picker("Día", selection: $vm.scheduleFormDay) {
+                ForEach([1, 2, 3, 4, 5, 6, 7], id: \.self) { day in
+                    Text(vm.dayLabel(for: day)).tag(day)
+                }
+            }
+            .pickerStyle(.menu)
+            .frame(width: 84)
+
+            compactTimePicker("Inicio", selection: $vm.scheduleFormStartTimeValue)
+            compactTimePicker("Fin", selection: $vm.scheduleFormEndTimeValue)
+
+            TextField("Materia", text: $vm.scheduleFormSubject)
+                .textFieldStyle(.roundedBorder)
+                .frame(minWidth: 140)
+
+            TextField("Unidad", text: $vm.scheduleFormUnit)
+                .textFieldStyle(.roundedBorder)
+                .frame(minWidth: 140)
+
+            Button(vm.editingScheduleSlotId == nil ? "Añadir" : "Guardar") {
+                Task { await vm.addScheduleSlot() }
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(vm.scheduleFormGroupId == nil)
+        }
+    }
+
+    private var evaluationsContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .bottom, spacing: 10) {
+                TextField("Nombre", text: $vm.evaluationFormName)
+                    .textFieldStyle(.roundedBorder)
+                labeledDatePicker("Inicio", selection: $vm.evaluationFormStartDateValue)
+                labeledDatePicker("Fin", selection: $vm.evaluationFormEndDateValue)
+                Button("Añadir") {
+                    Task { await vm.addEvaluationPeriod() }
+                }
+                .buttonStyle(.borderedProminent)
+            }
+
+            if vm.evaluationPeriods.isEmpty {
+                Text("Aún no hay periodos evaluativos.")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(vm.evaluationPeriods.sorted(by: { ($0.sortOrder, $0.startDateIso) < ($1.sortOrder, $1.startDateIso) }), id: \.id) { period in
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text(period.name)
+                                .font(.callout.weight(.semibold))
+                            Text("\(period.startDateIso) - \(period.endDateIso)")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Button(role: .destructive) {
+                                Task { await vm.deleteEvaluationPeriod(period.id) }
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .buttonStyle(.borderless)
+                        }
+
+                        let rows = vm.filteredForecastRows.filter { $0.periodId == period.id }
+                        if rows.isEmpty {
+                            Text("Sin sesiones previstas para este periodo.")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        } else {
+                            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                                ScheduleForecastRowView(row: row)
+                            }
+                        }
+                    }
+                    .padding(10)
+                    .background(MacAppStyle.cardBackground.opacity(0.7), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+            }
+        }
+    }
+
+    private var colorsContent: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 12)], alignment: .leading, spacing: 12) {
+            ForEach(vm.groups, id: \.id) { group in
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(Color(hex: vm.colorHex(for: group.id)))
+                            .frame(width: 10, height: 10)
+                        Text(group.name)
+                            .font(.callout.weight(.semibold))
+                            .lineLimit(1)
+                    }
+                    HStack(spacing: 8) {
+                        ForEach(EvaluationDesign.plannerCoursePalette, id: \.self) { hex in
+                            Button {
+                                vm.saveColor(hex, for: group.id)
+                            } label: {
+                                Circle()
+                                    .fill(Color(hex: hex))
+                                    .frame(width: 22, height: 22)
+                                    .overlay {
+                                        Circle()
+                                            .stroke(vm.colorHex(for: group.id) == hex ? Color.primary : Color.clear, lineWidth: 2)
+                                    }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var nonTeachingContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if vm.nonTeachingEvents.isEmpty {
+                Text("No hay eventos no lectivos detectados.")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(vm.nonTeachingEvents, id: \.id) { event in
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        Text(event.title)
+                            .font(.callout.weight(.semibold))
+                        Text(nonTeachingSubtitle(event))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        if let classId = event.classId?.int64Value,
+                           let group = vm.groups.first(where: { $0.id == classId }) {
+                            Text(group.name)
+                                .font(.caption.weight(.bold))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(MacAppStyle.cardBackground, in: Capsule(style: .continuous))
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+        }
+    }
+
+    private func slotRow(_ slot: TeacherScheduleSlot) -> some View {
+        HStack(spacing: 12) {
+            Text("\(vm.dayLabel(for: Int(slot.dayOfWeek))) · \(slot.startTime)-\(slot.endTime)")
+                .font(.callout.weight(.semibold))
+                .monospacedDigit()
+                .frame(width: 150, alignment: .leading)
+            Text(vm.groups.first(where: { $0.id == slot.schoolClassId })?.name ?? "Grupo \(slot.schoolClassId)")
+                .font(.callout)
+                .frame(width: 170, alignment: .leading)
+            Text(slot.subjectLabel.isEmpty ? "Sin materia" : slot.subjectLabel)
+                .font(.callout)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text(slot.unitLabel ?? "")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button("Editar") {
+                vm.beginEditingScheduleSlot(slot)
+            }
+            .buttonStyle(.borderless)
+            .disabled(vm.usingLegacyWeeklySlots)
+
+            Button("Duplicar") {
+                vm.duplicateScheduleSlot(slot)
+            }
+            .buttonStyle(.borderless)
+
+            Button(role: .destructive) {
+                Task { await vm.deleteScheduleSlot(slot.id) }
+            } label: {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+            .disabled(vm.usingLegacyWeeklySlots)
+        }
+        .padding(.vertical, 8)
+    }
+
+    private func metric(_ title: String, _ value: String) -> some View {
+        VStack(alignment: .trailing, spacing: 2) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.callout.weight(.bold))
+                .monospacedDigit()
+        }
+    }
+
+    private func macCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            content()
+        }
+        .padding(MacAppStyle.innerPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(MacAppStyle.cardBackground)
+        .overlay {
+            RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous)
+                .stroke(MacAppStyle.cardBorder, lineWidth: 0.5)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
+    }
+
+    private func labeledDatePicker(_ label: String, selection: Binding<Date>) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            DatePicker(label, selection: selection, displayedComponents: .date)
+                .labelsHidden()
+                .datePickerStyle(.compact)
+        }
+    }
+
+    private func compactTimePicker(_ label: String, selection: Binding<Date>) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            DatePicker(label, selection: selection, displayedComponents: .hourAndMinute)
+                .labelsHidden()
+                .datePickerStyle(.compact)
+        }
+        .frame(width: 82)
+    }
+
+    private func nonTeachingSubtitle(_ event: CalendarEvent) -> String {
+        let start = Date(timeIntervalSince1970: TimeInterval(event.startAt.toEpochMilliseconds()) / 1000)
+        let end = Date(timeIntervalSince1970: TimeInterval(event.endAt.toEpochMilliseconds()) / 1000)
+        if Calendar.current.isDate(start, inSameDayAs: end) {
+            return start.formatted(date: .abbreviated, time: .omitted)
+        }
+        return "\(start.formatted(date: .abbreviated, time: .omitted)) - \(end.formatted(date: .abbreviated, time: .omitted))"
+    }
+}
+#endif
 
 struct TeacherScheduleSettingsPanel: View {
     @EnvironmentObject private var bridge: KmpBridge

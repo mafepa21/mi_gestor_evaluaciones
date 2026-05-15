@@ -1012,13 +1012,16 @@ struct MacPlannerView: View {
         .sheet(isPresented: $showingScheduleSettings, onDismiss: {
             Task { await vm.reloadAll() }
         }) {
-            TeacherScheduleSettingsPanel(
+            MacPlannerScheduleSettingsSheet(
+                bridge: bridge,
                 selectedClassId: Binding(
                     get: { vm.selectedGroupId },
                     set: { vm.selectedGroupId = $0 }
-                )
+                ),
+                onClose: {
+                    showingScheduleSettings = false
+                }
             )
-            .environmentObject(bridge)
             .frame(minWidth: 980, minHeight: 760)
         }
         .alert("Exportación copiada", isPresented: $showingExportConfirmation) {
@@ -1789,6 +1792,35 @@ private struct MacPlannerAgendaView: View {
             }
             .padding(.bottom, 12)
         }
+    }
+}
+
+private struct MacPlannerScheduleSettingsSheet: View {
+    @ObservedObject var bridge: KmpBridge
+    @Binding var selectedClassId: Int64?
+    let onClose: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            MacPopupActionBar(
+                title: "Configurar agenda",
+                subtitle: "Horario docente, curso y previsión lectiva",
+                onClose: onClose
+            )
+            .frame(maxWidth: .infinity)
+            .zIndex(2)
+
+            ScrollView(.vertical, showsIndicators: true) {
+                MacTeacherScheduleSettingsPanel(
+                    bridge: bridge,
+                    selectedClassId: $selectedClassId
+                )
+                .padding(MacAppStyle.pagePadding)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+            .background(MacAppStyle.pageBackground)
+        }
+        .background(MacAppStyle.pageBackground)
     }
 }
 

@@ -2564,117 +2564,65 @@ struct PlannerSessionComposerSheet: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    EvaluationGlassCard {
-                        VStack(alignment: .leading, spacing: 14) {
-                            EvaluationSectionTitle(
-                                eyebrow: "Sesión",
-                                title: vm.composerDraft.sessionId == 0 ? "Nueva sesión" : "Editar sesión",
-                                subtitle: "Redacta la sesión en formato largo y déjala ya planificada."
-                            )
+        #if os(macOS)
+        VStack(spacing: 0) {
+            MacPopupActionBar(
+                title: vm.composerDraft.sessionId == 0 ? "Nueva sesión" : "Editar sesión",
+                subtitle: "Planificación",
+                saveTitle: "Guardar",
+                canSave: canSave,
+                onClose: { dismiss() },
+                onSave: saveAndDismiss
+            )
+            .frame(maxWidth: .infinity)
+            .zIndex(2)
 
-                            Picker("Curso", selection: $vm.composerDraft.groupId) {
-                                Text("Selecciona curso").tag(Optional<Int64>.none)
-                                ForEach(vm.groups, id: \.id) { group in
-                                    Text(group.name).tag(Optional(group.id))
-                                }
-                            }
-                            .pickerStyle(.menu)
-
-                            Picker("Unidad / SA existente", selection: $vm.composerDraft.teachingUnitId) {
-                                Text("Crear o elegir después").tag(Optional<Int64>.none)
-                                ForEach(vm.composerTeachingUnits, id: \.id) { unit in
-                                    Text(unit.name).tag(Optional(unit.id))
-                                }
-                            }
-                            .pickerStyle(.menu)
-
-                            TextField("Nueva Unidad / SA", text: $vm.composerDraft.unitTitle, axis: .vertical)
-                                .lineLimit(1...3)
-                                .textFieldStyle(RoundedBorderTextFieldStyle())
-
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Objetivos")
-                                    .font(.caption.weight(.bold))
-                                    .foregroundStyle(.secondary)
-                                TextEditor(text: $vm.composerDraft.objectives)
-                                    .frame(minHeight: 120)
-                                    .padding(8)
-                                    .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                            }
-
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Resumen de la sesión")
-                                    .font(.caption.weight(.bold))
-                                    .foregroundStyle(.secondary)
-                                TextEditor(text: $vm.composerDraft.activities)
-                                    .frame(minHeight: 150)
-                                    .padding(8)
-                                    .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                            }
+            composerContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .safeAreaInset(edge: .bottom) {
+                    HStack(spacing: 10) {
+                        Spacer()
+                        Button("Cancelar") {
+                            dismiss()
                         }
+                        .buttonStyle(.bordered)
+                        .keyboardShortcut(.cancelAction)
+
+                        Button("Guardar") {
+                            saveAndDismiss()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!canSave)
+                        .keyboardShortcut("s", modifiers: [.command])
                     }
-
-                    EvaluationGlassCard {
-                        VStack(alignment: .leading, spacing: 12) {
-                            EvaluationSectionTitle(
-                                eyebrow: "Evaluación",
-                                title: "Instrumentos enlazados",
-                                subtitle: "Selecciona evaluaciones o rúbricas del curso para conectarlas también con Cuaderno."
-                            )
-
-                            if !vm.composerContextError.isEmpty {
-                                Text(vm.composerContextError)
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.red)
-                            }
-
-                            if vm.composerAvailableInstruments.isEmpty {
-                                Text("No hay instrumentos disponibles para este curso todavía.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            } else {
-                                LazyVStack(alignment: .leading, spacing: 10) {
-                                    ForEach(vm.composerAvailableInstruments) { instrument in
-                                        PlannerInstrumentSelectionRow(
-                                            instrument: instrument,
-                                            isSelected: vm.composerDraft.selectedInstrumentIds.contains(instrument.id),
-                                            toggle: { vm.toggleComposerInstrument(instrument.id) }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    EvaluationGlassCard {
-                        VStack(alignment: .leading, spacing: 12) {
-                            EvaluationSectionTitle(
-                                eyebrow: "Ubicación semanal",
-                                title: "Dónde cae la sesión",
-                                subtitle: "Se guardará como planificada en la franja seleccionada."
-                            )
-
-                            Picker("Día", selection: $vm.composerDraft.dayOfWeek) {
-                                ForEach(vm.visibleWeekdays, id: \.self) { day in
-                                    Text(vm.dayLabel(for: day)).tag(day)
-                                }
-                            }
-                            .pickerStyle(.menu)
-
-                            Picker("Franja", selection: $vm.composerDraft.period) {
-                                ForEach(vm.visibleSlots, id: \.period) { slot in
-                                    Text(slot.label).tag(slot.period)
-                                }
-                            }
-                            .pickerStyle(.menu)
-                        }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(.regularMaterial)
+                    .overlay(alignment: .top) {
+                        Rectangle()
+                            .fill(MacAppStyle.divider.opacity(0.7))
+                            .frame(height: 0.5)
                     }
                 }
-                .padding(EvaluationDesign.screenPadding)
+        }
+        .frame(minWidth: 920, minHeight: 720)
+        .task {
+            await vm.refreshComposerContext()
+        }
+        .appOnChange(of: vm.composerDraft.groupId) { _ in
+            vm.composerDraft.teachingUnitId = nil
+            Task { await vm.refreshComposerContext() }
+        }
+        .appOnChange(of: vm.composerDraft.teachingUnitId) { newValue in
+            if let newValue,
+               let unit = vm.composerTeachingUnits.first(where: { $0.id == newValue }) {
+                vm.composerDraft.unitTitle = unit.name
             }
+            Task { await vm.refreshComposerContext() }
+        }
+        #else
+        NavigationStack {
+            composerContent
             .navigationTitle(vm.composerDraft.sessionId == 0 ? "Nueva sesión" : "Editar sesión")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -2704,6 +2652,134 @@ struct PlannerSessionComposerSheet: View {
                     vm.composerDraft.unitTitle = unit.name
                 }
                 Task { await vm.refreshComposerContext() }
+            }
+        }
+        #endif
+    }
+
+    private var canSave: Bool {
+        vm.composerDraft.groupId != nil && !vm.isSavingComposer
+    }
+
+    private var composerContent: some View {
+        ScrollView(.vertical, showsIndicators: true) {
+            VStack(alignment: .leading, spacing: 18) {
+                EvaluationGlassCard {
+                    VStack(alignment: .leading, spacing: 14) {
+                        EvaluationSectionTitle(
+                            eyebrow: "Sesión",
+                            title: vm.composerDraft.sessionId == 0 ? "Nueva sesión" : "Editar sesión",
+                            subtitle: "Redacta la sesión en formato largo y déjala ya planificada."
+                        )
+
+                        Picker("Curso", selection: $vm.composerDraft.groupId) {
+                            Text("Selecciona curso").tag(Optional<Int64>.none)
+                            ForEach(vm.groups, id: \.id) { group in
+                                Text(group.name).tag(Optional(group.id))
+                            }
+                        }
+                        .pickerStyle(.menu)
+
+                        Picker("Unidad / SA existente", selection: $vm.composerDraft.teachingUnitId) {
+                            Text("Crear o elegir después").tag(Optional<Int64>.none)
+                            ForEach(vm.composerTeachingUnits, id: \.id) { unit in
+                                Text(unit.name).tag(Optional(unit.id))
+                            }
+                        }
+                        .pickerStyle(.menu)
+
+                        TextField("Nueva Unidad / SA", text: $vm.composerDraft.unitTitle, axis: .vertical)
+                            .lineLimit(1...3)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Objetivos")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.secondary)
+                            TextEditor(text: $vm.composerDraft.objectives)
+                                .frame(minHeight: 120)
+                                .padding(8)
+                                .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        }
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Resumen de la sesión")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.secondary)
+                            TextEditor(text: $vm.composerDraft.activities)
+                                .frame(minHeight: 150)
+                                .padding(8)
+                                .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        }
+                    }
+                }
+
+                EvaluationGlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        EvaluationSectionTitle(
+                            eyebrow: "Evaluación",
+                            title: "Instrumentos enlazados",
+                            subtitle: "Selecciona evaluaciones o rúbricas del curso para conectarlas también con Cuaderno."
+                        )
+
+                        if !vm.composerContextError.isEmpty {
+                            Text(vm.composerContextError)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.red)
+                        }
+
+                        if vm.composerAvailableInstruments.isEmpty {
+                            Text("No hay instrumentos disponibles para este curso todavía.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            LazyVStack(alignment: .leading, spacing: 10) {
+                                ForEach(vm.composerAvailableInstruments) { instrument in
+                                    PlannerInstrumentSelectionRow(
+                                        instrument: instrument,
+                                        isSelected: vm.composerDraft.selectedInstrumentIds.contains(instrument.id),
+                                        toggle: { vm.toggleComposerInstrument(instrument.id) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                EvaluationGlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        EvaluationSectionTitle(
+                            eyebrow: "Ubicación semanal",
+                            title: "Dónde cae la sesión",
+                            subtitle: "Se guardará como planificada en la franja seleccionada."
+                        )
+
+                        Picker("Día", selection: $vm.composerDraft.dayOfWeek) {
+                            ForEach(vm.visibleWeekdays, id: \.self) { day in
+                                Text(vm.dayLabel(for: day)).tag(day)
+                            }
+                        }
+                        .pickerStyle(.menu)
+
+                        Picker("Franja", selection: $vm.composerDraft.period) {
+                            ForEach(vm.visibleSlots, id: \.period) { slot in
+                                Text(slot.label).tag(slot.period)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                    }
+                }
+            }
+            .padding(EvaluationDesign.screenPadding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func saveAndDismiss() {
+        guard canSave else { return }
+        Task {
+            if await vm.saveComposer() {
+                dismiss()
             }
         }
     }

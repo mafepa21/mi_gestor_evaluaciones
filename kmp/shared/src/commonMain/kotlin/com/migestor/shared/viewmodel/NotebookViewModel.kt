@@ -901,8 +901,7 @@ class NotebookViewModel(
         val rows = sheet.rows
         if (rows.isEmpty()) return 0.0
 
-        val evaluableColumns = sheet.columns.filter(::countsTowardWeightedAverage)
-        val averages = rows.mapNotNull { row -> weightedAverageForRow(row, evaluableColumns) }
+        val averages = rows.mapNotNull { row -> weightedAverageForRow(row) }
         return if (averages.isNotEmpty()) averages.average() else 0.0
     }
 
@@ -918,24 +917,14 @@ class NotebookViewModel(
     }
 
     fun countApproved(sheet: NotebookSheet, threshold: Double = 5.0): Int {
-        val evaluableColumns = sheet.columns.filter(::countsTowardWeightedAverage)
         return sheet.rows.count { row ->
-            val avg = weightedAverageForRow(row, evaluableColumns)
+            val avg = weightedAverageForRow(row)
             (avg ?: 0.0) >= threshold
         }
     }
 
-    private fun weightedAverageForRow(
-        row: NotebookRow,
-        evaluableColumns: List<NotebookColumnDefinition>,
-    ): Double? {
-        val totalWeight = evaluableColumns.sumOf { it.weight }.takeIf { it > 0.0 } ?: return row.weightedAverage
-        val hasAnyValue = evaluableColumns.any { gradeValueFor(row, it) != null }
-        if (!hasAnyValue) return row.weightedAverage
-        val weightedSum = evaluableColumns.sumOf { column ->
-            (gradeValueFor(row, column) ?: 0.0) * column.weight
-        }
-        return weightedSum / totalWeight
+    private fun weightedAverageForRow(row: NotebookRow): Double? {
+        return row.averageExplanation?.average ?: row.weightedAverage
     }
 
     private fun gradeValueFor(row: NotebookRow, column: NotebookColumnDefinition): Double? {
@@ -1106,7 +1095,9 @@ class NotebookViewModel(
             val nextOrder = currentState.sheet.columnCategories
                 .filter { it.tabId == tabId }
                 .maxOfOrNull { it.order }?.plus(1) ?: 0
-            val resolvedId = existing?.id ?: "cat_${Clock.System.now().toEpochMilliseconds()}"
+            val resolvedId = existing?.id
+                ?: categoryId?.takeIf { it.isNotBlank() }
+                ?: "cat_${Clock.System.now().toEpochMilliseconds()}"
             val baseName = name.trim().ifBlank { existing?.name ?: "Categoría ${nextOrder + 1}" }
             val resolvedName = resolveUniqueCategoryName(
                 proposed = baseName,

@@ -22,6 +22,7 @@ struct PhysicalTestCaptureView: View {
     @State private var attempts: [String] = []
     @State private var isSaving = false
     @State private var scaleWarning: String?
+    @State private var resolvedScale: MiGestorKit.PhysicalTestScale?
 
     private var currentResult: KmpBridge.PhysicalTestSnapshot.StudentResult? {
         guard test.results.indices.contains(selectedIndex) else { return nil }
@@ -41,7 +42,12 @@ struct PhysicalTestCaptureView: View {
     }
 
     private var scorePreview: Double? {
-        nil
+        guard let finalValue, let resolvedScale else { return nil }
+        return resolvedScale.ranges.first { range in
+            let minOk = range.minValue.map { finalValue >= $0.doubleValue } ?? true
+            let maxOk = range.maxValue.map { finalValue <= $0.doubleValue } ?? true
+            return minOk && maxOk
+        }?.score
     }
 
     var body: some View {
@@ -123,14 +129,21 @@ struct PhysicalTestCaptureView: View {
                     Button("Cerrar") { dismiss() }
                 }
             }
-            .onAppear(perform: loadCurrentValue)
-            .appOnChange(of: selectedIndex) { _ in loadCurrentValue() }
+            .onAppear {
+                loadCurrentValue()
+                Task { await loadResolvedScale() }
+            }
+            .appOnChange(of: selectedIndex) { _ in
+                loadCurrentValue()
+                Task { await loadResolvedScale() }
+            }
         }
     }
 
     private func loadCurrentValue() {
         attempts = Array(repeating: "", count: max(attemptsCount, 1))
         scaleWarning = nil
+        resolvedScale = nil
         if let value = currentResult?.value {
             attempts[0] = PhysicalTestsFormatting.decimal(value)
         }
@@ -138,6 +151,24 @@ struct PhysicalTestCaptureView: View {
 
     private func move(by offset: Int) {
         selectedIndex = min(max(selectedIndex + offset, 0), max(test.results.count - 1, 0))
+    }
+
+    @MainActor
+    private func loadResolvedScale() async {
+        guard let currentResult else { return }
+        let effectiveAge = ageOnCurrentDate(for: currentResult.student) ?? age
+        let effectiveSex = sexForScale(currentResult.student)
+        do {
+            resolvedScale = try await bridge.resolvePhysicalScale(
+                testId: testDefinitionId,
+                course: course,
+                age: effectiveAge,
+                sex: effectiveSex,
+                batteryId: batteryId
+            )
+        } catch {
+            resolvedScale = nil
+        }
     }
 
     @MainActor
@@ -151,13 +182,18 @@ struct PhysicalTestCaptureView: View {
             let rawValue = finalValue
             let effectiveAge = ageOnCurrentDate(for: currentResult.student) ?? age
             let effectiveSex = sexForScale(currentResult.student)
-            let resolvedScale = try await bridge.resolvePhysicalScale(
-                testId: testDefinitionId,
-                course: course,
-                age: effectiveAge,
-                sex: effectiveSex,
-                batteryId: batteryId
-            )
+            let resolvedScale: MiGestorKit.PhysicalTestScale?
+            if let loadedScale = self.resolvedScale {
+                resolvedScale = loadedScale
+            } else {
+                resolvedScale = try await bridge.resolvePhysicalScale(
+                    testId: testDefinitionId,
+                    course: course,
+                    age: effectiveAge,
+                    sex: effectiveSex,
+                    batteryId: batteryId
+                )
+            }
             let score = rawValue.flatMap { value in
                 resolvedScale?.ranges.first(where: { range in
                     let minOk = range.minValue.map { value >= $0.doubleValue } ?? true

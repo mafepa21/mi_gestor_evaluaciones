@@ -67,16 +67,15 @@ struct MacRootView: View {
                 if selectedFeature == .notebook {
                     if isNotebookInspectorColumnVisible {
                         featureInspector(for: selectedFeature)
+                            .frame(minWidth: 320, idealWidth: 360, maxWidth: 420)
                     } else {
-                        MacModuleInspectorPlaceholder(
-                            feature: MacFeatureRegistry.descriptor(for: selectedFeature)
-                        )
+                        EmptyView()
+                            .frame(width: 0)
                     }
                 } else {
                     featureInspector(for: selectedFeature)
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(MacAppStyle.pageBackground)
         }
         .navigationSplitViewStyle(.balanced)
@@ -134,7 +133,7 @@ struct MacRootView: View {
         if feature == .notebook {
             isNotebookInspectorColumnVisible = false
             closeNotebookInspectorStateAfterViewUpdate()
-            columnVisibility = .doubleColumn
+            columnVisibility = .all
         } else {
             columnVisibility = .all
         }
@@ -423,7 +422,7 @@ struct MacRootView: View {
             await Task.yield()
 
             isNotebookInspectorColumnVisible = nextValue
-            columnVisibility = nextValue ? .all : .doubleColumn
+            columnVisibility = .all
 
             if nextValue {
                 if notebookInspectorState.selection == nil {

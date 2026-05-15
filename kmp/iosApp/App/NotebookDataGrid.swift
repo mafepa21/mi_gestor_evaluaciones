@@ -143,94 +143,74 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, TrailingFi
     }
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: true) {
-            VStack(alignment: .leading, spacing: 0) {
-                headerBand
-                    .zIndex(2)
-
-                ScrollView(.vertical, showsIndicators: true) {
-                    rowsBand
-                }
+        HStack(alignment: .top, spacing: 0) {
+            fixedLeftPane
+            dividerHandle
+            centerScrollablePane
+            if trailingFixedColumnWidth > 0 {
+                trailingRightPane
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    private var headerBand: some View {
-        HStack(alignment: .top, spacing: 0) {
-            VStack(alignment: .leading, spacing: 0) {
-                fixedTopAccessory
-                    .frame(height: topAccessoryHeight, alignment: .topLeading)
-                fixedHeader
-                    .frame(height: headerHeight, alignment: .topLeading)
+    private var fixedLeftPane: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            fixedTopAccessory
+                .frame(height: topAccessoryHeight, alignment: .topLeading)
+            fixedHeader
+                .frame(height: headerHeight, alignment: .topLeading)
+            ScrollView(.vertical, showsIndicators: false) {
+                fixedRows
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .frame(width: fixedColumnWidth, alignment: .topLeading)
-            .background(fixedColumnBackground)
-            .overlay(alignment: .trailing) {
-                fixedColumnSeparator
-            }
-            .shadow(color: fixedColumnShadowColor, radius: fixedColumnShadowRadius, x: 1, y: 0)
-            .zIndex(1)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .frame(width: fixedColumnWidth, alignment: .topLeading)
+        .background(fixedColumnBackground)
+        .overlay(alignment: .trailing) {
+            fixedColumnSeparator
+        }
+        .shadow(color: fixedColumnShadowColor, radius: fixedColumnShadowRadius, x: 1, y: 0)
+        .zIndex(2)
+    }
 
-            Color.clear
-                .frame(width: 1)
-
+    private var centerScrollablePane: some View {
+        ScrollView(.horizontal, showsIndicators: true) {
             VStack(alignment: .leading, spacing: 0) {
                 scrollTopAccessory
                     .frame(height: topAccessoryHeight, alignment: .topLeading)
                 scrollHeader
                     .frame(height: headerHeight, alignment: .topLeading)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            if trailingFixedColumnWidth > 0 {
-                VStack(alignment: .leading, spacing: 0) {
-                    trailingFixedTopAccessory
-                        .frame(height: topAccessoryHeight, alignment: .topLeading)
-                    trailingFixedHeader
-                        .frame(height: headerHeight, alignment: .topLeading)
+                ScrollView(.vertical, showsIndicators: true) {
+                    scrollRows
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
-                .frame(width: trailingFixedColumnWidth, alignment: .topLeading)
-                .background(fixedColumnBackground)
-                .overlay(alignment: .leading) {
-                    fixedColumnSeparator
-                }
-                .shadow(color: fixedColumnShadowColor, radius: fixedColumnShadowRadius, x: -1, y: 0)
-                .zIndex(1)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    private var rowsBand: some View {
-        HStack(alignment: .top, spacing: 0) {
-            VStack(alignment: .leading, spacing: 0) {
-                fixedRows
+    private var trailingRightPane: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            trailingFixedTopAccessory
+                .frame(height: topAccessoryHeight, alignment: .topLeading)
+            trailingFixedHeader
+                .frame(height: headerHeight, alignment: .topLeading)
+            ScrollView(.vertical, showsIndicators: false) {
+                trailingFixedRows
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .frame(width: fixedColumnWidth, alignment: .topLeading)
-            .background(fixedColumnBackground)
-            .overlay(alignment: .trailing) {
-                fixedColumnSeparator
-            }
-            .shadow(color: fixedColumnShadowColor, radius: fixedColumnShadowRadius, x: 1, y: 0)
-            .zIndex(1)
-
-            dividerHandle
-
-            scrollRows
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            if trailingFixedColumnWidth > 0 {
-                VStack(alignment: .leading, spacing: 0) {
-                    trailingFixedRows
-                }
-                .frame(width: trailingFixedColumnWidth, alignment: .topLeading)
-                .background(fixedColumnBackground)
-                .overlay(alignment: .leading) {
-                    fixedColumnSeparator
-                }
-                .shadow(color: fixedColumnShadowColor, radius: fixedColumnShadowRadius, x: -1, y: 0)
-                .zIndex(1)
-            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
+        .frame(width: trailingFixedColumnWidth, alignment: .topLeading)
+        .background(fixedColumnBackground)
+        .overlay(alignment: .leading) {
+            fixedColumnSeparator
+        }
+        .shadow(color: fixedColumnShadowColor, radius: fixedColumnShadowRadius, x: -1, y: 0)
+        .zIndex(2)
     }
 
     @ViewBuilder

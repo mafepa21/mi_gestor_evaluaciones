@@ -140,58 +140,37 @@ extension NotebookModuleView {
     ) -> some View {
         let categoryTint = tint(for: category)
 
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 7) {
-                Image(systemName: "rectangle.stack.fill")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(categoryTint)
-                    .accessibilityHidden(true)
+        return HStack(spacing: 8) {
+            Image(systemName: "chevron.right.circle.fill")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(categoryTint)
+                .accessibilityHidden(true)
 
-                Text(category.name)
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
+            Text(category.name)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
 
-                Spacer(minLength: 4)
-
-                Text("\(columns.count)")
-                    .font(.system(size: 10, weight: .black, design: .rounded))
-                    .foregroundStyle(categoryTint)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(
-                        Capsule(style: .continuous)
-                            .fill(categoryTint.opacity(0.14))
-                    )
-
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
-            }
-
-            Text(columns.count == 1 ? "Categoría cerrada · 1 columna" : "Categoría cerrada · \(columns.count) columnas")
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
+            Text("\(columns.count) columnas")
+                .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+                .minimumScaleFactor(0.75)
+
+            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
         .frame(width: width, height: 52, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(categoryTint.opacity(0.075))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(categoryTint.opacity(0.24), lineWidth: 1)
-                )
+                .fill(categoryTint.opacity(0.16))
         )
-        .overlay(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 999, style: .continuous)
-                .fill(categoryTint.opacity(0.70))
-                .frame(width: 4)
-                .padding(.vertical, 8)
-        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(categoryTint.opacity(0.50), lineWidth: 1)
+        )
         .help("Categoría colapsada. Contiene \(columns.count) columna(s). Haz clic para abrir.")
         .accessibilityLabel("Categoría colapsada \(category.name). Contiene \(columns.count) columna(s). Haz clic para abrir.")
     }
@@ -434,36 +413,28 @@ extension NotebookModuleView {
             }
         } label: {
             HStack(spacing: 8) {
-                Capsule()
-                    .fill(categoryTint.opacity(0.75))
-                    .frame(width: 5, height: 18)
+                Image(systemName: "chevron.down.circle.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(categoryTint)
+                    .accessibilityHidden(true)
 
                 Text(category.name)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .font(.caption.weight(.bold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
 
-                Spacer(minLength: 8)
-
-                Text("\(columns.count) columnas")
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-
-                Image(systemName: "chevron.up")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.tertiary)
-                    .accessibilityHidden(true)
+                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
             .frame(width: width, height: 30, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(NotebookStyle.surfaceSoft.opacity(0.42))
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(categoryTint.opacity(0.10))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .stroke(categoryTint.opacity(0.14), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(categoryTint.opacity(0.28), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)

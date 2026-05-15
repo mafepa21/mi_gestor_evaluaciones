@@ -244,7 +244,9 @@ final class KmpBridge: ObservableObject {
     struct MacStudentRowSnapshot: Identifiable {
         let id: Int64
         let student: Student
+        let classId: Int64?
         let className: String
+        let allClassMemberships: [MacStudentClassMembership]
         let followUpLabel: String
         let recentAttendanceLabel: String
         let averageText: String
@@ -253,6 +255,11 @@ final class KmpBridge: ObservableObject {
         let isInjured: Bool
         let isFollowUp: Bool
         let workGroupName: String
+    }
+
+    struct MacStudentClassMembership: Identifiable {
+        let id: Int64
+        let className: String
     }
 
     struct ReportPreviewPayload {
@@ -2003,6 +2010,96 @@ final class KmpBridge: ObservableObject {
         enqueueRosterSnapshot(forClassId: classId, updatedAtEpochMs: nowMs)
     }
 
+    func createMacStudent(
+        firstName: String,
+        lastName: String,
+        email: String?,
+        isInjured: Bool,
+        classId: Int64
+    ) async throws -> Int64 {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let sexResolution = await resolvedStudentSex(firstName: firstName, lastName: lastName, sex: nil, sexSource: nil)
+        let normalizedEmail = email?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        let studentId = try await container.studentsRepository.saveStudent(
+            id: nil,
+            firstName: firstName,
+            lastName: lastName,
+            email: normalizedEmail,
+            photoPath: nil,
+            isInjured: isInjured,
+            sex: sexResolution.sex,
+            sexSource: sexResolution.source,
+            birthDate: nil,
+            updatedAtEpochMs: nowMs,
+            deviceId: localDeviceId,
+            syncVersion: 1
+        ).int64Value
+        try await container.classesRepository.addStudentToClass(classId: classId, studentId: studentId)
+        try await refreshStudentsDirectory()
+        try await refreshDashboard()
+        enqueueLocalChange(
+            entity: "student",
+            id: "\(studentId)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "id": studentId,
+                "firstName": firstName,
+                "lastName": lastName,
+                "email": normalizedEmail ?? NSNull(),
+                "photoPath": NSNull(),
+                "isInjured": isInjured,
+                "sex": sexResolution.sex.name,
+                "sexSource": sexResolution.source.name,
+                "birthDate": NSNull()
+            ]
+        )
+        enqueueRosterSnapshot(forClassId: classId, updatedAtEpochMs: nowMs)
+        return studentId
+    }
+
+    func updateMacStudent(
+        student: Student,
+        firstName: String,
+        lastName: String,
+        email: String?,
+        isInjured: Bool
+    ) async throws {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let normalizedEmail = email?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        _ = try await container.studentsRepository.saveStudent(
+            id: KotlinLong(value: student.id),
+            firstName: firstName,
+            lastName: lastName,
+            email: normalizedEmail,
+            photoPath: student.photoPath,
+            isInjured: isInjured,
+            sex: student.sex,
+            sexSource: student.sexSource,
+            birthDate: student.birthDate,
+            updatedAtEpochMs: nowMs,
+            deviceId: localDeviceId,
+            syncVersion: student.trace.syncVersion + 1
+        )
+        try await refreshStudentsDirectory()
+        try await refreshDashboard()
+        enqueueLocalChange(
+            entity: "student",
+            id: "\(student.id)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "id": student.id,
+                "firstName": firstName,
+                "lastName": lastName,
+                "email": normalizedEmail ?? NSNull(),
+                "photoPath": student.photoPath ?? NSNull(),
+                "isInjured": isInjured,
+                "sex": student.sex.name,
+                "sexSource": student.sexSource.name,
+                "birthDate": student.birthDate == nil ? NSNull() : student.birthDate!.description()
+            ]
+        )
+    }
+
     private func resolvedStudentSex(
         firstName: String,
         lastName: String,
@@ -2472,47 +2569,83 @@ final class KmpBridge: ObservableObject {
     // until an equivalent KMP use case can own the query and row-shaping logic.
     func loadMacStudentRows(classId: Int64?) async throws -> [MacStudentRowSnapshot] {
         let allClasses = try await container.classesRepository.listClasses()
-        let students: [Student]
-        if let classId {
-            students = try await container.classesRepository.listStudentsInClass(classId: classId)
-        } else {
-            students = try await container.studentsRepository.listStudents()
-        }
+        let classesToScan = classId.map { selectedClassId in
+            allClasses.filter { $0.id == selectedClassId }
+        } ?? allClasses
+        let allStudents = try await container.studentsRepository.listStudents()
+        let allStudentsById = Dictionary(allStudents.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
 
-        var classNameByStudentId: [Int64: String] = [:]
-        if let classId, let schoolClass = allClasses.first(where: { $0.id == classId }) {
-            students.forEach { classNameByStudentId[$0.id] = schoolClass.name }
-        } else {
-            for schoolClass in allClasses {
-                let roster = try await container.classesRepository.listStudentsInClass(classId: schoolClass.id)
-                for student in roster where classNameByStudentId[student.id] == nil {
-                    classNameByStudentId[student.id] = schoolClass.name
+        var studentsById: [Int64: Student] = [:]
+        var membershipsByStudentId: [Int64: [MacStudentClassMembership]] = [:]
+        var attendanceByStudentId: [Int64: [AttendanceRecordSnapshot]] = [:]
+        var incidentsByStudentId: [Int64: [Incident]] = [:]
+        var averageValuesByStudentId: [Int64: [Double]] = [:]
+        var workGroupByStudentClassKey: [String: String] = [:]
+
+        for schoolClass in classesToScan {
+            let roster = try await container.classesRepository.listStudentsInClass(classId: schoolClass.id)
+            roster.forEach { student in
+                studentsById[student.id] = student
+                membershipsByStudentId[student.id, default: []].append(
+                    MacStudentClassMembership(id: schoolClass.id, className: schoolClass.name)
+                )
+            }
+
+            let attendance = try await container.attendanceRepository.listAttendance(classId: schoolClass.id)
+                .map(attendanceSnapshot(from:))
+            for record in attendance {
+                attendanceByStudentId[record.studentId, default: []].append(record)
+            }
+
+            let incidents = try await container.incidentsRepository.listIncidents(classId: schoolClass.id)
+            for incident in incidents {
+                guard let studentId = incident.studentId?.int64Value else { continue }
+                incidentsByStudentId[studentId, default: []].append(incident)
+            }
+
+            if let notebookSheet = try? await container.notebookRepository.loadNotebookSnapshot(classId: schoolClass.id) {
+                for row in notebookSheet.rows {
+                    if let average = row.weightedAverage?.doubleValue {
+                        averageValuesByStudentId[row.student.id, default: []].append(average)
+                    }
                 }
             }
-        }
 
-        var workGroupByStudentId: [Int64: String] = [:]
-        if let classId {
-            let groups = try await container.notebookRepository.listWorkGroups(classId: classId, tabId: nil)
+            let groups = try await container.notebookRepository.listWorkGroups(classId: schoolClass.id, tabId: nil)
             let groupNames = Dictionary(
                 groups.map { ($0.id, $0.name) },
                 uniquingKeysWith: { first, _ in first }
             )
-            let members = try await container.notebookRepository.listWorkGroupMembers(classId: classId, tabId: nil)
-            for member in members where workGroupByStudentId[member.studentId] == nil {
-                workGroupByStudentId[member.studentId] = groupNames[member.groupId]
+            let members = try await container.notebookRepository.listWorkGroupMembers(classId: schoolClass.id, tabId: nil)
+            for member in members {
+                let key = macStudentClassKey(studentId: member.studentId, classId: schoolClass.id)
+                if workGroupByStudentClassKey[key] == nil {
+                    workGroupByStudentClassKey[key] = groupNames[member.groupId]
+                }
+            }
+        }
+
+        if classId == nil {
+            for student in allStudents where studentsById[student.id] == nil {
+                studentsById[student.id] = student
             }
         }
 
         var rows: [MacStudentRowSnapshot] = []
-        for student in students.sorted(by: { lhs, rhs in
+        for student in studentsById.values.sorted(by: { lhs, rhs in
             let lhsName = "\(lhs.lastName) \(lhs.firstName)"
             let rhsName = "\(rhs.lastName) \(rhs.firstName)"
             return lhsName.localizedCaseInsensitiveCompare(rhsName) == .orderedAscending
         }) {
-            let profile = try? await loadStudentProfile(studentId: student.id, classId: classId)
-            let followUpCount = profile?.followUpCount ?? 0
-            let incidentCount = profile?.incidentCount ?? 0
+            let memberships = (membershipsByStudentId[student.id] ?? [])
+                .sorted { $0.className.localizedCaseInsensitiveCompare($1.className) == .orderedAscending }
+            let primaryMembership = classId.flatMap { selectedClassId in
+                memberships.first(where: { $0.id == selectedClassId })
+            } ?? memberships.first
+            let attendance = attendanceByStudentId[student.id, default: []]
+            let incidents = incidentsByStudentId[student.id, default: []]
+            let followUpCount = attendance.filter(\.followUpRequired).count
+            let incidentCount = incidents.count
             let isFollowUp = student.isInjured || followUpCount > 0 || incidentCount > 0
             let followUpLabel: String
             if student.isInjured {
@@ -2525,24 +2658,35 @@ final class KmpBridge: ObservableObject {
                 followUpLabel = "Normal"
             }
 
-            let latestObservation = latestObservationText(from: profile)
+            let latestAttendance = attendance.sorted { $0.date > $1.date }.first
+            let averageValues = averageValuesByStudentId[student.id, default: []]
+            // TODO(KMP): expose an official cross-class student average when "Todas" spans memberships.
+            let averageScore = averageValues.isEmpty ? nil : averageValues.reduce(0, +) / Double(averageValues.count)
+            let latestObservation = latestObservationText(attendance: attendance, incidents: incidents)
+            let workGroupKey = primaryMembership.map { macStudentClassKey(studentId: student.id, classId: $0.id) }
             rows.append(
                 MacStudentRowSnapshot(
                     id: student.id,
-                    student: student,
-                    className: classNameByStudentId[student.id] ?? "Sin clase",
+                    student: allStudentsById[student.id] ?? student,
+                    classId: primaryMembership?.id,
+                    className: primaryMembership?.className ?? "Sin clase",
+                    allClassMemberships: memberships,
                     followUpLabel: followUpLabel,
-                    recentAttendanceLabel: profile?.latestAttendanceStatus ?? "Sin registro",
-                    averageText: (profile?.averageScore ?? 0) > 0 ? IosFormatting.decimal(profile?.averageScore) : "--",
+                    recentAttendanceLabel: latestAttendance?.status ?? "Sin registro",
+                    averageText: averageScore.map { IosFormatting.decimal($0) } ?? "--",
                     incidentCount: incidentCount,
                     lastObservationText: latestObservation,
                     isInjured: student.isInjured,
                     isFollowUp: isFollowUp,
-                    workGroupName: workGroupByStudentId[student.id] ?? "Sin grupo"
+                    workGroupName: workGroupKey.flatMap { workGroupByStudentClassKey[$0] } ?? "Sin grupo"
                 )
             )
         }
         return rows
+    }
+
+    private func macStudentClassKey(studentId: Int64, classId: Int64) -> String {
+        "\(studentId)|\(classId)"
     }
 
     // Audit debt: quick-note persistence belongs in shared domain logic once a KMP use case exists.
@@ -2555,11 +2699,12 @@ final class KmpBridge: ObservableObject {
         guard let student = try await container.studentsRepository.listStudents().first(where: { $0.id == studentId }) else {
             throw NSError(domain: "KmpBridge", code: 404, userInfo: [NSLocalizedDescriptionKey: "No se encontró el alumno \(studentId)."])
         }
+        let now = Date()
         let sessions = try await container.plannerRepository.listAllSessions()
             .filter { $0.groupId == classId }
             .sorted { date(from: $0) > date(from: $1) }
-        guard let session = sessions.first else {
-            throw NSError(domain: "KmpBridge", code: -4102, userInfo: [NSLocalizedDescriptionKey: "No hay sesiones del grupo donde guardar la nota rápida."])
+        guard let session = sessions.first(where: { date(from: $0) <= now }) else {
+            throw NSError(domain: "KmpBridge", code: -4102, userInfo: [NSLocalizedDescriptionKey: "No hay sesiones pasadas o de hoy donde guardar la nota rápida."])
         }
 
         let aggregate = try await container.sessionJournalRepository.getOrCreateJournal(session: session)
@@ -2580,6 +2725,19 @@ final class KmpBridge: ObservableObject {
             links: aggregate.links
         )
         _ = try await container.sessionJournalRepository.saveJournalAggregate(aggregate: updatedAggregate)
+        enqueueLocalChange(
+            entity: "session_journal",
+            id: "\(journalId)",
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+            payload: [
+                "id": journalId,
+                "planningSessionId": aggregate.journal.planningSessionId,
+                "classId": classId,
+                "studentId": studentId,
+                "note": trimmed,
+                "tag": "nota rápida"
+            ]
+        )
         status = "Nota rápida guardada para \(student.fullName)"
     }
 
@@ -2596,6 +2754,19 @@ final class KmpBridge: ObservableObject {
         }
         if let timelineEntry = profile.timeline.first, timelineEntry.subtitle != "Registro diario" {
             return timelineEntry.subtitle
+        }
+        return "Sin observaciones"
+    }
+
+    private func latestObservationText(attendance: [AttendanceRecordSnapshot], incidents: [Incident]) -> String {
+        let recentAttendance = attendance.sorted { $0.date > $1.date }
+        if let attendanceNote = recentAttendance.first(where: { !$0.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })?.note {
+            return attendanceNote
+        }
+        if let incident = incidents.sorted(by: { $0.date.epochSeconds > $1.date.epochSeconds }).first {
+            return incident.detail?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+                ? incident.detail ?? incident.title
+                : incident.title
         }
         return "Sin observaciones"
     }

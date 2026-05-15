@@ -18,14 +18,21 @@ struct MacStudentsView: View {
 
     @State private var rows: [KmpBridge.MacStudentRowSnapshot] = []
     @State private var profile: KmpBridge.StudentProfileSnapshot?
+    @State private var localSelectedStudentId: Int64?
     @State private var searchText = ""
     @State private var trackingFilter = "todos"
     @State private var workGroupFilter = "Todos"
     @State private var quickNoteText = ""
     @State private var isLoadingRows = false
+    @State private var isLoadingProfile = false
     @State private var isSavingNote = false
     @State private var errorMessage: String?
+    @State private var profileErrorMessage: String?
     @State private var riskPack: TeachingEvidencePack?
+    @State private var isInspectorPresented = true
+    @State private var didBootstrap = false
+    @State private var profileLoadTask: Task<Void, Never>?
+    @State private var studentEditorMode: MacStudentEditorMode?
     @FocusState private var isSearchFocused: Bool
 
     private var filteredRows: [KmpBridge.MacStudentRowSnapshot] {
@@ -50,12 +57,20 @@ struct MacStudentsView: View {
     }
 
     private var selectedRow: KmpBridge.MacStudentRowSnapshot? {
-        guard let selectedStudentId else { return filteredRows.first }
-        return rows.first(where: { $0.id == selectedStudentId }) ?? filteredRows.first
+        guard let localSelectedStudentId else { return filteredRows.first }
+        return rows.first(where: { $0.id == localSelectedStudentId }) ?? filteredRows.first
     }
 
     private var workGroupOptions: [String] {
         ["Todos"] + Array(Set(rows.map(\.workGroupName))).sorted()
+    }
+
+    private var selectedRowClassId: Int64? {
+        selectedClassId ?? selectedRow?.classId
+    }
+
+    private var canSaveQuickNote: Bool {
+        selectedRowClassId != nil && !quickNoteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isSavingNote
     }
 
     var body: some View {
@@ -64,16 +79,18 @@ struct MacStudentsView: View {
             case .full:
                 HSplitView {
                     studentsFilters
-                        .frame(minWidth: 250, idealWidth: 270, maxWidth: 310)
+                        .frame(minWidth: 220, idealWidth: 250, maxWidth: 300)
                     studentsList
                         .frame(minWidth: 640)
-                    studentInspector
-                        .frame(minWidth: 330, idealWidth: 370, maxWidth: 430)
+                    if isInspectorPresented {
+                        studentInspector
+                            .frame(minWidth: 320, idealWidth: 360, maxWidth: 420)
+                    }
                 }
             case .content:
                 HSplitView {
                     studentsFilters
-                        .frame(minWidth: 250, idealWidth: 270, maxWidth: 310)
+                        .frame(minWidth: 220, idealWidth: 250, maxWidth: 300)
                     studentsList
                         .frame(minWidth: 560)
                 }
@@ -84,29 +101,34 @@ struct MacStudentsView: View {
         }
         .background(MacAppStyle.pageBackground)
         .task {
-            if selectedClassId == nil {
-                selectedClassId = bridge.selectedStudentsClassId
-            }
-            await reloadRows()
-        }
-        .task(id: selectedClassId) {
-            await bridge.selectStudentsClass(classId: selectedClassId)
-            await reloadRows()
+            await bootstrapStudents()
         }
         .task(id: reloadToken) {
             guard reloadToken > 0 else { return }
             await reloadRows()
         }
-        .appOnChange(of: selectedStudentId) { _, _ in
-            Task { await reloadProfile() }
+        .appOnChange(of: selectedClassId) { _, newClassId in
+            guard didBootstrap else { return }
+            Task {
+                await bridge.selectStudentsClass(classId: newClassId)
+                await reloadRows()
+            }
+        }
+        .appOnChange(of: localSelectedStudentId) { _, _ in
+            scheduleProfileReload()
         }
         .appOnChange(of: filteredRows.map(\.id)) { _, visibleIds in
             guard !visibleIds.isEmpty else {
-                selectedStudentId = nil
+                localSelectedStudentId = nil
+                profileLoadTask?.cancel()
+                isLoadingProfile = false
+                profile = nil
+                riskPack = nil
+                profileErrorMessage = nil
                 return
             }
-            if selectedStudentId == nil || !visibleIds.contains(selectedStudentId ?? -1) {
-                selectedStudentId = visibleIds.first
+            if localSelectedStudentId == nil || !visibleIds.contains(localSelectedStudentId ?? -1) {
+                localSelectedStudentId = visibleIds.first
             }
         }
         .onExitCommand {
@@ -126,6 +148,14 @@ struct MacStudentsView: View {
             }
             .keyboardShortcut(.return, modifiers: [])
             .opacity(0)
+        }
+        .onDisappear {
+            profileLoadTask?.cancel()
+        }
+        .sheet(item: $studentEditorMode) { mode in
+            MacStudentEditorSheet(mode: mode) { draft in
+                Task { await saveStudentDraft(draft, mode: mode) }
+            }
         }
     }
 
@@ -163,7 +193,7 @@ struct MacStudentsView: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("Busqueda")
+                Text("Búsqueda")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 TextField("Nombre o clase", text: $searchText)
@@ -231,6 +261,22 @@ struct MacStudentsView: View {
                 Label("Recargar", systemImage: "arrow.clockwise")
             }
             .buttonStyle(.bordered)
+            Button {
+                guard let classId = selectedRowClassId else { return }
+                studentEditorMode = .create(classId: classId)
+            } label: {
+                Label("Alumno", systemImage: "plus")
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(selectedRowClassId == nil)
+            if presentation == .full {
+                Button {
+                    isInspectorPresented.toggle()
+                } label: {
+                    Label(isInspectorPresented ? "Ocultar ficha" : "Mostrar ficha", systemImage: "sidebar.trailing")
+                }
+                .buttonStyle(.bordered)
+            }
         }
     }
 
@@ -246,10 +292,10 @@ struct MacStudentsView: View {
             ContentUnavailableView(
                 "Sin coincidencias",
                 systemImage: "line.3.horizontal.decrease.circle",
-                description: Text("Ajusta la busqueda o los filtros de seguimiento.")
+                description: Text("Ajusta la búsqueda o los filtros de seguimiento.")
             )
         } else {
-            Table(filteredRows, selection: $selectedStudentId) {
+            Table(filteredRows, selection: $localSelectedStudentId) {
                 TableColumn("Nombre") { row in
                     VStack(alignment: .leading, spacing: 2) {
                         Text(row.student.fullName)
@@ -331,7 +377,31 @@ struct MacStudentsView: View {
                         )
                     }
 
-                    if let profile {
+                    inspectorSection("Datos del alumno") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            if let email = selectedRow.student.email, !email.isEmpty {
+                                Label(email, systemImage: "envelope")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Button {
+                                studentEditorMode = .edit(row: selectedRow)
+                            } label: {
+                                Label("Editar datos", systemImage: "pencil")
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+
+                    if isLoadingProfile {
+                        ProgressView("Cargando ficha…")
+                    } else if let profileErrorMessage {
+                        ContentUnavailableView(
+                            "No se pudo cargar la ficha",
+                            systemImage: "exclamationmark.triangle",
+                            description: Text(profileErrorMessage)
+                        )
+                    } else if let profile {
                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                             MacMetricCard(label: "Asistencia", value: "\(profile.attendanceRate)%", systemImage: "checklist.checked")
                             MacMetricCard(label: "Media", value: IosFormatting.decimal(profile.averageScore), systemImage: "sum")
@@ -363,21 +433,27 @@ struct MacStudentsView: View {
                         }
 
                         inspectorSection("Notas rápidas") {
-                            TextEditor(text: $quickNoteText)
-                                .frame(minHeight: 86)
-                                .font(.system(size: 13))
-                                .scrollContentBackground(.hidden)
-                                .padding(8)
-                                .background(MacAppStyle.subtleFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            HStack {
-                                Button {
-                                    Task { await saveQuickNote() }
-                                } label: {
-                                    Label(isSavingNote ? "Guardando…" : "Guardar nota", systemImage: "square.and.arrow.down")
+                            if selectedRowClassId == nil {
+                                Text("Selecciona una clase para guardar notas rápidas.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                TextEditor(text: $quickNoteText)
+                                    .frame(minHeight: 86)
+                                    .font(.system(size: 13))
+                                    .scrollContentBackground(.hidden)
+                                    .padding(8)
+                                    .background(MacAppStyle.subtleFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                HStack {
+                                    Button {
+                                        Task { await saveQuickNote() }
+                                    } label: {
+                                        Label(isSavingNote ? "Guardando…" : "Guardar nota", systemImage: "square.and.arrow.down")
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .disabled(!canSaveQuickNote)
+                                    Spacer()
                                 }
-                                .buttonStyle(.borderedProminent)
-                                .disabled(quickNoteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSavingNote)
-                                Spacer()
                             }
                         }
 
@@ -416,14 +492,14 @@ struct MacStudentsView: View {
                                 .buttonStyle(.borderedProminent)
 
                                 Button {
-                                    onOpenModule(.attendance, selectedClassId, selectedRow.id)
+                                    openSelected(.attendance)
                                 } label: {
                                     Label("Abrir asistencia", systemImage: "checklist.checked")
                                 }
                                 .buttonStyle(.bordered)
 
                                 Button {
-                                    onOpenModule(.reports, selectedClassId, selectedRow.id)
+                                    openSelected(.reports)
                                 } label: {
                                     Label("Abrir informes", systemImage: "doc.text")
                                 }
@@ -443,7 +519,7 @@ struct MacStudentsView: View {
                 ContentUnavailableView(
                     "Selecciona un alumno",
                     systemImage: "person.3",
-                    description: Text("La ficha reunira notas, incidencias y accesos cruzados.")
+                    description: Text("La ficha reunirá notas, incidencias y accesos cruzados.")
                 )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -460,51 +536,240 @@ struct MacStudentsView: View {
     }
 
     @MainActor
-    private func reloadRows() async {
+    private func bootstrapStudents() async {
+        if selectedClassId == nil {
+            selectedClassId = bridge.selectedStudentsClassId
+        }
+        await bridge.selectStudentsClass(classId: selectedClassId)
+        await reloadRows(preferredStudentId: selectedStudentId)
+        didBootstrap = true
+    }
+
+    @MainActor
+    private func reloadRows(preferredStudentId: Int64? = nil) async {
         isLoadingRows = true
         errorMessage = nil
         defer { isLoadingRows = false }
         do {
             rows = try await bridge.loadMacStudentRows(classId: selectedClassId)
-            if let selectedStudentId, rows.contains(where: { $0.id == selectedStudentId }) {
-                await reloadProfile()
+            let visibleIds = filteredRows.map(\.id)
+            if let preferredStudentId, visibleIds.contains(preferredStudentId) {
+                localSelectedStudentId = preferredStudentId
+            } else if let localSelectedStudentId, visibleIds.contains(localSelectedStudentId) {
+                self.localSelectedStudentId = localSelectedStudentId
             } else {
-                selectedStudentId = filteredRows.first?.id
-                await reloadProfile()
+                localSelectedStudentId = visibleIds.first
             }
+            scheduleProfileReload()
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
     @MainActor
-    private func reloadProfile() async {
-        guard let selectedStudentId else {
+    private func scheduleProfileReload() {
+        profileLoadTask?.cancel()
+        guard let studentId = localSelectedStudentId else {
+            isLoadingProfile = false
             profile = nil
             riskPack = nil
+            profileErrorMessage = nil
             return
         }
-        profile = try? await bridge.loadStudentProfile(studentId: selectedStudentId, classId: selectedClassId)
-        riskPack = try? await StudentRiskEvidenceBuilder.build(bridge: bridge, classId: selectedClassId, studentId: selectedStudentId)
+
+        let requestedClassId = selectedRowClassId
+        profile = nil
+        riskPack = nil
+        profileErrorMessage = nil
+        isLoadingProfile = true
+
+        profileLoadTask = Task { @MainActor in
+            do {
+                let loadedProfile = try await bridge.loadStudentProfile(studentId: studentId, classId: requestedClassId)
+                guard !Task.isCancelled,
+                      localSelectedStudentId == studentId,
+                      selectedRowClassId == requestedClassId else { return }
+                profile = loadedProfile
+                riskPack = try? await StudentRiskEvidenceBuilder.build(bridge: bridge, classId: requestedClassId, studentId: studentId)
+                isLoadingProfile = false
+            } catch {
+                guard !Task.isCancelled,
+                      localSelectedStudentId == studentId,
+                      selectedRowClassId == requestedClassId else { return }
+                profile = nil
+                riskPack = nil
+                profileErrorMessage = error.localizedDescription
+                isLoadingProfile = false
+            }
+        }
     }
 
     @MainActor
     private func saveQuickNote() async {
-        guard let selectedStudentId else { return }
+        guard let studentId = localSelectedStudentId, let classId = selectedRowClassId else { return }
         isSavingNote = true
         defer { isSavingNote = false }
         do {
-            try await bridge.saveQuickStudentNote(studentId: selectedStudentId, classId: selectedClassId, note: quickNoteText)
+            try await bridge.saveQuickStudentNote(studentId: studentId, classId: classId, note: quickNoteText)
             quickNoteText = ""
-            await reloadRows()
+            await reloadRows(preferredStudentId: studentId)
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
     private func openSelectedInNotebook() {
-        guard let selectedStudentId else { return }
-        onOpenModule(.notebook, selectedClassId, selectedStudentId)
+        openSelected(.notebook)
+    }
+
+    private func openSelected(_ module: AppWorkspaceModule) {
+        guard let studentId = localSelectedStudentId else { return }
+        selectedStudentId = studentId
+        onOpenModule(module, selectedRowClassId, studentId)
+    }
+
+    @MainActor
+    private func saveStudentDraft(_ draft: MacStudentDraft, mode: MacStudentEditorMode) async {
+        errorMessage = nil
+        do {
+            switch mode {
+            case .create(let classId):
+                let studentId = try await bridge.createMacStudent(
+                    firstName: draft.firstName,
+                    lastName: draft.lastName,
+                    email: draft.email,
+                    isInjured: draft.isInjured,
+                    classId: classId
+                )
+                studentEditorMode = nil
+                await reloadRows(preferredStudentId: studentId)
+            case .edit(let row):
+                try await bridge.updateMacStudent(
+                    student: row.student,
+                    firstName: draft.firstName,
+                    lastName: draft.lastName,
+                    email: draft.email,
+                    isInjured: draft.isInjured
+                )
+                studentEditorMode = nil
+                await reloadRows(preferredStudentId: row.id)
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 }
 
+private enum MacStudentEditorMode: Identifiable {
+    case create(classId: Int64)
+    case edit(row: KmpBridge.MacStudentRowSnapshot)
+
+    var id: String {
+        switch self {
+        case .create(let classId):
+            return "create-\(classId)"
+        case .edit(let row):
+            return "edit-\(row.id)"
+        }
+    }
+}
+
+private struct MacStudentDraft {
+    var firstName: String
+    var lastName: String
+    var email: String
+    var isInjured: Bool
+}
+
+private struct MacStudentEditorSheet: View {
+    let mode: MacStudentEditorMode
+    let onSave: (MacStudentDraft) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var firstName: String
+    @State private var lastName: String
+    @State private var email: String
+    @State private var isInjured: Bool
+
+    init(mode: MacStudentEditorMode, onSave: @escaping (MacStudentDraft) -> Void) {
+        self.mode = mode
+        self.onSave = onSave
+        switch mode {
+        case .create:
+            _firstName = State(initialValue: "")
+            _lastName = State(initialValue: "")
+            _email = State(initialValue: "")
+            _isInjured = State(initialValue: false)
+        case .edit(let row):
+            _firstName = State(initialValue: row.student.firstName)
+            _lastName = State(initialValue: row.student.lastName)
+            _email = State(initialValue: row.student.email ?? "")
+            _isInjured = State(initialValue: row.student.isInjured)
+        }
+    }
+
+    private var title: String {
+        switch mode {
+        case .create: return "Nuevo alumno"
+        case .edit: return "Editar alumno"
+        }
+    }
+
+    private var canSave: Bool {
+        !firstName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text(title)
+                .font(.title2.weight(.semibold))
+
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 12) {
+                GridRow {
+                    Text("Nombre")
+                        .foregroundStyle(.secondary)
+                    TextField("Nombre", text: $firstName)
+                        .textFieldStyle(.roundedBorder)
+                }
+                GridRow {
+                    Text("Apellidos")
+                        .foregroundStyle(.secondary)
+                    TextField("Apellidos", text: $lastName)
+                        .textFieldStyle(.roundedBorder)
+                }
+                GridRow {
+                    Text("Email")
+                        .foregroundStyle(.secondary)
+                    TextField("Email", text: $email)
+                        .textFieldStyle(.roundedBorder)
+                }
+                GridRow {
+                    Text("Lesión")
+                        .foregroundStyle(.secondary)
+                    Toggle("Alumno lesionado", isOn: $isInjured)
+                }
+            }
+
+            HStack {
+                Spacer()
+                Button("Cancelar") {
+                    dismiss()
+                }
+                Button("Guardar") {
+                    onSave(
+                        MacStudentDraft(
+                            firstName: firstName.trimmingCharacters(in: .whitespacesAndNewlines),
+                            lastName: lastName.trimmingCharacters(in: .whitespacesAndNewlines),
+                            email: email.trimmingCharacters(in: .whitespacesAndNewlines),
+                            isInjured: isInjured
+                        )
+                    )
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!canSave)
+            }
+        }
+        .padding(24)
+        .frame(width: 460)
+    }
+}

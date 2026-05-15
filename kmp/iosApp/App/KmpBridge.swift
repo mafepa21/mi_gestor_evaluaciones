@@ -1475,19 +1475,19 @@ final class KmpBridge: ObservableObject {
             throw NSError(domain: "Planner", code: -320, userInfo: [NSLocalizedDescriptionKey: "La franja docente se solapa con otra del mismo grupo"])
         }
 
-        let weeklyTemplateId = try await {
-            _ = try await plannerSaveWeeklySlot(
-                classId: classId,
-                dayOfWeek: dayOfWeek,
-                startTime: normalizedStart,
-                endTime: normalizedEnd,
-                editingSlotId: existingWeeklyTemplateId
+        if let existingWeeklyTemplateId {
+            try? await container.weeklyTemplateRepository.delete(slotId: existingWeeklyTemplateId)
+            enqueueLocalChange(
+                entity: "weekly_slot",
+                id: "\(existingWeeklyTemplateId)",
+                updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+                payload: [
+                    "id": existingWeeklyTemplateId,
+                    "schoolClassId": classId
+                ],
+                op: "delete"
             )
-            let refreshed = container.weeklyTemplateRepository.getSlotsForClass(schoolClassId: classId)
-            return refreshed.first {
-                $0.dayOfWeek == Int32(dayOfWeek) && $0.startTime == normalizedStart && $0.endTime == normalizedEnd
-            }?.id ?? existingWeeklyTemplateId ?? 0
-        }()
+        }
 
         let savedId = try await container.teacherScheduleRepository.saveScheduleSlot(
             slot: TeacherScheduleSlot(
@@ -1499,7 +1499,7 @@ final class KmpBridge: ObservableObject {
                 dayOfWeek: Int32(dayOfWeek),
                 startTime: normalizedStart,
                 endTime: normalizedEnd,
-                weeklyTemplateId: weeklyTemplateId == 0 ? nil : KotlinLong(value: weeklyTemplateId)
+                weeklyTemplateId: nil
             )
         ).int64Value
         enqueueLocalChange(
@@ -1515,7 +1515,7 @@ final class KmpBridge: ObservableObject {
                 "dayOfWeek": dayOfWeek,
                 "startTime": normalizedStart,
                 "endTime": normalizedEnd,
-                "weeklyTemplateId": weeklyTemplateId
+                "weeklyTemplateId": 0
             ]
         )
         return savedId

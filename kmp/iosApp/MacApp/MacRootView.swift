@@ -8,6 +8,7 @@ struct MacRootView: View {
     @StateObject private var notebookInspectorState = NotebookMacInspectorState()
     @StateObject private var notebookToolbarActions = NotebookMacToolbarActions()
     @StateObject private var physicalTestsToolbarActions = MacPhysicalTestsToolbarActions()
+    @StateObject private var studentsStore = MacStudentsStore()
     @State private var selectedClassId: Int64? = nil
     @State private var selectedStudentId: Int64? = nil
     @State private var attendanceToolbarActions: MacAttendanceToolbarActions? = nil
@@ -179,6 +180,7 @@ struct MacRootView: View {
         case .students:
             MacStudentsView(
                 bridge: session.bridge,
+                store: studentsStore,
                 selectedClassId: $selectedClassId,
                 selectedStudentId: $selectedStudentId,
                 onOpenModule: open(module:classId:studentId:),
@@ -231,6 +233,7 @@ struct MacRootView: View {
         case .students:
             MacStudentsView(
                 bridge: session.bridge,
+                store: studentsStore,
                 selectedClassId: $selectedClassId,
                 selectedStudentId: $selectedStudentId,
                 onOpenModule: open(module:classId:studentId:),

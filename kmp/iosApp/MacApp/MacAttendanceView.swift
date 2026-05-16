@@ -41,6 +41,7 @@ struct MacAttendanceStatusOption: Identifiable, Hashable {
 struct MacAttendanceEntryRow: Identifiable {
     let id: Int64
     let student: Student
+    let isInjured: Bool
     let record: KmpBridge.AttendanceRecordSnapshot?
 }
 
@@ -72,6 +73,7 @@ struct MacAttendanceView: View {
     @State private var sessions: [KmpBridge.AttendanceSessionSnapshot] = []
     @State private var savingStudentIds: Set<Int64> = []
     @State private var savingInjuryStudentIds: Set<Int64> = []
+    @State private var localInjuryStatuses: [Int64: Bool] = [:]
     @State private var saveRevisionByStudentId: [Int64: Int] = [:]
     @State private var historySelection: MacAttendanceHistorySelection?
     @State private var noteDraft = ""
@@ -103,7 +105,12 @@ struct MacAttendanceView: View {
     private var filteredRows: [MacAttendanceEntryRow] {
         bridge.studentsInClass
             .map { student in
-                MacAttendanceEntryRow(id: student.id, student: student, record: recordsByStudentId[student.id])
+                MacAttendanceEntryRow(
+                    id: student.id,
+                    student: student,
+                    isInjured: isStudentInjured(student),
+                    record: recordsByStudentId[student.id]
+                )
             }
             .filter { row in
                 let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -139,6 +146,10 @@ struct MacAttendanceView: View {
         let late = recordsByStudentId.values.filter { Self.isLateStatus($0.status) }.count
         let pending = max(bridge.studentsInClass.count - recordsByStudentId.count, 0)
         return (present, absent, late, pending)
+    }
+
+    private func isStudentInjured(_ student: Student) -> Bool {
+        localInjuryStatuses[student.id] ?? student.isInjured
     }
 
     private var averageOverviewRate: Int {
@@ -421,8 +432,8 @@ struct MacAttendanceView: View {
                                     Task { await toggleInjuryStatus(for: row.student) }
                                 } label: {
                                     Label(
-                                        row.student.isInjured ? "Quitar lesión" : "Marcar lesión",
-                                        systemImage: row.student.isInjured ? "heart.slash" : "bandage"
+                                        row.isInjured ? "Quitar lesión" : "Marcar lesión",
+                                        systemImage: row.isInjured ? "heart.slash" : "bandage"
                                     )
                                 }
                             }
@@ -500,17 +511,26 @@ struct MacAttendanceView: View {
 
                     inspectorStatusCard(record: selectedInspectionAttendance ?? recentRecords.first)
 
-                    Button {
-                        Task { await toggleInjuryStatus(for: student) }
-                    } label: {
-                        Label(
-                            student.isInjured ? "Quitar lesión" : "Marcar lesión",
-                            systemImage: student.isInjured ? "heart.slash" : "bandage"
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Condición física")
+                            .font(.headline)
+                        MacStatusPill(
+                            label: isStudentInjured(student) ? "Lesión activa" : "Sin lesión",
+                            isActive: isStudentInjured(student),
+                            tint: isStudentInjured(student) ? MacAppStyle.warningTint : MacAppStyle.successTint
                         )
-                        .frame(maxWidth: .infinity)
+                        Button {
+                            Task { await toggleInjuryStatus(for: student) }
+                        } label: {
+                            Label(
+                                isStudentInjured(student) ? "Quitar lesión" : "Marcar lesión",
+                                systemImage: isStudentInjured(student) ? "heart.slash" : "bandage"
+                            )
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(savingInjuryStudentIds.contains(student.id))
                     }
-                    .buttonStyle(.bordered)
-                    .disabled(savingInjuryStudentIds.contains(student.id))
 
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Histórico reciente")
@@ -767,20 +787,22 @@ struct MacAttendanceView: View {
     @MainActor
     private func toggleInjuryStatus(for student: Student) async {
         guard let selectedClassId else { return }
+        let previousValue = isStudentInjured(student)
+        let newValue = !previousValue
+        localInjuryStatuses[student.id] = newValue
+        selectedStudentId = student.id
         savingInjuryStudentIds.insert(student.id)
         defer { savingInjuryStudentIds.remove(student.id) }
 
         do {
             try await bridge.updateStudentInjuryStatus(
                 studentId: student.id,
-                isInjured: !student.isInjured,
+                isInjured: newValue,
                 classId: selectedClassId
             )
-            await bridge.selectStudentsClass(classId: selectedClassId)
-            await reloadAttendance()
-            selectedStudentId = student.id
-            bridge.status = student.isInjured ? "Lesión retirada." : "Alumno marcado con lesión."
+            bridge.status = newValue ? "Alumno marcado con lesión." : "Lesión retirada."
         } catch {
+            localInjuryStatuses[student.id] = previousValue
             bridge.status = "No se pudo actualizar la lesión: \(error.localizedDescription)"
         }
     }

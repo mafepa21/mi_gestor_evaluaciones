@@ -8,42 +8,48 @@ enum MacStudentsPresentation {
     case inspector
 }
 
+@MainActor
+final class MacStudentsStore: ObservableObject {
+    @Published var rows: [KmpBridge.MacStudentRowSnapshot] = []
+    @Published var profile: KmpBridge.StudentProfileSnapshot?
+    @Published var localSelectedStudentId: Int64?
+    @Published var searchText = ""
+    @Published var trackingFilter = "todos"
+    @Published var workGroupFilter = "Todos"
+    @Published var quickNoteText = ""
+    @Published var isLoadingRows = false
+    @Published var isLoadingProfile = false
+    @Published var isSavingNote = false
+    @Published var errorMessage: String?
+    @Published var profileErrorMessage: String?
+    @Published var riskPack: TeachingEvidencePack?
+    @Published var isInspectorPresented = true
+    @Published var didBootstrap = false
+    @Published var isBootstrapping = false
+    @Published var profileLoadTask: Task<Void, Never>?
+    @Published var profileLoadingStudentId: Int64?
+    @Published var studentEditorMode: MacStudentEditorMode?
+}
+
 struct MacStudentsView: View {
     @ObservedObject var bridge: KmpBridge
+    @ObservedObject var store: MacStudentsStore
     @Binding var selectedClassId: Int64?
     @Binding var selectedStudentId: Int64?
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
     var presentation: MacStudentsPresentation = .full
     var reloadToken: Int = 0
 
-    @State private var rows: [KmpBridge.MacStudentRowSnapshot] = []
-    @State private var profile: KmpBridge.StudentProfileSnapshot?
-    @State private var localSelectedStudentId: Int64?
-    @State private var searchText = ""
-    @State private var trackingFilter = "todos"
-    @State private var workGroupFilter = "Todos"
-    @State private var quickNoteText = ""
-    @State private var isLoadingRows = false
-    @State private var isLoadingProfile = false
-    @State private var isSavingNote = false
-    @State private var errorMessage: String?
-    @State private var profileErrorMessage: String?
-    @State private var riskPack: TeachingEvidencePack?
-    @State private var isInspectorPresented = true
-    @State private var didBootstrap = false
-    @State private var profileLoadTask: Task<Void, Never>?
-    @State private var profileLoadingStudentId: Int64?
-    @State private var studentEditorMode: MacStudentEditorMode?
     @FocusState private var isSearchFocused: Bool
 
     private var filteredRows: [KmpBridge.MacStudentRowSnapshot] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        return rows.filter { row in
+        let query = store.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return store.rows.filter { row in
             let matchesQuery = query.isEmpty ||
                 row.student.fullName.localizedCaseInsensitiveContains(query) ||
                 row.className.localizedCaseInsensitiveContains(query)
             let matchesTracking: Bool = {
-                switch trackingFilter {
+                switch store.trackingFilter {
                 case "seguimiento":
                     return row.isFollowUp
                 case "lesionados":
@@ -52,18 +58,18 @@ struct MacStudentsView: View {
                     return true
                 }
             }()
-            let matchesGroup = workGroupFilter == "Todos" || row.workGroupName == workGroupFilter
+            let matchesGroup = store.workGroupFilter == "Todos" || row.workGroupName == store.workGroupFilter
             return matchesQuery && matchesTracking && matchesGroup
         }
     }
 
     private var selectedRow: KmpBridge.MacStudentRowSnapshot? {
-        guard let localSelectedStudentId else { return filteredRows.first }
-        return rows.first(where: { $0.id == localSelectedStudentId }) ?? filteredRows.first
+        guard let selectedStudentId = store.localSelectedStudentId else { return filteredRows.first }
+        return store.rows.first(where: { $0.id == selectedStudentId }) ?? filteredRows.first
     }
 
     private var workGroupOptions: [String] {
-        ["Todos"] + Array(Set(rows.map(\.workGroupName))).sorted()
+        ["Todos"] + Array(Set(store.rows.map(\.workGroupName))).sorted()
     }
 
     private var selectedRowClassId: Int64? {
@@ -71,7 +77,11 @@ struct MacStudentsView: View {
     }
 
     private var canSaveQuickNote: Bool {
-        selectedRowClassId != nil && !quickNoteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isSavingNote
+        selectedRowClassId != nil && !store.quickNoteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !store.isSavingNote
+    }
+
+    private var ownsStudentSideEffects: Bool {
+        presentation != .inspector
     }
 
     var body: some View {
@@ -83,7 +93,7 @@ struct MacStudentsView: View {
                         .frame(minWidth: 220, idealWidth: 250, maxWidth: 300)
                     studentsList
                         .frame(minWidth: 640)
-                    if isInspectorPresented {
+                    if store.isInspectorPresented {
                         studentInspector
                             .frame(minWidth: 320, idealWidth: 360, maxWidth: 420)
                     }
@@ -102,57 +112,64 @@ struct MacStudentsView: View {
         }
         .background(MacAppStyle.pageBackground)
         .task {
+            guard ownsStudentSideEffects else { return }
             await bootstrapStudents()
         }
         .task(id: reloadToken) {
+            guard ownsStudentSideEffects else { return }
             guard reloadToken > 0 else { return }
             await reloadRows()
         }
         .appOnChange(of: selectedClassId) { _, newClassId in
-            guard didBootstrap else { return }
+            guard ownsStudentSideEffects else { return }
+            guard store.didBootstrap else { return }
             Task {
                 await bridge.selectStudentsClass(classId: newClassId)
                 await reloadRows()
             }
         }
-        .appOnChange(of: localSelectedStudentId) { _, newValue in
+        .appOnChange(of: store.localSelectedStudentId) { _, newValue in
+            guard ownsStudentSideEffects else { return }
             if selectedStudentId != newValue {
                 selectedStudentId = newValue
             }
             loadProfileForSelection(newValue)
         }
         .appOnChange(of: selectedStudentId) { _, newValue in
-            guard didBootstrap else { return }
+            guard ownsStudentSideEffects else { return }
+            guard store.didBootstrap else { return }
             guard let newValue else {
-                localSelectedStudentId = nil
+                store.localSelectedStudentId = nil
                 loadProfileForSelection(nil)
                 return
             }
-            guard rows.contains(where: { $0.id == newValue }) else { return }
-            if localSelectedStudentId != newValue {
-                localSelectedStudentId = newValue
+            guard store.rows.contains(where: { $0.id == newValue }) else { return }
+            if store.localSelectedStudentId != newValue {
+                store.localSelectedStudentId = newValue
             } else {
                 loadProfileForSelection(newValue)
             }
         }
         .appOnChange(of: filteredRows.map(\.id)) { _, visibleIds in
+            guard ownsStudentSideEffects else { return }
             guard !visibleIds.isEmpty else {
-                localSelectedStudentId = nil
-                profileLoadTask?.cancel()
-                isLoadingProfile = false
-                profileLoadingStudentId = nil
-                profile = nil
-                riskPack = nil
-                profileErrorMessage = nil
+                store.localSelectedStudentId = nil
+                store.profileLoadTask?.cancel()
+                store.isLoadingProfile = false
+                store.profileLoadingStudentId = nil
+                store.profile = nil
+                store.riskPack = nil
+                store.profileErrorMessage = nil
                 return
             }
-            if localSelectedStudentId == nil || !visibleIds.contains(localSelectedStudentId ?? -1) {
-                localSelectedStudentId = visibleIds.first
+            if store.localSelectedStudentId == nil || !visibleIds.contains(store.localSelectedStudentId ?? -1) {
+                store.localSelectedStudentId = visibleIds.first
             }
         }
         .onExitCommand {
-            if !searchText.isEmpty {
-                searchText = ""
+            guard ownsStudentSideEffects else { return }
+            if !store.searchText.isEmpty {
+                store.searchText = ""
             }
         }
         .background {
@@ -169,13 +186,24 @@ struct MacStudentsView: View {
             .opacity(0)
         }
         .onDisappear {
-            profileLoadTask?.cancel()
+            guard ownsStudentSideEffects else { return }
+            store.profileLoadTask?.cancel()
         }
-        .sheet(item: $studentEditorMode) { mode in
+        .sheet(item: studentEditorModeBinding) { mode in
             MacStudentEditorSheet(mode: mode) { draft in
                 Task { await saveStudentDraft(draft, mode: mode) }
             }
         }
+    }
+
+    private var studentEditorModeBinding: Binding<MacStudentEditorMode?> {
+        Binding(
+            get: { ownsStudentSideEffects ? store.studentEditorMode : nil },
+            set: { newValue in
+                guard ownsStudentSideEffects else { return }
+                store.studentEditorMode = newValue
+            }
+        )
     }
 
     private var studentsList: some View {
@@ -192,7 +220,7 @@ struct MacStudentsView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Filtros")
                     .font(.title3.weight(.semibold))
-                Text("\(filteredRows.count) de \(rows.count) alumnos")
+                Text("\(filteredRows.count) de \(store.rows.count) alumnos")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -215,7 +243,7 @@ struct MacStudentsView: View {
                 Text("Búsqueda")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-                TextField("Nombre o clase", text: $searchText)
+                TextField("Nombre o clase", text: $store.searchText)
                     .textFieldStyle(.roundedBorder)
                     .focused($isSearchFocused)
             }
@@ -224,7 +252,7 @@ struct MacStudentsView: View {
                 Text("Seguimiento")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-                Picker("Seguimiento", selection: $trackingFilter) {
+                Picker("Seguimiento", selection: $store.trackingFilter) {
                     Text("Todos").tag("todos")
                     Text("Seguimiento").tag("seguimiento")
                     Text("Lesionados").tag("lesionados")
@@ -236,7 +264,7 @@ struct MacStudentsView: View {
                 Text("Grupo de trabajo")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-                Picker("Grupo de trabajo", selection: $workGroupFilter) {
+                Picker("Grupo de trabajo", selection: $store.workGroupFilter) {
                     ForEach(workGroupOptions, id: \.self) { option in
                         Text(option).tag(option)
                     }
@@ -247,7 +275,7 @@ struct MacStudentsView: View {
 
             Spacer()
 
-            if let errorMessage {
+            if let errorMessage = store.errorMessage {
                 Text(errorMessage)
                     .font(.caption)
                     .foregroundStyle(.red)
@@ -270,9 +298,13 @@ struct MacStudentsView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            if isLoadingRows {
-                ProgressView()
-                    .controlSize(.small)
+            if store.isLoadingRows {
+                Label("Actualizando…", systemImage: "arrow.triangle.2.circlepath")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(MacAppStyle.subtleFill, in: Capsule())
             }
             Button {
                 Task { await reloadRows() }
@@ -282,7 +314,7 @@ struct MacStudentsView: View {
             .buttonStyle(.bordered)
             Button {
                 guard let classId = selectedRowClassId else { return }
-                studentEditorMode = .create(classId: classId)
+                store.studentEditorMode = .create(classId: classId)
             } label: {
                 Label("Alumno", systemImage: "plus")
             }
@@ -290,9 +322,9 @@ struct MacStudentsView: View {
             .disabled(selectedRowClassId == nil)
             if presentation == .full {
                 Button {
-                    isInspectorPresented.toggle()
+                    store.isInspectorPresented.toggle()
                 } label: {
-                    Label(isInspectorPresented ? "Ocultar ficha" : "Mostrar ficha", systemImage: "sidebar.trailing")
+                    Label(store.isInspectorPresented ? "Ocultar ficha" : "Mostrar ficha", systemImage: "sidebar.trailing")
                 }
                 .buttonStyle(.bordered)
             }
@@ -301,7 +333,7 @@ struct MacStudentsView: View {
 
     @ViewBuilder
     private var studentsTable: some View {
-        if rows.isEmpty && !isLoadingRows {
+        if store.rows.isEmpty && !store.isLoadingRows {
             ContentUnavailableView(
                 "Sin alumnado",
                 systemImage: "person.3",
@@ -314,11 +346,19 @@ struct MacStudentsView: View {
                 description: Text("Ajusta la búsqueda o los filtros de seguimiento.")
             )
         } else {
-            Table(filteredRows, selection: $localSelectedStudentId) {
+            Table(filteredRows, selection: $store.localSelectedStudentId) {
                 TableColumn("Nombre") { row in
                     VStack(alignment: .leading, spacing: 2) {
                         Text(row.student.fullName)
                             .font(.system(size: 13, weight: .semibold))
+                        HStack(spacing: 6) {
+                            Text(row.workGroupName)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            if row.isInjured {
+                                MacStatusPill(label: "Lesión", isActive: true, tint: MacAppStyle.warningTint)
+                            }
+                        }
                         if row.student.email?.isEmpty == false {
                             Text(row.student.email ?? "")
                                 .font(.caption2)
@@ -379,8 +419,13 @@ struct MacStudentsView: View {
                             .foregroundStyle(.secondary)
                         Text(selectedRow.student.fullName)
                             .font(.title2.weight(.semibold))
-                        Text(selectedRow.className)
-                            .foregroundStyle(.secondary)
+                        HStack(spacing: 8) {
+                            Text(selectedRow.className)
+                                .foregroundStyle(.secondary)
+                            if selectedRow.isInjured {
+                                MacStatusPill(label: "Lesión", isActive: true, tint: MacAppStyle.warningTint)
+                            }
+                        }
                     }
 
                     HStack(spacing: 8) {
@@ -404,7 +449,7 @@ struct MacStudentsView: View {
                                     .foregroundStyle(.secondary)
                             }
                             Button {
-                                studentEditorMode = .edit(row: selectedRow)
+                                store.studentEditorMode = .edit(row: selectedRow)
                             } label: {
                                 Label("Editar datos", systemImage: "pencil")
                             }
@@ -413,29 +458,38 @@ struct MacStudentsView: View {
                         }
                     }
 
-                    injuryToggleButton(for: selectedRow)
+                    inspectorSection("Condición física") {
+                        VStack(alignment: .leading, spacing: 10) {
+                            MacStatusPill(
+                                label: selectedRow.isInjured ? "Lesión activa" : "Sin lesión",
+                                isActive: selectedRow.isInjured,
+                                tint: selectedRow.isInjured ? MacAppStyle.warningTint : MacAppStyle.successTint
+                            )
+                            injuryToggleButton(for: selectedRow)
+                        }
+                    }
 
-                    if profileLoadingStudentId == selectedRow.id {
-                        ProgressView("Cargando ficha…")
-                    } else if let profile, profile.student.id == selectedRow.id {
+                    if store.profileLoadingStudentId == selectedRow.id {
+                        inspectorMetricsSkeleton
+                    } else if let profile = store.profile, profile.student.id == selectedRow.id {
                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                             MacMetricCard(label: "Asistencia", value: "\(profile.attendanceRate)%", systemImage: "checklist.checked")
                             MacMetricCard(label: "Media", value: IosFormatting.decimal(profile.averageScore), systemImage: "sum")
                             MacMetricCard(label: "Incidencias", value: "\(profile.incidentCount)", systemImage: "exclamationmark.bubble")
                             MacMetricCard(label: "Evidencias", value: "\(profile.evidenceCount)", systemImage: "paperclip")
                         }
-                    } else if let profileErrorMessage {
+                    } else if let profileErrorMessage = store.profileErrorMessage {
                         ContentUnavailableView(
                             "No se pudo cargar la ficha",
                             systemImage: "exclamationmark.triangle",
                             description: Text(profileErrorMessage)
                         )
                     } else {
-                        ProgressView("Cargando ficha…")
+                        inspectorMetricsSkeleton
                     }
 
-                    if let profile, profile.student.id == selectedRow.id {
-                        if let riskPack, let level = riskPack.riskLevel {
+                    if let profile = store.profile, profile.student.id == selectedRow.id {
+                        if let riskPack = store.riskPack, let level = riskPack.riskLevel {
                             inspectorSection("Radar de riesgo") {
                                 VStack(alignment: .leading, spacing: 10) {
                                     MacStatusPill(
@@ -464,7 +518,7 @@ struct MacStudentsView: View {
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             } else {
-                                TextEditor(text: $quickNoteText)
+                                TextEditor(text: $store.quickNoteText)
                                     .frame(minHeight: 86)
                                     .font(.system(size: 13))
                                     .scrollContentBackground(.hidden)
@@ -474,7 +528,7 @@ struct MacStudentsView: View {
                                     Button {
                                         Task { await saveQuickNote() }
                                     } label: {
-                                        Label(isSavingNote ? "Guardando…" : "Guardar nota", systemImage: "square.and.arrow.down")
+                                        Label(store.isSavingNote ? "Guardando…" : "Guardar nota", systemImage: "square.and.arrow.down")
                                     }
                                     .buttonStyle(.borderedProminent)
                                     .disabled(!canSaveQuickNote)
@@ -534,7 +588,7 @@ struct MacStudentsView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     } else {
-                        ProgressView("Cargando ficha…")
+                        EmptyView()
                     }
                 }
                 .padding(MacAppStyle.pagePadding)
@@ -561,6 +615,27 @@ struct MacStudentsView: View {
         }
     }
 
+    private var inspectorMetricsSkeleton: some View {
+        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+            ForEach(["Asistencia", "Media", "Incidencias", "Evidencias"], id: \.self) { label in
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(label)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(MacAppStyle.subtleFill)
+                        .frame(height: 18)
+                }
+                .padding(MacAppStyle.innerPadding)
+                .background(MacAppStyle.cardBackground)
+                .overlay {
+                    RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous)
+                        .stroke(MacAppStyle.cardBorder, lineWidth: 0.5)
+                }
+            }
+        }
+    }
+
     @ViewBuilder
     private func injuryToggleButton(for row: KmpBridge.MacStudentRowSnapshot) -> some View {
         if row.isInjured {
@@ -584,56 +659,59 @@ struct MacStudentsView: View {
 
     @MainActor
     private func bootstrapStudents() async {
+        guard !store.didBootstrap, !store.isBootstrapping else { return }
+        store.isBootstrapping = true
+        defer { store.isBootstrapping = false }
         if selectedClassId == nil {
             selectedClassId = bridge.selectedStudentsClassId
         }
         await bridge.selectStudentsClass(classId: selectedClassId)
         await reloadRows(preferredStudentId: selectedStudentId)
-        didBootstrap = true
+        store.didBootstrap = true
     }
 
     @MainActor
     private func reloadRows(preferredStudentId: Int64? = nil) async {
-        isLoadingRows = true
-        errorMessage = nil
-        defer { isLoadingRows = false }
+        store.isLoadingRows = true
+        store.errorMessage = nil
+        defer { store.isLoadingRows = false }
         do {
-            rows = try await bridge.loadMacStudentRows(classId: selectedClassId)
+            store.rows = try await bridge.loadMacStudentRows(classId: selectedClassId)
             let visibleIds = filteredRows.map(\.id)
             if let preferredStudentId, visibleIds.contains(preferredStudentId) {
-                localSelectedStudentId = preferredStudentId
-            } else if let localSelectedStudentId, visibleIds.contains(localSelectedStudentId) {
-                self.localSelectedStudentId = localSelectedStudentId
+                store.localSelectedStudentId = preferredStudentId
+            } else if let currentStudentId = store.localSelectedStudentId, visibleIds.contains(currentStudentId) {
+                store.localSelectedStudentId = currentStudentId
             } else {
-                localSelectedStudentId = visibleIds.first
+                store.localSelectedStudentId = visibleIds.first
             }
-            selectedStudentId = localSelectedStudentId
-            loadProfileForSelection(localSelectedStudentId)
+            selectedStudentId = store.localSelectedStudentId
+            loadProfileForSelection(store.localSelectedStudentId)
         } catch {
-            errorMessage = error.localizedDescription
+            store.errorMessage = error.localizedDescription
         }
     }
 
     @MainActor
     private func loadProfileForSelection(_ studentId: Int64?) {
-        profileLoadTask?.cancel()
-        profileErrorMessage = nil
+        store.profileLoadTask?.cancel()
+        store.profileErrorMessage = nil
         guard let studentId else {
-            isLoadingProfile = false
-            profileLoadingStudentId = nil
-            profile = nil
-            riskPack = nil
-            profileErrorMessage = nil
+            store.isLoadingProfile = false
+            store.profileLoadingStudentId = nil
+            store.profile = nil
+            store.riskPack = nil
+            store.profileErrorMessage = nil
             return
         }
 
-        let requestedClassId = selectedClassId ?? rows.first(where: { $0.id == studentId })?.classId
-        profile = nil
-        riskPack = nil
-        isLoadingProfile = true
-        profileLoadingStudentId = studentId
+        let requestedClassId = selectedClassId ?? store.rows.first(where: { $0.id == studentId })?.classId
+        store.profile = nil
+        store.riskPack = nil
+        store.isLoadingProfile = true
+        store.profileLoadingStudentId = studentId
 
-        profileLoadTask = Task {
+        store.profileLoadTask = Task {
             do {
                 async let loadedProfile = bridge.loadStudentProfile(studentId: studentId, classId: requestedClassId)
                 async let loadedRiskPack = StudentRiskEvidenceBuilder.build(bridge: bridge, classId: requestedClassId, studentId: studentId)
@@ -641,25 +719,25 @@ struct MacStudentsView: View {
                 let resultRiskPack = try? await loadedRiskPack
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
-                    guard localSelectedStudentId == studentId,
+                    guard store.localSelectedStudentId == studentId,
                           selectedStudentId == studentId,
-                          (selectedClassId ?? rows.first(where: { $0.id == studentId })?.classId) == requestedClassId else { return }
-                    profile = resultProfile
-                    riskPack = resultRiskPack
-                    profileLoadingStudentId = nil
-                    isLoadingProfile = false
+                          (selectedClassId ?? store.rows.first(where: { $0.id == studentId })?.classId) == requestedClassId else { return }
+                    store.profile = resultProfile
+                    store.riskPack = resultRiskPack
+                    store.profileLoadingStudentId = nil
+                    store.isLoadingProfile = false
                 }
             } catch {
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
-                    guard localSelectedStudentId == studentId,
+                    guard store.localSelectedStudentId == studentId,
                           selectedStudentId == studentId,
-                          (selectedClassId ?? rows.first(where: { $0.id == studentId })?.classId) == requestedClassId else { return }
-                    profile = nil
-                    riskPack = nil
-                    profileLoadingStudentId = nil
-                    profileErrorMessage = error.localizedDescription
-                    isLoadingProfile = false
+                          (selectedClassId ?? store.rows.first(where: { $0.id == studentId })?.classId) == requestedClassId else { return }
+                    store.profile = nil
+                    store.riskPack = nil
+                    store.profileLoadingStudentId = nil
+                    store.profileErrorMessage = error.localizedDescription
+                    store.isLoadingProfile = false
                 }
             }
         }
@@ -667,7 +745,7 @@ struct MacStudentsView: View {
 
     @MainActor
     private func applyInjuryLocally(studentId: Int64, isInjured: Bool) {
-        rows = rows.map { row in
+        store.rows = store.rows.map { row in
             guard row.id == studentId else { return row }
             let followUpLabel: String
             if isInjured {
@@ -701,7 +779,7 @@ struct MacStudentsView: View {
         let previousValue = row.isInjured
         let newValue = !previousValue
         selectedStudentId = row.id
-        localSelectedStudentId = row.id
+        store.localSelectedStudentId = row.id
         applyInjuryLocally(studentId: row.id, isInjured: newValue)
 
         do {
@@ -713,21 +791,21 @@ struct MacStudentsView: View {
             loadProfileForSelection(row.id)
         } catch {
             applyInjuryLocally(studentId: row.id, isInjured: previousValue)
-            errorMessage = error.localizedDescription
+            store.errorMessage = error.localizedDescription
         }
     }
 
     @MainActor
     private func saveQuickNote() async {
-        guard let studentId = localSelectedStudentId, let classId = selectedRowClassId else { return }
-        isSavingNote = true
-        defer { isSavingNote = false }
+        guard let studentId = store.localSelectedStudentId, let classId = selectedRowClassId else { return }
+        store.isSavingNote = true
+        defer { store.isSavingNote = false }
         do {
-            try await bridge.saveQuickStudentNote(studentId: studentId, classId: classId, note: quickNoteText)
-            quickNoteText = ""
+            try await bridge.saveQuickStudentNote(studentId: studentId, classId: classId, note: store.quickNoteText)
+            store.quickNoteText = ""
             await reloadRows(preferredStudentId: studentId)
         } catch {
-            errorMessage = error.localizedDescription
+            store.errorMessage = error.localizedDescription
         }
     }
 
@@ -736,14 +814,14 @@ struct MacStudentsView: View {
     }
 
     private func openSelected(_ module: AppWorkspaceModule) {
-        guard let studentId = localSelectedStudentId else { return }
+        guard let studentId = store.localSelectedStudentId else { return }
         selectedStudentId = studentId
         onOpenModule(module, selectedRowClassId, studentId)
     }
 
     @MainActor
     private func saveStudentDraft(_ draft: MacStudentDraft, mode: MacStudentEditorMode) async {
-        errorMessage = nil
+        store.errorMessage = nil
         do {
             switch mode {
             case .create(let classId):
@@ -754,7 +832,7 @@ struct MacStudentsView: View {
                     isInjured: draft.isInjured,
                     classId: classId
                 )
-                studentEditorMode = nil
+                store.studentEditorMode = nil
                 await reloadRows(preferredStudentId: studentId)
             case .edit(let row):
                 try await bridge.updateMacStudent(
@@ -764,16 +842,16 @@ struct MacStudentsView: View {
                     email: draft.email,
                     isInjured: draft.isInjured
                 )
-                studentEditorMode = nil
+                store.studentEditorMode = nil
                 await reloadRows(preferredStudentId: row.id)
             }
         } catch {
-            errorMessage = error.localizedDescription
+            store.errorMessage = error.localizedDescription
         }
     }
 }
 
-private enum MacStudentEditorMode: Identifiable {
+enum MacStudentEditorMode: Identifiable {
     case create(classId: Int64)
     case edit(row: KmpBridge.MacStudentRowSnapshot)
 
@@ -816,7 +894,7 @@ private struct MacStudentEditorSheet: View {
             _firstName = State(initialValue: row.student.firstName)
             _lastName = State(initialValue: row.student.lastName)
             _email = State(initialValue: row.student.email ?? "")
-            _isInjured = State(initialValue: row.student.isInjured)
+            _isInjured = State(initialValue: row.isInjured)
         }
     }
 

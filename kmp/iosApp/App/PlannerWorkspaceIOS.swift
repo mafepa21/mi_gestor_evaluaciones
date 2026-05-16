@@ -2733,6 +2733,7 @@ private struct PlannerInstrumentCompactPicker: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
     @State private var isExpanded = false
     @State private var searchText = ""
+    @State private var expandedGroupTitles: Set<String> = []
 
     private var summaryText: String {
         let availableIds = Set(vm.composerAvailableInstruments.map(\.id))
@@ -2746,9 +2747,9 @@ private struct PlannerInstrumentCompactPicker: View {
         let filtered = vm.composerAvailableInstruments.filter { instrument in
             guard !trimmedSearch.isEmpty else { return true }
             let haystack = [
-                instrument.title,
-                instrument.subtitle,
-                instrument.groupTitle,
+                safeDisplayText(instrument.title, fallback: "Instrumento"),
+                safeDisplayText(instrument.subtitle, fallback: instrument.kind == .rubric ? "Rúbrica" : "Evaluación"),
+                safeDisplayText(instrument.groupTitle, fallback: "Sin situación asignada"),
                 instrument.kind == .rubric ? "Rúbrica" : "Evaluación"
             ].joined(separator: " ")
             return haystack.localizedCaseInsensitiveContains(trimmedSearch)
@@ -2763,7 +2764,9 @@ private struct PlannerInstrumentCompactPicker: View {
         }
 
         let remaining = filtered.filter { !$0.isRecommendedForCurrentSA }
-        let grouped = Dictionary(grouping: remaining, by: \.groupTitle)
+        let grouped = Dictionary(grouping: remaining) { instrument in
+            safeDisplayText(instrument.groupTitle, fallback: "Sin situación asignada")
+        }
         let sortedTitles = grouped.keys.sorted { lhs, rhs in
             if lhs == "Sin situación asignada" { return false }
             if rhs == "Sin situación asignada" { return true }
@@ -2773,6 +2776,16 @@ private struct PlannerInstrumentCompactPicker: View {
             PlannerInstrumentCompactGroup(title: title, items: (grouped[title] ?? []).sorted(by: instrumentSort))
         })
         return groups
+    }
+
+    private var recommendedGroupTitles: Set<String> {
+        Set(groupedInstruments.filter { group in
+            group.items.contains(where: \.isRecommendedForCurrentSA)
+        }.map(\.title))
+    }
+
+    private var trimmedSearchText: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     var body: some View {
@@ -2817,29 +2830,52 @@ private struct PlannerInstrumentCompactPicker: View {
                         Text("No hay instrumentos que coincidan con la búsqueda.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                            .padding(.vertical, 6)
+                            .padding(.vertical, 8)
                     } else {
-                        ForEach(groupedInstruments) { group in
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(group.title)
-                                    .font(.caption.weight(.bold))
-                                    .foregroundStyle(.secondary)
-                                    .textCase(.uppercase)
-
-                                VStack(alignment: .leading, spacing: 4) {
-                                    ForEach(group.items) { instrument in
-                                        PlannerInstrumentCompactRow(
-                                            instrument: instrument,
-                                            isSelected: vm.composerDraft.selectedInstrumentIds.contains(instrument.id),
-                                            toggle: { vm.toggleComposerInstrument(instrument.id) }
-                                        )
-                                    }
+                        HStack(spacing: 16) {
+                            Button("Expandir recomendadas") {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                    expandedGroupTitles = recommendedGroupTitles
                                 }
                             }
+                            .buttonStyle(.borderless)
+
+                            Button("Contraer todo") {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                    expandedGroupTitles.removeAll()
+                                }
+                            }
+                            .buttonStyle(.borderless)
+
+                            Spacer()
+                        }
+                        .font(.caption.weight(.semibold))
+
+                        ForEach(groupedInstruments) { group in
+                            PlannerInstrumentDisclosureSection(
+                                title: safeDisplayText(group.title, fallback: "Sin situación asignada"),
+                                items: group.items,
+                                isExpanded: Binding(
+                                    get: {
+                                        !trimmedSearchText.isEmpty || expandedGroupTitles.contains(group.title)
+                                    },
+                                    set: { newValue in
+                                        if newValue {
+                                            expandedGroupTitles.insert(group.title)
+                                        } else {
+                                            expandedGroupTitles.remove(group.title)
+                                        }
+                                    }
+                                ),
+                                selectedIds: vm.composerDraft.selectedInstrumentIds,
+                                toggle: { instrument in
+                                    vm.toggleComposerInstrument(instrument.id)
+                                }
+                            )
                         }
                     }
                 }
-                .padding(12)
+                .padding(16)
                 .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -2848,11 +2884,26 @@ private struct PlannerInstrumentCompactPicker: View {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
+        .task {
+            if expandedGroupTitles.isEmpty {
+                expandedGroupTitles = recommendedGroupTitles
+            }
+        }
+        .appOnChange(of: vm.composerAvailableInstruments) { _ in
+            if expandedGroupTitles.isEmpty {
+                expandedGroupTitles = recommendedGroupTitles
+            }
+        }
     }
 
     private func instrumentSort(_ lhs: PlannerAssessmentInstrument, _ rhs: PlannerAssessmentInstrument) -> Bool {
         if lhs.kind != rhs.kind { return lhs.kind == .rubric }
-        return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+        return safeDisplayText(lhs.title, fallback: "Instrumento")
+            .localizedCaseInsensitiveCompare(safeDisplayText(rhs.title, fallback: "Instrumento")) == .orderedAscending
+    }
+
+    private func safeDisplayText(_ value: String, fallback: String) -> String {
+        plannerSafeDisplayText(value, fallback: fallback)
     }
 }
 
@@ -2861,6 +2912,107 @@ private struct PlannerInstrumentCompactGroup: Identifiable {
     let items: [PlannerAssessmentInstrument]
 
     var id: String { title }
+}
+
+private struct PlannerInstrumentDisclosureSection: View {
+    let title: String
+    let items: [PlannerAssessmentInstrument]
+    @Binding var isExpanded: Bool
+    let selectedIds: Set<String>
+    let toggle: (PlannerAssessmentInstrument) -> Void
+
+    private var selectedCount: Int {
+        items.filter { selectedIds.contains($0.id) }.count
+    }
+
+    private var recommendedCount: Int {
+        items.filter(\.isRecommendedForCurrentSA).count
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Button {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 16)
+                        .accessibilityHidden(true)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(plannerSafeDisplayText(title, fallback: "Sin situación asignada"))
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.primary)
+                            .textCase(.uppercase)
+                            .lineLimit(1)
+
+                        Text(sectionSubtitle)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    if selectedCount > 0 {
+                        Text("\(selectedCount) seleccionados")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(EvaluationDesign.accent)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(EvaluationDesign.accent.opacity(0.12), in: Capsule())
+                    }
+
+                    Text("\(items.count)")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 8)
+                .background(
+                    isExpanded ? EvaluationDesign.surfaceSoft : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                )
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                VStack(spacing: 0) {
+                    ForEach(items) { instrument in
+                        PlannerInstrumentCompactRow(
+                            instrument: instrument,
+                            isSelected: selectedIds.contains(instrument.id),
+                            toggle: { toggle(instrument) }
+                        )
+                    }
+                }
+                .padding(.top, 8)
+                .padding(.bottom, 8)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(8)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(EvaluationDesign.border, lineWidth: 0.5)
+        }
+        .shadow(color: EvaluationDesign.shadow, radius: 12, x: 0, y: 4)
+    }
+
+    private var sectionSubtitle: String {
+        if selectedCount > 0 {
+            return "\(selectedCount) de \(items.count) seleccionados"
+        }
+        if recommendedCount > 0 {
+            return "\(recommendedCount) recomendados para esta SA"
+        }
+        return "\(items.count) instrumentos"
+    }
 }
 
 private struct PlannerInstrumentCompactRow: View {
@@ -2877,7 +3029,7 @@ private struct PlannerInstrumentCompactRow: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
-                        Text(instrument.title)
+                        Text(safeTitle)
                             .font(.callout.weight(.semibold))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
@@ -2892,7 +3044,7 @@ private struct PlannerInstrumentCompactRow: View {
                         }
                     }
 
-                    Text(instrument.subtitle)
+                    Text(safeSubtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -2914,6 +3066,32 @@ private struct PlannerInstrumentCompactRow: View {
         }
         .buttonStyle(.plain)
     }
+
+    private var safeTitle: String {
+        plannerSafeDisplayText(instrument.title, fallback: "Instrumento")
+    }
+
+    private var safeSubtitle: String {
+        plannerSafeDisplayText(instrument.subtitle, fallback: instrument.kind == .rubric ? "Rúbrica" : "Evaluación")
+    }
+}
+
+private func plannerSafeDisplayText(_ value: String, fallback: String) -> String {
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    let upper = trimmed.uppercased()
+
+    if trimmed.isEmpty ||
+        upper.contains("EVALUATION(") ||
+        upper.contains("CLASSID=") ||
+        upper.contains("RUBRICID=") ||
+        upper.contains("TRACE=") ||
+        upper.contains("AUDITTRACE") ||
+        upper.contains("UPDATEDAT=") ||
+        upper.contains("CREATEDAT=") {
+        return fallback
+    }
+
+    return trimmed
 }
 
 struct PlannerSessionComposerSheet: View {

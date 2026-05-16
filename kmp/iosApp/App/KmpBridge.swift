@@ -1180,6 +1180,30 @@ final class KmpBridge: ObservableObject {
         cachedUnits.first(where: { $0.id == teachingUnitId })?.name
     }
 
+    private func cleanPlannerInstrumentText(_ raw: String?, fallback: String) -> String {
+        let trimmed = raw?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\n", with: " ")
+            .split(separator: " ")
+            .joined(separator: " ") ?? ""
+        guard !trimmed.isEmpty else { return fallback }
+
+        let upper = trimmed.uppercased()
+        let looksLikeObjectDump =
+            upper.contains("EVALUATION(") ||
+            upper.contains("CLASSID=") ||
+            upper.contains("RUBRICID=") ||
+            upper.contains("TRACE=") ||
+            upper.contains("AUDITTRACE") ||
+            upper.contains("UPDATEDAT=") ||
+            upper.contains("CREATEDAT=")
+
+        if looksLikeObjectDump {
+            return fallback
+        }
+        return String(trimmed.prefix(90))
+    }
+
     private func plannerInstrumentGroupTitle(
         teachingUnitId: Int64?,
         evaluationDescription: String?,
@@ -1187,11 +1211,11 @@ final class KmpBridge: ObservableObject {
     ) -> String {
         if let teachingUnitId,
            let unitName = plannerTeachingUnitName(for: teachingUnitId, cachedUnits: cachedUnits) {
-            return unitName
+            return cleanPlannerInstrumentText(unitName, fallback: "Sin situación asignada")
         }
-        let trimmedDescription = evaluationDescription?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if !trimmedDescription.isEmpty {
-            return trimmedDescription
+        let cleanDescription = cleanPlannerInstrumentText(evaluationDescription, fallback: "")
+        if !cleanDescription.isEmpty {
+            return cleanDescription
         }
         return "Sin situación asignada"
     }
@@ -5145,13 +5169,14 @@ final class KmpBridge: ObservableObject {
                 evaluationDescription: evaluation.description_,
                 cachedUnits: classUnits
             )
+            let cleanTitle = cleanPlannerInstrumentText(evaluation.name, fallback: "Evaluación")
+            let cleanType = cleanPlannerInstrumentText(evaluation.type, fallback: "Evaluación")
+            let cleanDescription = cleanPlannerInstrumentText(evaluation.description_, fallback: "")
             return PlannerAssessmentInstrument(
                 kind: .evaluation,
                 rawId: evaluation.id,
-                title: evaluation.name,
-                subtitle: evaluation.description_?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-                    ? "\(evaluation.type) · \(evaluation.description_ ?? "")"
-                    : evaluation.type,
+                title: cleanTitle,
+                subtitle: cleanDescription.isEmpty ? cleanType : "\(cleanType) · \(cleanDescription)",
                 classId: classId,
                 teachingUnitId: nil,
                 evaluationId: evaluation.id,
@@ -5186,11 +5211,12 @@ final class KmpBridge: ObservableObject {
                 cachedUnits: classUnits
             )
             let resolvedEvaluationId = linkedEvaluations.first?.id
+            let cleanTitle = cleanPlannerInstrumentText(rubric.name, fallback: "Rúbrica")
             return PlannerAssessmentInstrument(
                 kind: .rubric,
                 rawId: rubric.id,
-                title: rubric.name,
-                subtitle: groupTitle == "Sin situación asignada" ? "Rúbrica" : groupTitle,
+                title: cleanTitle,
+                subtitle: groupTitle == "Sin situación asignada" ? "Rúbrica" : cleanPlannerInstrumentText(groupTitle, fallback: "Rúbrica"),
                 classId: classId,
                 teachingUnitId: rubricTeachingUnitId,
                 evaluationId: resolvedEvaluationId,
@@ -5213,7 +5239,15 @@ final class KmpBridge: ObservableObject {
             return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
         }
 
-        return (evaluationInstruments + prioritized).sorted {
+        var seenInstrumentIds = Set<String>()
+        let uniqueInstruments = (evaluationInstruments + prioritized).filter { instrument in
+            seenInstrumentIds.insert(instrument.id).inserted
+        }
+
+        return uniqueInstruments.sorted {
+            if $0.groupTitle != $1.groupTitle {
+                return $0.groupTitle.localizedCaseInsensitiveCompare($1.groupTitle) == .orderedAscending
+            }
             if $0.kind != $1.kind { return $0.kind == .rubric }
             return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
         }

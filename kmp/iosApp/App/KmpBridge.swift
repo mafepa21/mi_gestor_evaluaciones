@@ -4350,6 +4350,13 @@ final class KmpBridge: ObservableObject {
         }
     }
 
+    func saveAverageConfiguration(updates: [NotebookAverageColumnConfig]) {
+        notebookViewModel.saveAverageConfiguration(updates: updates)
+        if let classId = notebookViewModel.currentClassId?.int64Value {
+            scheduleNotebookSnapshotSync(forClassId: classId)
+        }
+    }
+
     func reorderNotebookColumn(columnId: String, targetColumnId: String) {
         notebookViewModel.reorderColumns(columnId: columnId, targetColumnId: targetColumnId)
         if let classId = notebookViewModel.currentClassId?.int64Value {

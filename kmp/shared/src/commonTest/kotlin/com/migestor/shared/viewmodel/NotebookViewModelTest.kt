@@ -3,6 +3,7 @@ package com.migestor.shared.viewmodel
 import com.migestor.shared.domain.Evaluation
 import com.migestor.shared.domain.Grade
 import com.migestor.shared.domain.NotebookCell
+import com.migestor.shared.domain.NotebookAverageColumnConfig
 import com.migestor.shared.domain.NotebookColumnDefinition
 import com.migestor.shared.domain.NotebookColumnCategory
 import com.migestor.shared.domain.NotebookInstrumentKind
@@ -452,6 +453,46 @@ class NotebookViewModelTest {
     }
 
     @Test
+    fun `saveAverageConfiguration updates average settings without saveColumn path`() = runTest {
+        val classId = 1L
+        val repository = FakeNotebookRepository(
+            snapshot = NotebookSheet(
+                classId = classId,
+                tabs = emptyList(),
+                columns = listOf(
+                    NotebookColumnDefinition(
+                        id = "custom_numeric",
+                        title = "Proyecto",
+                        type = NotebookColumnType.NUMERIC,
+                        evaluationId = null,
+                        weight = 10.0,
+                        countsTowardAverage = false,
+                    )
+                ),
+                rows = emptyList(),
+            )
+        )
+        val viewModel = createViewModel(repository)
+
+        viewModel.selectClass(classId)
+        advanceUntilIdle()
+        viewModel.saveAverageConfiguration(
+            listOf(
+                NotebookAverageColumnConfig(
+                    columnId = "custom_numeric",
+                    countsTowardAverage = true,
+                    weight = 35.0,
+                )
+            )
+        )
+        advanceUntilIdle()
+
+        assertEquals(1, repository.savedAverageConfigurations.size)
+        assertEquals(emptyList(), repository.savedColumns)
+        assertEquals("custom_numeric", repository.savedAverageConfigurations.single().single().columnId)
+    }
+
+    @Test
     fun `saveWorkGroup keeps names unique within the same tab`() = runTest {
         val classId = 1L
         val tabs = listOf(NotebookTab(id = "TAB_1", title = "Evaluación"))
@@ -499,6 +540,7 @@ private class FakeNotebookRepository(
     private val snapshot: NotebookSheet,
 ) : NotebookRepository {
     val savedColumns = mutableListOf<NotebookColumnDefinition>()
+    val savedAverageConfigurations = mutableListOf<List<NotebookAverageColumnConfig>>()
     val savedWorkGroups = mutableListOf<NotebookWorkGroup>()
     val upsertGradeCalls = mutableListOf<UpsertGradeCall>()
 
@@ -513,6 +555,9 @@ private class FakeNotebookRepository(
     override suspend fun deleteTab(tabId: String) = Unit
     override suspend fun saveColumn(classId: Long, column: NotebookColumnDefinition) {
         savedColumns += column
+    }
+    override suspend fun saveAverageConfiguration(classId: Long, updates: List<NotebookAverageColumnConfig>) {
+        savedAverageConfigurations += updates
     }
     override suspend fun previewDeleteColumn(classId: Long, columnId: String): com.migestor.shared.domain.NotebookDeletionImpact =
         com.migestor.shared.domain.NotebookDeletionImpact(

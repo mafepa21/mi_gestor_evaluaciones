@@ -130,6 +130,10 @@ class NotebookRepositorySqlDelight(
         notebookConfigRepository.saveColumn(classId, column)
     }
 
+    override suspend fun saveAverageConfiguration(classId: Long, updates: List<NotebookAverageColumnConfig>) {
+        notebookConfigRepository.saveAverageConfiguration(classId, updates)
+    }
+
     override suspend fun previewDeleteColumn(classId: Long, columnId: String): NotebookDeletionImpact = withContext(Dispatchers.Default) {
         val columnRow = db.appDatabaseQueries.selectColumnById(columnId).executeAsOneOrNull()
         val columnIds = columnIdsLinkedTo(columnId, columnRow?.evaluation_id)

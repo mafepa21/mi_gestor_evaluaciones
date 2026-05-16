@@ -179,6 +179,7 @@ private class RubricsTestFakeNotebookRepository : NotebookRepository {
     override suspend fun saveTab(classId: Long, tab: NotebookTab) = Unit
     override suspend fun deleteTab(tabId: String) = Unit
     override suspend fun saveColumn(classId: Long, column: NotebookColumnDefinition) = Unit
+    override suspend fun saveAverageConfiguration(classId: Long, updates: List<NotebookAverageColumnConfig>) = Unit
     override suspend fun previewDeleteColumn(classId: Long, columnId: String): NotebookDeletionImpact =
         NotebookDeletionImpact(columnId, columnId, NotebookDeletionTargetKind.COLUMN, 1, 0, 0, 0, false)
     override suspend fun deleteColumn(columnId: String) = Unit

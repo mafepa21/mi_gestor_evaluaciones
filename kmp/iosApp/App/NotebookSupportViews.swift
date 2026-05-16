@@ -218,7 +218,7 @@ struct NotebookAverageExplanationView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(c.title)
                     .font(.system(size: 13, weight: .medium))
-                Text(String(format: "Peso: %.0f%%", c.weight * 100))
+                Text(String(format: "Peso: %.0f%%", c.weight))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

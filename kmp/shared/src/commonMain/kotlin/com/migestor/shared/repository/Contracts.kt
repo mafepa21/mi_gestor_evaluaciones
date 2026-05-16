@@ -145,6 +145,7 @@ interface NotebookRepository {
     suspend fun saveTab(classId: Long, tab: NotebookTab)
     suspend fun deleteTab(tabId: String)
     suspend fun saveColumn(classId: Long, column: NotebookColumnDefinition)
+    suspend fun saveAverageConfiguration(classId: Long, updates: List<NotebookAverageColumnConfig>)
     suspend fun previewDeleteColumn(classId: Long, columnId: String): NotebookDeletionImpact
     suspend fun deleteColumn(columnId: String)
     suspend fun listColumnCategories(classId: Long, tabId: String? = null): List<NotebookColumnCategory>

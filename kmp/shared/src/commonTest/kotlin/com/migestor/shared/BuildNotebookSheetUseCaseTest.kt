@@ -7,6 +7,7 @@ import com.migestor.shared.domain.NotebookColumnType
 import com.migestor.shared.domain.NotebookCellAnnotation
 import com.migestor.shared.domain.NotebookEmptyCellPolicy
 import com.migestor.shared.domain.NotebookAverageExclusionReason
+import com.migestor.shared.domain.NotebookColumnVisibility
 import com.migestor.shared.domain.NotebookInstrumentKind
 import com.migestor.shared.domain.NotebookScaleKind
 import com.migestor.shared.domain.NotebookTab
@@ -407,6 +408,64 @@ class BuildNotebookSheetUseCaseTest {
         )
 
         assertEquals(9.0, sheet.rows.first().weightedAverage)
+    }
+
+    @Test
+    fun `hidden and rubric columns can count while archived columns are excluded`() = runTest {
+        val classId = 1L
+        val student = Student(id = 1, firstName = "Ana", lastName = "Lopez")
+        val evaluations = emptyList<Evaluation>()
+        val grades = listOf(
+            Grade(id = 1, classId = classId, studentId = 1, columnId = "hidden_numeric", evaluationId = null, value = 6.0),
+            Grade(id = 2, classId = classId, studentId = 1, columnId = "rubric_final", evaluationId = null, value = 9.0),
+            Grade(id = 3, classId = classId, studentId = 1, columnId = "archived_numeric", evaluationId = null, value = 1.0),
+        )
+
+        val useCase = BuildNotebookSheetUseCase(
+            getNotebookUseCase = GetNotebookUseCase(
+                classesRepository = FakeClassesRepository2(student, classId),
+                evaluationsRepository = FakeEvaluationsRepository2(evaluations),
+                gradesRepository = FakeGradesRepository2(grades),
+                notebookCellsRepository = FakeNotebookCellsRepository2()
+            )
+        )
+
+        val sheet = useCase.build(
+            classId = classId,
+            evaluations = evaluations,
+            students = listOf(student),
+            tabs = listOf(NotebookTab(id = "eval", title = "Evaluación", order = 0)),
+            configuredColumns = listOf(
+                NotebookColumnDefinition(
+                    id = "hidden_numeric",
+                    title = "Oculta",
+                    type = NotebookColumnType.NUMERIC,
+                    visibility = NotebookColumnVisibility.HIDDEN,
+                    isHidden = true,
+                    weight = 2.0,
+                ),
+                NotebookColumnDefinition(
+                    id = "rubric_final",
+                    title = "Rúbrica",
+                    type = NotebookColumnType.RUBRIC,
+                    weight = 1.0,
+                ),
+                NotebookColumnDefinition(
+                    id = "archived_numeric",
+                    title = "Archivada",
+                    type = NotebookColumnType.NUMERIC,
+                    visibility = NotebookColumnVisibility.ARCHIVED,
+                    weight = 100.0,
+                ),
+            )
+        )
+
+        val explanation = sheet.rows.first().averageExplanation
+        assertEquals(7.0, sheet.rows.first().weightedAverage)
+        assertEquals(3.0, explanation?.totalIncludedWeight)
+        assertTrue(explanation?.included?.any { it.columnId == "hidden_numeric" } == true)
+        assertTrue(explanation?.included?.any { it.columnId == "rubric_final" } == true)
+        assertTrue(explanation?.excluded?.none { it.columnId == "archived_numeric" } == true)
     }
 
     @Test

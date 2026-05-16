@@ -12,11 +12,15 @@ struct RubricsWorkspaceView: View {
 
     @State var searchText = ""
     @State var selectedFilter = "Todas"
+    @State var selectedTeachingUnitId: Int64?
     @State var selectedRubricId: Int64?
     @State var usageSummary: KmpBridge.RubricUsageSnapshot?
+    @State var teachingUnits: [TeachingUnit] = []
+    @State var expandedGroupKeys: Set<String> = []
+    @State var expandedCriterionIds: Set<Int64> = []
 
     var availableFilters: [String] {
-        ["Todas", "Vinculadas", "Sin vincular", "Multiclase"]
+        ["Todas", "Vinculadas", "Sin vincular", "Con evaluaciones activas", "Sin uso"]
     }
 
     var baseRubrics: [RubricDetail] {
@@ -34,14 +38,28 @@ struct RubricsWorkspaceView: View {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return baseRubrics.filter { detail in
             let linkedClasses = bridge.rubricClassLinks[detail.rubric.id] ?? []
+            let directClassId = detail.rubric.classId?.int64Value
+            let matchesClass = selectedClassId == nil
+                || directClassId == selectedClassId
+                || linkedClasses.contains(selectedClassId ?? -1)
+            let matchesTeachingUnit: Bool = {
+                guard let selectedTeachingUnitId else { return true }
+                if selectedTeachingUnitId == Int64.min {
+                    return detail.rubric.teachingUnitId == nil
+                }
+                return detail.rubric.teachingUnitId?.int64Value == selectedTeachingUnitId
+            }()
             let matchesFilter: Bool = {
+                let activeEvaluations = evaluationCountEstimate(for: detail)
                 switch selectedFilter {
                 case "Vinculadas":
                     return !linkedClasses.isEmpty
                 case "Sin vincular":
                     return linkedClasses.isEmpty
-                case "Multiclase":
-                    return linkedClasses.count > 1
+                case "Con evaluaciones activas":
+                    return activeEvaluations > 0
+                case "Sin uso":
+                    return linkedClasses.isEmpty && activeEvaluations == 0
                 default:
                     return true
                 }
@@ -50,13 +68,15 @@ struct RubricsWorkspaceView: View {
             let matchesQuery = query.isEmpty || [
                 detail.rubric.name,
                 detail.rubric.description_ ?? "",
+                className(for: detail),
+                teachingUnitName(for: detail),
                 detail.criteria.map { sanitizeDomainText($0.criterion.description, fallback: "criterio") }.joined(separator: " ")
             ]
             .joined(separator: " ")
             .lowercased()
             .contains(query)
 
-            return matchesFilter && matchesQuery
+            return matchesClass && matchesTeachingUnit && matchesFilter && matchesQuery
         }
         .sorted { $0.rubric.name.localizedCaseInsensitiveCompare($1.rubric.name) == .orderedAscending }
     }
@@ -70,6 +90,27 @@ struct RubricsWorkspaceView: View {
         let linked = filteredRubrics.filter { !(bridge.rubricClassLinks[$0.rubric.id] ?? []).isEmpty }.count
         let avg = filteredRubrics.isEmpty ? 0 : Double(filteredRubrics.map { $0.criteria.count }.reduce(0, +)) / Double(filteredRubrics.count)
         return (total, linked, avg)
+    }
+
+    var availableTeachingUnits: [TeachingUnit] {
+        let usedIds = Set(baseRubrics.compactMap { $0.rubric.teachingUnitId?.int64Value })
+        return teachingUnits
+            .filter { usedIds.contains($0.id) }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    var groupedRubrics: [(key: String, title: String, rubrics: [RubricDetail])] {
+        let groups = Dictionary(grouping: filteredRubrics) { detail in
+            (detail.rubric.teachingUnitId?.int64Value).map { "unit-\($0)" } ?? "without-unit"
+        }
+        return groups.map { key, rubrics in
+            (key: key, title: rubrics.first.map(teachingUnitName(for:)) ?? "Sin situación asignada", rubrics: rubrics)
+        }
+        .sorted { lhs, rhs in
+            if lhs.key == "without-unit" { return false }
+            if rhs.key == "without-unit" { return true }
+            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+        }
     }
 
     var body: some View {
@@ -87,6 +128,23 @@ struct RubricsWorkspaceView: View {
                     .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
 
                     HStack(spacing: 10) {
+                        Picker("Curso", selection: $selectedClassId) {
+                            Text("Todas").tag(Optional<Int64>.none)
+                            ForEach(bridge.classes, id: \.id) { schoolClass in
+                                Text(schoolClass.name).tag(Optional(schoolClass.id))
+                            }
+                        }
+                        .pickerStyle(.menu)
+
+                        Picker("SA", selection: $selectedTeachingUnitId) {
+                            Text("Todas las SA").tag(Optional<Int64>.none)
+                            ForEach(availableTeachingUnits, id: \.id) { unit in
+                                Text(unit.name).tag(Optional(unit.id))
+                            }
+                            Text("Sin SA").tag(Optional(Int64.min))
+                        }
+                        .pickerStyle(.menu)
+
                         Picker("Filtro", selection: $selectedFilter) {
                             ForEach(availableFilters, id: \.self) { filter in
                                 Text(filter).tag(filter)
@@ -103,28 +161,38 @@ struct RubricsWorkspaceView: View {
                         }
                         .buttonStyle(.borderedProminent)
                     }
-
-                    HStack(spacing: 10) {
-                        WorkspaceCompactStat(title: "Total", value: "\(rubricMetrics.total)", tint: .blue)
-                        WorkspaceCompactStat(title: "Vinculadas", value: "\(rubricMetrics.linked)", tint: .green)
-                        WorkspaceCompactStat(title: "Criterios", value: String(format: "%.1f", rubricMetrics.avgCriteria), tint: .orange)
-                    }
                 }
                 .padding(16)
 
-                List(filteredRubrics, id: \.rubric.id) { rubric in
-                    Button {
-                        selectedRubricId = rubric.rubric.id
-                    } label: {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(rubric.rubric.name)
-                                .font(.headline)
-                            Text("\(rubric.criteria.count) criterios · \((bridge.rubricClassLinks[rubric.rubric.id] ?? []).count) clases")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
+                List {
+                    ForEach(groupedRubrics, id: \.key) { group in
+                        DisclosureGroup(
+                            isExpanded: Binding(
+                                get: { expandedGroupKeys.contains(group.key) },
+                                set: { isExpanded in
+                                    if isExpanded {
+                                        expandedGroupKeys.insert(group.key)
+                                    } else {
+                                        expandedGroupKeys.remove(group.key)
+                                    }
+                                }
+                            )
+                        ) {
+                            ForEach(group.rubrics, id: \.rubric.id) { rubric in
+                                rubricListRow(rubric)
+                            }
+                        } label: {
+                            HStack {
+                                Text(group.title)
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Text("\(group.rubrics.count)")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
-                    .buttonStyle(.plain)
                 }
                 .listStyle(.plain)
             }
@@ -139,44 +207,39 @@ struct RubricsWorkspaceView: View {
                         VStack(alignment: .leading, spacing: 18) {
                             WorkspaceInspectorHero(
                                 title: presentation.title,
-                                subtitle: presentation.subtitle
+                                subtitle: "\(className(for: rubric)) · \(teachingUnitName(for: rubric))"
                             )
 
-                            let linkedClasses = bridge.rubricClassLinks[rubric.rubric.id] ?? []
-                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 16)], spacing: 16) {
-                                WorkspaceMetricCard(title: "Criterios", value: "\(rubric.criteria.count)", systemImage: "list.bullet.rectangle")
-                                WorkspaceMetricCard(
-                                    title: "Niveles",
-                                    value: "\(rubric.criteria.map { $0.levels.count }.max() ?? 0)",
-                                    systemImage: "chart.bar.xaxis"
-                                )
-                                WorkspaceMetricCard(title: "Clases", value: "\(linkedClasses.count)", systemImage: "rectangle.3.group")
-                                WorkspaceMetricCard(
-                                    title: "Evaluaciones",
-                                    value: "\(usageSummary?.evaluationCount ?? 0)",
-                                    systemImage: "chart.bar.doc.horizontal"
-                                )
+                            HStack(spacing: 12) {
+                                primaryActionButton(for: rubric)
+                                Menu {
+                                    Button("Editar", systemImage: "square.and.pencil") {
+                                        onEditRubric(rubric)
+                                    }
+                                    Button("Asignar a clase", systemImage: "rectangle.portrait.and.arrow.right") {
+                                        bridge.startAssignRubric(rubric.rubric)
+                                    }
+                                    Button("Evaluación masiva", systemImage: "square.grid.3x3") {
+                                        onOpenModule(.evaluationHub, selectedClassId, nil)
+                                    }
+                                    Button("Eliminar", systemImage: "trash", role: .destructive) {
+                                        bridge.deleteRubric(id: rubric.rubric.id)
+                                    }
+                                } label: {
+                                    Label("Más", systemImage: "ellipsis.circle")
+                                }
+                                .buttonStyle(.bordered)
                             }
+
+                            compactUsageLine(for: rubric)
+
+                            notebookUsageBlock(for: rubric)
 
                             VStack(alignment: .leading, spacing: 10) {
-                                Text("Criterios y niveles")
+                                Text("Criterios")
                                     .font(.headline)
                                 ForEach(presentation.criteria) { item in
-                                    rubricCriterionCard(item)
-                                }
-                            }
-
-                            if !linkedClasses.isEmpty {
-                                VStack(alignment: .leading, spacing: 10) {
-                                    Text("Uso en clases")
-                                        .font(.headline)
-                                    WorkspaceFlowLayout(spacing: 10) {
-                                        ForEach(Array(linkedClasses).sorted(), id: \.self) { classId in
-                                            if let schoolClass = bridge.classes.first(where: { $0.id == classId }) {
-                                                WorkspaceTag(text: schoolClass.name, systemImage: "rectangle.3.group")
-                                            }
-                                        }
-                                    }
+                                    rubricCriterionSummary(item)
                                 }
                             }
 
@@ -205,23 +268,6 @@ struct RubricsWorkspaceView: View {
                                     title: "Impacto evaluativo",
                                     content: "Todavía no hay evaluaciones activas enlazadas a esta rúbrica."
                                 )
-                            }
-
-                            HStack(spacing: 12) {
-                                Button("Asignar a clase") {
-                                    bridge.startAssignRubric(rubric.rubric)
-                                }
-                                .buttonStyle(.borderedProminent)
-
-                                Button("Editar") {
-                                    onEditRubric(rubric)
-                                }
-                                .buttonStyle(.bordered)
-
-                                Button("Ir a evaluación") {
-                                    onOpenModule(.evaluationHub, selectedClassId, nil)
-                                }
-                                .buttonStyle(.bordered)
                             }
                         }
                         .padding(24)
@@ -255,23 +301,38 @@ struct RubricsWorkspaceView: View {
                 selectedRubricId = filteredRubrics.first?.rubric.id
             }
             await reloadUsageSummary()
+            await reloadTeachingUnits()
+            ensureExpandedGroups()
         }
         .appOnChange(of: selectedClassId) { _ in
             if selectedRubricId == nil || !filteredRubrics.contains(where: { $0.rubric.id == selectedRubricId }) {
                 selectedRubricId = filteredRubrics.first?.rubric.id
             }
-            Task { await reloadUsageSummary() }
+            ensureExpandedGroups()
+            Task {
+                await reloadUsageSummary()
+                await reloadTeachingUnits()
+            }
         }
         .appOnChange(of: selectedFilter) { _ in
             if selectedRubricId == nil || !filteredRubrics.contains(where: { $0.rubric.id == selectedRubricId }) {
                 selectedRubricId = filteredRubrics.first?.rubric.id
             }
+            ensureExpandedGroups()
             Task { await reloadUsageSummary() }
         }
         .appOnChange(of: searchText) { _ in
             if selectedRubricId == nil || !filteredRubrics.contains(where: { $0.rubric.id == selectedRubricId }) {
                 selectedRubricId = filteredRubrics.first?.rubric.id
             }
+            ensureExpandedGroups()
+            Task { await reloadUsageSummary() }
+        }
+        .appOnChange(of: selectedTeachingUnitId) { _ in
+            if selectedRubricId == nil || !filteredRubrics.contains(where: { $0.rubric.id == selectedRubricId }) {
+                selectedRubricId = filteredRubrics.first?.rubric.id
+            }
+            ensureExpandedGroups()
             Task { await reloadUsageSummary() }
         }
         .appOnChange(of: selectedRubricId) { _ in
@@ -279,19 +340,132 @@ struct RubricsWorkspaceView: View {
         }
     }
 
-    func rubricCriterionCard(_ item: RubricInspectorModel.CriterionModel) -> some View {
-        let background = appCardBackground(for: colorScheme)
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(item.title)
-                    .font(.subheadline.weight(.bold))
-                Spacer()
-                WorkspaceTag(text: "Peso \(item.weightText)", systemImage: "scalemass")
+    func rubricListRow(_ rubric: RubricDetail) -> some View {
+        Button {
+            selectedRubricId = rubric.rubric.id
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(rubric.rubric.name)
+                        .font(.headline)
+                        .lineLimit(1)
+                    Spacer()
+                    WorkspaceTag(text: rubricStateLabel(for: rubric), systemImage: rubricStateIcon(for: rubric))
+                }
+                Text("\(className(for: rubric)) · \(teachingUnitName(for: rubric))")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Text("\(rubric.criteria.count) criterios · \(levelCount(for: rubric)) niveles · \(linkedClassIds(for: rubric).count) clases")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
+            .padding(.vertical, 8)
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    func primaryActionButton(for rubric: RubricDetail) -> some View {
+        let linkedCount = linkedClassIds(for: rubric).count
+        let evaluationCount = usageSummary?.rubricId == rubric.rubric.id ? usageSummary?.evaluationCount ?? 0 : evaluationCountEstimate(for: rubric)
+        if linkedCount == 0 {
+            Button {
+                bridge.startAssignRubric(rubric.rubric)
+            } label: {
+                Label("Asignar al cuaderno", systemImage: "rectangle.portrait.and.arrow.right")
+            }
+            .buttonStyle(.borderedProminent)
+        } else if evaluationCount > 0 {
+            Button {
+                onOpenModule(.evaluationHub, selectedClassId, nil)
+            } label: {
+                Label(evaluationCount > 1 ? "Continuar evaluación" : "Evaluar grupo", systemImage: "square.grid.3x3")
+            }
+            .buttonStyle(.borderedProminent)
+        } else {
+            Button {
+                bridge.startAssignRubric(rubric.rubric)
+            } label: {
+                Label("Completar vínculo", systemImage: "link.badge.plus")
+            }
+            .buttonStyle(.borderedProminent)
+        }
+    }
+
+    func compactUsageLine(for rubric: RubricDetail) -> some View {
+        WorkspaceFlowLayout(spacing: 10) {
+            WorkspaceTag(text: "\(rubric.criteria.count) criterios", systemImage: "list.bullet.rectangle")
+            WorkspaceTag(text: "\(levelCount(for: rubric)) niveles", systemImage: "chart.bar.xaxis")
+            WorkspaceTag(text: "\(usageSummary?.classCount ?? linkedClassIds(for: rubric).count) clases", systemImage: "rectangle.3.group")
+            WorkspaceTag(text: "\(usageSummary?.evaluationCount ?? evaluationCountEstimate(for: rubric)) evaluaciones", systemImage: "chart.bar.doc.horizontal")
+        }
+    }
+
+    func notebookUsageBlock(for rubric: RubricDetail) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Uso en Cuaderno")
+                    .font(.headline)
+                Spacer()
+                WorkspaceTag(text: rubricStateLabel(for: rubric), systemImage: rubricStateIcon(for: rubric))
+            }
+
+            if let usageSummary, !usageSummary.evaluationUsages.isEmpty {
+                ForEach(Array(usageSummary.evaluationUsages.prefix(4))) { usage in
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(usage.evaluationName)
+                                .font(.subheadline.weight(.bold))
+                            Text("\(usage.className) · \(usage.evaluationType)")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Text("Peso \(String(format: "%.1f", usage.weight))")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(12)
+                    .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+            } else {
+                WorkspaceDetailBlock(
+                    title: "Cuaderno",
+                    content: linkedClassIds(for: rubric).isEmpty ? "Sin vínculo activo. Asigna la rúbrica para crear uso en clase." : "Asignada a clase, pendiente de evaluación activa."
+                )
+            }
+        }
+    }
+
+    func rubricCriterionSummary(_ item: RubricInspectorModel.CriterionModel) -> some View {
+        let background = appCardBackground(for: colorScheme)
+        return DisclosureGroup(
+            isExpanded: Binding(
+                get: { expandedCriterionIds.contains(item.id) },
+                set: { isExpanded in
+                    if isExpanded {
+                        expandedCriterionIds.insert(item.id)
+                    } else {
+                        expandedCriterionIds.remove(item.id)
+                    }
+                }
+            )
+        ) {
             WorkspaceFlowLayout(spacing: 8) {
                 ForEach(item.levels, id: \.self) { level in
                     WorkspaceTag(text: level, systemImage: "checkmark.circle")
                 }
+            }
+            .padding(.top, 8)
+        } label: {
+            HStack {
+                Text(item.title)
+                    .font(.subheadline.weight(.bold))
+                    .lineLimit(1)
+                Spacer()
+                WorkspaceTag(text: "Peso \(item.weightText)", systemImage: "scalemass")
             }
         }
         .padding(12)
@@ -309,6 +483,80 @@ struct RubricsWorkspaceView: View {
             return
         }
         usageSummary = try? await bridge.loadRubricUsage(rubricId: rubricId)
+    }
+
+    @MainActor
+    func reloadTeachingUnits() async {
+        teachingUnits = (try? await bridge.plannerTeachingUnits(for: selectedClassId)) ?? []
+    }
+
+    func ensureExpandedGroups() {
+        expandedGroupKeys = Set(groupedRubrics.map(\.key))
+    }
+
+    func linkedClassIds(for rubric: RubricDetail) -> Set<Int64> {
+        var ids = bridge.rubricClassLinks[rubric.rubric.id] ?? []
+        if let classId = rubric.rubric.classId?.int64Value {
+            ids.insert(classId)
+        }
+        return ids
+    }
+
+    func evaluationCountEstimate(for rubric: RubricDetail) -> Int {
+        if usageSummary?.rubricId == rubric.rubric.id {
+            return usageSummary?.evaluationCount ?? 0
+        }
+        return bridge.evaluationsInClass.filter { $0.rubricId?.int64Value == rubric.rubric.id }.count
+    }
+
+    func levelCount(for rubric: RubricDetail) -> Int {
+        rubric.criteria.map { $0.levels.count }.max() ?? 0
+    }
+
+    func className(for rubric: RubricDetail) -> String {
+        if let classId = rubric.rubric.classId?.int64Value,
+           let schoolClass = bridge.classes.first(where: { $0.id == classId }) {
+            return schoolClass.name
+        }
+        let linked = linkedClassIds(for: rubric)
+        if linked.count == 1,
+           let classId = linked.first,
+           let schoolClass = bridge.classes.first(where: { $0.id == classId }) {
+            return schoolClass.name
+        }
+        if linked.count > 1 {
+            return "\(linked.count) clases"
+        }
+        return "Sin clase asociada"
+    }
+
+    func teachingUnitName(for rubric: RubricDetail) -> String {
+        guard let teachingUnitId = rubric.rubric.teachingUnitId?.int64Value else {
+            return "Sin situación asignada"
+        }
+        return teachingUnits.first(where: { $0.id == teachingUnitId })?.name ?? "SA #\(teachingUnitId)"
+    }
+
+    func rubricStateLabel(for rubric: RubricDetail) -> String {
+        let linkedCount = linkedClassIds(for: rubric).count
+        let evaluationCount = evaluationCountEstimate(for: rubric)
+        if evaluationCount > 0 { return "En evaluación" }
+        if linkedCount > 0 { return "Asignada" }
+        if rubric.rubric.classId == nil && rubric.rubric.teachingUnitId == nil { return "Plantilla" }
+        return "Sin uso"
+    }
+
+    func rubricStateIcon(for rubric: RubricDetail) -> String {
+        switch rubricStateLabel(for: rubric) {
+        case "En evaluación":
+            return "clock.badge.checkmark"
+        case "Asignada":
+            return "checkmark.circle"
+        case "Plantilla":
+            return "doc.on.doc"
+        default:
+            return "circle"
+        }
     }
 }
 
@@ -1720,4 +1968,3 @@ struct BulkLOMLOEGenerationSheet: View {
         }
     }
 }
-

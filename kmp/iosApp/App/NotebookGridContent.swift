@@ -92,12 +92,25 @@ struct NotebookGridContent<
                 ].joined(separator: ":")
             }
             .joined(separator: "|")
+        let visibleGradeDigest = item.row.persistedGrades
+            .filter { visibleColumnIds.contains($0.columnId) }
+            .sorted { $0.columnId < $1.columnId }
+            .map { grade in
+                [
+                    grade.columnId,
+                    grade.value.map { String(format: "%.4f", $0.doubleValue) } ?? "",
+                    grade.evidencePath ?? "",
+                    grade.rubricSelections ?? ""
+                ].joined(separator: ":")
+            }
+            .joined(separator: "|")
         let average = item.row.weightedAverage.map { String(format: "%.2f", $0.doubleValue) } ?? "nil"
         return [
             "\(item.student.id)",
             average,
             segmentKey,
             visibleCellDigest,
+            visibleGradeDigest,
             rowInvalidationKey
         ].joined(separator: "¬")
     }

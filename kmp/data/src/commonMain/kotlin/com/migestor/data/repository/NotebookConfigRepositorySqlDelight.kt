@@ -6,6 +6,7 @@ import com.migestor.data.db.AppDatabase
 import com.migestor.shared.domain.AuditTrace
 import com.migestor.shared.domain.Evaluation
 import com.migestor.shared.domain.NotebookColumnDefinition
+import com.migestor.shared.domain.NotebookAverageColumnConfig
 import com.migestor.shared.domain.NotebookColumnCategory
 import com.migestor.shared.domain.NotebookColumnCategoryKind
 import com.migestor.shared.domain.NotebookColumnType
@@ -269,6 +270,54 @@ class NotebookConfigRepositorySqlDelight(
             device_id = column.trace.deviceId,
             sync_version = column.trace.syncVersion
         )
+        NotebookRefreshBus.emitRefresh()
+    }
+
+    override suspend fun saveAverageConfiguration(classId: Long, updates: List<NotebookAverageColumnConfig>) {
+        if (updates.isEmpty()) return
+        val updatesById = updates.associateBy { it.columnId }
+        val now = Clock.System.now().toEpochMilliseconds()
+
+        db.transaction {
+            db.appDatabaseQueries.selectColumnsByClass(classId).executeAsList()
+                .filter { it.id in updatesById }
+                .forEach { row ->
+                    val update = updatesById.getValue(row.id)
+                    db.appDatabaseQueries.upsertColumn(
+                        id = row.id,
+                        class_id = row.class_id,
+                        title = row.title,
+                        type = row.type,
+                        category_kind = row.category_kind,
+                        instrument_kind = row.instrument_kind,
+                        input_kind = row.input_kind,
+                        evaluation_id = row.evaluation_id,
+                        formula = row.formula,
+                        weight = if (update.countsTowardAverage) update.weight else 0.0,
+                        date_epoch_ms = row.date_epoch_ms,
+                        unit_name = row.unit_name,
+                        competency_criteria_ids_csv = row.competency_criteria_ids_csv,
+                        scale_kind = row.scale_kind,
+                        tab_ids_csv = row.tab_ids_csv,
+                        shared_across_tabs = row.shared_across_tabs,
+                        color_hex = row.color_hex,
+                        icon_name = row.icon_name,
+                        sort_order = row.sort_order,
+                        width_dp = row.width_dp,
+                        category_id = row.category_id,
+                        visibility = row.visibility,
+                        is_locked = row.is_locked,
+                        counts_toward_average = if (update.countsTowardAverage) 1L else 0L,
+                        is_pinned = row.is_pinned,
+                        is_hidden = row.is_hidden,
+                        is_template = row.is_template,
+                        empty_cell_policy = update.emptyCellPolicy?.name ?: row.empty_cell_policy,
+                        updated_at_epoch_ms = now,
+                        device_id = row.device_id,
+                        sync_version = row.sync_version
+                    )
+                }
+        }
         NotebookRefreshBus.emitRefresh()
     }
 

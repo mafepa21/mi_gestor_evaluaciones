@@ -212,10 +212,6 @@ extension NotebookModuleView {
     }
 
     func columnHeaderMeta(for column: NotebookColumnDefinition) -> String {
-        let mediaText = column.countsTowardAverage
-            ? "\(Int(column.weight))%"
-            : "No media"
-
         let typeText: String
         switch column.type {
         case .numeric:
@@ -249,7 +245,7 @@ extension NotebookModuleView {
             typeText = "Columna"
         }
 
-        return "\(mediaText) · \(typeText)"
+        return typeText
     }
 
     func displayTint(for column: NotebookColumnDefinition) -> Color {
@@ -449,10 +445,6 @@ extension NotebookModuleView {
             editingColumnId = column.id
             columnDraft = column.title
             isRenameColumnAlertPresented = true
-        }
-        Button(column.countsTowardAverage ? "No contar para media" : "Contar para media") {
-            saveColumnMutation(column, countsTowardAverage: !column.countsTowardAverage)
-            showToast(column.countsTowardAverage ? "Columna excluida de la media" : "Columna incluida en la media")
         }
         Button(column.isArchived ? "Restaurar" : (column.isTemporarilyHidden ? "Mostrar" : "Ocultar")) {
             if column.isArchived {

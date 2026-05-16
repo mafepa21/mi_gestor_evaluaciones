@@ -517,6 +517,32 @@ class NotebookViewModel(
         }
     }
 
+    fun saveAverageConfiguration(updates: List<NotebookAverageColumnConfig>) {
+        val classId = activeClassId ?: return
+        if (updates.isEmpty()) return
+        scope.launch {
+            try {
+                val updatesById = updates.associateBy { it.columnId }
+                updateDataState { state ->
+                    val updatedColumns = state.sheet.columns.map { column ->
+                        val update = updatesById[column.id] ?: return@map column
+                        column.copy(
+                            countsTowardAverage = update.countsTowardAverage,
+                            weight = if (update.countsTowardAverage) update.weight else 0.0,
+                            emptyCellPolicy = update.emptyCellPolicy ?: column.emptyCellPolicy,
+                        )
+                    }
+                    state.copy(sheet = state.sheet.copy(columns = updatedColumns))
+                }
+
+                notebookRepository.saveAverageConfiguration(classId = classId, updates = updates)
+                selectClass(classId, force = true)
+            } catch (e: Exception) {
+                selectClass(classId, force = true)
+            }
+        }
+    }
+
     fun reorderColumns(columnId: String, targetColumnId: String) {
         val classId = activeClassId ?: return
         val currentState = _state.value as? NotebookUiState.Data ?: return

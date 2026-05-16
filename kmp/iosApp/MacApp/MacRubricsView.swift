@@ -6,6 +6,12 @@ struct MacRubricsView: View {
     @ObservedObject var bridge: KmpBridge
     @State private var selectedRubricId: Int64?
     @State private var selectedFilterClassId: Int64?
+    @State private var selectedTeachingUnitId: Int64?
+    @State private var selectedStatusFilter = "Todas"
+    @State private var searchText = ""
+    @State private var expandedGroupKeys: Set<String> = []
+    @State private var expandedCriterionIds: Set<Int64> = []
+    @State private var teachingUnits: [TeachingUnit] = []
     @State private var usageSummary: KmpBridge.RubricUsageSnapshot?
     @State private var usageLoading = false
     @State private var bulkOptions: [KmpBridge.RubricUsageSnapshot.EvaluationUsage] = []
@@ -13,29 +19,84 @@ struct MacRubricsView: View {
     @State private var showingBuilder = false
 
     private var filteredRubrics: [RubricDetail] {
-        bridge.rubrics.filter { rubric in
-            guard let selectedFilterClassId else { return true }
-            let directClassMatch = rubric.rubric.classId?.int64Value == selectedFilterClassId
-            let usageMatch = bridge.rubricClassLinks[rubric.rubric.id]?.contains(selectedFilterClassId) == true
-            return directClassMatch || usageMatch
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return bridge.rubrics.filter { rubric in
+            let matchesClass: Bool = {
+                guard let selectedFilterClassId else { return true }
+                let directClassMatch = rubric.rubric.classId?.int64Value == selectedFilterClassId
+                let usageMatch = bridge.rubricClassLinks[rubric.rubric.id]?.contains(selectedFilterClassId) == true
+                return directClassMatch || usageMatch
+            }()
+
+            let matchesTeachingUnit: Bool = {
+                guard let selectedTeachingUnitId else { return true }
+                if selectedTeachingUnitId == Int64.min {
+                    return rubric.rubric.teachingUnitId == nil
+                }
+                return rubric.rubric.teachingUnitId?.int64Value == selectedTeachingUnitId
+            }()
+
+            let matchesStatus = statusMatches(rubric)
+
+            let matchesQuery = query.isEmpty || [
+                rubric.rubric.name,
+                rubric.rubric.description_ ?? "",
+                className(for: rubric),
+                teachingUnitName(for: rubric),
+                rubric.criteria.map { $0.criterion.description_ }.joined(separator: " ")
+            ]
+            .joined(separator: " ")
+            .lowercased()
+            .contains(query)
+
+            return matchesClass && matchesTeachingUnit && matchesStatus && matchesQuery
         }
+        .sorted { $0.rubric.name.localizedCaseInsensitiveCompare($1.rubric.name) == .orderedAscending }
     }
 
     private var selectedRubric: RubricDetail? {
         filteredRubrics.first(where: { $0.rubric.id == selectedRubricId }) ?? filteredRubrics.first
     }
 
+    private var availableStatusFilters: [String] {
+        ["Todas", "Vinculadas", "Sin vincular", "Con evaluaciones activas", "Sin uso"]
+    }
+
+    private var availableTeachingUnits: [TeachingUnit] {
+        let usedIds = Set(bridge.rubrics.compactMap { $0.rubric.teachingUnitId?.int64Value })
+        return teachingUnits
+            .filter { usedIds.contains($0.id) }
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    private var groupedRubrics: [(key: String, title: String, rubrics: [RubricDetail])] {
+        let groups = Dictionary(grouping: filteredRubrics) { rubric in
+            (rubric.rubric.teachingUnitId?.int64Value).map { "unit-\($0)" } ?? "without-unit"
+        }
+
+        return groups.map { key, rubrics in
+            let title = rubrics.first.map(teachingUnitName(for:)) ?? "Sin situación asignada"
+            return (key: key, title: title, rubrics: rubrics)
+        }
+        .sorted { lhs, rhs in
+            if lhs.key == "without-unit" { return false }
+            if rhs.key == "without-unit" { return true }
+            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
-            HStack(alignment: .center) {
+            HStack(alignment: .center, spacing: 16) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Rúbricas")
                         .font(MacAppStyle.pageTitle)
-                    Text("Workspace Mac con banco, detalle e impacto evaluativo.")
+                    Text("Banco operativo para encontrar, asignar y evaluar rápido.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+
                 if !bridge.classes.isEmpty {
                     Picker("Clase", selection: $selectedFilterClassId) {
                         Text("Todas").tag(Optional<Int64>.none)
@@ -43,8 +104,36 @@ struct MacRubricsView: View {
                             Text(schoolClass.name).tag(Optional(schoolClass.id))
                         }
                     }
-                    .frame(width: 220)
+                    .frame(width: 180)
                 }
+
+                Picker("SA", selection: $selectedTeachingUnitId) {
+                    Text("Todas las SA").tag(Optional<Int64>.none)
+                    ForEach(availableTeachingUnits, id: \.id) { unit in
+                        Text(unit.name).tag(Optional(unit.id))
+                    }
+                    Text("Sin situación asignada").tag(Optional(Int64.min))
+                }
+                .frame(width: 220)
+
+                Picker("Estado", selection: $selectedStatusFilter) {
+                    ForEach(availableStatusFilters, id: \.self) { filter in
+                        Text(filter).tag(filter)
+                    }
+                }
+                .frame(width: 190)
+
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
+                    TextField("Buscar", text: $searchText)
+                        .textFieldStyle(.plain)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(MacAppStyle.subtleFill, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .frame(width: 220)
+
                 Button {
                     bridge.resetRubricBuilder()
                     showingBuilder = true
@@ -63,7 +152,7 @@ struct MacRubricsView: View {
             } else {
                 HStack(alignment: .top, spacing: MacAppStyle.sectionSpacing) {
                     rubricsTable
-                        .frame(minWidth: 430, idealWidth: 520, maxWidth: 620)
+                        .frame(minWidth: 400, idealWidth: 480, maxWidth: 560)
                     rubricDetailPanel
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
@@ -75,18 +164,46 @@ struct MacRubricsView: View {
                 selectedRubricId = filteredRubrics.first?.rubric.id
             }
             await reloadUsageSummary()
+            await reloadTeachingUnits()
+            ensureExpandedGroups()
         }
         .appOnChange(of: selectedFilterClassId) { newValue in
             bridge.setRubricFilterClass(newValue)
             if selectedRubric == nil {
                 selectedRubricId = filteredRubrics.first?.rubric.id
             }
+            Task {
+                await reloadUsageSummary()
+                await reloadTeachingUnits()
+                ensureExpandedGroups()
+            }
+        }
+        .appOnChange(of: selectedTeachingUnitId) { _ in
+            if selectedRubric == nil {
+                selectedRubricId = filteredRubrics.first?.rubric.id
+            }
+            ensureExpandedGroups()
+            Task { await reloadUsageSummary() }
+        }
+        .appOnChange(of: selectedStatusFilter) { _ in
+            if selectedRubric == nil {
+                selectedRubricId = filteredRubrics.first?.rubric.id
+            }
+            ensureExpandedGroups()
+            Task { await reloadUsageSummary() }
+        }
+        .appOnChange(of: searchText) { _ in
+            if selectedRubric == nil {
+                selectedRubricId = filteredRubrics.first?.rubric.id
+            }
+            ensureExpandedGroups()
             Task { await reloadUsageSummary() }
         }
         .appOnChange(of: bridge.rubrics.count) { _ in
             if selectedRubric == nil {
                 selectedRubricId = filteredRubrics.first?.rubric.id
             }
+            ensureExpandedGroups()
             Task { await reloadUsageSummary() }
         }
         .appOnChange(of: selectedRubricId) { _ in
@@ -149,62 +266,56 @@ struct MacRubricsView: View {
     private var rubricsTable: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Nombre")
+                Text("Banco")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                Text("Criterios")
+                Text("\(filteredRubrics.count)")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-                    .frame(width: 60, alignment: .trailing)
-                Text("Uso")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 90, alignment: .trailing)
             }
             .padding(.horizontal, MacAppStyle.innerPadding)
-            .padding(.vertical, 10)
+            .padding(.vertical, 12)
             .background(MacAppStyle.subtleFill)
 
             ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(filteredRubrics, id: \.rubric.id) { rubric in
-                        Button {
-                            selectedRubricId = rubric.rubric.id
-                        } label: {
-                            HStack(spacing: 12) {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(rubric.rubric.name)
-                                        .font(.body.weight(.medium))
-                                        .foregroundStyle(.primary)
-                                        .lineLimit(1)
-                                    Text(className(for: rubric))
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(groupedRubrics, id: \.key) { group in
+                        DisclosureGroup(
+                            isExpanded: Binding(
+                                get: { expandedGroupKeys.contains(group.key) },
+                                set: { isExpanded in
+                                    if isExpanded {
+                                        expandedGroupKeys.insert(group.key)
+                                    } else {
+                                        expandedGroupKeys.remove(group.key)
+                                    }
                                 }
-                                Spacer()
-                                Text("\(rubric.criteria.count)")
+                            )
+                        ) {
+                            VStack(spacing: 0) {
+                                ForEach(group.rubrics, id: \.rubric.id) { rubric in
+                                    rubricRow(rubric)
+                                    Divider()
+                                        .padding(.leading, MacAppStyle.innerPadding)
+                                }
+                            }
+                            .padding(.top, 4)
+                        } label: {
+                            HStack {
+                                Text(group.title)
+                                    .font(.caption.weight(.bold))
                                     .foregroundStyle(.secondary)
-                                    .frame(width: 60, alignment: .trailing)
-                                MacStatusPill(
-                                    label: usageLabel(for: rubric),
-                                    isActive: usageCount(for: rubric) > 0,
-                                    tint: usageCount(for: rubric) > 0 ? MacAppStyle.infoTint : .secondary
-                                )
-                                .frame(width: 90, alignment: .trailing)
+                                    .lineLimit(1)
+                                Spacer()
+                                Text("\(group.rubrics.count)")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
                             }
                             .padding(.horizontal, MacAppStyle.innerPadding)
-                            .padding(.vertical, 12)
-                            .background(
-                                selectedRubricId == rubric.rubric.id
-                                    ? Color.accentColor.opacity(0.12)
-                                    : Color.clear
-                            )
+                            .padding(.vertical, 8)
                         }
-                        .buttonStyle(.plain)
-
-                        Divider()
+                        .disclosureGroupStyle(.automatic)
                     }
                 }
             }
@@ -217,65 +328,61 @@ struct MacRubricsView: View {
         .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
     }
 
+    private func rubricRow(_ rubric: RubricDetail) -> some View {
+        Button {
+            selectedRubricId = rubric.rubric.id
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text(rubric.rubric.name)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Spacer()
+                    MacStatusPill(
+                        label: rubricStateLabel(for: rubric),
+                        isActive: rubricStateLabel(for: rubric) != "Sin uso",
+                        tint: rubricStateTint(for: rubric)
+                    )
+                }
+
+                Text("\(className(for: rubric)) · \(teachingUnitName(for: rubric))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+
+                HStack(spacing: 8) {
+                    Text("\(rubric.criteria.count) criterios")
+                    Text("\(levelCount(for: rubric)) niveles")
+                    Text("\(linkedClassIds(for: rubric).count) clases")
+                    if evaluationCountEstimate(for: rubric) > 0 {
+                        Text("\(evaluationCountEstimate(for: rubric)) eval.")
+                    }
+                }
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, MacAppStyle.innerPadding)
+            .padding(.vertical, 12)
+            .background(
+                selectedRubricId == rubric.rubric.id
+                    ? Color.accentColor.opacity(0.10)
+                    : Color.clear
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
     @ViewBuilder
     private var rubricDetailPanel: some View {
         if let rubric = selectedRubric {
             ScrollView {
                 VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(rubric.rubric.name)
-                            .font(.title2.weight(.semibold))
-                        Text("\(className(for: rubric)) · \(formattedDate(for: rubric))")
-                            .foregroundStyle(.secondary)
-                        if let description = rubric.rubric.description_, !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            Text(description)
-                                .font(MacAppStyle.bodyText)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+                    inspectorHeader(for: rubric)
 
-                    HStack(spacing: MacAppStyle.cardSpacing) {
-                        MacMetricCard(label: "Criterios", value: "\(rubric.criteria.count)", systemImage: "list.bullet.rectangle")
-                        MacMetricCard(label: "Clases", value: "\(usageSummary?.classCount ?? 0)", systemImage: "rectangle.3.group")
-                        MacMetricCard(label: "Evaluaciones", value: "\(usageSummary?.evaluationCount ?? 0)", systemImage: "chart.bar.doc.horizontal")
-                        MacMetricCard(label: "Uso", value: usageLabel(for: rubric), systemImage: "checklist")
-                    }
+                    usageLine(for: rubric)
 
-                    HStack(spacing: 12) {
-                        Button {
-                            Task { await openBulkEvaluationFlow(for: rubric) }
-                        } label: {
-                            if bulkLaunchInFlight {
-                                Label("Abriendo…", systemImage: "hourglass")
-                            } else {
-                                Label("Evaluación masiva", systemImage: "square.grid.3x3")
-                            }
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled((usageSummary?.evaluationCount ?? 0) == 0 || bulkLaunchInFlight)
-
-                        Button {
-                            bridge.loadRubricForEditing(rubric)
-                            showingBuilder = true
-                        } label: {
-                            Label("Abrir vista de edición", systemImage: "square.and.pencil")
-                        }
-                        .buttonStyle(.bordered)
-
-                        Button {
-                            bridge.startAssignRubric(rubric.rubric)
-                        } label: {
-                            Label("Asignar a clase", systemImage: "rectangle.portrait.and.arrow.right")
-                        }
-                        .buttonStyle(.bordered)
-
-                        Button(role: .destructive) {
-                            bridge.deleteRubric(id: rubric.rubric.id)
-                        } label: {
-                            Image(systemName: "trash")
-                        }
-                        .buttonStyle(.borderless)
-                    }
+                    notebookUsageBlock(for: rubric)
 
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Impacto evaluativo")
@@ -320,10 +427,22 @@ struct MacRubricsView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Criterios y niveles")
+                        Text("Criterios")
                             .font(MacAppStyle.sectionTitle)
                         ForEach(rubric.criteria, id: \.criterion.id) { item in
-                            MacRubricCriterionCard(item: item)
+                            MacRubricCriterionSummary(
+                                item: item,
+                                isExpanded: Binding(
+                                    get: { expandedCriterionIds.contains(item.criterion.id) },
+                                    set: { isExpanded in
+                                        if isExpanded {
+                                            expandedCriterionIds.insert(item.criterion.id)
+                                        } else {
+                                            expandedCriterionIds.remove(item.criterion.id)
+                                        }
+                                    }
+                                )
+                            )
                         }
                     }
                 }
@@ -337,6 +456,154 @@ struct MacRubricsView: View {
         }
     }
 
+    private func inspectorHeader(for rubric: RubricDetail) -> some View {
+        HStack(alignment: .top, spacing: 16) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(rubric.rubric.name)
+                    .font(.title2.weight(.semibold))
+                Text("\(className(for: rubric)) · \(teachingUnitName(for: rubric)) · \(formattedDate(for: rubric))")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                if let description = rubric.rubric.description_,
+                   !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text(description)
+                        .font(MacAppStyle.bodyText)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                }
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 8) {
+                primaryActionButton(for: rubric)
+                Menu {
+                    Button {
+                        bridge.loadRubricForEditing(rubric)
+                        showingBuilder = true
+                    } label: {
+                        Label("Editar", systemImage: "square.and.pencil")
+                    }
+
+                    Button {
+                        bridge.startAssignRubric(rubric.rubric)
+                    } label: {
+                        Label("Asignar a clase", systemImage: "rectangle.portrait.and.arrow.right")
+                    }
+
+                    Button {
+                        Task { await openBulkEvaluationFlow(for: rubric) }
+                    } label: {
+                        Label("Evaluación masiva", systemImage: "square.grid.3x3")
+                    }
+                    .disabled((usageSummary?.evaluationCount ?? 0) == 0 || bulkLaunchInFlight)
+
+                    Divider()
+
+                    Button(role: .destructive) {
+                        bridge.deleteRubric(id: rubric.rubric.id)
+                    } label: {
+                        Label("Eliminar", systemImage: "trash")
+                    }
+                } label: {
+                    Label("Más", systemImage: "ellipsis.circle")
+                }
+                .menuStyle(.button)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func primaryActionButton(for rubric: RubricDetail) -> some View {
+        let linkedCount = linkedClassIds(for: rubric).count
+        let evaluationCount = usageSummary?.rubricId == rubric.rubric.id ? usageSummary?.evaluationCount ?? 0 : evaluationCountEstimate(for: rubric)
+
+        if linkedCount == 0 {
+            Button {
+                bridge.startAssignRubric(rubric.rubric)
+            } label: {
+                Label("Asignar al cuaderno", systemImage: "rectangle.portrait.and.arrow.right")
+            }
+            .buttonStyle(.borderedProminent)
+        } else if evaluationCount > 0 {
+            Button {
+                Task { await openBulkEvaluationFlow(for: rubric) }
+            } label: {
+                if bulkLaunchInFlight {
+                    Label("Abriendo…", systemImage: "hourglass")
+                } else {
+                    Label(evaluationCount > 1 ? "Continuar evaluación" : "Evaluar grupo", systemImage: "square.grid.3x3")
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(bulkLaunchInFlight)
+        } else {
+            Button {
+                bridge.startAssignRubric(rubric.rubric)
+            } label: {
+                Label("Completar vínculo", systemImage: "link.badge.plus")
+            }
+            .buttonStyle(.borderedProminent)
+        }
+    }
+
+    private func usageLine(for rubric: RubricDetail) -> some View {
+        HStack(spacing: 8) {
+            MacStatusPill(label: "\(rubric.criteria.count) criterios", isActive: true, tint: MacAppStyle.infoTint)
+            MacStatusPill(label: "\(levelCount(for: rubric)) niveles", isActive: true, tint: MacAppStyle.infoTint)
+            MacStatusPill(label: "\(usageSummary?.classCount ?? linkedClassIds(for: rubric).count) clases", isActive: true, tint: MacAppStyle.successTint)
+            MacStatusPill(label: "\(usageSummary?.evaluationCount ?? evaluationCountEstimate(for: rubric)) evaluaciones", isActive: (usageSummary?.evaluationCount ?? evaluationCountEstimate(for: rubric)) > 0, tint: MacAppStyle.warningTint)
+        }
+    }
+
+    private func notebookUsageBlock(for rubric: RubricDetail) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Uso en Cuaderno")
+                    .font(MacAppStyle.sectionTitle)
+                Spacer()
+                MacStatusPill(
+                    label: rubricStateLabel(for: rubric),
+                    isActive: rubricStateLabel(for: rubric) != "Sin uso",
+                    tint: rubricStateTint(for: rubric)
+                )
+            }
+
+            if usageLoading {
+                ProgressView()
+            } else if let usageSummary, !usageSummary.evaluationUsages.isEmpty {
+                ForEach(usageSummary.evaluationUsages.prefix(4), id: \.evaluationId) { usage in
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(usage.evaluationName)
+                                .font(.subheadline.weight(.semibold))
+                            Text("\(usage.className) · \(usage.evaluationType)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Text("Peso \(String(format: "%.1f", usage.weight))")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(12)
+                    .background(MacAppStyle.subtleFill, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+            } else {
+                Text(linkedClassIds(for: rubric).isEmpty ? "Sin columna o evaluación vinculada todavía." : "Asignada a clase, pendiente de evaluación activa.")
+                    .font(MacAppStyle.bodyText)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(MacAppStyle.innerPadding)
+        .background(MacAppStyle.cardBackground)
+        .overlay {
+            RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous)
+                .stroke(MacAppStyle.cardBorder, lineWidth: 0.5)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
+    }
+
     @MainActor
     private func reloadUsageSummary() async {
         guard let rubricId = selectedRubric?.rubric.id else {
@@ -346,6 +613,20 @@ struct MacRubricsView: View {
         usageLoading = true
         defer { usageLoading = false }
         usageSummary = try? await bridge.loadRubricUsage(rubricId: rubricId)
+    }
+
+    @MainActor
+    private func reloadTeachingUnits() async {
+        teachingUnits = (try? await bridge.plannerTeachingUnits(for: selectedFilterClassId)) ?? []
+    }
+
+    private func ensureExpandedGroups() {
+        let keys = Set(groupedRubrics.map(\.key))
+        if expandedGroupKeys.isEmpty {
+            expandedGroupKeys = keys
+        } else {
+            expandedGroupKeys = expandedGroupKeys.intersection(keys).union(keys.subtracting(expandedGroupKeys))
+        }
     }
 
     @MainActor
@@ -392,6 +673,62 @@ struct MacRubricsView: View {
         }
     }
 
+    private func linkedClassIds(for rubric: RubricDetail) -> Set<Int64> {
+        var ids = bridge.rubricClassLinks[rubric.rubric.id] ?? []
+        if let classId = rubric.rubric.classId?.int64Value {
+            ids.insert(classId)
+        }
+        return ids
+    }
+
+    private func evaluationCountEstimate(for rubric: RubricDetail) -> Int {
+        if usageSummary?.rubricId == rubric.rubric.id {
+            return usageSummary?.evaluationCount ?? 0
+        }
+        return bridge.evaluationsInClass.filter { $0.rubricId?.int64Value == rubric.rubric.id }.count
+    }
+
+    private func levelCount(for rubric: RubricDetail) -> Int {
+        rubric.criteria.map { $0.levels.count }.max() ?? 0
+    }
+
+    private func statusMatches(_ rubric: RubricDetail) -> Bool {
+        let linkedCount = linkedClassIds(for: rubric).count
+        let evaluationCount = evaluationCountEstimate(for: rubric)
+        switch selectedStatusFilter {
+        case "Vinculadas":
+            return linkedCount > 0
+        case "Sin vincular", "Sin uso":
+            return linkedCount == 0 && evaluationCount == 0
+        case "Con evaluaciones activas":
+            return evaluationCount > 0
+        default:
+            return true
+        }
+    }
+
+    private func rubricStateLabel(for rubric: RubricDetail) -> String {
+        let linkedCount = linkedClassIds(for: rubric).count
+        let evaluationCount = evaluationCountEstimate(for: rubric)
+        if evaluationCount > 0 { return "En evaluación" }
+        if linkedCount > 0 { return "Asignada" }
+        if rubric.rubric.classId == nil && rubric.rubric.teachingUnitId == nil { return "Plantilla" }
+        return "Sin uso"
+    }
+
+    private func rubricStateTint(for rubric: RubricDetail) -> Color {
+        switch rubricStateLabel(for: rubric) {
+        case "En evaluación":
+            return MacAppStyle.warningTint
+        case "Asignada":
+            return MacAppStyle.successTint
+        case "Plantilla":
+            return MacAppStyle.infoTint
+        default:
+            return .secondary
+        }
+    }
+
     private func className(for rubric: RubricDetail) -> String {
         if let classId = rubric.rubric.classId?.int64Value,
            let schoolClass = bridge.classes.first(where: { $0.id == classId }) {
@@ -400,71 +737,74 @@ struct MacRubricsView: View {
         return "Sin clase asociada"
     }
 
+    private func teachingUnitName(for rubric: RubricDetail) -> String {
+        guard let teachingUnitId = rubric.rubric.teachingUnitId?.int64Value else {
+            return "Sin situación asignada"
+        }
+        return teachingUnits.first(where: { $0.id == teachingUnitId })?.name ?? "SA #\(teachingUnitId)"
+    }
+
     private func formattedDate(for rubric: RubricDetail) -> String {
         let date = Date(timeIntervalSince1970: TimeInterval(rubric.rubric.trace.updatedAt.epochSeconds))
         return date.formatted(.dateTime.day().month(.abbreviated).year())
     }
 }
 
-private struct MacRubricCriterionCard: View {
+private struct MacRubricCriterionSummary: View {
     let item: RubricCriterionWithLevels
+    @Binding var isExpanded: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
-                Text(item.criterion.description_)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Spacer()
-
-                MacStatusPill(
-                    label: "Peso \(Int((item.criterion.weight * 100).rounded()))%",
-                    isActive: true,
-                    tint: MacAppStyle.infoTint
-                )
-            }
-
-            VStack(spacing: 10) {
+        DisclosureGroup(isExpanded: $isExpanded) {
+            VStack(spacing: 8) {
                 ForEach(item.levels.sorted(by: { $0.order < $1.order }), id: \.id) { level in
-                    VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
                         HStack {
                             Text(level.name)
-                                .font(.system(size: 13, weight: .bold))
+                                .font(.caption.weight(.bold))
                                 .foregroundStyle(.primary)
                             Spacer()
                             Text("\(Int(level.points)) pts")
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.caption.weight(.bold))
                                 .foregroundStyle(MacAppStyle.infoTint)
                         }
 
                         if let description = level.description_?.trimmingCharacters(in: .whitespacesAndNewlines),
                            !description.isEmpty {
                             Text(description)
-                                .font(.system(size: 12))
+                                .font(.caption)
                                 .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
+                                .lineLimit(1)
                         }
                     }
-                    .padding(12)
+                    .padding(8)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(MacAppStyle.subtleFill)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .stroke(MacAppStyle.cardBorder, lineWidth: 0.5)
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 }
             }
+            .padding(.top, 8)
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text(item.criterion.description_)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+
+                Spacer()
+
+                Text("Peso \(Int((item.criterion.weight * 100).rounded()))%")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
         }
-        .padding(MacAppStyle.innerPadding)
+        .padding(12)
         .background(MacAppStyle.cardBackground)
         .overlay {
-            RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(MacAppStyle.cardBorder, lineWidth: 0.5)
         }
-        .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 

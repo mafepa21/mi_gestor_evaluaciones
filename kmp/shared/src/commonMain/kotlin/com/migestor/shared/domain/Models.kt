@@ -794,6 +794,13 @@ enum class NotebookEmptyCellPolicy {
     COUNT_AS_PENDING      // vacío no baja la nota, pero aparece como pendiente
 }
 
+data class NotebookAverageColumnConfig(
+    val columnId: String,
+    val countsTowardAverage: Boolean,
+    val weight: Double,
+    val emptyCellPolicy: NotebookEmptyCellPolicy? = null,
+)
+
 enum class NotebookDeletionTargetKind {
     COLUMN,
     CATEGORY,

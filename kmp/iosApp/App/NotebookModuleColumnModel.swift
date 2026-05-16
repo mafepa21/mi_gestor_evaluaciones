@@ -208,14 +208,15 @@ extension NotebookModuleView {
 
     func saveAverageConfiguration(_ updates: [NotebookAverageColumnUpdate]) {
         guard !updates.isEmpty else { return }
-        // TODO(backend-batch): persist average column configuration in one backend batch instead of many saves.
-        updates.forEach { update in
-            bridge.saveColumn(column: copyNotebookColumn(
-                update.column,
+        let configs = updates.map { update in
+            NotebookAverageColumnConfig(
+                columnId: update.column.id,
+                countsTowardAverage: update.isIncluded,
                 weight: update.isIncluded ? update.weight : 0,
-                countsTowardAverage: update.isIncluded
-            ))
+                emptyCellPolicy: update.column.emptyCellPolicy
+            )
         }
+        bridge.saveAverageConfiguration(updates: configs)
         showToast("Media actualizada")
         scheduleToolbarStateSyncIfLoaded()
     }

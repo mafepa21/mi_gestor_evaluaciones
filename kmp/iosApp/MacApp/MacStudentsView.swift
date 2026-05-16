@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import MiGestorKit
+import UniformTypeIdentifiers
 
 enum MacStudentsPresentation {
     case full
@@ -40,6 +41,9 @@ struct MacStudentsView: View {
     var presentation: MacStudentsPresentation = .full
     var reloadToken: Int = 0
 
+    @State private var showingStudentFileImporter = false
+    @State private var studentImportPreview: AppleStudentImportPreview?
+    @State private var importErrorMessage: String?
     @FocusState private var isSearchFocused: Bool
 
     private var filteredRows: [KmpBridge.MacStudentRowSnapshot] {
@@ -194,6 +198,29 @@ struct MacStudentsView: View {
                 Task { await saveStudentDraft(draft, mode: mode) }
             }
         }
+        .fileImporter(
+            isPresented: $showingStudentFileImporter,
+            allowedContentTypes: [.xlsx, .commaSeparatedText],
+            allowsMultipleSelection: false
+        ) { result in
+            Task { await handleStudentImportFile(result) }
+        }
+        .sheet(item: $studentImportPreview) { preview in
+            StudentImportSheet(preview: preview)
+                .environmentObject(bridge)
+                .frame(minWidth: 720, minHeight: 620)
+                .onDisappear {
+                    Task { await reloadRows() }
+                }
+        }
+        .alert("No se pudo importar alumnado", isPresented: Binding(
+            get: { importErrorMessage != nil },
+            set: { if !$0 { importErrorMessage = nil } }
+        )) {
+            Button("Aceptar", role: .cancel) {}
+        } message: {
+            Text(importErrorMessage ?? "")
+        }
     }
 
     private var studentEditorModeBinding: Binding<MacStudentEditorMode?> {
@@ -310,6 +337,12 @@ struct MacStudentsView: View {
                 Task { await reloadRows() }
             } label: {
                 Label("Recargar", systemImage: "arrow.clockwise")
+            }
+            .buttonStyle(.bordered)
+            Button {
+                showingStudentFileImporter = true
+            } label: {
+                Label("Importar Excel", systemImage: "square.and.arrow.down")
             }
             .buttonStyle(.bordered)
             Button {
@@ -689,6 +722,17 @@ struct MacStudentsView: View {
             loadProfileForSelection(store.localSelectedStudentId)
         } catch {
             store.errorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func handleStudentImportFile(_ result: Result<[URL], Error>) async {
+        do {
+            guard let url = try result.get().first else { return }
+            let rows = try AppleSpreadsheetReader.readRows(from: url)
+            studentImportPreview = try await bridge.previewStudentImport(tsv: rows.tsvText)
+        } catch {
+            importErrorMessage = error.localizedDescription
         }
     }
 

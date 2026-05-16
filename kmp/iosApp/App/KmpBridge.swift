@@ -128,6 +128,8 @@ final class KmpBridge: ObservableObject {
     @Published var dashboardFilters: DashboardFilters = DashboardFilters(classId: nil, severity: nil, priority: nil, sessionStatus: nil)
     @Published var allStudents: [Student] = []
     @Published var selectedStudentsClassId: Int64? = nil
+    @Published var studentImportPreview: AppleStudentImportPreview? = nil
+    @Published var isImportingStudents = false
 
     // LAN Sync State
     @Published var discoveredSyncHosts: [String] = []
@@ -661,6 +663,7 @@ final class KmpBridge: ObservableObject {
 
     private let container: KmpContainer
     private let appleBootstrap: AppleBridgeBootstrap
+    private let appleImportFacade = AppleImportFacade()
     let notebookViewModel: NotebookViewModel
     let plannerViewModel: PlannerViewModel
     let rubricEvaluationViewModel: RubricEvaluationViewModel
@@ -1101,6 +1104,97 @@ final class KmpBridge: ObservableObject {
 
     func students(forClassId classId: Int64) async throws -> [Student] {
         try await container.classesRepository.listStudentsInClass(classId: classId)
+    }
+
+    func previewStudentImport(tsv: String) async throws -> AppleStudentImportPreview {
+        let preview = appleImportFacade.previewStudentsFromTsv(text: tsv)
+        let students = preview.students.map { student in
+            AppleParsedStudent(
+                id: Int(student.rowNumber),
+                rowNumber: Int(student.rowNumber),
+                fullName: student.fullName,
+                firstName: student.firstName,
+                lastName: student.lastName
+            )
+        }
+
+        guard !students.isEmpty else {
+            throw NSError(domain: "KmpBridge", code: -60, userInfo: [NSLocalizedDescriptionKey: "No se encontraron alumnos en el archivo."])
+        }
+
+        let applePreview = AppleStudentImportPreview(
+            className: preview.className,
+            course: preview.course,
+            students: students
+        )
+        studentImportPreview = applePreview
+        return applePreview
+    }
+
+    func confirmStudentImport(selectedRows: [Int], targetClassId: Int64?) async throws {
+        guard let preview = studentImportPreview else {
+            throw NSError(domain: "KmpBridge", code: -61, userInfo: [NSLocalizedDescriptionKey: "No hay una previsualización de importación activa."])
+        }
+
+        let selectedRowSet = Set(selectedRows)
+        let studentsToImport = preview.students.filter { selectedRowSet.contains($0.rowNumber) }
+        guard !studentsToImport.isEmpty else {
+            throw NSError(domain: "KmpBridge", code: -62, userInfo: [NSLocalizedDescriptionKey: "Selecciona al menos un alumno para importar."])
+        }
+
+        isImportingStudents = true
+        defer { isImportingStudents = false }
+
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        var importedIds: [Int64] = []
+
+        for student in studentsToImport {
+            let studentId = try await container.studentsRepository.saveStudent(
+                id: nil,
+                firstName: student.firstName,
+                lastName: student.lastName,
+                email: nil,
+                photoPath: nil,
+                isInjured: false,
+                sex: .unspecified,
+                sexSource: .imported,
+                birthDate: nil,
+                updatedAtEpochMs: nowMs,
+                deviceId: localDeviceId,
+                syncVersion: 1
+            ).int64Value
+            importedIds.append(studentId)
+
+            enqueueLocalChange(
+                entity: "student",
+                id: "\(studentId)",
+                updatedAtEpochMs: nowMs,
+                payload: [
+                    "id": studentId,
+                    "firstName": student.firstName,
+                    "lastName": student.lastName,
+                    "email": NSNull(),
+                    "photoPath": NSNull(),
+                    "isInjured": false,
+                    "sex": StudentSex.unspecified.name,
+                    "sexSource": StudentSexSource.imported.name,
+                    "birthDate": NSNull()
+                ]
+            )
+        }
+
+        if let targetClassId {
+            for studentId in importedIds {
+                try await container.classesRepository.addStudentToClass(classId: targetClassId, studentId: studentId)
+            }
+            enqueueRosterSnapshot(forClassId: targetClassId, updatedAtEpochMs: nowMs)
+            selectedStudentsClassId = targetClassId
+            await selectStudentsClass(classId: targetClassId)
+        }
+
+        studentImportPreview = nil
+        try await refreshStudentsDirectory()
+        try await refreshDashboard()
     }
 
     func refreshRubrics() async throws {
@@ -4898,6 +4992,17 @@ final class KmpBridge: ObservableObject {
         selectedRubricTeachingUnitId = nil
         rubricBuilderTeachingUnits = []
         rubricsViewModel.resetBuilder()
+    }
+
+    func importRubricDraft(tsv: String) async throws {
+        guard let imported = appleImportFacade.previewRubricFromTsv(text: tsv) else {
+            throw NSError(domain: "KmpBridge", code: -63, userInfo: [NSLocalizedDescriptionKey: "El archivo no tiene un formato de rúbrica válido."])
+        }
+        editingRubricBuilderId = nil
+        selectedRubricTeachingUnitId = nil
+        rubricBuilderTeachingUnits = []
+        rubricsViewModel.loadImportedRubric(importedState: imported)
+        rubricsUiState = rubricsViewModel.uiState.value as? RubricUiState
     }
 
     func loadRubricForEditing(_ rubric: RubricDetail) {

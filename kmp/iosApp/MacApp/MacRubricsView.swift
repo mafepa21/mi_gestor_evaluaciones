@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import MiGestorKit
+import UniformTypeIdentifiers
 
 struct MacRubricsView: View {
     @ObservedObject var bridge: KmpBridge
@@ -17,6 +18,8 @@ struct MacRubricsView: View {
     @State private var bulkOptions: [KmpBridge.RubricUsageSnapshot.EvaluationUsage] = []
     @State private var bulkLaunchInFlight = false
     @State private var showingBuilder = false
+    @State private var showingRubricFileImporter = false
+    @State private var rubricImportError: String?
 
     private var filteredRubrics: [RubricDetail] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -141,6 +144,13 @@ struct MacRubricsView: View {
                     Label("Nueva rúbrica", systemImage: "plus")
                 }
                 .buttonStyle(.borderedProminent)
+
+                Button {
+                    showingRubricFileImporter = true
+                } label: {
+                    Label("Importar", systemImage: "square.and.arrow.down")
+                }
+                .buttonStyle(.bordered)
             }
 
             if bridge.rubrics.isEmpty {
@@ -232,6 +242,21 @@ struct MacRubricsView: View {
             RubricsBuilderScreen()
                 .environmentObject(bridge)
                 .frame(minWidth: 1200, minHeight: 820)
+        }
+        .fileImporter(
+            isPresented: $showingRubricFileImporter,
+            allowedContentTypes: [.xlsx, .commaSeparatedText],
+            allowsMultipleSelection: false
+        ) { result in
+            Task { await handleRubricImportFile(result) }
+        }
+        .alert("No se pudo importar la rúbrica", isPresented: Binding(
+            get: { rubricImportError != nil },
+            set: { if !$0 { rubricImportError = nil } }
+        )) {
+            Button("Aceptar", role: .cancel) {}
+        } message: {
+            Text(rubricImportError ?? "")
         }
         .sheet(
             isPresented: Binding(
@@ -617,6 +642,18 @@ struct MacRubricsView: View {
     @MainActor
     private func reloadTeachingUnits() async {
         teachingUnits = (try? await bridge.plannerTeachingUnits(for: selectedFilterClassId)) ?? []
+    }
+
+    @MainActor
+    private func handleRubricImportFile(_ result: Result<[URL], Error>) async {
+        do {
+            guard let url = try result.get().first else { return }
+            let rows = try AppleSpreadsheetReader.readRows(from: url)
+            try await bridge.importRubricDraft(tsv: rows.tsvText)
+            showingBuilder = true
+        } catch {
+            rubricImportError = error.localizedDescription
+        }
     }
 
     private func ensureExpandedGroups() {

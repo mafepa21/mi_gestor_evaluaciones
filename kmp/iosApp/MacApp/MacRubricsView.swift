@@ -245,7 +245,6 @@ struct MacRubricsView: View {
         ) {
             AssignRubricToTabView()
                 .environmentObject(bridge)
-                .frame(minWidth: 640, minHeight: 520)
         }
         .sheet(
             isPresented: Binding(

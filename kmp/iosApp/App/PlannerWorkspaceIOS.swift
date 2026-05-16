@@ -2729,31 +2729,188 @@ private struct JournalQuickChips: View {
     }
 }
 
-private struct PlannerInstrumentSelectionRow: View {
+private struct PlannerInstrumentCompactPicker: View {
+    @ObservedObject var vm: PlannerWorkspaceViewModel
+    @State private var isExpanded = false
+    @State private var searchText = ""
+
+    private var summaryText: String {
+        let availableIds = Set(vm.composerAvailableInstruments.map(\.id))
+        let count = vm.composerDraft.selectedInstrumentIds.intersection(availableIds).count
+        if count == 1 { return "1 seleccionado" }
+        return "\(count) seleccionados"
+    }
+
+    private var groupedInstruments: [PlannerInstrumentCompactGroup] {
+        let trimmedSearch = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let filtered = vm.composerAvailableInstruments.filter { instrument in
+            guard !trimmedSearch.isEmpty else { return true }
+            let haystack = [
+                instrument.title,
+                instrument.subtitle,
+                instrument.groupTitle,
+                instrument.kind == .rubric ? "Rúbrica" : "Evaluación"
+            ].joined(separator: " ")
+            return haystack.localizedCaseInsensitiveContains(trimmedSearch)
+        }
+
+        var groups: [PlannerInstrumentCompactGroup] = []
+        let recommended = filtered
+            .filter(\.isRecommendedForCurrentSA)
+            .sorted(by: instrumentSort)
+        if !recommended.isEmpty {
+            groups.append(PlannerInstrumentCompactGroup(title: "Recomendados para esta SA", items: recommended))
+        }
+
+        let remaining = filtered.filter { !$0.isRecommendedForCurrentSA }
+        let grouped = Dictionary(grouping: remaining, by: \.groupTitle)
+        let sortedTitles = grouped.keys.sorted { lhs, rhs in
+            if lhs == "Sin situación asignada" { return false }
+            if rhs == "Sin situación asignada" { return true }
+            return lhs.localizedCaseInsensitiveCompare(rhs) == .orderedAscending
+        }
+        groups.append(contentsOf: sortedTitles.map { title in
+            PlannerInstrumentCompactGroup(title: title, items: (grouped[title] ?? []).sorted(by: instrumentSort))
+        })
+        return groups
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "checklist")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(EvaluationDesign.accent)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Instrumentos enlazados")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                        Text("\(summaryText) · Ver instrumentos")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(12)
+                .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(EvaluationDesign.border, lineWidth: 0.5)
+                }
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 12) {
+                    TextField("Buscar rúbrica o evaluación", text: $searchText)
+                        .textFieldStyle(.roundedBorder)
+
+                    if groupedInstruments.isEmpty {
+                        Text("No hay instrumentos que coincidan con la búsqueda.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.vertical, 6)
+                    } else {
+                        ForEach(groupedInstruments) { group in
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(group.title)
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(.secondary)
+                                    .textCase(.uppercase)
+
+                                VStack(alignment: .leading, spacing: 4) {
+                                    ForEach(group.items) { instrument in
+                                        PlannerInstrumentCompactRow(
+                                            instrument: instrument,
+                                            isSelected: vm.composerDraft.selectedInstrumentIds.contains(instrument.id),
+                                            toggle: { vm.toggleComposerInstrument(instrument.id) }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(12)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(EvaluationDesign.border, lineWidth: 0.5)
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+
+    private func instrumentSort(_ lhs: PlannerAssessmentInstrument, _ rhs: PlannerAssessmentInstrument) -> Bool {
+        if lhs.kind != rhs.kind { return lhs.kind == .rubric }
+        return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
+    }
+}
+
+private struct PlannerInstrumentCompactGroup: Identifiable {
+    let title: String
+    let items: [PlannerAssessmentInstrument]
+
+    var id: String { title }
+}
+
+private struct PlannerInstrumentCompactRow: View {
     let instrument: PlannerAssessmentInstrument
     let isSelected: Bool
     let toggle: () -> Void
 
     var body: some View {
         Button(action: toggle) {
-            HStack(spacing: 12) {
+            HStack(spacing: 10) {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(isSelected ? EvaluationDesign.accent : .secondary)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(instrument.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
+                    .font(.callout.weight(.semibold))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(instrument.title)
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+
+                        if instrument.isRecommendedForCurrentSA {
+                            Text("SA")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(EvaluationDesign.accent)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(EvaluationDesign.accent.opacity(0.12), in: Capsule())
+                        }
+                    }
+
                     Text(instrument.subtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
+
                 Spacer()
+
                 Text(instrument.kind == .rubric ? "Rúbrica" : "Evaluación")
-                    .font(.caption2.weight(.bold))
+                    .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
-            .padding(12)
-            .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(
+                isSelected ? EvaluationDesign.accent.opacity(0.08) : Color.clear,
+                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.plain)
     }
@@ -2936,15 +3093,7 @@ struct PlannerSessionComposerSheet: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         } else {
-                            LazyVStack(alignment: .leading, spacing: 10) {
-                                ForEach(vm.composerAvailableInstruments) { instrument in
-                                    PlannerInstrumentSelectionRow(
-                                        instrument: instrument,
-                                        isSelected: vm.composerDraft.selectedInstrumentIds.contains(instrument.id),
-                                        toggle: { vm.toggleComposerInstrument(instrument.id) }
-                                    )
-                                }
-                            }
+                            PlannerInstrumentCompactPicker(vm: vm)
                         }
                     }
                 }

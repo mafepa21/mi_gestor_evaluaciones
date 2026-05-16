@@ -15,7 +15,9 @@ struct MacRubricsView: View {
     private var filteredRubrics: [RubricDetail] {
         bridge.rubrics.filter { rubric in
             guard let selectedFilterClassId else { return true }
-            return rubric.rubric.classId?.int64Value == selectedFilterClassId
+            let directClassMatch = rubric.rubric.classId?.int64Value == selectedFilterClassId
+            let usageMatch = bridge.rubricClassLinks[rubric.rubric.id]?.contains(selectedFilterClassId) == true
+            return directClassMatch || usageMatch
         }
     }
 
@@ -524,4 +526,3 @@ private struct MacFlowLayout: Layout {
         }
     }
 }
-

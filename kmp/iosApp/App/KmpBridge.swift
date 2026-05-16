@@ -64,6 +64,8 @@ struct PlannerAssessmentInstrument: Identifiable, Hashable {
     let evaluationId: Int64?
     let rubricId: Int64?
     let resolvedEvaluationId: Int64?
+    let groupTitle: String
+    let isRecommendedForCurrentSA: Bool
 
     var id: String { "\(kind.rawValue):\(rawId)" }
 }
@@ -1176,6 +1178,35 @@ final class KmpBridge: ObservableObject {
 
     private func plannerTeachingUnitName(for teachingUnitId: Int64, cachedUnits: [TeachingUnit]) -> String? {
         cachedUnits.first(where: { $0.id == teachingUnitId })?.name
+    }
+
+    private func plannerInstrumentGroupTitle(
+        teachingUnitId: Int64?,
+        evaluationDescription: String?,
+        cachedUnits: [TeachingUnit]
+    ) -> String {
+        if let teachingUnitId,
+           let unitName = plannerTeachingUnitName(for: teachingUnitId, cachedUnits: cachedUnits) {
+            return unitName
+        }
+        let trimmedDescription = evaluationDescription?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !trimmedDescription.isEmpty {
+            return trimmedDescription
+        }
+        return "Sin situación asignada"
+    }
+
+    private func plannerInstrumentMatchesCurrentSA(
+        teachingUnitId: Int64?,
+        groupTitle: String,
+        currentTeachingUnitId: Int64?,
+        currentTeachingUnitName: String?
+    ) -> Bool {
+        if let teachingUnitId, let currentTeachingUnitId, teachingUnitId == currentTeachingUnitId {
+            return true
+        }
+        guard let currentTeachingUnitName, !currentTeachingUnitName.isEmpty else { return false }
+        return groupTitle.localizedCaseInsensitiveCompare(currentTeachingUnitName) == .orderedSame
     }
 
     private func resolvePlannerTeachingUnit(
@@ -5099,39 +5130,79 @@ final class KmpBridge: ObservableObject {
         let evaluations = try await container.evaluationsRepository.listClassEvaluations(classId: classId)
         let rubricDetails = try await container.rubricsRepository.listRubrics()
         let classUnits = try await plannerTeachingUnits(for: classId)
+        let currentTeachingUnitName = teachingUnitId.flatMap { plannerTeachingUnitName(for: $0, cachedUnits: classUnits) }
+        let evaluationsByRubricId = Dictionary(grouping: evaluations.compactMap { evaluation -> (Int64, Evaluation)? in
+            guard let rubricId = evaluation.rubricId?.int64Value else { return nil }
+            return (rubricId, evaluation)
+        }, by: { $0.0 }).mapValues { pairs in
+            pairs.map(\.1)
+        }
+        let rubricIdsFromEvaluations = Set(evaluationsByRubricId.keys)
 
         let evaluationInstruments = evaluations.map { evaluation in
-            PlannerAssessmentInstrument(
+            let groupTitle = plannerInstrumentGroupTitle(
+                teachingUnitId: nil,
+                evaluationDescription: evaluation.description_,
+                cachedUnits: classUnits
+            )
+            return PlannerAssessmentInstrument(
                 kind: .evaluation,
                 rawId: evaluation.id,
                 title: evaluation.name,
-                subtitle: evaluation.type,
+                subtitle: evaluation.description_?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+                    ? "\(evaluation.type) · \(evaluation.description_ ?? "")"
+                    : evaluation.type,
                 classId: classId,
                 teachingUnitId: nil,
                 evaluationId: evaluation.id,
                 rubricId: evaluation.rubricId?.int64Value,
-                resolvedEvaluationId: evaluation.id
+                resolvedEvaluationId: evaluation.id,
+                groupTitle: groupTitle,
+                isRecommendedForCurrentSA: plannerInstrumentMatchesCurrentSA(
+                    teachingUnitId: nil,
+                    groupTitle: groupTitle,
+                    currentTeachingUnitId: teachingUnitId,
+                    currentTeachingUnitName: currentTeachingUnitName
+                )
             )
         }
 
         let rubricInstruments = rubricDetails.compactMap { detail -> PlannerAssessmentInstrument? in
             let rubric = detail.rubric
             let rubricClassId = rubric.classId?.int64Value
-            if let rubricClassId, rubricClassId != classId {
+            let linkedEvaluations = evaluationsByRubricId[rubric.id] ?? []
+            let isDirectlyForClass = rubricClassId == classId
+            let isLinkedToClassEvaluation = rubricIdsFromEvaluations.contains(rubric.id)
+            guard isDirectlyForClass || isLinkedToClassEvaluation else {
                 return nil
             }
+            let rubricTeachingUnitId = rubric.teachingUnitId?.int64Value
+            let linkedEvaluationDescription = linkedEvaluations
+                .compactMap { $0.description_?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .first { !$0.isEmpty }
+            let groupTitle = plannerInstrumentGroupTitle(
+                teachingUnitId: rubricTeachingUnitId,
+                evaluationDescription: linkedEvaluationDescription,
+                cachedUnits: classUnits
+            )
+            let resolvedEvaluationId = linkedEvaluations.first?.id
             return PlannerAssessmentInstrument(
                 kind: .rubric,
                 rawId: rubric.id,
                 title: rubric.name,
-                subtitle: rubric.teachingUnitId.flatMap { kotlinLongVal -> String? in
-                    plannerTeachingUnitName(for: kotlinLongVal.int64Value, cachedUnits: classUnits)
-                } ?? "Rúbrica",
+                subtitle: groupTitle == "Sin situación asignada" ? "Rúbrica" : groupTitle,
                 classId: classId,
-                teachingUnitId: rubric.teachingUnitId?.int64Value,
-                evaluationId: nil,
+                teachingUnitId: rubricTeachingUnitId,
+                evaluationId: resolvedEvaluationId,
                 rubricId: rubric.id,
-                resolvedEvaluationId: nil
+                resolvedEvaluationId: resolvedEvaluationId,
+                groupTitle: groupTitle,
+                isRecommendedForCurrentSA: plannerInstrumentMatchesCurrentSA(
+                    teachingUnitId: rubricTeachingUnitId,
+                    groupTitle: groupTitle,
+                    currentTeachingUnitId: teachingUnitId,
+                    currentTeachingUnitName: currentTeachingUnitName
+                )
             )
         }
 

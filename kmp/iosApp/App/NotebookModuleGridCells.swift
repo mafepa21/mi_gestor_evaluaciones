@@ -105,7 +105,7 @@ extension NotebookModuleView {
                         tint: displayTint(for: column),
                         folderStyle: column.categoryId != nil,
                         hasColumnColor: hasCustomColumnColor(column),
-                        isHighlighted: highlightedCategoryId == column.categoryId
+                        isHighlighted: highlightedColumnId == column.id || highlightedCategoryId == column.categoryId
                     )
                 }
                 .contextMenu {
@@ -122,7 +122,7 @@ extension NotebookModuleView {
                     collapsedCategoryHeader(
                         category: category,
                         columns: columns,
-                        width: 132
+                        width: segmentWidth(segment)
                     )
                 }
                 .buttonStyle(.plain)
@@ -140,28 +140,37 @@ extension NotebookModuleView {
     ) -> some View {
         let categoryTint = tint(for: category)
 
-        return HStack(spacing: 8) {
-            Image(systemName: "chevron.right.circle.fill")
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(categoryTint)
-                .accessibilityHidden(true)
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Image(systemName: "folder.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(categoryTint)
+                    .accessibilityHidden(true)
 
-            Text(category.name)
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
+                Text(category.name)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
 
-            Text("\(columns.count) columnas")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
+                Spacer(minLength: 0)
+            }
 
-            Spacer(minLength: 0)
+            HStack(spacing: 6) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(categoryTint.opacity(0.85))
+                    .accessibilityHidden(true)
+
+                Text("\(columns.count) columnas")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+            }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 7)
+        .padding(.vertical, 6)
         .frame(width: width, height: 52, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -380,8 +389,8 @@ extension NotebookModuleView {
 
                         Spacer(minLength: 0)
                     }
-                        .padding(.horizontal, 10)
-                        .frame(width: 132, height: 34)
+                        .padding(.horizontal, 12)
+                        .frame(width: segmentWidth(segment), height: 40)
                         .background(
                             RoundedRectangle(cornerRadius: 10, style: .continuous)
                                 .fill(categoryTint.opacity(0.055))
@@ -392,7 +401,7 @@ extension NotebookModuleView {
                         )
                 }
                 .buttonStyle(.plain)
-                .frame(width: 132, height: notebookGridRowHeight)
+                .frame(width: segmentWidth(segment), height: notebookGridRowHeight)
                 .contextMenu {
                     categoryContextMenu(category, data: data)
                 }
@@ -419,11 +428,16 @@ extension NotebookModuleView {
                     .foregroundStyle(.primary)
                     .lineLimit(1)
 
+                Text("\(columns.count)")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(categoryTint)
+                    .monospacedDigit()
+
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .frame(width: width, height: 30, alignment: .leading)
+            .padding(.vertical, 6)
+            .frame(width: width, height: 32, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(categoryTint.opacity(0.10))

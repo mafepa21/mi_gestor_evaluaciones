@@ -857,14 +857,15 @@ struct MacAttendanceView: View {
         guard let selectedClassId else { return }
         let students = filteredRows.map(\.student)
         guard !students.isEmpty else { return }
+        let previousRecords = recordsByStudentId
         savingStudentIds.formUnion(students.map(\.id))
-        for student in students {
-            let previousRecord = recordsByStudentId[student.id]
+        let drafts = students.map { student in
+            let previousRecord = previousRecords[student.id]
             applyLocalAttendanceStatus("PRESENTE", for: student, classId: selectedClassId)
-            try? await bridge.saveAttendance(
+            return KmpBridge.AttendanceDraft(
                 studentId: student.id,
                 classId: selectedClassId,
-                on: selectedDate,
+                date: selectedDate,
                 status: "PRESENTE",
                 note: previousRecord?.note ?? "",
                 hasIncident: previousRecord?.hasIncident ?? false,
@@ -872,9 +873,17 @@ struct MacAttendanceView: View {
                 sessionId: attendanceSessionId(for: selectedDate, existingRecord: previousRecord)
             )
         }
-        savingStudentIds.removeAll()
-        scheduleClassOverviewRefresh()
-        bridge.status = "Todos los alumnos filtrados marcados como presentes."
+
+        do {
+            try await bridge.saveAttendanceBatch(records: drafts)
+            savingStudentIds.subtract(students.map(\.id))
+            scheduleClassOverviewRefresh()
+            bridge.status = "Todos los alumnos filtrados marcados como presentes."
+        } catch {
+            recordsByStudentId = previousRecords
+            savingStudentIds.subtract(students.map(\.id))
+            bridge.status = "No se pudo marcar el grupo: \(error.localizedDescription)"
+        }
     }
 
     @MainActor

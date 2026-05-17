@@ -149,6 +149,19 @@ private struct NotebookColumnBlueprint: Identifiable {
     }
 }
 
+private struct NotebookRubricSection: Identifiable {
+    let id: String
+    let title: String
+    let rubrics: [RubricDetail]
+    let isCurrentCourse: Bool
+}
+
+private enum NotebookFormulaValidationState: Equatable {
+    case empty
+    case invalid(String)
+    case valid(String)
+}
+
 private struct ColumnBlueprintCard: View {
     let blueprint: NotebookColumnBlueprint
     let isSelected: Bool
@@ -373,6 +386,7 @@ struct AddColumnSheet: View {
     @ObservedObject var bridge: KmpBridge
     var initialCategoryId: String? = nil
     var startsCreatingCategory: Bool = false
+    var onCreatedColumn: ((String) -> Void)? = nil
     var onCreatedSummaryColumn: ((String) -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @AppStorage("notebook.addColumn.lastBlueprintId") private var lastBlueprintId: String = "written_test"
@@ -395,6 +409,10 @@ struct AddColumnSheet: View {
     @State private var summaryConfiguration = NotebookIndividualSummaryConfiguration()
     @State private var summaryAvailability: AIContextualAvailabilityState = .unavailable("Apple Intelligence no está disponible en este dispositivo. Podrás rellenarla manualmente.")
     @State private var summaryAIService = AppleFoundationContextualAIService()
+    @State private var rubricSearchText = ""
+    @State private var expandedRubricSectionIds: Set<String> = []
+    @State private var isSavingColumn = false
+    @State private var saveErrorMessage: String? = nil
 
     private let blueprints: [NotebookColumnBlueprint] = [
         .init(id: "written_test", title: "Nota numérica", subtitle: "Calificación 0-10", icon: "number.circle", type: .numeric, categoryKind: .evaluation, instrumentKind: .writtenTest, inputKind: .numeric010, scaleKind: .tenPoint, defaultWeight: 10),
@@ -475,6 +493,7 @@ struct AddColumnSheet: View {
                     syncBlueprintDefaults()
                     refreshSummaryAvailability()
                     syncRubricNameIfNeeded()
+                    syncRubricSectionExpansion()
                     #if os(iOS)
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                         isNameFocused = true
@@ -485,9 +504,13 @@ struct AddColumnSheet: View {
                     syncBlueprintDefaults()
                     refreshSummaryAvailability()
                     syncRubricNameIfNeeded()
+                    syncRubricSectionExpansion()
                     if categoryPlacementMode == .existing, selectedCategoryId == nil {
                         selectedCategoryId = suggestedCategoryId
                     }
+                }
+                .appOnChange(of: rubricSearchText) { _ in
+                    syncRubricSectionExpansion()
                 }
             }
             #if os(iOS)
@@ -722,6 +745,7 @@ struct AddColumnSheet: View {
                     formula: $formula,
                     availableColumns: availableFormulaColumns
                 )
+                formulaValidationPanel
             }
 
             DisclosureGroup {
@@ -847,20 +871,93 @@ struct AddColumnSheet: View {
                 )
             }
 
-            Picker("Cambiar rúbrica", selection: Binding<Int64>(
-                get: { selectedRubricId ?? 0 },
-                set: { newValue in
-                    selectedRubricId = newValue == 0 ? nil : newValue
-                    syncRubricNameIfNeeded()
-                }
-            )) {
-                Text("Selecciona una rúbrica").tag(Int64(0))
-                ForEach(bridge.rubrics, id: \.rubric.id) { rubric in
-                    Text(rubric.rubric.name).tag(rubric.rubric.id)
+            TextField("Buscar rúbrica", text: $rubricSearchText)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(rubricSections) { section in
+                    DisclosureGroup(isExpanded: Binding<Bool>(
+                        get: { expandedRubricSectionIds.contains(section.id) },
+                        set: { isExpanded in
+                            if isExpanded {
+                                expandedRubricSectionIds.insert(section.id)
+                            } else {
+                                expandedRubricSectionIds.remove(section.id)
+                            }
+                        }
+                    )) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(section.rubrics, id: \.rubric.id) { rubric in
+                                rubricSelectionRow(rubric)
+                            }
+                        }
+                        .padding(.top, 8)
+                    } label: {
+                        HStack(spacing: 8) {
+                            Text(section.title)
+                                .font(.subheadline.weight(.bold))
+                            Spacer()
+                            Text("\(section.rubrics.count)")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.secondary)
+                            if section.isCurrentCourse {
+                                Image(systemName: "star.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(NotebookStyle.warningTint)
+                                    .accessibilityHidden(true)
+                            }
+                        }
+                    }
                 }
             }
-            .pickerStyle(.menu)
+
+            if rubricSections.isEmpty {
+                Text("No hay rúbricas disponibles para este curso o búsqueda.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
+    }
+
+    private func rubricSelectionRow(_ rubric: RubricDetail) -> some View {
+        Button {
+            selectedRubricId = rubric.rubric.id
+            syncRubricNameIfNeeded()
+        } label: {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: selectedRubricId == rubric.rubric.id ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(selectedRubricId == rubric.rubric.id ? tintForSelectedBlueprint : .secondary)
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(rubric.rubric.name)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                    HStack(spacing: 8) {
+                        Label("\(rubric.criteria.count) criterios", systemImage: "checklist")
+                        if rubric.rubric.classId?.int64Value == currentClassId || rubricClassLinksContainsCurrentClass(rubric.rubric.id) {
+                            Label("Curso actual", systemImage: "person.2.fill")
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(10)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(selectedRubricId == rubric.rubric.id ? tintForSelectedBlueprint.opacity(0.10) : NotebookStyle.surfaceSoft)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(selectedRubricId == rubric.rubric.id ? tintForSelectedBlueprint.opacity(0.45) : NotebookStyle.softBorder, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     private var footerActions: some View {
@@ -875,6 +972,10 @@ struct AddColumnSheet: View {
                         Text(summaryFooterMessage)
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                    } else if let saveErrorMessage {
+                        Text(saveErrorMessage)
+                            .font(.caption)
+                            .foregroundStyle(.red)
                     } else if let canSaveReason {
                         Text(canSaveReason)
                             .font(.caption)
@@ -893,11 +994,11 @@ struct AddColumnSheet: View {
                     .keyboardShortcut(.cancelAction)
 
                 Button(action: saveColumn) {
-                    Label(primaryActionTitle, systemImage: "plus.circle.fill")
+                    Label(isSavingColumn ? "Creando..." : primaryActionTitle, systemImage: "plus.circle.fill")
                 }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(!canSave)
+                    .disabled(!canSave || isSavingColumn)
             }
         }
     }
@@ -1024,6 +1125,38 @@ struct AddColumnSheet: View {
             }
     }
 
+    private var currentClassId: Int64? {
+        bridge.currentNotebookClassId
+    }
+
+    private var rubricSections: [NotebookRubricSection] {
+        availableRubricsForCurrentClassAndSituation(searchText: rubricSearchText, unitOrSituation: unitOrSituation)
+    }
+
+    private var formulaValidationState: NotebookFormulaValidationState {
+        validateFormulaDraft()
+    }
+
+    private var formulaValidationPanel: some View {
+        let state = formulaValidationState
+        return HStack(alignment: .top, spacing: 10) {
+            Image(systemName: formulaValidationIcon(for: state))
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(formulaValidationTint(for: state))
+                .accessibilityHidden(true)
+            Text(formulaValidationMessage(for: state))
+                .font(.caption)
+                .foregroundStyle(formulaValidationTint(for: state))
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(formulaValidationTint(for: state).opacity(0.08))
+        )
+    }
+
     private var canSaveReason: String? {
         guard let selectedBlueprint else {
             return "Selecciona un tipo de columna."
@@ -1041,6 +1174,9 @@ struct AddColumnSheet: View {
             }
             if !trimmedFormula.contains("[") || !trimmedFormula.contains("]") {
                 return "Añade al menos una columna usando los botones de referencia."
+            }
+            if case .invalid(let message) = formulaValidationState {
+                return message
             }
         }
         if shouldShowWeightControls && parsedWeight == nil {
@@ -1120,44 +1256,206 @@ struct AddColumnSheet: View {
         return shouldShowWeightControls && countsTowardAverage
     }
 
+    private func availableRubricsForCurrentClassAndSituation(searchText: String, unitOrSituation: String) -> [NotebookRubricSection] {
+        let normalizedSearch = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let currentClassId = currentClassId
+        let filtered = bridge.rubrics
+            .filter { rubric in
+                guard let currentClassId else { return true }
+                let directClassId = rubric.rubric.classId?.int64Value
+                return directClassId == nil || directClassId == currentClassId || rubricClassLinksContainsCurrentClass(rubric.rubric.id)
+            }
+            .filter { rubric in
+                normalizedSearch.isEmpty ||
+                    rubric.rubric.name.localizedCaseInsensitiveContains(normalizedSearch) ||
+                    rubric.criteria.contains { $0.criterion.description_.localizedCaseInsensitiveContains(normalizedSearch) }
+            }
+
+        let sorted = filtered.sorted { lhs, rhs in
+            let lhsCurrent = lhs.rubric.classId?.int64Value == currentClassId || rubricClassLinksContainsCurrentClass(lhs.rubric.id)
+            let rhsCurrent = rhs.rubric.classId?.int64Value == currentClassId || rubricClassLinksContainsCurrentClass(rhs.rubric.id)
+            if lhsCurrent != rhsCurrent { return lhsCurrent }
+            return lhs.rubric.name.localizedCaseInsensitiveCompare(rhs.rubric.name) == .orderedAscending
+        }
+
+        let groups = Dictionary(grouping: sorted) { rubric -> String in
+            if let teachingUnitId = rubric.rubric.teachingUnitId?.int64Value {
+                return "SA \(teachingUnitId)"
+            }
+            return "Sin situación de aprendizaje"
+        }
+
+        return groups.map { title, rubrics in
+            let hasCurrent = rubrics.contains { rubric in
+                rubric.rubric.classId?.int64Value == currentClassId || rubricClassLinksContainsCurrentClass(rubric.rubric.id)
+            }
+            return NotebookRubricSection(
+                id: title,
+                title: title,
+                rubrics: rubrics,
+                isCurrentCourse: hasCurrent
+            )
+        }
+        .sorted {
+            if $0.isCurrentCourse != $1.isCurrentCourse { return $0.isCurrentCourse }
+            return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+        }
+    }
+
+    private func rubricClassLinksContainsCurrentClass(_ rubricId: Int64) -> Bool {
+        guard let currentClassId else { return false }
+        return bridge.rubricClassLinks[rubricId]?.contains(currentClassId) == true
+    }
+
+    private func syncRubricSectionExpansion() {
+        let sections = rubricSections
+        if !rubricSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            expandedRubricSectionIds = Set(sections.map(\.id))
+        } else if expandedRubricSectionIds.isEmpty {
+            expandedRubricSectionIds = Set(sections.prefix(2).map(\.id))
+        }
+    }
+
+    private func validateFormulaDraft() -> NotebookFormulaValidationState {
+        let raw = formula.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = raw.hasPrefix("=") ? String(raw.dropFirst()).trimmingCharacters(in: .whitespacesAndNewlines) : raw
+        guard !trimmed.isEmpty else { return .empty }
+
+        let referenceIds = formulaReferenceIds(in: trimmed)
+        if referenceIds.isEmpty {
+            return .invalid("Añade al menos una referencia de columna.")
+        }
+        let availableIds = Set(availableFormulaColumns.map(\.id))
+        if let unknown = referenceIds.first(where: { !availableIds.contains($0) }) {
+            return .invalid("La columna [\(unknown)] no está disponible.")
+        }
+        if formulaHasUnbalancedDelimiters(trimmed) {
+            return .invalid("Revisa paréntesis o referencias incompletas.")
+        }
+        if trimmed.localizedCaseInsensitiveContains("/0") {
+            return .invalid("La fórmula contiene una división por cero.")
+        }
+        let preview = formulaPreviewValue(referenceIds: referenceIds)
+        return .valid(preview.map { "Vista previa con datos: \(formatFormulaPreview($0))" } ?? "Fórmula válida. Aún no hay datos suficientes para previsualizar.")
+    }
+
+    private func formulaReferenceIds(in text: String) -> [String] {
+        var ids: [String] = []
+        var cursor = text.startIndex
+        while let open = text[cursor...].firstIndex(of: "["),
+              let close = text[open...].firstIndex(of: "]") {
+            let id = String(text[text.index(after: open)..<close]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !id.isEmpty && !ids.contains(id) {
+                ids.append(id)
+            }
+            cursor = text.index(after: close)
+        }
+        return ids
+    }
+
+    private func formulaHasUnbalancedDelimiters(_ text: String) -> Bool {
+        text.filter { $0 == "(" }.count != text.filter { $0 == ")" }.count ||
+            text.filter { $0 == "[" }.count != text.filter { $0 == "]" }.count
+    }
+
+    private func formulaPreviewValue(referenceIds: [String]) -> Double? {
+        guard let data = bridge.notebookState as? NotebookUiStateData else { return nil }
+        for row in data.sheet.rows {
+            let values = referenceIds.compactMap { numericValue(for: $0, row: row) }
+            if values.count == referenceIds.count {
+                return values.reduce(0, +) / Double(values.count)
+            }
+        }
+        return nil
+    }
+
+    private func numericValue(for columnId: String, row: NotebookRow) -> Double? {
+        guard let data = bridge.notebookState as? NotebookUiStateData,
+              let column = data.sheet.columns.first(where: { $0.id == columnId }) else { return nil }
+        if let value = row.persistedGrades.first(where: { $0.columnId == column.id })?.value?.doubleValue {
+            return value
+        }
+        if let evaluationId = column.evaluationId?.int64Value,
+           let value = row.cells.first(where: { $0.evaluationId == evaluationId })?.value?.doubleValue {
+            return value
+        }
+        if column.type == .check,
+           let value = row.persistedCells.first(where: { $0.columnId == column.id })?.boolValue?.boolValue {
+            return value ? 10 : 0
+        }
+        return nil
+    }
+
+    private func formatFormulaPreview(_ value: Double) -> String {
+        IosFormatting.decimal(value)
+    }
+
+    private func formulaValidationIcon(for state: NotebookFormulaValidationState) -> String {
+        switch state {
+        case .empty: return "function"
+        case .invalid: return "exclamationmark.triangle.fill"
+        case .valid: return "checkmark.circle.fill"
+        }
+    }
+
+    private func formulaValidationTint(for state: NotebookFormulaValidationState) -> Color {
+        switch state {
+        case .empty: return .secondary
+        case .invalid: return .red
+        case .valid: return NotebookStyle.successTint
+        }
+    }
+
+    private func formulaValidationMessage(for state: NotebookFormulaValidationState) -> String {
+        switch state {
+        case .empty: return "Escribe una fórmula y añade columnas con los botones de referencia."
+        case .invalid(let message), .valid(let message): return message
+        }
+    }
+
     private func saveColumn() {
         guard let selectedBlueprint else { return }
+        guard !isSavingColumn else { return }
         lastBlueprintId = selectedBlueprint.id
         if selectedBlueprint.isIndividualSummary {
             saveIndividualSummaryColumn()
             return
         }
 
-        var resolvedCategoryId = categoryPlacementMode == .existing ? selectedCategoryId : nil
-        if categoryPlacementMode == .createNew {
-            let generatedCategoryId = UUID().uuidString
-            bridge.saveColumnCategory(name: resolvedNewCategoryName, categoryId: generatedCategoryId)
-            resolvedCategoryId = generatedCategoryId
+        isSavingColumn = true
+        saveErrorMessage = nil
+        Task {
+            do {
+                let result = try await bridge.addColumnWithOptionalCategory(
+                    name: resolvedColumnName,
+                    type: selectedBlueprint.type.name,
+                    weight: shouldShowWeightControls ? (parsedWeight ?? selectedBlueprint.defaultWeight) : 0,
+                    formula: trimmedOrNil(formula),
+                    rubricId: selectedRubricId,
+                    categoryId: categoryPlacementMode == .existing ? selectedCategoryId : nil,
+                    newCategoryName: categoryPlacementMode == .createNew ? resolvedNewCategoryName : nil,
+                    categoryKind: selectedBlueprint.categoryKind,
+                    instrumentKind: selectedBlueprint.instrumentKind,
+                    inputKind: resolvedInputKind,
+                    dateEpochMs: Int64(selectedDate.timeIntervalSince1970 * 1000),
+                    unitOrSituation: trimmedOrNil(unitOrSituation),
+                    competencyCriteriaIds: [],
+                    scaleKind: resolvedScaleKind,
+                    iconName: selectedBlueprint.icon,
+                    countsTowardAverage: resolvedCountsTowardAverage,
+                    isPinned: isPinned,
+                    isHidden: false,
+                    visibility: .visible,
+                    isLocked: isLocked,
+                    isTemplate: isTemplate
+                )
+                dismiss()
+                onCreatedColumn?(result.column.id)
+            } catch {
+                saveErrorMessage = error.localizedDescription
+                isSavingColumn = false
+            }
         }
-
-        bridge.addColumn(
-            name: resolvedColumnName,
-            type: selectedBlueprint.type.name,
-            weight: shouldShowWeightControls ? (parsedWeight ?? selectedBlueprint.defaultWeight) : 0,
-            formula: trimmedOrNil(formula),
-            rubricId: selectedRubricId,
-            categoryId: resolvedCategoryId,
-            categoryKind: selectedBlueprint.categoryKind,
-            instrumentKind: selectedBlueprint.instrumentKind,
-            inputKind: resolvedInputKind,
-            dateEpochMs: Int64(selectedDate.timeIntervalSince1970 * 1000),
-            unitOrSituation: trimmedOrNil(unitOrSituation),
-            competencyCriteriaIds: [],
-            scaleKind: resolvedScaleKind,
-            iconName: selectedBlueprint.icon,
-            countsTowardAverage: resolvedCountsTowardAverage,
-            isPinned: isPinned,
-            isHidden: false,
-            visibility: .visible,
-            isLocked: isLocked,
-            isTemplate: isTemplate
-        )
-        dismiss()
     }
 
     private func refreshSummaryAvailability() {
@@ -1286,7 +1584,7 @@ struct AddColumnSheet: View {
 
     private func label(for instrument: NotebookInstrumentKind) -> String {
         switch instrument {
-        case .writtenTest: return "Prueba escrita"
+        case .writtenTest: return "Nota numérica"
         case .rubric: return "Rúbrica"
         case .systematicObservation: return "Observación"
         case .checklist: return "Lista de control"

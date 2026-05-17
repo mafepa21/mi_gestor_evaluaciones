@@ -170,6 +170,10 @@ struct MacStudentsView: View {
                 store.localSelectedStudentId = visibleIds.first
             }
         }
+        .appOnChange(of: bridge.allStudents.map { "\($0.id):\($0.isInjured)" }.joined(separator: "|")) { _, _ in
+            guard ownsStudentSideEffects, store.didBootstrap else { return }
+            Task { await reloadRows(preferredStudentId: store.localSelectedStudentId, showsLoading: false) }
+        }
         .onExitCommand {
             guard ownsStudentSideEffects else { return }
             if !store.searchText.isEmpty {

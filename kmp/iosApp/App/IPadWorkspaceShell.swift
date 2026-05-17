@@ -1893,20 +1893,7 @@ struct WorkspaceEmptyState: View {
     let subtitle: String
 
     var body: some View {
-        VStack(spacing: 14) {
-            Image(systemName: "square.stack.3d.up.slash")
-                .font(.system(size: 42, weight: .thin))
-                .foregroundStyle(.secondary)
-            Text(title)
-                .font(.system(size: 24, weight: .black, design: .rounded))
-            Text(subtitle)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 420)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(24)
+        PremiumEmptyState(title: title, subtitle: subtitle)
     }
 }
 

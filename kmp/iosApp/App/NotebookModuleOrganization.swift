@@ -471,7 +471,8 @@ extension NotebookModuleView {
                                 .lineLimit(1)
                             riskBadge(for: item.student.id)
                         }
-                        if item.student.isInjured {
+                        let isInjured = isStudentInjured(item.student)
+                        if isInjured {
                             Text("Seguimiento físico")
                                 .font(.system(size: 11, weight: .medium, design: .rounded))
                                 .foregroundStyle(.orange)
@@ -484,8 +485,8 @@ extension NotebookModuleView {
                             Task { await toggleStudentInjuryStatus(item.student) }
                         } label: {
                             Label(
-                                item.student.isInjured ? "Quitar lesión" : "Marcar lesión",
-                                systemImage: item.student.isInjured ? "heart.slash" : "bandage"
+                                isStudentInjured(item.student) ? "Quitar lesión" : "Marcar lesión",
+                                systemImage: isStudentInjured(item.student) ? "heart.slash" : "bandage"
                             )
                         }
 

@@ -405,6 +405,79 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-05-17 - Planificación con stores parciales y AppleDesignSystem
+
+Resumen:
+- `PlannerWorkspaceViewModel` en `kmp/iosApp/App/PlannerWorkspaceIOS.swift` queda dividido en stores internos para calendario, sesiones, horario, diario y composer, manteniendo una fachada compatible con las vistas SwiftUI existentes.
+- Se añadieron recargas parciales (`reloadSessionsOnly`, `reloadScheduleOnly`, `reloadJournalOnly`, `reloadComposerContextOnly`) y el guardado del composer actualiza localmente solo la sesión afectada, manteniendo selección y evitando volver a cargar horario/diario completo.
+- El selector de instrumentos de planificación conserva el filtrado contextual por curso/SA desde `plannerAvailableAssessmentInstruments`, y suma buscador, agrupación por situación de aprendizaje y chips de criterios SA/rúbricas/evaluaciones.
+- Se creó `AppleDesignSystem` con `PremiumCard`, `PremiumToolbarButton`, `PremiumEmptyState`, `PremiumSectionHeader` y `PremiumInspectorPanel` en `kmp/iosApp/AppleShared/AppleAppEnvironment.swift`; Cuaderno, shell, macOS y Planner empiezan a consumir tokens/componentes comunes.
+
+Validación:
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -destination 'platform=macOS' -configuration Debug build` terminó con `BUILD SUCCEEDED`.
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -destination 'generic/platform=iOS Simulator' -configuration Debug build` compiló Swift y enlazó, pero falló al final en `CodeSign` de `MiGestorKit.framework/Versions/A` con `bundle format unrecognized`.
+
+Notas para futuras conversaciones:
+- No hubo migración SQLDelight ni cambio de esquema. La persistencia afectada es el flujo de guardado/actualización de sesiones de Planner desde Swift, que ahora evita recargas globales innecesarias tras guardar.
+- Los stores siguen expuestos a través de la fachada actual del ViewModel para no reescribir bindings de SwiftUI en bloque; una siguiente iteración puede mover bindings concretos a subviews observando cada store directamente.
+
+### 2026-05-17 - Alumnado y Asistencia con lesión optimista y batch
+
+Resumen:
+- Se añadió `StudentSelectionStore` para centralizar selección de clase/alumno en la shell macOS con `selectionRevision`, y `MacRootView` pasa bindings derivados a Alumnado, Asistencia, Cuaderno, pruebas físicas e informes.
+- `MacStudentsView` ya limpia/cancela perfiles al cambiar selección y ahora recarga filas si cambia el estado de lesión publicado por el bridge, evitando badges antiguos al volver desde otros módulos.
+- `KmpBridge.swift` expone `AttendanceDraft` y `saveAttendanceBatch(records:)`; `MacAttendanceView` y el Cuaderno usan el batch para “marcar presentes”, con actualización local optimista y rollback/aviso si falla.
+- Los toggles de lesión quedan optimistas en Alumnado, Asistencia, Cuaderno y evaluación masiva de rúbricas; al fallar se revierte el estado local y se muestra aviso por `bridge.status` o toast del cuaderno.
+
+Validación:
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -configuration Debug -destination 'platform=macOS' build` terminó con `BUILD SUCCEEDED`.
+
+Notas para futuras conversaciones:
+- Persistencia afectada: registros de asistencia vía `attendanceRepository.saveAttendance` y estado `Student.isInjured` vía `studentsRepository.saveStudent`; no hubo migración SQLDelight ni cambio de esquema.
+- El batch sigue guardando cada draft contra el repositorio existente, pero evita recargar/consultar por alumno desde la UI y permite una única operación semántica desde Swift.
+
+### 2026-05-17 - Coordinador de evaluación rápida con rúbricas
+
+Resumen:
+- Se añadió `RubricEvaluationCoordinator` en `kmp/iosApp/App/KmpBridge.swift` para mantener el contexto de evaluación individual desde cuaderno: `columnId`, `rubricId`, `classId`, `evaluationId`, alumno actual y cola ordenada de alumnos visibles.
+- `NotebookModuleCellActions.swift` usa el coordinador al abrir una rúbrica individual; tras guardar refresca el cuaderno, programa snapshot sync y abre automáticamente el siguiente alumno pendiente. Al terminar cierra la evaluación y muestra resumen.
+- `RubricBulkEvaluationSheet.swift` ahora construye una caché Swift por estado (`BulkRubricEvaluationCache`) para selecciones, notas, pendientes y lesionados, evitando llamadas repetidas por celda a `bridge.bulkSelectedLevelId` y `bridge.bulkScore`.
+- La hoja masiva comparte la misma lógica para iOS/macOS y añade atajos macOS: `Cmd+S`, `Esc`, flechas para mover foco y teclas `1`-`5` para seleccionar nivel en la celda enfocada.
+
+Validación:
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -configuration Debug -destination 'platform=macOS' build` terminó con `BUILD SUCCEEDED`.
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` compiló Swift y enlazó, pero falló después en `CodeSign` de `MiGestorKit.framework/Versions/A` con `bundle format unrecognized`; no se reportaron errores Swift en los archivos modificados.
+
+Notas para futuras conversaciones:
+- No hubo migración SQLDelight ni cambio de esquema. La persistencia afectada es el refresco/visibilidad de notas del cuaderno tras guardar rúbricas y la programación de snapshot sync desde el bridge.
+- Si se quiere llevarlo completamente a KMP, el siguiente paso sería mover el coordinador de cola a shared y exponer un estado observable en vez de mantenerlo en Swift.
+
+### 2026-05-17 - Flujo robusto de creación de columnas del Cuaderno
+
+Resumen:
+- Se reforzó `kmp/iosApp/App/AddColumnSheet.swift`: el blueprint principal queda como “Nota numérica”, el selector de rúbricas pasa a búsqueda con secciones plegables filtradas/priorizadas por curso actual y muestra criterios/uso visual.
+- Se añadió validación previa de fórmulas en la sheet con bloqueo de errores básicos, referencias inexistentes, delimitadores incompletos y preview con datos cuando existe una fila evaluable; KMP sigue conservando su validación final contra referencias circulares.
+- `kmp/iosApp/App/KmpBridge.swift` añade `addColumnWithOptionalCategory(...)`, que crea categoría opcional y columna en una única operación async desde Swift sin refrescar el cuaderno entre medias, y devuelve la columna/categoría final.
+- `NotebookModuleView.swift` y `NotebookModuleGridCells.swift` añaden highlight temporal de la columna recién creada tras cerrar la sheet.
+- Validación realizada: `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' build` terminó con `BUILD SUCCEEDED`.
+
+Notas para futuras conversaciones:
+- No hubo migración de esquema SQLDelight. La persistencia afectada es la creación coordinada de `NotebookColumnCategory`, `Evaluation` y `NotebookColumnDefinition` desde el bridge.
+- Si se quiere cerrar completamente la validación de fórmulas en UI, el siguiente paso sería exponer el validador KMP `validateFormula` al bridge en vez de mantener una validación Swift aproximada.
+
+### 2026-05-17 - Estabilización del layout del Cuaderno
+
+Resumen:
+- Se extrajo `NotebookGridLayoutModel` en `kmp/iosApp/App/NotebookModuleColumnModel.swift` para centralizar segmentos visibles, categorías, columnas fijas/scrollables, anchos y estado persistido de categorías colapsadas.
+- `NotebookModuleView.swift` delega el layout de grid en el modelo y mantiene la columna de alumno fija y la columna `Media` como zona fija derecha.
+- `NotebookDataGrid.swift` añadió sincronización vertical también en UIKit con `UIScrollView`, reduciendo el riesgo de descuadre entre panel fijo, zona scrollable y media en iPad; macOS mantiene el representable AppKit existente.
+- Se rediseñaron las categorías en `NotebookModuleGridCells.swift`: banda superior para categorías abiertas, chip de carpeta con contador para colapsadas y ancho único derivado del layout.
+- Validación realizada: `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -configuration Debug -destination 'platform=macOS' build` terminó con `BUILD SUCCEEDED`; `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` compiló Swift y falló al final en codesign de `MiGestorKit.framework` con `bundle format unrecognized`, sin errores Swift reportados.
+
+Notas para futuras conversaciones:
+- No hubo cambios de persistencia de datos, esquema SQLDelight, repositorios ni migraciones; solo se movió persistencia UI de categorías colapsadas desde la vista al modelo de layout.
+- Si reaparecen gaps verticales, revisar primero la sincronización UIKit/AppKit de `NotebookSyncedVerticalScrollView` y la altura fija `notebookGridRowHeight` antes de tocar lógica de negocio.
+
 ### 2026-05-17 - Homogeneización macOS, fluidez y sheets premium sin tocar dominio
 
 Resumen:

@@ -9,8 +9,7 @@ struct MacRootView: View {
     @StateObject private var notebookToolbarActions = NotebookMacToolbarActions()
     @StateObject private var physicalTestsToolbarActions = MacPhysicalTestsToolbarActions()
     @StateObject private var studentsStore = MacStudentsStore()
-    @State private var selectedClassId: Int64? = nil
-    @State private var selectedStudentId: Int64? = nil
+    @StateObject private var studentSelection = StudentSelectionStore()
     @State private var attendanceToolbarActions: MacAttendanceToolbarActions? = nil
     @State private var dashboardToolbarActions: MacDashboardToolbarActions? = nil
     @State private var studentsReloadToken = 0
@@ -163,8 +162,8 @@ struct MacRootView: View {
                 layoutState: layoutState,
                 toolbarActions: notebookToolbarActions,
                 inspectorState: notebookInspectorState,
-                selectedClassId: $selectedClassId,
-                selectedStudentId: $selectedStudentId,
+                selectedClassId: studentSelection.selectedClassBinding,
+                selectedStudentId: studentSelection.selectedStudentBinding,
                 onOpenModule: open(module:classId:studentId:),
                 presentation: .content,
                 onToggleInspectorColumn: toggleNotebookInspectorColumn
@@ -172,8 +171,8 @@ struct MacRootView: View {
         case .attendance:
             MacAttendanceView(
                 bridge: session.bridge,
-                selectedClassId: $selectedClassId,
-                selectedStudentId: $selectedStudentId,
+                selectedClassId: studentSelection.selectedClassBinding,
+                selectedStudentId: studentSelection.selectedStudentBinding,
                 onOpenModule: open(module:classId:studentId:),
                 onToolbarActionsChange: setAttendanceToolbarActions
             )
@@ -181,8 +180,8 @@ struct MacRootView: View {
             MacStudentsView(
                 bridge: session.bridge,
                 store: studentsStore,
-                selectedClassId: $selectedClassId,
-                selectedStudentId: $selectedStudentId,
+                selectedClassId: studentSelection.selectedClassBinding,
+                selectedStudentId: studentSelection.selectedStudentBinding,
                 onOpenModule: open(module:classId:studentId:),
                 presentation: .content,
                 reloadToken: studentsReloadToken
@@ -192,16 +191,16 @@ struct MacRootView: View {
         case .physicalTests:
             MacPhysicalTestsView(
                 bridge: session.bridge,
-                selectedClassId: $selectedClassId,
-                selectedStudentId: $selectedStudentId,
+                selectedClassId: studentSelection.selectedClassBinding,
+                selectedStudentId: studentSelection.selectedStudentBinding,
                 onOpenModule: open(module:classId:studentId:),
                 toolbarActions: physicalTestsToolbarActions
             )
         case .reports:
             MacReportsView(
                 bridge: session.bridge,
-                selectedClassId: $selectedClassId,
-                selectedStudentId: $selectedStudentId
+                selectedClassId: studentSelection.selectedClassBinding,
+                selectedStudentId: studentSelection.selectedStudentBinding
             )
         case .planner:
             PlannerMacLayout(bridge: session.bridge)
@@ -225,8 +224,8 @@ struct MacRootView: View {
                 layoutState: layoutState,
                 toolbarActions: notebookToolbarActions,
                 inspectorState: notebookInspectorState,
-                selectedClassId: $selectedClassId,
-                selectedStudentId: $selectedStudentId,
+                selectedClassId: studentSelection.selectedClassBinding,
+                selectedStudentId: studentSelection.selectedStudentBinding,
                 onOpenModule: open(module:classId:studentId:),
                 presentation: .inspector
             )
@@ -234,8 +233,8 @@ struct MacRootView: View {
             MacStudentsView(
                 bridge: session.bridge,
                 store: studentsStore,
-                selectedClassId: $selectedClassId,
-                selectedStudentId: $selectedStudentId,
+                selectedClassId: studentSelection.selectedClassBinding,
+                selectedStudentId: studentSelection.selectedStudentBinding,
                 onOpenModule: open(module:classId:studentId:),
                 presentation: .inspector,
                 reloadToken: studentsReloadToken
@@ -460,7 +459,7 @@ struct MacRootView: View {
             open(module: .notebook, classId: classId, studentId: nil)
         case .rubrics(let classId):
             if let classId {
-                selectedClassId = classId
+                studentSelection.setClass(classId)
             }
             selectFeature(.rubrics)
         case .plannerAgenda:
@@ -519,12 +518,10 @@ struct MacRootView: View {
     }
 
     private func open(module: AppWorkspaceModule, classId: Int64?, studentId: Int64?) {
-        if let classId {
-            selectedClassId = classId
-        }
-        if let studentId {
-            selectedStudentId = studentId
-        }
+        studentSelection.select(
+            classId: classId ?? studentSelection.selectedClassId,
+            studentId: studentId ?? studentSelection.selectedStudentId
+        )
 
         switch module {
         case .notebook:

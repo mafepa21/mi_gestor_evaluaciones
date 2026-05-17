@@ -6,9 +6,9 @@ enum NotebookStyle {
     static let sectionSpacing: CGFloat = 14
     static let stackSpacing: CGFloat = 12
     static let controlSpacing: CGFloat = 8
-    static let cardRadius: CGFloat = 20
-    static let innerRadius: CGFloat = 14
-    static let chipRadius: CGFloat = 16
+    static let cardRadius: CGFloat = AppleDesignSystem.cardRadius
+    static let innerRadius: CGFloat = AppleDesignSystem.controlRadius
+    static let chipRadius: CGFloat = AppleDesignSystem.chipRadius
     static let compactChipRadius: CGFloat = 12
     static let actionHeight: CGFloat = 44
     static let iconButtonSize: CGFloat = 44
@@ -16,9 +16,9 @@ enum NotebookStyle {
     static let border = Color.black.opacity(0.06)
     static let softBorder = Color.black.opacity(0.04)
     static let shadow = Color.black.opacity(0.08)
-    static let primaryTint = EvaluationDesign.accent
-    static let successTint = EvaluationDesign.success
-    static let warningTint = Color(red: 0.86, green: 0.52, blue: 0.12)
+    static let primaryTint = AppleDesignSystem.accent
+    static let successTint = AppleDesignSystem.success
+    static let warningTint = AppleDesignSystem.warning
     static let surface = appSecondarySystemBackgroundColor().opacity(0.92)
     static let surfaceMuted = appTertiarySystemBackgroundColor().opacity(0.88)
     static let surfaceSoft = appSecondarySystemBackgroundColor().opacity(0.78)

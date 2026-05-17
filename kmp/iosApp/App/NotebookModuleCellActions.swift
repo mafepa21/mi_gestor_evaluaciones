@@ -73,14 +73,24 @@ extension NotebookModuleView {
             showToast("Esta columna no tiene rúbrica/evaluación asociada.", style: .warning)
             return
         }
+        let classId: Int64
         if let data = bridge.notebookState as? NotebookUiStateData {
             pendingRubricStudentOrder = filteredRows(data: data).map { $0.student.id }
+            classId = data.sheet.classId
         } else {
             pendingRubricStudentOrder = [item.student.id]
+            classId = bridge.notebookViewModel.currentClassId?.int64Value ?? 0
         }
         pendingRubricColumnId = column.id
         pendingRubricCurrentStudentId = item.student.id
-        bridge.isNotebookRubricAutoAdvanceActive = true
+        bridge.startRubricEvaluationCoordinator(
+            columnId: column.id,
+            rubricId: rubricId,
+            classId: classId,
+            evaluationId: evaluationId,
+            studentIds: pendingRubricStudentOrder,
+            currentStudentId: item.student.id
+        )
         withAnimation(.spring(response: 0.18, dampingFraction: 0.9)) {
             focusedCellId = nil
             activeChoiceCellId = nil
@@ -98,47 +108,26 @@ extension NotebookModuleView {
     }
 
     func openNextRubricStudentIfPossible() {
-        guard let columnId = pendingRubricColumnId,
-              let currentStudentId = pendingRubricCurrentStudentId,
-              let data = bridge.notebookState as? NotebookUiStateData,
-              let column = data.sheet.columns.first(where: { $0.id == columnId }),
-              let rubricId = column.rubricId?.int64Value,
-              let evaluationId = column.evaluationId?.int64Value else {
+        guard let data = bridge.notebookState as? NotebookUiStateData else {
             resetPendingRubricSequence()
             bridge.closeRubricEvaluation()
             return
         }
 
-        let rows = filteredRows(data: data)
-        let orderedIds = pendingRubricStudentOrder.isEmpty
-            ? rows.map { $0.student.id }
-            : pendingRubricStudentOrder.filter { id in rows.contains { $0.student.id == id } }
-
-        guard let currentIndex = orderedIds.firstIndex(of: currentStudentId) else {
+        let visibleStudentIds = filteredRows(data: data).map { $0.student.id }
+        switch bridge.advanceRubricEvaluationToNextStudent(visibleStudentIds: visibleStudentIds) {
+        case .openedNext(let studentId, _):
+            pendingRubricCurrentStudentId = studentId
+            pendingRubricColumnId = bridge.rubricEvaluationCoordinator.context?.columnId
+            pendingRubricStudentOrder = bridge.rubricEvaluationCoordinator.context?.studentIds ?? visibleStudentIds
+            if let columnId = pendingRubricColumnId {
+                inspectorSelection = NotebookInspectorSelection(studentId: studentId, columnId: columnId)
+            }
+        case .completed(let summary):
             resetPendingRubricSequence()
-            bridge.closeRubricEvaluation()
-            return
-        }
-
-        let nextIds = orderedIds.dropFirst(currentIndex + 1)
-        guard let nextStudentId = nextIds.first else {
+            showToast("Rúbrica completada para \(summary.evaluatedCount) alumno\(summary.evaluatedCount == 1 ? "" : "s").")
+        case .closed:
             resetPendingRubricSequence()
-            showToast("Rúbrica completada para los alumnos visibles.")
-            bridge.closeRubricEvaluation()
-            bridge.refreshCurrentNotebook()
-            return
-        }
-
-        pendingRubricCurrentStudentId = nextStudentId
-        bridge.rubricEvaluationState = RubricEvaluationUiState.companion.default()
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-            bridge.openRubricEvaluationFromNotebook(
-                studentId: nextStudentId,
-                columnId: column.id,
-                rubricId: rubricId,
-                evaluationId: evaluationId
-            )
         }
     }
 
@@ -147,6 +136,7 @@ extension NotebookModuleView {
         pendingRubricCurrentStudentId = nil
         pendingRubricStudentOrder = []
         bridge.isNotebookRubricAutoAdvanceActive = false
+        bridge.rubricEvaluationCoordinator.reset()
     }
 
     func openRubricBulk(column: NotebookColumnDefinition, data: NotebookUiStateData) {

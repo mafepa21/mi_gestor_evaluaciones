@@ -128,74 +128,44 @@ extension NotebookModuleView {
     }
 
     func columns(in category: NotebookColumnCategory, data: NotebookUiStateData, includeHidden: Bool = false) -> [NotebookColumnDefinition] {
-        data.sheet.columns
-            .filter { $0.categoryId == category.id }
-            .filter { includeHidden || $0.isVisibleInGrid }
-            .filter { columnMatchesActiveTab($0, data: data) }
-            .filter { columnMatchesCurrentView($0) }
-            .sorted {
-                if $0.order != $1.order { return $0.order < $1.order }
-                return $0.id < $1.id
-            }
+        gridLayoutModel.columns(
+            in: category,
+            data: data,
+            activeTabId: activeNotebookTabId(data: data),
+            viewPreset: viewPreset,
+            includeHidden: includeHidden
+        )
     }
 
     func managedColumns(data: NotebookUiStateData) -> [NotebookColumnDefinition] {
-        data.sheet.columns
-            .filter { columnMatchesActiveTab($0, data: data) }
-            .filter { columnMatchesCurrentView($0) }
-            .sorted {
-            if $0.order != $1.order { return $0.order < $1.order }
-            return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
-        }
+        gridLayoutModel.managedColumns(
+            data: data,
+            activeTabId: activeNotebookTabId(data: data),
+            viewPreset: viewPreset
+        )
     }
 
     func relevantCategories(data: NotebookUiStateData) -> [NotebookColumnCategory] {
-        visibleCategories(data: data)
-            .filter { !columns(in: $0, data: data, includeHidden: true).isEmpty }
+        gridLayoutModel.relevantCategories(
+            data: data,
+            activeTabId: activeNotebookTabId(data: data),
+            viewPreset: viewPreset
+        )
     }
 
     func visibleCategories(data: NotebookUiStateData) -> [NotebookColumnCategory] {
-        let activeTabId = activeNotebookTabId(data: data)
-        return data.sheet.columnCategories
-            .filter { activeTabId == nil || $0.tabId == activeTabId }
-            .sorted { $0.order < $1.order }
+        gridLayoutModel.visibleCategories(
+            data: data,
+            activeTabId: activeNotebookTabId(data: data)
+        )
     }
 
     func displaySegments(data: NotebookUiStateData) -> [NotebookDisplaySegment] {
-        var segments = fixedSegmentsForCurrentView().map(NotebookDisplaySegment.fixed)
-        let visibleCategorizedIds = Set(
-            visibleCategories(data: data).map(\.id)
+        gridLayoutModel.displaySegments(
+            data: data,
+            activeTabId: activeNotebookTabId(data: data),
+            viewPreset: viewPreset
         )
-
-        let uncategorizedColumns = data.sheet.columns
-            .filter(\.isVisibleInGrid)
-            .filter { columnMatchesActiveTab($0, data: data) }
-            .filter { columnMatchesCurrentView($0) }
-            .filter { column in
-                guard let categoryId = column.categoryId else { return true }
-                return !visibleCategorizedIds.contains(categoryId)
-            }
-            .sorted {
-                if $0.isPinned != $1.isPinned { return $0.isPinned && !$1.isPinned }
-                if $0.order != $1.order { return $0.order < $1.order }
-                return $0.id < $1.id
-            }
-
-        segments.append(contentsOf: uncategorizedColumns.map(NotebookDisplaySegment.column))
-
-        for category in visibleCategories(data: data) {
-            let categoryColumns = columns(in: category, data: data)
-            guard !categoryColumns.isEmpty else {
-                continue
-            }
-
-            if isCategoryCollapsed(category) {
-                segments.append(.collapsedCategory(category, categoryColumns))
-            } else {
-                segments.append(contentsOf: categoryColumns.map(NotebookDisplaySegment.column))
-            }
-        }
-        return segments
     }
 
     func notebookSourceColumns(data: NotebookUiStateData) -> [NotebookColumnDefinition] {

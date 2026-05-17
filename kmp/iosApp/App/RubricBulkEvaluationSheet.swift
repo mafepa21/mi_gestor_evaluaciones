@@ -11,6 +11,10 @@ struct RubricBulkEvaluationSheet: View {
     @State private var horizontalScrollOffset: CGFloat = 0
     @State private var hoveredLevelKey: BulkHoveredLevelKey?
     @State private var levelHoverTask: Task<Void, Never>?
+    @State private var focusedBulkStudentId: Int64?
+    @State private var focusedBulkCriterionId: Int64?
+    @State private var localInjuryStatuses: [Int64: Bool] = [:]
+    @State private var savingInjuryStudentIds: Set<Int64> = []
 
     private var state: BulkRubricEvaluationUiState? {
         bridge.bulkRubricEvaluationState
@@ -29,20 +33,22 @@ struct RubricBulkEvaluationSheet: View {
                     GeometryReader { proxy in
                         let isWide = proxy.size.width >= 980
                         let className = className(for: state)
+                        let cache = BulkRubricEvaluationCache(state: state, rubric: rubric)
 
                         ScrollView {
                             VStack(alignment: .leading, spacing: EvaluationDesign.sectionSpacing) {
                                 headerSection(
                                     className: className,
                                     rubric: rubric,
-                                    state: state
+                                    state: state,
+                                    cache: cache
                                 )
 
-                                let hasInjured = !state.injuredStudents.isEmpty
+                                let hasInjured = !injuredStudents(for: state).isEmpty
 
                                 if isWide {
                                     HStack(alignment: .top, spacing: EvaluationDesign.sectionSpacing) {
-                                        evaluationTable(state: state, rubric: rubric)
+                                        evaluationTable(state: state, rubric: rubric, cache: cache)
                                             .frame(maxWidth: .infinity, alignment: .leading)
 
                                         if hasInjured {
@@ -54,7 +60,7 @@ struct RubricBulkEvaluationSheet: View {
                                     .animation(.spring(response: 0.4, dampingFraction: 0.8), value: hasInjured)
                                 } else {
                                     VStack(spacing: EvaluationDesign.sectionSpacing) {
-                                        compactEvaluationByCriterion(state: state, rubric: rubric)
+                                        compactEvaluationByCriterion(state: state, rubric: rubric, cache: cache)
                                         if hasInjured {
                                             injuredSidebar(state: state)
                                         }
@@ -70,6 +76,15 @@ struct RubricBulkEvaluationSheet: View {
                                 dismiss()
                             }
                         }
+                        #if os(macOS)
+                        .focusable()
+                        .onMoveCommand { direction in
+                            moveFocusedCell(direction: direction, state: state, rubric: rubric)
+                        }
+                        .overlay(alignment: .topLeading) {
+                            macKeyboardShortcuts(state: state, rubric: rubric)
+                        }
+                        #endif
                     }
                 } else {
                     VStack(spacing: 12) {
@@ -97,7 +112,8 @@ struct RubricBulkEvaluationSheet: View {
     private func headerSection(
         className: String,
         rubric: RubricDetail,
-        state: BulkRubricEvaluationUiState
+        state: BulkRubricEvaluationUiState,
+        cache: BulkRubricEvaluationCache
     ) -> some View {
         HStack(alignment: .center, spacing: 24) {
             EvaluationIconButton(systemImage: "chevron.left", tint: .primary.opacity(0.8)) {
@@ -114,6 +130,12 @@ struct RubricBulkEvaluationSheet: View {
             Spacer(minLength: 32)
 
             HStack(spacing: 16) {
+                EvaluationChip(
+                    label: "\(cache.totalPendingCriteria) pendientes",
+                    systemImage: "clock.badge.exclamationmark",
+                    tint: cache.totalPendingCriteria == 0 ? EvaluationDesign.success : EvaluationDesign.accent
+                )
+
                 VStack(alignment: .trailing, spacing: 4) {
                     EvaluationPrimaryButton(label: "Guardar Todo", systemImage: "square.and.arrow.down.fill") {
                         bridge.bulkSaveAll()
@@ -132,7 +154,8 @@ struct RubricBulkEvaluationSheet: View {
 
     private func compactEvaluationByCriterion(
         state: BulkRubricEvaluationUiState,
-        rubric: RubricDetail
+        rubric: RubricDetail,
+        cache: BulkRubricEvaluationCache
     ) -> some View {
         EvaluationGlassCard(cornerRadius: EvaluationDesign.cardRadius, fillOpacity: 0.92) {
             VStack(alignment: .leading, spacing: 24) {
@@ -153,14 +176,15 @@ struct RubricBulkEvaluationSheet: View {
                                     Text(student.firstName + " " + student.lastName)
                                         .font(.subheadline.weight(.bold))
                                         .lineLimit(1)
-                                    scorePill(for: student.id, width: 72)
+                                    scorePill(for: student.id, width: 72, cache: cache)
                                 }
                                 .frame(width: 144, alignment: .leading)
 
                                 inlineCriterionCell(
                                     studentId: student.id,
                                     criterion: criterion,
-                                    width: 220
+                                    width: 220,
+                                    cache: cache
                                 )
                             }
                             .padding(12)
@@ -178,7 +202,8 @@ struct RubricBulkEvaluationSheet: View {
 
     private func evaluationTable(
         state: BulkRubricEvaluationUiState,
-        rubric: RubricDetail
+        rubric: RubricDetail,
+        cache: BulkRubricEvaluationCache
     ) -> some View {
         let criterionWidth: CGFloat = 180
         let scoreWidth: CGFloat = 88
@@ -224,6 +249,7 @@ struct RubricBulkEvaluationSheet: View {
                                         student: student,
                                         state: state,
                                         rubric: rubric,
+                                        cache: cache,
                                         studentWidth: studentWidth,
                                         criterionWidth: criterionWidth,
                                         scoreWidth: scoreWidth,
@@ -312,13 +338,15 @@ struct RubricBulkEvaluationSheet: View {
         student: Student,
         state: BulkRubricEvaluationUiState,
         rubric: RubricDetail,
+        cache: BulkRubricEvaluationCache,
         studentWidth: CGFloat,
         criterionWidth: CGFloat,
         scoreWidth: CGFloat,
         actionsWidth: CGFloat,
         horizontalOffset: CGFloat
     ) -> some View {
-        let isInjured = state.injuredStudents.contains(where: { $0.id == student.id })
+        let isInjured = isStudentInjured(student, cache: cache)
+        let pendingCount = cache.pendingCriteriaCount(for: student.id)
 
         return HStack(spacing: 0) {
             HStack(spacing: 16) {
@@ -334,6 +362,10 @@ struct RubricBulkEvaluationSheet: View {
                         Text("Lesionado")
                             .font(.system(size: 10, weight: .bold))
                             .foregroundStyle(EvaluationDesign.danger)
+                    } else if pendingCount > 0 {
+                        Text("\(pendingCount) pendiente\(pendingCount == 1 ? "" : "s")")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(EvaluationDesign.accent.opacity(0.9))
                     } else {
                         Text("Disponible")
                             .font(.system(size: 10, weight: .medium))
@@ -368,13 +400,23 @@ struct RubricBulkEvaluationSheet: View {
                     inlineCriterionCell(
                         studentId: student.id,
                         criterion: criterion,
-                        width: criterionWidth
+                        width: criterionWidth,
+                        cache: cache
                     )
                 }
 
-                scorePill(for: student.id, width: scoreWidth)
+                scorePill(for: student.id, width: scoreWidth, cache: cache)
 
                 HStack(spacing: 8) {
+                    rowActionButton(
+                        title: isInjured ? "Quitar lesión" : "Marcar lesión",
+                        systemImage: isInjured ? "heart.slash" : "bandage",
+                        tint: isInjured ? EvaluationDesign.danger : EvaluationDesign.success,
+                        isEnabled: !savingInjuryStudentIds.contains(student.id)
+                    ) {
+                        Task { await toggleInjuryStatus(for: student, classId: state.classId, cache: cache) }
+                    }
+
                     rowActionButton(
                         title: "Copiar evaluación",
                         systemImage: "doc.on.doc",
@@ -411,13 +453,12 @@ struct RubricBulkEvaluationSheet: View {
     private func inlineCriterionCell(
         studentId: Int64,
         criterion: RubricCriterionWithLevels,
-        width: CGFloat
+        width: CGFloat,
+        cache: BulkRubricEvaluationCache
     ) -> some View {
-        let selectedLevelId = bridge.bulkSelectedLevelId(
-            studentId: studentId,
-            criterionId: criterion.criterion.id
-        )
+        let selectedLevelId = cache.selectedLevelId(studentId: studentId, criterionId: criterion.criterion.id)
         let selectedLevel = criterion.levels.first { $0.id == selectedLevelId }
+        let isFocused = focusedBulkStudentId == studentId && focusedBulkCriterionId == criterion.criterion.id
 
         return VStack(spacing: 8) {
             HStack(spacing: 8) {
@@ -430,6 +471,8 @@ struct RubricBulkEvaluationSheet: View {
                     let isSelected = selectedLevelId == level.id
                     let tint = levelColor(for: level, in: criterion)
                     Button {
+                        focusedBulkStudentId = studentId
+                        focusedBulkCriterionId = criterion.criterion.id
                         bridge.bulkSelectLevel(
                             studentId: studentId,
                             criterionId: criterion.criterion.id,
@@ -501,9 +544,18 @@ struct RubricBulkEvaluationSheet: View {
         }
         .padding(8)
         .frame(width: width)
+        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .onTapGesture {
+            focusedBulkStudentId = studentId
+            focusedBulkCriterionId = criterion.criterion.id
+        }
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(selectedLevel == nil ? Color.clear : levelColor(for: selectedLevel, in: criterion).opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(isFocused ? EvaluationDesign.accent.opacity(0.65) : Color.clear, lineWidth: 2)
         )
     }
 
@@ -568,8 +620,8 @@ struct RubricBulkEvaluationSheet: View {
         }
     }
 
-    private func scorePill(for studentId: Int64, width: CGFloat) -> some View {
-        let score = bridge.bulkScore(studentId: studentId)
+    private func scorePill(for studentId: Int64, width: CGFloat, cache: BulkRubricEvaluationCache) -> some View {
+        let score = cache.score(for: studentId)
         let scoreText = score.map { String(format: "%.1f", $0) } ?? "—"
         let tint = (score ?? 0) >= 5 ? EvaluationDesign.success : EvaluationDesign.danger
 
@@ -607,8 +659,97 @@ struct RubricBulkEvaluationSheet: View {
         .help(title)
     }
 
+    #if os(macOS)
+    @ViewBuilder
+    private func macKeyboardShortcuts(
+        state: BulkRubricEvaluationUiState,
+        rubric: RubricDetail
+    ) -> some View {
+        Group {
+            Button("Guardar rúbrica masiva") {
+                bridge.bulkSaveAll()
+            }
+            .keyboardShortcut("s", modifiers: [.command])
+
+            Button("Cerrar rúbrica masiva") {
+                bridge.closeBulkRubricEvaluation()
+                dismiss()
+            }
+            .keyboardShortcut(.cancelAction)
+
+            ForEach(1...5, id: \.self) { position in
+                Button("Nivel \(position)") {
+                    selectFocusedLevel(position: position, state: state, rubric: rubric)
+                }
+                .keyboardShortcut(KeyEquivalent(Character("\(position)")), modifiers: [])
+            }
+        }
+        .frame(width: 0, height: 0)
+        .opacity(0.001)
+        .accessibilityHidden(true)
+    }
+
+    private func moveFocusedCell(
+        direction: MoveCommandDirection,
+        state: BulkRubricEvaluationUiState,
+        rubric: RubricDetail
+    ) {
+        guard !state.students.isEmpty, !rubric.criteria.isEmpty else { return }
+        let studentIds = state.students.map(\.id)
+        let criterionIds = rubric.criteria.map { $0.criterion.id }
+        let currentStudentIndex = focusedBulkStudentId.flatMap { studentIds.firstIndex(of: $0) } ?? 0
+        let currentCriterionIndex = focusedBulkCriterionId.flatMap { criterionIds.firstIndex(of: $0) } ?? 0
+
+        let nextStudentIndex: Int
+        let nextCriterionIndex: Int
+        switch direction {
+        case .up:
+            nextStudentIndex = max(0, currentStudentIndex - 1)
+            nextCriterionIndex = currentCriterionIndex
+        case .down:
+            nextStudentIndex = min(studentIds.count - 1, currentStudentIndex + 1)
+            nextCriterionIndex = currentCriterionIndex
+        case .left:
+            nextStudentIndex = currentStudentIndex
+            nextCriterionIndex = max(0, currentCriterionIndex - 1)
+        case .right:
+            nextStudentIndex = currentStudentIndex
+            nextCriterionIndex = min(criterionIds.count - 1, currentCriterionIndex + 1)
+        @unknown default:
+            nextStudentIndex = currentStudentIndex
+            nextCriterionIndex = currentCriterionIndex
+        }
+
+        focusedBulkStudentId = studentIds[nextStudentIndex]
+        focusedBulkCriterionId = criterionIds[nextCriterionIndex]
+    }
+
+    private func selectFocusedLevel(
+        position: Int,
+        state: BulkRubricEvaluationUiState,
+        rubric: RubricDetail
+    ) {
+        guard !state.students.isEmpty, !rubric.criteria.isEmpty else { return }
+        let studentId = focusedBulkStudentId ?? state.students.first?.id
+        let criterion = focusedBulkCriterionId.flatMap { criterionId in
+            rubric.criteria.first { $0.criterion.id == criterionId }
+        } ?? rubric.criteria.first
+        guard let studentId,
+              let criterion,
+              criterion.levels.indices.contains(position - 1) else { return }
+        focusedBulkStudentId = studentId
+        focusedBulkCriterionId = criterion.criterion.id
+        bridge.bulkSelectLevel(
+            studentId: studentId,
+            criterionId: criterion.criterion.id,
+            levelId: criterion.levels[position - 1].id
+        )
+    }
+    #endif
+
     private func injuredSidebar(state: BulkRubricEvaluationUiState) -> some View {
-        EvaluationGlassCard(cornerRadius: 32, fillOpacity: 0.90) {
+        let injuredStudents = injuredStudents(for: state)
+        return EvaluationGlassCard(cornerRadius: 32, fillOpacity: 0.90) {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(spacing: 10) {
                     EvaluationChip(
@@ -618,12 +759,12 @@ struct RubricBulkEvaluationSheet: View {
                         isDestructive: true
                     )
                     Spacer()
-                    Text("\(state.injuredStudents.count)")
+                    Text("\(injuredStudents.count)")
                         .font(.system(size: 14, weight: .black, design: .rounded))
                         .foregroundStyle(EvaluationDesign.danger)
                 }
 
-                if state.injuredStudents.isEmpty {
+                if injuredStudents.isEmpty {
                     VStack(spacing: 10) {
                         Image(systemName: "person.crop.circle.badge.checkmark")
                             .font(.system(size: 28, weight: .semibold))
@@ -635,7 +776,7 @@ struct RubricBulkEvaluationSheet: View {
                     .frame(maxWidth: .infinity, minHeight: 280)
                 } else {
                     VStack(spacing: 12) {
-                        ForEach(state.injuredStudents, id: \.id) { student in
+                        ForEach(injuredStudents, id: \.id) { student in
                             HStack(spacing: 12) {
                                 EvaluationAvatar(initials: initials(for: student), tint: EvaluationDesign.danger)
 
@@ -649,8 +790,18 @@ struct RubricBulkEvaluationSheet: View {
                                 }
 
                                 Spacer()
-                                Image(systemName: "bandage.fill")
-                                    .foregroundStyle(EvaluationDesign.danger)
+                                Button {
+                                    Task {
+                                        guard let rubric = state.rubricDetail else { return }
+                                        let cache = BulkRubricEvaluationCache(state: state, rubric: rubric)
+                                        await toggleInjuryStatus(for: student, classId: state.classId, cache: cache)
+                                    }
+                                } label: {
+                                    Image(systemName: "heart.slash")
+                                        .foregroundStyle(EvaluationDesign.danger)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(savingInjuryStudentIds.contains(student.id))
                             }
                             .padding(16)
                             .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous))
@@ -662,6 +813,41 @@ struct RubricBulkEvaluationSheet: View {
                     }
                 }
             }
+        }
+    }
+
+    private func isStudentInjured(_ student: Student, cache: BulkRubricEvaluationCache) -> Bool {
+        localInjuryStatuses[student.id] ?? cache.injuredStudentIds.contains(student.id)
+    }
+
+    private func injuredStudents(for state: BulkRubricEvaluationUiState) -> [Student] {
+        state.students.filter { student in
+            localInjuryStatuses[student.id] ?? state.injuredStudents.contains { $0.id == student.id }
+        }
+    }
+
+    @MainActor
+    private func toggleInjuryStatus(
+        for student: Student,
+        classId: Int64,
+        cache: BulkRubricEvaluationCache
+    ) async {
+        let previousValue = isStudentInjured(student, cache: cache)
+        let newValue = !previousValue
+        localInjuryStatuses[student.id] = newValue
+        savingInjuryStudentIds.insert(student.id)
+        defer { savingInjuryStudentIds.remove(student.id) }
+
+        do {
+            try await bridge.updateStudentInjuryStatus(
+                studentId: student.id,
+                isInjured: newValue,
+                classId: classId
+            )
+            bridge.status = newValue ? "Alumno marcado con lesión." : "Lesión retirada."
+        } catch {
+            localInjuryStatuses[student.id] = previousValue
+            bridge.status = "No se pudo actualizar la lesión: \(error.localizedDescription)"
         }
     }
 
@@ -687,6 +873,67 @@ private struct BulkHoveredLevelKey: Hashable {
     let studentId: Int64
     let criterionId: Int64
     let levelId: Int64
+}
+
+private struct BulkRubricCellKey: Hashable {
+    let studentId: Int64
+    let criterionId: Int64
+}
+
+private struct BulkRubricEvaluationCache {
+    private let selectedLevels: [BulkRubricCellKey: Int64]
+    private let scores: [Int64: Double]
+    private let criteriaCount: Int
+    private let completedCriteriaCountByStudentId: [Int64: Int]
+    let injuredStudentIds: Set<Int64>
+
+    var totalPendingCriteria: Int {
+        completedCriteriaCountByStudentId.keys.reduce(0) { total, studentId in
+            total + pendingCriteriaCount(for: studentId)
+        }
+    }
+
+    init(state: BulkRubricEvaluationUiState, rubric: RubricDetail) {
+        criteriaCount = rubric.criteria.count
+        var selectedLevels: [BulkRubricCellKey: Int64] = [:]
+        var completedCriteriaCountByStudentId: [Int64: Int] = [:]
+
+        for student in state.students {
+            completedCriteriaCountByStudentId[student.id] = 0
+        }
+
+        for (studentKey, studentMap) in state.assessments {
+            let studentId = studentKey.int64Value
+            var completedCount = completedCriteriaCountByStudentId[studentId] ?? 0
+            for (criterionKey, levelKey) in studentMap {
+                selectedLevels[BulkRubricCellKey(studentId: studentId, criterionId: criterionKey.int64Value)] = levelKey.int64Value
+                completedCount += 1
+            }
+            completedCriteriaCountByStudentId[studentId] = min(completedCount, criteriaCount)
+        }
+
+        var scores: [Int64: Double] = [:]
+        for (studentKey, score) in state.scores {
+            scores[studentKey.int64Value] = score.doubleValue
+        }
+
+        self.selectedLevels = selectedLevels
+        self.scores = scores
+        self.completedCriteriaCountByStudentId = completedCriteriaCountByStudentId
+        self.injuredStudentIds = Set(state.injuredStudents.map(\.id))
+    }
+
+    func selectedLevelId(studentId: Int64, criterionId: Int64) -> Int64? {
+        selectedLevels[BulkRubricCellKey(studentId: studentId, criterionId: criterionId)]
+    }
+
+    func score(for studentId: Int64) -> Double? {
+        scores[studentId]
+    }
+
+    func pendingCriteriaCount(for studentId: Int64) -> Int {
+        max(0, criteriaCount - (completedCriteriaCountByStudentId[studentId] ?? 0))
+    }
 }
 
 struct RubricLevelDescriptionPopover: View {

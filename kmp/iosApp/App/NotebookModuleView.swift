@@ -5,10 +5,6 @@ import MiGestorKit
 import UIKit
 #endif
 
-private enum NotebookGridMetrics {
-    static let fixedZoneHorizontalPadding: CGFloat = 32
-}
-
 struct NotebookModuleView: View {
     #if os(macOS)
     let notebookGridRowHeight: CGFloat = 50
@@ -25,6 +21,7 @@ struct NotebookModuleView: View {
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
     let macToolbarActions: NotebookMacToolbarActions?
     @StateObject var inspectorState: NotebookMacInspectorState
+    @StateObject var gridLayoutModel = NotebookGridLayoutModel()
     let macPresentation: NotebookMacPresentation
     @State var addColumnContext: NotebookAddColumnContext? = nil
     @State var searchText = ""
@@ -33,6 +30,7 @@ struct NotebookModuleView: View {
     @State var surfaceMode: NotebookSurfaceMode = .grid
     @State var todayAttendanceByStudentId: [Int64: String] = [:]
     @State var incidentCountByStudentId: [Int64: Int] = [:]
+    @State var localInjuryStatuses: [Int64: Bool] = [:]
     @State var seatPositions: [Int64: NotebookSeatPosition] = [:]
     @State var highlightedRandomStudentId: Int64? = nil
     @State var selectedAttachmentPhoto: PhotosPickerItem?
@@ -58,6 +56,7 @@ struct NotebookModuleView: View {
     @State var undoStack: [NotebookCellUndoEntry] = []
     @State var cellReloadRevision = 0
     @State var highlightedCategoryId: String? = nil
+    @State var highlightedColumnId: String? = nil
     @State var expandedEmptyCategoryIds: Set<String> = []
     @State var pendingRubricColumnId: String? = nil
     @State var pendingRubricStudentOrder: [Int64] = []
@@ -77,7 +76,6 @@ struct NotebookModuleView: View {
     @State var isDraggingFixedZoneDivider = false
     @State var fixedZoneDragStartWidth: CGFloat = 0
     @State var fixedZoneLiveWidth: CGFloat? = nil
-    @State var columnWidths: [String: CGFloat] = [:]
     @State var formulaEditRequest: NotebookFormulaEditRequest? = nil
     @State var formulaDraft = ""
     @State var formulaAIPrompt = ""
@@ -117,33 +115,16 @@ struct NotebookModuleView: View {
         nonmutating set { navigationDirectionRaw = newValue.rawValue }
     }
 
-    var collapsedCategoryStorageKey: String {
-        "notebook.collapsed.categories.\(selectedClassId.map(String.init) ?? "no-class")"
-    }
-
-    func collapsedCategoryIds() -> Set<String> {
-        Set(
-            UserDefaults.standard
-                .string(forKey: collapsedCategoryStorageKey)?
-                .split(separator: ",")
-                .map(String.init) ?? []
-        )
-    }
-
     func isCategoryCollapsed(_ category: NotebookColumnCategory) -> Bool {
-        category.isCollapsed || collapsedCategoryIds().contains(category.id)
+        gridLayoutModel.isCategoryCollapsed(category)
     }
 
     func setCategoryCollapsed(_ category: NotebookColumnCategory, collapsed: Bool) {
         withAnimation(.snappy(duration: 0.18)) {
-            var ids = collapsedCategoryIds()
-            if collapsed {
-                ids.insert(category.id)
-            } else {
-                ids.remove(category.id)
+            gridLayoutModel.setCategoryCollapsed(category, collapsed: collapsed)
+            if !collapsed {
                 expandedEmptyCategoryIds.insert(category.id)
             }
-            UserDefaults.standard.set(ids.sorted().joined(separator: ","), forKey: collapsedCategoryStorageKey)
             bridge.toggleColumnCategory(id: category.id, collapsed: collapsed)
         }
     }
@@ -343,9 +324,13 @@ struct NotebookModuleView: View {
         }
         .background(EvaluationBackdrop())
         .onAppear {
+            gridLayoutModel.configure(classId: data.sheet.classId)
             if !isMacInspectorOnly {
                 scheduleToolbarStateSync(data: data)
             }
+        }
+        .appOnChange(of: "\(data.sheet.classId)") { _ in
+            gridLayoutModel.configure(classId: data.sheet.classId)
         }
         .appOnChange(of: toolbarStateKey(data: data)) { _ in
             if !isMacInspectorOnly {
@@ -357,11 +342,11 @@ struct NotebookModuleView: View {
     @ViewBuilder
     func spreadsheetContent(data: NotebookUiStateData, rows: [NotebookTableRow]) -> some View {
         let segments = displaySegments(data: data)
-        let fixedSegments = visibleFixedSegments(in: segments)
-        let leadingFixedSegments = fixedSegments.filter { !isTrailingFixedSegment($0) }
-        let trailingFixedSegments = fixedSegments.filter(isTrailingFixedSegment)
-        let scrollableSegments = segments.filter { !isFixedSegment($0) }
-        let laneItems = headerLaneItems(data: data, segments: scrollableSegments)
+        let fixedSegments = gridLayoutModel.visibleFixedSegments(in: segments)
+        let leadingFixedSegments = fixedSegments.filter { !gridLayoutModel.isTrailingFixedSegment($0) }
+        let trailingFixedSegments = fixedSegments.filter(gridLayoutModel.isTrailingFixedSegment)
+        let scrollableSegments = segments.filter { !gridLayoutModel.isFixedSegment($0) }
+        let laneItems = gridLayoutModel.headerLaneItems(data: data, activeTabId: activeNotebookTabId(data: data), segments: scrollableSegments)
         let trailingPaddingCompensation = NotebookStyle.outerPadding * 2
         let hasFolders = laneItems.contains {
             if case .folder = $0 { return true }
@@ -442,8 +427,7 @@ struct NotebookModuleView: View {
                         }
                     }
                     .padding(.horizontal, 16)
-                    .padding(.top, 4)
-                    .padding(.bottom, 2)
+                    .padding(.top, 2)
                 }
             }
         } dividerHandle: {
@@ -492,43 +476,12 @@ struct NotebookModuleView: View {
         )
     }
 
-    func isFixedSegment(_ segment: NotebookDisplaySegment) -> Bool {
-        if case .fixed = segment {
-            return true
-        }
-        return false
-    }
-
-    func isTrailingFixedSegment(_ segment: NotebookDisplaySegment) -> Bool {
-        if case .fixed(.average) = segment {
-            return true
-        }
-        return false
-    }
-
-    func visibleFixedSegments(in segments: [NotebookDisplaySegment]) -> [NotebookDisplaySegment] {
-        let allowedColumns = visibleFixedColumns
-        return segments.filter { segment in
-            guard case .fixed(let fixed) = segment else { return false }
-            // La media no debe depender de visibleFixedColumns,
-            // porque se renderiza como zona fija derecha.
-            if fixed == .average {
-                return true
-            }
-            return allowedColumns.contains(fixed)
-        }
-    }
-
     var fixedZoneWidth: CGFloat {
         min(maxFixedZoneWidth, max(minFixedZoneWidth, fixedZoneLiveWidth ?? CGFloat(fixedZoneWidthStored)))
     }
 
     var minFixedZoneWidth: CGFloat { 220 }
     var maxFixedZoneWidth: CGFloat { 700 }
-
-    var visibleFixedColumns: [NotebookFixedColumn] {
-        [.name]
-    }
 
     var showsNotebookInlineActions: Bool {
         #if os(macOS)
@@ -556,50 +509,19 @@ struct NotebookModuleView: View {
     }
 
     func segmentWidth(_ segment: NotebookDisplaySegment) -> CGFloat {
-        switch segment {
-        case .fixed(let fixed):
-            return resolvedFixedWidth(for: fixed)
-        case .column(let column):
-            return resolvedColumnWidth(for: column)
-        case .collapsedCategory:
-            return 132
-        }
+        gridLayoutModel.segmentWidth(segment, fixedZoneWidth: fixedZoneWidth)
     }
 
     func resolvedFixedWidth(for fixed: NotebookFixedColumn) -> CGFloat {
-        let visibleColumns = visibleFixedColumns
-        let trailingColumns = visibleColumns.filter { $0 != .photo && $0 != .name }
-        let trailingWidth = trailingColumns.reduce(CGFloat.zero) { partial, column in
-            partial + defaultFixedWidth(for: column)
-        }
-        let spacing = CGFloat(max(visibleColumns.count - 1, 0)) * 8
-        let horizontalPadding = NotebookGridMetrics.fixedZoneHorizontalPadding
-        let photoWidth: CGFloat = visibleColumns.contains(.photo) ? 52 : 0
-
-        switch fixed {
-        case .photo:
-            return 52
-        case .name:
-            let availableWidth = fixedZoneWidth - trailingWidth - spacing - horizontalPadding - photoWidth
-            return max(CGFloat(156), availableWidth)
-        default:
-            return defaultFixedWidth(for: fixed)
-        }
+        gridLayoutModel.resolvedFixedWidth(for: fixed, fixedZoneWidth: fixedZoneWidth)
     }
 
     func defaultFixedWidth(for fixed: NotebookFixedColumn) -> CGFloat {
-        switch fixed {
-        case .photo: return 52
-        case .name: return 180
-        case .group: return 90
-        case .followUp: return 100
-        case .attendance: return 90
-        case .average: return 110
-        }
+        gridLayoutModel.defaultFixedWidth(for: fixed)
     }
 
     func resolvedColumnWidth(for column: NotebookColumnDefinition) -> CGFloat {
-        columnWidths[column.id] ?? CGFloat(max(column.widthDp, 140))
+        gridLayoutModel.resolvedColumnWidth(for: column)
     }
 
     @ViewBuilder
@@ -720,6 +642,9 @@ struct NotebookModuleView: View {
             bridge: bridge,
             initialCategoryId: context.categoryId,
             startsCreatingCategory: context.startsCreatingCategory,
+            onCreatedColumn: { columnId in
+                handleCreatedColumn(columnId)
+            },
             onCreatedSummaryColumn: { columnId in
                 handleCreatedSummaryColumn(columnId)
             }
@@ -732,6 +657,24 @@ struct NotebookModuleView: View {
         content
             .presentationDetents([.large])
         #endif
+    }
+
+    func handleCreatedColumn(_ columnId: String) {
+        highlightedColumnId = columnId
+        if let data = bridge.notebookState as? NotebookUiStateData,
+           let column = data.sheet.columns.first(where: { $0.id == columnId }) {
+            highlightedCategoryId = column.categoryId
+        }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_200_000_000)
+            if highlightedColumnId == columnId {
+                highlightedColumnId = nil
+            }
+            if let data = bridge.notebookState as? NotebookUiStateData,
+               highlightedCategoryId == data.sheet.columns.first(where: { $0.id == columnId })?.categoryId {
+                highlightedCategoryId = nil
+            }
+        }
     }
 
     func handleCreatedSummaryColumn(_ columnId: String) {

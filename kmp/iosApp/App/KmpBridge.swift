@@ -78,6 +78,109 @@ struct PlannerSessionSaveResult {
     let linkedAssessmentIdsCsv: String
 }
 
+struct NotebookCreatedColumnResult {
+    let column: NotebookColumnDefinition
+    let category: NotebookColumnCategory?
+}
+
+struct RubricEvaluationAdvanceSummary {
+    let evaluatedCount: Int
+    let remainingCount: Int
+}
+
+enum RubricEvaluationAdvanceResult {
+    case openedNext(studentId: Int64, remainingCount: Int)
+    case completed(RubricEvaluationAdvanceSummary)
+    case closed
+}
+
+@MainActor
+final class RubricEvaluationCoordinator: ObservableObject {
+    struct Context {
+        let columnId: String
+        let rubricId: Int64
+        let classId: Int64
+        let evaluationId: Int64
+        let studentIds: [Int64]
+        var currentStudentId: Int64
+    }
+
+    @Published private(set) var context: Context?
+    @Published private(set) var lastSummary: RubricEvaluationAdvanceSummary?
+
+    var isActive: Bool { context != nil }
+    var currentStudentId: Int64? { context?.currentStudentId }
+
+    func start(
+        columnId: String,
+        rubricId: Int64,
+        classId: Int64,
+        evaluationId: Int64,
+        studentIds: [Int64],
+        currentStudentId: Int64
+    ) {
+        let orderedIds = normalizedStudentIds(studentIds, currentStudentId: currentStudentId)
+        context = Context(
+            columnId: columnId,
+            rubricId: rubricId,
+            classId: classId,
+            evaluationId: evaluationId,
+            studentIds: orderedIds,
+            currentStudentId: currentStudentId
+        )
+        lastSummary = nil
+    }
+
+    func advance(visibleStudentIds: [Int64]? = nil) -> Int64? {
+        guard var context else { return nil }
+        let orderedIds = normalizedStudentIds(
+            visibleStudentIds?.filter { context.studentIds.contains($0) } ?? context.studentIds,
+            currentStudentId: context.currentStudentId
+        )
+        guard let currentIndex = orderedIds.firstIndex(of: context.currentStudentId) else {
+            finish(evaluatedCount: completedCount(in: orderedIds, currentStudentId: context.currentStudentId), remainingCount: 0)
+            return nil
+        }
+        let remainingIds = orderedIds.dropFirst(currentIndex + 1)
+        guard let nextStudentId = remainingIds.first else {
+            finish(evaluatedCount: orderedIds.count, remainingCount: 0)
+            return nil
+        }
+        context.currentStudentId = nextStudentId
+        self.context = context
+        lastSummary = RubricEvaluationAdvanceSummary(
+            evaluatedCount: currentIndex + 1,
+            remainingCount: remainingIds.count
+        )
+        return nextStudentId
+    }
+
+    func finish(evaluatedCount: Int? = nil, remainingCount: Int = 0) {
+        let completed = evaluatedCount ?? context?.studentIds.count ?? 0
+        lastSummary = RubricEvaluationAdvanceSummary(evaluatedCount: completed, remainingCount: remainingCount)
+        context = nil
+    }
+
+    func reset() {
+        context = nil
+        lastSummary = nil
+    }
+
+    private func normalizedStudentIds(_ studentIds: [Int64], currentStudentId: Int64) -> [Int64] {
+        var seen = Set<Int64>()
+        var ordered = studentIds.filter { seen.insert($0).inserted }
+        if !ordered.contains(currentStudentId) {
+            ordered.insert(currentStudentId, at: 0)
+        }
+        return ordered
+    }
+
+    private func completedCount(in orderedIds: [Int64], currentStudentId: Int64) -> Int {
+        guard let index = orderedIds.firstIndex(of: currentStudentId) else { return 0 }
+        return index + 1
+    }
+}
+
 @MainActor
 final class KmpBridge: ObservableObject {
     private static let plannerCoursePalette: [String] = [
@@ -113,6 +216,7 @@ final class KmpBridge: ObservableObject {
     // Rubric Evaluation State (Bridged from RubricEvaluationViewModel)
     @Published var rubricEvaluationState: RubricEvaluationUiState = RubricEvaluationUiState.companion.default()
     @Published var isNotebookRubricAutoAdvanceActive: Bool = false
+    @Published var rubricEvaluationCoordinator = RubricEvaluationCoordinator()
     
     // Bulk Rubric Evaluation State
     @Published var bulkRubricEvaluationState: BulkRubricEvaluationUiState? = nil
@@ -193,6 +297,17 @@ final class KmpBridge: ObservableObject {
         let note: String
         let hasIncident: Bool
         let followUpRequired: Bool
+        let sessionId: Int64?
+    }
+
+    struct AttendanceDraft {
+        let studentId: Int64
+        let classId: Int64
+        let date: Date
+        let status: String
+        let note: String
+        let hasIncident: Bool
+        let followUpRequired: Bool?
         let sessionId: Int64?
     }
 
@@ -2551,6 +2666,66 @@ final class KmpBridge: ObservableObject {
         )
     }
 
+    func saveAttendanceBatch(records drafts: [AttendanceDraft]) async throws {
+        guard !drafts.isEmpty else { return }
+
+        var existingByKey: [String: Attendance_] = [:]
+        let groupedDrafts = Dictionary(grouping: drafts) { draft in
+            "\(draft.classId)-\(startOfDayEpochMs(for: draft.date))"
+        }
+
+        for (_, grouped) in groupedDrafts {
+            guard let sample = grouped.first else { continue }
+            let dateEpochMs = startOfDayEpochMs(for: sample.date)
+            let existingRecords = try await container.attendanceRepository.listAttendanceByDate(
+                classId: sample.classId,
+                dateEpochMs: dateEpochMs
+            )
+            for record in existingRecords {
+                let sessionKey = record.sessionId.map { String($0.int64Value) } ?? "none"
+                existingByKey["\(record.classId)-\(record.studentId)-\(dateEpochMs)-\(sessionKey)"] = record
+                existingByKey["\(record.classId)-\(record.studentId)-\(dateEpochMs)-any"] = record
+            }
+        }
+
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        for draft in drafts {
+            let dateEpochMs = startOfDayEpochMs(for: draft.date)
+            let sessionKey = draft.sessionId.map(String.init) ?? "none"
+            let existing = existingByKey["\(draft.classId)-\(draft.studentId)-\(dateEpochMs)-\(sessionKey)"]
+                ?? existingByKey["\(draft.classId)-\(draft.studentId)-\(dateEpochMs)-any"]
+            _ = try await container.attendanceRepository.saveAttendance(
+                id: kotlinLong(existing?.id),
+                studentId: draft.studentId,
+                classId: draft.classId,
+                dateEpochMs: dateEpochMs,
+                status: draft.status,
+                note: draft.note,
+                hasIncident: draft.hasIncident,
+                followUpRequired: draft.followUpRequired ?? draft.hasIncident,
+                sessionId: kotlinLong(draft.sessionId),
+                updatedAtEpochMs: nowMs,
+                deviceId: localDeviceId,
+                syncVersion: (existing?.trace.syncVersion ?? 0) + 1
+            )
+            enqueueLocalChange(
+                entity: "attendance",
+                id: "\(draft.classId)-\(draft.studentId)-\(dateEpochMs)",
+                updatedAtEpochMs: nowMs,
+                payload: [
+                    "studentId": draft.studentId,
+                    "classId": draft.classId,
+                    "dateEpochMs": dateEpochMs,
+                    "status": draft.status,
+                    "note": draft.note,
+                    "hasIncident": draft.hasIncident,
+                    "followUpRequired": draft.followUpRequired ?? draft.hasIncident,
+                    "sessionId": draft.sessionId ?? NSNull()
+                ]
+            )
+        }
+    }
+
     func repeatLatestAttendancePattern(classId: Int64, targetDate: Date) async throws -> Int {
         let targetDay = startOfDayEpochMs(for: targetDate)
         let history = try await container.attendanceRepository.listAttendance(classId: classId)
@@ -4651,6 +4826,136 @@ final class KmpBridge: ObservableObject {
         }
     }
 
+    func addColumnWithOptionalCategory(
+        name: String,
+        type: String,
+        weight: Double,
+        formula: String?,
+        rubricId: Int64?,
+        categoryId: String? = nil,
+        newCategoryName: String? = nil,
+        categoryKind: NotebookColumnCategoryKind = .custom,
+        instrumentKind: NotebookInstrumentKind = .custom,
+        inputKind: NotebookCellInputKind = .text,
+        dateEpochMs: Int64? = nil,
+        unitOrSituation: String? = nil,
+        competencyCriteriaIds: [Int64] = [],
+        scaleKind: NotebookScaleKind = .custom,
+        iconName: String? = nil,
+        countsTowardAverage: Bool = true,
+        isPinned: Bool = false,
+        isHidden: Bool = false,
+        visibility: NotebookColumnVisibility = .visible,
+        isLocked: Bool = false,
+        isTemplate: Bool = false
+    ) async throws -> NotebookCreatedColumnResult {
+        guard let classId = notebookViewModel.currentClassId?.int64Value else {
+            throw NSError(domain: "KmpBridge", code: 404, userInfo: [NSLocalizedDescriptionKey: "No hay clase activa."])
+        }
+
+        let currentData = notebookState as? NotebookUiStateData
+        let tabs = currentData?.sheet.tabs ?? []
+        let selectedTab = selectedNotebookTabId ?? tabs.first?.id
+        let resolvedTabIds = selectedTab.map { [$0] } ?? tabs.map { $0.id }
+        let existingCategories = currentData?.sheet.columnCategories ?? []
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let nowInstant = Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMs)
+        let trace = AuditTrace(
+            authorUserId: nil,
+            createdAt: nowInstant,
+            updatedAt: nowInstant,
+            associatedGroupId: KotlinLong(value: classId),
+            deviceId: localDeviceId,
+            syncVersion: 0
+        )
+        let finalCategory: NotebookColumnCategory?
+        if let rawName = newCategoryName?.trimmingCharacters(in: .whitespacesAndNewlines), !rawName.isEmpty {
+            let tabId = selectedTab ?? tabs.first?.id ?? "TAB_\(classId)"
+            let nextOrder = (existingCategories.filter { $0.tabId == tabId }.map(\.order).max() ?? -1) + 1
+            let category = NotebookColumnCategory(
+                id: "cat_\(nowMs)",
+                classId: classId,
+                tabId: tabId,
+                name: rawName,
+                order: nextOrder,
+                isCollapsed: false,
+                trace: trace
+            )
+            try await container.notebookRepository.saveColumnCategory(classId: classId, category: category)
+            finalCategory = category
+        } else if let categoryId {
+            finalCategory = existingCategories.first(where: { $0.id == categoryId })
+        } else {
+            finalCategory = nil
+        }
+
+        let columnType = notebookColumnType(from: type)
+        let needsEvaluation = columnType == .numeric || columnType == .rubric
+        let evaluationId: Int64?
+        if needsEvaluation {
+            let savedEvaluationId = try await container.evaluationsRepository.saveEvaluation(
+                id: nil,
+                classId: classId,
+                code: "COL_\(nowMs)",
+                name: name,
+                type: columnType == .rubric ? "Rúbrica" : "Evaluación",
+                weight: weight,
+                formula: nil,
+                rubricId: rubricId.map { KotlinLong(value: $0) },
+                description: nil,
+                authorUserId: nil,
+                createdAtEpochMs: 0,
+                updatedAtEpochMs: 0,
+                associatedGroupId: nil,
+                deviceId: nil,
+                syncVersion: 0
+            )
+            evaluationId = savedEvaluationId.int64Value
+        } else {
+            evaluationId = nil
+        }
+        let columnId = evaluationId.map { "eval_\($0)" } ?? "COL_\(nowMs)"
+        let nextOrder = (currentData?.sheet.columns.map(\.order).max() ?? -1) + 1
+        let column = NotebookColumnDefinition(
+            id: columnId,
+            title: name,
+            type: columnType,
+            categoryKind: categoryKind,
+            instrumentKind: instrumentKind,
+            inputKind: inputKind,
+            evaluationId: evaluationId.map { KotlinLong(value: $0) },
+            rubricId: rubricId.map { KotlinLong(value: $0) },
+            formula: columnType == .calculated ? formula?.nilIfEmpty : nil,
+            weight: weight,
+            dateEpochMs: dateEpochMs.map { KotlinLong(value: $0) },
+            unitOrSituation: unitOrSituation?.nilIfEmpty,
+            competencyCriteriaIds: competencyCriteriaIds.map { KotlinLong(value: $0) },
+            scaleKind: scaleKind,
+            tabIds: resolvedTabIds,
+            sessions: [],
+            sharedAcrossTabs: !tabs.isEmpty && resolvedTabIds.count == tabs.count,
+            colorHex: nil,
+            iconName: iconName,
+            order: nextOrder,
+            widthDp: 132,
+            categoryId: finalCategory?.id ?? categoryId,
+            ordinalLevels: [],
+            availableIcons: [],
+            countsTowardAverage: countsTowardAverage,
+            isPinned: isPinned,
+            isHidden: isHidden,
+            visibility: visibility,
+            isLocked: isLocked,
+            isTemplate: isTemplate,
+            emptyCellPolicy: .excludeFromAverage,
+            trace: trace
+        )
+        try await container.notebookRepository.saveColumn(classId: classId, column: column)
+        refreshCurrentNotebook()
+        scheduleNotebookSnapshotSync(forClassId: classId)
+        return NotebookCreatedColumnResult(column: column, category: finalCategory)
+    }
+
     func saveNotebookCellAnnotation(
         studentId: Int64,
         columnId: String,
@@ -4764,10 +5069,68 @@ final class KmpBridge: ObservableObject {
     }
 
     @MainActor
+    func startRubricEvaluationCoordinator(
+        columnId: String,
+        rubricId: Int64,
+        classId: Int64,
+        evaluationId: Int64,
+        studentIds: [Int64],
+        currentStudentId: Int64
+    ) {
+        rubricEvaluationCoordinator.start(
+            columnId: columnId,
+            rubricId: rubricId,
+            classId: classId,
+            evaluationId: evaluationId,
+            studentIds: studentIds,
+            currentStudentId: currentStudentId
+        )
+        isNotebookRubricAutoAdvanceActive = true
+    }
+
+    @MainActor
     func openRubricEvaluationFromNotebook(studentId: Int64, columnId: String, rubricId: Int64, evaluationId: Int64) {
         closeBulkRubricEvaluation()
         isNotebookRubricAutoAdvanceActive = true
         rubricEvaluationViewModel.loadForNotebookCell(studentId: studentId, columnId: columnId, rubricId: rubricId, evaluationId: evaluationId)
+    }
+
+    @MainActor
+    func advanceRubricEvaluationToNextStudent(visibleStudentIds: [Int64]? = nil) -> RubricEvaluationAdvanceResult {
+        guard let context = rubricEvaluationCoordinator.context else {
+            closeRubricEvaluation()
+            return .closed
+        }
+
+        refreshCurrentNotebook()
+        if context.classId > 0 {
+            scheduleNotebookSnapshotSync(forClassId: context.classId)
+        }
+
+        if let nextStudentId = rubricEvaluationCoordinator.advance(visibleStudentIds: visibleStudentIds),
+           let nextContext = rubricEvaluationCoordinator.context {
+            rubricEvaluationState = RubricEvaluationUiState.companion.default()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+                guard let self else { return }
+                self.openRubricEvaluationFromNotebook(
+                    studentId: nextStudentId,
+                    columnId: nextContext.columnId,
+                    rubricId: nextContext.rubricId,
+                    evaluationId: nextContext.evaluationId
+                )
+            }
+            return .openedNext(
+                studentId: nextStudentId,
+                remainingCount: rubricEvaluationCoordinator.lastSummary?.remainingCount ?? 0
+            )
+        }
+
+        let summary = rubricEvaluationCoordinator.lastSummary ?? RubricEvaluationAdvanceSummary(
+            evaluatedCount: context.studentIds.count,
+            remainingCount: 0
+        )
+        closeRubricEvaluation()
+        return .completed(summary)
     }
 
     func openAgendaNavigationTarget(_ target: AgendaNavigationTarget) {
@@ -4923,6 +5286,7 @@ final class KmpBridge: ObservableObject {
     func closeRubricEvaluation() {
         rubricEvaluationState = RubricEvaluationUiState.companion.default()
         isNotebookRubricAutoAdvanceActive = false
+        rubricEvaluationCoordinator.reset()
     }
 
     func refreshCurrentNotebook() {

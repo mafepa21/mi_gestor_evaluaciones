@@ -2,6 +2,9 @@ import SwiftUI
 #if canImport(AppKit)
 import AppKit
 #endif
+#if canImport(UIKit)
+import UIKit
+#endif
 
 struct NotebookDividerHandle: View {
     let isDragging: Bool
@@ -284,6 +287,12 @@ private struct NotebookSyncedVerticalScrollView<Content: View>: View {
             showsIndicators: showsIndicators,
             content: content
         )
+        #elseif canImport(UIKit)
+        NotebookSyncedVerticalUIScrollView(
+            offset: $offset,
+            showsIndicators: showsIndicators,
+            content: content
+        )
         #else
         ScrollView(.vertical, showsIndicators: showsIndicators) {
             content
@@ -291,6 +300,95 @@ private struct NotebookSyncedVerticalScrollView<Content: View>: View {
         #endif
     }
 }
+
+#if canImport(UIKit)
+private struct NotebookSyncedVerticalUIScrollView<Content: View>: UIViewRepresentable {
+    @Binding var offset: CGFloat
+    let showsIndicators: Bool
+    let content: Content
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(offset: $offset)
+    }
+
+    func makeUIView(context: Context) -> UIScrollView {
+        let scrollView = UIScrollView()
+        scrollView.delegate = context.coordinator
+        scrollView.showsVerticalScrollIndicator = showsIndicators
+        scrollView.showsHorizontalScrollIndicator = false
+        scrollView.alwaysBounceHorizontal = false
+        scrollView.backgroundColor = .clear
+
+        let hostingController = UIHostingController(rootView: content)
+        hostingController.view.translatesAutoresizingMaskIntoConstraints = false
+        hostingController.view.backgroundColor = .clear
+        scrollView.addSubview(hostingController.view)
+
+        NSLayoutConstraint.activate([
+            hostingController.view.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
+            hostingController.view.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
+            hostingController.view.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
+            hostingController.view.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
+            hostingController.view.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor)
+        ])
+
+        context.coordinator.hostingController = hostingController
+        context.coordinator.scrollView = scrollView
+        return scrollView
+    }
+
+    func updateUIView(_ scrollView: UIScrollView, context: Context) {
+        context.coordinator.offset = $offset
+        context.coordinator.scrollView = scrollView
+        context.coordinator.hostingController?.rootView = content
+        scrollView.showsVerticalScrollIndicator = showsIndicators
+        context.coordinator.applyOffsetIfNeeded()
+    }
+
+    final class Coordinator: NSObject, UIScrollViewDelegate {
+        var offset: Binding<CGFloat>
+        weak var scrollView: UIScrollView?
+        var hostingController: UIHostingController<Content>?
+        private var isApplyingOffset = false
+
+        init(offset: Binding<CGFloat>) {
+            self.offset = offset
+        }
+
+        func scrollViewDidScroll(_ scrollView: UIScrollView) {
+            guard !isApplyingOffset else { return }
+            let nextOffset = clampedOffset(scrollView.contentOffset.y, in: scrollView)
+            if abs(nextOffset - scrollView.contentOffset.y) > 0.5 {
+                apply(offset: nextOffset, in: scrollView)
+            }
+            if abs(nextOffset - offset.wrappedValue) > 0.5 {
+                offset.wrappedValue = nextOffset
+            }
+        }
+
+        func applyOffsetIfNeeded() {
+            guard let scrollView else { return }
+            let nextOffset = clampedOffset(offset.wrappedValue, in: scrollView)
+            if abs(nextOffset - offset.wrappedValue) > 0.5 {
+                offset.wrappedValue = nextOffset
+            }
+            guard abs(scrollView.contentOffset.y - nextOffset) > 0.5 else { return }
+            apply(offset: nextOffset, in: scrollView)
+        }
+
+        private func apply(offset: CGFloat, in scrollView: UIScrollView) {
+            isApplyingOffset = true
+            scrollView.setContentOffset(CGPoint(x: 0, y: offset), animated: false)
+            isApplyingOffset = false
+        }
+
+        private func clampedOffset(_ proposedOffset: CGFloat, in scrollView: UIScrollView) -> CGFloat {
+            let maximumOffset = max(scrollView.contentSize.height - scrollView.bounds.height, 0)
+            return min(max(proposedOffset, 0), maximumOffset)
+        }
+    }
+}
+#endif
 
 #if canImport(AppKit)
 private struct NotebookSyncedVerticalNSScrollView<Content: View>: NSViewRepresentable {

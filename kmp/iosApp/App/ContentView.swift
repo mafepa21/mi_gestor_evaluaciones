@@ -1126,7 +1126,7 @@ struct RubricEvaluationView: View {
     }
 
     private func closeRubric() {
-        bridge.rubricEvaluationState = RubricEvaluationUiState.companion.default()
+        bridge.closeRubricEvaluation()
     }
 }
 

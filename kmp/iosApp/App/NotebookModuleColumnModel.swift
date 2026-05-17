@@ -1,15 +1,159 @@
 import SwiftUI
 import MiGestorKit
 
-extension NotebookModuleView {
-    func isNotebookAICommentColumn(_ column: NotebookColumnDefinition) -> Bool {
-        bridge.isNotebookAICommentColumn(column)
+final class NotebookGridLayoutModel: ObservableObject {
+    private enum Metrics {
+        static let fixedZoneHorizontalPadding: CGFloat = 32
+        static let collapsedCategoryWidth: CGFloat = 168
+        static let minimumColumnWidth: CGFloat = 80
+        static let maximumColumnWidth: CGFloat = 400
+        static let defaultColumnWidth: CGFloat = 140
     }
 
-    func headerLaneItems(data: NotebookUiStateData, segments: [NotebookDisplaySegment]) -> [NotebookHeaderLaneItem] {
+    @Published private(set) var collapsedCategoryIds: Set<String> = []
+    @Published private(set) var columnWidths: [String: CGFloat] = [:]
+
+    private var storageClassKey = "no-class"
+
+    func configure(classId: Int64?) {
+        let nextKey = classId.map(String.init) ?? "no-class"
+        guard nextKey != storageClassKey || collapsedCategoryIds.isEmpty else { return }
+        storageClassKey = nextKey
+        collapsedCategoryIds = Self.loadCollapsedCategoryIds(storageKey: collapsedCategoryStorageKey)
+    }
+
+    func isCategoryCollapsed(_ category: NotebookColumnCategory) -> Bool {
+        category.isCollapsed || collapsedCategoryIds.contains(category.id)
+    }
+
+    func setCategoryCollapsed(_ category: NotebookColumnCategory, collapsed: Bool) {
+        if collapsed {
+            collapsedCategoryIds.insert(category.id)
+        } else {
+            collapsedCategoryIds.remove(category.id)
+        }
+        UserDefaults.standard.set(
+            collapsedCategoryIds.sorted().joined(separator: ","),
+            forKey: collapsedCategoryStorageKey
+        )
+    }
+
+    func visibleCategories(
+        data: NotebookUiStateData,
+        activeTabId: String?
+    ) -> [NotebookColumnCategory] {
+        data.sheet.columnCategories
+            .filter { activeTabId == nil || $0.tabId == activeTabId }
+            .sorted { $0.order < $1.order }
+    }
+
+    func managedColumns(
+        data: NotebookUiStateData,
+        activeTabId: String?,
+        viewPreset: NotebookViewPreset
+    ) -> [NotebookColumnDefinition] {
+        data.sheet.columns
+            .filter { columnMatchesActiveTab($0, activeTabId: activeTabId) }
+            .filter { columnMatchesViewPreset($0, viewPreset: viewPreset) }
+            .sorted {
+                if $0.order != $1.order { return $0.order < $1.order }
+                return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+            }
+    }
+
+    func columns(
+        in category: NotebookColumnCategory,
+        data: NotebookUiStateData,
+        activeTabId: String?,
+        viewPreset: NotebookViewPreset,
+        includeHidden: Bool = false
+    ) -> [NotebookColumnDefinition] {
+        data.sheet.columns
+            .filter { $0.categoryId == category.id }
+            .filter { includeHidden || $0.isVisibleInGrid }
+            .filter { columnMatchesActiveTab($0, activeTabId: activeTabId) }
+            .filter { columnMatchesViewPreset($0, viewPreset: viewPreset) }
+            .sorted {
+                if $0.order != $1.order { return $0.order < $1.order }
+                return $0.id < $1.id
+            }
+    }
+
+    func relevantCategories(
+        data: NotebookUiStateData,
+        activeTabId: String?,
+        viewPreset: NotebookViewPreset
+    ) -> [NotebookColumnCategory] {
+        visibleCategories(data: data, activeTabId: activeTabId)
+            .filter {
+                !columns(
+                    in: $0,
+                    data: data,
+                    activeTabId: activeTabId,
+                    viewPreset: viewPreset,
+                    includeHidden: true
+                ).isEmpty
+            }
+    }
+
+    func displaySegments(
+        data: NotebookUiStateData,
+        activeTabId: String?,
+        viewPreset: NotebookViewPreset
+    ) -> [NotebookDisplaySegment] {
+        var segments = fixedSegmentsForCurrentView().map(NotebookDisplaySegment.fixed)
+        let categories = visibleCategories(data: data, activeTabId: activeTabId)
+        let visibleCategorizedIds = Set(categories.map(\.id))
+
+        let uncategorizedColumns = data.sheet.columns
+            .filter(\.isVisibleInGrid)
+            .filter { columnMatchesActiveTab($0, activeTabId: activeTabId) }
+            .filter { columnMatchesViewPreset($0, viewPreset: viewPreset) }
+            .filter { column in
+                guard let categoryId = column.categoryId else { return true }
+                return !visibleCategorizedIds.contains(categoryId)
+            }
+            .sorted {
+                if $0.isPinned != $1.isPinned { return $0.isPinned && !$1.isPinned }
+                if $0.order != $1.order { return $0.order < $1.order }
+                return $0.id < $1.id
+            }
+
+        segments.append(contentsOf: uncategorizedColumns.map(NotebookDisplaySegment.column))
+
+        for category in categories {
+            let categoryColumns = columns(
+                in: category,
+                data: data,
+                activeTabId: activeTabId,
+                viewPreset: viewPreset
+            )
+            guard !categoryColumns.isEmpty else { continue }
+
+            if isCategoryCollapsed(category) {
+                segments.append(.collapsedCategory(category, categoryColumns))
+            } else {
+                segments.append(contentsOf: categoryColumns.map(NotebookDisplaySegment.column))
+            }
+        }
+        return segments
+    }
+
+    func visibleFixedSegments(in segments: [NotebookDisplaySegment]) -> [NotebookDisplaySegment] {
+        let allowedColumns = visibleFixedColumns
+        return segments.filter { segment in
+            guard case .fixed(let fixed) = segment else { return false }
+            if fixed == .average {
+                return true
+            }
+            return allowedColumns.contains(fixed)
+        }
+    }
+
+    func headerLaneItems(data: NotebookUiStateData, activeTabId: String?, segments: [NotebookDisplaySegment]) -> [NotebookHeaderLaneItem] {
         var items: [NotebookHeaderLaneItem] = []
         let categoriesById = Dictionary(
-            visibleCategories(data: data).map { ($0.id, $0) },
+            visibleCategories(data: data, activeTabId: activeTabId).map { ($0.id, $0) },
             uniquingKeysWith: { first, _ in first }
         )
 
@@ -18,7 +162,7 @@ extension NotebookModuleView {
             let segment = segments[index]
             switch segment {
             case .fixed(let fixed):
-                items.append(.spacer(id: "fixed_\(fixed.id)", width: fixed.width))
+                items.append(.spacer(id: "fixed_\(fixed.id)", width: defaultFixedWidth(for: fixed)))
                 index += 1
             case .collapsedCategory:
                 items.append(.spacer(id: segment.id, width: segmentWidth(segment)))
@@ -61,6 +205,128 @@ extension NotebookModuleView {
         [.name, .average]
     }
 
+    var visibleFixedColumns: [NotebookFixedColumn] {
+        [.name]
+    }
+
+    func isFixedSegment(_ segment: NotebookDisplaySegment) -> Bool {
+        if case .fixed = segment {
+            return true
+        }
+        return false
+    }
+
+    func isTrailingFixedSegment(_ segment: NotebookDisplaySegment) -> Bool {
+        if case .fixed(.average) = segment {
+            return true
+        }
+        return false
+    }
+
+    func segmentWidth(_ segment: NotebookDisplaySegment, fixedZoneWidth: CGFloat) -> CGFloat {
+        switch segment {
+        case .fixed(let fixed):
+            return resolvedFixedWidth(for: fixed, fixedZoneWidth: fixedZoneWidth)
+        case .column(let column):
+            return resolvedColumnWidth(for: column)
+        case .collapsedCategory:
+            return Metrics.collapsedCategoryWidth
+        }
+    }
+
+    func segmentWidth(_ segment: NotebookDisplaySegment) -> CGFloat {
+        switch segment {
+        case .fixed(let fixed):
+            return defaultFixedWidth(for: fixed)
+        case .column(let column):
+            return resolvedColumnWidth(for: column)
+        case .collapsedCategory:
+            return Metrics.collapsedCategoryWidth
+        }
+    }
+
+    func resolvedFixedWidth(for fixed: NotebookFixedColumn, fixedZoneWidth: CGFloat) -> CGFloat {
+        let visibleColumns = visibleFixedColumns
+        let trailingColumns = visibleColumns.filter { $0 != .photo && $0 != .name }
+        let trailingWidth = trailingColumns.reduce(CGFloat.zero) { partial, column in
+            partial + defaultFixedWidth(for: column)
+        }
+        let spacing = CGFloat(max(visibleColumns.count - 1, 0)) * NotebookStyle.controlSpacing
+        let photoWidth: CGFloat = visibleColumns.contains(.photo) ? 52 : 0
+
+        switch fixed {
+        case .photo:
+            return 52
+        case .name:
+            let availableWidth = fixedZoneWidth - trailingWidth - spacing - Metrics.fixedZoneHorizontalPadding - photoWidth
+            return max(CGFloat(156), availableWidth)
+        default:
+            return defaultFixedWidth(for: fixed)
+        }
+    }
+
+    func defaultFixedWidth(for fixed: NotebookFixedColumn) -> CGFloat {
+        switch fixed {
+        case .photo: return 52
+        case .name: return 180
+        case .group: return 90
+        case .followUp: return 100
+        case .attendance: return 90
+        case .average: return 110
+        }
+    }
+
+    func resolvedColumnWidth(for column: NotebookColumnDefinition) -> CGFloat {
+        columnWidths[column.id] ?? CGFloat(max(column.widthDp, Double(Metrics.defaultColumnWidth)))
+    }
+
+    func updateColumnWidth(_ column: NotebookColumnDefinition, width: CGFloat) -> CGFloat {
+        let clampedWidth = min(Metrics.maximumColumnWidth, max(Metrics.minimumColumnWidth, width))
+        columnWidths[column.id] = clampedWidth
+        return clampedWidth
+    }
+
+    private func columnMatchesViewPreset(_ column: NotebookColumnDefinition, viewPreset: NotebookViewPreset) -> Bool {
+        switch viewPreset {
+        case .all:
+            return true
+        case .evaluation:
+            return column.categoryKind == .evaluation
+        case .followUp:
+            return column.categoryKind == .followUp
+        case .attendance:
+            return column.categoryKind == .attendance
+        case .extras:
+            return column.categoryKind == .extras
+        case .physicalEducation:
+            return column.categoryKind == .physicalEducation
+        }
+    }
+
+    private func columnMatchesActiveTab(_ column: NotebookColumnDefinition, activeTabId: String?) -> Bool {
+        guard let activeTabId else { return true }
+        return column.tabIds.contains(activeTabId) || (column.sharedAcrossTabs && column.tabIds.isEmpty)
+    }
+
+    private var collapsedCategoryStorageKey: String {
+        "notebook.collapsed.categories.\(storageClassKey)"
+    }
+
+    private static func loadCollapsedCategoryIds(storageKey: String) -> Set<String> {
+        Set(
+            UserDefaults.standard
+                .string(forKey: storageKey)?
+                .split(separator: ",")
+                .map(String.init) ?? []
+        )
+    }
+}
+
+extension NotebookModuleView {
+    func isNotebookAICommentColumn(_ column: NotebookColumnDefinition) -> Bool {
+        bridge.isNotebookAICommentColumn(column)
+    }
+
     func columnMatchesCurrentView(_ column: NotebookColumnDefinition) -> Bool {
         switch viewPreset {
         case .all:
@@ -81,6 +347,10 @@ extension NotebookModuleView {
     func columnMatchesActiveTab(_ column: NotebookColumnDefinition, data: NotebookUiStateData) -> Bool {
         guard let activeTabId = activeNotebookTabId(data: data) else { return true }
         return column.tabIds.contains(activeTabId) || (column.sharedAcrossTabs && column.tabIds.isEmpty)
+    }
+
+    func isFixedSegment(_ segment: NotebookDisplaySegment) -> Bool {
+        gridLayoutModel.isFixedSegment(segment)
     }
 
     func isColumnHidden(_ column: NotebookColumnDefinition) -> Bool {
@@ -150,8 +420,7 @@ extension NotebookModuleView {
     }
 
     func updateColumnWidth(_ column: NotebookColumnDefinition, width: CGFloat) {
-        let clampedWidth = min(400, max(80, width))
-        columnWidths[column.id] = clampedWidth
+        let clampedWidth = gridLayoutModel.updateColumnWidth(column, width: width)
         saveColumnMutation(column, widthDp: Double(clampedWidth))
     }
 

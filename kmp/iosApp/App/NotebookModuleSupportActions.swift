@@ -38,6 +38,10 @@ extension NotebookModuleView {
         todayAttendanceByStudentId[studentId] ?? "Sin pasar"
     }
 
+    func isStudentInjured(_ student: Student) -> Bool {
+        localInjuryStatuses[student.id] ?? student.isInjured
+    }
+
     func markAttendance(for studentId: Int64, status: String) async {
         guard let classId = selectedClassId ?? bridge.notebookViewModel.currentClassId?.int64Value else { return }
         let canonicalStatus = NotebookAttendanceStatus.canonical(status)
@@ -51,16 +55,22 @@ extension NotebookModuleView {
     @MainActor
     func toggleStudentInjuryStatus(_ student: Student) async {
         guard let classId = selectedClassId ?? bridge.notebookViewModel.currentClassId?.int64Value else { return }
+        let previousValue = isStudentInjured(student)
+        let newValue = !previousValue
+        localInjuryStatuses[student.id] = newValue
+        cellReloadRevision += 1
         do {
             try await bridge.updateStudentInjuryStatus(
                 studentId: student.id,
-                isInjured: !student.isInjured,
+                isInjured: newValue,
                 classId: classId
             )
             await bridge.selectStudentsClass(classId: classId)
             cellReloadRevision += 1
-            showToast(student.isInjured ? "Lesión retirada" : "Alumno marcado con lesión")
+            showToast(newValue ? "Alumno marcado con lesión" : "Lesión retirada")
         } catch {
+            localInjuryStatuses[student.id] = previousValue
+            cellReloadRevision += 1
             showToast("No se pudo actualizar la lesión", style: .warning)
         }
     }
@@ -80,17 +90,28 @@ extension NotebookModuleView {
         guard !visibleRows.isEmpty,
               let classId = selectedClassId ?? bridge.notebookViewModel.currentClassId?.int64Value else { return }
         Task {
-            for row in visibleRows {
-                try? await bridge.saveAttendance(
+            let drafts = visibleRows.map { row in
+                KmpBridge.AttendanceDraft(
                     studentId: row.student.id,
                     classId: classId,
-                    on: Date(),
-                    status: NotebookAttendanceStatus.present
+                    date: Date(),
+                    status: NotebookAttendanceStatus.present,
+                    note: "",
+                    hasIncident: false,
+                    followUpRequired: nil,
+                    sessionId: nil
                 )
             }
-            await refreshNotebookSignals()
-            await MainActor.run {
-                showToast("\(visibleRows.count) alumnos marcados como presentes")
+            do {
+                try await bridge.saveAttendanceBatch(records: drafts)
+                await refreshNotebookSignals()
+                await MainActor.run {
+                    showToast("\(visibleRows.count) alumnos marcados como presentes")
+                }
+            } catch {
+                await MainActor.run {
+                    showToast("No se pudo marcar asistencia", style: .warning)
+                }
             }
         }
     }

@@ -19,6 +19,7 @@ struct MacRubricsView: View {
     @State private var bulkLaunchInFlight = false
     @State private var showingBuilder = false
     @State private var showingRubricFileImporter = false
+    @State private var rubricImportPreview: AppleRubricImportPreview?
     @State private var rubricImportError: String?
 
     private var filteredRubrics: [RubricDetail] {
@@ -90,68 +91,22 @@ struct MacRubricsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
-            HStack(alignment: .center, spacing: 16) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Rúbricas")
-                        .font(MacAppStyle.pageTitle)
-                    Text("Banco operativo para encontrar, asignar y evaluar rápido.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-
-                if !bridge.classes.isEmpty {
-                    Picker("Clase", selection: $selectedFilterClassId) {
-                        Text("Todas").tag(Optional<Int64>.none)
-                        ForEach(bridge.classes, id: \.id) { schoolClass in
-                            Text(schoolClass.name).tag(Optional(schoolClass.id))
-                        }
-                    }
-                    .frame(width: 180)
-                }
-
-                Picker("SA", selection: $selectedTeachingUnitId) {
-                    Text("Todas las SA").tag(Optional<Int64>.none)
-                    ForEach(availableTeachingUnits, id: \.id) { unit in
-                        Text(unit.name).tag(Optional(unit.id))
-                    }
-                    Text("Sin situación asignada").tag(Optional(Int64.min))
-                }
-                .frame(width: 220)
-
-                Picker("Estado", selection: $selectedStatusFilter) {
-                    ForEach(availableStatusFilters, id: \.self) { filter in
-                        Text(filter).tag(filter)
-                    }
-                }
-                .frame(width: 190)
-
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundStyle(.secondary)
-                    TextField("Buscar", text: $searchText)
-                        .textFieldStyle(.plain)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(MacAppStyle.subtleFill, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .frame(width: 220)
-
-                Button {
+            MacPremiumModuleHeader(
+                title: "Rúbricas",
+                subtitle: "Banco operativo para encontrar, asignar y evaluar rápido.",
+                state: rubricsOperationState,
+                primaryAction: MacPremiumHeaderAction(title: "Nueva rúbrica", systemImage: "plus") {
                     bridge.resetRubricBuilder()
                     showingBuilder = true
-                } label: {
-                    Label("Nueva rúbrica", systemImage: "plus")
-                }
-                .buttonStyle(.borderedProminent)
+                },
+                secondaryActions: [
+                    MacPremiumHeaderAction(title: "Importar rúbrica", systemImage: "square.and.arrow.down") {
+                        showingRubricFileImporter = true
+                    }
+                ]
+            )
 
-                Button {
-                    showingRubricFileImporter = true
-                } label: {
-                    Label("Importar", systemImage: "square.and.arrow.down")
-                }
-                .buttonStyle(.bordered)
-            }
+            rubricsFilterBar
 
             if bridge.rubrics.isEmpty {
                 ContentUnavailableView(
@@ -250,6 +205,13 @@ struct MacRubricsView: View {
         ) { result in
             Task { await handleRubricImportFile(result) }
         }
+        .sheet(item: $rubricImportPreview) { preview in
+            RubricImportPreviewSheet(preview: preview) {
+                rubricImportPreview = nil
+            } confirm: {
+                Task { await confirmRubricImport(preview) }
+            }
+        }
         .alert("No se pudo importar la rúbrica", isPresented: Binding(
             get: { rubricImportError != nil },
             set: { if !$0 { rubricImportError = nil } }
@@ -284,6 +246,57 @@ struct MacRubricsView: View {
             RubricBulkEvaluationSheet(bridge: bridge)
                 .environmentObject(bridge)
                 .frame(minWidth: 1320, minHeight: 860)
+        }
+    }
+
+    private var rubricsOperationState: MacPremiumOperationStateKind? {
+        if let rubricImportError {
+            return .failed(rubricImportError)
+        }
+        if usageLoading {
+            return .loading("Actualizando uso...")
+        }
+        return nil
+    }
+
+    private var rubricsFilterBar: some View {
+        MacPremiumFilterBar {
+            if !bridge.classes.isEmpty {
+                Picker("Clase", selection: $selectedFilterClassId) {
+                    Text("Todas").tag(Optional<Int64>.none)
+                    ForEach(bridge.classes, id: \.id) { schoolClass in
+                        Text(schoolClass.name).tag(Optional(schoolClass.id))
+                    }
+                }
+                .frame(width: 180)
+            }
+
+            Picker("Situación de aprendizaje", selection: $selectedTeachingUnitId) {
+                Text("Todas las SA").tag(Optional<Int64>.none)
+                ForEach(availableTeachingUnits, id: \.id) { unit in
+                    Text(unit.name).tag(Optional(unit.id))
+                }
+                Text("Sin situación asignada").tag(Optional(Int64.min))
+            }
+            .frame(width: 220)
+
+            Picker("Estado", selection: $selectedStatusFilter) {
+                ForEach(availableStatusFilters, id: \.self) { filter in
+                    Text(filter).tag(filter)
+                }
+            }
+            .frame(width: 190)
+
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField("Buscar", text: $searchText)
+                    .textFieldStyle(.plain)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(MacAppStyle.subtleFill, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .frame(width: 220)
         }
     }
 
@@ -649,11 +662,57 @@ struct MacRubricsView: View {
         do {
             guard let url = try result.get().first else { return }
             let rows = try AppleSpreadsheetReader.readRows(from: url)
-            try await bridge.importRubricDraft(tsv: rows.tsvText)
+            rubricImportPreview = makeRubricImportPreview(from: rows)
+        } catch {
+            rubricImportError = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func confirmRubricImport(_ preview: AppleRubricImportPreview) async {
+        do {
+            try await bridge.importRubricDraft(tsv: preview.tsv)
+            rubricImportPreview = nil
             showingBuilder = true
         } catch {
             rubricImportError = error.localizedDescription
         }
+    }
+
+    private func makeRubricImportPreview(from rows: [[String]]) -> AppleRubricImportPreview {
+        let tsv = rows.tsvText
+        let nonEmptyRows = rows.filter { row in
+            row.contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        }
+        let header = nonEmptyRows.first ?? []
+        let levels = header.dropFirst().filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let criteriaRows = nonEmptyRows.dropFirst().filter { row in
+            row.first?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        }
+        var warnings: [String] = []
+        if levels.isEmpty {
+            warnings.append("No se han detectado niveles en la primera fila.")
+        }
+        if criteriaRows.isEmpty {
+            warnings.append("No se han detectado criterios con descripción.")
+        }
+        for (index, row) in criteriaRows.enumerated() {
+            let missingDescriptions = max(0, levels.count - row.dropFirst().filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.count)
+            if missingDescriptions > 0 {
+                warnings.append("Criterio \(index + 1) tiene \(missingDescriptions) nivel(es) sin descripción.")
+            }
+        }
+        let numericLevelCount = levels.filter { Double($0.trimmingCharacters(in: .whitespacesAndNewlines)) != nil }.count
+        if numericLevelCount > 0 {
+            warnings.append("\(numericLevelCount) nivel(es) parecen numéricos; revisa la escala antes de guardar.")
+        }
+        return AppleRubricImportPreview(
+            title: "Rúbrica importada",
+            levelCount: levels.count,
+            criterionCount: criteriaRows.count,
+            warnings: warnings,
+            tsv: tsv
+        )
     }
 
     private func ensureExpandedGroups() {
@@ -900,5 +959,130 @@ private struct MacFlowLayout: Layout {
             currentX += size.width + spacing
             lineHeight = max(lineHeight, size.height)
         }
+    }
+}
+
+private struct RubricImportPreviewSheet: View {
+    let preview: AppleRubricImportPreview
+    let cancel: () -> Void
+    let confirm: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    HStack(spacing: 12) {
+                        rubricPreviewMetric(title: "Niveles", value: "\(preview.levelCount)", icon: "slider.horizontal.below.square")
+                        rubricPreviewMetric(title: "Criterios", value: "\(preview.criterionCount)", icon: "list.bullet.rectangle")
+                        rubricPreviewMetric(title: "Advertencias", value: "\(preview.warnings.count)", icon: "exclamationmark.triangle")
+                    }
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Validación")
+                            .font(.headline)
+                        if preview.warnings.isEmpty {
+                            Label("Estructura lista para revisar en el editor.", systemImage: "checkmark.circle.fill")
+                                .foregroundStyle(MacAppStyle.successTint)
+                        } else {
+                            ForEach(preview.warnings, id: \.self) { warning in
+                                Label(warning, systemImage: "exclamationmark.triangle.fill")
+                                    .font(.callout)
+                                    .foregroundStyle(MacAppStyle.warningTint)
+                            }
+                        }
+                    }
+                    .padding(MacAppStyle.innerPadding)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(MacAppStyle.subtleFill)
+                    .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
+                }
+                .padding(MacAppStyle.pagePadding)
+            }
+
+            Divider()
+            footer
+        }
+        .frame(width: 600, height: 430)
+        .background(MacAppStyle.pageBackground)
+    }
+
+    private var header: some View {
+        HStack(alignment: .top, spacing: 16) {
+            Image(systemName: "checklist")
+                .font(.system(size: 22, weight: .bold))
+                .foregroundStyle(MacAppStyle.infoTint)
+                .frame(width: 48, height: 48)
+                .background(MacAppStyle.infoTint.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Importar rúbrica")
+                    .font(.title2.weight(.semibold))
+                Text(preview.title)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, MacAppStyle.pagePadding)
+        .padding(.vertical, 20)
+    }
+
+    private var footer: some View {
+        HStack(spacing: 16) {
+            Text(canConfirm ? "Se abrirá en el editor para revisión final." : "La rúbrica necesita niveles y criterios.")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            Spacer()
+
+            Button("Cancelar") {
+                cancel()
+            }
+            .buttonStyle(.bordered)
+            .keyboardShortcut(.cancelAction)
+
+            Button {
+                confirm()
+            } label: {
+                Label("Abrir en editor", systemImage: "square.and.pencil")
+            }
+            .buttonStyle(.borderedProminent)
+            .keyboardShortcut(.defaultAction)
+            .disabled(!canConfirm)
+        }
+        .padding(.horizontal, MacAppStyle.pagePadding)
+        .padding(.vertical, 16)
+        .background(.ultraThinMaterial)
+    }
+
+    private var canConfirm: Bool {
+        preview.levelCount > 0 && preview.criterionCount > 0
+    }
+
+    private func rubricPreviewMetric(title: String, value: String, icon: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(MacAppStyle.infoTint)
+                .accessibilityHidden(true)
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.title3.weight(.bold))
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(MacAppStyle.cardBackground)
+        .overlay {
+            RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous)
+                .stroke(MacAppStyle.cardBorder, lineWidth: 0.5)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
     }
 }

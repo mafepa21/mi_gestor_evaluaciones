@@ -449,6 +449,12 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     }
 
     func reloadAll(keepSelection: Bool = true) async {
+        await reloadPlannerBootstrap()
+        await reloadScheduleConfiguration()
+        await reloadWeekSessions(keepSelection: keepSelection)
+    }
+
+    private func reloadPlannerBootstrap() async {
         guard let bridge else { return }
         await bridge.ensureClassesLoaded()
         groups = bridge.classes.sorted { $0.name < $1.name }
@@ -456,26 +462,36 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         if scheduleFormGroupId == nil {
             scheduleFormGroupId = groups.first?.id
         }
-        await reloadScheduleConfiguration()
-        weeklySlots = bridge.plannerWeeklySlots(classId: nil)
-        rebuildVisiblePlannerStructure()
+    }
+
+    private func reloadWeekSessions(keepSelection: Bool = true) async {
+        guard let bridge else { return }
         sessions = (try? await bridge.plannerListSessions(weekNumber: week, year: year, classId: nil)) ?? []
         rebuildVisiblePlannerStructure()
-        let summaries = (try? await bridge.plannerJournalSummaries(sessionIds: sessions.map(\.id))) ?? []
-        journalSummaryBySessionId = Dictionary(uniqueKeysWithValues: summaries.map { ($0.planningSessionId, $0) })
+        await reloadJournalSummaries()
         applySearch()
 
         if keepSelection, let selectedSession {
             self.selectedSession = sessions.first(where: { $0.id == selectedSession.id })
             if self.selectedSession != nil {
-                await loadJournalForSelectedSession()
+                await reloadSelectedJournal()
             }
         } else if let first = filteredSessions.first {
             selectedSession = first
-            await loadJournalForSelectedSession()
+            await reloadSelectedJournal()
         } else {
             clearSelection()
         }
+    }
+
+    private func reloadJournalSummaries() async {
+        guard let bridge else { return }
+        let summaries = (try? await bridge.plannerJournalSummaries(sessionIds: sessions.map(\.id))) ?? []
+        journalSummaryBySessionId = Dictionary(uniqueKeysWithValues: summaries.map { ($0.planningSessionId, $0) })
+    }
+
+    private func reloadSelectedJournal() async {
+        await loadJournalForSelectedSession()
     }
 
     func applySearch() {
@@ -505,7 +521,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         } else {
             week -= 1
         }
-        await reloadAll(keepSelection: false)
+        await reloadWeekSessions(keepSelection: false)
     }
 
     func nextWeek() async {
@@ -515,7 +531,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         } else {
             week += 1
         }
-        await reloadAll(keepSelection: false)
+        await reloadWeekSessions(keepSelection: false)
     }
 
     func selectGroup(_ id: Int64?) {
@@ -571,7 +587,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         }
 
         if shouldReload {
-            await reloadAll(keepSelection: false)
+            await reloadWeekSessions(keepSelection: false)
         }
 
         if let sessionId,
@@ -728,7 +744,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         }
         selectionMode = false
         selectedSessionIds.removeAll()
-        await reloadAll()
+        await reloadWeekSessions()
     }
 
     func bulkMoveOneDay() async {
@@ -744,7 +760,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         }
         selectionMode = false
         selectedSessionIds.removeAll()
-        await reloadAll()
+        await reloadWeekSessions()
     }
 
     func markCompleted(_ session: PlanningSession) async {
@@ -769,7 +785,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
             endTime: session.endTime,
             status: .completed
         )
-        await reloadAll()
+        await reloadWeekSessions()
     }
 
     func openComposer(for session: PlanningSession? = nil, day: Int? = nil, period: Int? = nil) {
@@ -846,7 +862,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
             composerContextError = ""
             composerSaveState = .saved(Date())
             showingComposer = false
-            await reloadAll(keepSelection: false)
+            await reloadWeekSessions(keepSelection: false)
             return true
         } catch {
             composerContextError = "No se pudo guardar la sesión: \(error.localizedDescription)"
@@ -916,7 +932,6 @@ final class PlannerWorkspaceViewModel: ObservableObject {
             scheduleFormSubject = ""
             scheduleFormUnit = ""
             await reloadScheduleConfiguration()
-            weeklySlots = bridge.plannerWeeklySlots(classId: nil)
             scheduleSaveState = .saved(Date())
         } catch {
             scheduleError = error.localizedDescription
@@ -1016,7 +1031,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
             }
         }
 
-        await reloadAll(keepSelection: false)
+        await reloadWeekSessions(keepSelection: false)
         buildScheduleGenerationPreview(groupId: groupId)
         scheduleGenerationSummary = "\(created) sesiones creadas · \(omitted) omitidas"
     }
@@ -1037,7 +1052,6 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         do {
             try await bridge.plannerDeleteTeacherScheduleSlot(slotId: slotId)
             await reloadScheduleConfiguration()
-            weeklySlots = bridge.plannerWeeklySlots(classId: nil)
             scheduleSaveState = .saved(Date())
         } catch {
             scheduleError = error.localizedDescription
@@ -1212,6 +1226,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
                     .compactMap { Int(String($0).trimmingCharacters(in: .whitespacesAndNewlines)) }
             )
             teacherScheduleSlots = (try? await bridge.plannerTeacherScheduleSlots(scheduleId: schedule.id)) ?? []
+            weeklySlots = bridge.plannerWeeklySlots(classId: nil)
             evaluationPeriods = (try? await bridge.plannerEvaluationPeriods(scheduleId: schedule.id)) ?? []
             forecastRows = (try? await bridge.plannerForecast(scheduleId: schedule.id, classId: nil)) ?? []
             if scheduleFormGroupId == nil {

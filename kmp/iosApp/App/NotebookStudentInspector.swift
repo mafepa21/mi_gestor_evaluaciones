@@ -35,21 +35,9 @@ struct NotebookStudentInspector: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                Text("Inspector")
-                    .font(.system(size: 28, weight: .black, design: .rounded))
-                NotebookInspectorInfoRow(title: "Alumno", value: studentName)
-                NotebookInspectorInfoRow(title: "Columna", value: columnTitle)
-                NotebookInspectorInfoRow(title: "Valor", value: valueText)
-                NotebookInspectorInfoRow(title: "Categoría", value: categoryText)
-                NotebookInspectorInfoRow(title: "Peso", value: weightText)
-                NotebookInspectorInfoRow(title: "Tipo", value: typeText)
-                NotebookInspectorInfoRow(title: "Fecha", value: dateText)
-                NotebookInspectorInfoRow(title: "Criterio asociado", value: criteriaText)
-                NotebookInspectorInfoRow(title: "Evidencia", value: evidenceText)
-                NotebookInspectorInfoRow(title: "Evaluación", value: evaluationText)
-                NotebookInspectorInfoRow(title: "Rúbrica", value: rubricText)
-
+            VStack(alignment: .leading, spacing: 16) {
+                inspectorHeader
+                detailsSection
                 aiSection
                 quickActions
                 evidenceEditor
@@ -60,11 +48,61 @@ struct NotebookStudentInspector: View {
         .background(EvaluationBackdrop())
     }
 
+    private var inspectorHeader: some View {
+        NotebookSurface(cornerRadius: 16, fill: NotebookStyle.surface, padding: 16) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: "sidebar.right")
+                        .font(.headline)
+                        .foregroundStyle(NotebookStyle.primaryTint)
+                        .frame(width: 36, height: 36)
+                        .background(NotebookStyle.primaryTint.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(studentName)
+                            .font(.title3.weight(.semibold))
+                            .lineLimit(2)
+                        Text(columnTitle)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+
+                    Spacer(minLength: 8)
+                }
+
+                HStack(spacing: 8) {
+                    NotebookPill(label: valueText.isEmpty ? "Sin valor" : valueText, systemImage: "number", active: true, tint: NotebookStyle.primaryTint, compact: true)
+                    NotebookPill(label: "Peso \(weightText)", systemImage: "scalemass", active: false, tint: NotebookStyle.primaryTint, compact: true)
+                }
+            }
+        }
+    }
+
+    private var detailsSection: some View {
+        NotebookInspectorSection(title: "Detalle", systemImage: "tablecells") {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 132), alignment: .top)], alignment: .leading, spacing: 12) {
+                ForEach(detailRows, id: \.title) { row in
+                    NotebookInspectorInfoRow(title: row.title, value: row.value)
+                }
+            }
+        }
+    }
+
+    private var detailRows: [(title: String, value: String)] {
+        [
+            ("Categoría", categoryText),
+            ("Tipo", typeText),
+            ("Fecha", dateText),
+            ("Criterio asociado", criteriaText),
+            ("Evidencia", evidenceText),
+            ("Evaluación", evaluationText),
+            ("Rúbrica", rubricText)
+        ]
+    }
+
     private var auditHistorySection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Historial de cambios")
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
-            
+        NotebookInspectorSection(title: "Historial de cambios", systemImage: "clock.arrow.circlepath") {
             if auditEvents.isEmpty {
                 Text("Sin registros históricos")
                     .font(.caption)
@@ -113,8 +151,11 @@ struct NotebookStudentInspector: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(NotebookStyle.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(NotebookStyle.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(NotebookStyle.softBorder, lineWidth: 1)
+        }
     }
 
     private func formatTimestamp(_ ms: Int64) -> String {
@@ -130,53 +171,71 @@ struct NotebookStudentInspector: View {
         if let aiSectionTitle,
            let aiSectionOrigin,
            let aiRegenerateTitle {
-            VStack(alignment: .leading, spacing: 10) {
-                Text(aiSectionTitle)
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+            NotebookInspectorSection(title: aiSectionTitle, systemImage: "sparkles") {
                 NotebookInspectorInfoRow(title: "Origen", value: aiSectionOrigin)
                 NotebookInspectorInfoRow(title: "Regeneración", value: "Disponible desde este inspector o por lote")
-                Button(aiRegenerateTitle, action: onRegenerateAI)
+                Button {
+                    onRegenerateAI()
+                } label: {
+                    Label(aiRegenerateTitle, systemImage: "arrow.triangle.2.circlepath")
+                }
                     .buttonStyle(.borderedProminent)
             }
         }
     }
 
     private var quickActions: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Accesos rápidos")
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
-
-            HStack(spacing: 10) {
-                Button("Abrir alumno", action: onOpenStudent)
+        NotebookInspectorSection(title: "Accesos rápidos", systemImage: "arrow.up.forward.app") {
+            VStack(spacing: 8) {
+                Button {
+                    onOpenStudent()
+                } label: {
+                    Label("Abrir alumno", systemImage: "person.text.rectangle")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
                     .buttonStyle(.borderedProminent)
 
-                Button("Ir a evaluación", action: onOpenEvaluation)
+                Button {
+                    onOpenEvaluation()
+                } label: {
+                    Label("Ir a evaluación", systemImage: "checklist")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
                     .buttonStyle(.bordered)
                     .disabled(!canOpenEvaluation)
 
-                Button("Ver rúbrica", action: onOpenRubric)
+                Button {
+                    onOpenRubric()
+                } label: {
+                    Label("Ver rúbrica", systemImage: "list.bullet.rectangle")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
                     .buttonStyle(.bordered)
                     .disabled(!canOpenRubric)
-            }
 
-            if showsAttendanceShortcut {
-                Button("Abrir asistencia", action: onOpenAttendance)
+                if showsAttendanceShortcut {
+                    Button {
+                        onOpenAttendance()
+                    } label: {
+                        Label("Abrir asistencia", systemImage: "calendar.badge.clock")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                     .buttonStyle(.bordered)
+                }
             }
         }
     }
 
     private var evidenceEditor: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Comentario y evidencia")
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
+        NotebookInspectorSection(title: "Comentario y evidencia", systemImage: "note.text") {
             TextEditor(text: $noteDraft)
                 .frame(minHeight: 140)
                 .padding(8)
-                .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(NotebookStyle.surface)
-                )
+                .background(NotebookStyle.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(NotebookStyle.softBorder, lineWidth: 1)
+                }
 
             VStack(alignment: .leading, spacing: 10) {
                 Text("Icono semántico")
@@ -189,7 +248,11 @@ struct NotebookStudentInspector: View {
 
             attachmentsSection
 
-            Button("Guardar contexto", action: onSaveContext)
+            Button {
+                onSaveContext()
+            } label: {
+                Label("Guardar contexto", systemImage: "square.and.arrow.down")
+            }
                 .buttonStyle(.borderedProminent)
         }
     }
@@ -254,6 +317,24 @@ private struct NotebookInspectorInfoRow: View {
                 .font(.system(size: 14, weight: .semibold, design: .rounded))
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+private struct NotebookInspectorSection<Content: View>: View {
+    let title: String
+    let systemImage: String
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        NotebookSurface(cornerRadius: 16, fill: NotebookStyle.surface, padding: 16) {
+            VStack(alignment: .leading, spacing: 12) {
+                Label(title, systemImage: systemImage)
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+
+                content()
+            }
         }
     }
 }

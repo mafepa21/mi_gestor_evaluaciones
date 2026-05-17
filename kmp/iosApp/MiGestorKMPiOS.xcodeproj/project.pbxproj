@@ -76,6 +76,7 @@
 		61FFEC29461420F26B181A57 /* RubricBulkEvaluationSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53D5C192E36FCFC177FCB496 /* RubricBulkEvaluationSheet.swift */; };
 		620D07C339E42E89597D4757 /* StudentImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 964764E602D3B6EF684BD755 /* StudentImportSheet.swift */; };
 		636BFAF254D3F3711AE5CF10 /* MacAppStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = E57AA10D4F5A9A3199288A4C /* MacAppStyle.swift */; };
+		63B61AB2DCC2B99631A6A80F /* MacPremiumComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B8B88F2263311B19E95ACF5 /* MacPremiumComponents.swift */; };
 		63DB1711AD7BF3AFA2B8B305 /* EvaluationDesign.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61DBB79CD6256350F830529A /* EvaluationDesign.swift */; };
 		6439B3815A09D0F867D1FE88 /* TeacherScheduleSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85B8ED1FDFD34D1DF02ACDD8 /* TeacherScheduleSettingsView.swift */; };
 		64ED57DB32C7EBBDD5F2F1BD /* PhysicalTestsWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49A987A394056D0AA6774110 /* PhysicalTestsWorkspaceView.swift */; };
@@ -275,6 +276,7 @@
 		9C7AB4FB2753F16568E54891 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		9D93A76DF493650C1B4A2C09 /* ImportPreviewModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportPreviewModels.swift; sourceTree = "<group>"; };
 		9EA0ED7ACCCC1D3A0A73D045 /* MacStudentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacStudentsView.swift; sourceTree = "<group>"; };
+		9B8B88F2263311B19E95ACF5 /* MacPremiumComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacPremiumComponents.swift; sourceTree = "<group>"; };
 		9F06B84E53590F642FC31288 /* NotebookColumnVisibilityRules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookColumnVisibilityRules.swift; sourceTree = "<group>"; };
 		A000A844E2F1245DA5956673 /* NotebookViewModifiers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookViewModifiers.swift; sourceTree = "<group>"; };
 		A1BA1A353C3D0548CC0C2E8A /* NotebookColumnOrganizerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookColumnOrganizerSheet.swift; sourceTree = "<group>"; };
@@ -346,6 +348,7 @@
 				09D87D21656FDFADF58B2FBA /* MacModuleStubs.swift */,
 				418B317080940EE2A662D215 /* MacPhysicalTestsToolbarActions.swift */,
 				B928B856CB84C9E4660F8B34 /* MacPhysicalTestsView.swift */,
+				9B8B88F2263311B19E95ACF5 /* MacPremiumComponents.swift */,
 				D4D63DE58BB98EFB94E5B080 /* MacRootView.swift */,
 				5ABD5C416DAF2C9F1BB98CB1 /* MacRubricsView.swift */,
 				98A9F35D6CEDD07FCA45EBA5 /* MacSettingsView.swift */,
@@ -685,6 +688,7 @@
 				042FE630464B6D6C17B475DC /* MacModuleStubs.swift in Sources */,
 				1680A7159701320DC112E710 /* MacPhysicalTestsToolbarActions.swift in Sources */,
 				25BA7CFC8B77B20BCAEC638E /* MacPhysicalTestsView.swift in Sources */,
+				63B61AB2DCC2B99631A6A80F /* MacPremiumComponents.swift in Sources */,
 				F0FD5D3E81213790BCEC6415 /* MacRootView.swift in Sources */,
 				3FA1406F09B961DDDCFC19C0 /* MacRubricsView.swift in Sources */,
 				BD47B7FB84E4AAC46BCF34DD /* MacSettingsView.swift in Sources */,

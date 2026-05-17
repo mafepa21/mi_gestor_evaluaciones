@@ -1108,13 +1108,35 @@ final class KmpBridge: ObservableObject {
 
     func previewStudentImport(tsv: String) async throws -> AppleStudentImportPreview {
         let preview = appleImportFacade.previewStudentsFromTsv(text: tsv)
+        let existingStudents = try await container.studentsRepository.listStudents()
+        let existingByFullName = Dictionary(
+            existingStudents.map { (normalizedStudentName(firstName: $0.firstName, lastName: $0.lastName), $0.fullName) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let existingLastNames = Set(existingStudents.map { normalizedNamePart($0.lastName) }.filter { !$0.isEmpty })
         let students = preview.students.map { student in
-            AppleParsedStudent(
+            let normalizedFullName = normalizedStudentName(firstName: student.firstName, lastName: student.lastName)
+            let normalizedLastName = normalizedNamePart(student.lastName)
+            let duplicateStatus: AppleStudentDuplicateStatus
+            let duplicateDetail: String?
+            if let existingName = existingByFullName[normalizedFullName] {
+                duplicateStatus = .alreadyExists
+                duplicateDetail = existingName
+            } else if !normalizedLastName.isEmpty && existingLastNames.contains(normalizedLastName) {
+                duplicateStatus = .possibleDuplicate
+                duplicateDetail = "Coinciden apellidos"
+            } else {
+                duplicateStatus = .new
+                duplicateDetail = nil
+            }
+            return AppleParsedStudent(
                 id: Int(student.rowNumber),
                 rowNumber: Int(student.rowNumber),
                 fullName: student.fullName,
                 firstName: student.firstName,
-                lastName: student.lastName
+                lastName: student.lastName,
+                duplicateStatus: duplicateStatus,
+                duplicateDetail: duplicateDetail
             )
         }
 
@@ -1131,13 +1153,15 @@ final class KmpBridge: ObservableObject {
         return applePreview
     }
 
-    func confirmStudentImport(selectedRows: [Int], targetClassId: Int64?) async throws {
+    func confirmStudentImport(selectedRows: [Int], targetClassId: Int64?, omitDuplicates: Bool = true) async throws {
         guard let preview = studentImportPreview else {
             throw NSError(domain: "KmpBridge", code: -61, userInfo: [NSLocalizedDescriptionKey: "No hay una previsualización de importación activa."])
         }
 
         let selectedRowSet = Set(selectedRows)
-        let studentsToImport = preview.students.filter { selectedRowSet.contains($0.rowNumber) }
+        let studentsToImport = preview.students.filter { student in
+            selectedRowSet.contains(student.rowNumber) && (!omitDuplicates || student.duplicateStatus == .new)
+        }
         guard !studentsToImport.isEmpty else {
             throw NSError(domain: "KmpBridge", code: -62, userInfo: [NSLocalizedDescriptionKey: "Selecciona al menos un alumno para importar."])
         }
@@ -1195,6 +1219,19 @@ final class KmpBridge: ObservableObject {
         studentImportPreview = nil
         try await refreshStudentsDirectory()
         try await refreshDashboard()
+    }
+
+    private func normalizedStudentName(firstName: String, lastName: String) -> String {
+        normalizedNamePart([firstName, lastName].joined(separator: " "))
+    }
+
+    private func normalizedNamePart(_ value: String) -> String {
+        value
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
     }
 
     func refreshRubrics() async throws {
@@ -2471,12 +2508,17 @@ final class KmpBridge: ObservableObject {
         status: String,
         note: String = "",
         hasIncident: Bool = false,
-        followUpRequired: Bool? = nil
+        followUpRequired: Bool? = nil,
+        sessionId: Int64? = nil
     ) async throws {
         let dateEpochMs = startOfDayEpochMs(for: date)
-        let existing = try await container.attendanceRepository.listAttendanceByDate(classId: classId, dateEpochMs: dateEpochMs)
-            .first(where: { $0.studentId == studentId })
-        let linkedSessionId = try await attendanceSessions(for: classId, on: date).first?.session.id
+        let existingRecords = try await container.attendanceRepository.listAttendanceByDate(classId: classId, dateEpochMs: dateEpochMs)
+        let linkedSessionId = sessionId
+        let existing = existingRecords.first { record in
+            record.studentId == studentId && record.sessionId?.int64Value == linkedSessionId
+        } ?? existingRecords.first { record in
+            record.studentId == studentId
+        }
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
         _ = try await container.attendanceRepository.saveAttendance(
             id: kotlinLong(existing?.id),

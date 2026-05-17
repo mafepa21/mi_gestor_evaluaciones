@@ -1,0 +1,423 @@
+# Memoria ejecutiva de Mi Gestor Evaluaciones
+
+Fecha de creación: 2026-05-17
+Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
+
+## 1. Visión del producto
+
+Mi Gestor Evaluaciones es una aplicación local-first para docentes, especialmente orientada a evaluación educativa, planificación didáctica, cuaderno del profesor, rúbricas, asistencia, diario de sesión, informes y módulos de Educación Física.
+
+La ambición del producto es concentrar en una sola herramienta el trabajo operativo diario del docente: organizar grupos y alumnos, diseñar evaluaciones, registrar calificaciones y evidencias, evaluar con rúbricas, planificar sesiones, documentar lo ocurrido en clase y generar informes. El proyecto prioriza la persistencia local, la continuidad de datos, la ergonomía en pantallas grandes y una experiencia nativa Apple/desktop para trabajo intensivo.
+
+El repositorio contiene dos líneas principales:
+
+- Una base Flutter histórica, funcional y local-first, con Drift como persistencia.
+- Una reescritura paralela KMP/SwiftUI/Compose más ambiciosa, con dominio compartido Kotlin Multiplatform, SQLDelight, UI nativa Apple para iPad/macOS y módulos desktop/Android.
+
+La dirección estratégica actual parece ser consolidar la reescritura KMP como núcleo futuro, manteniendo la app Flutter como referencia funcional y/o base previa de migración.
+
+## 2. Estado arquitectónico general
+
+### 2.1 Flutter histórico
+
+La app Flutter vive en la raíz del proyecto y usa:
+
+- `lib/main.dart` como entrada.
+- `lib/screens/home_screen.dart` como shell principal.
+- `flutter_riverpod` para estado e inyección.
+- `drift` y `drift_flutter` para persistencia local.
+- `pdf`, `printing`, `excel` y `file_picker` para informes, importación/exportación y soporte documental.
+
+Módulos visibles en Flutter:
+
+- Inicio/dashboard.
+- Alumnos.
+- Clases.
+- Cuaderno.
+- Planificación.
+- Rúbricas.
+- Informes.
+
+La base de datos Drift incluye:
+
+- Alumnos.
+- Clases.
+- Relación alumno-clase.
+- Periodos.
+- Unidades didácticas.
+- Sesiones.
+- Rúbricas, criterios y niveles.
+- Evaluaciones.
+- Tabs de cuaderno.
+- Calificaciones.
+- Evaluaciones por rúbrica.
+- Asistencia.
+
+La versión de esquema Flutter está en `schemaVersion = 3`, con migraciones para evaluaciones por rúbrica y tabs del cuaderno.
+
+### 2.2 Reescritura KMP
+
+La carpeta `kmp/` contiene una reescritura Kotlin Multiplatform orientada a paridad funcional progresiva.
+
+Módulos Gradle:
+
+- `:shared`: dominio, casos de uso, contratos de repositorio, viewmodels y lógica multiplataforma.
+- `:data`: persistencia SQLDelight, repositorios concretos y servicios por plataforma.
+- `:desktopApp`: app Compose Desktop.
+- `:androidApp`: app Android MVP.
+- `:commandCenterHelper`: helper para centro de comandos/sincronización.
+
+Targets relevantes:
+
+- Android.
+- Desktop JVM.
+- iOS arm64/simulator.
+- macOS arm64/x64.
+
+Dependencias clave:
+
+- Kotlin Multiplatform 1.9.24.
+- SQLDelight 2.0.2.
+- Kotlin coroutines 1.8.1.
+- Kotlin datetime 0.6.1.
+- Compose Multiplatform 1.6.11.
+- Apache POI para XLSX en desktop.
+- OpenPDF para exporte PDF en desktop.
+- JmDNS y Bouncy Castle para sincronización/servicios locales.
+
+La persistencia KMP usa SQLDelight con `AppDatabase` y migraciones numeradas hasta, al menos, `21.sqm`. El diseño ya incluye campos de auditoría y sincronización (`updated_at_epoch_ms`, `device_id`, `sync_version`) en múltiples tablas, lo que indica una orientación clara hacia sincronización o reconciliación futura.
+
+### 2.3 Capa Apple SwiftUI
+
+La carpeta `kmp/iosApp/` contiene una app Apple amplia, dividida entre:
+
+- `App/`: vistas iPad/iOS, workspace principal, cuaderno, dashboard, planificación, rúbricas, asistencia, perfiles, Educación Física, informes y helpers.
+- `MacApp/`: app macOS nativa con root, dashboard, estudiantes, asistencia, pruebas físicas, rúbricas, planificación, ajustes y componentes premium.
+- `AppleShared/`: bootstrap, entorno compartido, helpers de compatibilidad, lector de hojas de cálculo, QR, lifecycle y servicios comunes.
+
+Piezas importantes:
+
+- `KmpBridge.swift` conecta SwiftUI con la capa KMP.
+- `AppleAppRootView.swift` es el punto raíz compartido Apple y mantiene el ownership del bridge.
+- `IPadWorkspaceShell.swift`, `NotebookModuleView.swift`, `NotebookDataGrid.swift` y `NotebookGridContainer.swift` son piezas centrales del workspace/cuaderno.
+- `MacRootView.swift`, `NotebookMacLayout.swift` y vistas `Mac*` adaptan la experiencia a macOS.
+
+El lenguaje visual del proyecto se apoya en una filosofía Apple/Jobs, Organic Precision, dark mode y layouts densos pero limpios para productividad docente.
+
+## 3. Dominio funcional
+
+### 3.1 Alumnos y clases
+
+El sistema modela alumnos con nombre, apellidos, email, foto, estado de lesión, sexo, fuente del sexo y fecha de nacimiento. En KMP, el dominio permite calcular edad en una fecha concreta y normalizar sexo desde valores importados o manuales.
+
+Las clases/grupos incluyen nombre, curso, descripción y metadatos de centro, año académico, etapa/ciclo y asignatura en el dominio KMP ampliado.
+
+La relación alumno-clase es explícita y con borrado en cascada, tanto en Flutter como en SQLDelight.
+
+### 3.2 Cuaderno del profesor
+
+El cuaderno es uno de los módulos más complejos del proyecto. Gestiona:
+
+- Alumnos por grupo.
+- Evaluaciones/columnas.
+- Tabs o secciones del cuaderno.
+- Calificaciones numéricas.
+- Celdas persistidas no necesariamente numéricas.
+- Columnas configurables.
+- Categorías de columnas.
+- Fórmulas.
+- Promedios.
+- Rúbricas enlazadas.
+- Evidencias.
+- Adjuntos.
+- Auditoría de celdas.
+- Organización visual y acciones por módulo.
+- Grupos de trabajo.
+
+En KMP hay contratos específicos para:
+
+- `NotebookRepository`.
+- `NotebookCellsRepository`.
+- `NotebookConfigRepository`.
+- `GradesRepository`.
+- Casos de uso como `GetNotebookUseCase`, `BuildNotebookSheetUseCase`, `BuildNotebookInsightsUseCase` y `GetNotebookConfigUseCase`.
+
+El cuaderno ha recibido avances recientes en interacción:
+
+- Duplicación de estructura de cuaderno entre clases.
+- Conservación de asociaciones evaluación/rúbrica al duplicar columnas.
+- Drag-and-drop de columnas.
+- Redimensionado con handles.
+- Menús de color por long-press.
+- Sincronización de anchuras entre cabecera y celdas.
+- Protección contra grupos de trabajo duplicados que antes podían reemplazarse por el uso de `INSERT OR REPLACE`.
+
+### 3.3 Evaluaciones y rúbricas
+
+El dominio soporta evaluaciones con:
+
+- Clase.
+- Código.
+- Nombre.
+- Tipo.
+- Peso.
+- Fórmula.
+- Rúbrica asociada.
+- Descripción.
+- Trazas de autoría, creación, actualización, grupo asociado, dispositivo y versión de sync.
+
+Las rúbricas incluyen:
+
+- Rúbrica.
+- Criterios.
+- Niveles.
+- Pesos.
+- Orden.
+- Vínculos con clase, unidad didáctica y competencia.
+
+El cálculo de puntuación de rúbrica en KMP escala a 10, pondera criterios y soporta evaluaciones parciales: solo los criterios evaluados entran en el denominador. Esto permite usar rúbricas en progreso sin penalizar criterios todavía no valorados.
+
+También existen flujos para evaluación masiva por rúbrica en SwiftUI y acciones de copiar/pegar valoración.
+
+### 3.4 Planificación didáctica
+
+La planificación aparece en Flutter y en KMP.
+
+En KMP hay modelos y persistencia para:
+
+- Sesiones de planificación por fecha, grupo y periodo.
+- Unidades didácticas.
+- Plantillas semanales.
+- Slots horarios.
+- Relocalización de sesiones.
+- Copia/desplazamiento de sesiones con resolución de colisiones.
+- Estado de sesiones.
+- Asociación con evaluaciones.
+
+SQLDelight define tablas como:
+
+- `schedule_slot`.
+- `planner_session`.
+- `teaching_unit`.
+- `weekly_slot_template`.
+- `planned_session`.
+
+Casos de uso relevantes:
+
+- `GetWeeklyPlannerUseCase`.
+- `SavePlannerSessionUseCase`.
+- `MovePlannerSessionsUseCase`.
+- `GenerateSessionsFromUDUseCase`.
+- `SaveWeeklyTemplateUseCase`.
+
+### 3.5 Diario de sesión
+
+La reescritura KMP incorpora un diario de sesión, enlazado a `planner_session`.
+
+Permite registrar:
+
+- Profesor.
+- Espacio previsto/usado.
+- Unidad.
+- Objetivo planificado.
+- Desarrollo previsto y real.
+- Logro.
+- Adaptaciones.
+- Incidencias.
+- Observaciones grupales.
+- Clima, participación, tiempo útil y dificultad percibida.
+- Decisión pedagógica.
+- Tareas pendientes.
+- Material a preparar.
+- Alumnos a revisar.
+- Comunicación con familias.
+- Próximo paso.
+- Clima/meteorología.
+- Material usado.
+- Incidencias físicas.
+- Lesiones.
+- Alumnos sin equipación.
+- Intensidad y tiempos de sesión.
+- Notas individuales.
+- Acciones.
+- Media.
+- Enlaces.
+
+Esto refuerza el foco del producto en Educación Física y seguimiento docente profundo.
+
+### 3.6 Asistencia
+
+La asistencia existe en Flutter como tabla simple por alumno, clase, fecha y estado.
+
+En KMP se amplía con:
+
+- Nota.
+- Incidente.
+- Seguimiento requerido.
+- Sesión asociada.
+- Autoría.
+- Grupo asociado.
+- Dispositivo y versión de sincronización.
+
+Hay UI Apple/macOS específica para asistencia (`AttendanceWorkspaceView`, `MacAttendanceView`, `MacAttendanceDayRow`) y tests de integración de repositorio.
+
+### 3.7 Educación Física y pruebas físicas
+
+El dominio KMP incluye soporte relevante para pruebas físicas:
+
+- Definiciones de pruebas.
+- Baterías.
+- Asignaciones a clases.
+- Escalas por edad, sexo, curso y batería.
+- Enlaces entre pruebas físicas y cuaderno.
+- Resultados.
+- Intentos.
+- Captura de pruebas.
+- Editor de escalas.
+
+Archivos destacados:
+
+- `PhysicalTestsWorkspaceView.swift`.
+- `PhysicalTestCaptureView.swift`.
+- `PhysicalTestScaleEditor.swift`.
+- `MacPhysicalTestsView.swift`.
+- `MacPhysicalTestsToolbarActions.swift`.
+- `PhysicalTestsRepositorySqlDelight.kt`.
+- Tests de dominio y repositorio de pruebas físicas.
+
+### 3.8 Informes, importación y backup
+
+Flutter incluye servicios para:
+
+- Backups.
+- Datos demo.
+- Importación de rúbricas.
+- Informes PDF.
+- Importación de alumnos.
+
+KMP desktop incluye:
+
+- Importación XLSX.
+- Exportación PDF.
+- Backup/restore local.
+
+El README de KMP indica que Android/iOS aún tienen fallback para XLSX/backup y no cuentan todavía con implementación nativa equivalente a desktop.
+
+## 4. Persistencia y sincronización
+
+La instrucción global del proyecto es “Mejora persistencia”, y la arquitectura confirma que la persistencia es una prioridad.
+
+Estado actual:
+
+- Flutter persiste con Drift.
+- KMP persiste con SQLDelight.
+- SQLDelight contiene esquema amplio y migraciones sucesivas.
+- Muchas entidades tienen campos de auditoría/sync.
+- Desktop usa driver SQLite.
+- Android usa driver Android SQLDelight.
+- iOS/macOS usan native driver vía source sets Apple.
+- Hay componentes de sincronización local desktop (`LocalSyncServer`, `SqlDelightSyncAdapter`) y un `SyncCoordinator` en shared.
+
+Riesgos/retos persistentes:
+
+- Falta migrador/importador desde la base Drift Flutter existente hacia KMP.
+- Hay que vigilar que cada cambio funcional tenga migración SQLDelight y tests de repositorio cuando toca datos.
+- Los modelos KMP y las vistas SwiftUI dependen de bindings exportados; cualquier cambio de firma puede romper `KmpBridge.swift`.
+- La persistencia del cuaderno es especialmente sensible por la relación entre columnas, evaluaciones, rúbricas, celdas, calificaciones, categorías y grupos.
+
+## 5. Experiencia de usuario
+
+La app busca una experiencia de herramienta profesional, no una landing ni una demo visual.
+
+Principios observados:
+
+- Local-first.
+- Productividad docente.
+- Pantallas densas pero ordenadas.
+- Diseño dark mode / Organic Precision.
+- Adaptación nativa iPad y macOS.
+- Cuaderno como superficie principal de trabajo.
+- Módulos con acciones contextuales.
+- Preferencia por patrones Apple y helpers compartidos.
+- Evitar duplicar ownership del `KmpBridge`.
+
+En Flutter, el shell usa `NavigationRail` en pantallas anchas y `NavigationBar` en pantallas estrechas.
+
+En Apple, el proyecto tiende a workspaces con sidebar, toolbar, inspector, grids y layouts específicos por plataforma.
+
+## 6. Testing y verificación
+
+Hay tests KMP en `shared` y `data`, incluyendo:
+
+- Fórmulas.
+- Construcción de hoja de cuaderno.
+- ViewModels de cuaderno y rúbricas.
+- Evaluación por rúbrica.
+- Dominio de alumnos/pruebas físicas.
+- Repositorios SQLDelight.
+- Asistencia.
+- Configuración del cuaderno.
+- Acceso compartido al driver desktop.
+
+Comandos documentados:
+
+- Desde `kmp/`: `./gradlew :shared:test`
+- Desde `kmp/`: `./gradlew :data:desktopTest`
+- Desde `kmp/`: `./gradlew :desktopApp:run`
+- Desde `kmp/`: `./gradlew :desktopApp:packageDmg`
+
+Para empaquetado desktop en macOS se recomienda JDK 17 Temurin en:
+
+`/Library/Java/JavaVirtualMachines/temurin-17.jdk/Contents/Home`
+
+## 7. Avances significativos ya registrados antes de esta memoria
+
+Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan.md` y `findings.md`:
+
+- Implementada duplicación de estructura del cuaderno en shared/data, incluyendo evaluaciones, vínculos de rúbrica y mappings columna-evaluación.
+- Añadida acción/sheet iOS para duplicar la estructura de un curso hacia otro.
+- Añadidas acciones de copiar/pegar evaluación dentro de la evaluación masiva por rúbrica en iOS.
+- Corregidos desajustes de interoperabilidad Swift en `KmpBridge.swift`.
+- Verificada build de simulador iOS tras esos cambios.
+- Endurecida la creación de grupos de trabajo del cuaderno para auto-desambiguar nombres duplicados dentro de un mismo tab.
+- Añadida cobertura de tests compartidos para nombres únicos de grupos de trabajo.
+- Mejoradas interacciones de columnas del cuaderno en desktop e iOS: reordenación por drag-and-drop, resize desde esquina, menús de color por long-press y anchuras sincronizadas entre cabeceras y celdas.
+- Verificados `:shared:compileKotlinMetadata` y `:desktopApp:compileKotlin` tras los cambios de UI del cuaderno.
+
+## 8. Decisiones y reglas de trabajo que conviene recordar
+
+- Para bugs SwiftUI concretos, usar fixes mínimos y respetar el ownership real de `KmpBridge`.
+- Si un fallo SwiftUI viene de binding KMP, escalar a `kmp-bridge-fix`.
+- Si un fallo viene de datos SQLDelight, escalar a `sqldelight-fix`.
+- Si un cambio toca persistencia, revisar esquema, migraciones, repositorios y tests.
+- No duplicar lógica de negocio en SwiftUI si corresponde a KMP shared.
+- No rediseñar pantallas completas cuando el objetivo es corregir un bug.
+- Mantener la memoria como documento vivo: resumen estable arriba, avances fechados abajo.
+
+## 9. Próximos focos probables
+
+- Consolidar migración desde Drift/Flutter hacia SQLDelight/KMP.
+- Reforzar persistencia y migraciones en módulos complejos del cuaderno.
+- Completar paridad nativa iOS/Android para importación XLSX, PDF y backup.
+- Seguir cerrando paridad funcional entre Flutter, KMP desktop, iPad y macOS.
+- Ampliar pruebas de repositorio para casos de borrado, duplicación, sincronización y migración.
+- Documentar decisiones de arquitectura cuando afecten a persistencia, sync o ownership de estado.
+
+## 10. Bitácora de avances significativos
+
+### 2026-05-17 - Homogeneización macOS, fluidez y sheets premium sin tocar dominio
+
+Resumen:
+- Se creó una capa visual premium específica de macOS en `kmp/iosApp/MacApp/MacPremiumComponents.swift`, con `MacPremiumModuleHeader`, `MacPremiumOperationState`, `MacPremiumFilterBar` y `MacPremiumInspectorSection`, y se aplicó a `MacStudentsView.swift`, `MacRubricsView.swift` y `MacAttendanceView.swift` para alinear jerarquía, acciones principales/secundarias y estados de carga/error.
+- Se mejoró la fluidez sin modificar KMP/shared ni SQLDelight: `NotebookDataGrid.swift` mantiene la opción B de tres scrolls verticales sincronizados con AppKit, ahora con clamp de offset para evitar rebotes/descuadres; `PlannerWorkspaceIOS.swift` divide `reloadAll()` en bootstrap, configuración, sesiones semanales, summaries y diario seleccionado; `MacAttendanceView.swift` y `MacStudentsView.swift` actualizan estados locales antes de refrescos pesados.
+- Se pulieron sheets importantes con cabecera/contenido/footer fijo: `StudentImportSheet.swift`, `AddColumnSheet.swift`, preview de importación de rúbricas en `MacRubricsView.swift`, `PendingEvaluationPickerSheet.swift` y un ajuste visual menor en `AssignRubricToTabView` dentro de `ContentView.swift`.
+- Validación realizada: `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -configuration Debug -destination 'platform=macOS' build` terminó con `BUILD SUCCEEDED` tras cada sprint.
+
+Notas para futuras conversaciones:
+- No hubo cambios de persistencia, esquema SQLDelight, repositorios ni migraciones; el riesgo de compatibilidad con datos existentes es bajo por este bloque de trabajo.
+- `NotebookDataGrid` sigue usando tres paneles sincronizados, no un único scroll vertical maestro. Si vuelve a haber descuadres persistentes, el siguiente paso sería un refactor específico de layout más invasivo.
+- `MacPremiumInspectorSection` existe pero aún no se aplicó de forma amplia a inspectores; queda como follow-up natural para normalizar Cuaderno, Alumnado y Asistencia.
+
+### 2026-05-17 - Creación de memoria del proyecto
+
+Se creó este archivo `memoria` como documento maestro para conservar una visión ejecutiva del producto, su arquitectura, módulos funcionales, estado de persistencia, riesgos y avances relevantes. También se añadió un skill local para registrar avances significativos futuros de forma consistente.

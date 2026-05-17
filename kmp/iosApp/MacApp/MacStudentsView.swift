@@ -303,12 +303,8 @@ struct MacStudentsView: View {
             Spacer()
 
             if let errorMessage = store.errorMessage {
-                Text(errorMessage)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .padding(10)
+                MacPremiumOperationState(kind: .failed(errorMessage))
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
         }
         .padding(MacAppStyle.pagePadding)
@@ -316,43 +312,27 @@ struct MacStudentsView: View {
     }
 
     private var studentsHeader: some View {
-        HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Alumnado")
-                    .font(MacAppStyle.pageTitle)
-                Text("Tabla densa con seguimiento, asistencia, media e incidencias.")
-                    .font(MacAppStyle.bodyText)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            if store.isLoadingRows {
-                Label("Actualizando…", systemImage: "arrow.triangle.2.circlepath")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(MacAppStyle.subtleFill, in: Capsule())
-            }
-            Button {
-                Task { await reloadRows() }
-            } label: {
-                Label("Recargar", systemImage: "arrow.clockwise")
-            }
-            .buttonStyle(.bordered)
-            Button {
-                showingStudentFileImporter = true
-            } label: {
-                Label("Importar Excel", systemImage: "square.and.arrow.down")
-            }
-            .buttonStyle(.bordered)
-            Button {
+        MacPremiumModuleHeader(
+            title: "Alumnado",
+            subtitle: "Seguimiento, asistencia, media e incidencias.",
+            state: studentsOperationState,
+            primaryAction: MacPremiumHeaderAction(
+                title: "Nuevo alumno",
+                systemImage: "plus",
+                isDisabled: selectedRowClassId == nil
+            ) {
                 guard let classId = selectedRowClassId else { return }
                 store.studentEditorMode = .create(classId: classId)
-            } label: {
-                Label("Alumno", systemImage: "plus")
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(selectedRowClassId == nil)
+            },
+            secondaryActions: [
+                MacPremiumHeaderAction(title: "Importar Excel", systemImage: "square.and.arrow.down") {
+                    showingStudentFileImporter = true
+                },
+                MacPremiumHeaderAction(title: "Recargar", systemImage: "arrow.clockwise") {
+                    Task { await reloadRows() }
+                }
+            ]
+        ) {
             if presentation == .full {
                 Button {
                     store.isInspectorPresented.toggle()
@@ -364,20 +344,44 @@ struct MacStudentsView: View {
         }
     }
 
+    private var studentsOperationState: MacPremiumOperationStateKind? {
+        if let errorMessage = store.errorMessage {
+            return .failed(errorMessage)
+        }
+        if store.isLoadingRows {
+            return .loading("Actualizando...")
+        }
+        return nil
+    }
+
     @ViewBuilder
     private var studentsTable: some View {
+        MacPremiumTableContainer(
+            title: "Listado de alumnado",
+            subtitle: selectedClassId == nil ? "Todas las clases visibles" : "Clase seleccionada",
+            count: filteredRows.count,
+            isLoading: store.isLoadingRows
+        ) {
+            studentsTableContent
+        }
+    }
+
+    @ViewBuilder
+    private var studentsTableContent: some View {
         if store.rows.isEmpty && !store.isLoadingRows {
             ContentUnavailableView(
                 "Sin alumnado",
                 systemImage: "person.3",
                 description: Text("No hay alumnos disponibles para la clase seleccionada.")
             )
+            .frame(maxWidth: .infinity, minHeight: 320)
         } else if filteredRows.isEmpty {
             ContentUnavailableView(
                 "Sin coincidencias",
                 systemImage: "line.3.horizontal.decrease.circle",
                 description: Text("Ajusta la búsqueda o los filtros de seguimiento.")
             )
+            .frame(maxWidth: .infinity, minHeight: 320)
         } else {
             Table(filteredRows, selection: $store.localSelectedStudentId) {
                 TableColumn("Nombre") { row in
@@ -446,32 +450,22 @@ struct MacStudentsView: View {
         if let selectedRow {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Ficha del alumno")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                        Text(selectedRow.student.fullName)
-                            .font(.title2.weight(.semibold))
+                    MacPremiumInspectorHeader(
+                        title: selectedRow.student.fullName,
+                        subtitle: "\(selectedRow.className) · Ficha del alumno"
+                    ) {
                         HStack(spacing: 8) {
-                            Text(selectedRow.className)
-                                .foregroundStyle(.secondary)
-                            if selectedRow.isInjured {
-                                MacStatusPill(label: "Lesión", isActive: true, tint: MacAppStyle.warningTint)
-                            }
+                            MacStatusPill(
+                                label: selectedRow.followUpLabel,
+                                isActive: selectedRow.isFollowUp,
+                                tint: selectedRow.isInjured ? MacAppStyle.warningTint : MacAppStyle.infoTint
+                            )
+                            MacStatusPill(
+                                label: selectedRow.workGroupName,
+                                isActive: selectedRow.workGroupName != "Sin grupo",
+                                tint: MacAppStyle.successTint
+                            )
                         }
-                    }
-
-                    HStack(spacing: 8) {
-                        MacStatusPill(
-                            label: selectedRow.followUpLabel,
-                            isActive: selectedRow.isFollowUp,
-                            tint: selectedRow.isInjured ? MacAppStyle.warningTint : MacAppStyle.infoTint
-                        )
-                        MacStatusPill(
-                            label: selectedRow.workGroupName,
-                            isActive: selectedRow.workGroupName != "Sin grupo",
-                            tint: MacAppStyle.successTint
-                        )
                     }
 
                     inspectorSection("Datos del alumno") {
@@ -505,7 +499,7 @@ struct MacStudentsView: View {
                     if store.profileLoadingStudentId == selectedRow.id {
                         inspectorMetricsSkeleton
                     } else if let profile = store.profile, profile.student.id == selectedRow.id {
-                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                        MacPremiumInspectorMetricGrid {
                             MacMetricCard(label: "Asistencia", value: "\(profile.attendanceRate)%", systemImage: "checklist.checked")
                             MacMetricCard(label: "Media", value: IosFormatting.decimal(profile.averageScore), systemImage: "sum")
                             MacMetricCard(label: "Incidencias", value: "\(profile.incidentCount)", systemImage: "exclamationmark.bubble")
@@ -596,7 +590,7 @@ struct MacStudentsView: View {
                         }
 
                         inspectorSection("Accesos") {
-                            VStack(spacing: 8) {
+                            MacPremiumInspectorActionGroup {
                                 Button {
                                     openSelectedInNotebook()
                                 } label: {
@@ -618,7 +612,6 @@ struct MacStudentsView: View {
                                 }
                                 .buttonStyle(.bordered)
                             }
-                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     } else {
                         EmptyView()
@@ -640,16 +633,14 @@ struct MacStudentsView: View {
         }
     }
 
-    private func inspectorSection<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(MacAppStyle.sectionTitle)
+    private func inspectorSection<Content: View>(_ title: String, @ViewBuilder content: @escaping () -> Content) -> some View {
+        MacPremiumInspectorSection(title: title) {
             content()
         }
     }
 
     private var inspectorMetricsSkeleton: some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+        MacPremiumInspectorMetricGrid {
             ForEach(["Asistencia", "Media", "Incidencias", "Evidencias"], id: \.self) { label in
                 VStack(alignment: .leading, spacing: 8) {
                     Text(label)
@@ -704,10 +695,16 @@ struct MacStudentsView: View {
     }
 
     @MainActor
-    private func reloadRows(preferredStudentId: Int64? = nil) async {
-        store.isLoadingRows = true
+    private func reloadRows(preferredStudentId: Int64? = nil, showsLoading: Bool = true) async {
+        if showsLoading {
+            store.isLoadingRows = true
+        }
         store.errorMessage = nil
-        defer { store.isLoadingRows = false }
+        defer {
+            if showsLoading {
+                store.isLoadingRows = false
+            }
+        }
         do {
             store.rows = try await bridge.loadMacStudentRows(classId: selectedClassId)
             let visibleIds = filteredRows.map(\.id)
@@ -842,14 +839,38 @@ struct MacStudentsView: View {
     @MainActor
     private func saveQuickNote() async {
         guard let studentId = store.localSelectedStudentId, let classId = selectedRowClassId else { return }
+        let note = store.quickNoteText.trimmingCharacters(in: .whitespacesAndNewlines)
         store.isSavingNote = true
         defer { store.isSavingNote = false }
         do {
-            try await bridge.saveQuickStudentNote(studentId: studentId, classId: classId, note: store.quickNoteText)
+            try await bridge.saveQuickStudentNote(studentId: studentId, classId: classId, note: note)
+            applyQuickNoteLocally(studentId: studentId, note: note)
             store.quickNoteText = ""
-            await reloadRows(preferredStudentId: studentId)
+            await reloadRows(preferredStudentId: studentId, showsLoading: false)
         } catch {
             store.errorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func applyQuickNoteLocally(studentId: Int64, note: String) {
+        store.rows = store.rows.map { row in
+            guard row.id == studentId else { return row }
+            return KmpBridge.MacStudentRowSnapshot(
+                id: row.id,
+                student: row.student,
+                classId: row.classId,
+                className: row.className,
+                allClassMemberships: row.allClassMemberships,
+                followUpLabel: row.followUpLabel,
+                recentAttendanceLabel: row.recentAttendanceLabel,
+                averageText: row.averageText,
+                incidentCount: row.incidentCount,
+                lastObservationText: note,
+                isInjured: row.isInjured,
+                isFollowUp: row.isFollowUp,
+                workGroupName: row.workGroupName
+            )
         }
     }
 

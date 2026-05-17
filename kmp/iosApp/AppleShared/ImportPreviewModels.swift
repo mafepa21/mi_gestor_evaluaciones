@@ -18,6 +18,34 @@ struct AppleParsedStudent: Identifiable {
     let fullName: String
     let firstName: String
     let lastName: String
+    let duplicateStatus: AppleStudentDuplicateStatus
+    let duplicateDetail: String?
+}
+
+enum AppleStudentDuplicateStatus: String {
+    case new
+    case possibleDuplicate
+    case alreadyExists
+
+    var label: String {
+        switch self {
+        case .new:
+            return "Nuevo"
+        case .possibleDuplicate:
+            return "Posible duplicado"
+        case .alreadyExists:
+            return "Ya existe"
+        }
+    }
+}
+
+struct AppleRubricImportPreview: Identifiable {
+    let id = UUID()
+    let title: String
+    let levelCount: Int
+    let criterionCount: Int
+    let warnings: [String]
+    let tsv: String
 }
 
 extension Array where Element == [String] {

@@ -438,11 +438,7 @@ struct AddColumnSheet: View {
         GeometryReader { geometry in
             NavigationStack {
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("Nueva columna")
-                        .font(.title3.bold())
-                        .padding(.horizontal, 24)
-                        .padding(.top, 24)
-                        .padding(.bottom, 20)
+                    sheetHeader
 
                     Divider()
 
@@ -465,6 +461,7 @@ struct AddColumnSheet: View {
                     footerActions
                         .padding(.horizontal, 20)
                         .padding(.vertical, 16)
+                        .background(.ultraThinMaterial)
                 }
                 .background(EvaluationBackdrop())
                 .navigationTitle("Nueva columna")
@@ -499,6 +496,40 @@ struct AddColumnSheet: View {
             #endif
         }
         .frame(minWidth: 520, idealWidth: 560, maxWidth: 640, minHeight: 560, idealHeight: 620)
+    }
+
+    private var sheetHeader: some View {
+        HStack(alignment: .top, spacing: 16) {
+            Image(systemName: selectedBlueprint?.icon ?? "tablecells")
+                .font(.system(size: 22, weight: .bold))
+                .foregroundStyle(tintForSelectedBlueprint)
+                .frame(width: 48, height: 48)
+                .background(tintForSelectedBlueprint.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Nueva columna")
+                    .font(.title2.weight(.bold))
+                Text(selectedBlueprint?.subtitle ?? "Elige el tipo de dato que quieres añadir al cuaderno.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+
+            Spacer()
+
+            if let selectedBlueprint {
+                NotebookPill(
+                    label: label(for: selectedBlueprint.categoryKind),
+                    systemImage: selectedBlueprint.icon,
+                    active: true,
+                    tint: tintForSelectedBlueprint,
+                    compact: true
+                )
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 20)
     }
 
     @ViewBuilder
@@ -835,27 +866,38 @@ struct AddColumnSheet: View {
     private var footerActions: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Button("Cancelar") { dismiss() }
-                    .buttonStyle(.borderless)
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(canSave ? "Lista para crear" : "Completa la configuración")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(canSave ? NotebookStyle.successTint : .secondary)
+
+                    if selectedBlueprint?.isIndividualSummary == true {
+                        Text(summaryFooterMessage)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else if let canSaveReason {
+                        Text(canSaveReason)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("Se añadirá al cuaderno actual con la configuración indicada.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
 
                 Spacer()
 
-                Button(primaryActionTitle, action: saveColumn)
+                Button("Cancelar") { dismiss() }
+                    .buttonStyle(.bordered)
+                    .keyboardShortcut(.cancelAction)
+
+                Button(action: saveColumn) {
+                    Label(primaryActionTitle, systemImage: "plus.circle.fill")
+                }
                     .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
                     .disabled(!canSave)
-            }
-
-            if selectedBlueprint?.isIndividualSummary == true {
-                Text(summaryFooterMessage)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-            }
-
-            if let canSaveReason {
-                Text(canSaveReason)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
             }
         }
     }

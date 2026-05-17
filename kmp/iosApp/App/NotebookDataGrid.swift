@@ -109,6 +109,7 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, TrailingFi
     let fixedRows: FixedRows
     let trailingFixedRows: TrailingFixedRows
     let scrollRows: ScrollRows
+    @State private var verticalScrollOffset: CGFloat = 0
 
     init(
         fixedColumnWidth: CGFloat,
@@ -160,7 +161,7 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, TrailingFi
                 .frame(height: topAccessoryHeight, alignment: .topLeading)
             fixedHeader
                 .frame(height: headerHeight, alignment: .topLeading)
-            ScrollView(.vertical, showsIndicators: false) {
+            NotebookSyncedVerticalScrollView(offset: $verticalScrollOffset, showsIndicators: false) {
                 fixedRows
                     .frame(maxWidth: .infinity, alignment: .topLeading)
             }
@@ -182,7 +183,7 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, TrailingFi
                     .frame(height: topAccessoryHeight, alignment: .topLeading)
                 scrollHeader
                     .frame(height: headerHeight, alignment: .topLeading)
-                ScrollView(.vertical, showsIndicators: true) {
+                NotebookSyncedVerticalScrollView(offset: $verticalScrollOffset, showsIndicators: true) {
                     scrollRows
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
@@ -198,7 +199,7 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, TrailingFi
                 .frame(height: topAccessoryHeight, alignment: .topLeading)
             trailingFixedHeader
                 .frame(height: headerHeight, alignment: .topLeading)
-            ScrollView(.vertical, showsIndicators: false) {
+            NotebookSyncedVerticalScrollView(offset: $verticalScrollOffset, showsIndicators: false) {
                 trailingFixedRows
                     .frame(maxWidth: .infinity, alignment: .topLeading)
             }
@@ -260,3 +261,142 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, TrailingFi
         #endif
     }
 }
+
+private struct NotebookSyncedVerticalScrollView<Content: View>: View {
+    @Binding var offset: CGFloat
+    let showsIndicators: Bool
+    let content: Content
+
+    init(
+        offset: Binding<CGFloat>,
+        showsIndicators: Bool,
+        @ViewBuilder content: () -> Content
+    ) {
+        _offset = offset
+        self.showsIndicators = showsIndicators
+        self.content = content()
+    }
+
+    var body: some View {
+        #if canImport(AppKit)
+        NotebookSyncedVerticalNSScrollView(
+            offset: $offset,
+            showsIndicators: showsIndicators,
+            content: content
+        )
+        #else
+        ScrollView(.vertical, showsIndicators: showsIndicators) {
+            content
+        }
+        #endif
+    }
+}
+
+#if canImport(AppKit)
+private struct NotebookSyncedVerticalNSScrollView<Content: View>: NSViewRepresentable {
+    @Binding var offset: CGFloat
+    let showsIndicators: Bool
+    let content: Content
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(offset: $offset)
+    }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.hasVerticalScroller = showsIndicators
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.drawsBackground = false
+        scrollView.contentView.postsBoundsChangedNotifications = true
+
+        let hostingView = NSHostingView(rootView: content)
+        hostingView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.documentView = hostingView
+
+        NSLayoutConstraint.activate([
+            hostingView.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
+            hostingView.trailingAnchor.constraint(equalTo: scrollView.contentView.trailingAnchor),
+            hostingView.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
+            hostingView.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor)
+        ])
+
+        context.coordinator.scrollView = scrollView
+        context.coordinator.observer = NotificationCenter.default.addObserver(
+            forName: NSView.boundsDidChangeNotification,
+            object: scrollView.contentView,
+            queue: .main
+        ) { [weak coordinator = context.coordinator] _ in
+            coordinator?.scrollViewDidScroll()
+        }
+
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        if let hostingView = scrollView.documentView as? NSHostingView<Content> {
+            hostingView.rootView = content
+        }
+
+        context.coordinator.offset = $offset
+        context.coordinator.scrollView = scrollView
+        context.coordinator.applyOffsetIfNeeded()
+    }
+
+    final class Coordinator {
+        var offset: Binding<CGFloat>
+        weak var scrollView: NSScrollView?
+        var observer: NSObjectProtocol?
+        private var isApplyingOffset = false
+
+        init(offset: Binding<CGFloat>) {
+            self.offset = offset
+        }
+
+        deinit {
+            if let observer {
+                NotificationCenter.default.removeObserver(observer)
+            }
+        }
+
+        func scrollViewDidScroll() {
+            guard !isApplyingOffset, let scrollView else { return }
+            let nextOffset = clampedOffset(scrollView.contentView.bounds.origin.y, in: scrollView)
+            if abs(nextOffset - scrollView.contentView.bounds.origin.y) > 0.5 {
+                apply(offset: nextOffset, in: scrollView)
+            }
+            if abs(nextOffset - offset.wrappedValue) > 0.5 {
+                offset.wrappedValue = nextOffset
+            }
+        }
+
+        func applyOffsetIfNeeded() {
+            guard let scrollView else { return }
+            let currentOffset = scrollView.contentView.bounds.origin.y
+            let nextOffset = clampedOffset(offset.wrappedValue, in: scrollView)
+            if abs(nextOffset - offset.wrappedValue) > 0.5 {
+                offset.wrappedValue = nextOffset
+            }
+            guard abs(currentOffset - nextOffset) > 0.5 else { return }
+            apply(offset: nextOffset, in: scrollView)
+        }
+
+        private func apply(offset: CGFloat, in scrollView: NSScrollView) {
+            isApplyingOffset = true
+            scrollView.contentView.scroll(to: NSPoint(x: 0, y: offset))
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+            isApplyingOffset = false
+        }
+
+        private func clampedOffset(_ proposedOffset: CGFloat, in scrollView: NSScrollView) -> CGFloat {
+            let fittingHeight = scrollView.documentView?.fittingSize.height ?? 0
+            let boundsHeight = scrollView.documentView?.bounds.height ?? 0
+            let documentHeight = max(fittingHeight, boundsHeight)
+            guard documentHeight > 0 else { return max(proposedOffset, 0) }
+            let viewportHeight = scrollView.contentView.bounds.height
+            let maximumOffset = max(documentHeight - viewportHeight, 0)
+            return min(max(proposedOffset, 0), maximumOffset)
+        }
+    }
+}
+#endif

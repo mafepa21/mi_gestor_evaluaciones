@@ -2206,15 +2206,20 @@ struct AssignRubricToTabView: View {
                 Image(systemName: "checkmark.seal.fill")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(.green)
+                    .frame(width: 36, height: 36)
+                    .background(.green.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text(state.rubricName)
                         .font(.headline)
                         .foregroundStyle(.primary)
 
-                    Text("Se creará una evaluación vinculada en el cuaderno.")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                    HStack(spacing: 8) {
+                        Label("Evaluación vinculada", systemImage: "link")
+                        Label("Cuaderno", systemImage: "tablecells")
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
                 }
 
                 Spacer()

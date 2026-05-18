@@ -37,6 +37,7 @@ struct NotebookEditableTableCell: View {
     let onOpenFormula: () -> Void
     let onOpenRubricIndividual: () -> Void
     let onOpenRubricBulk: () -> Void
+    var onGenerateSummary: (() -> Void)? = nil
     let onNavigate: (NotebookNavigationDirection) -> Void
     let onCellSaved: () -> Void
     let onAttendanceSaved: () -> Void
@@ -255,12 +256,26 @@ struct NotebookEditableTableCell: View {
                 }
             default:
                 HStack(spacing: 6) {
-                    TextField("", text: $textDraft)
+                    TextField(isEmptySummaryCell ? "Síntesis pendiente" : "", text: $textDraft)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
                         .focused(focusedCellId, equals: cellId)
                         .foregroundStyle(.primary)
                         .submitLabel(.next)
                         .onSubmit { saveTextAndNavigate() }
+
+                    if isEmptySummaryCell {
+                        Button {
+                            onSelect()
+                            onGenerateSummary?()
+                        } label: {
+                            Label("Generar", systemImage: "apple.intelligence")
+                                .labelStyle(.iconOnly)
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(tint)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Generar síntesis pedagógica")
+                    }
 
                     if shouldOfferTextPopover {
                         Button {
@@ -309,6 +324,11 @@ struct NotebookEditableTableCell: View {
 
     private var isAttendanceColumn: Bool {
         column.type == .attendance || column.categoryKind == .attendance
+    }
+
+    private var isEmptySummaryCell: Bool {
+        isNotebookIndividualSummaryColumn(column) &&
+            textDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var keyboardKind: NotebookCellKeyboardKind {

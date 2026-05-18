@@ -74,7 +74,7 @@ enum NotebookIndividualSummaryGenerationMode: String, CaseIterable, Identifiable
 }
 
 struct NotebookIndividualSummaryConfiguration: Equatable, Codable {
-    var evidenceSource: NotebookIndividualSummaryEvidenceSource = .allManagedColumns
+    var evidenceSource: NotebookIndividualSummaryEvidenceSource = .evaluableColumns
     var length: NotebookIndividualSummaryLength = .balanced
     var generationMode: NotebookIndividualSummaryGenerationMode = .onlyEmptyCells
 }
@@ -82,7 +82,13 @@ struct NotebookIndividualSummaryConfiguration: Equatable, Codable {
 enum NotebookIndividualSummaryPreferences {
     private static let defaults = UserDefaults.standard
     private static let prefix = "notebook.individual.summary.config."
-    static let marker = "Sintesis individual"
+    static let marker = "notebook.individual.pedagogical.summary"
+    static let legacyMarker = "Sintesis individual"
+
+    static func isSummaryMarker(_ value: String?) -> Bool {
+        guard let value else { return false }
+        return value == marker || value == legacyMarker
+    }
 
     static func load(columnId: String?) -> NotebookIndividualSummaryConfiguration {
         guard let columnId,
@@ -129,7 +135,7 @@ func isNotebookIndividualSummaryColumn(_ column: NotebookColumnDefinition) -> Bo
     column.inputKind == .text &&
     !column.countsTowardAverage &&
     column.iconName == "apple.intelligence" &&
-    column.unitOrSituation == NotebookIndividualSummaryPreferences.marker
+    NotebookIndividualSummaryPreferences.isSummaryMarker(column.unitOrSituation)
 }
 
 private struct NotebookColumnBlueprint: Identifiable {
@@ -1471,6 +1477,10 @@ struct AddColumnSheet: View {
 
     private func saveIndividualSummaryColumn() {
         guard let selectedBlueprint else { return }
+        guard !isSavingColumn else { return }
+        isSavingColumn = true
+        saveErrorMessage = nil
+
         var resolvedCategoryId = categoryPlacementMode == .existing ? selectedCategoryId : nil
         if categoryPlacementMode == .createNew {
             let generatedCategoryId = UUID().uuidString
@@ -1479,51 +1489,70 @@ struct AddColumnSheet: View {
         }
 
         let activeTabIds: [String] = bridge.selectedNotebookTabId.map { [$0] } ?? []
+        let summaryCategoryId = resolvedCategoryId
+        let columnName = resolvedColumnName
+        let dateEpochMs = KotlinLong(value: Int64(selectedDate.timeIntervalSince1970 * 1000))
+        let categoryKind = selectedBlueprint.categoryKind
+        let pinned = isPinned
+        let locked = isLocked
+        let template = isTemplate
+        let configuration = summaryConfiguration
 
-        guard let columnId = bridge.createNotebookAICommentColumn(name: resolvedColumnName),
-              let data = bridge.notebookState as? NotebookUiStateData,
-              let createdColumn = data.sheet.columns.first(where: { $0.id == columnId }) else {
+        guard let columnId = bridge.createNotebookAICommentColumn(name: columnName) else {
+            saveErrorMessage = "No se pudo crear la columna de síntesis."
+            isSavingColumn = false
             return
         }
 
-        let updatedColumn = NotebookColumnDefinition(
-            id: createdColumn.id,
-            title: resolvedColumnName,
-            type: .text,
-            categoryKind: selectedBlueprint.categoryKind,
-            instrumentKind: .privateComment,
-            inputKind: .text,
-            evaluationId: createdColumn.evaluationId,
-            rubricId: createdColumn.rubricId,
-            formula: createdColumn.formula,
-            weight: 0,
-            dateEpochMs: KotlinLong(value: Int64(selectedDate.timeIntervalSince1970 * 1000)),
-            unitOrSituation: NotebookIndividualSummaryPreferences.marker,
-            competencyCriteriaIds: createdColumn.competencyCriteriaIds,
-            scaleKind: .custom,
-            tabIds: activeTabIds,
-            sessions: createdColumn.sessions,
-            sharedAcrossTabs: activeTabIds.isEmpty,
-            colorHex: createdColumn.colorHex,
-            iconName: "apple.intelligence",
-            order: createdColumn.order,
-            widthDp: createdColumn.widthDp,
-            categoryId: resolvedCategoryId,
-            ordinalLevels: createdColumn.ordinalLevels,
-            availableIcons: createdColumn.availableIcons,
-            countsTowardAverage: false,
-            isPinned: isPinned,
-            isHidden: false,
-            visibility: .visible,
-            isLocked: isLocked,
-            isTemplate: isTemplate,
-            emptyCellPolicy: createdColumn.emptyCellPolicy,
-            trace: createdColumn.trace
-        )
-        bridge.saveColumn(column: updatedColumn)
-        NotebookIndividualSummaryPreferences.save(summaryConfiguration, columnId: columnId)
-        dismiss()
-        onCreatedSummaryColumn?(columnId)
+        NotebookIndividualSummaryPreferences.save(configuration, columnId: columnId)
+
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            guard let data = bridge.notebookState as? NotebookUiStateData,
+                  let createdColumn = data.sheet.columns.first(where: { $0.id == columnId }) else {
+                saveErrorMessage = "La columna se creó, pero aún no está disponible en el estado del cuaderno."
+                isSavingColumn = false
+                return
+            }
+
+            let updatedColumn = NotebookColumnDefinition(
+                id: createdColumn.id,
+                title: columnName,
+                type: .text,
+                categoryKind: categoryKind,
+                instrumentKind: .privateComment,
+                inputKind: .text,
+                evaluationId: createdColumn.evaluationId,
+                rubricId: createdColumn.rubricId,
+                formula: createdColumn.formula,
+                weight: 0,
+                dateEpochMs: dateEpochMs,
+                unitOrSituation: NotebookIndividualSummaryPreferences.marker,
+                competencyCriteriaIds: createdColumn.competencyCriteriaIds,
+                scaleKind: .custom,
+                tabIds: activeTabIds,
+                sessions: createdColumn.sessions,
+                sharedAcrossTabs: activeTabIds.isEmpty,
+                colorHex: createdColumn.colorHex,
+                iconName: "apple.intelligence",
+                order: createdColumn.order,
+                widthDp: createdColumn.widthDp,
+                categoryId: summaryCategoryId,
+                ordinalLevels: createdColumn.ordinalLevels,
+                availableIcons: createdColumn.availableIcons,
+                countsTowardAverage: false,
+                isPinned: pinned,
+                isHidden: false,
+                visibility: .visible,
+                isLocked: locked,
+                isTemplate: template,
+                emptyCellPolicy: createdColumn.emptyCellPolicy,
+                trace: createdColumn.trace
+            )
+            bridge.saveColumn(column: updatedColumn)
+            dismiss()
+            onCreatedSummaryColumn?(columnId)
+        }
     }
 
     private func syncBlueprintDefaults() {

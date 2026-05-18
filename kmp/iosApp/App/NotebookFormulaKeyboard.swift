@@ -471,15 +471,22 @@ final class AppleFoundationFormulaService {
         if #available(iOS 26.0, macOS 26.0, *) {
             let session = formulaSession()
             formulaSessionStorage = session
-            let response = try await session.respond(
-                to: prompt(request: request, currentFormula: currentFormula, availableColumns: availableColumns),
-                generating: String.self,
-                includeSchemaInPrompt: false,
-                options: AppleFoundationModelSupport.generationOptions(temperature: 0.0)
-            )
-            let formula = sanitize(response.content)
-            guard !formula.isEmpty else { throw NotebookFormulaAIError.emptyResponse }
-            return formula
+            do {
+                let response = try await session.respond(
+                    to: prompt(request: request, currentFormula: currentFormula, availableColumns: availableColumns),
+                    generating: String.self,
+                    includeSchemaInPrompt: false,
+                    options: AppleFoundationModelSupport.generationOptions(temperature: 0.0)
+                )
+                let formula = sanitize(response.content)
+                guard !formula.isEmpty else { throw NotebookFormulaAIError.emptyResponse }
+                return formula
+            } catch let error as NotebookFormulaAIError {
+                throw error
+            } catch {
+                AppleFoundationModelSupport.recordRuntimeFailure(error)
+                throw NotebookFormulaAIError.unavailable("Apple Foundation Models no está respondiendo ahora mismo. Reinténtalo más tarde.")
+            }
         }
         #endif
 

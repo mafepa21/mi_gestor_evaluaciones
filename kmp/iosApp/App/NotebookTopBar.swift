@@ -383,18 +383,26 @@ struct NotebookSummaryGenerationSheet: View {
 
     private func resolvedIncludedColumnIds() -> [String] {
         guard let data = notebookData else { return [] }
-        let allColumns = data.sheet.columns.filter { !bridge.isNotebookAICommentColumn($0) }
+        let allColumns = data.sheet.columns.filter { column in
+            !bridge.isNotebookAICommentColumn(column)
+        }
 
         switch configuration.evidenceSource {
         case .visibleColumns:
             return allColumns.filter(\.isVisibleInGrid).map(\.id)
         case .evaluableColumns:
-            return allColumns.filter {
-                $0.countsTowardAverage ||
-                $0.categoryKind == .evaluation ||
-                $0.type == .rubric ||
-                $0.type == .numeric ||
-                $0.type == .calculated
+            return allColumns.filter { column in
+                guard column.type != .text,
+                      column.inputKind != .evidence,
+                      column.instrumentKind != .privateComment,
+                      !bridge.isNotebookAICommentColumn(column) else {
+                    return false
+                }
+                return column.countsTowardAverage ||
+                    column.categoryKind == .evaluation ||
+                    column.type == .rubric ||
+                    column.type == .numeric ||
+                    column.type == .calculated
             }.map(\.id)
         case .allManagedColumns:
             return allColumns.map(\.id)

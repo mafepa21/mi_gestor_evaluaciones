@@ -342,6 +342,10 @@ extension NotebookModuleView {
                         onOpenRubricBulk: {
                             openRubricBulk(column: column, data: data)
                         },
+                        onGenerateSummary: {
+                            inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
+                            notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: column.id)
+                        },
                         onNavigate: { direction in
                             navigateCell(
                                 from: item.student.id,

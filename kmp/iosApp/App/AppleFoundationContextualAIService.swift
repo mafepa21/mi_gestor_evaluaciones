@@ -508,9 +508,11 @@ struct AppleFoundationModelMessages {
 enum AppleFoundationModelSupport {
     private static var cachedAvailability: (checkedAt: Date, value: AppleFoundationModelAvailability)?
     private static var runtimeUnavailableUntil: Date?
-    private static let availableCacheWindow: TimeInterval = 30
+    private static var runtimeUnavailableKind: String?
+    private static let availableCacheWindow: TimeInterval = 300
     private static let unavailableCacheWindow: TimeInterval = 300
     private static let runtimeFailureCooldown: TimeInterval = 300
+    private static let assetsUnavailableCooldown: TimeInterval = 900
 
     static func resolveAvailability(isEnabled: Bool) -> AppleFoundationModelAvailability {
         guard isEnabled else {
@@ -519,7 +521,7 @@ enum AppleFoundationModelSupport {
 
         let now = Date()
         if let runtimeUnavailableUntil, runtimeUnavailableUntil > now {
-            return .unavailable("Apple Foundation Models no está respondiendo ahora mismo. Se usará el flujo manual y se reintentará más tarde.")
+            return runtimeUnavailableAvailability(kind: runtimeUnavailableKind ?? "runtimeFailure")
         }
         if let cachedAvailability,
            now.timeIntervalSince(cachedAvailability.checkedAt) < cacheWindow(for: cachedAvailability.value) {
@@ -562,12 +564,14 @@ enum AppleFoundationModelSupport {
 
     static func recordRuntimeFailure(_ error: Error) {
         let failureKind = runtimeFailureKind(for: error)
-        runtimeUnavailableUntil = Date().addingTimeInterval(runtimeFailureCooldown)
+        let cooldown = cooldown(for: failureKind)
+        runtimeUnavailableKind = failureKind
+        runtimeUnavailableUntil = Date().addingTimeInterval(cooldown)
         cachedAvailability = (
             Date(),
-            .unavailable("Apple Foundation Models no está respondiendo ahora mismo (\(failureKind)). Se usará el flujo manual y se reintentará más tarde.")
+            runtimeUnavailableAvailability(kind: failureKind)
         )
-        debugPrint("[AppleFoundationModels] runtime unavailable [\(failureKind)]: \(error.localizedDescription)")
+        debugPrint("[AppleFoundationModels] runtime unavailable [\(failureKind), cooldown: \(Int(cooldown))s]: \(error.localizedDescription)")
     }
 
     static func runtimeFailureKind(for error: Error) -> String {
@@ -595,6 +599,17 @@ enum AppleFoundationModelSupport {
             ("xpc server interrupted", "assetsUnavailable")
         ]
         return knownGenerationErrors.first { description.contains($0.needle) }?.label ?? "runtimeFailure"
+    }
+
+    private static func cooldown(for failureKind: String) -> TimeInterval {
+        failureKind == "assetsUnavailable" ? assetsUnavailableCooldown : runtimeFailureCooldown
+    }
+
+    private static func runtimeUnavailableAvailability(kind: String) -> AppleFoundationModelAvailability {
+        if kind == "assetsUnavailable" {
+            return .unavailable("Los modelos locales de Apple Intelligence no responden ahora mismo. Se usará el flujo manual y se reintentará más tarde.")
+        }
+        return .unavailable("Apple Foundation Models no está respondiendo ahora mismo. Se usará el flujo manual y se reintentará más tarde.")
     }
 
     #if canImport(FoundationModels)

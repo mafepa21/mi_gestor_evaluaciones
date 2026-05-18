@@ -682,14 +682,30 @@ struct NotebookModuleView: View {
     }
 
     func handleCreatedSummaryColumn(_ columnId: String) {
+        highlightedColumnId = columnId
         let availability = contextualAIOrchestrator.availability()
         if !availability.isAvailable {
             showToast("Columna creada. La generación IA no está disponible en este dispositivo.", style: .warning)
         }
 
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 250_000_000)
-            notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: columnId)
+            var attempts = 0
+            while attempts < 20 {
+                if let data = bridge.notebookState as? NotebookUiStateData,
+                   data.sheet.columns.contains(where: { $0.id == columnId }) {
+                    await Task.yield()
+                    notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: columnId)
+                    return
+                }
+
+                attempts += 1
+                try? await Task.sleep(nanoseconds: 150_000_000)
+            }
+
+            showToast(
+                "Columna creada, pero no se pudo abrir la generación automática. Usa “Generar síntesis…” desde el menú.",
+                style: .warning
+            )
         }
     }
 

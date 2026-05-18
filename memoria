@@ -405,6 +405,55 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-05-18 - Cooldown robusto para Apple Foundation Models
+
+Resumen:
+- `AppleFoundationContextualAIService.swift` amplía la caché de disponibilidad positiva de Foundation Models a 5 minutos para evitar consultas frecuentes a `SystemLanguageModel.default.availability` desde varias pantallas.
+- Los fallos de runtime reconocidos como `assetsUnavailable`, incluyendo errores XPC de `com.apple.modelcatalog.catalog`, activan ahora un cooldown de 15 minutos y devuelven un mensaje de fallback claro para usar el flujo manual/local.
+- `NotebookFormulaKeyboard.swift` registra también los fallos de Foundation Models en generación asistida de fórmulas y evita que esos errores queden fuera del cooldown común.
+
+Validación:
+- `git diff --check` no reportó errores.
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -destination 'platform=macOS' build` terminó con `BUILD SUCCEEDED`.
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO` terminó con `BUILD SUCCEEDED`.
+
+Notas para futuras conversaciones:
+- Los logs del sistema `AFIsDeviceGreymatterEligible Missing entitlements for os_eligibility lookup` y `Unable to obtain a task name port right` pueden aparecer por servicios internos de macOS/Xcode y no siempre implican crash de la app.
+- El punto crítico de la app es no insistir en `ModelCatalog` cuando el runtime falla; el fallback docente debe seguir funcionando sin bloquear la generación por reglas o edición manual.
+
+### 2026-05-18 - UX de generación pendiente en síntesis pedagógica
+
+Resumen:
+- `NotebookModuleView.swift` ya no abre la generación de síntesis con un retardo fijo; espera hasta 20 intentos a que `notebookState` contenga la columna creada antes de presentar `NotebookSummaryGenerationSheet`.
+- `NotebookEditableTableCell.swift` muestra “Síntesis pendiente” en celdas vacías de columnas de síntesis pedagógica y añade un botón compacto con `apple.intelligence` para abrir la generación desde la propia celda.
+- `NotebookModuleGridCells.swift` conecta ese botón con `notebookSummarySheetRequest`, seleccionando además la celda para mantener contexto visual.
+
+Validación:
+- `git diff --check` no reportó errores.
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -destination 'platform=macOS' build` terminó con `BUILD SUCCEEDED`.
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO` terminó con `BUILD SUCCEEDED`.
+
+Notas para futuras conversaciones:
+- Se mantiene la previsualización antes de aplicar al cuaderno; crear la columna no escribe textos automáticamente.
+- No hubo cambio de esquema ni migración SQLDelight; es un ajuste de estado SwiftUI y señalización de celdas vacías.
+
+### 2026-05-18 - Síntesis pedagógica con marcador técnico y evidencias evaluables
+
+Resumen:
+- Se estandarizó la columna IA “Síntesis pedagógica” del Cuaderno para que use por defecto evidencias evaluables, longitud equilibrada y modo “Solo vacías”.
+- `AddColumnSheet.swift` usa ahora el marcador persistente `notebook.individual.pedagogical.summary`, manteniendo compatibilidad de lectura con el marcador antiguo `"Sintesis individual"`.
+- La creación de la columna espera brevemente a que el estado KMP refleje la columna antes de guardar sus metadatos finales, evitando una salida silenciosa cuando `notebookState` va por detrás.
+- `NotebookTopBar.swift` endurece el filtro de evidencias evaluables para excluir texto, evidencias auxiliares, comentarios privados y columnas IA, reduciendo contaminación entre generaciones.
+
+Validación:
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -destination 'platform=macOS' build` terminó con `BUILD SUCCEEDED`.
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO` terminó con `BUILD SUCCEEDED`.
+- `git diff --check` no reportó errores.
+
+Notas para futuras conversaciones:
+- No hubo migración SQLDelight ni cambio de esquema; la compatibilidad con datos existentes queda en `isNotebookIndividualSummaryColumn(_:)`.
+- Si se quiere normalizar datos antiguos, conviene añadir una migración/acción de mantenimiento que reescriba el marcador legado, pero no es necesaria para que la app los detecte.
+
 ### 2026-05-18 - Capa premium IA Apple con orquestador y trazabilidad
 
 Resumen:

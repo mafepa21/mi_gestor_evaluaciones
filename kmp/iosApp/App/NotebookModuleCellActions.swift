@@ -48,14 +48,15 @@ extension NotebookModuleView {
         let currentFormula = formulaDraft
         Task {
             do {
-                let formula = try await formulaAIService.generateFormula(
-                    request: prompt,
-                    currentFormula: currentFormula,
-                    availableColumns: columns
+                let generation = try await formulaAIOrchestrator.generateWithTrace(
+                    .formulaSuggestion(prompt, currentFormula, columns),
+                    dataSource: "Cuaderno · fórmula asistida",
+                    includedEvidence: columns.map(\.title)
                 )
+                guard case .formulaSuggestion(let formula) = generation.result else { return }
                 await MainActor.run {
                     formulaDraft = formula
-                    formulaAIMessage = "Propuesta insertada. Revísala antes de guardar."
+                    formulaAIMessage = generation.metadata.audit.usedFallback ? "Propuesta por reglas insertada. Revísala antes de guardar." : "Propuesta insertada. Revísala antes de guardar."
                     isFormulaAIGenerating = false
                 }
             } catch {

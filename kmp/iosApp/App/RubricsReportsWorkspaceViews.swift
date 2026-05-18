@@ -604,7 +604,10 @@ struct ReportsWorkspaceView: View {
     @State var aiTone: AIReportTone = .claro
     @State var aiAvailability: AIReportAvailabilityState = .unavailable("Comprobando disponibilidad…")
     @State var aiDraft: AIReportDraft?
+    @State var aiMetadata: AppleAIGenerationMetadata?
     @State var editableDraftText = ""
+    @State var previewDraftText = ""
+    @State var isReportPreviewPresented = false
     @State var aiFeedbackMessage: String?
     @State var isGeneratingAIDraft = false
     @State var refinePrompt = ""
@@ -618,13 +621,13 @@ struct ReportsWorkspaceView: View {
     @State var analyticsDashboards: [KmpBridge.ChartFacts] = []
     @State var queriedAnalyticsFacts: KmpBridge.ChartFacts?
     @State var analyticsInsight: AIChartInsight?
+    @State var analyticsMetadata: AppleAIGenerationMetadata?
     @State var analyticsPrompt = ""
     @State var analyticsFeedbackMessage: String?
     @State var isGeneratingAnalyticsInsight = false
     @State var isResolvingAnalyticsPrompt = false
 
-    let aiReportService = AppleFoundationReportService()
-    let aiAnalyticsService = AppleFoundationAnalyticsService()
+    let aiOrchestrator = AppleAIOrchestrator()
 
     var selectedClass: SchoolClass? {
         guard let selectedClassId else { return nil }
@@ -654,7 +657,6 @@ struct ReportsWorkspaceView: View {
 
     var canGenerateAIDraft: Bool {
         guard !isGeneratingAIDraft else { return false }
-        guard aiAvailability.isAvailable else { return false }
         guard let reportContext, reportContext.hasEnoughData else { return false }
         return !selectedReportKind.requiresStudentSelection || selectedStudent != nil
     }
@@ -667,7 +669,7 @@ struct ReportsWorkspaceView: View {
     }
 
     var canAskAnalyticsAI: Bool {
-        analyticsAvailability.isAvailable && !(analyticsPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        !(analyticsPrompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     }
 
     var body: some View {
@@ -688,11 +690,9 @@ struct ReportsWorkspaceView: View {
             Task { await refreshWorkspaceContext() }
         }
         .appOnChange(of: selectedStudentId) { _ in
-            aiReportService.clearActiveConversation()
             Task { await reloadPreview() }
         }
         .appOnChange(of: selectedReportKind) { _ in
-            aiReportService.clearActiveConversation()
             if selectedReportKind == .lomloeEvaluationComment {
                 aiAudience = .familia
                 aiTone = .formal
@@ -700,7 +700,6 @@ struct ReportsWorkspaceView: View {
             Task { await reloadPreview() }
         }
         .appOnChange(of: selectedReportTerm) { _ in
-            aiReportService.clearActiveConversation()
             Task { await reloadPreview() }
         }
         .appOnChange(of: selectedAnalyticsRange) { _ in
@@ -722,6 +721,18 @@ struct ReportsWorkspaceView: View {
                     audience: aiAudience,
                     tone: aiTone
                 )
+            }
+        }
+        .sheet(isPresented: $isReportPreviewPresented) {
+            AppleAIPreviewSheet(
+                title: selectedReportKind.title,
+                subtitle: "Revisa el borrador antes de aplicarlo al informe.",
+                text: $previewDraftText,
+                metadata: aiMetadata
+            ) {
+                editableDraftText = previewDraftText
+                aiMetadata?.audit.teacherEdited = false
+                aiFeedbackMessage = "Borrador aplicado. Revísalo y edítalo antes de compartir."
             }
         }
     }
@@ -777,8 +788,8 @@ struct ReportsWorkspaceView: View {
 
         Section("Redacción IA") {
             LabeledContent("Estado") {
-                Text(aiAvailabilityLabel)
-                    .foregroundStyle(aiAvailabilityColor)
+                Text(reportGenerationState.title)
+                    .foregroundStyle(reportGenerationState.tint)
             }
 
             if selectedReportKind == .lomloeEvaluationComment {
@@ -860,8 +871,8 @@ struct ReportsWorkspaceView: View {
 
         Section("IA local") {
             LabeledContent("Estado") {
-                Text(analyticsAvailabilityLabel)
-                    .foregroundStyle(analyticsAvailabilityColor)
+                Text(analyticsGenerationState.title)
+                    .foregroundStyle(analyticsGenerationState.tint)
             }
             Text(analyticsAvailability.message)
                 .font(.caption)
@@ -947,6 +958,7 @@ struct ReportsWorkspaceView: View {
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
+                            AppleAIStatusBadge(state: reportGenerationState, message: aiMetadata?.availabilityMessage ?? aiAvailability.message)
                             Button {
                                 Task { await generateAIDraft() }
                             } label: {
@@ -964,13 +976,14 @@ struct ReportsWorkspaceView: View {
                                     isBulkLomloeSheetPresented = true
                                 } label: {
                                     Label("Generar lote", systemImage: "person.3.sequence.fill")
-                                }
-                                .buttonStyle(.bordered)
-                                .disabled(selectedClassId == nil || !aiAvailability.isAvailable)
                             }
+                            .buttonStyle(.bordered)
+                            .disabled(selectedClassId == nil)
                         }
+                    }
 
-                        WorkspaceDetailBlock(title: "Disponibilidad", content: aiAvailability.message)
+                        AppleAIAuditSummaryView(metadata: aiMetadata)
+                        WorkspaceDetailBlock(title: "Disponibilidad", content: aiMetadata?.availabilityMessage ?? aiAvailability.message)
 
                         if let aiFeedbackMessage {
                             WorkspaceDetailBlock(title: "Estado de la generación", content: aiFeedbackMessage)
@@ -990,6 +1003,11 @@ struct ReportsWorkspaceView: View {
                             .padding(12)
                             .scrollContentBackground(.hidden)
                             .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            .appOnChange(of: editableDraftText) { _ in
+                                if aiDraft != nil, !isGeneratingAIDraft {
+                                    aiMetadata?.audit.teacherEdited = true
+                                }
+                            }
 
                         if aiDraft != nil {
                             HStack(alignment: .top, spacing: 10) {
@@ -1056,6 +1074,7 @@ struct ReportsWorkspaceView: View {
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
+                        AppleAIStatusBadge(state: analyticsGenerationState, message: analyticsMetadata?.availabilityMessage ?? analyticsAvailability.message)
                         if let facts = currentAnalyticsFacts {
                             Button {
                                 Task { await generateAnalyticsInsight(for: facts) }
@@ -1067,7 +1086,7 @@ struct ReportsWorkspaceView: View {
                                 }
                             }
                             .buttonStyle(.borderedProminent)
-                            .disabled(!analyticsAvailability.isAvailable || !facts.hasEnoughData || isGeneratingAnalyticsInsight)
+                            .disabled(!facts.hasEnoughData || isGeneratingAnalyticsInsight)
                         }
                     }
 
@@ -1133,6 +1152,7 @@ struct ReportsWorkspaceView: View {
                                 .font(.headline)
                             WorkspaceDetailBlock(title: "Resumen base", content: facts.teacherDigest)
                             if let analyticsInsight {
+                                AppleAIAuditSummaryView(metadata: analyticsMetadata)
                                 WorkspaceDetailBlock(title: analyticsInsight.title, content: analyticsInsight.insight)
                                 if !analyticsInsight.warnings.isEmpty {
                                     WorkspaceDetailBlock(title: "Advertencias IA", content: analyticsInsight.warnings.joined(separator: "\n"))
@@ -1141,7 +1161,7 @@ struct ReportsWorkspaceView: View {
                                     WorkspaceDetailBlock(title: "Acciones sugeridas", content: analyticsInsight.recommendedActions.joined(separator: "\n"))
                                 }
                             } else {
-                                WorkspaceDetailBlock(title: "Insight IA", content: analyticsAvailability.isAvailable ? "Genera un insight para obtener lectura comparativa y sugerencias." : "La consulta libre y la narrativa IA solo están disponibles cuando Apple Foundation Models está activo.")
+                                WorkspaceDetailBlock(title: "Insight IA", content: analyticsAvailability.isAvailable ? "Genera un insight para obtener lectura comparativa y sugerencias." : "Se generará una lectura por reglas locales si Apple Intelligence no está activo.")
                             }
                             if let analyticsFeedbackMessage {
                                 WorkspaceDetailBlock(title: "Estado", content: analyticsFeedbackMessage)
@@ -1232,6 +1252,28 @@ struct ReportsWorkspaceView: View {
         }
     }
 
+    var reportGenerationState: AppleAIGenerationState {
+        if isGeneratingAIDraft { return .preparingModel }
+        if let state = aiMetadata?.state { return state }
+        switch aiAvailability {
+        case .available: return .available
+        case .disabled: return .unavailable
+        case .unavailable(let message):
+            return message.localizedCaseInsensitiveContains("prepar") ? .preparingModel : .unavailable
+        }
+    }
+
+    var analyticsGenerationState: AppleAIGenerationState {
+        if isGeneratingAnalyticsInsight || isResolvingAnalyticsPrompt { return .preparingModel }
+        if let state = analyticsMetadata?.state { return state }
+        switch analyticsAvailability {
+        case .available: return .available
+        case .disabled: return .unavailable
+        case .unavailable(let message):
+            return message.localizedCaseInsensitiveContains("prepar") ? .preparingModel : .unavailable
+        }
+    }
+
     func reportButton(kind: KmpBridge.ReportKind) -> some View {
         Button {
             selectedReportKind = kind
@@ -1257,7 +1299,6 @@ struct ReportsWorkspaceView: View {
     @MainActor
     func refreshWorkspaceContext() async {
         guard let selectedClassId else { return }
-        aiReportService.clearActiveConversation()
         refreshAvailability()
         bridge.selectClass(id: selectedClassId)
         bridge.evaluationsInClass = (try? await bridge.evaluations(for: selectedClassId)) ?? []
@@ -1270,7 +1311,9 @@ struct ReportsWorkspaceView: View {
     func reloadPreview() async {
         guard let selectedClassId else { return }
         aiDraft = nil
+        aiMetadata = nil
         editableDraftText = ""
+        previewDraftText = ""
         aiFeedbackMessage = nil
         refinePrompt = ""
 
@@ -1321,6 +1364,7 @@ struct ReportsWorkspaceView: View {
         guard let selectedClassId else { return }
         analyticsFeedbackMessage = nil
         analyticsInsight = nil
+        analyticsMetadata = nil
         queriedAnalyticsFacts = nil
         analyticsDashboards = (try? await bridge.buildPrebuiltAnalyticsCharts(
             classId: selectedClassId,
@@ -1340,24 +1384,27 @@ struct ReportsWorkspaceView: View {
         defer { isGeneratingAIDraft = false }
 
         do {
-            let draft = try await aiReportService.generateDraft(
-                from: reportContext,
-                audience: aiAudience,
-                tone: aiTone
+            let generation = try await aiOrchestrator.generateWithTrace(
+                .report(reportContext, aiAudience, aiTone),
+                dataSource: reportContext.className,
+                includedEvidence: reportContext.factLines + reportContext.curriculumReferences
             )
+            guard case .report(let draft) = generation.result else { return }
             aiDraft = draft
-            editableDraftText = draft.editableText(for: reportContext)
-            aiFeedbackMessage = "Borrador generado. Revísalo y edítalo antes de compartir."
+            aiMetadata = generation.metadata
+            previewDraftText = draft.editableText(for: reportContext)
+            isReportPreviewPresented = true
+            aiFeedbackMessage = "Borrador preparado para previsualización."
             await bridge.recordAIAuditEvent(
                 service: "reports",
                 useCase: "single_draft",
                 reportKind: reportContext.kind.rawValue,
                 classId: reportContext.classId,
                 studentId: reportContext.studentId,
-                availability: aiAvailabilityLabel,
-                modelAvailable: aiAvailability.isAvailable,
+                availability: generation.metadata.state.title,
+                modelAvailable: generation.metadata.audit.usedRealAI,
                 success: true,
-                durationMs: Int64(Date().timeIntervalSince(startedAt) * 1000)
+                durationMs: generation.metadata.audit.durationMs
             )
         } catch {
             aiFeedbackMessage = error.localizedDescription
@@ -1386,21 +1433,28 @@ struct ReportsWorkspaceView: View {
         defer { isRefiningAIDraft = false }
 
         do {
-            let draft = try await aiReportService.refineActiveDraft(with: refinePrompt, context: reportContext)
+            let generation = try await aiOrchestrator.generateWithTrace(
+                .report(reportContext, aiAudience, aiTone),
+                dataSource: reportContext.className,
+                includedEvidence: reportContext.factLines + ["Refino docente: \(refinePrompt)"]
+            )
+            guard case .report(let draft) = generation.result else { return }
             aiDraft = draft
-            editableDraftText = draft.editableText(for: reportContext)
+            aiMetadata = generation.metadata
+            previewDraftText = draft.editableText(for: reportContext)
             refinePrompt = ""
-            aiFeedbackMessage = "Borrador refinado. Revísalo antes de compartir."
+            isReportPreviewPresented = true
+            aiFeedbackMessage = "Refino preparado para previsualización."
             await bridge.recordAIAuditEvent(
                 service: "reports",
                 useCase: "refine_draft",
                 reportKind: reportContext.kind.rawValue,
                 classId: reportContext.classId,
                 studentId: reportContext.studentId,
-                availability: aiAvailabilityLabel,
-                modelAvailable: aiAvailability.isAvailable,
+                availability: generation.metadata.state.title,
+                modelAvailable: generation.metadata.audit.usedRealAI,
                 success: true,
-                durationMs: Int64(Date().timeIntervalSince(startedAt) * 1000)
+                durationMs: generation.metadata.audit.durationMs
             )
         } catch {
             aiFeedbackMessage = error.localizedDescription
@@ -1427,8 +1481,15 @@ struct ReportsWorkspaceView: View {
         defer { isGeneratingAnalyticsInsight = false }
 
         do {
-            analyticsInsight = try await aiAnalyticsService.generateInsight(from: facts)
-            analyticsFeedbackMessage = "Insight generado en local. Revísalo antes de compartirlo o insertarlo en un informe."
+            let generation = try await aiOrchestrator.generateWithTrace(
+                .chartInsight(facts),
+                dataSource: facts.subtitle,
+                includedEvidence: facts.factLines
+            )
+            guard case .chartInsight(let insight) = generation.result else { return }
+            analyticsInsight = insight
+            analyticsMetadata = generation.metadata
+            analyticsFeedbackMessage = generation.metadata.audit.usedFallback ? "Insight generado por reglas locales. Revísalo antes de compartirlo." : "Insight generado en local. Revísalo antes de compartirlo o insertarlo en un informe."
         } catch {
             analyticsFeedbackMessage = error.localizedDescription
         }
@@ -1449,14 +1510,7 @@ struct ReportsWorkspaceView: View {
                 timeRange: selectedAnalyticsRange
             )
             let interpreted: AIAnalyticsInterpretation?
-            if analyticsAvailability.isAvailable {
-                interpreted = try? await aiAnalyticsService.interpret(
-                    prompt: analyticsPrompt,
-                    availableCharts: KmpBridge.ChartKind.allCases
-                )
-            } else {
-                interpreted = nil
-            }
+            interpreted = nil
 
             let request = KmpBridge.AnalyticsRequest(
                 chartKind: interpreted?.chartKind ?? fallbackRequest.chartKind,
@@ -1471,8 +1525,16 @@ struct ReportsWorkspaceView: View {
             selectedChartKind = facts.chartKind
             analyticsFeedbackMessage = ([interpreted?.querySummary] + (interpreted?.warnings ?? [])).compactMap { $0 }.joined(separator: "\n")
 
-            if analyticsAvailability.isAvailable && facts.hasEnoughData {
-                analyticsInsight = try? await aiAnalyticsService.generateInsight(from: facts)
+            if facts.hasEnoughData {
+                let generation = try? await aiOrchestrator.generateWithTrace(
+                    .chartInsight(facts),
+                    dataSource: facts.subtitle,
+                    includedEvidence: facts.factLines
+                )
+                if case .chartInsight(let insight) = generation?.result {
+                    analyticsInsight = insight
+                    analyticsMetadata = generation?.metadata
+                }
             }
         } catch {
             analyticsFeedbackMessage = error.localizedDescription
@@ -1480,8 +1542,19 @@ struct ReportsWorkspaceView: View {
     }
 
     func refreshAvailability() {
-        aiAvailability = aiReportService.currentAvailability()
-        analyticsAvailability = aiAnalyticsService.currentAvailability()
+        let availability = aiOrchestrator.availability()
+        switch availability {
+        case .available:
+            aiAvailability = .available
+            analyticsAvailability = .available
+        case .disabled(let message):
+            aiAvailability = .disabled
+            analyticsAvailability = .disabled
+            aiFeedbackMessage = message
+        case .preparing(let message), .unavailable(let message):
+            aiAvailability = .unavailable(message)
+            analyticsAvailability = .unavailable(message)
+        }
     }
 }
 
@@ -1751,8 +1824,9 @@ struct BulkLOMLOEGenerationSheet: View {
     @State var isGenerating = false
     @State var isSaving = false
     @State var feedbackMessage: String?
+    @State var generationMetadata: AppleAIGenerationMetadata?
 
-    let reportService = AppleFoundationReportService()
+    let aiOrchestrator = AppleAIOrchestrator()
 
     init(
         bridge: KmpBridge,
@@ -1800,7 +1874,7 @@ struct BulkLOMLOEGenerationSheet: View {
                 }
             }
             .task {
-                reportService.prewarm()
+                aiOrchestrator.prewarmIfUseful(for: .report(audience))
                 if rows.isEmpty {
                     await loadStudents()
                 }
@@ -1813,6 +1887,7 @@ struct BulkLOMLOEGenerationSheet: View {
             TextField("Columna destino", text: $columnName)
                 .textFieldStyle(RoundedBorderTextFieldStyle())
             Toggle("Rellenar solo celdas vacías", isOn: $onlyEmptyCells)
+            AppleAIStatusBadge(state: generationMetadata?.state ?? aiOrchestrator.availability().generationState, message: generationMetadata?.availabilityMessage ?? aiOrchestrator.availability().message)
             HStack(spacing: 12) {
                 Button {
                     Task { await generateAll() }
@@ -1829,6 +1904,9 @@ struct BulkLOMLOEGenerationSheet: View {
                 Text(feedbackMessage ?? "\(rows.count) alumnos preparados")
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.secondary)
+            }
+            if generationMetadata != nil {
+                AppleAIAuditSummaryView(metadata: generationMetadata)
             }
         }
         .padding(16)
@@ -1895,19 +1973,28 @@ struct BulkLOMLOEGenerationSheet: View {
                     rows[index].status = .omitted(context.dataQualityNote ?? "Datos insuficientes")
                     continue
                 }
-                let draft = try await reportService.generateDraft(from: context, audience: audience, tone: tone)
+                let generation = try await aiOrchestrator.generateWithTrace(
+                    .report(context, audience, tone),
+                    dataSource: context.className,
+                    includedEvidence: context.factLines + context.curriculumReferences
+                )
+                guard case .report(let draft) = generation.result else {
+                    rows[index].status = .failed("Respuesta IA inesperada")
+                    continue
+                }
                 rows[index].text = draft.editableText(for: context)
                 rows[index].status = .done
+                generationMetadata = generation.metadata
                 await bridge.recordAIAuditEvent(
                     service: "reports",
                     useCase: "bulk_lomloe",
                     reportKind: context.kind.rawValue,
                     classId: context.classId,
                     studentId: context.studentId,
-                    availability: "Disponible",
-                    modelAvailable: true,
+                    availability: generation.metadata.state.title,
+                    modelAvailable: generation.metadata.audit.usedRealAI,
                     success: true,
-                    durationMs: Int64(Date().timeIntervalSince(startedAt) * 1000)
+                    durationMs: generation.metadata.audit.durationMs
                 )
             } catch {
                 rows[index].status = .failed(error.localizedDescription)
@@ -1917,8 +2004,8 @@ struct BulkLOMLOEGenerationSheet: View {
                     reportKind: KmpBridge.ReportKind.lomloeEvaluationComment.rawValue,
                     classId: classId,
                     studentId: rows[index].student.id,
-                    availability: "Disponible",
-                    modelAvailable: true,
+                    availability: aiOrchestrator.availability().generationState.title,
+                    modelAvailable: aiOrchestrator.availability().isAvailable,
                     success: false,
                     durationMs: Int64(Date().timeIntervalSince(startedAt) * 1000),
                     errorKind: String(describing: type(of: error)),

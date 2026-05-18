@@ -25,6 +25,7 @@ struct MacSettingsView: View {
                     localDataSection
                     syncSection
                     localAISection
+                    aiHistorySection
                     backupsSection
                     privacySection
                     diagnosticSection
@@ -125,6 +126,12 @@ struct MacSettingsView: View {
             Toggle("Síntesis del cuaderno", isOn: $aiNotebookSummaryEnabled)
             settingsRow("Nivel de detalle", value: "Normal")
             settingsRow("Última ejecución", value: "Sin incidencias registradas")
+        }
+    }
+
+    private var aiHistorySection: some View {
+        settingsCard(title: "Historial IA", systemImage: "clock.arrow.circlepath") {
+            AppleAIHistoryPanel(bridge: session.bridge)
         }
     }
 

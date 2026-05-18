@@ -385,18 +385,15 @@ enum CoverageAuditEvidenceBuilder {
 @MainActor
 final class AppleFoundationTeachingAssistantService {
     private let contextualService = AppleFoundationContextualAIService()
-    private let reportService = AppleFoundationReportService()
-    private let analyticsService = AppleFoundationAnalyticsService()
+    private let aiOrchestrator = AppleAIOrchestrator()
 
     func prewarm() {
         contextualService.prewarm()
-        reportService.prewarm()
-        analyticsService.prewarm()
+        aiOrchestrator.prewarmIfUseful(for: .analytics)
     }
 
     func clearActiveConversation() {
         contextualService.clearActiveConversation()
-        reportService.clearActiveConversation()
     }
 
     func canHandle(_ actionId: KmpBridge.ContextualAIAction.ActionID) -> Bool {
@@ -411,36 +408,46 @@ final class AppleFoundationTeachingAssistantService {
     func generateDraft(for actionId: KmpBridge.ContextualAIAction.ActionID, bridge: KmpBridge, context: KmpBridge.ScreenAIContext, audience: AIReportAudience, tone: AIReportTone, customPrompt: String?) async throws -> TeachingAssistantDraft {
         switch actionId {
         case .dailyBriefing:
-            return try await contextualService.generateTeachingDraft(from: DailyBriefEvidenceBuilder.build(bridge: bridge, classId: context.classId), audience: audience, tone: tone, customPrompt: customPrompt)
+            let pack = try await DailyBriefEvidenceBuilder.build(bridge: bridge, classId: context.classId)
+            return try await tracedTeachingDraft(pack, audience: audience, tone: tone, customPrompt: customPrompt)
         case .studentRiskRadar:
             guard let studentId = context.studentId else {
                 throw AIContextualServiceError.insufficientContext("Selecciona un alumno para generar el radar de riesgo.")
             }
-            return try await contextualService.generateTeachingDraft(from: StudentRiskEvidenceBuilder.build(bridge: bridge, classId: context.classId, studentId: studentId), audience: audience, tone: tone, customPrompt: customPrompt)
+            let pack = try await StudentRiskEvidenceBuilder.build(bridge: bridge, classId: context.classId, studentId: studentId)
+            return try await tracedTeachingDraft(pack, audience: audience, tone: tone, customPrompt: customPrompt)
         case .tutoringDraft:
             guard let classId = context.classId else {
                 throw AIReportServiceError.insufficientContext("Selecciona una clase antes de preparar un borrador de tutoría.")
             }
             let kind: KmpBridge.ReportKind = context.studentId == nil ? .groupOverview : .studentSummary
             let reportContext = try await bridge.buildReportGenerationContext(classId: classId, studentId: context.studentId, kind: kind, termLabel: nil)
-            let draft = try await reportService.generateDraft(from: reportContext, audience: audience, tone: tone)
+            let generation = try await aiOrchestrator.generateWithTrace(.report(reportContext, audience, tone), dataSource: reportContext.className, includedEvidence: reportContext.factLines)
+            guard case .report(let draft) = generation.result else {
+                throw AIContextualServiceError.insufficientContext("No se pudo preparar el borrador de tutoría.")
+            }
             return TeachingAssistantDraft(title: draft.title, subtitle: reportContext.studentName ?? reportContext.className, summary: draft.summary, factsUsed: Array(reportContext.factLines.prefix(6)), warnings: Array(reportContext.needsAttention.prefix(4)), recommendedActions: Array(draft.recommendedActions.prefix(4)), editableText: draft.editableText(for: reportContext), confidenceNote: reportContext.dataQualityNote, riskLevel: nil)
         case .groupInsight:
             let pack = try await GroupInsightEvidenceBuilder.build(bridge: bridge, classId: context.classId)
             guard let resolvedClassId = context.classId else {
-                return try await contextualService.generateTeachingDraft(from: pack, audience: audience, tone: tone, customPrompt: customPrompt)
+                return try await tracedTeachingDraft(pack, audience: audience, tone: tone, customPrompt: customPrompt)
             }
             if let chart = try? await bridge.buildChartFacts(
                 classId: resolvedClassId,
                 request: KmpBridge.AnalyticsRequest(chartKind: .sameCourseComparison, timeRange: .last30Days, selectedClassIds: context.classId.map { [$0] } ?? [], selectedClassNames: context.className.map { [$0] } ?? [], prompt: nil, querySummary: "Comparativa global del grupo")
             ), chart.hasEnoughData {
-                let insight = try? await analyticsService.generateInsight(from: chart)
+                let generation = try? await aiOrchestrator.generateWithTrace(.chartInsight(chart), dataSource: chart.subtitle, includedEvidence: chart.factLines)
+                let insight: AIChartInsight? = {
+                    guard case .chartInsight(let value) = generation?.result else { return nil }
+                    return value
+                }()
                 let enrichedPack = TeachingEvidencePack(useCase: pack.useCase, title: pack.title, subtitle: chart.subtitle, summary: insight?.insight ?? pack.summary, metrics: chart.metrics, factsUsed: pack.factsUsed, warnings: compactTexts(pack.warningTexts, insight?.warnings ?? []).map(WarningItem.init), recommendedActions: compactTexts(pack.recommendedActionTexts, insight?.recommendedActions ?? []).map(RecommendedActionItem.init), confidenceNote: pack.confidenceNote, riskLevel: nil, sourceDigest: compactTexts([pack.sourceDigest], firstNonEmpty(insight?.insertableSummary).map { [$0] } ?? []).joined(separator: " "), hasEnoughData: true)
-                return try await contextualService.generateTeachingDraft(from: enrichedPack, audience: audience, tone: tone, customPrompt: customPrompt)
+                return try await tracedTeachingDraft(enrichedPack, audience: audience, tone: tone, customPrompt: customPrompt)
             }
-            return try await contextualService.generateTeachingDraft(from: pack, audience: audience, tone: tone, customPrompt: customPrompt)
+            return try await tracedTeachingDraft(pack, audience: audience, tone: tone, customPrompt: customPrompt)
         case .sessionClosure:
-            return try await contextualService.generateTeachingDraft(from: SessionClosureEvidenceBuilder.build(bridge: bridge, classId: context.classId), audience: audience, tone: tone, customPrompt: customPrompt)
+            let pack = try await SessionClosureEvidenceBuilder.build(bridge: bridge, classId: context.classId)
+            return try await tracedTeachingDraft(pack, audience: audience, tone: tone, customPrompt: customPrompt)
         default:
             throw AIContextualServiceError.insufficientContext("Esta acción sigue usando el flujo contextual estándar.")
         }
@@ -452,6 +459,18 @@ final class AppleFoundationTeachingAssistantService {
         } catch AIContextualServiceError.insufficientContext {
             throw AIContextualServiceError.insufficientContext("No hay un borrador docente activo para refinar.")
         }
+    }
+
+    private func tracedTeachingDraft(_ pack: TeachingEvidencePack, audience: AIReportAudience, tone: AIReportTone, customPrompt: String?) async throws -> TeachingAssistantDraft {
+        let generation = try await aiOrchestrator.generateWithTrace(
+            .teachingDraft(pack, audience, tone, customPrompt),
+            dataSource: pack.subtitle,
+            includedEvidence: pack.factTexts
+        )
+        guard case .teachingDraft(let draft) = generation.result else {
+            throw AIContextualServiceError.insufficientContext("No se pudo generar el borrador docente.")
+        }
+        return draft
     }
 }
 

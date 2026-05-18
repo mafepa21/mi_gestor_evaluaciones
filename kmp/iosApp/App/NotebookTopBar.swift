@@ -182,8 +182,13 @@ struct NotebookSummaryGenerationSheet: View {
     @State private var isGenerating = false
     @State private var progressMessage: String?
     @State private var feedbackMessage: String?
+    @State private var generationMetadata: AppleAIGenerationMetadata?
+    @State private var pendingSummaries: [(studentId: Int64, studentName: String, text: String)] = []
+    @State private var pendingTargetColumnId: String?
+    @State private var previewText = ""
+    @State private var isPreviewPresented = false
 
-    @State private var aiService = AppleFoundationContextualAIService()
+    @State private var aiOrchestrator = AppleAIOrchestrator()
 
     private var notebookData: NotebookUiStateData? {
         bridge.notebookState as? NotebookUiStateData
@@ -195,7 +200,12 @@ struct NotebookSummaryGenerationSheet: View {
     }
 
     private var availability: AIContextualAvailabilityState {
-        aiService.currentAvailability()
+        switch aiOrchestrator.availability() {
+        case .available:
+            return .available
+        case .disabled(let message), .preparing(let message), .unavailable(let message):
+            return .unavailable(message)
+        }
     }
 
     private var hasExistingSummary: Bool {
@@ -225,7 +235,7 @@ struct NotebookSummaryGenerationSheet: View {
                 }
             }
             .onAppear {
-                aiService.prewarm()
+                aiOrchestrator.prewarmIfUseful(for: .contextual(.notebookComment))
                 if let initialTargetColumnId,
                    summaryColumns.contains(where: { $0.id == initialTargetColumnId }) {
                     selectedExistingColumnId = initialTargetColumnId
@@ -239,6 +249,16 @@ struct NotebookSummaryGenerationSheet: View {
             }
             .appOnChange(of: selectedExistingColumnId) { newValue in
                 configuration = NotebookIndividualSummaryPreferences.load(columnId: newValue)
+            }
+            .sheet(isPresented: $isPreviewPresented) {
+                AppleAIPreviewSheet(
+                    title: "Síntesis pedagógica masiva",
+                    subtitle: "\(pendingSummaries.count) comentarios preparados. Revísalos antes de aplicarlos al cuaderno.",
+                    text: $previewText,
+                    metadata: generationMetadata
+                ) {
+                    applyPendingSummaries()
+                }
             }
         }
     }
@@ -307,6 +327,7 @@ struct NotebookSummaryGenerationSheet: View {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Generación")
                     .font(.title3.weight(.bold))
+                AppleAIStatusBadge(state: generationMetadata?.state ?? aiOrchestrator.availability().generationState, message: generationMetadata?.availabilityMessage ?? availability.message)
                 Text(targetSummaryText)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -473,20 +494,21 @@ struct NotebookSummaryGenerationSheet: View {
             feedbackMessage = "No se pudo crear o resolver la columna de síntesis."
             return
         }
+        pendingTargetColumnId = targetColumnId
 
         let onlyEmptyCells = configuration.generationMode == .onlyEmptyCells
-        let canUseAppleAI = availability.isAvailable
         isGenerating = true
-        feedbackMessage = canUseAppleAI ? nil : "Apple Intelligence no disponible; usando síntesis local editable."
+        feedbackMessage = availability.isAvailable ? nil : "Apple Intelligence no disponible; preparando síntesis local editable."
         progressMessage = nil
 
         Task {
-            var savedCount = 0
+            var prepared: [(studentId: Int64, studentName: String, text: String)] = []
             var skippedCount = 0
+            var latestMetadata: AppleAIGenerationMetadata?
 
             for (index, context) in contexts.enumerated() {
                 await MainActor.run {
-                    progressMessage = "Generando \(index + 1) de \(contexts.count): \(context.studentName)"
+                    progressMessage = "Preparando \(index + 1) de \(contexts.count): \(context.studentName)"
                 }
 
                 if onlyEmptyCells,
@@ -497,38 +519,60 @@ struct NotebookSummaryGenerationSheet: View {
                     continue
                 }
 
-                let draft: NotebookAICommentDraft
-                if canUseAppleAI {
-                    do {
-                        draft = try await aiService.generateNotebookComment(
-                            from: context,
-                            audience: .docente,
-                            tone: .claro
+                do {
+                    let generation = try await aiOrchestrator.generateWithTrace(
+                        .notebookComment(context, .docente, .claro),
+                        dataSource: context.className,
+                        includedEvidence: context.relevantValues.map { $0.title } + context.competencyLabels
+                    )
+                    guard case .notebookComment(let draft) = generation.result else { continue }
+                    let text = notebookIndividualSummaryText(from: draft, length: configuration.length)
+                    prepared.append((context.studentId, context.studentName, text))
+                    latestMetadata = generation.metadata
+                } catch {
+                    AppleFoundationModelSupport.recordRuntimeFailure(error)
+                    let draft = fallbackPedagogicalSummary(from: context)
+                    let text = notebookIndividualSummaryText(from: draft, length: configuration.length)
+                    prepared.append((context.studentId, context.studentName, text))
+                    latestMetadata = AppleAIGenerationMetadata(
+                        state: .recoverableError(error.localizedDescription),
+                        availabilityMessage: "Se ha usado fallback por reglas tras un error recuperable.",
+                        audit: AppleAIGenerationAudit(
+                            dataSource: context.className,
+                            includedEvidence: context.relevantValues.map { $0.title },
+                            usedRealAI: false,
+                            usedFallback: true
                         )
-                    } catch {
-                        AppleFoundationModelSupport.recordRuntimeFailure(error)
-                        draft = fallbackPedagogicalSummary(from: context)
-                    }
-                } else {
-                    draft = fallbackPedagogicalSummary(from: context)
+                    )
                 }
-
-                let text = notebookIndividualSummaryText(from: draft, length: configuration.length)
-                bridge.saveNotebookAIComment(studentId: context.studentId, columnId: targetColumnId, text: text)
-                savedCount += 1
             }
 
             await MainActor.run {
                 isGenerating = false
-                if savedCount > 0 {
-                    onComplete("Síntesis guardadas: \(savedCount). Omitidas: \(skippedCount).", .success)
-                    dismiss()
+                if !prepared.isEmpty {
+                    pendingSummaries = prepared
+                    generationMetadata = latestMetadata
+                    previewText = prepared.map { "\($0.studentName)\n\($0.text)" }.joined(separator: "\n\n---\n\n")
+                    feedbackMessage = "Previsualización preparada. Omitidas: \(skippedCount)."
+                    isPreviewPresented = true
                 } else {
                     progressMessage = nil
                     feedbackMessage = "No se ha generado ninguna síntesis. Revisa que existan datos en las columnas seleccionadas."
                 }
             }
         }
+    }
+
+    private func applyPendingSummaries() {
+        guard let targetColumnId = pendingTargetColumnId ?? selectedExistingColumnId else {
+            feedbackMessage = "No se pudo crear o resolver la columna de síntesis."
+            return
+        }
+        for summary in pendingSummaries {
+            bridge.saveNotebookAIComment(studentId: summary.studentId, columnId: targetColumnId, text: summary.text)
+        }
+        onComplete("Síntesis guardadas: \(pendingSummaries.count).", .success)
+        dismiss()
     }
 
     private func fallbackPedagogicalSummary(

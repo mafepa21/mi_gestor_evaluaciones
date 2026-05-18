@@ -83,13 +83,17 @@ struct NotebookModuleView: View {
     @State var isFormulaAIGenerating = false
     @State var activeChoiceCellId: String? = nil
     @State var organizationColumnSearchText = ""
-    @State private var contextualAIService = AppleFoundationContextualAIService()
+    @State private var contextualAIOrchestrator = AppleAIOrchestrator()
     @StateObject private var formulaAIServiceStore = AppleFoundationFormulaServiceStore()
     @AppStorage("notebook.navigationDirection") var navigationDirectionRaw = NotebookNavigationDirection.down.rawValue
     @FocusState var focusedCellId: String?
 
     var formulaAIService: AppleFoundationFormulaService {
         formulaAIServiceStore.service
+    }
+
+    var formulaAIOrchestrator: AppleAIOrchestrator {
+        formulaAIServiceStore.orchestrator
     }
 
     init(
@@ -678,7 +682,7 @@ struct NotebookModuleView: View {
     }
 
     func handleCreatedSummaryColumn(_ columnId: String) {
-        let availability = contextualAIService.currentAvailability()
+        let availability = contextualAIOrchestrator.availability()
         if !availability.isAvailable {
             showToast("Columna creada. La generación IA no está disponible en este dispositivo.", style: .warning)
         }

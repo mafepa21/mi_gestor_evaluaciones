@@ -427,6 +427,7 @@ enum NotebookFormulaAIError: LocalizedError {
 @MainActor
 final class AppleFoundationFormulaServiceStore: ObservableObject {
     let service = AppleFoundationFormulaService()
+    let orchestrator = AppleAIOrchestrator()
 }
 
 @MainActor

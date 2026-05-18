@@ -58,6 +58,7 @@
 		481456E6917D53DC0747A5FD /* NotebookModuleDialogs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 352EEB0A224407D7F429897D /* NotebookModuleDialogs.swift */; };
 		488764D78E28A742D70180A6 /* NotebookModuleDialogs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 352EEB0A224407D7F429897D /* NotebookModuleDialogs.swift */; };
 		4A94FBA079B366485372AFC6 /* AppleFoundationAnalyticsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2EB53505ACE7B6CA23A520F /* AppleFoundationAnalyticsService.swift */; };
+		4B1A1F31F0E34CC0B6D92001 /* AppleAIPremiumSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B1A1F30F0E34CC0B6D92001 /* AppleAIPremiumSupport.swift */; };
 		4D5078D96AE3E5ECAEA922B5 /* AppleAIOrchestrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D47CE5CC1A1F907BFA2E477 /* AppleAIOrchestrator.swift */; };
 		4D9E5932EA17C6365467B154 /* NotebookTabStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E112239AB1D009CECE6FC5F /* NotebookTabStrip.swift */; };
 		4FC65E1EA9E7488F1442911F /* MiGestorKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D60E195E650E3C66A0B033A6 /* MiGestorKit.framework */; };
@@ -100,6 +101,7 @@
 		75DAA59B8CF537FD4469E859 /* NotebookGridContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BD759479FF5E71467F7276D /* NotebookGridContent.swift */; };
 		774C8481CFDCFE2829E7ACA5 /* NotebookSeatingPlanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5BB221D33601136CB3F7F0F /* NotebookSeatingPlanView.swift */; };
 		78A071A272E2BC12FABF66B2 /* AppleFoundationReportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27176C9EB76172D41191833D /* AppleFoundationReportService.swift */; };
+		78A071A372E2BC12FABF66B2 /* AppleAIPremiumSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B1A1F30F0E34CC0B6D92001 /* AppleAIPremiumSupport.swift */; };
 		7A973DCE7BAA2B903B1BF4DA /* NotebookInspectorPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 064505192DE6C78C8E8249B0 /* NotebookInspectorPanel.swift */; };
 		7A9B6526A28BBAA6C5D13AD7 /* MiGestorKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D60E195E650E3C66A0B033A6 /* MiGestorKit.framework */; };
 		7AB1BAD7B74A9E61B2B0CD10 /* PlannerMacLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAC40298A578A3A7BA28D5D1 /* PlannerMacLayout.swift */; };
@@ -242,6 +244,7 @@
 		467B02D2576A83946B6237BA /* MiGestorKMPiOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = MiGestorKMPiOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		49A987A394056D0AA6774110 /* PhysicalTestsWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhysicalTestsWorkspaceView.swift; sourceTree = "<group>"; };
 		4BA9E95BA74B4D7D8AC2D362 /* NotebookModuleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookModuleView.swift; sourceTree = "<group>"; };
+		4B1A1F30F0E34CC0B6D92001 /* AppleAIPremiumSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleAIPremiumSupport.swift; sourceTree = "<group>"; };
 		4BE36C2FC3CA10A0D5E7F322 /* AppleAppRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleAppRootView.swift; sourceTree = "<group>"; };
 		4ED9D8451FE6172EFBD59BC5 /* DiaryWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiaryWorkspaceView.swift; sourceTree = "<group>"; };
 		53D5C192E36FCFC177FCB496 /* RubricBulkEvaluationSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RubricBulkEvaluationSheet.swift; sourceTree = "<group>"; };
@@ -426,6 +429,7 @@
 			children = (
 				583BC23E9E292D736CC9EF49 /* AddColumnSheet.swift */,
 				7D47CE5CC1A1F907BFA2E477 /* AppleAIOrchestrator.swift */,
+				4B1A1F30F0E34CC0B6D92001 /* AppleAIPremiumSupport.swift */,
 				C2EB53505ACE7B6CA23A520F /* AppleFoundationAnalyticsService.swift */,
 				14C238867D14FCB6C59390D5 /* AppleFoundationContextualAIService.swift */,
 				27176C9EB76172D41191833D /* AppleFoundationReportService.swift */,
@@ -668,6 +672,7 @@
 			files = (
 				F5B53E702D8FF43EAC82D921 /* AddColumnSheet.swift in Sources */,
 				864BD267739CF9BC84E41BB1 /* AppleAIOrchestrator.swift in Sources */,
+				78A071A372E2BC12FABF66B2 /* AppleAIPremiumSupport.swift in Sources */,
 				740FE4946BFED011E3EE355F /* AppleAppEnvironment.swift in Sources */,
 				F0B171DB64DE32129BFBCE30 /* AppleAppRootView.swift in Sources */,
 				9A31C548996D137897FA1C75 /* AppleBridgeBootstrap.swift in Sources */,
@@ -772,6 +777,7 @@
 			files = (
 				7FC3CC82E0DA9D27DCD9A52D /* AddColumnSheet.swift in Sources */,
 				4D5078D96AE3E5ECAEA922B5 /* AppleAIOrchestrator.swift in Sources */,
+				4B1A1F31F0E34CC0B6D92001 /* AppleAIPremiumSupport.swift in Sources */,
 				89A42DAB37443B7552C21222 /* AppleAppEnvironment.swift in Sources */,
 				1286D99337F554322E21CD9C /* AppleAppRootView.swift in Sources */,
 				5E3F7337F3A6A0EC2C17DA4E /* AppleBridgeBootstrap.swift in Sources */,

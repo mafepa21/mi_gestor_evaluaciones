@@ -21,15 +21,25 @@ struct NotebookAICommentSheet: View {
     @State private var isGenerating = false
     @State private var progressMessage: String?
     @State private var feedbackMessage: String?
+    @State private var generationMetadata: AppleAIGenerationMetadata?
+    @State private var pendingComments: [(studentId: Int64, studentName: String, text: String)] = []
+    @State private var pendingTargetColumnId: String?
+    @State private var previewText = ""
+    @State private var isPreviewPresented = false
 
-    private let aiService = AppleFoundationContextualAIService()
+    private let aiOrchestrator = AppleAIOrchestrator()
 
     private var existingAIColumns: [NotebookColumnDefinition] {
         data.sheet.columns.filter(bridge.isNotebookAICommentColumn)
     }
 
     private var availability: AIContextualAvailabilityState {
-        aiService.currentAvailability()
+        switch aiOrchestrator.availability() {
+        case .available:
+            return .available
+        case .disabled(let message), .preparing(let message), .unavailable(let message):
+            return .unavailable(message)
+        }
     }
 
     private var effectiveStudentIds: [Int64] {
@@ -55,13 +65,23 @@ struct NotebookAICommentSheet: View {
                 }
             }
             .onAppear {
-                aiService.prewarm()
+                aiOrchestrator.prewarmIfUseful(for: .contextual(.notebookComment))
                 if let targetColumnId {
                     selectedExistingColumnId = targetColumnId
                 } else if let first = existingAIColumns.first {
                     selectedExistingColumnId = first.id
                 } else {
                     selectedExistingColumnId = nil
+                }
+            }
+            .sheet(isPresented: $isPreviewPresented) {
+                AppleAIPreviewSheet(
+                    title: mode == .createColumn ? "Columna IA" : "Comentarios individuales",
+                    subtitle: "\(pendingComments.count) comentarios preparados. Revísalos antes de aplicar.",
+                    text: $previewText,
+                    metadata: generationMetadata
+                ) {
+                    applyPendingComments()
                 }
             }
         }
@@ -123,6 +143,7 @@ struct NotebookAICommentSheet: View {
             VStack(alignment: .leading, spacing: 14) {
                 Text("Generación")
                     .font(.system(size: 18, weight: .bold, design: .rounded))
+                AppleAIStatusBadge(state: generationMetadata?.state ?? aiOrchestrator.availability().generationState, message: generationMetadata?.availabilityMessage ?? availability.message)
                 Text("Alumnado objetivo: \(effectiveStudentIds.count)")
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(.secondary)
@@ -237,12 +258,13 @@ struct NotebookAICommentSheet: View {
                 }
             }
 
-            var savedCount = 0
+            var prepared: [(studentId: Int64, studentName: String, text: String)] = []
             var skippedCount = 0
+            var latestMetadata: AppleAIGenerationMetadata?
 
             for (index, context) in contexts.enumerated() {
                 await MainActor.run {
-                    progressMessage = "Generando \(index + 1) de \(contexts.count): \(context.studentName)"
+                    progressMessage = "Preparando \(index + 1) de \(contexts.count): \(context.studentName)"
                 }
 
                 if onlyEmptyCells,
@@ -253,15 +275,14 @@ struct NotebookAICommentSheet: View {
                 }
 
                 do {
-                    let draft = try await aiService.generateNotebookComment(
-                        from: context,
-                        audience: audience,
-                        tone: tone
+                    let generation = try await aiOrchestrator.generateWithTrace(
+                        .notebookComment(context, audience, tone),
+                        dataSource: context.className,
+                        includedEvidence: context.relevantValues.map { $0.title } + context.competencyLabels
                     )
-                    if let targetColumnId {
-                        bridge.saveNotebookAIComment(studentId: context.studentId, columnId: targetColumnId, text: draft.commentText)
-                        savedCount += 1
-                    }
+                    guard case .notebookComment(let draft) = generation.result else { continue }
+                    prepared.append((context.studentId, context.studentName, draft.commentText))
+                    latestMetadata = generation.metadata
                 } catch {
                     skippedCount += 1
                 }
@@ -269,15 +290,30 @@ struct NotebookAICommentSheet: View {
 
             await MainActor.run {
                 isGenerating = false
-                let completionMessage = "Comentarios IA generados: \(savedCount). Omitidos: \(skippedCount)."
-                if savedCount > 0 {
-                    onComplete(completionMessage, .success)
-                    dismiss()
+                if !prepared.isEmpty {
+                    pendingComments = prepared
+                    pendingTargetColumnId = targetColumnId
+                    generationMetadata = latestMetadata
+                    previewText = prepared.map { "\($0.studentName)\n\($0.text)" }.joined(separator: "\n\n---\n\n")
+                    feedbackMessage = "Previsualización preparada. Omitidos: \(skippedCount)."
+                    isPreviewPresented = true
                 } else {
                     progressMessage = nil
-                    feedbackMessage = completionMessage
+                    feedbackMessage = "Comentarios IA generados: 0. Omitidos: \(skippedCount)."
                 }
             }
         }
+    }
+
+    private func applyPendingComments() {
+        guard let pendingTargetColumnId else {
+            feedbackMessage = "No se pudo resolver la columna IA."
+            return
+        }
+        for comment in pendingComments {
+            bridge.saveNotebookAIComment(studentId: comment.studentId, columnId: pendingTargetColumnId, text: comment.text)
+        }
+        onComplete("Comentarios IA guardados: \(pendingComments.count).", .success)
+        dismiss()
     }
 }

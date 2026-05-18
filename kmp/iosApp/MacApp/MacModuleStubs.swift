@@ -73,13 +73,14 @@ struct MacReportsView: View {
     @State private var aiAudience: AIReportAudience = .docente
     @State private var aiTone: AIReportTone = .claro
     @State private var aiDraft: AIReportDraft?
+    @State private var aiMetadata: AppleAIGenerationMetadata?
     @State private var editableDraftText = ""
     @State private var feedbackMessage: String?
     @State private var isLoadingContext = false
     @State private var isGeneratingDraft = false
     @State private var isExporting = false
 
-    private let aiReportService = AppleFoundationReportService()
+    private let aiOrchestrator = AppleAIOrchestrator()
     private let draftStore = MacReportDraftStore()
 
     private var selectedClass: SchoolClass? {
@@ -169,7 +170,7 @@ struct MacReportsView: View {
         }
         .background(MacAppStyle.pageBackground)
         .task {
-            aiAvailability = aiReportService.currentAvailability()
+            refreshAIAvailability()
             if selectedClassId == nil {
                 selectedClassId = bridge.selectedStudentsClassId ?? bridge.classes.first?.id
             }
@@ -599,16 +600,29 @@ struct MacReportsView: View {
         defer { isGeneratingDraft = false }
 
         do {
-            let draft = try await aiReportService.generateDraft(
-                from: reportContext,
-                audience: aiAudience,
-                tone: aiTone
+            let generation = try await aiOrchestrator.generateWithTrace(
+                .report(reportContext, aiAudience, aiTone),
+                dataSource: reportContext.className,
+                includedEvidence: reportContext.factLines + reportContext.curriculumReferences
             )
+            guard case .report(let draft) = generation.result else { return }
             aiDraft = draft
+            aiMetadata = generation.metadata
             editableDraftText = draft.editableText(for: reportContext)
-            feedbackMessage = "Borrador generado. Revísalo antes de exportar o compartir."
+            feedbackMessage = generation.metadata.audit.usedFallback ? "Borrador por reglas preparado. Revísalo antes de exportar o compartir." : "Borrador generado. Revísalo antes de exportar o compartir."
         } catch {
             feedbackMessage = error.localizedDescription
+        }
+    }
+
+    private func refreshAIAvailability() {
+        switch aiOrchestrator.availability() {
+        case .available:
+            aiAvailability = .available
+        case .disabled:
+            aiAvailability = .disabled
+        case .preparing(let message), .unavailable(let message):
+            aiAvailability = .unavailable(message)
         }
     }
 

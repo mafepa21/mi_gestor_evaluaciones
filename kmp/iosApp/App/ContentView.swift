@@ -73,6 +73,11 @@ struct SettingsModuleView: View {
                 .background(appCardBackground(for: colorScheme))
                 .cornerRadius(16)
 
+                AppleAIHistoryPanel(bridge: bridge)
+                    .padding(16)
+                    .background(appCardBackground(for: colorScheme))
+                    .cornerRadius(16)
+
                 TeacherScheduleSettingsPanel(selectedClassId: $selectedClassId)
             }
             .padding(.horizontal, 24)

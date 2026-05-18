@@ -408,7 +408,7 @@ struct AddColumnSheet: View {
     @State private var isLocked = false
     @State private var summaryConfiguration = NotebookIndividualSummaryConfiguration()
     @State private var summaryAvailability: AIContextualAvailabilityState = .unavailable("Apple Intelligence no está disponible en este dispositivo. Podrás rellenarla manualmente.")
-    @State private var summaryAIService = AppleFoundationContextualAIService()
+    @State private var summaryAIOrchestrator = AppleAIOrchestrator()
     @State private var rubricSearchText = ""
     @State private var expandedRubricSectionIds: Set<String> = []
     @State private var isSavingColumn = false
@@ -1460,7 +1460,13 @@ struct AddColumnSheet: View {
 
     private func refreshSummaryAvailability() {
         guard selectedBlueprint?.isIndividualSummary == true else { return }
-        summaryAvailability = summaryAIService.currentAvailability()
+        switch summaryAIOrchestrator.availability() {
+        case .available:
+            summaryAvailability = .available
+            summaryAIOrchestrator.prewarmIfUseful(for: .contextual(.notebookComment))
+        case .disabled(let message), .preparing(let message), .unavailable(let message):
+            summaryAvailability = .unavailable(message)
+        }
     }
 
     private func saveIndividualSummaryColumn() {

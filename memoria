@@ -405,6 +405,23 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-05-18 - Capa premium IA Apple con orquestador y trazabilidad
+
+Resumen:
+- Se añadió `kmp/iosApp/App/AppleAIPremiumSupport.swift` con estado visual común (`Disponible`, `Preparando modelo`, `No disponible`, `Fallback por reglas`, `Error recuperable`), resumen de auditoría visible, panel de historial IA y sheet reutilizable de previsualización.
+- `AppleAIOrchestrator.swift` centraliza ahora informes, insights de gráficos, comentarios/síntesis de cuaderno, borradores docentes, baremos físicos y fórmulas asistidas, devolviendo metadatos de trazabilidad para UI y auditoría.
+- Informes, analítica, comentarios individuales, síntesis pedagógica masiva, baremos físicos y fórmulas asistidas pasan por el orquestador o por servicios internos redirigidos a él; las generaciones críticas preparan preview antes de aplicar/guardar.
+- Se añadió “Historial IA” en Ajustes iPad (`ContentView.swift`) y macOS (`MacSettingsView.swift`) usando el repositorio de auditoría ya existente.
+
+Validación:
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` terminó con `BUILD SUCCEEDED`.
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -configuration Debug -destination 'platform=macOS' build` terminó con `BUILD SUCCEEDED`.
+
+Notas para futuras conversaciones:
+- No hubo migración SQLDelight ni cambio de esquema; se reutiliza `AIAuditRepository`/`ai_audit_events` y el bridge existente.
+- La edición manual queda marcada en metadatos UI de los borradores aplicados, pero no se persistió aún como campo histórico por generación individual. Si se quiere auditoría forense completa, conviene ampliar el modelo KMP de auditoría con fuente/evidencias/editado.
+- El flujo contextual genérico de `generateResult` sigue existiendo para acciones no cubiertas por el asistente docente especializado; el patrón nuevo queda preparado para moverlo al orquestador si se quiere cierre total.
+
 ### 2026-05-18 - Limpieza de sesiones del Planner sin franjas
 
 Resumen:

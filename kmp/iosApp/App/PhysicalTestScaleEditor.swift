@@ -288,9 +288,10 @@ struct PhysicalTestScaleEditor: View {
     @State private var aiObjective: PhysicalScaleRecommendationObjective = .mixed
     @State private var previewValue = ""
     @State private var savedMessage: String?
-    @State private var aiService = AppleFoundationContextualAIService()
+    @State private var aiOrchestrator = AppleAIOrchestrator()
     @State private var aiAvailability: AIContextualAvailabilityState = .unavailable("Comprobando disponibilidad de Apple Foundation Models.")
     @State private var aiProposal: PhysicalScaleRecommendationDraft?
+    @State private var aiMetadata: AppleAIGenerationMetadata?
     @State private var aiErrorMessage: String?
     @State private var isGeneratingAIProposal = false
 
@@ -539,8 +540,8 @@ struct PhysicalTestScaleEditor: View {
         ScaleEditorCard(title: "Sugerir baremo con IA") {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: aiAvailability.isAvailable ? "sparkles" : "sparkles.rectangle.stack")
-                        .foregroundStyle(aiAvailability.isAvailable ? .blue : .secondary)
+                    Image(systemName: aiMetadata?.state.systemImage ?? (aiAvailability.isAvailable ? "sparkles" : "sparkles.rectangle.stack"))
+                        .foregroundStyle(aiMetadata?.state.tint ?? (aiAvailability.isAvailable ? .blue : .secondary))
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Propuesta IA")
                             .font(.subheadline.weight(.bold))
@@ -554,6 +555,7 @@ struct PhysicalTestScaleEditor: View {
                 Label("Revisión docente necesaria", systemImage: "checkmark.seal")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.orange)
+                AppleAIStatusBadge(state: aiMetadata?.state ?? aiOrchestrator.availability().generationState, message: aiMetadata?.availabilityMessage ?? aiAvailability.message)
 
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(PhysicalScaleProfileCatalog.safetyWarnings, id: \.self) { warning in
@@ -574,7 +576,7 @@ struct PhysicalTestScaleEditor: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(!aiAvailability.isAvailable || isGeneratingAIProposal)
+                .disabled(isGeneratingAIProposal)
 
                 Button {
                     Task { await generateSexSpecificProposal(preferredSex: "MALE") }
@@ -583,7 +585,7 @@ struct PhysicalTestScaleEditor: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
-                .disabled(!aiAvailability.isAvailable || isGeneratingAIProposal)
+                .disabled(isGeneratingAIProposal)
 
                 Button {
                     Task { await generateSexSpecificProposal(preferredSex: "FEMALE") }
@@ -592,7 +594,7 @@ struct PhysicalTestScaleEditor: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
-                .disabled(!aiAvailability.isAvailable || isGeneratingAIProposal)
+                .disabled(isGeneratingAIProposal)
 
                 if isGeneratingAIProposal {
                     ProgressView()
@@ -607,6 +609,7 @@ struct PhysicalTestScaleEditor: View {
 
                 if let aiProposal {
                     Divider()
+                    AppleAIAuditSummaryView(metadata: aiMetadata)
                     aiProposalPreview(aiProposal)
                 }
             }
@@ -700,7 +703,13 @@ struct PhysicalTestScaleEditor: View {
     }
 
     private func refreshAIAvailability() {
-        aiAvailability = aiService.currentAvailability()
+        switch aiOrchestrator.availability() {
+        case .available:
+            aiAvailability = .available
+            aiOrchestrator.prewarmIfUseful(for: .contextual(.physicalScaleRecommendation))
+        case .disabled(let message), .preparing(let message), .unavailable(let message):
+            aiAvailability = .unavailable(message)
+        }
     }
 
     private func generateAIProposal() async {
@@ -709,9 +718,31 @@ struct PhysicalTestScaleEditor: View {
         isGeneratingAIProposal = true
         defer { isGeneratingAIProposal = false }
         do {
-            aiProposal = try await aiService.generatePhysicalScaleRecommendation(from: recommendationInput)
+            let generation = try await aiOrchestrator.generateWithTrace(
+                .physicalScaleRecommendation(recommendationInput),
+                dataSource: "\(recommendationInput.testName) · \(recommendationInput.course)",
+                includedEvidence: [
+                    recommendationInput.capacity,
+                    recommendationInput.measurementKind,
+                    recommendationInput.unit,
+                    recommendationInput.objective
+                ]
+            )
+            guard case .physicalScaleRecommendation(let proposal) = generation.result else { return }
+            aiProposal = proposal
+            aiMetadata = generation.metadata
         } catch {
             aiErrorMessage = error.localizedDescription
+            aiMetadata = AppleAIGenerationMetadata(
+                state: .recoverableError(error.localizedDescription),
+                availabilityMessage: "No se pudo completar la propuesta. Puedes ajustar el baremo manualmente.",
+                audit: AppleAIGenerationAudit(
+                    dataSource: recommendationInput.testName,
+                    includedEvidence: [recommendationInput.capacity, recommendationInput.objective],
+                    usedRealAI: false,
+                    usedFallback: false
+                )
+            )
         }
     }
 
@@ -735,6 +766,7 @@ struct PhysicalTestScaleEditor: View {
         if !proposal.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             scale.name = proposal.title
         }
+        aiMetadata?.audit.teacherEdited = true
         aiProposal = nil
         savedMessage = "Propuesta IA aplicada al baremo. Revisa y guarda cuando esté ajustada."
     }

@@ -6,6 +6,7 @@ import FoundationModels
 
 enum AppleFoundationModelAvailability: Equatable {
     case disabled
+    case localInferenceDisabled
     case frameworkUnavailable
     case unsupportedOS
     case unsupportedDevice
@@ -491,6 +492,8 @@ struct AppleFoundationModelMessages {
         switch availability {
         case .disabled:
             return disabled
+        case .localInferenceDisabled:
+            return "Apple Foundation Models está desactivado en Ajustes de la app."
         case .available:
             return available
         case .frameworkUnavailable:
@@ -510,6 +513,11 @@ struct AppleFoundationModelMessages {
 }
 
 enum AppleFoundationModelSupport {
+    static let localInferenceEnabledDefaultsKey = "apple.foundation.models.localInference.enabled"
+    static let reportsEnabledDefaultsKey = "reports.ai.enabled"
+    static let contextualEnabledDefaultsKey = "contextual.ai.enabled"
+    static let analyticsEnabledDefaultsKey = "analytics.ai.enabled"
+
     private static var cachedAvailability: (checkedAt: Date, value: AppleFoundationModelAvailability)?
     private static var runtimeUnavailableUntil: Date?
     private static var runtimeUnavailableKind: String?
@@ -518,14 +526,13 @@ enum AppleFoundationModelSupport {
     private static let runtimeFailureCooldown: TimeInterval = 300
     private static let assetsUnavailableCooldown: TimeInterval =
         ProcessInfo.processInfo.environment["DEBUG_AI_COOLDOWN"] != nil ? 30 : 900
-    private static let localInferenceEnabledDefaultsKey = "apple.foundation.models.localInference.enabled"
 
     static func resolveAvailability(isEnabled: Bool) -> AppleFoundationModelAvailability {
         guard isEnabled else {
             return .disabled
         }
         guard isLocalInferenceEnabled else {
-            return .disabled
+            return .localInferenceDisabled
         }
 
         let now = Date()
@@ -571,18 +578,64 @@ enum AppleFoundationModelSupport {
         availability == .available ? availableCacheWindow : unavailableCacheWindow
     }
 
-    private static var isLocalInferenceEnabled: Bool {
+    static var isLocalInferenceEnabled: Bool {
         if ProcessInfo.processInfo.environment["ENABLE_APPLE_FOUNDATION_MODELS"] == "1" {
             return true
         }
         if UserDefaults.standard.object(forKey: localInferenceEnabledDefaultsKey) != nil {
             return UserDefaults.standard.bool(forKey: localInferenceEnabledDefaultsKey)
         }
-        #if os(macOS)
-        return false
-        #else
         return true
-        #endif
+    }
+
+    static func setLocalInferenceEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: localInferenceEnabledDefaultsKey)
+        clearCachedAvailability()
+    }
+
+    static func clearCachedAvailability() {
+        cachedAvailability = nil
+    }
+
+    static var lastRuntimeFailureKind: String? {
+        runtimeUnavailableKind
+    }
+
+    static var runtimeCooldownRemaining: TimeInterval? {
+        guard let runtimeUnavailableUntil else { return nil }
+        let remaining = runtimeUnavailableUntil.timeIntervalSinceNow
+        return remaining > 0 ? remaining : nil
+    }
+
+    static func diagnosticSummary() -> String {
+        let availability = resolveAvailability(isEnabled: true)
+        if let remaining = runtimeCooldownRemaining {
+            return "\(diagnosticTitle(for: availability)) · reintento en \(Int(remaining.rounded(.up))) s"
+        }
+        return diagnosticTitle(for: availability)
+    }
+
+    static func diagnosticTitle(for availability: AppleFoundationModelAvailability) -> String {
+        switch availability {
+        case .disabled:
+            return "Desactivado por módulo"
+        case .localInferenceDisabled:
+            return "Desactivado en Ajustes"
+        case .frameworkUnavailable:
+            return "Framework no incluido"
+        case .unsupportedOS:
+            return "Sistema no compatible"
+        case .unsupportedDevice:
+            return "Dispositivo no compatible"
+        case .notEnabled:
+            return "Apple Intelligence apagado"
+        case .modelLoading:
+            return "Preparando modelo"
+        case .available:
+            return "Disponible"
+        case .unavailable:
+            return "No responde"
+        }
     }
 
     static func recordRuntimeFailure(_ error: Error) {
@@ -1866,6 +1919,7 @@ final class AppleFoundationContextualAIService {
         case .available:
             return .available
         case .frameworkUnavailable,
+                .localInferenceDisabled,
                 .unsupportedOS,
                 .unsupportedDevice,
                 .notEnabled,

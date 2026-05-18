@@ -405,6 +405,37 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-05-18 - IA local Apple Foundation configurable y no oculta
+
+Resumen:
+- Se corrigió la regresión introducida alrededor de `95106d1`: `AppleFoundationModelSupport` ya no desactiva Foundation Models por defecto en macOS; la preferencia maestra `apple.foundation.models.localInference.enabled` queda activada por defecto y distingue `.localInferenceDisabled` de un módulo desactivado.
+- `MacSettingsView` conecta Ajustes a las claves reales `reports.ai.enabled`, `contextual.ai.enabled`, `analytics.ai.enabled` y `apple.foundation.models.localInference.enabled`, con diagnóstico visible de disponibilidad, último fallo runtime y acción para recomprobar caché.
+- Se retiraron bloqueos funcionales por disponibilidad en la IA contextual cuando hay fallback por reglas, y se evitaron consultas de disponibilidad desde render en puntos como `IPadWorkspaceShell`, `BulkLOMLOEGenerationSheet` y `PhysicalTestScaleEditor`.
+- No hubo migración SQLDelight ni cambio de esquema; el cambio afecta a preferencias `UserDefaults`, disponibilidad de servicios Apple y flujo de fallback local.
+
+Validación:
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -configuration Debug -destination 'platform=macOS' build` terminó con `BUILD SUCCEEDED`.
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` compiló Swift y el framework KMP, pero falló en firma de `MiGestorKit.framework` con `bundle format unrecognized`, pendiente de triage de empaquetado iOS.
+
+Notas para futuras conversaciones:
+- No volver a usar flags `mac_ai_reports_enabled` o `mac_ai_notebook_summary_enabled` como fuente de verdad para IA: los servicios leen las claves reales de `AppleFoundationModelSupport`.
+- Apple Foundation Models debe ser una mejora opcional; informes, síntesis, comentarios, analítica, baremos y fórmulas deben seguir ofreciendo resultado por reglas o mensaje accionable si el modelo local no está disponible.
+
+### 2026-05-18 - Informes no bloquea fallback por reglas
+
+Resumen:
+- `kmp/iosApp/MacApp/MacModuleStubs.swift` cambia `MacReportsView` para usar `AppleFoundationReportService` como motor principal de borradores, elimina el bloqueo por `aiAvailability.isAvailable` y deja la disponibilidad de IA solo como estado visual.
+- `generateAIDraft()` vuelve a llamar a `reportService.generateDraft(...)`, de modo que Apple Intelligence es una mejora opcional y el fallback por reglas del propio servicio cubre feature flags desactivados, falta de Foundation Models o fallos de runtime.
+- `refreshAIAvailability()` consulta `reportService.currentAvailability()`, respetando el estado real de `reports.ai.enabled` sin convertirlo en una condición funcional.
+- `kmp/iosApp/App/NotebookTopBar.swift` mantiene la síntesis pedagógica sobre `AppleFoundationReportService.generateDraft(...)`, añade fallback final a `ReportGenerationContext.summary` en la compactación y conserva `saveNotebookAICommentDirect(...)` para mejorar persistencia cuando la columna recién creada aún no está en el snapshot SwiftUI.
+
+Validación:
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -configuration Debug -destination 'platform=macOS' build` terminó con `BUILD SUCCEEDED`.
+
+Notas para futuras conversaciones:
+- No hubo migración SQLDelight ni cambio de esquema. La persistencia afectada es la escritura de celdas de síntesis mediante `notebookRepository.saveCell` a través del bridge.
+- Evitar reintroducir `aiAvailability.isAvailable` como bloqueo para informes o síntesis: el patrón correcto es servicio de informes primero, IA opcional y fallback por reglas como garantía.
+
 ### 2026-05-18 - Síntesis pedagógica reutiliza informes
 
 Resumen:

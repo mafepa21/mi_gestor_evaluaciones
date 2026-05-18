@@ -67,6 +67,8 @@ final class AppleAIOrchestrator {
             return .available
         case .disabled:
             return .disabled("La IA local está desactivada.")
+        case .localInferenceDisabled:
+            return .disabled("Apple Foundation Models está desactivado en Ajustes de la app.")
         case .modelLoading:
             return .preparing("Preparando Apple Intelligence. Se usará fallback por reglas hasta que esté listo.")
         case .notEnabled:

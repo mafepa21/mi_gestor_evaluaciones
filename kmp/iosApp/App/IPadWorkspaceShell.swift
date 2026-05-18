@@ -3021,6 +3021,7 @@ struct ContextualAIAssistantSheet: View {
     @State var feedbackMessage: String?
     @State var teachingDraft: TeachingAssistantDraft?
     @State var refinePrompt = ""
+    @State var aiAvailability: AIContextualAvailabilityState = .unavailable("Comprobando disponibilidad…")
 
     let aiService = AppleFoundationContextualAIService()
     let teachingAssistantService = AppleFoundationTeachingAssistantService()
@@ -3044,6 +3045,7 @@ struct ContextualAIAssistantSheet: View {
                 }
             }
             .onAppear {
+                aiAvailability = aiService.currentAvailability()
                 aiService.prewarm()
                 teachingAssistantService.prewarm()
                 selectedAction = context.suggestedActions.first
@@ -3052,8 +3054,7 @@ struct ContextualAIAssistantSheet: View {
     }
 
     var availabilityCard: some View {
-        let availability = aiService.currentAvailability()
-        return EvaluationGlassCard {
+        EvaluationGlassCard {
             VStack(alignment: .leading, spacing: 12) {
                 Label(module.title, systemImage: module.systemImage)
                     .font(.system(size: 13, weight: .bold, design: .rounded))
@@ -3072,9 +3073,9 @@ struct ContextualAIAssistantSheet: View {
                         .padding(.vertical, 6)
                         .background(NotebookStyle.primaryTint.opacity(0.12), in: Capsule(style: .continuous))
                 }
-                Text(availability.message)
+                Text(aiAvailability.message)
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundStyle(availability.isAvailable ? NotebookStyle.successTint : NotebookStyle.warningTint)
+                    .foregroundStyle(aiAvailability.isAvailable ? NotebookStyle.successTint : NotebookStyle.warningTint)
 
                 if !context.metrics.isEmpty {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 12)], spacing: 12) {
@@ -3185,7 +3186,7 @@ struct ContextualAIAssistantSheet: View {
                         }
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(!context.hasEnoughData || selectedAction == nil || isGenerating || !aiService.currentAvailability().isAvailable)
+                    .disabled(!context.hasEnoughData || selectedAction == nil || isGenerating)
                 }
             }
         }
@@ -3311,6 +3312,7 @@ struct ContextualAIAssistantSheet: View {
         Task {
             do {
                 await MainActor.run {
+                    aiAvailability = aiService.currentAvailability()
                     feedbackMessage = nil
                 }
 

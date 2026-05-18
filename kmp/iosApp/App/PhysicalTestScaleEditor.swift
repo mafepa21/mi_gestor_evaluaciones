@@ -555,7 +555,7 @@ struct PhysicalTestScaleEditor: View {
                 Label("Revisión docente necesaria", systemImage: "checkmark.seal")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.orange)
-                AppleAIStatusBadge(state: aiMetadata?.state ?? aiOrchestrator.availability().generationState, message: aiMetadata?.availabilityMessage ?? aiAvailability.message)
+                AppleAIStatusBadge(state: aiMetadata?.state ?? aiAvailabilityGenerationState, message: aiMetadata?.availabilityMessage ?? aiAvailability.message)
 
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(PhysicalScaleProfileCatalog.safetyWarnings, id: \.self) { warning in
@@ -710,6 +710,15 @@ struct PhysicalTestScaleEditor: View {
         case .disabled(let message), .preparing(let message), .unavailable(let message):
             aiAvailability = .unavailable(message)
         }
+    }
+
+    private var aiAvailabilityGenerationState: AppleAIGenerationState {
+        if aiAvailability.isAvailable {
+            return .available
+        }
+        return aiAvailability.message.localizedCaseInsensitiveContains("prepar")
+            ? .preparingModel
+            : .unavailable
     }
 
     private func generateAIProposal() async {

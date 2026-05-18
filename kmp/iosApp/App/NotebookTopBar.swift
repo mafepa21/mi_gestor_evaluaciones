@@ -506,10 +506,10 @@ struct NotebookSummaryGenerationSheet: View {
                     continue
                 }
 
-                let saved = await generatePedagogicalSummaryWithReports(
-                    classId: classId,
+                let saved = await generateSummaryFromReportSystem(
                     studentId: studentId,
-                    targetColumnId: targetColumnId
+                    targetColumnId: targetColumnId,
+                    termLabel: nil
                 )
 
                 if saved {
@@ -526,22 +526,25 @@ struct NotebookSummaryGenerationSheet: View {
                 onComplete("Síntesis pedagógicas guardadas: \(savedCount). Omitidas: \(skippedCount).", .success)
                 dismiss()
             } else {
-                feedbackMessage = "No se ha guardado ninguna síntesis. Revisa que el cuaderno tenga datos evaluables."
+                feedbackMessage = "No se ha podido generar ninguna síntesis. Revisa que el cuaderno tenga datos suficientes."
             }
         }
     }
 
-    private func generatePedagogicalSummaryWithReports(
-        classId: Int64,
+    @MainActor
+    private func generateSummaryFromReportSystem(
         studentId: Int64,
-        targetColumnId: String
+        targetColumnId: String,
+        termLabel: String?
     ) async -> Bool {
+        guard let data = notebookData else { return false }
+
         do {
             let context = try await bridge.buildReportGenerationContext(
-                classId: classId,
+                classId: data.sheet.classId,
                 studentId: studentId,
                 kind: .studentSummary,
-                termLabel: nil
+                termLabel: termLabel
             )
 
             let draft = try await reportService.generateDraft(
@@ -550,13 +553,13 @@ struct NotebookSummaryGenerationSheet: View {
                 tone: .claro
             )
 
-            let text = compactNotebookSummary(from: draft, length: configuration.length)
+            let text = compactNotebookSummary(from: draft, context: context, length: configuration.length)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
 
             guard !text.isEmpty else { return false }
 
             try await bridge.saveNotebookAICommentDirect(
-                classId: classId,
+                classId: data.sheet.classId,
                 studentId: studentId,
                 columnId: targetColumnId,
                 text: text
@@ -570,11 +573,13 @@ struct NotebookSummaryGenerationSheet: View {
 
     private func compactNotebookSummary(
         from draft: AIReportDraft,
+        context: KmpBridge.ReportGenerationContext,
         length: NotebookIndividualSummaryLength
     ) -> String {
         let teacher = draft.teacherNotesVersion.trimmingCharacters(in: .whitespacesAndNewlines)
         let summary = draft.summary.trimmingCharacters(in: .whitespacesAndNewlines)
-        let baseText = teacher.isEmpty ? summary : teacher
+        let contextSummary = context.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        let baseText = teacher.isEmpty ? (summary.isEmpty ? contextSummary : summary) : teacher
 
         switch length {
         case .brief:

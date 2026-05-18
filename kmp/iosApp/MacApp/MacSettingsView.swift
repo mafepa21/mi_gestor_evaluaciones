@@ -10,9 +10,13 @@ struct MacSettingsView: View {
     @AppStorage("mac_reduce_motion") private var reduceMotion = false
     @AppStorage("mac_compact_density") private var compactDensity = false
     @AppStorage("mac_confirm_destructive_actions") private var confirmDestructiveActions = true
-    @AppStorage("mac_ai_reports_enabled") private var aiReportsEnabled = true
-    @AppStorage("mac_ai_notebook_summary_enabled") private var aiNotebookSummaryEnabled = true
+    @AppStorage("apple.foundation.models.localInference.enabled") private var appleFoundationModelsEnabled = AppleFoundationModelSupport.isLocalInferenceEnabled
+    @AppStorage("reports.ai.enabled") private var aiReportsEnabled = true
+    @AppStorage("contextual.ai.enabled") private var aiContextualEnabled = true
+    @AppStorage("analytics.ai.enabled") private var aiAnalyticsEnabled = true
     @AppStorage("mac_privacy_anonymize_diagnostics") private var anonymizeDiagnostics = true
+    @State private var aiDiagnosticSummary = "Pendiente de comprobar"
+    @State private var aiLastFailure = "Sin fallos registrados"
 
     var body: some View {
         ScrollView {
@@ -34,6 +38,14 @@ struct MacSettingsView: View {
             .padding(MacAppStyle.pagePadding)
         }
         .frame(minWidth: 720, minHeight: 520)
+        .task { refreshAIDiagnostics() }
+        .appOnChange(of: appleFoundationModelsEnabled) { enabled in
+            AppleFoundationModelSupport.setLocalInferenceEnabled(enabled)
+            refreshAIDiagnostics()
+        }
+        .appOnChange(of: aiReportsEnabled) { _ in refreshAIDiagnostics() }
+        .appOnChange(of: aiContextualEnabled) { _ in refreshAIDiagnostics() }
+        .appOnChange(of: aiAnalyticsEnabled) { _ in refreshAIDiagnostics() }
     }
 
     private var pageHeader: some View {
@@ -121,11 +133,20 @@ struct MacSettingsView: View {
 
     private var localAISection: some View {
         settingsCard(title: "IA local", systemImage: "sparkles") {
-            settingsRow("Apple Foundation Models", value: "Modo local")
-            Toggle("Usar IA para informes", isOn: $aiReportsEnabled)
-            Toggle("Síntesis del cuaderno", isOn: $aiNotebookSummaryEnabled)
-            settingsRow("Nivel de detalle", value: "Normal")
-            settingsRow("Última ejecución", value: "Sin incidencias registradas")
+            Toggle("Apple Foundation Models", isOn: $appleFoundationModelsEnabled)
+            Toggle("Informes y comentarios LOMLOE", isOn: $aiReportsEnabled)
+            Toggle("Cuaderno, síntesis y ayuda contextual", isOn: $aiContextualEnabled)
+            Toggle("Analítica e insights", isOn: $aiAnalyticsEnabled)
+            settingsRow("Estado real", value: aiDiagnosticSummary)
+            settingsRow("Último fallo runtime", value: aiLastFailure)
+
+            Button {
+                AppleFoundationModelSupport.clearCachedAvailability()
+                refreshAIDiagnostics()
+            } label: {
+                Label("Recomprobar IA local", systemImage: "arrow.clockwise")
+            }
+            .buttonStyle(.bordered)
         }
     }
 
@@ -155,7 +176,7 @@ struct MacSettingsView: View {
             settingsRow("Datos del alumnado", value: "Guardado local")
             settingsRow("Servicios externos", value: "No usados por defecto")
             Toggle("Anonimizar diagnósticos", isOn: $anonymizeDiagnostics)
-            settingsRow("Informes IA", value: aiReportsEnabled ? "Permitidos localmente" : "Desactivados")
+            settingsRow("IA local", value: appleFoundationModelsEnabled ? "Permitida localmente" : "Desactivada en la app")
         }
     }
 
@@ -255,6 +276,8 @@ struct MacSettingsView: View {
             "KMP: \(session.bridge.status)",
             "Base de datos: \(databaseFileName)",
             "Sync helper: \(syncStatusTitle)",
+            "IA local: \(aiDiagnosticSummary)",
+            "IA último fallo: \(aiLastFailure)",
             "Pendientes sync: \(session.bridge.syncPendingChanges)",
             "Última sync: \(session.bridge.syncLastRunAt.map { $0.formatted(date: .abbreviated, time: .standard) } ?? "—")",
             "Módulos v1: \(MacFeatureRegistry.all.filter(\.enabledInV1).count)/\(MacFeatureRegistry.all.count)"
@@ -262,5 +285,10 @@ struct MacSettingsView: View {
 
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)
+    }
+
+    private func refreshAIDiagnostics() {
+        aiDiagnosticSummary = AppleFoundationModelSupport.diagnosticSummary()
+        aiLastFailure = AppleFoundationModelSupport.lastRuntimeFailureKind ?? "Sin fallos registrados"
     }
 }

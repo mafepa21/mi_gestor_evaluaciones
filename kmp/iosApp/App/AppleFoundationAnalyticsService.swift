@@ -338,6 +338,7 @@ final class AppleFoundationAnalyticsService {
         case .available:
             return .available
         case .frameworkUnavailable,
+                .localInferenceDisabled,
                 .unsupportedOS,
                 .unsupportedDevice,
                 .notEnabled,

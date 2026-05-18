@@ -1825,6 +1825,7 @@ struct BulkLOMLOEGenerationSheet: View {
     @State var isSaving = false
     @State var feedbackMessage: String?
     @State var generationMetadata: AppleAIGenerationMetadata?
+    @State var aiAvailability: AppleAIAvailability = .unavailable("Comprobando disponibilidad…")
 
     let aiOrchestrator = AppleAIOrchestrator()
 
@@ -1874,6 +1875,7 @@ struct BulkLOMLOEGenerationSheet: View {
                 }
             }
             .task {
+                aiAvailability = aiOrchestrator.availability()
                 aiOrchestrator.prewarmIfUseful(for: .report(audience))
                 if rows.isEmpty {
                     await loadStudents()
@@ -1887,7 +1889,7 @@ struct BulkLOMLOEGenerationSheet: View {
             TextField("Columna destino", text: $columnName)
                 .textFieldStyle(RoundedBorderTextFieldStyle())
             Toggle("Rellenar solo celdas vacías", isOn: $onlyEmptyCells)
-            AppleAIStatusBadge(state: generationMetadata?.state ?? aiOrchestrator.availability().generationState, message: generationMetadata?.availabilityMessage ?? aiOrchestrator.availability().message)
+            AppleAIStatusBadge(state: generationMetadata?.state ?? aiAvailability.generationState, message: generationMetadata?.availabilityMessage ?? aiAvailability.message)
             HStack(spacing: 12) {
                 Button {
                     Task { await generateAll() }
@@ -1957,6 +1959,7 @@ struct BulkLOMLOEGenerationSheet: View {
     func generateAll() async {
         isGenerating = true
         feedbackMessage = nil
+        aiAvailability = aiOrchestrator.availability()
         defer { isGenerating = false }
 
         for index in rows.indices {
@@ -1998,14 +2001,16 @@ struct BulkLOMLOEGenerationSheet: View {
                 )
             } catch {
                 rows[index].status = .failed(error.localizedDescription)
+                let failureAvailability = aiOrchestrator.availability()
+                aiAvailability = failureAvailability
                 await bridge.recordAIAuditEvent(
                     service: "reports",
                     useCase: "bulk_lomloe",
                     reportKind: KmpBridge.ReportKind.lomloeEvaluationComment.rawValue,
                     classId: classId,
                     studentId: rows[index].student.id,
-                    availability: aiOrchestrator.availability().generationState.title,
-                    modelAvailable: aiOrchestrator.availability().isAvailable,
+                    availability: failureAvailability.generationState.title,
+                    modelAvailable: failureAvailability.isAvailable,
                     success: false,
                     durationMs: Int64(Date().timeIntervalSince(startedAt) * 1000),
                     errorKind: String(describing: type(of: error)),

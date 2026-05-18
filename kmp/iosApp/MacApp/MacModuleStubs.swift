@@ -80,7 +80,7 @@ struct MacReportsView: View {
     @State private var isGeneratingDraft = false
     @State private var isExporting = false
 
-    private let aiOrchestrator = AppleAIOrchestrator()
+    private let reportService = AppleFoundationReportService()
     private let draftStore = MacReportDraftStore()
 
     private var selectedClass: SchoolClass? {
@@ -112,7 +112,7 @@ struct MacReportsView: View {
     }
 
     private var canGenerateAIDraft: Bool {
-        guard !isGeneratingDraft, aiAvailability.isAvailable else { return false }
+        guard !isGeneratingDraft else { return false }
         guard let reportContext, reportContext.hasEnoughData else { return false }
         return !requiresStudent || selectedStudentId != nil
     }
@@ -158,16 +158,21 @@ struct MacReportsView: View {
     }
 
     var body: some View {
-        HSplitView {
+        HStack(spacing: 0) {
             reportsSidebar
                 .frame(minWidth: 280, idealWidth: 310, maxWidth: 360)
+
+            Divider()
 
             reportsCenter
                 .frame(minWidth: 560, maxWidth: .infinity, maxHeight: .infinity)
 
+            Divider()
+
             reportsExportPanel
                 .frame(minWidth: 280, idealWidth: 320, maxWidth: 380)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(MacAppStyle.pageBackground)
         .task {
             refreshAIAvailability()
@@ -595,35 +600,32 @@ struct MacReportsView: View {
     @MainActor
     private func generateAIDraft() async {
         guard let reportContext else { return }
+
         isGeneratingDraft = true
         feedbackMessage = nil
         defer { isGeneratingDraft = false }
 
         do {
-            let generation = try await aiOrchestrator.generateWithTrace(
-                .report(reportContext, aiAudience, aiTone),
-                dataSource: reportContext.className,
-                includedEvidence: reportContext.factLines + reportContext.curriculumReferences
+            let draft = try await reportService.generateDraft(
+                from: reportContext,
+                audience: aiAudience,
+                tone: aiTone
             )
-            guard case .report(let draft) = generation.result else { return }
+
             aiDraft = draft
-            aiMetadata = generation.metadata
+            aiMetadata = nil
             editableDraftText = draft.editableText(for: reportContext)
-            feedbackMessage = generation.metadata.audit.usedFallback ? "Borrador por reglas preparado. Revísalo antes de exportar o compartir." : "Borrador generado. Revísalo antes de exportar o compartir."
+
+            feedbackMessage = aiAvailability.isAvailable
+                ? "Borrador generado. Revísalo antes de exportar o compartir."
+                : "Borrador por reglas preparado. Apple Intelligence no está disponible ahora mismo."
         } catch {
-            feedbackMessage = error.localizedDescription
+            feedbackMessage = "No se pudo preparar el borrador: \(error.localizedDescription)"
         }
     }
 
     private func refreshAIAvailability() {
-        switch aiOrchestrator.availability() {
-        case .available:
-            aiAvailability = .available
-        case .disabled:
-            aiAvailability = .disabled
-        case .preparing(let message), .unavailable(let message):
-            aiAvailability = .unavailable(message)
-        }
+        aiAvailability = reportService.currentAvailability()
     }
 
     private func loadSavedDraftForCurrentSelection() {

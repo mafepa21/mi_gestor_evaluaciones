@@ -671,6 +671,8 @@ final class AppleFoundationFormulaService {
         switch availability {
         case .disabled:
             return "La ayuda con IA local está desactivada."
+        case .localInferenceDisabled:
+            return "Apple Foundation Models está desactivado en Ajustes de la app."
         case .frameworkUnavailable:
             return "Apple Foundation Models no está disponible en este target."
         case .unsupportedOS:

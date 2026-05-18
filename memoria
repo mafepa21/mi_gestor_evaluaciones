@@ -405,6 +405,23 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-05-18 - Fallback local garantizado en síntesis pedagógica
+
+Resumen:
+- `NotebookTopBar.swift` ya no filtra alumnos solo por `context.hasEnoughData`; considera media, valores relevantes, seguimiento, incidencias, evidencias y asistencia como señales útiles.
+- La generación masiva de síntesis prepara contextos para todos los alumnos resueltos: si un alumno no tiene señales suficientes, genera un texto prudente de “Sin evidencias suficientes...” en lugar de dejarlo sin salida.
+- Si Apple Intelligence no está disponible, `performGeneration()` ya no llama a `aiOrchestrator.generateWithTrace`; usa directamente `fallbackPedagogicalSummary` y crea metadatos de `rulesFallback`.
+- Si Apple Intelligence parecía disponible pero falla durante la llamada, se registra el fallo en `AppleFoundationModelSupport` y se prepara igualmente una síntesis local por reglas.
+
+Validación:
+- `git diff --check` no reportó errores.
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -destination 'platform=macOS' build` terminó con `BUILD SUCCEEDED`.
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO` terminó con `BUILD SUCCEEDED`.
+
+Notas para futuras conversaciones:
+- La preview se mantiene como paso de revisión docente; las celdas se escriben al pulsar “Aplicar al cuaderno”.
+- Este cambio evita que una caída de `ModelCatalog` o una disponibilidad negativa de Apple Intelligence deje la columna de síntesis sin previsualización ni texto aplicable.
+
 ### 2026-05-18 - Cooldown robusto para Apple Foundation Models
 
 Resumen:

@@ -364,7 +364,14 @@ struct NotebookSummaryGenerationSheet: View {
 
     private var targetSummaryText: String {
         let evidenceCount = studentIdsWithEvidence(in: resolvedIncludedColumnIds()).count
-        return "\(evidenceCount) alumnos con datos preparados para síntesis individual."
+        let totalCount = resolvedStudentIds.count
+        if totalCount == 0 {
+            return "No hay alumnos disponibles para generar síntesis."
+        }
+        if evidenceCount == totalCount {
+            return "\(evidenceCount) alumnos con datos preparados para síntesis individual."
+        }
+        return "\(evidenceCount) alumnos con señales claras; se preparará una síntesis prudente para \(totalCount - evidenceCount) sin evidencias suficientes."
     }
 
     private var resolvedStudentIds: [Int64] {
@@ -377,8 +384,21 @@ struct NotebookSummaryGenerationSheet: View {
             includedColumnIds: includedColumnIds,
             studentIds: resolvedStudentIds
         )
-        .filter(\.hasEnoughData)
+        .filter { context in
+            hasUsableSummarySignal(context)
+        }
         .map(\.studentId)
+    }
+
+    private func hasUsableSummarySignal(_ context: KmpBridge.NotebookAICommentContext) -> Bool {
+        if context.hasEnoughData { return true }
+        if context.averageScore != nil { return true }
+        if !context.relevantValues.isEmpty { return true }
+        if context.followUpCount > 0 { return true }
+        if context.incidentCount > 0 { return true }
+        if context.evidenceCount > 0 { return true }
+        if context.attendanceStatus != nil { return true }
+        return false
     }
 
     private func resolvedIncludedColumnIds() -> [String] {
@@ -481,20 +501,13 @@ struct NotebookSummaryGenerationSheet: View {
             return
         }
 
-        let studentIds = studentIdsWithEvidence(in: includedColumnIds)
-        guard !studentIds.isEmpty else {
-            progressMessage = nil
-            feedbackMessage = "No hay datos suficientes para generar síntesis."
-            return
-        }
-
         let contexts = bridge.generateNotebookAICommentContexts(
             includedColumnIds: includedColumnIds,
-            studentIds: studentIds
+            studentIds: resolvedStudentIds
         )
 
         guard !contexts.isEmpty else {
-            feedbackMessage = "No hay datos suficientes en las columnas seleccionadas."
+            feedbackMessage = "No hay alumnos disponibles para generar síntesis."
             return
         }
 
@@ -505,8 +518,9 @@ struct NotebookSummaryGenerationSheet: View {
         pendingTargetColumnId = targetColumnId
 
         let onlyEmptyCells = configuration.generationMode == .onlyEmptyCells
+        let resolvedAvailability = availability
         isGenerating = true
-        feedbackMessage = availability.isAvailable ? nil : "Apple Intelligence no disponible; preparando síntesis local editable."
+        feedbackMessage = resolvedAvailability.isAvailable ? nil : "Apple Intelligence no disponible; preparando síntesis local editable."
         progressMessage = nil
 
         Task {
@@ -527,31 +541,39 @@ struct NotebookSummaryGenerationSheet: View {
                     continue
                 }
 
-                do {
-                    let generation = try await aiOrchestrator.generateWithTrace(
-                        .notebookComment(context, .docente, .claro),
-                        dataSource: context.className,
-                        includedEvidence: context.relevantValues.map { $0.title } + context.competencyLabels
-                    )
-                    guard case .notebookComment(let draft) = generation.result else { continue }
-                    let text = notebookIndividualSummaryText(from: draft, length: configuration.length)
-                    prepared.append((context.studentId, context.studentName, text))
-                    latestMetadata = generation.metadata
-                } catch {
-                    AppleFoundationModelSupport.recordRuntimeFailure(error)
+                if resolvedAvailability.isAvailable {
+                    do {
+                        let generation = try await aiOrchestrator.generateWithTrace(
+                            .notebookComment(context, .docente, .claro),
+                            dataSource: context.className,
+                            includedEvidence: context.relevantValues.map { $0.title } + context.competencyLabels
+                        )
+                        if case .notebookComment(let draft) = generation.result {
+                            let text = notebookIndividualSummaryText(from: draft, length: configuration.length)
+                            prepared.append((context.studentId, context.studentName, text))
+                            latestMetadata = generation.metadata
+                        } else {
+                            let draft = fallbackPedagogicalSummary(from: context)
+                            let text = notebookIndividualSummaryText(from: draft, length: configuration.length)
+                            prepared.append((context.studentId, context.studentName, text))
+                            latestMetadata = fallbackSummaryMetadata(from: context, message: "Se ha usado fallback por reglas.")
+                        }
+                    } catch {
+                        AppleFoundationModelSupport.recordRuntimeFailure(error)
+                        let draft = fallbackPedagogicalSummary(from: context)
+                        let text = notebookIndividualSummaryText(from: draft, length: configuration.length)
+                        prepared.append((context.studentId, context.studentName, text))
+                        latestMetadata = fallbackSummaryMetadata(
+                            from: context,
+                            state: .recoverableError(error.localizedDescription),
+                            message: "Se ha usado fallback por reglas tras un error recuperable."
+                        )
+                    }
+                } else {
                     let draft = fallbackPedagogicalSummary(from: context)
                     let text = notebookIndividualSummaryText(from: draft, length: configuration.length)
                     prepared.append((context.studentId, context.studentName, text))
-                    latestMetadata = AppleAIGenerationMetadata(
-                        state: .recoverableError(error.localizedDescription),
-                        availabilityMessage: "Se ha usado fallback por reglas tras un error recuperable.",
-                        audit: AppleAIGenerationAudit(
-                            dataSource: context.className,
-                            includedEvidence: context.relevantValues.map { $0.title },
-                            usedRealAI: false,
-                            usedFallback: true
-                        )
-                    )
+                    latestMetadata = fallbackSummaryMetadata(from: context, message: resolvedAvailability.message)
                 }
             }
 
@@ -571,6 +593,23 @@ struct NotebookSummaryGenerationSheet: View {
         }
     }
 
+    private func fallbackSummaryMetadata(
+        from context: KmpBridge.NotebookAICommentContext,
+        state: AppleAIGenerationState = .rulesFallback,
+        message: String
+    ) -> AppleAIGenerationMetadata {
+        AppleAIGenerationMetadata(
+            state: state,
+            availabilityMessage: message,
+            audit: AppleAIGenerationAudit(
+                dataSource: context.className,
+                includedEvidence: context.relevantValues.map { $0.title } + context.competencyLabels,
+                usedRealAI: false,
+                usedFallback: true
+            )
+        )
+    }
+
     private func applyPendingSummaries() {
         guard let targetColumnId = pendingTargetColumnId ?? selectedExistingColumnId else {
             feedbackMessage = "No se pudo crear o resolver la columna de síntesis."
@@ -586,6 +625,7 @@ struct NotebookSummaryGenerationSheet: View {
     private func fallbackPedagogicalSummary(
         from context: KmpBridge.NotebookAICommentContext
     ) -> NotebookAICommentDraft {
+        let hasUsableSignal = hasUsableSummarySignal(context)
         let averageText = context.averageScore.map { IosFormatting.decimal(from: $0) } ?? "sin media consolidada"
         let relevantValues = context.relevantValues
             .prefix(5)
@@ -600,11 +640,15 @@ struct NotebookSummaryGenerationSheet: View {
         let warningText = context.relevantValues.isEmpty
             ? "La síntesis es prudente porque todavía hay pocos datos registrados."
             : "La síntesis se basa en las columnas disponibles del cuaderno."
-        let comment = """
-        \(context.studentName) presenta una media de \(averageText). A partir de las evidencias registradas en el cuaderno, destacan estos datos: \(valuesText). \(attendanceText) \(followUpText) \(incidentText) \(evidenceText)
+        let comment = hasUsableSignal
+            ? """
+            \(context.studentName) presenta una media de \(averageText). A partir de las evidencias registradas en el cuaderno, destacan estos datos: \(valuesText). \(attendanceText) \(followUpText) \(incidentText) \(evidenceText)
 
-        Lectura pedagógica: el rendimiento debe interpretarse con prudencia y vincularse a las evidencias disponibles. Conviene revisar la evolución en las próximas sesiones y completar la información si faltan registros relevantes.
-        """
+            Lectura pedagógica: el rendimiento debe interpretarse con prudencia y vincularse a las evidencias disponibles. Conviene revisar la evolución en las próximas sesiones y completar la información si faltan registros relevantes.
+            """
+            : """
+            Sin evidencias suficientes para sintetizar la evolución de \(context.studentName) en las columnas seleccionadas. Conviene completar registros evaluables, asistencia u observaciones verificables antes de cerrar una valoración pedagógica.
+            """
 
         return NotebookAICommentDraft(
             summary: "Síntesis pedagógica generada a partir del cuaderno.",

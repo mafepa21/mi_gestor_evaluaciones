@@ -405,6 +405,67 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-05-18 - Dashboard operativo Hoy sin acciones engañosas
+
+Resumen:
+- `kmp/iosApp/MacApp/MacDashboardView.swift` cambia el lenguaje principal de Dashboard a `Hoy`, agrupa pendientes por `Resolver ahora`, `Preparar` y `Revisar`, añade última actualización al estado y renombra acciones preparatorias para no prometer guardados que no ocurren.
+- `kmp/iosApp/App/DashboardView.swift` elimina etiquetas técnicas A/B/C/D/E/F, sustituye filtros libres por chips en castellano, mueve CSV a un único menú `Exportar` y traduce estados/severidades en la UI.
+- La evaluación rápida iPad/iOS deja de guardar un `score: 7.0` automático. Ahora abre una sheet de confirmación con clase, alumno, columna y nota; solo guarda tras confirmación explícita y usando columna de cuaderno asociada a evaluación.
+- No hubo cambios en SQLDelight, `kmp/shared`, `kmp/data`, `KmpBridge.swift` ni migraciones.
+
+Validación:
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -configuration Debug -destination 'platform=macOS' build` terminó con `BUILD SUCCEEDED`.
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` terminó con `BUILD SUCCEEDED`.
+
+Notas para futuras conversaciones:
+- Mantener Dashboard como centro operativo diario: acciones visibles deben navegar o guardar de verdad; si una acción solo prepara contexto, debe llamarse `Preparar`.
+- La sheet de evaluación rápida depende de que el cuaderno de la clase tenga columnas de evaluación cargadas; si se cambia el modelo de columnas, revisar `DashboardQuickEvaluationSheet.notebookColumns`.
+
+### 2026-05-18 - Ajustes macOS como centro de configuración
+
+Resumen:
+- `kmp/iosApp/MacApp/MacSettingsView.swift` dejó de presentar todas las áreas en un `LazyVGrid` y pasó a una navegación interna con secciones: General, Apariencia, Datos locales, Sincronización, IA local, Privacidad, Diagnóstico y Backups.
+- Ajustes ahora muestra datos reales: curso académico calculado, clase inicial desde la selección/clases disponibles, metadatos de la base de datos local (nombre, ruta, tamaño y última modificación), resumen visual de Sync LAN y estado real del historial de backups vía `MacBackupStore`.
+- `kmp/iosApp/MacApp/MacRootView.swift` pasa el `backupStore` compartido a Ajustes para evitar duplicar el módulo Backups y mantener el resumen alineado con la pantalla principal.
+
+Validación:
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -destination 'platform=macOS' build` terminó con `BUILD SUCCEEDED`.
+
+Notas para futuras conversaciones:
+- No hubo cambios en esquema SQLDelight, KMP/shared, repositorios ni migraciones. La persistencia afectada es de lectura/observabilidad: metadatos de archivo local y resumen del store de backups ya existente.
+- El botón “Crear ahora” en Ajustes delega en `MacBackupStore.createBackup`, por lo que cualquier cambio futuro en política de backups debe mantenerse en el store, no en la vista.
+
+### 2026-05-18 - Backups macOS crea copias sin cruzar Kotlin/Native
+
+Resumen:
+- Se corrigió el crash al pulsar `Crear backup` en macOS: `MacBackupStore.createBackup()` ya no llama a `KmpBridge.createLocalBackup()`, evitando que una excepción KMP cruce mal el puente Swift/Kotlin y termine en `Kotlin_ObjCExport_runCompletionFailure`.
+- La creación premium ahora vive en Swift mediante `MacBackupService` dentro de `kmp/iosApp/MacApp/MacBackupSupport.swift`: resuelve la base local, valida existencia, copia `.db` y sidecars `.db-wal`/`.db-shm`, calcula SHA-256 y escribe `backup_manifest.json`.
+- `kmp/iosApp/MacApp/MacBackupsView.swift` deshabilita `Crear backup` mientras `isCreatingBackup` está activo y muestra `errorMessage` en la UI si falta ruta, archivo o permisos.
+- No hubo migración SQLDelight ni cambios en `kmp/shared`, `kmp/data` o `desktopApp`. Tampoco se tocó `KmpBridge.swift`; para resolver rutas se usa el helper existente `MacosDriverKt.getMacosAppDataPath`.
+
+Validación:
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -configuration Debug -destination 'platform=macOS' build` terminó con `BUILD SUCCEEDED`.
+- `rg` confirmó que `MacBackupSupport.swift`/`MacBackupsView.swift` ya no contienen llamadas a `createLocalBackup`; solo queda `restoreLocalBackup` para la restauración existente.
+
+Notas para futuras conversaciones:
+- El servicio Swift prioriza `desktop_mi_gestor_kmp.db` y cae a `mi_gestor_kmp.db` para compatibilidad legacy. Si se cambia el nombre real de la DB macOS, actualizar esta resolución junto con `MacosDriver.kt`.
+- La copia de emergencia previa a restaurar también usa ahora `MacBackupService`, así no depende del método KMP problemático.
+
+### 2026-05-18 - Backups macOS con manifest e inspector
+
+Resumen:
+- Se reemplazó el stub `MacBackupsView` incrustado al final de `kmp/iosApp/MacApp/MacRootView.swift` por un módulo propio en `kmp/iosApp/MacApp/MacBackupsView.swift` y `kmp/iosApp/MacApp/MacBackupSupport.swift`.
+- El módulo escanea la carpeta local de backups, muestra historial real con fecha, tamaño, ruta y estado, y crea `backup_manifest.json` junto a cada nueva copia empaquetada.
+- Cada manifest contiene `BackupManifest` con UUID, fecha, versión de app, nombre/tamaño de base de datos, checksum SHA-256, ruta origen y nota opcional. La restauración valida manifest/checksum/tamaño y crea una copia de emergencia antes de llamar al puente KMP.
+- La política de retención se deja explícita en 10 copias y solo borra antiguas tras confirmación del usuario. No hubo migración SQLDelight ni cambios en `kmp/shared`, `kmp/data`, `desktopApp` o `KmpBridge.swift`.
+
+Validación:
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -configuration Debug -destination 'platform=macOS' build` terminó con `BUILD SUCCEEDED`.
+
+Notas para futuras conversaciones:
+- Los backups nuevos se organizan en subcarpetas dentro de `~/Library/Application Support/MiGestor/backups`; backups antiguos planos se muestran, pero no se consideran restaurables si no tienen manifest verificable.
+- El servicio KMP sigue siendo el responsable efectivo de crear/restaurar la base de datos; el módulo SwiftUI añade manifiesto, verificación, Finder/copy/export y confirmaciones seguras alrededor de ese puente.
+
 ### 2026-05-18 - IA local Apple Foundation configurable y no oculta
 
 Resumen:

@@ -1,11 +1,14 @@
 import SwiftUI
 import AppKit
+import MiGestorKit
 
 struct MacSettingsView: View {
     @ObservedObject var session: MacAppSessionController
     @ObservedObject var commandCenter: MacCommandCenterCoordinator
+    @ObservedObject var backupStore: MacBackupStore
     let onOpenSync: () -> Void
 
+    @State private var selectedSection: SettingsSection = .general
     @AppStorage("theme_mode") private var themeModeRawValue: String = AppThemeMode.system.rawValue
     @AppStorage("mac_reduce_motion") private var reduceMotion = false
     @AppStorage("mac_compact_density") private var compactDensity = false
@@ -19,26 +22,24 @@ struct MacSettingsView: View {
     @State private var aiLastFailure = "Sin fallos registrados"
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
-                pageHeader
+        HStack(spacing: 0) {
+            settingsSidebar
 
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: MacAppStyle.cardSpacing) {
-                    generalSection
-                    appearanceSection
-                    localDataSection
-                    syncSection
-                    localAISection
-                    aiHistorySection
-                    backupsSection
-                    privacySection
-                    diagnosticSection
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    pageHeader
+                    selectedSectionView
                 }
+                .padding(32)
             }
-            .padding(MacAppStyle.pagePadding)
         }
-        .frame(minWidth: 720, minHeight: 520)
-        .task { refreshAIDiagnostics() }
+        .frame(minWidth: 840, minHeight: 560)
+        .task {
+            refreshAIDiagnostics()
+            await backupStore.loadBackups()
+        }
         .appOnChange(of: appleFoundationModelsEnabled) { enabled in
             AppleFoundationModelSupport.setLocalInferenceEnabled(enabled)
             refreshAIDiagnostics()
@@ -48,21 +49,57 @@ struct MacSettingsView: View {
         .appOnChange(of: aiAnalyticsEnabled) { _ in refreshAIDiagnostics() }
     }
 
+    private var settingsSidebar: some View {
+        List(selection: $selectedSection) {
+            ForEach(SettingsSection.allCases) { section in
+                Label(section.title, systemImage: section.systemImage)
+                    .tag(section)
+            }
+        }
+        .listStyle(.sidebar)
+        .frame(width: 188)
+    }
+
     private var pageHeader: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Ajustes")
+            Text(selectedSection.title)
                 .font(MacAppStyle.pageTitle)
-            Text("Configura apariencia, datos locales, IA, seguridad y diagnóstico de la app.")
+            Text(selectedSection.subtitle)
                 .font(.callout)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var selectedSectionView: some View {
+        switch selectedSection {
+        case .general:
+            generalSection
+        case .appearance:
+            appearanceSection
+        case .localData:
+            localDataSection
+        case .sync:
+            syncSection
+        case .localAI:
+            localAISection
+            aiHistorySection
+        case .privacy:
+            privacySection
+        case .diagnostic:
+            diagnosticSection
+        case .backups:
+            backupsSection
         }
     }
 
     private var generalSection: some View {
         settingsCard(title: "General", systemImage: "slider.horizontal.3") {
             settingsRow("App", value: "MiGestor")
-            settingsRow("Curso actual", value: "Último usado")
-            settingsRow("Clase inicial", value: "Última clase abierta")
+            settingsRow("Curso actual", value: currentSchoolYearText)
+            configurableRow("Clase inicial", value: initialClassText) {
+                session.selectedFeature = .students
+            }
             Toggle("Mostrar inspector por defecto", isOn: $session.inspectorVisible)
             Toggle("Confirmar antes de borrar", isOn: $confirmDestructiveActions)
         }
@@ -86,7 +123,10 @@ struct MacSettingsView: View {
     private var localDataSection: some View {
         settingsCard(title: "Datos locales", systemImage: "externaldrive") {
             settingsRow("Estado", value: session.bridge.status)
-            settingsRow("Base de datos", value: databaseFileName)
+            settingsRow("Nombre", value: databaseFileName)
+            settingsRow("Ruta", value: databasePathText)
+            settingsRow("Tamaño", value: databaseSizeText)
+            settingsRow("Última modificación", value: databaseLastModifiedText)
             settingsRow("Modo", value: "Local")
 
             HStack(spacing: 8) {
@@ -108,9 +148,26 @@ struct MacSettingsView: View {
 
     private var syncSection: some View {
         settingsCard(title: "Sincronización", systemImage: "arrow.triangle.2.circlepath.circle") {
+            HStack(spacing: 12) {
+                Image(systemName: syncStatusImage)
+                    .font(.title2)
+                    .foregroundStyle(syncPendingChanges == 0 ? MacAppStyle.successTint : MacAppStyle.warningTint)
+                    .frame(width: 32)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Sync LAN")
+                        .font(.headline)
+                    Text(syncSummary)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Divider()
+
             settingsRow("Estado", value: syncStatusTitle)
+            settingsRow("Pendientes", value: "\(syncPendingChanges)")
             settingsRow("Última sync", value: session.bridge.syncLastRunAt.map(relativeTime) ?? "Sin registro")
-            settingsRow("Cambios pendientes", value: "\(session.bridge.syncPendingChanges)")
 
             HStack(spacing: 8) {
                 Button {
@@ -158,40 +215,72 @@ struct MacSettingsView: View {
 
     private var backupsSection: some View {
         settingsCard(title: "Copias de seguridad", systemImage: "externaldrive.badge.timemachine") {
-            settingsRow("Última copia", value: "Pendiente de configurar")
-            settingsRow("Copia automática", value: "Local")
-            settingsRow("Ubicación", value: "Carpeta de la app")
-
-            Button {
-                session.selectedFeature = .backups
-            } label: {
-                Label("Abrir Backups", systemImage: "arrow.forward.circle")
+            if backupStore.operationState != .idle && backupStore.backups.isEmpty {
+                ProgressView("Leyendo historial de backups")
+                    .controlSize(.small)
             }
-            .buttonStyle(.bordered)
+
+            settingsRow("Última copia", value: latestBackupDateText)
+            settingsRow("Estado", value: latestBackupStatusText)
+            settingsRow("Copias guardadas", value: "\(backupStore.backups.count)")
+            settingsRow("Ubicación", value: backupStore.backupDirectoryURL.path)
+
+            HStack(spacing: 8) {
+                Button {
+                    session.selectedFeature = .backups
+                } label: {
+                    Label("Abrir Backups", systemImage: "arrow.forward.circle")
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button {
+                    Task { await backupStore.createBackup(note: "Creada desde Ajustes") }
+                } label: {
+                    Label("Crear ahora", systemImage: "plus.circle")
+                }
+                .buttonStyle(.bordered)
+                .disabled(backupStore.isCreatingBackup)
+            }
         }
     }
 
     private var privacySection: some View {
         settingsCard(title: "Privacidad", systemImage: "lock.shield") {
-            settingsRow("Datos del alumnado", value: "Guardado local")
+            settingsRow("Datos del alumnado", value: "Guardados localmente en este Mac")
+            settingsRow("IA local", value: appleFoundationModelsEnabled ? "Activada" : "Desactivada")
+            settingsRow("Diagnósticos", value: "Anonimizados antes de copiar")
             settingsRow("Servicios externos", value: "No usados por defecto")
             Toggle("Anonimizar diagnósticos", isOn: $anonymizeDiagnostics)
-            settingsRow("IA local", value: appleFoundationModelsEnabled ? "Permitida localmente" : "Desactivada en la app")
         }
     }
 
     private var diagnosticSection: some View {
-        settingsCard(title: "Diagnóstico", systemImage: "stethoscope") {
+        settingsCard(title: "Diagnóstico técnico", systemImage: "stethoscope") {
             settingsRow("KMP", value: session.bridge.status)
             settingsRow("SQLDelight", value: databaseFileName)
             settingsRow("Helper Sync", value: syncStatusTitle)
             settingsRow("Plataforma", value: session.bootstrap.platformName)
-            settingsRow("Cobertura v1", value: "\(MacFeatureRegistry.all.filter(\.enabledInV1).count)/\(MacFeatureRegistry.all.count) módulos")
+            settingsRow("Módulos activos", value: "\(MacFeatureRegistry.all.filter(\.enabledInV1).count)/\(MacFeatureRegistry.all.count)")
+            settingsRow("IA local", value: aiDiagnosticSummary)
 
-            Button {
-                copyDiagnostic()
-            } label: {
-                Label("Copiar diagnóstico", systemImage: "doc.on.doc")
+            HStack(spacing: 8) {
+                Button {
+                    copyDiagnostic(anonymized: false)
+                } label: {
+                    Label("Copiar diagnóstico", systemImage: "doc.on.doc")
+                }
+
+                Button {
+                    copyDiagnostic(anonymized: true)
+                } label: {
+                    Label("Copiar anonimizado", systemImage: "lock.doc")
+                }
+
+                Button {
+                    openLogsFolder()
+                } label: {
+                    Label("Abrir logs", systemImage: "folder")
+                }
             }
             .buttonStyle(.bordered)
         }
@@ -210,7 +299,7 @@ struct MacSettingsView: View {
                 .font(.callout)
         }
         .padding(MacAppStyle.innerPadding)
-        .frame(maxWidth: .infinity, minHeight: 210, alignment: .topLeading)
+        .frame(maxWidth: 760, alignment: .topLeading)
         .background(MacAppStyle.cardBackground)
         .overlay {
             RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous)
@@ -232,8 +321,90 @@ struct MacSettingsView: View {
         }
     }
 
+    private func configurableRow(_ title: String, value: String, action: @escaping () -> Void) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text(title)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 12)
+            Text(value)
+                .fontWeight(.medium)
+                .multilineTextAlignment(.trailing)
+                .lineLimit(2)
+                .textSelection(.enabled)
+            if value == "No configurado" {
+                Button("Configurar", action: action)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            }
+        }
+    }
+
     private var databaseFileName: String {
         URL(fileURLWithPath: session.bootstrap.databasePath).lastPathComponent
+    }
+
+    private var databaseURL: URL {
+        URL(fileURLWithPath: session.bootstrap.databasePath)
+    }
+
+    private var databasePathText: String {
+        session.bootstrap.databasePath.isEmpty ? "No configurado" : session.bootstrap.databasePath
+    }
+
+    private var databaseSizeText: String {
+        guard let size = databaseAttributes[.size] as? NSNumber else { return "No disponible" }
+        return ByteCountFormatter.string(fromByteCount: size.int64Value, countStyle: .file)
+    }
+
+    private var databaseLastModifiedText: String {
+        guard let date = databaseAttributes[.modificationDate] as? Date else { return "No disponible" }
+        return date.formatted(date: .abbreviated, time: .shortened)
+    }
+
+    private var databaseAttributes: [FileAttributeKey: Any] {
+        (try? FileManager.default.attributesOfItem(atPath: session.bootstrap.databasePath)) ?? [:]
+    }
+
+    private var currentSchoolYearText: String {
+        let calendar = Calendar.current
+        let now = Date()
+        let year = calendar.component(.year, from: now)
+        let month = calendar.component(.month, from: now)
+        let startYear = month >= 9 ? year : year - 1
+        return "\(startYear)/\(startYear + 1)"
+    }
+
+    private var initialClassText: String {
+        guard let schoolClass = selectedSchoolClass ?? session.bridge.classes.first else { return "No configurado" }
+        return schoolClass.name
+    }
+
+    private var selectedSchoolClass: SchoolClass? {
+        guard let selectedID = session.bridge.selectedStudentsClassId else { return nil }
+        return session.bridge.classes.first { $0.id == selectedID }
+    }
+
+    private var syncPendingChanges: Int {
+        session.bridge.syncPendingChanges
+    }
+
+    private var syncSummary: String {
+        if syncPendingChanges == 0 {
+            return "Sincronizado"
+        }
+        return "\(syncPendingChanges) cambio(s) pendientes"
+    }
+
+    private var syncStatusImage: String {
+        syncPendingChanges == 0 ? "checkmark.circle.fill" : "arrow.triangle.2.circlepath"
+    }
+
+    private var latestBackupDateText: String {
+        backupStore.latestBackup?.createdAt.macBackupDateText ?? "No configurado"
+    }
+
+    private var latestBackupStatusText: String {
+        backupStore.latestBackup?.verificationState.rawValue ?? "No configurado"
     }
 
     private var syncStatusTitle: String {
@@ -265,30 +436,88 @@ struct MacSettingsView: View {
     }
 
     private func revealDatabaseFolder() {
-        let url = URL(fileURLWithPath: session.bootstrap.databasePath)
-        NSWorkspace.shared.activateFileViewerSelecting([url])
+        NSWorkspace.shared.activateFileViewerSelecting([databaseURL])
     }
 
-    private func copyDiagnostic() {
+    private func copyDiagnostic(anonymized: Bool) {
         let lines = [
             "MiGestor macOS",
             "Plataforma: \(session.bootstrap.platformName)",
             "KMP: \(session.bridge.status)",
-            "Base de datos: \(databaseFileName)",
+            "SQLDelight: \(anonymized ? databaseFileName : session.bootstrap.databasePath)",
             "Sync helper: \(syncStatusTitle)",
             "IA local: \(aiDiagnosticSummary)",
             "IA último fallo: \(aiLastFailure)",
             "Pendientes sync: \(session.bridge.syncPendingChanges)",
             "Última sync: \(session.bridge.syncLastRunAt.map { $0.formatted(date: .abbreviated, time: .standard) } ?? "—")",
-            "Módulos v1: \(MacFeatureRegistry.all.filter(\.enabledInV1).count)/\(MacFeatureRegistry.all.count)"
+            "Backups: \(backupStore.backups.count)",
+            "Módulos activos: \(MacFeatureRegistry.all.filter(\.enabledInV1).count)/\(MacFeatureRegistry.all.count)"
         ]
 
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)
     }
 
+    private func openLogsFolder() {
+        let logsURL = databaseURL.deletingLastPathComponent().appendingPathComponent("logs", isDirectory: true)
+        try? FileManager.default.createDirectory(at: logsURL, withIntermediateDirectories: true)
+        NSWorkspace.shared.activateFileViewerSelecting([logsURL])
+    }
+
     private func refreshAIDiagnostics() {
         aiDiagnosticSummary = AppleFoundationModelSupport.diagnosticSummary()
         aiLastFailure = AppleFoundationModelSupport.lastRuntimeFailureKind ?? "Sin fallos registrados"
+    }
+}
+
+private enum SettingsSection: String, CaseIterable, Identifiable {
+    case general
+    case appearance
+    case localData
+    case sync
+    case localAI
+    case privacy
+    case diagnostic
+    case backups
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .general: return "General"
+        case .appearance: return "Apariencia"
+        case .localData: return "Datos locales"
+        case .sync: return "Sincronización"
+        case .localAI: return "IA local"
+        case .privacy: return "Privacidad"
+        case .diagnostic: return "Diagnóstico"
+        case .backups: return "Backups"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .general: return "Curso, clase inicial y preferencias de trabajo."
+        case .appearance: return "Tema, densidad visual y movimiento."
+        case .localData: return "Estado, ruta y metadatos de la base de datos local."
+        case .sync: return "Resumen operativo de Sync LAN y acceso a reparación."
+        case .localAI: return "Modelos locales, módulos con IA e historial."
+        case .privacy: return "Tratamiento local de datos del alumnado y diagnósticos."
+        case .diagnostic: return "Estado técnico de KMP, SQLDelight, Sync e IA local."
+        case .backups: return "Historial real de copias locales y creación manual."
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .general: return "slider.horizontal.3"
+        case .appearance: return "paintpalette"
+        case .localData: return "externaldrive"
+        case .sync: return "arrow.triangle.2.circlepath.circle"
+        case .localAI: return "sparkles"
+        case .privacy: return "lock.shield"
+        case .diagnostic: return "stethoscope"
+        case .backups: return "externaldrive.badge.timemachine"
+        }
     }
 }

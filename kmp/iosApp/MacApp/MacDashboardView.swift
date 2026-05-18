@@ -102,9 +102,9 @@ struct MacDashboardView: View {
     private var dashboardHeader: some View {
         HStack(alignment: .firstTextBaseline, spacing: 16) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Dashboard")
+                Text("Hoy")
                     .font(MacAppStyle.pageTitle)
-                Text("Tu centro de mando diario")
+                Text("Qué tengo ahora, qué falta y qué hago")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -328,12 +328,12 @@ struct MacDashboardView: View {
     private func pendingItems(for context: CurrentClassDashboardContext?) async throws -> [DashboardPendingItem] {
         var items: [DashboardPendingItem] = []
 
-        if let context, context.classId != nil, context.status == .active, context.sessionId == nil {
+        if let context, context.classId != nil, context.sessionId == nil {
             items.append(
                 DashboardPendingItem(
-                    title: "Sesión de Planner sin crear",
+                    title: context.status == .active ? "Crear diario de sesión" : "Próxima clase sin sesión creada",
                     subtitle: "Hay clase en el horario fijo, pero no hay sesión planificada asociada.",
-                    priority: .medium,
+                    priority: context.status == .active ? .high : .medium,
                     destination: .plannerAgenda
                 )
             )
@@ -488,7 +488,7 @@ private struct CurrentClassDashboardContext {
 }
 
 private struct DashboardPendingItem: Identifiable {
-    enum Priority {
+    enum Priority: Equatable {
         case low
         case medium
         case high
@@ -562,8 +562,8 @@ private struct DashboardQuickAction: Identifiable {
             .init(id: "attendance", title: "Pasar lista", systemImage: "checkmark.circle", destination: .attendance(classId: classId), sheet: nil),
             .init(id: "notebook", title: "Abrir cuaderno", systemImage: "tablecells", destination: .notebook(classId: classId), sheet: nil),
             .init(id: "rubrics", title: "Evaluar rúbrica", systemImage: "checklist.checked", destination: .rubrics(classId: classId), sheet: nil),
-            .init(id: "observation", title: "Registrar observación", systemImage: "note.text.badge.plus", destination: nil, sheet: .observation(classId: classId)),
-            .init(id: "quick-evaluation", title: "Evaluación rápida", systemImage: "sparkles", destination: nil, sheet: .quickEvaluation(classId: classId))
+            .init(id: "observation", title: "Preparar observación", systemImage: "note.text.badge.plus", destination: nil, sheet: .observation(classId: classId)),
+            .init(id: "quick-evaluation", title: "Preparar evaluación", systemImage: "sparkles", destination: nil, sheet: .quickEvaluation(classId: classId))
         ]
     }
 }
@@ -707,17 +707,17 @@ private struct DashboardHeroNowCard: View {
                 Button {
                     onOpenSheet(.observation(classId: classId))
                 } label: {
-                    DashboardQuickActionButton(title: "Registrar observación", systemImage: "note.text.badge.plus")
+                    DashboardQuickActionButton(title: "Preparar observación", systemImage: "note.text.badge.plus")
                 }
                 .buttonStyle(.plain)
                 Button {
                     onOpenSheet(.quickEvaluation(classId: classId))
                 } label: {
-                    DashboardQuickActionButton(title: "Evaluación rápida", systemImage: "sparkles")
+                    DashboardQuickActionButton(title: "Preparar evaluación", systemImage: "sparkles")
                 }
                 .buttonStyle(.plain)
                 if let sessionId = context.sessionId {
-                    dashboardAction("Abrir diario", "doc.text", .plannerSession(sessionId: sessionId))
+                    dashboardAction("Diario", "doc.text", .plannerSession(sessionId: sessionId))
                 }
             } else {
                 dashboardAction("Preparar sesión", "calendar.badge.plus", .plannerAgenda)
@@ -812,7 +812,7 @@ private struct DashboardPendingCard: View {
     let onNavigate: (MacDashboardDestination) -> Void
 
     var body: some View {
-        MacPanel(title: "Pendiente") {
+        MacPanel(title: "Pendientes") {
             VStack(spacing: 12) {
                 if items.isEmpty {
                     Text("Sin pendientes fiables con los datos disponibles.")
@@ -823,37 +823,57 @@ private struct DashboardPendingCard: View {
                         .background(MacAppStyle.subtleFill)
                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 } else {
-                    ForEach(items) { item in
-                        Button {
-                            if let destination = item.destination {
-                                onNavigate(destination)
-                            }
-                        } label: {
-                            HStack(alignment: .top, spacing: 12) {
-                                Circle()
-                                    .fill(item.priority.tint)
-                                    .frame(width: 8, height: 8)
-                                    .padding(.top, 6)
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text(item.title)
-                                        .font(.callout.weight(.semibold))
-                                    Text(item.subtitle)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                if item.destination != nil {
-                                    Image(systemName: "chevron.right")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(.tertiary)
-                                }
-                            }
-                            .padding(16)
-                            .background(MacAppStyle.subtleFill)
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
+                    pendingGroup("Resolver ahora", items: items.filter { $0.priority == .high })
+                    pendingGroup("Preparar", items: items.filter { $0.priority == .medium })
+                    pendingGroup("Revisar", items: items.filter { $0.priority == .low })
+                    let groupedCount = items.filter { $0.priority == .high || $0.priority == .medium || $0.priority == .low }.count
+                    if groupedCount == 0 {
+                        Text("Sin pendientes categorizados.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
                     }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func pendingGroup(_ title: String, items: [DashboardPendingItem]) -> some View {
+        if !items.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                ForEach(items) { item in
+                    Button {
+                        if let destination = item.destination {
+                            onNavigate(destination)
+                        }
+                    } label: {
+                        HStack(alignment: .top, spacing: 12) {
+                            Circle()
+                                .fill(item.priority.tint)
+                                .frame(width: 8, height: 8)
+                                .padding(.top, 6)
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(item.title)
+                                    .font(.callout.weight(.semibold))
+                                Text(item.subtitle)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if item.destination != nil {
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                        .padding(16)
+                        .background(MacAppStyle.subtleFill)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -868,6 +888,7 @@ private struct DashboardStatusCard: View {
         MacPanel(title: "Estado") {
             VStack(alignment: .leading, spacing: 12) {
                 statusRow("Sync", value: summaryLine, tint: summary.state.tint)
+                statusRow("Última actualización", value: summary.lastRunAt.map(Self.absoluteTime) ?? Self.absoluteTime(Date()), tint: .secondary)
                 statusRow("Cambios pendientes", value: "\(summary.pendingChanges)", tint: summary.pendingChanges > 0 ? MacAppStyle.warningTint : MacAppStyle.successTint)
                 statusRow("Última sync", value: summary.lastRunAt.map(Self.relativeTime) ?? "Sin registro", tint: .secondary)
                 statusRow("Host", value: summary.pairedHost ?? "Sync local inactivo", tint: summary.pairedHost == nil ? .secondary : MacAppStyle.infoTint)
@@ -909,6 +930,10 @@ private struct DashboardStatusCard: View {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .short
         return formatter.localizedString(for: date, relativeTo: Date())
+    }
+
+    private static func absoluteTime(_ date: Date) -> String {
+        date.formatted(date: .abbreviated, time: .shortened)
     }
 }
 
@@ -1057,7 +1082,7 @@ private struct QuickEvaluationSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
-            Text("Evaluación rápida")
+            Text("Preparar evaluación")
                 .font(.title2.weight(.semibold))
             Form {
                 Picker("Clase", selection: $selectedClassId) {

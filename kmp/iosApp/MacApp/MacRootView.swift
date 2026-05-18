@@ -10,6 +10,7 @@ struct MacRootView: View {
     @StateObject private var physicalTestsToolbarActions = MacPhysicalTestsToolbarActions()
     @StateObject private var studentsStore = MacStudentsStore()
     @StateObject private var studentSelection = StudentSelectionStore()
+    @StateObject private var backupStore: MacBackupStore
     @State private var attendanceToolbarActions: MacAttendanceToolbarActions? = nil
     @State private var dashboardToolbarActions: MacDashboardToolbarActions? = nil
     @State private var studentsReloadToken = 0
@@ -17,6 +18,11 @@ struct MacRootView: View {
     @State private var isNotebookInspectorColumnVisible = false
     @State private var selectedFeature: MacFeatureDescriptor.Feature = .dashboard
     @State private var didRequestCommandCenterStart = false
+
+    init(session: MacAppSessionController) {
+        self.session = session
+        _backupStore = StateObject(wrappedValue: MacBackupStore(bridge: session.bridge))
+    }
 
     var body: some View {
         Group {
@@ -207,9 +213,9 @@ struct MacRootView: View {
         case .sync:
             MacSyncView(bridge: session.bridge, commandCenter: commandCenter)
         case .backups:
-            MacBackupsView(bridge: session.bridge)
+            MacBackupsView(store: backupStore)
         case .settings:
-            MacSettingsView(session: session, commandCenter: commandCenter) {
+            MacSettingsView(session: session, commandCenter: commandCenter, backupStore: backupStore) {
                 selectFeature(.sync)
             }
         }
@@ -239,6 +245,8 @@ struct MacRootView: View {
                 presentation: .inspector,
                 reloadToken: studentsReloadToken
             )
+        case .backups:
+            MacBackupInspectorView(store: backupStore)
         default:
             MacModuleInspectorPlaceholder(feature: MacFeatureRegistry.descriptor(for: feature))
         }
@@ -551,57 +559,5 @@ private struct MacModuleInspectorPlaceholder: View {
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(MacAppStyle.cardBackground)
-    }
-}
-
-private struct MacBackupsView: View {
-    @ObservedObject var bridge: KmpBridge
-    @State private var backupMessage = "Todavía no se ha creado ningún backup."
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
-            Text("Backups locales")
-                .font(MacAppStyle.pageTitle)
-
-            Text(backupMessage)
-                .foregroundStyle(.secondary)
-
-            HStack {
-                Button("Crear backup") {
-                    Task {
-                        do {
-                            let result = try await bridge.createLocalBackup()
-                            backupMessage = "Backup creado en \(result.path)"
-                        } catch {
-                            backupMessage = "Error creando backup: \(error.localizedDescription)"
-                        }
-                    }
-                }
-                .buttonStyle(.bordered)
-
-                Button {
-                    Task {
-                        let panel = NSOpenPanel()
-                        panel.allowsMultipleSelection = false
-                        panel.canChooseDirectories = false
-                        panel.canChooseFiles = true
-                        if panel.runModal() == .OK, let path = panel.url?.path {
-                            do {
-                                let restored = try await bridge.restoreLocalBackup(from: path)
-                                backupMessage = restored
-                                    ? "Backup restaurado desde \(path)"
-                                    : "No se pudo restaurar el backup."
-                            } catch {
-                                backupMessage = "Error restaurando backup: \(error.localizedDescription)"
-                            }
-                        }
-                    }
-                } label: {
-                    Text("Restaurar backup")
-                }
-                .buttonStyle(.bordered)
-            }
-        }
-        .padding(MacAppStyle.pagePadding)
     }
 }

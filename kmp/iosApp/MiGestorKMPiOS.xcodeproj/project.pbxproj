@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		292220F6D746BCD2F768A95D /* MacBackupSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F46C15990B6535A1FBE489D /* MacBackupSupport.swift */; };
+		6F16C41B9011E96762E84269 /* MacBackupsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C300B67A0E82463D8CEE997A /* MacBackupsView.swift */; };
 		016DB0A03C88D75C6392179C /* NotebookFormulaEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9967D38B9A879C71B174CAE6 /* NotebookFormulaEditorSheet.swift */; };
 		01E7A6102F8410F3B3442227 /* PhysicalTestCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60FB4440A1EC9C54F45F11BC /* PhysicalTestCaptureView.swift */; };
 		0230F89B204872CC089E8B47 /* LibraryAndPEWorkspaceViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DC16E368E9913D847BB6D51 /* LibraryAndPEWorkspaceViews.swift */; };
@@ -220,6 +222,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		3F46C15990B6535A1FBE489D /* MacBackupSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacBackupSupport.swift; sourceTree = "<group>"; };
+		C300B67A0E82463D8CEE997A /* MacBackupsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacBackupsView.swift; sourceTree = "<group>"; };
 		064505192DE6C78C8E8249B0 /* NotebookInspectorPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookInspectorPanel.swift; sourceTree = "<group>"; };
 		09D87D21656FDFADF58B2FBA /* MacModuleStubs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacModuleStubs.swift; sourceTree = "<group>"; };
 		0D4F77F8AE48BC67BBEA1603 /* WorkspaceSidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceSidebar.swift; sourceTree = "<group>"; };
@@ -354,6 +358,8 @@
 				E57AA10D4F5A9A3199288A4C /* MacAppStyle.swift */,
 				6AB9B92354A1345110A45747 /* MacAttendanceDayRow.swift */,
 				A5FCBA2AF2D125D2CD13CFF5 /* MacAttendanceView.swift */,
+				3F46C15990B6535A1FBE489D /* MacBackupSupport.swift */,
+				C300B67A0E82463D8CEE997A /* MacBackupsView.swift */,
 				75913A6148C5D164F2EFA2A7 /* MacCommandCenterCoordinator.swift */,
 				D7030138D429F12877D448CD /* MacDashboardView.swift */,
 				540E9FF031B5425A4147DC64 /* MacFeatureRegistry.swift */,
@@ -699,6 +705,8 @@
 				636BFAF254D3F3711AE5CF10 /* MacAppStyle.swift in Sources */,
 				541330321B3E26376DF94E13 /* MacAttendanceDayRow.swift in Sources */,
 				B3F0FF57249376955AE83723 /* MacAttendanceView.swift in Sources */,
+				292220F6D746BCD2F768A95D /* MacBackupSupport.swift in Sources */,
+				6F16C41B9011E96762E84269 /* MacBackupsView.swift in Sources */,
 				BC91ADD74993C72E5A133C3D /* MacCommandCenterCoordinator.swift in Sources */,
 				303A136D412D596B99BB06A8 /* MacDashboardView.swift in Sources */,
 				3D42ABE38DAA65311889C449 /* MacFeatureRegistry.swift in Sources */,

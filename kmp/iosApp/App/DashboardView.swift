@@ -36,6 +36,51 @@ private struct DashboardGroupRow: Identifiable {
     let studentsInFollowUp: Int
 }
 
+private enum DashboardBlock: Hashable {
+    case today
+    case alerts
+    case quickEvaluation
+    case groupSummary
+    case agenda
+    case physicalEducation
+}
+
+private enum DashboardFilterOption: String, CaseIterable, Identifiable {
+    case all = ""
+    case high
+    case medium
+    case low
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all: return "Todas"
+        case .high: return "Alta"
+        case .medium: return "Media"
+        case .low: return "Baja"
+        }
+    }
+}
+
+private enum DashboardSessionFilterOption: String, CaseIterable, Identifiable {
+    case all = ""
+    case planned
+    case inProgress = "in_progress"
+    case completed
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all: return "Todas"
+        case .planned: return "Planificadas"
+        case .inProgress: return "En curso"
+        case .completed: return "Completadas"
+        }
+    }
+}
+
 struct DashboardView: View {
     @EnvironmentObject var bridge: KmpBridge
     @EnvironmentObject private var layoutState: WorkspaceLayoutState
@@ -45,11 +90,12 @@ struct DashboardView: View {
 #endif
     @Binding var selectedClassId: Int64?
     @AppStorage("dashboard_operational_mode") private var modeRawValue: String = OperationalDashboardMode.office.rawValue
-    @State private var severityFilter: String = ""
-    @State private var priorityFilter: String = ""
-    @State private var sessionStatusFilter: String = ""
+    @State private var severityFilter: DashboardFilterOption = .all
+    @State private var priorityFilter: DashboardFilterOption = .all
+    @State private var sessionStatusFilter: DashboardSessionFilterOption = .all
     @State private var inspectorSelection: DashboardInspectorSelection? = nil
     @State private var isInspectorPresented = false
+    @State private var isQuickEvaluationPresented = false
 
     private var mode: OperationalDashboardMode {
         OperationalDashboardMode(rawValue: modeRawValue) ?? .office
@@ -74,11 +120,27 @@ struct DashboardView: View {
                 dashboardContent
             }
 
-            if isInspectorPresented {
+            if isInspectorPresented && !isCompactWidth {
                 inspectorPane
             }
         }
         .background(appPageBackground(for: colorScheme).ignoresSafeArea())
+        .sheet(isPresented: $isQuickEvaluationPresented) {
+            DashboardQuickEvaluationSheet(
+                bridge: bridge,
+                initialClassId: dashboardActionClassId,
+                mode: mode.kotlinMode
+            )
+        }
+#if os(iOS)
+        .sheet(isPresented: Binding(
+            get: { isInspectorPresented && isCompactWidth },
+            set: { isInspectorPresented = $0 }
+        )) {
+            dashboardInspector
+                .presentationDetents([.medium, .large])
+        }
+#endif
         .task {
             await bridge.ensureClassesLoaded()
             if selectedClassId == nil {
@@ -130,14 +192,18 @@ struct DashboardView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Dashboard · \(mode.title)")
+                    Text("Hoy")
                         .font(.system(size: 26, weight: .black, design: .rounded))
-                    Text(selectedClassLabel)
+                    Text("\(mode.title) · \(selectedClassLabel)")
                         .font(.system(size: 14, weight: .medium, design: .rounded))
                         .foregroundStyle(.secondary)
                 }
 
                 Spacer()
+
+                if let snapshot = bridge.dashboardSnapshot {
+                    dashboardExportMenu(snapshot: snapshot)
+                }
 
                 Picker("Contexto", selection: $modeRawValue) {
                     Text("Clase").tag(OperationalDashboardMode.classroom.rawValue)
@@ -147,19 +213,7 @@ struct DashboardView: View {
                 .frame(maxWidth: 240)
             }
 
-            if isCompactWidth {
-                VStack(spacing: 10) {
-                    dashboardFilterField(title: "Severidad", placeholder: "high / medium / low", text: $severityFilter)
-                    dashboardFilterField(title: "Prioridad", placeholder: "high / medium / low", text: $priorityFilter)
-                    dashboardFilterField(title: "Estado sesión", placeholder: "planned / in_progress / completed", text: $sessionStatusFilter)
-                }
-            } else {
-                HStack(spacing: 12) {
-                    dashboardFilterField(title: "Severidad", placeholder: "high / medium / low", text: $severityFilter)
-                    dashboardFilterField(title: "Prioridad", placeholder: "high / medium / low", text: $priorityFilter)
-                    dashboardFilterField(title: "Estado sesión", placeholder: "planned / in_progress / completed", text: $sessionStatusFilter)
-                }
-            }
+            dashboardFilterChips
         }
         .padding(.horizontal, 20)
         .padding(.top, 18)
@@ -173,26 +227,24 @@ struct DashboardView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     dashboardKpiRow(snapshot: snapshot)
 
-                    let blocks = mode == .classroom
-                        ? ["C", "A", "F", "B", "D", "E"]
-                        : ["D", "E", "B", "A", "C", "F"]
+                    let blocks: [DashboardBlock] = mode == .classroom
+                        ? [.quickEvaluation, .today, .physicalEducation, .alerts, .groupSummary, .agenda]
+                        : [.groupSummary, .agenda, .alerts, .today, .quickEvaluation, .physicalEducation]
 
                     ForEach(blocks, id: \.self) { block in
                         switch block {
-                        case "A":
+                        case .today:
                             dashboardTodayBlock(snapshot: snapshot)
-                        case "B":
+                        case .alerts:
                             dashboardAlertsBlock(snapshot: snapshot)
-                        case "C":
+                        case .quickEvaluation:
                             dashboardQuickEvalBlock(snapshot: snapshot)
-                        case "D":
+                        case .groupSummary:
                             dashboardGroupSummaryBlock(snapshot: snapshot)
-                        case "E":
+                        case .agenda:
                             dashboardAgendaBlock(snapshot: snapshot)
-                        case "F":
+                        case .physicalEducation:
                             dashboardPEBlock(snapshot: snapshot)
-                        default:
-                            EmptyView()
                         }
                     }
                 }
@@ -207,11 +259,8 @@ struct DashboardView: View {
 
     private var dashboardInspector: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Inspector")
+            Text("Detalle")
                 .font(.title3.bold())
-            Text("Estado: \(bridge.status)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
 
             if let snapshot = bridge.dashboardSnapshot {
                 switch inspectorSelection {
@@ -221,7 +270,7 @@ struct DashboardView: View {
                         Text(item.didacticUnit)
                         Text("Horario: \(item.timeLabel)")
                         Text("Espacio: \(item.space)")
-                        Text("Estado: \(item.sessionStatus)")
+                        Text("Estado: \(dashboardSessionStatusLabel(item.sessionStatus))")
                     } else {
                         Text("Sesión no encontrada")
                     }
@@ -229,8 +278,8 @@ struct DashboardView: View {
                     if let alert = snapshot.alerts.first(where: { $0.id == id }) {
                         Text(alert.title).font(.headline)
                         Text(alert.detail)
-                        Text("Severidad: \(alert.severity)")
-                        Text("Prioridad: \(alert.priority)")
+                        Text("Severidad: \(dashboardFilterLabel(alert.severity))")
+                        Text("Prioridad: \(dashboardFilterLabel(alert.priority))")
                     } else {
                         Text("Alerta no encontrada")
                     }
@@ -238,7 +287,7 @@ struct DashboardView: View {
                     if let item = snapshot.peItems.first(where: { $0.id == id }) {
                         Text(item.title).font(.headline)
                         Text(item.detail)
-                        Text("Severidad: \(item.severity)")
+                        Text("Severidad: \(dashboardFilterLabel(item.severity))")
                     } else {
                         Text("Ítem EF no encontrado")
                     }
@@ -279,7 +328,15 @@ struct DashboardView: View {
         case .none:
             inspectorKey = "none"
         }
-        return "\(classKey)|\(modeRawValue)|\(severityFilter)|\(priorityFilter)|\(sessionStatusFilter)|\(inspectorKey)|\(isInspectorPresented)"
+        return "\(classKey)|\(modeRawValue)|\(severityFilter.rawValue)|\(priorityFilter.rawValue)|\(sessionStatusFilter.rawValue)|\(inspectorKey)|\(isInspectorPresented)"
+    }
+
+    private var dashboardFilterChips: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            dashboardFilterPicker(title: "Severidad", selection: $severityFilter, options: DashboardFilterOption.allCases)
+            dashboardFilterPicker(title: "Prioridad", selection: $priorityFilter, options: DashboardFilterOption.allCases)
+            dashboardSessionFilterPicker(title: "Sesiones", selection: $sessionStatusFilter, options: DashboardSessionFilterOption.allCases)
+        }
     }
 
     @ViewBuilder
@@ -304,14 +361,33 @@ struct DashboardView: View {
         .cornerRadius(12)
     }
 
+    private func dashboardExportMenu(snapshot: DashboardSnapshot) -> some View {
+        Menu {
+            ShareLink("Hoy", item: csvToday(snapshot))
+            ShareLink("Alertas", item: csvAlerts(snapshot))
+            ShareLink("Grupos", item: csvGroups(snapshot.groupSummaries.map {
+                DashboardGroupRow(
+                    id: $0.classId,
+                    groupName: $0.groupName,
+                    attendancePct: Int($0.attendancePct),
+                    evaluationCompletedPct: Int($0.evaluationCompletedPct),
+                    averageScore: $0.averageScore,
+                    studentsInFollowUp: Int($0.studentsInFollowUp)
+                )
+            }))
+            ShareLink("Agenda", item: csvAgenda(snapshot))
+        } label: {
+            Label("Exportar", systemImage: "square.and.arrow.up")
+        }
+        .buttonStyle(.bordered)
+    }
+
     @ViewBuilder
     private func dashboardTodayBlock(snapshot: DashboardSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("A · Hoy").font(.headline)
+                Text("Hoy").font(.headline)
                 Spacer()
-                ShareLink("Exportar CSV", item: csvToday(snapshot))
-                    .font(.caption)
             }
             ForEach(snapshot.todaySessions, id: \.id) { item in
                 Button {
@@ -322,7 +398,7 @@ struct DashboardView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("\(item.groupName) · \(item.timeLabel)").font(.subheadline.bold())
                             Text(item.didacticUnit).font(.caption)
-                            Text("Espacio: \(item.space) · \(item.sessionStatus)").font(.caption2).foregroundStyle(.secondary)
+                            Text("Espacio: \(item.space) · \(dashboardSessionStatusLabel(item.sessionStatus))").font(.caption2).foregroundStyle(.secondary)
                         }
                         Spacer()
                     }
@@ -343,10 +419,8 @@ struct DashboardView: View {
     private func dashboardAlertsBlock(snapshot: DashboardSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("B · Alertas").font(.headline)
+                Text("Alertas").font(.headline)
                 Spacer()
-                ShareLink("Exportar CSV", item: csvAlerts(snapshot))
-                    .font(.caption)
             }
             ForEach(snapshot.alerts.prefix(8), id: \.id) { alert in
                 Button {
@@ -359,7 +433,7 @@ struct DashboardView: View {
                             Text(alert.detail).font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
-                        Text(alert.severity.uppercased()).font(.caption2.bold())
+                        Text(dashboardFilterLabel(alert.severity)).font(.caption2.bold())
                     }
                     .padding(10)
                     .background(appMutedCardBackground(for: colorScheme))
@@ -378,19 +452,24 @@ struct DashboardView: View {
     private func dashboardQuickEvalBlock(snapshot: DashboardSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("C · Evaluación rápida").font(.headline)
+                Text("Evaluación rápida").font(.headline)
                 Spacer()
-                ShareLink("Exportar CSV", item: csvQuick(snapshot))
-                    .font(.caption)
             }
-            Text("Columnas: \(snapshot.quickColumns.joined(separator: ", "))").font(.caption)
-            Text("Rúbricas: \(snapshot.quickRubrics.joined(separator: ", "))").font(.caption)
+            if !snapshot.quickColumns.isEmpty {
+                Text("Columnas disponibles: \(snapshot.quickColumns.joined(separator: ", "))").font(.caption)
+            }
+            if !snapshot.quickRubrics.isEmpty {
+                Text("Rúbricas disponibles: \(snapshot.quickRubrics.joined(separator: ", "))").font(.caption)
+            }
             HStack {
                 Button("Pasar lista") {
                     Task { await performPassList() }
                 }
                 Button("Nueva observación") {
                     Task { await performObservation() }
+                }
+                Button("Evaluar") {
+                    isQuickEvaluationPresented = true
                 }
             }
         }
@@ -413,10 +492,8 @@ struct DashboardView: View {
         }
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("D · Resumen por grupo").font(.headline)
+                Text("Resumen por grupo").font(.headline)
                 Spacer()
-                ShareLink("Exportar CSV", item: csvGroups(rows))
-                    .font(.caption)
             }
             if showsWideSummary {
                 Table(rows) {
@@ -448,10 +525,8 @@ struct DashboardView: View {
     private func dashboardAgendaBlock(snapshot: DashboardSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("E · Agenda docente").font(.headline)
+                Text("Agenda docente").font(.headline)
                 Spacer()
-                ShareLink("Exportar CSV", item: csvAgenda(snapshot))
-                    .font(.caption)
             }
             ForEach(snapshot.agendaItems, id: \.id) { item in
                 HStack {
@@ -477,10 +552,8 @@ struct DashboardView: View {
     private func dashboardPEBlock(snapshot: DashboardSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("F · Educación Física").font(.headline)
+                Text("Educación Física").font(.headline)
                 Spacer()
-                ShareLink("Exportar CSV", item: csvPe(snapshot))
-                    .font(.caption)
             }
             ForEach(snapshot.peItems, id: \.id) { item in
                 Button {
@@ -493,7 +566,7 @@ struct DashboardView: View {
                             Text(item.detail).font(.caption).foregroundStyle(.secondary)
                         }
                         Spacer()
-                        Text(item.severity).font(.caption2)
+                        Text(dashboardFilterLabel(item.severity)).font(.caption2)
                     }
                     .padding(8)
                     .background(appMutedCardBackground(for: colorScheme))
@@ -508,15 +581,58 @@ struct DashboardView: View {
         .cornerRadius(12)
     }
 
-    private func dashboardFilterField(title: String, placeholder: String, text: Binding<String>) -> some View {
+    private func dashboardFilterPicker(
+        title: String,
+        selection: Binding<DashboardFilterOption>,
+        options: [DashboardFilterOption]
+    ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.secondary)
-            TextField(placeholder, text: text)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
+            Picker(title, selection: selection) {
+                ForEach(options) { option in
+                    Text(option.title).tag(option)
+                }
+            }
+            .pickerStyle(.segmented)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func dashboardSessionFilterPicker(
+        title: String,
+        selection: Binding<DashboardSessionFilterOption>,
+        options: [DashboardSessionFilterOption]
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
+            Picker(title, selection: selection) {
+                ForEach(options) { option in
+                    Text(option.title).tag(option)
+                }
+            }
+            .pickerStyle(.segmented)
+        }
+    }
+
+    private func dashboardFilterLabel(_ raw: String) -> String {
+        switch raw.lowercased() {
+        case "high": return "Alta"
+        case "medium": return "Media"
+        case "low": return "Baja"
+        default: return raw.isEmpty ? "Sin clasificar" : raw
+        }
+    }
+
+    private func dashboardSessionStatusLabel(_ raw: String) -> String {
+        switch raw.lowercased() {
+        case "planned": return "Planificada"
+        case "in_progress": return "En curso"
+        case "completed": return "Completada"
+        default: return raw.isEmpty ? "Sin estado" : raw
+        }
     }
 
     private func syncToolbarState() {
@@ -537,7 +653,7 @@ struct DashboardView: View {
                 Task { await performObservation() }
             },
             onQuickEvaluation: {
-                Task { await performQuickEvaluation() }
+                isQuickEvaluationPresented = true
             }
         )
     }
@@ -597,29 +713,16 @@ struct DashboardView: View {
         )
     }
 
-    private func performQuickEvaluation() async {
-        guard let classId = dashboardActionClassId else { return }
-        let target = await bridge.firstQuickEvaluationTarget(classId: classId)
-        guard let studentId = target.studentId, let evaluationId = target.evaluationId else {
-            bridge.status = "No hay alumno/evaluación disponible para quick evaluation"
-            return
-        }
-        await bridge.performQuickAction(
-            type: .quickEvaluation,
-            mode: mode.kotlinMode,
-            classId: classId,
-            studentId: studentId,
-            evaluationId: evaluationId,
-            score: 7.0
-        )
+    private func performQuickEvaluation() {
+        isQuickEvaluationPresented = true
     }
 
     private func applyFiltersAndReload() async {
         bridge.updateDashboardFilters(
             classId: selectedClassId,
-            severity: severityFilter,
-            priority: priorityFilter,
-            sessionStatus: sessionStatusFilter
+            severity: severityFilter.rawValue,
+            priority: priorityFilter.rawValue,
+            sessionStatus: sessionStatusFilter.rawValue
         )
         await bridge.refreshDashboard(mode: mode.kotlinMode)
     }
@@ -661,5 +764,151 @@ struct DashboardView: View {
 
     private func csv(_ header: String, _ rows: [String]) -> String {
         ([header] + rows).joined(separator: "\n")
+    }
+}
+
+private struct DashboardQuickEvaluationSheet: View {
+    @ObservedObject var bridge: KmpBridge
+    let initialClassId: Int64?
+    let mode: DashboardMode
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var selectedClassId: Int64?
+    @State private var selectedStudentId: Int64?
+    @State private var selectedColumnId: String?
+    @State private var scoreText = ""
+    @State private var note = ""
+    @State private var isSaving = false
+    @State private var message: String?
+
+    private var notebookColumns: [NotebookColumnDefinition] {
+        guard let data = bridge.notebookState as? NotebookUiStateData else { return [] }
+        return data.sheet.columns.filter { column in
+            column.evaluationId != nil && column.type != .calculated
+        }
+    }
+
+    private var selectedColumn: NotebookColumnDefinition? {
+        notebookColumns.first { $0.id == selectedColumnId }
+    }
+
+    private var parsedScore: Double? {
+        Double(scoreText.replacingOccurrences(of: ",", with: "."))
+    }
+
+    private var canSave: Bool {
+        selectedClassId != nil &&
+        selectedStudentId != nil &&
+        selectedColumn != nil &&
+        parsedScore.map { $0 >= 0 && $0 <= 10 } == true &&
+        !isSaving
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Selección") {
+                    Picker("Clase", selection: $selectedClassId) {
+                        Text("Seleccionar").tag(Int64?.none)
+                        ForEach(bridge.classes, id: \.id) { schoolClass in
+                            Text("\(schoolClass.name) · \(schoolClass.course)º").tag(Optional(schoolClass.id))
+                        }
+                    }
+
+                    Picker("Alumno", selection: $selectedStudentId) {
+                        Text("Seleccionar").tag(Int64?.none)
+                        ForEach(bridge.studentsInClass, id: \.id) { student in
+                            Text(student.fullName).tag(Optional(student.id))
+                        }
+                    }
+
+                    Picker("Columna", selection: $selectedColumnId) {
+                        Text("Seleccionar").tag(String?.none)
+                        ForEach(notebookColumns, id: \.id) { column in
+                            Text(column.title).tag(Optional(column.id))
+                        }
+                    }
+                }
+
+                Section("Nota") {
+                    TextField("0-10", text: $scoreText)
+#if os(iOS)
+                        .keyboardType(.decimalPad)
+#endif
+                    TextField("Observación opcional", text: $note, axis: .vertical)
+                }
+
+                if notebookColumns.isEmpty {
+                    Section {
+                        Text("No hay columnas de evaluación cargadas para esta clase. Abre o prepara el cuaderno antes de guardar desde el dashboard.")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if let message {
+                    Section {
+                        Text(message)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .navigationTitle("Evaluación rápida")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancelar") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(isSaving ? "Guardando..." : "Confirmar") {
+                        Task { await save() }
+                    }
+                    .disabled(!canSave)
+                }
+            }
+        }
+        .frame(minWidth: 460, minHeight: 520)
+        .onAppear {
+            selectedClassId = initialClassId ?? bridge.classes.first?.id
+            loadClassContext()
+        }
+        .appOnChange(of: selectedClassId) { _ in
+            selectedStudentId = nil
+            selectedColumnId = nil
+            loadClassContext()
+        }
+    }
+
+    private func loadClassContext() {
+        Task { @MainActor in
+            guard let selectedClassId else { return }
+            bridge.selectClass(id: selectedClassId)
+            await bridge.selectStudentsClass(classId: selectedClassId)
+            await Task.yield()
+            selectedStudentId = selectedStudentId ?? bridge.studentsInClass.first?.id
+            selectedColumnId = selectedColumnId ?? notebookColumns.first?.id
+        }
+    }
+
+    private func save() async {
+        guard let classId = selectedClassId,
+              let studentId = selectedStudentId,
+              let column = selectedColumn,
+              let score = parsedScore else { return }
+        isSaving = true
+        bridge.selectClass(id: classId)
+        bridge.saveColumnGrade(studentId: studentId, column: column, value: IosFormatting.decimal(from: score))
+        if let evaluationId = column.evaluationId?.int64Value {
+            await bridge.performQuickAction(
+                type: .quickEvaluation,
+                mode: mode,
+                classId: classId,
+                studentId: studentId,
+                evaluationId: evaluationId,
+                note: note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : note.trimmingCharacters(in: .whitespacesAndNewlines),
+                score: score
+            )
+        }
+        bridge.status = "Evaluación guardada desde dashboard"
+        isSaving = false
+        dismiss()
     }
 }

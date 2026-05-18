@@ -992,6 +992,7 @@ struct MacPlannerView: View {
     @State private var showingScheduleSettings = false
     @State private var showingExportConfirmation = false
     @State private var showingMoveFilteredConfirmation = false
+    @State private var showingClearSchedulelessWeekConfirmation = false
     @State private var transientMessage: String?
     @State private var isInspectorVisible = true
     @State private var inspectorWidth: CGFloat = 380
@@ -1080,6 +1081,14 @@ struct MacPlannerView: View {
             }
         } message: {
             Text("Se moverán todas las sesiones visibles con los filtros actuales un día hacia delante.")
+        }
+        .alert("Limpiar semana sin franjas", isPresented: $showingClearSchedulelessWeekConfirmation) {
+            Button("Cancelar", role: .cancel) {}
+            Button("Eliminar sesiones planificadas", role: .destructive) {
+                Task { await vm.clearCurrentWeekSessionsWithoutSchedule(groupId: groupFilterId) }
+            }
+        } message: {
+            Text("No hay franjas en la agenda. Se eliminarán las sesiones planificadas de la semana actual y se conservarán las completadas.")
         }
     }
 
@@ -1181,6 +1190,12 @@ struct MacPlannerView: View {
                 }
                 .buttonStyle(.bordered)
                 .disabled(displayedSessions.isEmpty)
+
+                Button("Limpiar semana sin franjas") {
+                    showingClearSchedulelessWeekConfirmation = true
+                }
+                .buttonStyle(.bordered)
+                .disabled(vm.schedulelessWeekSessionsToClearCount(groupId: groupFilterId) == 0)
 
                 Button("Exportar") {
                     exportCurrentContext()

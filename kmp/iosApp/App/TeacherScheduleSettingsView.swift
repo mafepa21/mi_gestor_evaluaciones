@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import MiGestorKit
 
 @MainActor
@@ -11,6 +12,8 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
     @Published var evaluationPeriods: [PlannerEvaluationPeriod] = []
     @Published var forecastRows: [PlannerSessionForecast] = []
     @Published var nonTeachingEvents: [CalendarEvent] = []
+    @Published var scheduleImportPreview: ScheduleImportPreview?
+    @Published var isImportingSchedule = false
 
     @Published var scheduleName = "Agenda docente"
     @Published var scheduleStartDate = "2026-09-01"
@@ -23,6 +26,7 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
     @Published var scheduleFormSubject = ""
     @Published var scheduleFormUnit = ""
     @Published var scheduleError = ""
+    @Published var scheduleImportStatusMessage = ""
     @Published var scheduleSaveState: PlannerSaveState = .idle
     @Published var editingScheduleSlotId: Int64?
     @Published var editingScheduleSlotWeeklyTemplateId: Int64?
@@ -65,28 +69,11 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
     }
 
     var effectiveScheduleSlots: [TeacherScheduleSlot] {
-        if !teacherScheduleSlots.isEmpty {
-            return teacherScheduleSlots.sorted(by: { ($0.dayOfWeek, $0.startTime) < ($1.dayOfWeek, $1.startTime) })
-        }
-
-        return weeklySlots.map {
-            TeacherScheduleSlot(
-                id: $0.id,
-                teacherScheduleId: teacherSchedule?.id ?? 0,
-                schoolClassId: $0.schoolClassId,
-                subjectLabel: "",
-                unitLabel: nil,
-                dayOfWeek: Int32($0.dayOfWeek),
-                startTime: $0.startTime,
-                endTime: $0.endTime,
-                weeklyTemplateId: KotlinLong(value: $0.id)
-            )
-        }
-        .sorted(by: { ($0.dayOfWeek, $0.startTime) < ($1.dayOfWeek, $1.startTime) })
+        teacherScheduleSlots.sorted(by: { ($0.dayOfWeek, $0.startTime) < ($1.dayOfWeek, $1.startTime) })
     }
 
     var usingLegacyWeeklySlots: Bool {
-        teacherScheduleSlots.isEmpty && !weeklySlots.isEmpty
+        false
     }
 
     func bind(bridge: KmpBridge, selectedClassId: Int64?) async {
@@ -136,9 +123,11 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
             nonTeachingEvents = try await bridge.plannerNonTeachingCalendarEvents(classId: selectedClassId)
             await refreshForecastForSelection()
             scheduleError = ""
+            scheduleImportStatusMessage = ""
             scheduleSaveState = .idle
         } catch {
             scheduleError = error.localizedDescription
+            scheduleImportStatusMessage = ""
             scheduleSaveState = .failed(scheduleError)
         }
     }
@@ -251,6 +240,64 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
         }
     }
 
+    func previewScheduleImport(_ result: Result<URL, Error>) async {
+        scheduleSaveState = .saving
+        do {
+            let url = try result.get()
+            let parsed = try ScheduleExcelImportService().preview(from: url)
+            scheduleImportPreview = previewWithExistingConflicts(parsed)
+            scheduleError = ""
+            scheduleImportStatusMessage = ""
+            scheduleSaveState = .idle
+        } catch {
+            scheduleError = error.localizedDescription
+            scheduleImportStatusMessage = ""
+            scheduleSaveState = .failed(scheduleError)
+        }
+    }
+
+    func importSchedulePreview(_ preview: ScheduleImportPreview, emptySlotMode: ScheduleEmptySlotImportMode) async {
+        guard let bridge, teacherSchedule != nil else { return }
+        isImportingSchedule = true
+        scheduleSaveState = .saving
+        defer { isImportingSchedule = false }
+
+        do {
+            var groupIdByCode = try await ensureImportedGroups(preview.groupCodes)
+            guard let schedule = teacherSchedule else { return }
+
+            var importedCount = 0
+            for slot in preview.persistableSlots {
+                for groupCode in slot.groupCodes {
+                    guard let classId = groupIdByCode[groupCode] else { continue }
+                    _ = try await bridge.plannerSaveTeacherScheduleSlot(
+                        scheduleId: schedule.id,
+                        classId: classId,
+                        subjectLabel: slot.subjectName ?? slot.subjectCode ?? slot.displayTitle,
+                        unitLabel: slot.kind == .tutoring ? "Tutoría multigrupo" : nil,
+                        dayOfWeek: slot.weekday,
+                        startTime: slot.startTime,
+                        endTime: slot.endTime
+                    )
+                    importedCount += 1
+                }
+            }
+
+            groupIdByCode.removeAll(keepingCapacity: true)
+            scheduleImportPreview = nil
+            await reload()
+            scheduleSaveState = .saved(Date())
+            scheduleError = ""
+            scheduleImportStatusMessage = emptySlotMode == .skip
+                ? "Horario importado correctamente (\(importedCount) franjas)."
+                : "Horario importado correctamente (\(importedCount) franjas). Los huecos vacíos quedan clasificados en la previsualización, pero esta versión no los persiste sin grupo."
+        } catch {
+            scheduleError = error.localizedDescription
+            scheduleImportStatusMessage = ""
+            scheduleSaveState = .failed(scheduleError)
+        }
+    }
+
     func addEvaluationPeriod() async {
         guard let bridge, let schedule = teacherSchedule else { return }
         let normalizedName = evaluationFormName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -347,6 +394,96 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
         bridge.plannerSetCourseColor(colorHex, for: classId)
         classColorHexById[classId] = bridge.plannerCourseColor(for: classId)
     }
+
+    func knownGroupNamesByCode() -> [String: String] {
+        Dictionary(
+            groups.compactMap { group in
+                guard let code = groupCode(from: group.name) else { return nil }
+                return (code, group.name)
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
+
+    private func ensureImportedGroups(_ groupCodes: [String]) async throws -> [String: Int64] {
+        guard let bridge else { return [:] }
+        var idByCode = Dictionary(
+            groups.compactMap { group in
+                groupCode(from: group.name).map { ($0, group.id) }
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
+
+        for code in groupCodes where idByCode[code] == nil {
+            let className = groupDisplayName(for: code)
+            let course = Int32(Int(code.prefix(1)) ?? 0)
+            let classId = try await bridge.createClass(name: className, course: course)
+            idByCode[code] = classId
+            await bridge.ensureClassesLoaded()
+            groups = bridge.classes.sorted { $0.name < $1.name }
+        }
+        return idByCode
+    }
+
+    private func previewWithExistingConflicts(_ preview: ScheduleImportPreview) -> ScheduleImportPreview {
+        let idByCode = Dictionary(
+            groups.compactMap { group in
+                groupCode(from: group.name).map { ($0, group.id) }
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
+        var conflicts = preview.conflicts
+
+        for imported in preview.persistableSlots {
+            for groupCode in imported.groupCodes {
+                guard let classId = idByCode[groupCode] else { continue }
+                for existing in effectiveScheduleSlots where existing.schoolClassId == classId && Int(existing.dayOfWeek) == imported.weekday {
+                    if rangesOverlap(startA: existing.startTime, endA: existing.endTime, startB: imported.startTime, endB: imported.endTime) {
+                        conflicts.append("\(dayLabel(for: imported.weekday)) \(imported.startTime)-\(imported.endTime) se solapa con una franja existente de \(groupDisplayName(for: groupCode)).")
+                    }
+                }
+            }
+        }
+
+        return ScheduleImportPreview(
+            sourceName: preview.sourceName,
+            slots: preview.slots,
+            subjectLegend: preview.subjectLegend,
+            conflicts: Array(Set(conflicts)).sorted(),
+            warnings: preview.warnings
+        )
+    }
+
+    private func rangesOverlap(startA: String, endA: String, startB: String, endB: String) -> Bool {
+        guard let a0 = minutes(startA), let a1 = minutes(endA), let b0 = minutes(startB), let b1 = minutes(endB) else {
+            return false
+        }
+        return max(a0, b0) < min(a1, b1)
+    }
+
+    private func minutes(_ value: String) -> Int? {
+        let parts = value.split(separator: ":")
+        guard parts.count == 2, let hour = Int(parts[0]), let minute = Int(parts[1]) else { return nil }
+        return hour * 60 + minute
+    }
+
+    private func groupDisplayName(for code: String) -> String {
+        guard code.count >= 5 else { return code }
+        return "\(code.prefix(1))º ESO \(code.suffix(1))"
+    }
+
+    private func groupCode(from name: String) -> String? {
+        let normalized = name
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .uppercased()
+            .replacingOccurrences(of: "º", with: "")
+            .replacingOccurrences(of: "°", with: "")
+        guard normalized.contains("ESO") else { return nil }
+        let digits = normalized.filter(\.isNumber)
+        let letters = normalized.filter(\.isLetter)
+        guard let course = digits.first, let group = letters.last else { return nil }
+        return "\(course)ESO\(group)"
+    }
 }
 
 #if os(macOS)
@@ -354,6 +491,8 @@ struct MacTeacherScheduleSettingsPanel: View {
     @ObservedObject var bridge: KmpBridge
     @Binding var selectedClassId: Int64?
     @StateObject private var vm = TeacherScheduleSettingsViewModel()
+    @State private var isScheduleImporterPresented = false
+    @State private var pendingScheduleSlotDeletionId: Int64?
 
     var body: some View {
         LazyVStack(alignment: .leading, spacing: 14) {
@@ -365,6 +504,15 @@ struct MacTeacherScheduleSettingsPanel: View {
                     .padding(.vertical, 8)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(EvaluationDesign.danger.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+            if !vm.scheduleImportStatusMessage.isEmpty {
+                Text(vm.scheduleImportStatusMessage)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(EvaluationDesign.success)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(EvaluationDesign.success.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
             PlannerSaveStateStatusLine(state: vm.scheduleSaveState, idleText: "")
 
@@ -399,6 +547,47 @@ struct MacTeacherScheduleSettingsPanel: View {
         }
         .appOnChange(of: selectedClassId) { newValue in
             Task { await vm.updateSelectedClass(newValue) }
+        }
+        .fileImporter(
+            isPresented: $isScheduleImporterPresented,
+            allowedContentTypes: [.xlsx],
+            allowsMultipleSelection: false
+        ) { result in
+            Task {
+                switch result {
+                case .success(let urls):
+                    await vm.previewScheduleImport(urls.first.map(Result.success) ?? .failure(AppleSpreadsheetReaderError.unreadableFile))
+                case .failure(let error):
+                    await vm.previewScheduleImport(.failure(error))
+                }
+            }
+        }
+        .sheet(item: $vm.scheduleImportPreview) { preview in
+            ScheduleImportPreviewSheet(
+                preview: preview,
+                knownGroupNames: vm.knownGroupNamesByCode(),
+                isImporting: vm.isImportingSchedule
+            ) { mode in
+                Task { await vm.importSchedulePreview(preview, emptySlotMode: mode) }
+            }
+        }
+        .alert(
+            "Eliminar franja",
+            isPresented: Binding(
+                get: { pendingScheduleSlotDeletionId != nil },
+                set: { if !$0 { pendingScheduleSlotDeletionId = nil } }
+            )
+        ) {
+            Button("Cancelar", role: .cancel) {
+                pendingScheduleSlotDeletionId = nil
+            }
+            Button("Eliminar franja y sesiones futuras", role: .destructive) {
+                guard let slotId = pendingScheduleSlotDeletionId else { return }
+                pendingScheduleSlotDeletionId = nil
+                Task { await vm.deleteScheduleSlot(slotId) }
+            }
+        } message: {
+            Text("Eliminar esta franja también quitará del Planner semanal las sesiones futuras generadas desde ella.")
         }
     }
 
@@ -504,6 +693,12 @@ struct MacTeacherScheduleSettingsPanel: View {
                     Text("Franjas")
                         .font(MacAppStyle.sectionTitle)
                     Spacer()
+                    Button {
+                        isScheduleImporterPresented = true
+                    } label: {
+                        Label("Importar horario", systemImage: "square.and.arrow.down")
+                    }
+                    .buttonStyle(.bordered)
                     if vm.editingScheduleSlotId != nil {
                         Button("Cancelar edición") {
                             vm.cancelEditingScheduleSlot()
@@ -728,7 +923,7 @@ struct MacTeacherScheduleSettingsPanel: View {
             .buttonStyle(.borderless)
 
             Button(role: .destructive) {
-                Task { await vm.deleteScheduleSlot(slot.id) }
+                pendingScheduleSlotDeletionId = slot.id
             } label: {
                 Image(systemName: "trash")
             }
@@ -860,6 +1055,8 @@ struct TeacherScheduleSettingsPanel: View {
     @EnvironmentObject private var bridge: KmpBridge
     @Binding var selectedClassId: Int64?
     @StateObject private var vm = TeacherScheduleSettingsViewModel()
+    @State private var isScheduleImporterPresented = false
+    @State private var pendingScheduleSlotDeletionId: Int64?
 
     var body: some View {
         VStack(alignment: .leading, spacing: EvaluationDesign.cardSpacing) {
@@ -875,6 +1072,11 @@ struct TeacherScheduleSettingsPanel: View {
                         Text(vm.scheduleError)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(EvaluationDesign.danger)
+                    }
+                    if !vm.scheduleImportStatusMessage.isEmpty {
+                        Text(vm.scheduleImportStatusMessage)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(EvaluationDesign.success)
                     }
 
                     HStack(spacing: 12) {
@@ -997,6 +1199,13 @@ struct TeacherScheduleSettingsPanel: View {
                         subtitle: "Cada franja alimenta el tablero semanal y sirve de base para el cómputo de sesiones lectivas por evaluación."
                     )
 
+                    Button {
+                        isScheduleImporterPresented = true
+                    } label: {
+                        Label("Importar horario", systemImage: "square.and.arrow.down")
+                    }
+                    .buttonStyle(.borderedProminent)
+
                     HStack(spacing: 12) {
                         Picker(
                             "Grupo",
@@ -1096,7 +1305,7 @@ struct TeacherScheduleSettingsPanel: View {
                                 Spacer()
                                 if !vm.usingLegacyWeeklySlots {
                                     Button(role: .destructive) {
-                                        Task { await vm.deleteScheduleSlot(slot.id) }
+                                        pendingScheduleSlotDeletionId = slot.id
                                     } label: {
                                         Image(systemName: "trash")
                                     }
@@ -1287,6 +1496,47 @@ struct TeacherScheduleSettingsPanel: View {
         }
         .appOnChange(of: selectedClassId) { newValue in
             Task { await vm.updateSelectedClass(newValue) }
+        }
+        .fileImporter(
+            isPresented: $isScheduleImporterPresented,
+            allowedContentTypes: [.xlsx],
+            allowsMultipleSelection: false
+        ) { result in
+            Task {
+                switch result {
+                case .success(let urls):
+                    await vm.previewScheduleImport(urls.first.map(Result.success) ?? .failure(AppleSpreadsheetReaderError.unreadableFile))
+                case .failure(let error):
+                    await vm.previewScheduleImport(.failure(error))
+                }
+            }
+        }
+        .sheet(item: $vm.scheduleImportPreview) { preview in
+            ScheduleImportPreviewSheet(
+                preview: preview,
+                knownGroupNames: vm.knownGroupNamesByCode(),
+                isImporting: vm.isImportingSchedule
+            ) { mode in
+                Task { await vm.importSchedulePreview(preview, emptySlotMode: mode) }
+            }
+        }
+        .alert(
+            "Eliminar franja",
+            isPresented: Binding(
+                get: { pendingScheduleSlotDeletionId != nil },
+                set: { if !$0 { pendingScheduleSlotDeletionId = nil } }
+            )
+        ) {
+            Button("Cancelar", role: .cancel) {
+                pendingScheduleSlotDeletionId = nil
+            }
+            Button("Eliminar franja y sesiones futuras", role: .destructive) {
+                guard let slotId = pendingScheduleSlotDeletionId else { return }
+                pendingScheduleSlotDeletionId = nil
+                Task { await vm.deleteScheduleSlot(slotId) }
+            }
+        } message: {
+            Text("Eliminar esta franja también quitará del Planner semanal las sesiones futuras generadas desde ella.")
         }
     }
 

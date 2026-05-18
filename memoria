@@ -405,6 +405,60 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-05-18 - Limpieza de sesiones del Planner sin franjas
+
+Resumen:
+- Se diagnosticó que, aunque `teacher_schedule_slots` quedase vacío, el Planner podía seguir mostrando `planner_session` ya persistidas en semanas anteriores o huérfanas tras borrar franjas.
+- `TeacherScheduleRepositorySqlDelight.deleteScheduleSlotAndGeneratedPlannerSessions` ahora elimina todas las sesiones `PLANNED` generadas desde la franja antes de borrar el slot, usando la trazabilidad `teacher_schedule_slot_id` y evitando limitarse a fechas futuras desde “hoy”.
+- `PlannerWorkspaceIOS.swift` añade una limpieza explícita cuando no hay franjas efectivas: cuenta y elimina sesiones no completadas de la semana actual, útil para limpiar datos que ya quedaron huérfanos.
+- `MacModuleStubs.swift` expone la acción “Limpiar semana sin franjas” en Acciones, con confirmación y respeto del filtro de grupo.
+
+Validación:
+- `git diff --check` sin errores.
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -configuration Debug build CODE_SIGNING_ALLOWED=NO` terminó con `BUILD SUCCEEDED`.
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO` terminó con `BUILD SUCCEEDED`.
+
+Notas para futuras conversaciones:
+- No hubo migración SQLDelight ni cambio de esquema; se trabaja sobre `planner_session.teacher_schedule_slot_id` y los métodos existentes de borrado de sesiones.
+- Las sesiones completadas se conservan. La acción manual de limpieza existe porque las sesiones antiguas ya podían haber perdido `teacher_schedule_slot_id` por el `ON DELETE SET NULL` de la FK.
+- Si se necesita una limpieza global de todas las semanas, conviene añadir una operación KMP dedicada por rango de fechas o por curso, con preview de impacto.
+
+### 2026-05-17 - Consistencia entre horario importado y Planner
+
+Resumen:
+- Se corrigió la semántica de importación Excel: una celda vacía se clasifica como `ImportedScheduleSlotKind.empty`, se muestra como “Hueco vacío” en `ScheduleImportPreviewSheet.swift` y no se persiste por defecto ni se confunde con guardia/coordinación/reunión.
+- Se reutilizó la trazabilidad existente `PlanningSession.teacherScheduleSlotId` / `planner_session.teacher_schedule_slot_id` como referencia de origen para sesiones generadas desde franjas de horario.
+- `TeacherScheduleRepositorySqlDelight.deleteScheduleSlot` delega ahora en `deleteScheduleSlotAndGeneratedPlannerSessions`, que borra primero sesiones futuras `PLANNED` generadas desde la franja y después elimina `teacher_schedule_slots`, evitando sesiones fantasma en el Planner semanal.
+- `TeacherScheduleSettingsView.swift` muestra confirmación explícita antes de borrar una franja: “Eliminar esta franja también quitará del Planner semanal las sesiones futuras generadas desde ella.”
+- Se corrigió el fallback visual/funcional: `TeacherScheduleSettingsViewModel` y `PlannerWorkspaceViewModel` ya no convierten `weeklySlots` heredados en franjas efectivas cuando `teacherScheduleSlots` queda vacío; eliminar todas las franjas deja la agenda realmente vacía.
+
+Validación:
+- `git diff --check` sin errores.
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -configuration Debug build CODE_SIGNING_ALLOWED=NO` terminó con `BUILD SUCCEEDED`.
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO` terminó con `BUILD SUCCEEDED`.
+
+Notas para futuras conversaciones:
+- No hubo migración SQLDelight ni cambio de tabla: la columna `teacher_schedule_slot_id` ya existía en `planner_session`; solo se añadió query de selección/borrado en `Planner.sq` y métodos de repositorio.
+- El borrado conserva sesiones pasadas y solo elimina futuras con estado `PLANNED`; las sesiones manuales quedan protegidas porque no tienen `teacherScheduleSlotId`.
+- Aún no existe marca `isManuallyEdited`; si se necesita proteger ediciones manuales sobre sesiones generadas, añadir ese campo en Planner será el siguiente paso robusto.
+
+### 2026-05-17 - Importación Apple de horario docente desde Excel
+
+Resumen:
+- Se añadió el flujo nativo de importación de horario en `kmp/iosApp/App/TeacherScheduleSettingsView.swift` para iOS y macOS: botón “Importar horario”, `fileImporter`, previsualización obligatoria y confirmación antes de guardar.
+- El parser vive en `kmp/iosApp/AppleShared/ScheduleExcelImportService.swift` y reutiliza `AppleSpreadsheetReader`/CoreXLSX para detectar cabecera `Horas/Lunes...Viernes`, franjas `De HH:mm a HH:mm`, celdas `CODIGO : GRUPO`, tutorías multigrupo separadas por `/`, leyenda de materias y recreo `11:00-11:25`.
+- Los modelos y la sheet viven en `ScheduleImportModels.swift` y `ScheduleImportPreviewSheet.swift`; la preview resume sesiones, tutorías, recreos, huecos, grupos, materias, avisos y conflictos.
+- La confirmación crea grupos faltantes con `bridge.createClass` y guarda franjas lectivas/tutorías en lote semántico usando la API existente `plannerSaveTeacherScheduleSlot`, sin recargar la UI hasta terminar.
+
+Validación:
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -configuration Debug build CODE_SIGNING_ALLOWED=NO` terminó con `BUILD SUCCEEDED`.
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO` terminó con `BUILD SUCCEEDED`.
+
+Notas para futuras conversaciones:
+- No hubo migración SQLDelight ni cambio de esquema. La persistencia afectada es `TeacherScheduleSlot` a través del repositorio/API ya existente.
+- Los huecos vacíos y recreos se clasifican en preview, pero no se persisten todavía porque el modelo público Apple permitido solo guarda franjas vinculadas a grupo; hace falta una API/modelo de bloques docentes sin grupo o eventos recurrentes para completar esa parte.
+- Las tutorías multigrupo se muestran como un bloque importado, pero al guardar se materializan como una franja por grupo porque `TeacherScheduleSlot` exige `schoolClassId`.
+
 ### 2026-05-17 - Planificación con stores parciales y AppleDesignSystem
 
 Resumen:

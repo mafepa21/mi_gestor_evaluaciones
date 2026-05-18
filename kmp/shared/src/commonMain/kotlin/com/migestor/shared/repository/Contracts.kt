@@ -252,6 +252,7 @@ interface PlannerRepository {
     suspend fun deleteSessions(sessionIds: List<Long>) {
         sessionIds.forEach { deleteSession(it) }
     }
+    suspend fun deleteFutureSessionsGeneratedFromScheduleSlot(slotId: Long, fromDate: LocalDate): Int = 0
     fun observeTeachingUnits(groupId: Long? = null): Flow<List<TeachingUnit>>
     suspend fun listAllTeachingUnits(): List<TeachingUnit> = emptyList()
     suspend fun upsertTeachingUnit(unit: TeachingUnit): Long
@@ -550,6 +551,8 @@ interface TeacherScheduleRepository {
     suspend fun saveScheduleSlot(slot: TeacherScheduleSlot): Long
     @Throws(Exception::class)
     suspend fun deleteScheduleSlot(slotId: Long)
+    @Throws(Exception::class)
+    suspend fun deleteScheduleSlotAndGeneratedPlannerSessions(slotId: Long)
     @Throws(Exception::class)
     suspend fun listEvaluationPeriods(scheduleId: Long): List<PlannerEvaluationPeriod>
     @Throws(Exception::class)

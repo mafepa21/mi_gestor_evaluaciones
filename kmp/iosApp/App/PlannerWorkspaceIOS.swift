@@ -518,24 +518,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     }
 
     var effectiveScheduleSlots: [TeacherScheduleSlot] {
-        if !teacherScheduleSlots.isEmpty {
-            return teacherScheduleSlots.sorted(by: { ($0.dayOfWeek, $0.startTime) < ($1.dayOfWeek, $1.startTime) })
-        }
-
-        return weeklySlots.map {
-            TeacherScheduleSlot(
-                id: $0.id,
-                teacherScheduleId: teacherSchedule?.id ?? 0,
-                schoolClassId: $0.schoolClassId,
-                subjectLabel: "",
-                unitLabel: nil,
-                dayOfWeek: Int32($0.dayOfWeek),
-                startTime: $0.startTime,
-                endTime: $0.endTime,
-                weeklyTemplateId: KotlinLong(value: $0.id)
-            )
-        }
-        .sorted(by: { ($0.dayOfWeek, $0.startTime) < ($1.dayOfWeek, $1.startTime) })
+        teacherScheduleSlots.sorted(by: { ($0.dayOfWeek, $0.startTime) < ($1.dayOfWeek, $1.startTime) })
     }
 
     var visibleScheduleSlotsSummaryCount: Int {
@@ -543,13 +526,24 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     }
 
     var isUsingLegacyWeeklySlots: Bool {
-        teacherScheduleSlots.isEmpty && !weeklySlots.isEmpty
+        false
     }
 
     var generationPreviewTotals: (detected: Int, omitted: Int) {
         scheduleGenerationPreview.reduce(into: (detected: 0, omitted: 0)) { result, row in
             result.detected += row.detectedSessions
             result.omitted += row.existingSessions
+        }
+    }
+
+    var canClearSchedulelessWeekSessions: Bool {
+        schedulelessWeekSessionsToClearCount() > 0
+    }
+
+    func schedulelessWeekSessionsToClearCount(groupId: Int64? = nil) -> Int {
+        guard effectiveScheduleSlots.isEmpty else { return 0 }
+        return sessions.count { session in
+            (groupId == nil || session.groupId == groupId) && session.status != .completed
         }
     }
 
@@ -902,6 +896,27 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         selectionMode = false
         selectedSessionIds.removeAll()
         await reloadSessionsOnly()
+    }
+
+    func clearCurrentWeekSessionsWithoutSchedule(groupId: Int64? = nil) async {
+        guard let bridge, effectiveScheduleSlots.isEmpty else { return }
+        let ids = sessions
+            .filter { session in
+                (groupId == nil || session.groupId == groupId) && session.status != .completed
+            }
+            .map(\.id)
+        guard !ids.isEmpty else {
+            bulkSummary = "No hay sesiones planificadas que limpiar en esta semana."
+            return
+        }
+
+        for id in ids {
+            try? await bridge.plannerDeleteSession(sessionId: id)
+        }
+        selectedSessionIds.removeAll()
+        selectedSession = nil
+        bulkSummary = "Eliminadas \(ids.count) sesiones de la semana sin franjas de agenda."
+        await reloadSessionsOnly(keepSelection: false)
     }
 
     func markCompleted(_ session: PlanningSession) async {
@@ -1762,6 +1777,7 @@ struct PlannerWorkspaceIOS: View {
 private struct PlannerToolbar: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
     let onOpenDiary: () -> Void
+    @State private var isClearSchedulelessWeekConfirmationPresented = false
 
     var body: some View {
         VStack(spacing: 12) {
@@ -1812,10 +1828,27 @@ private struct PlannerToolbar: View {
                         .disabled(vm.selectedSessionIds.isEmpty)
                     Button("Mover +1 día") { Task { await vm.bulkMoveOneDay() } }
                         .disabled(vm.selectedSessionIds.isEmpty)
+                    Divider()
+                    Button("Limpiar semana sin franjas", role: .destructive) {
+                        isClearSchedulelessWeekConfirmationPresented = true
+                    }
+                    .disabled(!vm.canClearSchedulelessWeekSessions)
                 } label: {
                     Label("Acciones", systemImage: "slider.horizontal.3")
                 }
                 .buttonStyle(.bordered)
+                .confirmationDialog(
+                    "Eliminar sesiones de esta semana",
+                    isPresented: $isClearSchedulelessWeekConfirmationPresented,
+                    titleVisibility: .visible
+                ) {
+                    Button("Eliminar sesiones planificadas", role: .destructive) {
+                        Task { await vm.clearCurrentWeekSessionsWithoutSchedule() }
+                    }
+                    Button("Cancelar", role: .cancel) {}
+                } message: {
+                    Text("No hay franjas en la agenda. Se eliminarán las sesiones planificadas de la semana actual y se conservarán las completadas.")
+                }
 
                 if vm.selectedSession != nil {
                     Button(action: onOpenDiary) {

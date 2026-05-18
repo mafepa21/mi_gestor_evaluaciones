@@ -165,6 +165,17 @@ class PlannerRepositorySqlDelight(
         }
     }
 
+    override suspend fun deleteFutureSessionsGeneratedFromScheduleSlot(slotId: Long, fromDate: LocalDate): Int {
+        val ids = db.plannerQueries
+            .selectFutureGeneratedSessionIdsForScheduleSlot(slotId = slotId, fromDate = fromDate.toString())
+            .executeAsList()
+        if (ids.isEmpty()) return 0
+        db.transaction {
+            ids.forEach { db.plannerQueries.deleteSession(it) }
+        }
+        return ids.size
+    }
+
     override suspend fun listAllTeachingUnits(): List<TeachingUnit> {
         return db.plannerQueries.selectAllTeachingUnits()
             .executeAsList()

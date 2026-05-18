@@ -405,6 +405,23 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-05-18 - Síntesis pedagógica local con guardado directo
+
+Resumen:
+- `NotebookSummaryGenerationSheet` queda desacoplada de Apple Foundation Models: ya no hace `prewarmIfUseful`, no consulta `availability()`, no usa `AppleAIStatusBadge` y no llama a `generateWithTrace`.
+- La acción de generar síntesis usa siempre `fallbackPedagogicalSummary(from:)`, produce texto local por reglas y llama directamente a `bridge.saveNotebookAIComment(...)` por alumno.
+- Se eliminó la preview intermedia de este flujo para comprobar y estabilizar el guardado real en la columna “Síntesis pedagógica”.
+- La UI explica que la síntesis es local, editable, fuera de media y que Apple Intelligence podrá volver como mejora opcional cuando la capa sea estable.
+
+Validación:
+- `git diff --check` no reportó errores.
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -destination 'platform=macOS' build` terminó con `BUILD SUCCEEDED`.
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO` terminó con `BUILD SUCCEEDED`.
+
+Notas para futuras conversaciones:
+- Si vuelven logs de `ModelCatalog` al generar síntesis pedagógica, ya no deberían venir de `NotebookSummaryGenerationSheet`; revisar otros prewarm/badges de IA activos en pantalla.
+- Próximo paso recomendable: reintroducir Apple Intelligence solo como modo experimental explícito, separado del modo local por reglas.
+
 ### 2026-05-18 - Fallback local garantizado en síntesis pedagógica
 
 Resumen:

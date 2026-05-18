@@ -26,20 +26,12 @@ struct NotebookAICommentSheet: View {
     @State private var pendingTargetColumnId: String?
     @State private var previewText = ""
     @State private var isPreviewPresented = false
+    @State private var aiAvailability: AppleAIAvailability = .unavailable("Comprobando disponibilidad…")
 
     private let aiOrchestrator = AppleAIOrchestrator()
 
     private var existingAIColumns: [NotebookColumnDefinition] {
         data.sheet.columns.filter(bridge.isNotebookAICommentColumn)
-    }
-
-    private var availability: AIContextualAvailabilityState {
-        switch aiOrchestrator.availability() {
-        case .available:
-            return .available
-        case .disabled(let message), .preparing(let message), .unavailable(let message):
-            return .unavailable(message)
-        }
     }
 
     private var effectiveStudentIds: [Int64] {
@@ -64,8 +56,10 @@ struct NotebookAICommentSheet: View {
                     Button("Cerrar") { dismiss() }
                 }
             }
+            .task {
+                aiAvailability = aiOrchestrator.availability()
+            }
             .onAppear {
-                aiOrchestrator.prewarmIfUseful(for: .contextual(.notebookComment))
                 if let targetColumnId {
                     selectedExistingColumnId = targetColumnId
                 } else if let first = existingAIColumns.first {
@@ -92,9 +86,9 @@ struct NotebookAICommentSheet: View {
             VStack(alignment: .leading, spacing: 14) {
                 Text(mode == .createColumn ? "Crear columna persistida de comentario IA" : "Generar comentarios para selección")
                     .font(.system(size: 20, weight: .black, design: .rounded))
-                Text(availability.message)
+                Text(aiAvailability.message)
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(availability.isAvailable ? NotebookStyle.successTint : NotebookStyle.warningTint)
+                    .foregroundStyle(aiAvailability.isAvailable ? NotebookStyle.successTint : NotebookStyle.warningTint)
 
                 if mode == .createColumn {
                     TextField("Nombre de columna", text: $columnName)
@@ -143,7 +137,7 @@ struct NotebookAICommentSheet: View {
             VStack(alignment: .leading, spacing: 14) {
                 Text("Generación")
                     .font(.system(size: 18, weight: .bold, design: .rounded))
-                AppleAIStatusBadge(state: generationMetadata?.state ?? aiOrchestrator.availability().generationState, message: generationMetadata?.availabilityMessage ?? availability.message)
+                AppleAIStatusBadge(state: generationMetadata?.state ?? aiAvailability.generationState, message: generationMetadata?.availabilityMessage ?? aiAvailability.message)
                 Text("Alumnado objetivo: \(effectiveStudentIds.count)")
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(.secondary)
@@ -227,6 +221,8 @@ struct NotebookAICommentSheet: View {
         isGenerating = true
         feedbackMessage = nil
         progressMessage = nil
+        let currentAvailability = aiOrchestrator.availability()
+        aiAvailability = currentAvailability
 
         Task {
             let contexts = bridge.generateNotebookAICommentContexts(
@@ -252,7 +248,7 @@ struct NotebookAICommentSheet: View {
             }
             targetColumnId = resolvedColumnId
 
-            if !availability.isAvailable {
+            if !currentAvailability.isAvailable {
                 await MainActor.run {
                     feedbackMessage = "Apple Intelligence no disponible; se generará un borrador editable por reglas."
                 }

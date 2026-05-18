@@ -1469,7 +1469,6 @@ struct AddColumnSheet: View {
         switch summaryAIOrchestrator.availability() {
         case .available:
             summaryAvailability = .available
-            summaryAIOrchestrator.prewarmIfUseful(for: .contextual(.notebookComment))
         case .disabled(let message), .preparing(let message), .unavailable(let message):
             summaryAvailability = .unavailable(message)
         }

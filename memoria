@@ -405,6 +405,19 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-05-18 - IA del cuaderno diferida fuera del render SwiftUI
+
+Resumen:
+- `NotebookAICommentSheet.swift` deja de consultar `aiOrchestrator.availability()` desde propiedades computadas usadas por el `body`; ahora cachea la disponibilidad en `@State` y la refresca en `.task` o justo antes de generar.
+- Se elimina el `prewarmIfUseful(for: .contextual(.notebookComment))` al abrir el sheet de comentarios IA y al refrescar la disponibilidad de la síntesis en `AddColumnSheet.swift`, evitando crear `LanguageModelSession` antes de una acción explícita del usuario.
+- La generación real sigue usando `aiOrchestrator.generateWithTrace(...)` solo dentro del flujo disparado por botón, conservando fallback local cuando Apple Intelligence no está disponible.
+
+Validación:
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -configuration Debug -destination 'platform=macOS' build` terminó con `BUILD SUCCEEDED`.
+
+Notas para futuras conversaciones:
+- Regla a mantener: en vistas SwiftUI del cuaderno, no llamar disponibilidad de Foundation Models ni hacer prewarm desde `body`/`onAppear`; las sesiones deben nacer únicamente en tareas de generación iniciadas por el usuario.
+
 ### 2026-05-18 - Síntesis pedagógica local con guardado directo
 
 Resumen:

@@ -183,6 +183,8 @@ struct NotebookSummaryGenerationSheet: View {
     @State private var progressMessage: String?
     @State private var feedbackMessage: String?
 
+    private let reportService = AppleFoundationReportService()
+
     private var notebookData: NotebookUiStateData? {
         bridge.notebookState as? NotebookUiStateData
     }
@@ -329,7 +331,7 @@ struct NotebookSummaryGenerationSheet: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(isGenerating || resolvedStudentIds.isEmpty || resolvedIncludedColumnIds().isEmpty)
+                .disabled(isGenerating || resolvedStudentIds.isEmpty)
             }
         }
     }
@@ -467,24 +469,19 @@ struct NotebookSummaryGenerationSheet: View {
     }
 
     private func performGeneration() {
-        let includedColumnIds = resolvedIncludedColumnIds()
-        guard !includedColumnIds.isEmpty else {
-            feedbackMessage = "No hay columnas de evidencia seleccionadas para generar la síntesis."
-            return
-        }
-
-        let contexts = bridge.generateNotebookAICommentContexts(
-            includedColumnIds: includedColumnIds,
-            studentIds: resolvedStudentIds
-        )
-
-        guard !contexts.isEmpty else {
-            feedbackMessage = "No hay datos suficientes en el cuaderno para generar síntesis."
+        let studentIds = resolvedStudentIds
+        guard !studentIds.isEmpty else {
+            feedbackMessage = "No hay alumnado disponible para generar síntesis."
             return
         }
 
         guard let targetColumnId = resolveTargetColumnId() else {
             feedbackMessage = "No se pudo resolver la columna de síntesis."
+            return
+        }
+
+        guard let classId = bridge.currentNotebookClassId else {
+            feedbackMessage = "No se pudo resolver la clase actual para guardar la síntesis."
             return
         }
 
@@ -497,28 +494,29 @@ struct NotebookSummaryGenerationSheet: View {
             var savedCount = 0
             var skippedCount = 0
 
-            for (index, context) in contexts.enumerated() {
-                progressMessage = "Generando \(index + 1) de \(contexts.count): \(context.studentName)"
+            for (index, studentId) in studentIds.enumerated() {
+                let studentName = notebookData?.sheet.rows.first(where: { $0.student.id == studentId })?.student.fullName ?? "alumno"
+                progressMessage = "Generando \(index + 1) de \(studentIds.count): \(studentName)"
 
+                let currentText = (try? await bridge.notebookTextCell(classId: classId, studentId: studentId, columnId: targetColumnId))
+                    ?? bridge.cellText(studentId: studentId, columnId: targetColumnId)
                 if onlyEmptyCells,
-                   !bridge.cellText(studentId: context.studentId, columnId: targetColumnId)
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                    .isEmpty {
+                   !currentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     skippedCount += 1
                     continue
                 }
 
-                let draft = fallbackPedagogicalSummary(from: context)
-                let text = notebookIndividualSummaryText(from: draft, length: configuration.length)
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let saved = await generatePedagogicalSummaryWithReports(
+                    classId: classId,
+                    studentId: studentId,
+                    targetColumnId: targetColumnId
+                )
 
-                guard !text.isEmpty else {
+                if saved {
+                    savedCount += 1
+                } else {
                     skippedCount += 1
-                    continue
                 }
-
-                bridge.saveNotebookAIComment(studentId: context.studentId, columnId: targetColumnId, text: text)
-                savedCount += 1
             }
 
             isGenerating = false
@@ -533,46 +531,69 @@ struct NotebookSummaryGenerationSheet: View {
         }
     }
 
-    private func fallbackPedagogicalSummary(
-        from context: KmpBridge.NotebookAICommentContext
-    ) -> NotebookAICommentDraft {
-        let hasUsableSignal = hasUsableSummarySignal(context)
-        let averageText = context.averageScore.map { IosFormatting.decimal(from: $0) } ?? "sin media consolidada"
-        let relevantValues = context.relevantValues
-            .prefix(5)
-            .map { "\($0.title): \($0.value)" }
-        let valuesText = relevantValues.isEmpty
-            ? "no hay suficientes valores registrados en las columnas seleccionadas"
-            : relevantValues.joined(separator: "; ")
-        let attendanceText = context.attendanceStatus.map { "Última asistencia: \($0)." } ?? ""
-        let followUpText = context.followUpCount > 0 ? "Seguimientos activos: \(context.followUpCount)." : ""
-        let incidentText = context.incidentCount > 0 ? "Incidencias registradas: \(context.incidentCount)." : ""
-        let evidenceText = context.evidenceCount > 0 ? "Evidencias adjuntas: \(context.evidenceCount)." : "No constan evidencias adjuntas."
-        let warningText = context.relevantValues.isEmpty
-            ? "La síntesis es prudente porque todavía hay pocos datos registrados."
-            : "La síntesis se basa en las columnas disponibles del cuaderno."
-        let comment = hasUsableSignal
-            ? """
-            \(context.studentName) presenta una media de \(averageText). A partir de las evidencias registradas en el cuaderno, destacan estos datos: \(valuesText). \(attendanceText) \(followUpText) \(incidentText) \(evidenceText)
+    private func generatePedagogicalSummaryWithReports(
+        classId: Int64,
+        studentId: Int64,
+        targetColumnId: String
+    ) async -> Bool {
+        do {
+            let context = try await bridge.buildReportGenerationContext(
+                classId: classId,
+                studentId: studentId,
+                kind: .studentSummary,
+                termLabel: nil
+            )
 
-            Lectura pedagógica: el rendimiento debe interpretarse con prudencia y vincularse a las evidencias disponibles. Conviene revisar la evolución en las próximas sesiones y completar la información si faltan registros relevantes.
-            """
-            : """
-            Sin evidencias suficientes para sintetizar la evolución de \(context.studentName) en las columnas seleccionadas. Conviene completar registros evaluables, asistencia u observaciones verificables antes de cerrar una valoración pedagógica.
-            """
+            let draft = try await reportService.generateDraft(
+                from: context,
+                audience: .docente,
+                tone: .claro
+            )
 
-        return NotebookAICommentDraft(
-            summary: "Síntesis pedagógica generada a partir del cuaderno.",
-            strengths: relevantValues.isEmpty ? [] : Array(relevantValues.prefix(2)),
-            needsAttention: context.dataQualityNote.map { [$0] } ?? [],
-            nextSteps: [
-                "Revisar la evolución del alumno en la próxima sesión.",
-                "Completar evidencias si hay columnas sin datos."
-            ],
-            factsUsed: relevantValues,
-            warnings: [warningText, "Generado por reglas porque Apple Intelligence no está disponible."],
-            commentText: comment
-        )
+            let text = compactNotebookSummary(from: draft, length: configuration.length)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+
+            guard !text.isEmpty else { return false }
+
+            try await bridge.saveNotebookAICommentDirect(
+                classId: classId,
+                studentId: studentId,
+                columnId: targetColumnId,
+                text: text
+            )
+
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    private func compactNotebookSummary(
+        from draft: AIReportDraft,
+        length: NotebookIndividualSummaryLength
+    ) -> String {
+        let teacher = draft.teacherNotesVersion.trimmingCharacters(in: .whitespacesAndNewlines)
+        let summary = draft.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        let baseText = teacher.isEmpty ? summary : teacher
+
+        switch length {
+        case .brief:
+            let pieces = baseText
+                .split(whereSeparator: { $0.isNewline })
+                .flatMap { $0.split(separator: ".") }
+                .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            let selected = Array(pieces.prefix(2)).map { "\($0)." }
+            return selected.isEmpty ? baseText : selected.joined(separator: " ")
+        case .balanced:
+            return baseText
+        case .expanded:
+            let strengths = draft.strengths.prefix(2).joined(separator: " ")
+            let action = draft.recommendedActions.first ?? ""
+            let strengthsText = strengths.isEmpty ? "" : "\nFortalezas observables: \(strengths)"
+            let actionText = action.isEmpty ? "" : "\nPróximo paso sugerido: \(action)"
+            return baseText + strengthsText + actionText
+        }
     }
 
     private func formattedRunStamp() -> String {

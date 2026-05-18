@@ -6,6 +6,8 @@ import AppKit
 import UIKit
 #endif
 
+let isDebugGridEnabled = false // TEMPORARY: Set to true to debug alignment
+
 struct NotebookDividerHandle: View {
     let isDragging: Bool
     let onDragChanged: (CGFloat) -> Void
@@ -149,10 +151,13 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, TrailingFi
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
             fixedLeftPane
+                .border(isDebugGridEnabled ? Color.red : Color.clear, width: 1)
             dividerHandle
             centerScrollablePane
+                .border(isDebugGridEnabled ? Color.green : Color.clear, width: 1)
             if trailingFixedColumnWidth > 0 {
                 trailingRightPane
+                    .border(isDebugGridEnabled ? Color.blue : Color.clear, width: 1)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -357,34 +362,23 @@ private struct NotebookSyncedVerticalUIScrollView<Content: View>: UIViewRepresen
 
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
             guard !isApplyingOffset else { return }
-            let nextOffset = clampedOffset(scrollView.contentOffset.y, in: scrollView)
-            if abs(nextOffset - scrollView.contentOffset.y) > 0.5 {
-                apply(offset: nextOffset, in: scrollView)
-            }
-            if abs(nextOffset - offset.wrappedValue) > 0.5 {
-                offset.wrappedValue = nextOffset
+            let actualOffset = scrollView.contentOffset.y
+            if abs(actualOffset - offset.wrappedValue) > 0.5 {
+                offset.wrappedValue = actualOffset
             }
         }
 
         func applyOffsetIfNeeded() {
             guard let scrollView else { return }
-            let nextOffset = clampedOffset(offset.wrappedValue, in: scrollView)
-            if abs(nextOffset - offset.wrappedValue) > 0.5 {
-                offset.wrappedValue = nextOffset
-            }
-            guard abs(scrollView.contentOffset.y - nextOffset) > 0.5 else { return }
-            apply(offset: nextOffset, in: scrollView)
+            let targetOffset = offset.wrappedValue
+            guard abs(scrollView.contentOffset.y - targetOffset) > 0.5 else { return }
+            apply(offset: targetOffset, in: scrollView)
         }
 
         private func apply(offset: CGFloat, in scrollView: UIScrollView) {
             isApplyingOffset = true
             scrollView.setContentOffset(CGPoint(x: 0, y: offset), animated: false)
             isApplyingOffset = false
-        }
-
-        private func clampedOffset(_ proposedOffset: CGFloat, in scrollView: UIScrollView) -> CGFloat {
-            let maximumOffset = max(scrollView.contentSize.height - scrollView.bounds.height, 0)
-            return min(max(proposedOffset, 0), maximumOffset)
         }
     }
 }
@@ -459,24 +453,18 @@ private struct NotebookSyncedVerticalNSScrollView<Content: View>: NSViewRepresen
 
         func scrollViewDidScroll() {
             guard !isApplyingOffset, let scrollView else { return }
-            let nextOffset = clampedOffset(scrollView.contentView.bounds.origin.y, in: scrollView)
-            if abs(nextOffset - scrollView.contentView.bounds.origin.y) > 0.5 {
-                apply(offset: nextOffset, in: scrollView)
-            }
-            if abs(nextOffset - offset.wrappedValue) > 0.5 {
-                offset.wrappedValue = nextOffset
+            let actualOffset = scrollView.contentView.bounds.origin.y
+            if abs(actualOffset - offset.wrappedValue) > 0.5 {
+                offset.wrappedValue = actualOffset
             }
         }
 
         func applyOffsetIfNeeded() {
             guard let scrollView else { return }
             let currentOffset = scrollView.contentView.bounds.origin.y
-            let nextOffset = clampedOffset(offset.wrappedValue, in: scrollView)
-            if abs(nextOffset - offset.wrappedValue) > 0.5 {
-                offset.wrappedValue = nextOffset
-            }
-            guard abs(currentOffset - nextOffset) > 0.5 else { return }
-            apply(offset: nextOffset, in: scrollView)
+            let targetOffset = offset.wrappedValue
+            guard abs(currentOffset - targetOffset) > 0.5 else { return }
+            apply(offset: targetOffset, in: scrollView)
         }
 
         private func apply(offset: CGFloat, in scrollView: NSScrollView) {
@@ -484,16 +472,6 @@ private struct NotebookSyncedVerticalNSScrollView<Content: View>: NSViewRepresen
             scrollView.contentView.scroll(to: NSPoint(x: 0, y: offset))
             scrollView.reflectScrolledClipView(scrollView.contentView)
             isApplyingOffset = false
-        }
-
-        private func clampedOffset(_ proposedOffset: CGFloat, in scrollView: NSScrollView) -> CGFloat {
-            let fittingHeight = scrollView.documentView?.fittingSize.height ?? 0
-            let boundsHeight = scrollView.documentView?.bounds.height ?? 0
-            let documentHeight = max(fittingHeight, boundsHeight)
-            guard documentHeight > 0 else { return max(proposedOffset, 0) }
-            let viewportHeight = scrollView.contentView.bounds.height
-            let maximumOffset = max(documentHeight - viewportHeight, 0)
-            return min(max(proposedOffset, 0), maximumOffset)
         }
     }
 }

@@ -190,6 +190,7 @@ extension NotebookModuleView {
                 description: tab.description,
                 order: tab.order,
                 parentTabId: tab.parentTabId,
+                fixedColumnWidth: tab.fixedColumnWidth,
                 trace: tab.trace
             ))
             showToast("Pestaña renombrada")

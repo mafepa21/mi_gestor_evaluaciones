@@ -480,8 +480,19 @@ struct NotebookModuleView: View {
         )
     }
 
+    var activeTabFixedWidth: CGFloat? {
+        if let data = bridge.notebookState as? NotebookUiStateData,
+           let tabId = activeNotebookTabId(data: data),
+           let tab = data.sheet.tabs.first(where: { $0.id == tabId }),
+           let width = tab.fixedColumnWidth?.doubleValue {
+            return CGFloat(width)
+        }
+        return nil
+    }
+
     var fixedZoneWidth: CGFloat {
-        min(maxFixedZoneWidth, max(minFixedZoneWidth, fixedZoneLiveWidth ?? CGFloat(fixedZoneWidthStored)))
+        let stored = activeTabFixedWidth ?? CGFloat(fixedZoneWidthStored)
+        return min(maxFixedZoneWidth, max(minFixedZoneWidth, fixedZoneLiveWidth ?? stored))
     }
 
     var minFixedZoneWidth: CGFloat { 220 }
@@ -507,7 +518,12 @@ struct NotebookModuleView: View {
         }
         withAnimation(.spring(duration: 0.2, bounce: 0.15)) {
             fixedZoneLiveWidth = snappedWidth
-            fixedZoneWidthStored = Double(snappedWidth)
+            if let data = bridge.notebookState as? NotebookUiStateData,
+               let tabId = activeNotebookTabId(data: data) {
+                bridge.saveTabFixedWidth(tabId: tabId, widthDp: Double(snappedWidth))
+            } else {
+                fixedZoneWidthStored = Double(snappedWidth)
+            }
             fixedZoneLiveWidth = nil
         }
     }

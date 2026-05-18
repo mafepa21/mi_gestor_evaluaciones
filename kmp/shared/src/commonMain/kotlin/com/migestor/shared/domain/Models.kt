@@ -824,6 +824,7 @@ data class NotebookTab(
     val description: String? = null,
     val order: Int = -1,
     val parentTabId: String? = null,
+    val fixedColumnWidth: Double? = null,
     val trace: AuditTrace = AuditTrace(),
 )
 

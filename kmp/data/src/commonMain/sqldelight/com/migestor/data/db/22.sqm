@@ -1,0 +1,1 @@
+ALTER TABLE notebook_tabs ADD COLUMN fixed_column_width REAL;

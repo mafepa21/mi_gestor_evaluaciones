@@ -15,6 +15,10 @@ enum AppleFoundationModelAvailability: Equatable {
     case unavailable(String)
 }
 
+extension Notification.Name {
+    static let appleFoundationModelsRuntimeFailure = Notification.Name("appleFoundationModelsRuntimeFailure")
+}
+
 enum TeachingAssistantUseCase: String, Identifiable, CaseIterable {
     case dailyBriefing
     case studentRiskRadar
@@ -512,10 +516,15 @@ enum AppleFoundationModelSupport {
     private static let availableCacheWindow: TimeInterval = 300
     private static let unavailableCacheWindow: TimeInterval = 300
     private static let runtimeFailureCooldown: TimeInterval = 300
-    private static let assetsUnavailableCooldown: TimeInterval = 900
+    private static let assetsUnavailableCooldown: TimeInterval =
+        ProcessInfo.processInfo.environment["DEBUG_AI_COOLDOWN"] != nil ? 30 : 900
+    private static let localInferenceEnabledDefaultsKey = "apple.foundation.models.localInference.enabled"
 
     static func resolveAvailability(isEnabled: Bool) -> AppleFoundationModelAvailability {
         guard isEnabled else {
+            return .disabled
+        }
+        guard isLocalInferenceEnabled else {
             return .disabled
         }
 
@@ -562,6 +571,20 @@ enum AppleFoundationModelSupport {
         availability == .available ? availableCacheWindow : unavailableCacheWindow
     }
 
+    private static var isLocalInferenceEnabled: Bool {
+        if ProcessInfo.processInfo.environment["ENABLE_APPLE_FOUNDATION_MODELS"] == "1" {
+            return true
+        }
+        if UserDefaults.standard.object(forKey: localInferenceEnabledDefaultsKey) != nil {
+            return UserDefaults.standard.bool(forKey: localInferenceEnabledDefaultsKey)
+        }
+        #if os(macOS)
+        return false
+        #else
+        return true
+        #endif
+    }
+
     static func recordRuntimeFailure(_ error: Error) {
         let failureKind = runtimeFailureKind(for: error)
         let cooldown = cooldown(for: failureKind)
@@ -571,6 +594,9 @@ enum AppleFoundationModelSupport {
             Date(),
             runtimeUnavailableAvailability(kind: failureKind)
         )
+        if failureKind == "assetsUnavailable" {
+            NotificationCenter.default.post(name: .appleFoundationModelsRuntimeFailure, object: failureKind)
+        }
         debugPrint("[AppleFoundationModels] runtime unavailable [\(failureKind), cooldown: \(Int(cooldown))s]: \(error.localizedDescription)")
     }
 
@@ -592,6 +618,9 @@ enum AppleFoundationModelSupport {
             ("concurrent requests", "concurrentRequests"),
             ("unsupportedlanguageorlocale", "unsupportedLanguageOrLocale"),
             ("unsupported language", "unsupportedLanguageOrLocale"),
+            ("afisdevicegreymattereligible", "deviceNotEligible"),
+            ("greymatter", "deviceNotEligible"),
+            ("os_eligibility", "deviceNotEligible"),
             ("com.apple.modelcatalog.catalog code=4097", "assetsUnavailable"),
             ("connection to service named com.apple.modelcatalog.catalog", "assetsUnavailable"),
             ("modelcatalog.catalog", "assetsUnavailable"),
@@ -608,6 +637,9 @@ enum AppleFoundationModelSupport {
     private static func runtimeUnavailableAvailability(kind: String) -> AppleFoundationModelAvailability {
         if kind == "assetsUnavailable" {
             return .unavailable("Los modelos locales de Apple Intelligence no responden ahora mismo. Se usará el flujo manual y se reintentará más tarde.")
+        }
+        if kind == "deviceNotEligible" {
+            return .unsupportedDevice
         }
         return .unavailable("Apple Foundation Models no está respondiendo ahora mismo. Se usará el flujo manual y se reintentará más tarde.")
     }
@@ -1034,6 +1066,27 @@ final class AppleFoundationContextualAIService {
 
     private var activeTeachingRiskLevel: RiskLevel?
     private var activeTeachingConfidenceFallback: String?
+    private var runtimeFailureObserver: NSObjectProtocol?
+
+    init() {
+        #if canImport(FoundationModels)
+        runtimeFailureObserver = NotificationCenter.default.addObserver(
+            forName: .appleFoundationModelsRuntimeFailure,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.clearCachedSessions()
+            }
+        }
+        #endif
+    }
+
+    deinit {
+        if let runtimeFailureObserver {
+            NotificationCenter.default.removeObserver(runtimeFailureObserver)
+        }
+    }
 
     #if canImport(FoundationModels)
     @available(iOS 26.0, macOS 26.0, *)
@@ -1079,6 +1132,12 @@ final class AppleFoundationContextualAIService {
             return cachedNotebookSession
         }
         return makeNotebookSession()
+    }
+
+    private func clearCachedSessions() {
+        cachedContextualSessionStorage = nil
+        cachedNotebookSessionStorage = nil
+        activeTeachingSessionStorage = nil
     }
     #endif
 

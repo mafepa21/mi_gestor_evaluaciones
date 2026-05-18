@@ -73,6 +73,7 @@ class NotebookConfigRepositorySqlDelight(
                         title = it.title,
                         order = it.sort_order.toInt(),
                         parentTabId = it.parent_tab_id,
+                        fixedColumnWidth = it.fixed_column_width,
                         trace = AuditTrace(
                             updatedAt = Instant.fromEpochMilliseconds(it.updated_at_epoch_ms),
                             deviceId = it.device_id,
@@ -90,6 +91,7 @@ class NotebookConfigRepositorySqlDelight(
                 title = it.title,
                 order = it.sort_order.toInt(),
                 parentTabId = it.parent_tab_id,
+                fixedColumnWidth = it.fixed_column_width,
                 trace = AuditTrace(
                     updatedAt = Instant.fromEpochMilliseconds(it.updated_at_epoch_ms),
                     deviceId = it.device_id,
@@ -111,7 +113,8 @@ class NotebookConfigRepositorySqlDelight(
             sort_order = resolvedOrder.toLong(),
             updated_at_epoch_ms = tab.trace.updatedAt.toEpochMilliseconds(),
             device_id = tab.trace.deviceId,
-            sync_version = tab.trace.syncVersion
+            sync_version = tab.trace.syncVersion,
+            fixed_column_width = tab.fixedColumnWidth
         )
         NotebookRefreshBus.emitRefresh()
     }

@@ -22,7 +22,18 @@ Run this checklist on iPad and macOS after changes to the notebook grid layout.
 5. Scroll vertically.
    - Fixed student rows, scrollable cells, and Media rows stay aligned.
    - There is no gap between the header and the first row.
+   - Fast scrolling up and down does not cause stuttering or visual jumps.
+   - Tested with a large group (30-40 students) to ensure smooth performance.
 
 6. Check Media.
    - Media is visible with all column configurations.
    - Opening the Media header still opens average configuration.
+
+7. Change Tabs.
+   - The fixed student column width persists uniquely for each tab.
+   - Navigating between tabs applies the correct saved column sizes.
+
+8. Debug Grid Alignment (Temporary).
+   - Activate `isDebugGridModeEnabled` in code.
+   - Verify that all rows and cells have exactly matching heights and boundaries.
+   - Verify there is no alignment deviation > 1px.

@@ -434,6 +434,17 @@ class NotebookViewModel(
         }
     }
 
+    fun saveTabFixedWidth(tabId: String, widthDp: Double) {
+        val classId = activeClassId ?: return
+        val currentState = _state.value as? NotebookUiState.Data ?: return
+        val tab = currentState.sheet.tabs.firstOrNull { it.id == tabId } ?: return
+        
+        scope.launch {
+            notebookRepository.saveTab(classId, tab.copy(fixedColumnWidth = widthDp))
+            selectClass(classId, force = true)
+        }
+    }
+
     fun deleteTab(tabId: String) {
         val classId = activeClassId ?: return
         val currentState = _state.value as? NotebookUiState.Data ?: return

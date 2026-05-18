@@ -405,6 +405,39 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-05-18 - Síntesis pedagógica reutiliza informes
+
+Resumen:
+- `kmp/iosApp/App/NotebookTopBar.swift` cambia `NotebookSummaryGenerationSheet` para generar cada síntesis con `bridge.buildReportGenerationContext(..., kind: .studentSummary)` y `AppleFoundationReportService.generateDraft(...)`, reutilizando el fallback por reglas del motor de informes cuando Apple Intelligence no esté disponible.
+- Se eliminó el fallback local específico de la sheet para evitar dos motores paralelos de síntesis pedagógica.
+- El guardado pasa a `bridge.saveNotebookAICommentDirect(...)`, usando `classId`, `studentId` y `columnId` contra el repositorio para no depender de que una columna recién creada ya aparezca en el snapshot SwiftUI.
+- No hubo migración ni cambio de esquema SQLDelight; afecta al flujo de escritura de celdas de texto del cuaderno.
+
+Validación:
+- `git diff --check` no reportó errores.
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -configuration Debug -destination 'platform=macOS' build` terminó con `BUILD SUCCEEDED`.
+
+Notas para futuras conversaciones:
+- La configuración de columnas visibles/evaluables sigue sirviendo para mostrar señales en la UI, pero la generación real de síntesis individual usa el contexto completo del motor de informes.
+- Si una síntesis se omite, revisar primero `ReportGenerationContext.hasEnoughData` para `.studentSummary`, porque `AppleFoundationReportService.generateDraft(...)` devuelve error de contexto insuficiente antes de aplicar fallback.
+
+### 2026-05-18 - Foundation Models limpia sesiones tras XPC
+
+Resumen:
+- `kmp/iosApp/App/AppleFoundationContextualAIService.swift` reconoce ahora errores `AFIsDeviceGreymatterEligible`, `greymatter` y `os_eligibility` como `deviceNotEligible`, devolviendo el estado `.unsupportedDevice` en lugar de un fallback genérico.
+- Los fallos `assetsUnavailable` publican una notificación interna y el servicio limpia `cachedContextualSessionStorage`, `cachedNotebookSessionStorage` y `activeTeachingSessionStorage`, evitando reutilizar sesiones zombie tras interrupciones de XPC o `ModelCatalog`.
+- El cooldown de `assetsUnavailable` sigue siendo 15 minutos por defecto, pero se reduce a 30 segundos cuando existe la variable de entorno `DEBUG_AI_COOLDOWN`, útil para desarrollo.
+- En macOS, Foundation Models queda desactivado por defecto para no tocar `SystemLanguageModel.default.availability` mientras el perfil no admita la capability; puede reactivarse con `ENABLE_APPLE_FOUNDATION_MODELS=1` o la preferencia `apple.foundation.models.localInference.enabled`.
+
+Validación:
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -configuration Debug -destination 'platform=macOS' build` terminó con `BUILD SUCCEEDED`.
+- Se probó añadir `com.apple.developer.foundation-models.inference.local` al target KMP Mac, pero Xcode rechazó la firma con “Entitlement ... not found and could not be included in profile”; se retiró para no dejar el proyecto sin compilar.
+- Se lanzó `MiGestorKMPMac.app` durante 8 segundos con `log stream` filtrado por `ModelCatalog`; no aparecieron eventos `com.apple.modelcatalog.catalog`.
+
+Notas para futuras conversaciones:
+- No añadir manualmente `com.apple.developer.foundation-models.inference.local` al repo mientras el perfil de desarrollo no lo acepte; primero verificar la capability/perfil en Xcode o Apple Developer.
+- El fallback docente debe seguir funcionando aunque Foundation Models aparezca disponible y falle al responder.
+
 ### 2026-05-18 - IA del cuaderno diferida fuera del render SwiftUI
 
 Resumen:

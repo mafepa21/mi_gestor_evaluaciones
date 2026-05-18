@@ -4683,6 +4683,13 @@ final class KmpBridge: ObservableObject {
         }
     }
 
+    func saveTabFixedWidth(tabId: String, widthDp: Double) {
+        notebookViewModel.saveTabFixedWidth(tabId: tabId, widthDp: widthDp)
+        if let classId = notebookViewModel.currentClassId?.int64Value {
+            scheduleNotebookSnapshotSync(forClassId: classId)
+        }
+    }
+
     func saveNotebookWorkGroup(name: String) {
         notebookViewModel.saveWorkGroup(name: name, groupId: nil, studentIds: [])
         if let classId = notebookViewModel.currentClassId?.int64Value {
@@ -4743,7 +4750,7 @@ final class KmpBridge: ObservableObject {
         let tabs = (notebookState as? NotebookUiStateData)?.sheet.tabs ?? []
         let siblingCount = tabs.filter { $0.parentTabId == parentTabId }.count
         let order = Int32(siblingCount)
-        let newTab = NotebookTab(id: tabId, title: normalizedTitle, description: nil, order: order, parentTabId: parentTabId, trace: trace)
+        let newTab = NotebookTab(id: tabId, title: normalizedTitle, description: nil, order: order, parentTabId: parentTabId, fixedColumnWidth: nil, trace: trace)
         notebookViewModel.saveTab(tab: newTab)
         notebookViewModel.selectClass(classId: classId, force: true)
         scheduleNotebookSnapshotSync(forClassId: classId)
@@ -6530,6 +6537,7 @@ final class KmpBridge: ObservableObject {
                         description: description,
                         order: Int32(order),
                         parentTabId: parentTabId,
+                        fixedColumnWidth: nil,
                         trace: trace
                     )
                 )

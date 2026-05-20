@@ -405,6 +405,26 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-05-20 - Rediseño premium de la pantalla Cuaderno iOS (grid, inspector, top bar)
+
+Resumen:
+- **Grid:** Reemplazado `LazyVStack` por `VStack` en `NotebookGridContainer.swift` y los separadores de filas se dibujan como `overlay` en lugar de `Divider` independiente. Esto elimina los desfases de alineación entre filas y columnas que se producían al hacer scroll.
+- **Inspector en iPhone (modo compacto):** El inspector ya no se mostraba como panel inline (imposible de cerrar en iPhone). Ahora se presenta como `.sheet` nativo con detents `.medium` y `.large` y `presentationDragIndicator(.visible)`. La lógica de apertura se controla con `horizontalSizeClass` / `isCompact` añadidos a `NotebookModuleView`.
+- **Cierre del inspector:** Propagado `onClose` desde `NotebookInspectorPanel` → `NotebookStudentInspector`. Se añadió botón `xmark.circle.fill` en el header del inspector para cerrarlo manualmente. Al cerrar también se descarta `inspectorSelection` para evitar estados huérfanos.
+- **Top bar compacta:** Sustituido el chip de estado (texto+icono) por un icono circular de estado, eliminados los tres botones sueltos y reemplazados por un menú contextual unificado `⋯` (`ellipsis.circle`) que agrupa: Deshacer, Asistencia rápida, Columnas e Inspector. El botón `+` es ahora un círculo de acento sólido. Esto reduce el ruido visual en iPhone.
+- **Top bar regular (iPad/macOS):** Botones circulares con fondo semitransparente, nuevo botón `bolt` para alternar el modo asistencia rápida directamente desde la barra (sin necesidad de menú), botón `Nueva columna` como cápsula de acento.
+- **Asistencia rápida:** El `quickAttendanceBanner` muestra un botón «Marcar todos presentes» cuando `canMarkAllPresent == true`.
+- Archivos afectados: `NotebookGridContainer.swift`, `NotebookModuleView.swift`, `NotebookModuleDialogs.swift`, `NotebookInspectorPanel.swift`, `NotebookStudentInspector.swift`, `NotebookTopBar.swift`.
+
+Validación:
+- `xcodebuild` iOS Simulator arm64 → **BUILD SUCCEEDED** sin errores ni warnings.
+- Commit `0e2d011` en rama `codex/fix-addcolumnsheet-onchange`.
+
+Notas para futuras conversaciones:
+- En `NotebookModuleView`, los closures de `.sheet` evaluados desde `notebookLoadedContent(data:)` no tienen `rows` en scope; usar siempre `filteredRows(data: data)` (igual que en la llamada del panel inline).
+- El `VStack` en el grid es intencional y crítico; no revertir a `LazyVStack` aunque el rendimiento con muchos alumnos sea una preocupación — la alineación depende de ello.
+- `isCompact` (basado en `horizontalSizeClass`) es la bifurcación que separa la presentación sheet (iPhone) de la inline (iPad/Mac).
+
 ### 2026-05-20 - Corrección de Excepciones SQLite y Migraciones en Unit Tests
 
 Resumen:

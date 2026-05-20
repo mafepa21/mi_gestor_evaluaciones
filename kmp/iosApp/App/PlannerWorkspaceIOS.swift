@@ -720,6 +720,35 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         if let sessionId,
            let session = sessions.first(where: { $0.id == sessionId }) {
             await select(session: session)
+        } else {
+            await selectTodaySessionIfPossible(preferredGroupId: groupId)
+        }
+    }
+
+    func selectTodaySessionIfPossible(preferredGroupId: Int64?) async {
+        let current = IsoWeekHelper.shared.current()
+        let currentWeek = Int(truncating: current.first ?? KotlinInt(value: 1))
+        let currentYear = Int(truncating: current.second ?? KotlinInt(value: 2026))
+        guard week == currentWeek, year == currentYear else { return }
+
+        var calendar = Calendar(identifier: .iso8601)
+        calendar.locale = Locale.current
+        let todayWeekday = ((calendar.component(.weekday, from: Date()) + 5) % 7) + 1
+        let candidates = sessions
+            .filter { session in
+                Int(session.dayOfWeek) == todayWeekday &&
+                    (preferredGroupId == nil || session.groupId == preferredGroupId)
+            }
+            .sorted {
+                if $0.period == $1.period {
+                    return ($0.startTime ?? "") < ($1.startTime ?? "")
+                }
+                return $0.period < $1.period
+            }
+
+        guard let todaySession = candidates.first else { return }
+        if selectedSession?.id != todaySession.id {
+            await select(session: todaySession)
         }
     }
 

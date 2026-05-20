@@ -12,24 +12,114 @@ struct NotebookDividerHandle: View {
     let isDragging: Bool
     let onDragChanged: (CGFloat) -> Void
     let onDragEnded: () -> Void
+    
+    @State private var isHovering = false
 
     var body: some View {
-        Rectangle()
-            .fill(isDragging ? Color.accentColor.opacity(0.6) : Color.secondary.opacity(0.25))
-            .frame(width: isDragging ? 3 : 1)
-            .contentShape(Rectangle().inset(by: -6))
-            .modifier(NotebookResizeCursorModifier())
-            .gesture(
-                DragGesture(minimumDistance: 1)
-                    .onChanged { value in
-                        onDragChanged(value.translation.width)
-                    }
-                    .onEnded { _ in
-                        onDragEnded()
-                    }
-            )
-            .animation(.easeInOut(duration: 0.15), value: isDragging)
+        ZStack {
+            Rectangle()
+                .fill(Color.clear)
+                .frame(width: 12)
+                .contentShape(Rectangle())
+            
+            Rectangle()
+                .fill(isDragging ? Color.accentColor : (isHovering ? Color.accentColor.opacity(0.5) : Color.secondary.opacity(0.20)))
+                .frame(width: (isDragging || isHovering) ? 2 : 1)
+                
+            if isDragging || isHovering {
+                Capsule(style: .continuous)
+                    .fill(Color.accentColor)
+                    .frame(width: 4, height: 36)
+                    .shadow(color: Color.accentColor.opacity(0.3), radius: 4, x: 0, y: 0)
+                    .transition(.opacity.combined(with: .scale(scale: 0.8)))
+            }
+        }
+        .frame(width: 12)
+        .modifier(NotebookResizeCursorModifier())
+        #if os(macOS)
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.2)) {
+                isHovering = hovering
+            }
+        }
+        #endif
+        .gesture(
+            DragGesture(minimumDistance: 1)
+                .onChanged { value in
+                    onDragChanged(value.translation.width)
+                }
+                .onEnded { _ in
+                    onDragEnded()
+                }
+        )
+        .animation(.easeInOut(duration: 0.2), value: isDragging)
+        .animation(.easeInOut(duration: 0.2), value: isHovering)
     }
+}
+
+final class NotebookScrollSyncCoordinator: ObservableObject {
+    #if canImport(UIKit)
+    private var uiScrollViews = NSMapTable<NSString, UIScrollView>(keyOptions: .strongMemory, valueOptions: .weakMemory)
+    #endif
+    #if canImport(AppKit)
+    private var nsScrollViews = NSMapTable<NSString, NSScrollView>(keyOptions: .strongMemory, valueOptions: .weakMemory)
+    #endif
+    
+    private var isSyncing = false
+    
+    #if canImport(UIKit)
+    func register(id: String, scrollView: UIScrollView) {
+        uiScrollViews.setObject(scrollView, forKey: id as NSString)
+    }
+    
+    func unregister(id: String) {
+        uiScrollViews.removeObject(forKey: id as NSString)
+    }
+    
+    func synchronizeScroll(from sourceId: String, offset: CGPoint) {
+        guard !isSyncing else { return }
+        isSyncing = true
+        defer { isSyncing = false }
+        
+        let enumerator = uiScrollViews.keyEnumerator()
+        while let key = enumerator.nextObject() as? NSString {
+            let keyStr = key as String
+            if keyStr != sourceId, let scrollView = uiScrollViews.object(forKey: key) {
+                if abs(scrollView.contentOffset.y - offset.y) > 0.5 {
+                    scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: offset.y), animated: false)
+                }
+            }
+        }
+    }
+    #endif
+    
+    #if canImport(AppKit)
+    func register(id: String, scrollView: NSScrollView) {
+        nsScrollViews.setObject(scrollView, forKey: id as NSString)
+    }
+    
+    func unregister(id: String) {
+        nsScrollViews.removeObject(forKey: id as NSString)
+    }
+    
+    func synchronizeScroll(from sourceId: String, offset: NSPoint) {
+        guard !isSyncing else { return }
+        isSyncing = true
+        defer { isSyncing = false }
+        
+        let enumerator = nsScrollViews.keyEnumerator()
+        while let key = enumerator.nextObject() as? NSString {
+            let keyStr = key as String
+            if keyStr != sourceId, let scrollView = nsScrollViews.object(forKey: key) {
+                let currentOffset = scrollView.contentView.bounds.origin
+                if abs(currentOffset.y - offset.y) > 0.5 {
+                    scrollView.contentView.scroll(to: NSPoint(x: currentOffset.x, y: offset.y))
+                    scrollView.reflectScrolledClipView(scrollView.contentView)
+                }
+            }
+        }
+    }
+    #endif
 }
 
 struct NotebookResizableHeader<Content: View>: View {
@@ -114,7 +204,8 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, TrailingFi
     let fixedRows: FixedRows
     let trailingFixedRows: TrailingFixedRows
     let scrollRows: ScrollRows
-    @State private var verticalScrollOffset: CGFloat = 0
+    
+    @StateObject private var scrollSyncCoordinator = NotebookScrollSyncCoordinator()
 
     init(
         fixedColumnWidth: CGFloat,
@@ -169,7 +260,7 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, TrailingFi
                 .frame(height: topAccessoryHeight, alignment: .topLeading)
             fixedHeader
                 .frame(height: headerHeight, alignment: .topLeading)
-            NotebookSyncedVerticalScrollView(offset: $verticalScrollOffset, showsIndicators: false) {
+            NotebookSyncedVerticalScrollView(id: "left", coordinator: scrollSyncCoordinator, showsIndicators: false) {
                 fixedRows
                     .frame(maxWidth: .infinity, alignment: .topLeading)
             }
@@ -191,7 +282,7 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, TrailingFi
                     .frame(height: topAccessoryHeight, alignment: .topLeading)
                 scrollHeader
                     .frame(height: headerHeight, alignment: .topLeading)
-                NotebookSyncedVerticalScrollView(offset: $verticalScrollOffset, showsIndicators: true) {
+                NotebookSyncedVerticalScrollView(id: "center", coordinator: scrollSyncCoordinator, showsIndicators: true) {
                     scrollRows
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
@@ -207,7 +298,7 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, TrailingFi
                 .frame(height: topAccessoryHeight, alignment: .topLeading)
             trailingFixedHeader
                 .frame(height: headerHeight, alignment: .topLeading)
-            NotebookSyncedVerticalScrollView(offset: $verticalScrollOffset, showsIndicators: false) {
+            NotebookSyncedVerticalScrollView(id: "right", coordinator: scrollSyncCoordinator, showsIndicators: false) {
                 trailingFixedRows
                     .frame(maxWidth: .infinity, alignment: .topLeading)
             }
@@ -271,16 +362,19 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, TrailingFi
 }
 
 private struct NotebookSyncedVerticalScrollView<Content: View>: View {
-    @Binding var offset: CGFloat
+    let id: String
+    let coordinator: NotebookScrollSyncCoordinator
     let showsIndicators: Bool
     let content: Content
 
     init(
-        offset: Binding<CGFloat>,
+        id: String,
+        coordinator: NotebookScrollSyncCoordinator,
         showsIndicators: Bool,
         @ViewBuilder content: () -> Content
     ) {
-        _offset = offset
+        self.id = id
+        self.coordinator = coordinator
         self.showsIndicators = showsIndicators
         self.content = content()
     }
@@ -288,13 +382,15 @@ private struct NotebookSyncedVerticalScrollView<Content: View>: View {
     var body: some View {
         #if canImport(AppKit)
         NotebookSyncedVerticalNSScrollView(
-            offset: $offset,
+            id: id,
+            coordinator: coordinator,
             showsIndicators: showsIndicators,
             content: content
         )
         #elseif canImport(UIKit)
         NotebookSyncedVerticalUIScrollView(
-            offset: $offset,
+            id: id,
+            coordinator: coordinator,
             showsIndicators: showsIndicators,
             content: content
         )
@@ -308,12 +404,13 @@ private struct NotebookSyncedVerticalScrollView<Content: View>: View {
 
 #if canImport(UIKit)
 private struct NotebookSyncedVerticalUIScrollView<Content: View>: UIViewRepresentable {
-    @Binding var offset: CGFloat
+    let id: String
+    let coordinator: NotebookScrollSyncCoordinator
     let showsIndicators: Bool
     let content: Content
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(offset: $offset)
+        Coordinator(id: id, coordinator: coordinator)
     }
 
     func makeUIView(context: Context) -> UIScrollView {
@@ -339,46 +436,32 @@ private struct NotebookSyncedVerticalUIScrollView<Content: View>: UIViewRepresen
 
         context.coordinator.hostingController = hostingController
         context.coordinator.scrollView = scrollView
+        coordinator.register(id: id, scrollView: scrollView)
         return scrollView
     }
 
     func updateUIView(_ scrollView: UIScrollView, context: Context) {
-        context.coordinator.offset = $offset
-        context.coordinator.scrollView = scrollView
         context.coordinator.hostingController?.rootView = content
         scrollView.showsVerticalScrollIndicator = showsIndicators
-        context.coordinator.applyOffsetIfNeeded()
+    }
+
+    static func dismantleUIView(_ uiView: UIScrollView, coordinator: Coordinator) {
+        coordinator.coordinator.unregister(id: coordinator.id)
     }
 
     final class Coordinator: NSObject, UIScrollViewDelegate {
-        var offset: Binding<CGFloat>
+        let id: String
+        let coordinator: NotebookScrollSyncCoordinator
         weak var scrollView: UIScrollView?
         var hostingController: UIHostingController<Content>?
-        private var isApplyingOffset = false
 
-        init(offset: Binding<CGFloat>) {
-            self.offset = offset
+        init(id: String, coordinator: NotebookScrollSyncCoordinator) {
+            self.id = id
+            self.coordinator = coordinator
         }
 
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
-            guard !isApplyingOffset else { return }
-            let actualOffset = scrollView.contentOffset.y
-            if abs(actualOffset - offset.wrappedValue) > 0.5 {
-                offset.wrappedValue = actualOffset
-            }
-        }
-
-        func applyOffsetIfNeeded() {
-            guard let scrollView else { return }
-            let targetOffset = offset.wrappedValue
-            guard abs(scrollView.contentOffset.y - targetOffset) > 0.5 else { return }
-            apply(offset: targetOffset, in: scrollView)
-        }
-
-        private func apply(offset: CGFloat, in scrollView: UIScrollView) {
-            isApplyingOffset = true
-            scrollView.setContentOffset(CGPoint(x: 0, y: offset), animated: false)
-            isApplyingOffset = false
+            coordinator.synchronizeScroll(from: id, offset: scrollView.contentOffset)
         }
     }
 }
@@ -386,12 +469,13 @@ private struct NotebookSyncedVerticalUIScrollView<Content: View>: UIViewRepresen
 
 #if canImport(AppKit)
 private struct NotebookSyncedVerticalNSScrollView<Content: View>: NSViewRepresentable {
-    @Binding var offset: CGFloat
+    let id: String
+    let coordinator: NotebookScrollSyncCoordinator
     let showsIndicators: Bool
     let content: Content
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(offset: $offset)
+        Coordinator(id: id, coordinator: coordinator)
     }
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -422,6 +506,7 @@ private struct NotebookSyncedVerticalNSScrollView<Content: View>: NSViewRepresen
             coordinator?.scrollViewDidScroll()
         }
 
+        coordinator.register(id: id, scrollView: scrollView)
         return scrollView
     }
 
@@ -429,20 +514,21 @@ private struct NotebookSyncedVerticalNSScrollView<Content: View>: NSViewRepresen
         if let hostingView = scrollView.documentView as? NSHostingView<Content> {
             hostingView.rootView = content
         }
+    }
 
-        context.coordinator.offset = $offset
-        context.coordinator.scrollView = scrollView
-        context.coordinator.applyOffsetIfNeeded()
+    static func dismantleNSView(_ nsView: NSScrollView, coordinator: Coordinator) {
+        coordinator.coordinator.unregister(id: coordinator.id)
     }
 
     final class Coordinator {
-        var offset: Binding<CGFloat>
+        let id: String
+        let coordinator: NotebookScrollSyncCoordinator
         weak var scrollView: NSScrollView?
         var observer: NSObjectProtocol?
-        private var isApplyingOffset = false
 
-        init(offset: Binding<CGFloat>) {
-            self.offset = offset
+        init(id: String, coordinator: NotebookScrollSyncCoordinator) {
+            self.id = id
+            self.coordinator = coordinator
         }
 
         deinit {
@@ -452,26 +538,8 @@ private struct NotebookSyncedVerticalNSScrollView<Content: View>: NSViewRepresen
         }
 
         func scrollViewDidScroll() {
-            guard !isApplyingOffset, let scrollView else { return }
-            let actualOffset = scrollView.contentView.bounds.origin.y
-            if abs(actualOffset - offset.wrappedValue) > 0.5 {
-                offset.wrappedValue = actualOffset
-            }
-        }
-
-        func applyOffsetIfNeeded() {
             guard let scrollView else { return }
-            let currentOffset = scrollView.contentView.bounds.origin.y
-            let targetOffset = offset.wrappedValue
-            guard abs(currentOffset - targetOffset) > 0.5 else { return }
-            apply(offset: targetOffset, in: scrollView)
-        }
-
-        private func apply(offset: CGFloat, in scrollView: NSScrollView) {
-            isApplyingOffset = true
-            scrollView.contentView.scroll(to: NSPoint(x: 0, y: offset))
-            scrollView.reflectScrolledClipView(scrollView.contentView)
-            isApplyingOffset = false
+            coordinator.synchronizeScroll(from: id, offset: scrollView.contentView.bounds.origin)
         }
     }
 }

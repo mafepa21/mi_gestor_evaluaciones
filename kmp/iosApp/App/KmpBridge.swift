@@ -274,6 +274,13 @@ final class KmpBridge: ObservableObject {
         let activeEvaluationNames: [String]
     }
 
+    struct ClassroomCaptureContextSnapshot: Equatable {
+        let classId: Int64
+        let className: String
+        let sessionId: Int64?
+        let sessionTitle: String
+    }
+
     struct StudentTimelineEntry: Identifiable {
         enum Kind {
             case attendance
@@ -1171,6 +1178,60 @@ final class KmpBridge: ObservableObject {
             return (students.first?.id, evaluations.first?.id)
         } catch {
             return (nil, nil)
+        }
+    }
+
+    func classroomCaptureContext(classId: Int64, on date: Date) async throws -> ClassroomCaptureContextSnapshot? {
+        guard let schoolClass = try await container.classesRepository.listClasses().first(where: { $0.id == classId }) else {
+            return nil
+        }
+
+        let sessions = try await container.plannerRepository.listAllSessions()
+            .filter { $0.groupId == classId && Calendar.current.isDate(self.date(from: $0), inSameDayAs: date) }
+            .sorted {
+                if $0.period == $1.period {
+                    return ($0.startTime ?? "") < ($1.startTime ?? "")
+                }
+                return $0.period < $1.period
+            }
+
+        let session = sessions.first
+        let sessionTitle = session.map { session in
+            let unit = session.teachingUnitName.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !unit.isEmpty { return unit }
+            let activities = session.activities.trimmingCharacters(in: .whitespacesAndNewlines)
+            return activities.isEmpty ? "Sesión de hoy" : activities
+        } ?? ""
+
+        return ClassroomCaptureContextSnapshot(
+            classId: classId,
+            className: schoolClass.name,
+            sessionId: session?.id,
+            sessionTitle: sessionTitle
+        )
+    }
+
+    @MainActor
+    func launchFirstBulkRubricEvaluationForClass(classId: Int64) async -> Bool {
+        do {
+            let columns = try await container.notebookConfigRepository.listColumns(classId: classId)
+            guard let column = columns.first(where: { $0.rubricId != nil && $0.evaluationId != nil }),
+                  let rubricId = column.rubricId?.int64Value,
+                  let evaluationId = column.evaluationId?.int64Value else {
+                status = "No hay una rúbrica vinculada al cuaderno de esta clase."
+                return false
+            }
+            startBulkRubricEvaluation(
+                classId: classId,
+                evaluationId: evaluationId,
+                rubricId: rubricId,
+                columnId: column.id,
+                tabId: column.tabIds.first
+            )
+            return true
+        } catch {
+            status = "No se pudo abrir la rúbrica rápida: \(error.localizedDescription)"
+            return false
         }
     }
 

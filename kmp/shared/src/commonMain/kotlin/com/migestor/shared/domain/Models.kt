@@ -908,6 +908,35 @@ data class NotebookStudentInsight(
     val linkedCompetencyLabels: List<String> = emptyList(),
 )
 
+enum class RadarPriority {
+    HIGH,
+    MEDIUM,
+    LOW,
+    POSITIVE,
+}
+
+enum class RadarCategory {
+    STUDENT_RISK,
+    EVIDENCE_GAP,
+    RUBRIC_COMPLETION,
+    ATTENDANCE,
+    PENDING_TASK,
+    POSITIVE_PROGRESS,
+    GROUP_SUMMARY,
+}
+
+data class TeacherRadarInsight(
+    val id: String,
+    val classId: Long,
+    val studentId: Long?,
+    val priority: RadarPriority,
+    val category: RadarCategory,
+    val title: String,
+    val explanation: String,
+    val suggestedAction: String,
+    val evidence: List<String>,
+)
+
 data class NotebookSeatAssignment(
     val classId: Long,
     val studentId: Long,

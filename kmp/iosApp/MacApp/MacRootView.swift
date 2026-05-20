@@ -11,12 +11,16 @@ struct MacRootView: View {
     @StateObject private var studentsStore = MacStudentsStore()
     @StateObject private var studentSelection = StudentSelectionStore()
     @StateObject private var backupStore: MacBackupStore
+    @SceneStorage("mac.root.columnVisibility") private var storedColumnVisibility = MacRootColumnVisibilityValue.all
+    @SceneStorage("mac.root.inspectorVisible") private var storedInspectorVisible = true
     @State private var attendanceToolbarActions: MacAttendanceToolbarActions? = nil
     @State private var dashboardToolbarActions: MacDashboardToolbarActions? = nil
     @State private var studentsReloadToken = 0
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
-    @State private var isNotebookInspectorColumnVisible = false
+    @State private var isInspectorVisible = true
     @State private var selectedFeature: MacFeatureDescriptor.Feature = .dashboard
+    @State private var banner: MacRootBanner?
+    @State private var bannerDismissTask: Task<Void, Never>?
     @State private var didRequestCommandCenterStart = false
 
     init(session: MacAppSessionController) {
@@ -45,10 +49,19 @@ struct MacRootView: View {
         }
         .onAppear {
             selectedFeature = session.selectedFeature
+            columnVisibility = NavigationSplitViewVisibility(macRootStoredValue: storedColumnVisibility)
+            isInspectorVisible = storedInspectorVisible && session.inspectorVisible
         }
         .task {
             session.start()
             await startCommandCenterAfterInitialLayout()
+        }
+        .appOnChange(of: columnVisibility.macRootStoredValue) { newValue in
+            storedColumnVisibility = newValue
+        }
+        .appOnChange(of: isInspectorVisible) { newValue in
+            storedInspectorVisible = newValue
+            session.inspectorVisible = newValue
         }
         .appWritingToolsDisabled()
     }
@@ -64,29 +77,48 @@ struct MacRootView: View {
     private var navigationSplit: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             macSidebar
-        } content: {
+        } detail: {
             featureContent(for: selectedFeature)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(MacAppStyle.pageBackground)
-        } detail: {
-            Group {
-                if selectedFeature == .notebook {
-                    if isNotebookInspectorColumnVisible {
-                        featureInspector(for: selectedFeature)
-                            .frame(minWidth: 320, idealWidth: 360, maxWidth: 420)
-                    } else {
-                        EmptyView()
-                            .frame(width: 0)
-                    }
-                } else {
-                    featureInspector(for: selectedFeature)
-                }
-            }
-            .background(MacAppStyle.pageBackground)
         }
         .navigationSplitViewStyle(.balanced)
+        .inspector(isPresented: $isInspectorVisible) {
+            featureInspector(for: selectedFeature)
+                .frame(minWidth: 320, idealWidth: 360, maxWidth: 440)
+                .inspectorColumnWidth(min: 320, ideal: 360, max: 440)
+                .background(MacAppStyle.pageBackground)
+        }
+        .overlay(alignment: .topTrailing) {
+            if let banner {
+                MacRootTransientBanner(banner: banner)
+                    .padding(.top, 12)
+                    .padding(.trailing, 16)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.snappy(duration: 0.18), value: banner?.id)
         .toolbar {
             macToolbar
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .macRootNewItemRequested)) { _ in
+            performPrimaryCreation()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .macRootSaveRequested)) { _ in
+            performSave()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .macRootRefreshRequested)) { _ in
+            refreshCurrentFeature()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .macRootToggleInspectorRequested)) { _ in
+            toggleInspector()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .macRootBackupRequested)) { _ in
+            performBackup()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .macRootExportRequested)) { _ in
+            selectFeature(.reports)
+            showBanner("Informes", systemImage: "doc.text.image", tint: MacAppStyle.infoTint)
         }
         .appOnChange(of: session.selectedFeature) { newFeature in
             guard selectedFeature != newFeature else { return }
@@ -136,13 +168,8 @@ struct MacRootView: View {
     ) {
         guard selectedFeature != feature || session.selectedFeature != feature else { return }
         selectedFeature = feature
-        if feature == .notebook {
-            isNotebookInspectorColumnVisible = false
-            closeNotebookInspectorStateAfterViewUpdate()
-            columnVisibility = .all
-        } else {
-            columnVisibility = .all
-        }
+        isInspectorVisible = storedInspectorVisible
+        columnVisibility = .all
         guard propagateToSession else { return }
         Task { @MainActor in
             await Task.yield()
@@ -158,9 +185,17 @@ struct MacRootView: View {
         case .dashboard:
             MacDashboardView(
                 bridge: session.bridge,
+                backupStore: backupStore,
                 bootstrap: session.bootstrap,
                 onNavigate: navigateFromDashboard,
                 onToolbarActionsChange: setDashboardToolbarActions
+            )
+        case .teacherRadar:
+            TeacherRadarDetailView(
+                bridge: session.bridge,
+                selectedClassId: studentSelection.selectedClassBinding,
+                selectedStudentId: studentSelection.selectedStudentBinding,
+                onOpenModule: open(module:classId:studentId:)
             )
         case .notebook:
             NotebookMacLayout(
@@ -172,7 +207,7 @@ struct MacRootView: View {
                 selectedStudentId: studentSelection.selectedStudentBinding,
                 onOpenModule: open(module:classId:studentId:),
                 presentation: .content,
-                onToggleInspectorColumn: toggleNotebookInspectorColumn
+                onToggleInspectorColumn: toggleInspector
             )
         case .attendance:
             MacAttendanceView(
@@ -249,19 +284,6 @@ struct MacRootView: View {
             MacBackupInspectorView(store: backupStore)
         default:
             MacModuleInspectorPlaceholder(feature: MacFeatureRegistry.descriptor(for: feature))
-        }
-    }
-
-    @ViewBuilder
-    private func featureInspectorColumn(for feature: MacFeatureDescriptor.Feature) -> some View {
-        if feature == .notebook && !isNotebookInspectorColumnVisible {
-            MacModuleInspectorPlaceholder(feature: MacFeatureRegistry.descriptor(for: feature))
-                .frame(minWidth: 240, idealWidth: 280, maxWidth: .infinity, maxHeight: .infinity)
-                .background(MacAppStyle.pageBackground)
-        } else {
-            featureInspector(for: feature)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(MacAppStyle.pageBackground)
         }
     }
 
@@ -365,21 +387,21 @@ struct MacRootView: View {
 
             if selectedFeature != .notebook {
                 Button {
-                    if selectedFeature == .dashboard, let dashboardToolbarActions {
-                        dashboardToolbarActions.refresh()
-                    } else if selectedFeature == .attendance, let attendanceToolbarActions {
-                        attendanceToolbarActions.refresh()
-                    } else if selectedFeature == .physicalTests {
-                        physicalTestsToolbarActions.refresh()
-                    } else {
-                        Task { await session.bridge.refreshDashboard(mode: .office) }
-                    }
+                    refreshCurrentFeature()
                 } label: {
                     Label("Refrescar", systemImage: "arrow.clockwise")
                 }
                 .keyboardShortcut("r", modifiers: [.command])
                 .help("Refrescar datos")
             }
+
+            Button {
+                toggleInspector()
+            } label: {
+                Label(isInspectorVisible ? "Ocultar inspector" : "Mostrar inspector", systemImage: "sidebar.right")
+            }
+            .keyboardShortcut("i", modifiers: [.command, .option])
+            .help(isInspectorVisible ? "Ocultar inspector" : "Mostrar inspector")
         }
 
         ToolbarItem {
@@ -396,6 +418,7 @@ struct MacRootView: View {
     private func iconTint(for feature: MacFeatureDescriptor.Feature) -> Color {
         switch feature {
         case .dashboard: return .accentColor
+        case .teacherRadar: return .red
         case .notebook: return .purple
         case .attendance: return .green
         case .planner: return .orange
@@ -423,26 +446,21 @@ struct MacRootView: View {
         }
     }
 
-    private func toggleNotebookInspectorColumn() {
-        guard selectedFeature == .notebook else { return }
-
-        let nextValue = !isNotebookInspectorColumnVisible
+    private func toggleInspector() {
+        let nextValue = !isInspectorVisible
 
         Task { @MainActor in
             await Task.yield()
 
-            isNotebookInspectorColumnVisible = nextValue
+            isInspectorVisible = nextValue
             columnVisibility = .all
 
-            if nextValue {
-                if notebookInspectorState.selection == nil {
-                    notebookToolbarActions.toggleInspector()
-                } else {
-                    notebookInspectorState.isPresented = true
-                    notebookToolbarActions.isInspectorPresented = true
-                }
-            } else {
-                closeNotebookInspectorStateAfterViewUpdate()
+            guard selectedFeature == .notebook else { return }
+            if nextValue, notebookInspectorState.selection == nil {
+                notebookToolbarActions.toggleInspector()
+            } else if nextValue {
+                notebookInspectorState.isPresented = true
+                notebookToolbarActions.isInspectorPresented = true
             }
         }
     }
@@ -525,6 +543,69 @@ struct MacRootView: View {
         }
     }
 
+    private func performPrimaryCreation() {
+        switch selectedFeature {
+        case .notebook:
+            if layoutState.notebookAddColumnAvailable {
+                layoutState.showNotebookAddColumn()
+            }
+        case .physicalTests:
+            physicalTestsToolbarActions.newBattery()
+        case .backups:
+            performBackup()
+        case .students:
+            studentsReloadToken += 1
+            showBanner("Alumnado actualizado", systemImage: "person.3.sequence", tint: MacAppStyle.infoTint)
+        default:
+            showBanner("Nueva acción no disponible aquí", systemImage: "plus.circle", tint: MacAppStyle.warningTint)
+        }
+    }
+
+    private func performSave() {
+        switch selectedFeature {
+        case .notebook:
+            notebookToolbarActions.refresh()
+            showBanner("Guardado", systemImage: "checkmark.circle", tint: MacAppStyle.successTint)
+        case .backups:
+            performBackup()
+        default:
+            Task { await session.bridge.pullMissingSyncChanges() }
+            showBanner("Sincronizando", systemImage: "arrow.triangle.2.circlepath", tint: MacAppStyle.infoTint)
+        }
+    }
+
+    private func refreshCurrentFeature() {
+        if selectedFeature == .dashboard, let dashboardToolbarActions {
+            dashboardToolbarActions.refresh()
+        } else if selectedFeature == .attendance, let attendanceToolbarActions {
+            attendanceToolbarActions.refresh()
+        } else if selectedFeature == .notebook {
+            notebookToolbarActions.refresh()
+        } else if selectedFeature == .physicalTests {
+            physicalTestsToolbarActions.refresh()
+        } else {
+            Task { await session.bridge.refreshDashboard(mode: .office) }
+        }
+        showBanner("Actualizando", systemImage: "arrow.clockwise", tint: MacAppStyle.infoTint)
+    }
+
+    private func performBackup() {
+        Task {
+            await backupStore.createBackup()
+            showBanner("Backup creado", systemImage: "externaldrive.badge.checkmark", tint: MacAppStyle.successTint)
+        }
+    }
+
+    private func showBanner(_ title: String, systemImage: String, tint: Color) {
+        bannerDismissTask?.cancel()
+        banner = MacRootBanner(title: title, systemImage: systemImage, tint: tint)
+        bannerDismissTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_400_000_000)
+            guard !Task.isCancelled else { return }
+            banner = nil
+        }
+    }
+
     private func open(module: AppWorkspaceModule, classId: Int64?, studentId: Int64?) {
         studentSelection.select(
             classId: classId ?? studentSelection.selectedClassId,
@@ -532,6 +613,8 @@ struct MacRootView: View {
         )
 
         switch module {
+        case .teacherRadar:
+            selectFeature(.teacherRadar)
         case .notebook:
             selectFeature(.notebook)
         case .students:
@@ -544,6 +627,78 @@ struct MacRootView: View {
             selectFeature(.physicalTests)
         default:
             session.bridge.status = "El módulo \(module.title) todavía no está disponible en la shell Mac."
+        }
+    }
+}
+
+private struct MacRootBanner: Identifiable {
+    let id = UUID()
+    let title: String
+    let systemImage: String
+    let tint: Color
+}
+
+private struct MacRootTransientBanner: View {
+    let banner: MacRootBanner
+
+    var body: some View {
+        Label(banner.title, systemImage: banner.systemImage)
+            .font(.callout.weight(.semibold))
+            .foregroundStyle(banner.tint)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(.regularMaterial, in: Capsule(style: .continuous))
+            .overlay {
+                Capsule(style: .continuous)
+                    .stroke(MacAppStyle.cardBorder, lineWidth: 0.5)
+            }
+            .shadow(color: .black.opacity(0.12), radius: 12, y: 6)
+            .accessibilityLabel(banner.title)
+    }
+}
+
+extension Notification.Name {
+    static let macRootNewItemRequested = Notification.Name("macRootNewItemRequested")
+    static let macRootSaveRequested = Notification.Name("macRootSaveRequested")
+    static let macRootRefreshRequested = Notification.Name("macRootRefreshRequested")
+    static let macRootToggleInspectorRequested = Notification.Name("macRootToggleInspectorRequested")
+    static let macRootBackupRequested = Notification.Name("macRootBackupRequested")
+    static let macRootExportRequested = Notification.Name("macRootExportRequested")
+}
+
+private enum MacRootColumnVisibilityValue {
+    static let all = "all"
+    static let doubleColumn = "doubleColumn"
+    static let detailOnly = "detailOnly"
+    static let automatic = "automatic"
+}
+
+private extension NavigationSplitViewVisibility {
+    init(macRootStoredValue value: String) {
+        switch value {
+        case MacRootColumnVisibilityValue.all:
+            self = .all
+        case MacRootColumnVisibilityValue.doubleColumn:
+            self = .doubleColumn
+        case MacRootColumnVisibilityValue.detailOnly:
+            self = .detailOnly
+        default:
+            self = .automatic
+        }
+    }
+
+    var macRootStoredValue: String {
+        switch self {
+        case .all:
+            return MacRootColumnVisibilityValue.all
+        case .doubleColumn:
+            return MacRootColumnVisibilityValue.doubleColumn
+        case .detailOnly:
+            return MacRootColumnVisibilityValue.detailOnly
+        case .automatic:
+            return MacRootColumnVisibilityValue.automatic
+        default:
+            return MacRootColumnVisibilityValue.automatic
         }
     }
 }

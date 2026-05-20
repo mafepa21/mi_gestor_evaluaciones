@@ -405,6 +405,163 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-05-20 - Corrección de Excepciones SQLite y Migraciones en Unit Tests
+
+Resumen:
+- Se corrigió el crash en iOS provocado por la excepción de SQLite al intentar ejecutar sentencias de tipo query (`SELECT 1;`) como sentencias sin consulta en las migraciones de SQLDelight (específicamente en `19.sqm`).
+- Se reemplazó el `SELECT 1;` de `19.sqm` con un DDL no de consulta e inocuo: `CREATE TEMP TABLE IF NOT EXISTS _noop (id INTEGER);`. Esto evita que SQLiter en iOS falle debido a la restricción de que las consultas sólo se pueden realizar mediante métodos `query`/`rawQuery`.
+- Se solucionaron los fallos colaterales en las pruebas unitarias de JVM/Desktop (`NotebookRepositorySqlDelightTest` y `PhysicalTestsRepositorySqlDelightTest`) añadiendo la creación previa de la tabla `notebook_tabs` (con `driver.execute(null, "CREATE TABLE notebook_tabs (id TEXT PRIMARY KEY)", 0)`). Esto evita el error `no such table: notebook_tabs` que ocurría al intentar aplicar la migración `22.sqm` en bases de datos simuladas en memoria que estaban incompletas.
+
+Validación:
+- `./gradlew :data:desktopTest` ejecutado con éxito (`BUILD SUCCESSFUL`).
+- Las interfaces de SQLDelight compilaron y generaron código correctamente.
+
+Notas para futuras conversaciones:
+- Al agregar columnas o alterar tablas existentes en nuevas migraciones (como se hizo con `fixed_column_width` de `notebook_tabs` en `22.sqm`), recordar que las pruebas unitarias de migraciones de versiones previas (ej. migrar de 18 o 20) ejecutan la base de datos desde un estado en memoria vacío y requieren que se pre-creen las tablas que serán alteradas.
+
+### 2026-05-20 - Rescate de migración SQLDelight en iOS
+
+Resumen:
+- Se corrigió el crash de arranque iOS en `createIosDriver()` provocado por una excepción Kotlin/Native dentro de `NativeSqliteDriver` cuando una base existente ya contenía `notebook_tabs.fixed_column_width` pero seguía en `user_version = 22`.
+- El fix vive en `kmp/data/src/appleMain/kotlin/com/migestor/data/platform/AppleDriver.kt`: `NativeSqliteDriver` usa ahora `AppleAppDatabaseSchema`, que salta de forma idempotente la migración 22->23 si la columna ya existe, y `runRescueMigrations` asegura `fixed_column_width REAL` en `notebook_tabs`.
+- No se añadió una migración nueva ni se cambió el esquema canónico; se hizo compatible la apertura de bases iOS existentes desincronizadas.
+
+Validación:
+- `./gradlew :data:verifySqlDelightMigration` terminó con `BUILD SUCCESSFUL`.
+- `./gradlew :data:compileKotlinIosSimulatorArm64` terminó con `BUILD SUCCESSFUL`.
+- `./gradlew :data:compileKotlinIosArm64` terminó con `BUILD SUCCESSFUL`.
+
+Notas para futuras conversaciones:
+- Si vuelve a aparecer un crash LLDB en `<compiler-generated>` durante `createIosDriver()`, revisar primero excepciones de migración SQLDelight y `PRAGMA user_version` de la base del dispositivo; ese mensaje de Xcode no es la causa, solo indica que no hay fuente Kotlin para ese frame generado.
+
+### 2026-05-20 - Optimización de Rendimiento y Diseño Premium en Módulo de Cuaderno
+
+Resumen:
+- Implementación de `NotebookScrollSyncCoordinator` en [NotebookDataGrid.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/NotebookDataGrid.swift) para sincronizar directamente el scroll vertical mediante delegates y observers nativos (UIKit/AppKit), eliminando las actualizaciones de `@State` que provocaban re-renderizados constantes.
+- Optimización crítica de `rowSignature` en [NotebookGridContent.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/NotebookGridContent.swift) precalculando las claves de segmentos y colecciones de IDs de columnas visibles a nivel de contenedor de Grid, reduciendo las operaciones de mapeo de segmentos de O(N*C) a O(C) por render pass.
+- Añadido efecto hover sincronizado para filas completas del cuaderno en macOS/iOS a través de `hoveredRowId` en [NotebookGridContainer.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/NotebookGridContainer.swift), logrando un comportamiento de rejilla uniforme y profesional.
+- Refinamiento estético y de UX en [NotebookEditableTableCell.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/NotebookEditableTableCell.swift): diferenciación visual premium de celdas calculadas (moteado sutil de color de acento, tipografía cursiva, texto de ancho fijo para números e icono representativo `.function`) e integración de feedback háptico táctil inmediato (`UISelectionFeedbackGenerator` e `UIImpactFeedbackGenerator`) en checkboxes, ordinales y asistencia para iOS/iPadOS.
+- Rediseño estético de `NotebookDividerHandle` bajo Organic Precision v2.2, incluyendo transiciones y animaciones fluidas para estados de hover y arrastre con efectos visuales premium.
+
+Validación:
+- `xcodebuild` para iOS Simulator completado con éxito (`BUILD SUCCEEDED`). Todos los cambios sintácticos y de tipos compilan perfectamente.
+
+Notas para futuras conversaciones:
+- No se alteraron esquemas de base de datos ni migraciones en SQLDelight.
+- La persistencia y el puente KMP (`KmpBridge`) permanecen intactos, respetando la arquitectura limpia del proyecto.
+
+### 2026-05-19 - Rediseño de Ajustes como Centro de Control modular
+
+Resumen:
+- Se convirtieron los Ajustes en un Centro de Control modular estructurado y premium, separando preferencias normales, datos/seguridad, sincronización, IA, apariencia y diagnóstico técnico avanzado.
+- Creación de `AppSettingsStore.swift` y `AppSettingsModels.swift` en `AppleShared` para unificar el estado `@AppStorage` reactivo y rutas de navegación.
+- Creación de sub-vistas especializadas: `GeneralSettingsView.swift`, `EvaluationSettingsView.swift`, `NotebookSettingsView.swift`, `DataSecuritySettingsView.swift`, `SettingsDangerZoneView.swift`, `SyncSettingsView.swift`, `AppleAISettingsView.swift`, `AppearanceSettingsView.swift` y `SettingsDiagnosticsView.swift`.
+- Se extrajeron las vistas de emparejamiento local (`SyncLanCard`, `MacCommandCenterPairingCard`, `LanQrScannerSheet` e `LanQrScannerView`) a `SyncPairingViews.swift` para simplificar `ContentView.swift`.
+- Integración en iOS mediante `SettingsWorkspaceView.swift` (usando `NavigationStack` modular) y rediseño completo de `MacSettingsView.swift` (usando la estructura nativa `NavigationSplitView` de macOS).
+
+Validación:
+- `xcodegen generate` regeneró el proyecto Apple con éxito.
+- `xcodebuild -project MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -sdk iphonesimulator -destination "generic/platform=iOS Simulator" clean build` terminó con `BUILD SUCCEEDED`.
+- `xcodebuild -project MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac build` terminó con `BUILD SUCCEEDED`.
+
+Notas para futuras conversaciones:
+- No hubo cambios de esquema SQLDelight ni migraciones.
+- La zona destructiva de datos (`SettingsDangerZoneView.swift`) borra físicamente los archivos SQLite, sidecars, backups y adjuntos en el disco y marca `needsRestart = true` en `AppleBackupService.shared`.
+
+### 2026-05-19 - Importador de horario compatible con valenciano
+
+Resumen:
+- Se amplió `kmp/iosApp/AppleShared/ScheduleExcelImportService.swift` para detectar cabeceras de horario en castellano y valenciano/catalán: `Horas`/`Hores`, `Lunes`-`Viernes`, `Dilluns`-`Divendres` y abreviaturas habituales como `Dl.`, `Dt.`, `Dc.`, `Dj.` y `Dv.`.
+- La normalización de cabeceras ahora ignora acentos, mayúsculas, puntuación y texto añadido tras el primer token, cubriendo casos como `Dilluns 08/09` o `Mié.`.
+- El mensaje de error de cabecera se actualizó para explicar los formatos aceptados.
+
+Validación:
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -configuration Debug -destination 'platform=macOS' build CODE_SIGNING_ALLOWED=NO` terminó con `BUILD SUCCEEDED`.
+
+Notas para futuras conversaciones:
+- No hubo migración SQLDelight ni cambio de persistencia; el ajuste queda limitado al parser Apple compartido de importación Excel.
+- Si aparecen hojas con cabeceras en otra lengua o con días fusionados en una misma celda, ampliar `weekdayNumber(forHeader:)` e `isTimeHeader(_:)` en el mismo servicio.
+
+### 2026-05-19 - Radar Docente basado en datos reales
+
+Resumen:
+- Se implementa el módulo `Radar` como entrada propia del workspace iPad/iOS y macOS, con tarjetas de prioridad, acciones sugeridas, resumen de grupo, filtros y navegación hacia alumno o cuaderno.
+- La primera versión SwiftUI vive en `kmp/iosApp/App/TeacherRadarCard.swift`, `TeacherRadarDetailView.swift`, `TeacherRadarStudentInsightRow.swift` y `TeacherRadarGroupSummaryView.swift`; calcula alertas desde el cuaderno visible, asistencia inferida, evidencias, rúbricas incompletas y tendencia sin depender de IA.
+- La fase IA queda acotada a redacción sobre hechos objetivos mediante `AppleFoundationContextualAIService` y `AppleFoundationReportService`, con fallback determinista y reglas explícitas para no inventar causas, diagnósticos ni datos sensibles.
+- La lógica de dominio real queda preparada en KMP con `TeacherRadarInsight`, `RadarPriority`, `RadarCategory` en `kmp/shared/src/commonMain/kotlin/com/migestor/shared/domain/Models.kt` y `BuildTeacherRadarUseCase` en `kmp/shared/src/commonMain/kotlin/com/migestor/shared/domain/usecase/BuildTeacherRadarUseCase.kt`.
+- No hubo cambio de esquema SQLDelight ni migración.
+
+Validación:
+- `./gradlew :shared:desktopTest` terminó con `BUILD SUCCESSFUL` e incluyó tests de `BuildTeacherRadarUseCase`.
+- `xcodegen generate` regeneró el proyecto Apple.
+- `xcodebuild -project MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -destination 'generic/platform=iOS Simulator' -configuration Debug build CODE_SIGNING_ALLOWED=NO` terminó con `BUILD SUCCEEDED`.
+- `xcodebuild -project MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -destination 'generic/platform=macOS' -configuration Debug build CODE_SIGNING_ALLOWED=NO ARCHS=x86_64 ONLY_ACTIVE_ARCH=YES` terminó con `BUILD SUCCEEDED`.
+- La build macOS genérica arm64 falló por `MiGestorKit.framework` x86_64 preexistente, no por errores Swift del Radar.
+
+Notas para futuras conversaciones:
+- El Radar ya no debe plantearse como generador genérico de contenido IA, sino como capa de decisiones docentes accionables sobre datos existentes. La IA solo debe redactar resúmenes o feedback a partir de evidencias objetivas controladas.
+- Cuando el puente KMP exponga directamente `BuildTeacherRadarUseCase`, conviene sustituir el builder Swift temporal para evitar duplicar reglas.
+
+### 2026-05-19 - Sync LAN entendible para uso diario en macOS
+
+Resumen:
+- `kmp/iosApp/MacApp/MacSyncView.swift` reorganiza Sync LAN alrededor de estado humano y acciones claras: dispositivo actual, iPad conectado, última sincronización, cambios pendientes, conflictos y botones para conectar iPad, reintentar sync, ver historial, resolver conflictos y copiar enlace de emparejamiento.
+- Los estados visuales quedan normalizados: verde para sincronizado, ámbar para cambios pendientes, rojo para conflicto/error y gris para offline/preparando.
+- Los detalles técnicos visibles antes, como host LAN, peers descubiertos, mensajes del helper y copia de diagnóstico, pasan a `Diagnóstico avanzado`; no se tocó `KmpBridge.swift`, KMP/shared, SQLDelight ni migraciones.
+
+Validación:
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -configuration Debug -destination 'platform=macOS' build` terminó con `BUILD SUCCEEDED`.
+
+Notas para futuras conversaciones:
+- El contador de conflictos de esta pasada se infiere del mensaje publicado por `KmpBridge` porque todavía no existe un estado estructurado de conflictos Sync LAN. Si se implementa resolución real de conflictos, conviene exponer un `@Published` específico en el bridge y conectar ahí el botón `Resolver conflictos`.
+
+### 2026-05-19 - Captura rápida de clase en iPad/iOS
+
+Resumen:
+- `kmp/iosApp/App/ClassroomCaptureBar.swift` añade una barra contextual para pista/aula con contexto `Hoy · clase · sesión`, accesos a Asistencia, Rúbrica, Nota rápida, Lesión y Observación.
+- `kmp/iosApp/App/IPadWorkspaceShell.swift` integra la barra en módulos de trabajo en clase y presenta sheets ligeras para nota rápida, observación e inversión del estado de lesión sin navegar por tres pantallas.
+- `kmp/iosApp/App/KmpBridge.swift` expone contexto de sesión de hoy y apertura de la primera rúbrica vinculada al cuaderno de la clase; si no existe vínculo, la UI cae al hub de evaluación.
+- `kmp/iosApp/App/PlannerWorkspaceIOS.swift` selecciona automáticamente la primera sesión de hoy al abrir Planner cuando no llega un `sessionId` externo.
+- No hubo migración SQLDelight ni cambio de esquema. La persistencia reutiliza APIs existentes: `saveQuickStudentNote`, `createIncident`, `updateStudentInjuryStatus` y evaluación masiva de rúbricas.
+
+Validación:
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build` terminó con `BUILD SUCCEEDED`.
+- La build con firma activa llegó a compilar y enlazar Swift, pero falló en `CodeSign` de `MiGestorKit.framework/Versions/A` por formato de bundle, un problema de firma/empaquetado existente separado del cambio de UI.
+
+Notas para futuras conversaciones:
+- La barra contextual es el punto de entrada común para captura en clase; futuras acciones de pista/aula deberían añadirse ahí antes de crear navegación paralela.
+- La acción `Rúbrica` depende de columnas de cuaderno con `rubricId` y `evaluationId`; para elegir entre varias rúbricas hará falta selector específico, no abrir siempre la primera vinculada.
+
+### 2026-05-19 - Shell macOS con inspector nativo y comandos de escritorio
+
+Resumen:
+- `kmp/iosApp/MacApp/MacRootView.swift` deja de usar la tercera columna del `NavigationSplitView` como inspector y pasa a un `NavigationSplitView` estable de sidebar + detalle con `.inspector(isPresented:)` independiente. Ocultar el inspector ya no colapsa ni sustituye la sidebar.
+- Se persisten por escena la visibilidad de columnas y del inspector con `@SceneStorage`, manteniendo además el flag compartido `session.inspectorVisible`.
+- Se añadieron banners transitorios no intrusivos para feedback de acciones de escritorio: `Guardado`, `Sincronizando`, `Actualizando`, `Backup creado` e informes.
+- `kmp/iosApp/MacApp/MiGestorKMPMacApp.swift` añade comandos nativos para `⌘N`, `⌘S`, `⌘R`, `⌘B`, `⌘⇧E`, `⌘⌥I` y `⌘⇧R`, delegando en el root mediante notificaciones locales sin tocar `KmpBridge.swift`, `kmp/shared`, `kmp/data` ni `desktopApp`.
+
+Validación:
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -configuration Debug -destination 'platform=macOS' build` terminó con `BUILD SUCCEEDED`.
+
+Notas para futuras conversaciones:
+- La shell macOS ya tiene el patrón base para dejar de sentirse como iPad ampliado: sidebar persistente, inspector real, toolbar/comandos compartiendo acciones y feedback no modal. Las siguientes mejoras deberían centrarse módulo a módulo en tablas/context menus/selección persistente, no en rehacer el root.
+
+### 2026-05-19 - Cuaderno con Media explicable y estados de celda
+
+Resumen:
+- `kmp/iosApp/App/NotebookSupportViews.swift` reorganiza el popover de Media para lectura docente diaria: `Incluye`, `No incluye`, pesos, valores y resultado formateado con locale actual.
+- `kmp/iosApp/App/NotebookEditableTableCell.swift` añade feedback visual en celdas del cuaderno: pendiente, guardando, sincronizado, error de fórmula, bloqueado y excluido de media. Las columnas bloqueadas dejan de aceptar guardados desde la celda.
+- `kmp/iosApp/App/NotebookModuleGridCells.swift` amplía el menú contextual de columna con duplicar estructura, archivar, cambiar peso e incluir/excluir de media. La duplicación usa la API existente `KmpBridge.addColumn`, por lo que copia estructura/configuración, no las celdas ya introducidas.
+- `kmp/iosApp/App/NotebookModuleOrganization.swift` expone `weight` en `saveColumnMutation` para que las acciones rápidas de media puedan persistir peso junto a inclusión/exclusión.
+
+Validación:
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` terminó con `BUILD SUCCEEDED`.
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -configuration Debug build` terminó con `BUILD SUCCEEDED`.
+
+Notas para futuras conversaciones:
+- La columna de alumnado y la Media ya están en zonas fijas del grid existente; esta intervención no cambió `NotebookDataGrid.swift` porque la arquitectura actual ya separa izquierda fija, centro scrollable y derecha fija.
+- Si se quiere duplicar también valores/evidencias de una columna, hace falta contrato KMP/repositorio específico; no conviene inventarlo desde SwiftUI generando IDs manualmente.
+
 ### 2026-05-18 - Dashboard operativo Hoy sin acciones engañosas
 
 Resumen:

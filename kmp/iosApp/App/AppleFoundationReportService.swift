@@ -260,6 +260,46 @@ final class AppleFoundationReportService {
         }
     }
 
+    func generateTeacherRadarReport(
+        from evidence: TeachingEvidencePack,
+        audience: AIReportAudience = .tutoria,
+        tone: AIReportTone = .breve
+    ) async throws -> AIReportDraft {
+        guard evidence.hasEnoughData else {
+            throw AIReportServiceError.insufficientContext(
+                evidence.confidenceNote ?? "Faltan datos objetivos suficientes para redactar desde el Radar Docente."
+            )
+        }
+
+        let actions = evidence.recommendedActionTexts.isEmpty
+            ? ["Mantener recogida de evidencias antes del próximo corte."]
+            : evidence.recommendedActionTexts
+        let warnings = evidence.warningTexts
+        let strengths = evidence.factTexts.filter {
+            $0.localizedCaseInsensitiveContains("mejora") ||
+                $0.localizedCaseInsensitiveContains("reconocimiento") ||
+                $0.localizedCaseInsensitiveContains("progreso")
+        }
+
+        return AIReportDraft(
+            title: "Informe breve · Radar Docente",
+            summary: evidence.summary,
+            strengths: Array(strengths.prefix(4)),
+            needsAttention: Array(warnings.prefix(5)),
+            recommendedActions: Array(actions.prefix(5)),
+            familyFacingVersion: "Resumen prudente basado en datos objetivos del seguimiento docente. No incluye causas personales ni diagnósticos.",
+            teacherNotesVersion: """
+            \(evidence.title)
+
+            Hechos objetivos
+            \((evidence.factTexts.isEmpty ? ["Sin hechos suficientes."] : evidence.factTexts).prefix(6).map { "• \($0)" }.joined(separator: "\n"))
+
+            Acciones docentes
+            \(actions.prefix(5).map { "• \($0)" }.joined(separator: "\n"))
+            """
+        )
+    }
+
     func refineActiveDraft(
         with followUp: String,
         context: KmpBridge.ReportGenerationContext

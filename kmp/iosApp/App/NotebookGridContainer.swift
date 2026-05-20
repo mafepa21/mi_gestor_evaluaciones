@@ -31,6 +31,8 @@ struct NotebookGridContainer<
     let trailingFixedRow: (Int, Row) -> TrailingFixedRow
     let scrollRow: (Int, Row) -> ScrollRow
 
+    @State private var hoveredRowId: Row.ID? = nil
+
     var body: some View {
         if rows.isEmpty {
             emptyContent()
@@ -72,8 +74,18 @@ struct NotebookGridContainer<
     ) -> some View {
         LazyVStack(spacing: 0) {
             ForEach(Array(rows.enumerated()), id: \.element.id) { index, item in
+                let isHovered = hoveredRowId == item.id
                 rowContent(index, item)
                     .frame(height: rowHeight)
+                    .background(isHovered ? hoverColor : Color.clear)
+                    .contentShape(Rectangle())
+                    #if os(macOS)
+                    .onHover { hovering in
+                        withAnimation(.easeOut(duration: 0.15)) {
+                            hoveredRowId = hovering ? item.id : nil
+                        }
+                    }
+                    #endif
                 Divider()
                     .frame(height: 0.5)
                     .overlay(NotebookStyle.softBorder.opacity(0.45))
@@ -81,5 +93,13 @@ struct NotebookGridContainer<
             }
         }
         .padding(.bottom, 16)
+    }
+
+    private var hoverColor: Color {
+        #if os(macOS)
+        return Color.primary.opacity(0.035)
+        #else
+        return Color.primary.opacity(0.02)
+        #endif
     }
 }

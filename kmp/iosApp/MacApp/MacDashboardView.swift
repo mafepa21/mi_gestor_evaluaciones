@@ -20,6 +20,7 @@ enum MacDashboardDestination {
 
 struct MacDashboardView: View {
     @ObservedObject var bridge: KmpBridge
+    @ObservedObject var backupStore: MacBackupStore
     let bootstrap: AppleBridgeBootstrap
     var onNavigate: (MacDashboardDestination) -> Void = { _ in }
     var onToolbarActionsChange: (MacDashboardToolbarActions?) -> Void = { _ in }
@@ -80,6 +81,7 @@ struct MacDashboardView: View {
         }
         .task {
             scheduleReload()
+            await backupStore.loadBackups()
         }
         .onAppear {
             scheduleToolbarActionsSync()
@@ -126,7 +128,8 @@ struct MacDashboardView: View {
 
                 VStack(alignment: .leading, spacing: 24) {
                     DashboardPendingCard(items: snapshot.pendingItems, onNavigate: onNavigate)
-                    DashboardStatusCard(summary: snapshot.syncStatus, platformName: bootstrap.platformName)
+                    DashboardRiskCard(snapshot: snapshot, onNavigate: onNavigate)
+                    DashboardStatusCard(summary: snapshot.syncStatus, backupStore: backupStore, platformName: bootstrap.platformName)
                 }
                 .frame(width: 380)
             }
@@ -138,7 +141,8 @@ struct MacDashboardView: View {
                     onOpenSheet: { activeSheet = $0 }
                 )
                 DashboardPendingCard(items: snapshot.pendingItems, onNavigate: onNavigate)
-                DashboardStatusCard(summary: snapshot.syncStatus, platformName: bootstrap.platformName)
+                DashboardRiskCard(snapshot: snapshot, onNavigate: onNavigate)
+                DashboardStatusCard(summary: snapshot.syncStatus, backupStore: backupStore, platformName: bootstrap.platformName)
             }
         }
     }
@@ -880,17 +884,69 @@ private struct DashboardPendingCard: View {
     }
 }
 
+private struct DashboardRiskCard: View {
+    let snapshot: MacDashboardSnapshot
+    let onNavigate: (MacDashboardDestination) -> Void
+
+    private var riskItems: [DashboardPendingItem] {
+        snapshot.pendingItems.filter { $0.priority == .high }
+    }
+
+    var body: some View {
+        MacPanel(title: "Riesgo") {
+            VStack(spacing: 12) {
+                if riskItems.isEmpty {
+                    Text("Sin alumnado o sesiones en riesgo inmediato con los datos cargados.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(16)
+                        .background(MacAppStyle.subtleFill)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                } else {
+                    ForEach(riskItems) { item in
+                        Button {
+                            if let destination = item.destination {
+                                onNavigate(destination)
+                            }
+                        } label: {
+                            HStack(alignment: .top, spacing: 12) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundStyle(item.priority.tint)
+                                    .frame(width: 18)
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text(item.title)
+                                        .font(.callout.weight(.semibold))
+                                    Text(item.subtitle)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                            }
+                            .padding(16)
+                            .background(MacAppStyle.subtleFill)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+}
+
 private struct DashboardStatusCard: View {
     let summary: DashboardSyncSummary
+    @ObservedObject var backupStore: MacBackupStore
     let platformName: String
 
     var body: some View {
-        MacPanel(title: "Estado") {
+        MacPanel(title: "Sistema") {
             VStack(alignment: .leading, spacing: 12) {
-                statusRow("Sync", value: summaryLine, tint: summary.state.tint)
-                statusRow("Última actualización", value: summary.lastRunAt.map(Self.absoluteTime) ?? Self.absoluteTime(Date()), tint: .secondary)
+                statusRow("Sync LAN", value: summaryLine, tint: summary.state.tint)
                 statusRow("Cambios pendientes", value: "\(summary.pendingChanges)", tint: summary.pendingChanges > 0 ? MacAppStyle.warningTint : MacAppStyle.successTint)
                 statusRow("Última sync", value: summary.lastRunAt.map(Self.relativeTime) ?? "Sin registro", tint: .secondary)
+                statusRow("Último backup", value: backupLine, tint: backupStore.latestBackup == nil ? MacAppStyle.warningTint : MacAppStyle.successTint)
                 statusRow("Host", value: summary.pairedHost ?? "Sync local inactivo", tint: summary.pairedHost == nil ? .secondary : MacAppStyle.infoTint)
                 statusRow("Plataforma", value: platformName, tint: .secondary)
             }
@@ -905,6 +961,13 @@ private struct DashboardStatusCard: View {
             return "Sincronizado · \(Self.relativeTime(lastRunAt))"
         }
         return summary.message.isEmpty ? "Sync local inactivo" : summary.message
+    }
+
+    private var backupLine: String {
+        guard let latestBackup = backupStore.latestBackup else {
+            return "Sin backup registrado"
+        }
+        return "\(Self.relativeTime(latestBackup.createdAt)) · \(latestBackup.sizeBytes.macBackupFileSizeText)"
     }
 
     private func statusRow(_ title: String, value: String, tint: Color) -> some View {

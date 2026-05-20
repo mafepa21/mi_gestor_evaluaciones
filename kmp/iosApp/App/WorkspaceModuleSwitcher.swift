@@ -24,6 +24,13 @@ extension AppWorkspaceShell {
                 onOpenModule: open(module:classId:studentId:)
             )
             .environmentObject(bridge)
+        case .teacherRadar:
+            TeacherRadarDetailView(
+                bridge: bridge,
+                selectedClassId: $selectedClassId,
+                selectedStudentId: $selectedStudentId,
+                onOpenModule: open(module:classId:studentId:)
+            )
         case .notebook:
             NotebookModuleView(
                 bridge: bridge,
@@ -140,7 +147,10 @@ extension AppWorkspaceShell {
             PETournamentsWorkspaceView(selectedClassId: $selectedClassId)
                 .environmentObject(bridge)
         case .settings:
-            SettingsModuleView(selectedClassId: $selectedClassId)
+            SettingsWorkspaceView()
+                .environmentObject(bridge)
+        case .backups:
+            BackupsWorkspaceView(selectedClassId: $selectedClassId)
         }
     }
 

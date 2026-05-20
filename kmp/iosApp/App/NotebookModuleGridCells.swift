@@ -464,12 +464,32 @@ extension NotebookModuleView {
             columnDraft = column.title
             isRenameColumnAlertPresented = true
         }
+        Button("Duplicar estructura") {
+            duplicateColumnStructure(column)
+        }
         Button(column.isArchived ? "Restaurar" : (column.isTemporarilyHidden ? "Mostrar" : "Ocultar")) {
             if column.isArchived {
                 setNotebookColumnVisibility(column, visibility: .visible)
             } else {
                 toggleColumnVisibility(column)
             }
+        }
+        if column.canBeArchived {
+            Button("Archivar") {
+                setNotebookColumnVisibility(column, visibility: .archived)
+            }
+        }
+        Button("Cambiar peso…") {
+            isAverageConfigurationPresented = true
+        }
+        Button(column.countsTowardAverage ? "Excluir de media" : "Incluir en media") {
+            saveColumnMutation(
+                column,
+                countsTowardAverage: !column.countsTowardAverage,
+                weight: column.countsTowardAverage ? 0 : max(column.weight, 1)
+            )
+            showToast(column.countsTowardAverage ? "Columna excluida de la media" : "Columna incluida en la media")
+            scheduleToolbarStateSyncIfLoaded()
         }
         Menu("Avanzado") {
             if isNotebookIndividualSummaryColumn(column) {
@@ -526,6 +546,33 @@ extension NotebookModuleView {
         Button("Eliminar columna", role: .destructive) {
             presentDeleteColumnImpact(column)
         }
+    }
+
+    func duplicateColumnStructure(_ column: NotebookColumnDefinition) {
+        bridge.addColumn(
+            name: "\(column.title) copia",
+            type: column.type.name,
+            weight: column.weight,
+            formula: column.formula,
+            rubricId: column.rubricId?.int64Value,
+            categoryId: column.categoryId,
+            categoryKind: column.categoryKind,
+            instrumentKind: column.instrumentKind,
+            inputKind: column.inputKind,
+            dateEpochMs: column.dateEpochMs?.int64Value,
+            unitOrSituation: column.unitOrSituation,
+            competencyCriteriaIds: column.competencyCriteriaIds.map(\.int64Value),
+            scaleKind: column.scaleKind,
+            iconName: column.iconName,
+            countsTowardAverage: column.countsTowardAverage,
+            isPinned: column.isPinned,
+            isHidden: false,
+            visibility: .visible,
+            isLocked: false,
+            isTemplate: column.isTemplate
+        )
+        showToast("Estructura de columna duplicada")
+        scheduleToolbarStateSyncIfLoaded()
     }
 
     func summaryActionTitle(for column: NotebookColumnDefinition, data: NotebookUiStateData) -> String {

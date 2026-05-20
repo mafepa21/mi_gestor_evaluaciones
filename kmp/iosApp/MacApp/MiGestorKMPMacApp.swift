@@ -28,8 +28,44 @@ struct MiGestorKMPMacApp: App {
         .commands {
             CommandGroup(replacing: .textFormatting) {}
 
+            CommandGroup(replacing: .newItem) {
+                Button("Nuevo") {
+                    NotificationCenter.default.post(name: .macRootNewItemRequested, object: nil)
+                }
+                .keyboardShortcut("n", modifiers: .command)
+            }
+
+            CommandGroup(after: .saveItem) {
+                Button("Guardar") {
+                    NotificationCenter.default.post(name: .macRootSaveRequested, object: nil)
+                }
+                .keyboardShortcut("s", modifiers: .command)
+            }
+
             CommandGroup(after: .newItem) {
-                Button("Refrescar dashboard") {}
+                Button("Refrescar") {
+                    NotificationCenter.default.post(name: .macRootRefreshRequested, object: nil)
+                }
+                .keyboardShortcut("r", modifiers: .command)
+
+                Button("Crear backup") {
+                    NotificationCenter.default.post(name: .macRootBackupRequested, object: nil)
+                }
+                .keyboardShortcut("b", modifiers: .command)
+
+                Button("Exportar informes") {
+                    NotificationCenter.default.post(name: .macRootExportRequested, object: nil)
+                }
+                .keyboardShortcut("e", modifiers: [.command, .shift])
+
+                Button("Mostrar u ocultar inspector") {
+                    NotificationCenter.default.post(name: .macRootToggleInspectorRequested, object: nil)
+                }
+                .keyboardShortcut("i", modifiers: [.command, .option])
+
+                Button("Refrescar dashboard") {
+                    NotificationCenter.default.post(name: .macRootRefreshRequested, object: nil)
+                }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
             }
         }

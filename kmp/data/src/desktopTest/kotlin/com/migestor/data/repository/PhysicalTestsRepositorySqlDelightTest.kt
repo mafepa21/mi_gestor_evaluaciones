@@ -183,6 +183,7 @@ class PhysicalTestsRepositorySqlDelightTest {
             "INSERT INTO students(id, first_name, last_name, email, photo_path, is_injured, updated_at_epoch_ms, device_id, sync_version) VALUES (1, 'Ana', 'Lopez', NULL, NULL, 0, 1000, NULL, 0)",
             0,
         )
+        driver.execute(null, "CREATE TABLE notebook_tabs (id TEXT PRIMARY KEY)", 0)
 
         AppDatabase.Schema.migrate(driver, 18, AppDatabase.Schema.version)
         val student = StudentsRepositorySqlDelight(AppDatabase(driver)).listStudents().single()

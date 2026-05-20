@@ -394,6 +394,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
     case dashboard
     case courses
     case students
+    case teacherRadar
     case notebook
     case attendance
     case planner
@@ -409,6 +410,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
     case peMaterial
     case peTournaments
     case settings
+    case backups
 
     var id: String { rawValue }
 
@@ -417,6 +419,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .dashboard: return "Dashboard"
         case .courses: return "Cursos"
         case .students: return "Alumnado"
+        case .teacherRadar: return "Radar"
         case .notebook: return "Cuaderno"
         case .attendance: return "Asistencia"
         case .planner: return "Planner"
@@ -432,6 +435,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .peMaterial: return "EF · Material"
         case .peTournaments: return "EF · Torneos"
         case .settings: return "Ajustes"
+        case .backups: return "Seguridad"
         }
     }
 
@@ -440,6 +444,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .dashboard: return "Visión operativa"
         case .courses: return "Gestión de grupos"
         case .students: return "Perfiles y seguimiento"
+        case .teacherRadar: return "Alertas docentes"
         case .notebook: return "Registro evaluativo"
         case .attendance: return "Control diario y semanal"
         case .planner: return "Preparación lectiva"
@@ -455,6 +460,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .peMaterial: return "Inventario rápido"
         case .peTournaments: return "Competición y resultados"
         case .settings: return "Configuración"
+        case .backups: return "Copias y restauración"
         }
     }
 
@@ -463,6 +469,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .dashboard: return "square.grid.2x2.fill"
         case .courses: return "rectangle.3.group.bubble.left.fill"
         case .students: return "person.3.fill"
+        case .teacherRadar: return "scope"
         case .notebook: return "book.closed.fill"
         case .attendance: return "checklist.checked"
         case .planner: return "calendar.badge.clock"
@@ -478,12 +485,13 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .peMaterial: return "shippingbox.fill"
         case .peTournaments: return "trophy.fill"
         case .settings: return "gearshape.fill"
+        case .backups: return "lock.shield.fill"
         }
     }
 
     var section: AppWorkspaceSection {
         switch self {
-        case .dashboard, .courses, .students, .notebook:
+        case .dashboard, .courses, .students, .teacherRadar, .notebook:
             return .academic
         case .attendance, .planner, .diary:
             return .operations
@@ -491,7 +499,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
             return .evaluation
         case .peSessions, .peTests, .peRubrics, .peIncidents, .peMaterial, .peTournaments:
             return .physicalEducation
-        case .settings:
+        case .settings, .backups:
             return .system
         }
     }
@@ -527,6 +535,20 @@ struct ContextualAISheetState: Identifiable {
     }
 }
 
+enum ClassroomCaptureSheet: Identifiable {
+    case quickNote
+    case observation
+    case injury
+
+    var id: String {
+        switch self {
+        case .quickNote: return "quickNote"
+        case .observation: return "observation"
+        case .injury: return "injury"
+        }
+    }
+}
+
 struct AppWorkspaceShell: View {
     @EnvironmentObject var bridge: KmpBridge
     @Environment(\.colorScheme) var colorScheme
@@ -544,6 +566,11 @@ struct AppWorkspaceShell: View {
     @State var rootSplitVisibility: NavigationSplitViewVisibility = .all
     @State var contextualAISheetState: ContextualAISheetState?
     @State var isLoadingContextualAI = false
+    @State var classroomContext: KmpBridge.ClassroomCaptureContextSnapshot?
+    @State var classroomCaptureSheet: ClassroomCaptureSheet?
+    @State var classroomCaptureStudentId: Int64?
+    @State var classroomCaptureText = ""
+    @State var isSavingClassroomCapture = false
 
     var searchResults: [WorkspaceSearchResult] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -618,6 +645,22 @@ struct AppWorkspaceShell: View {
                 .environmentObject(bridge)
         }
         .sheet(item: $contextualAISheetState, content: contextualAISheet)
+        .sheet(item: $classroomCaptureSheet, content: classroomCaptureSheetView)
+        .sheet(isPresented: Binding(
+            get: { bridge.showingBulkRubricEvaluation && activeModule != .notebook },
+            set: { isPresented in
+                if !isPresented {
+                    bridge.closeBulkRubricEvaluation()
+                }
+            }
+        )) {
+            RubricBulkEvaluationSheet(bridge: bridge)
+                #if os(macOS)
+                .frame(width: 1180, height: 760)
+                #else
+                .presentationDetents([.large])
+                #endif
+        }
         .task {
             await bridge.ensureClassesLoaded()
             try? await bridge.refreshStudentsDirectory()
@@ -634,9 +677,13 @@ struct AppWorkspaceShell: View {
             if let selectedClassId {
                 await bridge.selectStudentsClass(classId: selectedClassId)
             }
+            await reloadClassroomContext()
         }
         .appOnChange(of: activeModule) { newValue in persistedActiveModule = newValue.rawValue }
-        .appOnChange(of: selectedClassId) { newValue in persistedSelectedClassId = Int(newValue ?? 0) }
+        .appOnChange(of: selectedClassId) { newValue in
+            persistedSelectedClassId = Int(newValue ?? 0)
+            Task { await reloadClassroomContext() }
+        }
         .appOnChange(of: selectedStudentId) { newValue in persistedSelectedStudentId = Int(newValue ?? 0) }
         .onAppear(perform: syncRootSplitVisibility)
         .appOnChange(of: layoutState.isSidebarVisible) { _ in syncRootSplitVisibility() }
@@ -783,6 +830,28 @@ struct AppWorkspaceShell: View {
                     .padding(.vertical, 12)
                     .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
+            }
+
+            if shouldShowClassroomCaptureBar {
+                ClassroomCaptureBar(
+                    contextTitle: classroomCaptureTitle,
+                    isCompactNotebookMode: activeModule == .notebook && layoutState.notebookSurfaceMode != "grid",
+                    onOpenAttendance: {
+                        open(module: .attendance, classId: selectedClassId, studentId: selectedStudentId)
+                    },
+                    onOpenRubric: {
+                        Task { await openClassroomRubricCapture() }
+                    },
+                    onQuickNote: {
+                        presentClassroomCapture(.quickNote)
+                    },
+                    onInjury: {
+                        presentClassroomCapture(.injury)
+                    },
+                    onObservation: {
+                        presentClassroomCapture(.observation)
+                    }
+                )
             }
 
             Text(bridge.status)

@@ -38,6 +38,9 @@ private struct DashboardGroupRow: Identifiable {
 
 private enum DashboardBlock: Hashable {
     case today
+    case pending
+    case risk
+    case system
     case alerts
     case quickEvaluation
     case groupSummary
@@ -192,9 +195,9 @@ struct DashboardView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Hoy")
+                    Text("Centro de trabajo")
                         .font(.system(size: 26, weight: .black, design: .rounded))
-                    Text("\(mode.title) · \(selectedClassLabel)")
+                    Text("Hoy, pendientes, riesgo y sistema · \(selectedClassLabel)")
                         .font(.system(size: 14, weight: .medium, design: .rounded))
                         .foregroundStyle(.secondary)
                 }
@@ -225,16 +228,22 @@ struct DashboardView: View {
         ScrollView {
             if let snapshot = bridge.dashboardSnapshot {
                 VStack(alignment: .leading, spacing: 16) {
-                    dashboardKpiRow(snapshot: snapshot)
+                    dashboardWorkCenter(snapshot: snapshot)
 
                     let blocks: [DashboardBlock] = mode == .classroom
-                        ? [.quickEvaluation, .today, .physicalEducation, .alerts, .groupSummary, .agenda]
-                        : [.groupSummary, .agenda, .alerts, .today, .quickEvaluation, .physicalEducation]
+                        ? [.quickEvaluation, .groupSummary, .agenda]
+                        : [.groupSummary, .agenda, .quickEvaluation]
 
                     ForEach(blocks, id: \.self) { block in
                         switch block {
                         case .today:
                             dashboardTodayBlock(snapshot: snapshot)
+                        case .pending:
+                            dashboardPendingBlock(snapshot: snapshot)
+                        case .risk:
+                            dashboardRiskBlock(snapshot: snapshot)
+                        case .system:
+                            dashboardSystemBlock()
                         case .alerts:
                             dashboardAlertsBlock(snapshot: snapshot)
                         case .quickEvaluation:
@@ -332,7 +341,7 @@ struct DashboardView: View {
     }
 
     private var dashboardFilterChips: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        HStack(alignment: .bottom, spacing: 12) {
             dashboardFilterPicker(title: "Severidad", selection: $severityFilter, options: DashboardFilterOption.allCases)
             dashboardFilterPicker(title: "Prioridad", selection: $priorityFilter, options: DashboardFilterOption.allCases)
             dashboardSessionFilterPicker(title: "Sesiones", selection: $sessionStatusFilter, options: DashboardSessionFilterOption.allCases)
@@ -361,6 +370,17 @@ struct DashboardView: View {
         .cornerRadius(12)
     }
 
+    @ViewBuilder
+    private func dashboardWorkCenter(snapshot: DashboardSnapshot) -> some View {
+        let columns = [GridItem(.adaptive(minimum: isCompactWidth ? 260 : 320), spacing: 16)]
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
+            dashboardTodayBlock(snapshot: snapshot)
+            dashboardPendingBlock(snapshot: snapshot)
+            dashboardRiskBlock(snapshot: snapshot)
+            dashboardSystemBlock()
+        }
+    }
+
     private func dashboardExportMenu(snapshot: DashboardSnapshot) -> some View {
         Menu {
             ShareLink("Hoy", item: csvToday(snapshot))
@@ -386,8 +406,12 @@ struct DashboardView: View {
     private func dashboardTodayBlock(snapshot: DashboardSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Hoy").font(.headline)
+                Label("Hoy", systemImage: "calendar.badge.clock")
+                    .font(.headline)
                 Spacer()
+                Text("\(snapshot.todaySessions.count)")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
             }
             ForEach(snapshot.todaySessions, id: \.id) { item in
                 Button {
@@ -409,6 +433,132 @@ struct DashboardView: View {
                 .buttonStyle(.plain)
             }
             if snapshot.todaySessions.isEmpty { Text("Sin sesiones hoy").foregroundStyle(.secondary) }
+        }
+        .padding(12)
+        .background(appCardBackground(for: colorScheme))
+        .cornerRadius(12)
+    }
+
+    @ViewBuilder
+    private func dashboardPendingBlock(snapshot: DashboardSnapshot) -> some View {
+        let pendingAlerts = snapshot.alerts.filter { isPendingAlert($0) }
+        let pendingAgenda = snapshot.agendaItems.filter { !isClosedAgendaStatus($0.status) }
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Pendiente", systemImage: "tray.full")
+                    .font(.headline)
+                Spacer()
+                Text("\(snapshot.pendingCount)")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+            }
+
+            ForEach(pendingAlerts.prefix(4), id: \.id) { alert in
+                dashboardActionRow(
+                    title: pendingTitle(alert),
+                    subtitle: alert.detail,
+                    systemImage: "circle.dotted",
+                    tint: .orange
+                ) {
+                    inspectorSelection = .alert(alert.id)
+                    isInspectorPresented = true
+                }
+            }
+
+            ForEach(pendingAgenda.prefix(max(0, 5 - pendingAlerts.prefix(4).count)), id: \.id) { item in
+                dashboardStaticRow(
+                    title: item.title,
+                    subtitle: item.subtitle,
+                    systemImage: "calendar.badge.exclamationmark",
+                    tint: .orange
+                )
+            }
+
+            if pendingAlerts.isEmpty && pendingAgenda.isEmpty && snapshot.pendingCount == 0 {
+                Text("Sin pendientes críticos con los datos disponibles.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .background(appCardBackground(for: colorScheme))
+        .cornerRadius(12)
+    }
+
+    @ViewBuilder
+    private func dashboardRiskBlock(snapshot: DashboardSnapshot) -> some View {
+        let riskAlerts = snapshot.alerts.filter { !isPendingAlert($0) }
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Riesgo", systemImage: "exclamationmark.triangle")
+                    .font(.headline)
+                Spacer()
+                Text("\(riskAlerts.count + snapshot.peItems.count)")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+            }
+
+            ForEach(riskAlerts.prefix(4), id: \.id) { alert in
+                dashboardActionRow(
+                    title: riskTitle(alert),
+                    subtitle: alert.detail,
+                    systemImage: riskIcon(alert),
+                    tint: riskTint(alert.severity)
+                ) {
+                    inspectorSelection = .alert(alert.id)
+                    isInspectorPresented = true
+                }
+            }
+
+            ForEach(snapshot.peItems.prefix(max(0, 5 - riskAlerts.prefix(4).count)), id: \.id) { item in
+                dashboardActionRow(
+                    title: item.title,
+                    subtitle: item.detail,
+                    systemImage: "cross.case",
+                    tint: riskTint(item.severity)
+                ) {
+                    inspectorSelection = .pe(item.id)
+                    isInspectorPresented = true
+                }
+            }
+
+            if riskAlerts.isEmpty && snapshot.peItems.isEmpty {
+                Text("Sin alumnado en riesgo detectado por las reglas actuales.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .background(appCardBackground(for: colorScheme))
+        .cornerRadius(12)
+    }
+
+    @ViewBuilder
+    private func dashboardSystemBlock() -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Sistema", systemImage: "checkmark.shield")
+                    .font(.headline)
+                Spacer()
+            }
+            dashboardStaticRow(
+                title: bridge.pairedSyncHost == nil ? "Sync LAN inactivo" : "Sync LAN activo",
+                subtitle: bridge.syncPendingChanges == 0 ? bridge.syncStatusMessage : "\(bridge.syncPendingChanges) cambios pendientes",
+                systemImage: "arrow.triangle.2.circlepath",
+                tint: bridge.syncPendingChanges == 0 && bridge.pairedSyncHost != nil ? .green : .orange
+            )
+            dashboardStaticRow(
+                title: "Última sync",
+                subtitle: bridge.syncLastRunAt.map(shortSystemDate) ?? "Sin registro",
+                systemImage: "clock",
+                tint: .secondary
+            )
+            dashboardStaticRow(
+                title: "Último backup",
+                subtitle: "Sin registro local en iPad. Revisa Backups en macOS.",
+                systemImage: "externaldrive.badge.questionmark",
+                tint: .secondary
+            )
         }
         .padding(12)
         .background(appCardBackground(for: colorScheme))
@@ -615,6 +765,112 @@ struct DashboardView: View {
             }
             .pickerStyle(.segmented)
         }
+    }
+
+    private func dashboardActionRow(
+        title: String,
+        subtitle: String,
+        systemImage: String,
+        tint: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            dashboardRowContent(title: title, subtitle: subtitle, systemImage: systemImage, tint: tint)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func dashboardStaticRow(
+        title: String,
+        subtitle: String,
+        systemImage: String,
+        tint: Color
+    ) -> some View {
+        dashboardRowContent(title: title, subtitle: subtitle, systemImage: systemImage, tint: tint)
+    }
+
+    private func dashboardRowContent(
+        title: String,
+        subtitle: String,
+        systemImage: String,
+        tint: Color
+    ) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(tint)
+                .frame(width: 18, height: 18)
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(2)
+                if !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(appMutedCardBackground(for: colorScheme))
+        .cornerRadius(10)
+    }
+
+    private func isPendingAlert(_ alert: AlertItem) -> Bool {
+        let haystack = "\(alert.type) \(alert.title) \(alert.detail)".lowercased()
+        return haystack.contains("pending")
+            || haystack.contains("pendiente")
+            || haystack.contains("sin nota")
+            || haystack.contains("sin cerrar")
+            || haystack.contains("informe")
+            || haystack.contains("missing")
+    }
+
+    private func isClosedAgendaStatus(_ raw: String) -> Bool {
+        switch raw.lowercased() {
+        case "completed", "closed", "done", "completada", "cerrada":
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func pendingTitle(_ alert: AlertItem) -> String {
+        alert.count > 1 ? "\(alert.count) · \(alert.title)" : alert.title
+    }
+
+    private func riskTitle(_ alert: AlertItem) -> String {
+        alert.count > 1 ? "\(alert.count) · \(alert.title)" : alert.title
+    }
+
+    private func riskIcon(_ alert: AlertItem) -> String {
+        let haystack = "\(alert.type) \(alert.title) \(alert.detail)".lowercased()
+        if haystack.contains("asistencia") || haystack.contains("attendance") {
+            return "person.crop.circle.badge.exclamationmark"
+        }
+        if haystack.contains("lesion") || haystack.contains("lesión") || haystack.contains("injur") {
+            return "cross.case"
+        }
+        return "chart.line.downtrend.xyaxis"
+    }
+
+    private func riskTint(_ raw: String) -> Color {
+        switch raw.lowercased() {
+        case "high": return .red
+        case "medium": return .orange
+        default: return .yellow
+        }
+    }
+
+    private func shortSystemDate(_ date: Date) -> String {
+        if Calendar.current.isDateInToday(date) {
+            return "Hoy \(date.formatted(date: .omitted, time: .shortened))"
+        }
+        return date.formatted(date: .abbreviated, time: .shortened)
     }
 
     private func dashboardFilterLabel(_ raw: String) -> String {

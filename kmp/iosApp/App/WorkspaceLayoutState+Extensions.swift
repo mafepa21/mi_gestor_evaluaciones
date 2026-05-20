@@ -4,7 +4,7 @@ import MiGestorKit
 extension AppWorkspaceShell {
     var shouldShowGlobalContextualAIButton: Bool {
         switch activeModule {
-        case .notebook, .planner, .rubrics, .library, .settings:
+        case .notebook, .teacherRadar, .planner, .rubrics, .library, .settings:
             return false
         default:
             return true
@@ -35,6 +35,110 @@ extension AppWorkspaceShell {
         }
     }
 
+    var shouldShowClassroomCaptureBar: Bool {
+        guard selectedClassId != nil else { return false }
+        switch activeModule {
+        case .notebook, .teacherRadar, .attendance, .planner, .students, .diary, .evaluationHub, .rubrics, .peSessions:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var classroomCaptureTitle: String {
+        let session = classroomContext?.sessionTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let session, !session.isEmpty {
+            return "Hoy · \(activeClassLabel) · \(session)"
+        }
+        return "Hoy · \(activeClassLabel)"
+    }
+
+    var classroomCaptureStudents: [Student] {
+        if !bridge.studentsInClass.isEmpty {
+            return bridge.studentsInClass
+        }
+        return bridge.allStudents
+    }
+
+    func reloadClassroomContext() async {
+        guard let selectedClassId else {
+            await MainActor.run { classroomContext = nil }
+            return
+        }
+        await bridge.selectStudentsClass(classId: selectedClassId)
+        let snapshot = try? await bridge.classroomCaptureContext(classId: selectedClassId, on: Date())
+        await MainActor.run {
+            classroomContext = snapshot
+            if classroomCaptureStudentId == nil {
+                classroomCaptureStudentId = selectedStudentId ?? bridge.studentsInClass.first?.id
+            }
+        }
+    }
+
+    func openClassroomRubricCapture() async {
+        guard let selectedClassId else { return }
+        let opened = await bridge.launchFirstBulkRubricEvaluationForClass(classId: selectedClassId)
+        if !opened {
+            open(module: .evaluationHub, classId: selectedClassId, studentId: selectedStudentId)
+        }
+    }
+
+    func presentClassroomCapture(_ sheet: ClassroomCaptureSheet) {
+        classroomCaptureStudentId = selectedStudentId ?? classroomCaptureStudentId ?? classroomCaptureStudents.first?.id
+        classroomCaptureText = ""
+        classroomCaptureSheet = sheet
+    }
+
+    @ViewBuilder
+    func classroomCaptureSheetView(_ sheet: ClassroomCaptureSheet) -> some View {
+        ClassroomCaptureSheetView(
+            kind: sheet,
+            students: classroomCaptureStudents,
+            selectedStudentId: $classroomCaptureStudentId,
+            noteText: $classroomCaptureText,
+            isSaving: isSavingClassroomCapture,
+            onCancel: {
+                classroomCaptureSheet = nil
+            },
+            onSave: {
+                Task { await saveClassroomCapture(sheet) }
+            }
+        )
+    }
+
+    func saveClassroomCapture(_ sheet: ClassroomCaptureSheet) async {
+        guard let classId = selectedClassId,
+              let studentId = classroomCaptureStudentId else { return }
+        isSavingClassroomCapture = true
+        defer { isSavingClassroomCapture = false }
+
+        do {
+            switch sheet {
+            case .quickNote:
+                try await bridge.saveQuickStudentNote(studentId: studentId, classId: classId, note: classroomCaptureText)
+            case .observation:
+                _ = try await bridge.createIncident(
+                    classId: classId,
+                    studentId: studentId,
+                    title: "Observación de aula",
+                    detail: classroomCaptureText.trimmingCharacters(in: .whitespacesAndNewlines),
+                    severity: "low"
+                )
+                bridge.status = "Observación registrada."
+            case .injury:
+                let current = classroomCaptureStudents.first(where: { $0.id == studentId })?.isInjured ?? false
+                try await bridge.updateStudentInjuryStatus(studentId: studentId, isInjured: !current, classId: classId)
+                bridge.status = current ? "Lesión retirada." : "Alumno marcado con lesión."
+            }
+            classroomCaptureSheet = nil
+            classroomCaptureText = ""
+            try? await bridge.refreshStudentsDirectory()
+            await reloadClassroomContext()
+        } catch {
+            bridge.status = "No se pudo guardar: \(error.localizedDescription)"
+        }
+    }
+
     func loadContextualAIContext(
         for module: AppWorkspaceModule,
         classId: Int64?,
@@ -47,6 +151,8 @@ extension AppWorkspaceShell {
             return try await bridge.buildCoursesAIContext(classId: classId)
         case .students:
             return try await bridge.buildStudentsAIContext(classId: classId, studentId: studentId)
+        case .teacherRadar:
+            return bridge.buildNotebookAIContext(classId: classId)
         case .attendance:
             return try await bridge.buildAttendanceAIContext(classId: classId)
         case .diary, .planner:
@@ -59,7 +165,7 @@ extension AppWorkspaceShell {
             return try await bridge.buildPEAIContext(classId: classId)
         case .notebook:
             return bridge.buildNotebookAIContext(classId: classId)
-        case .rubrics, .library, .settings:
+        case .rubrics, .library, .settings, .backups:
             return fallbackContext(for: module, classId: classId, studentId: studentId, message: "Esta pantalla todavía no ofrece acciones IA contextuales.")
         }
     }
@@ -117,6 +223,8 @@ extension AppWorkspaceShell {
             return "Abre un grupo para lanzar cuaderno, asistencia, diario, informes o alumnado desde el mismo panel."
         case .students:
             return "La ficha del alumno centraliza seguimiento, incidencias, evaluaciones y contexto docente."
+        case .teacherRadar:
+            return "El Radar convierte cuaderno, evidencias y rúbricas en decisiones docentes inmediatas."
         case .notebook:
             return "El cuaderno concentra calificación, seguimiento y acciones rápidas sobre columnas y alumnado."
         case .attendance:
@@ -147,6 +255,8 @@ extension AppWorkspaceShell {
             return "Organiza torneos completos con plantillas, equipos, calendario y clasificación."
         case .settings:
             return "Configura agenda docente, calendario lectivo, sincronización y preferencias globales del workspace."
+        case .backups:
+            return "Protege y restaura tu base de datos de evaluaciones y evidencias con copias verificables."
         }
     }
 
@@ -222,6 +332,8 @@ extension AppWorkspaceShell {
             createSheet = .course
         case .students:
             createSheet = .student
+        case .teacherRadar:
+            open(module: .notebook, classId: selectedClassId, studentId: selectedStudentId)
         case .evaluationHub:
             createSheet = .evaluation
         case .rubrics, .peRubrics:

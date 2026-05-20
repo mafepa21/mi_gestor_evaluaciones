@@ -27,6 +27,15 @@ struct NotebookGridContent<
     let rowContent: (Int, NotebookTableRow, [NotebookDisplaySegment]) -> RowContent
 
     var body: some View {
+        let fixedSegmentKey = fixedSegments.map(\.id).joined(separator: ",")
+        let fixedColumnIds = Self.visibleColumnIds(for: fixedSegments)
+
+        let trailingFixedSegmentKey = trailingFixedSegments.map(\.id).joined(separator: ",")
+        let trailingFixedColumnIds = Self.visibleColumnIds(for: trailingFixedSegments)
+
+        let scrollableSegmentKey = scrollableSegments.map(\.id).joined(separator: ",")
+        let scrollableColumnIds = Self.visibleColumnIds(for: scrollableSegments)
+
         NotebookGridContainer(
             rows: rows,
             surfaceMode: surfaceMode,
@@ -50,23 +59,22 @@ struct NotebookGridContent<
         } scrollHeader: {
             header(scrollableSegments)
         } fixedRow: { index, item in
-            NotebookEquatableGridRow(signature: rowSignature(index: index, item: item, segments: fixedSegments)) {
+            NotebookEquatableGridRow(signature: rowSignature(index: index, item: item, segmentKey: fixedSegmentKey, visibleColumnIds: fixedColumnIds)) {
                 rowContent(index, item, fixedSegments)
             }
         } trailingFixedRow: { index, item in
-            NotebookEquatableGridRow(signature: rowSignature(index: index, item: item, segments: trailingFixedSegments)) {
+            NotebookEquatableGridRow(signature: rowSignature(index: index, item: item, segmentKey: trailingFixedSegmentKey, visibleColumnIds: trailingFixedColumnIds)) {
                 rowContent(index, item, trailingFixedSegments)
             }
         } scrollRow: { index, item in
-            NotebookEquatableGridRow(signature: rowSignature(index: index, item: item, segments: scrollableSegments)) {
+            NotebookEquatableGridRow(signature: rowSignature(index: index, item: item, segmentKey: scrollableSegmentKey, visibleColumnIds: scrollableColumnIds)) {
                 rowContent(index, item, scrollableSegments)
             }
         }
     }
 
-    private func rowSignature(index: Int, item: NotebookTableRow, segments: [NotebookDisplaySegment]) -> String {
-        let segmentKey = segments.map(\.id).joined(separator: ",")
-        let visibleColumnIds = Set(segments.compactMap { segment -> String? in
+    private static func visibleColumnIds(for segments: [NotebookDisplaySegment]) -> Set<String> {
+        Set(segments.compactMap { segment -> String? in
             switch segment {
             case .column(let column):
                 return column.id
@@ -79,6 +87,9 @@ struct NotebookGridContent<
             }
             return []
         })
+    }
+
+    private func rowSignature(index: Int, item: NotebookTableRow, segmentKey: String, visibleColumnIds: Set<String>) -> String {
         let visibleCellDigest = item.row.persistedCells
             .filter { visibleColumnIds.contains($0.columnId) }
             .sorted { $0.columnId < $1.columnId }

@@ -431,6 +431,7 @@ class NotebookRepositorySqlDelightTest {
     @Test
     fun `migration 20 creates missing notebook cell audit table`() {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        driver.execute(null, "CREATE TABLE notebook_tabs (id TEXT PRIMARY KEY)", 0)
 
         AppDatabase.Schema.migrate(driver, 20, AppDatabase.Schema.version)
         val db = AppDatabase(driver)

@@ -8,7 +8,7 @@ enum ScheduleExcelImportError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingWeekdayHeader:
-            return "No se encontró la cabecera Horas, Lunes, Martes, Miércoles, Jueves y Viernes."
+            return "No se encontró una cabecera de horario reconocible: Horas/Hores y Lunes-Viernes o Dilluns-Divendres."
         case .missingTimeRows:
             return "No se encontraron franjas con formato De HH:mm a HH:mm."
         case .emptySchedule:
@@ -72,32 +72,77 @@ struct ScheduleExcelImportService {
 
     private func findHeader(in rows: [[String]]) -> Header? {
         for (rowIndex, row) in rows.enumerated() {
-            let normalized = row.map(normalize)
-            guard let timeColumn = normalized.firstIndex(of: "horas") else { continue }
+            let normalized = row.map(normalizeHeader)
+            guard let timeColumn = normalized.firstIndex(where: isTimeHeader) else { continue }
 
             var weekdayColumns: [(weekday: Int, column: Int)] = []
             for (index, value) in normalized.enumerated() {
-                switch value {
-                case "lunes":
-                    weekdayColumns.append((1, index))
-                case "martes":
-                    weekdayColumns.append((2, index))
-                case "miercoles":
-                    weekdayColumns.append((3, index))
-                case "jueves":
-                    weekdayColumns.append((4, index))
-                case "viernes":
-                    weekdayColumns.append((5, index))
-                default:
-                    break
+                if let weekday = weekdayNumber(forHeader: value) {
+                    weekdayColumns.append((weekday, index))
                 }
             }
 
-            if weekdayColumns.count >= 5 {
-                return Header(rowIndex: rowIndex, timeColumn: timeColumn, weekdayColumns: weekdayColumns)
+            let requiredWeekdays = Set(1...5)
+            let detectedWeekdays = Set(weekdayColumns.map(\.weekday))
+            if requiredWeekdays.isSubset(of: detectedWeekdays) {
+                let orderedWeekdayColumns = weekdayColumns
+                    .filter { requiredWeekdays.contains($0.weekday) }
+                    .sorted { lhs, rhs in lhs.weekday == rhs.weekday ? lhs.column < rhs.column : lhs.weekday < rhs.weekday }
+                return Header(rowIndex: rowIndex, timeColumn: timeColumn, weekdayColumns: orderedWeekdayColumns)
             }
         }
         return nil
+    }
+
+    private func isTimeHeader(_ value: String) -> Bool {
+        [
+            "horari",
+            "hora",
+            "horas",
+            "hores",
+            "franja",
+            "franjas",
+            "franja horaria",
+            "franges",
+            "franges horaries"
+        ].contains(value)
+    }
+
+    private func weekdayNumber(forHeader value: String) -> Int? {
+        switch value {
+        case "lunes", "lun", "l":
+            return 1
+        case "martes", "mar", "ma", "m":
+            return 2
+        case "miercoles", "mie", "mier", "mi", "x":
+            return 3
+        case "jueves", "jue", "ju", "j":
+            return 4
+        case "viernes", "vie", "vi", "v":
+            return 5
+        case "dilluns", "dill", "dil", "dll", "dl":
+            return 1
+        case "dimarts", "dim", "dt":
+            return 2
+        case "dimecres", "dime", "dc":
+            return 3
+        case "dijous", "dij", "dj":
+            return 4
+        case "divendres", "div", "dv":
+            return 5
+        case "dissabte", "sabado", "sab", "ds":
+            return 6
+        case "diumenge", "domingo", "dom", "dg":
+            return 7
+        default:
+            if let firstToken = value.split(separator: " ").first {
+                let firstTokenText = String(firstToken)
+                if firstTokenText != value {
+                    return weekdayNumber(forHeader: firstTokenText)
+                }
+            }
+            return nil
+        }
     }
 
     private func parseLegend(in rows: [[String]]) -> [ImportedSubjectLegend] {
@@ -301,6 +346,13 @@ struct ScheduleExcelImportService {
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
             .lowercased()
+    }
+
+    private func normalizeHeader(_ value: String) -> String {
+        normalize(value)
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
     }
 
     private func stableUnique(_ values: [String]) -> [String] {

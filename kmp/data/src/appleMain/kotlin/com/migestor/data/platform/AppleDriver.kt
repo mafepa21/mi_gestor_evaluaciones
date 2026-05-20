@@ -1,7 +1,9 @@
 package com.migestor.data.platform
 
+import app.cash.sqldelight.db.AfterVersion
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
+import app.cash.sqldelight.db.SqlSchema
 import app.cash.sqldelight.driver.native.NativeSqliteDriver
 import co.touchlab.sqliter.DatabaseConfiguration
 import com.migestor.data.db.AppDatabase
@@ -28,7 +30,7 @@ internal fun createAppleDriver(
     )
 
     val driver = NativeSqliteDriver(
-        schema = AppDatabase.Schema,
+        schema = AppleAppDatabaseSchema,
         name = databaseName,
         onConfiguration = { config ->
             config.copy(
@@ -41,10 +43,10 @@ internal fun createAppleDriver(
     val latestVersion = AppDatabase.Schema.version
 
     if (currentVersion == 0L) {
-        AppDatabase.Schema.create(driver)
+        AppleAppDatabaseSchema.create(driver)
         setVersion(driver, latestVersion)
     } else if (currentVersion < latestVersion) {
-        AppDatabase.Schema.migrate(driver, currentVersion, latestVersion)
+        AppleAppDatabaseSchema.migrate(driver, currentVersion, latestVersion)
         setVersion(driver, latestVersion)
     }
 
@@ -56,6 +58,13 @@ internal fun createAppleDriver(
 }
 
 private fun runRescueMigrations(driver: SqlDriver) {
+    ensureColumns(
+        driver = driver,
+        tableName = "notebook_tabs",
+        columnDefinitions = listOf(
+            "fixed_column_width REAL",
+        )
+    )
     ensureColumns(
         driver = driver,
         tableName = "notebook_columns",
@@ -117,6 +126,39 @@ private fun tableColumns(driver: SqlDriver, tableName: String): Set<String> {
         },
         parameters = 0,
     ).value
+}
+
+private object AppleAppDatabaseSchema : SqlSchema<QueryResult.Value<Unit>> {
+    override val version: Long = AppDatabase.Schema.version
+
+    override fun create(driver: SqlDriver): QueryResult.Value<Unit> {
+        return AppDatabase.Schema.create(driver)
+    }
+
+    override fun migrate(
+        driver: SqlDriver,
+        oldVersion: Long,
+        newVersion: Long,
+        vararg callbacks: AfterVersion,
+    ): QueryResult.Value<Unit> {
+        if (
+            oldVersion == 22L &&
+            newVersion == version &&
+            "fixed_column_width" in tableColumns(driver, "notebook_tabs")
+        ) {
+            callbacks
+                .filter { it.afterVersion in (oldVersion + 1)..newVersion }
+                .forEach { it.block(driver) }
+            return QueryResult.Value(Unit)
+        }
+
+        return AppDatabase.Schema.migrate(
+            driver = driver,
+            oldVersion = oldVersion,
+            newVersion = newVersion,
+            callbacks = callbacks,
+        )
+    }
 }
 
 @OptIn(ExperimentalForeignApi::class)

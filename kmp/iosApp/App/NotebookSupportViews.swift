@@ -119,24 +119,15 @@ struct NotebookAverageExplanationView: View {
                         resultSection(explanation)
 
                         if !explanation.included.isEmpty {
-                            sectionHeader(title: "Incluidas", icon: "plus.circle.fill", color: .green)
+                            sectionHeader(title: "Incluye", icon: "plus.circle.fill", color: NotebookStyle.successTint)
                             ForEach(explanation.included, id: \.columnId) { contribution in
                                 contributionRow(contribution)
                             }
                         }
 
-                        let pending = explanation.excluded.filter { $0.reason == .empty }
-                        if !pending.isEmpty {
-                            sectionHeader(title: "Pendientes", icon: "clock.fill", color: NotebookStyle.warningTint)
-                            ForEach(pending, id: \.columnId) { exclusion in
-                                exclusionRow(exclusion)
-                            }
-                        }
-
-                        let excluded = explanation.excluded.filter { $0.reason != .empty }
-                        if !excluded.isEmpty {
-                            sectionHeader(title: "Excluidas", icon: "minus.circle.fill", color: .gray)
-                            ForEach(excluded, id: \.columnId) { exclusion in
+                        if !explanation.excluded.isEmpty {
+                            sectionHeader(title: "No incluye", icon: "minus.circle.fill", color: .secondary)
+                            ForEach(explanation.excluded, id: \.columnId) { exclusion in
                                 exclusionRow(exclusion)
                             }
                         }
@@ -158,7 +149,7 @@ struct NotebookAverageExplanationView: View {
             Text("Media de \(studentName)")
                 .font(.headline)
             if let average = explanation?.average {
-                Text(String(format: "Resultado: %.2f", average.doubleValue))
+                Text("Resultado: \(formattedDecimal(average.doubleValue))")
                     .font(.title2.bold())
                     .foregroundStyle(NotebookStyle.primaryTint)
             } else {
@@ -183,7 +174,7 @@ struct NotebookAverageExplanationView: View {
 
             Spacer()
 
-            Text(explanation.average.map { String(format: "%.2f", $0.doubleValue) } ?? "--")
+            Text(explanation.average.map { formattedDecimal($0.doubleValue) } ?? "--")
                 .font(.title3.bold())
                 .foregroundStyle(explanation.average == nil ? .secondary : NotebookStyle.primaryTint)
                 .monospacedDigit()
@@ -218,13 +209,14 @@ struct NotebookAverageExplanationView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(c.title)
                     .font(.system(size: 13, weight: .medium))
-                Text(String(format: "Peso: %.0f%%", c.weight))
+                Text("Peso \(formattedDecimal(c.weight))%")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Text(String(format: "%.1f", c.value))
+            Text(formattedDecimal(c.value))
                 .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundStyle(NotebookStyle.primaryTint)
         }
         .padding(10)
         .background(NotebookStyle.surface)
@@ -253,12 +245,21 @@ struct NotebookAverageExplanationView: View {
 
     private func exclusionReasonText(_ reason: NotebookAverageExclusionReason) -> String {
         switch reason {
-        case .empty: return "Sin calificar"
+        case .empty: return "Pendiente"
         case .columnDoesNotCount: return "No cuenta para media"
-        case .rawValueOnly: return "Dato informativo"
+        case .rawValueOnly: return "Marca bruta"
         case .lockedOrArchived: return "Bloqueado / Archivado"
         case .nonNumeric: return "Dato no numérico"
         default: return "Excluido"
         }
+    }
+
+    private func formattedDecimal(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.locale = .current
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 1
+        formatter.maximumFractionDigits = 2
+        return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.1f", value)
     }
 }

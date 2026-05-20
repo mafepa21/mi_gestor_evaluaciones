@@ -16,6 +16,12 @@ private enum NotebookCellKeyboardKind {
     case text
 }
 
+private enum NotebookCellSaveFeedback: Equatable {
+    case idle
+    case saving
+    case saved
+}
+
 struct NotebookEditableTableCell: View {
     @ObservedObject var bridge: KmpBridge
     let item: NotebookTableRow
@@ -57,6 +63,8 @@ struct NotebookEditableTableCell: View {
     @State private var showTextPopover = false
     @State private var isNumericKeyboardPresented = false
     @State private var hasLoadedDrafts = false
+    @State private var saveFeedback: NotebookCellSaveFeedback = .idle
+    @State private var saveFeedbackTask: Task<Void, Never>?
 
     private var cellId: String {
         "\(item.student.id)|\(column.id)"
@@ -103,12 +111,15 @@ struct NotebookEditableTableCell: View {
                 }
                 .padding(6)
             }
+
+            cellStateOverlay
         }
         .frame(width: width, height: 44)
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)
         .onAppear(perform: loadDrafts)
         .onDisappear {
+            saveFeedbackTask?.cancel()
             saveFocusedDraftIfNeeded(requireFocusReleased: false)
         }
         .appOnChange(of: reloadToken) { _ in
@@ -124,17 +135,112 @@ struct NotebookEditableTableCell: View {
     }
 
     private var editableCellFill: Color {
+        if column.isLocked {
+            return NotebookStyle.surfaceMuted.opacity(0.45)
+        }
+        if column.type == .calculated {
+            #if os(macOS)
+            return Color.accentColor.opacity(isSelected ? 0.08 : 0.02)
+            #else
+            return Color.accentColor.opacity(isSelected ? 0.10 : 0.04)
+            #endif
+        }
         if hasColumnColor {
             return tint.opacity(isSelected ? 0.22 : 0.10)
+        }
+        if hasPendingDraft {
+            return NotebookStyle.warningTint.opacity(0.10)
         }
         return isSelected ? tint.opacity(0.14) : NotebookStyle.surfaceSoft.opacity(column.categoryId == nil ? 0.12 : 0.22)
     }
 
     private var editableCellBorder: Color {
+        if column.isLocked {
+            return NotebookStyle.softBorder.opacity(0.55)
+        }
+        if column.type == .calculated {
+            return Color.accentColor.opacity(isSelected ? 0.40 : 0.15)
+        }
+        if saveFeedback == .saving {
+            return NotebookStyle.warningTint.opacity(0.70)
+        }
+        if saveFeedback == .saved {
+            return NotebookStyle.successTint.opacity(0.70)
+        }
+        if hasPendingDraft {
+            return NotebookStyle.warningTint.opacity(0.55)
+        }
         if hasColumnColor {
             return tint.opacity(0.28)
         }
         return (categoryTint ?? tint).opacity(column.categoryId == nil ? 0.05 : 0.12)
+    }
+
+    @ViewBuilder
+    private var cellStateOverlay: some View {
+        let states = cellStateBadges
+        if !states.isEmpty {
+            VStack {
+                Spacer()
+                HStack(spacing: 4) {
+                    Spacer()
+                    ForEach(states, id: \.id) { state in
+                        Image(systemName: state.systemImage)
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(state.tint)
+                            .frame(width: 16, height: 16)
+                            .background(
+                                Circle()
+                                    .fill(NotebookStyle.surface.opacity(0.96))
+                            )
+                            .help(state.label)
+                            .accessibilityLabel(state.label)
+                    }
+                }
+            }
+            .padding(5)
+        }
+    }
+
+    private var cellStateBadges: [NotebookCellStateBadge] {
+        if column.isLocked {
+            return [NotebookCellStateBadge(id: "locked", systemImage: "lock.fill", label: "Celda bloqueada", tint: .secondary)]
+        }
+
+        var badges: [NotebookCellStateBadge] = []
+        if !column.countsTowardAverage {
+            badges.append(NotebookCellStateBadge(id: "excluded", systemImage: "slash.circle", label: "No cuenta para media", tint: .secondary))
+        }
+
+        switch saveFeedback {
+        case .saving:
+            badges.append(NotebookCellStateBadge(id: "saving", systemImage: "arrow.triangle.2.circlepath", label: "Guardando", tint: NotebookStyle.warningTint))
+        case .saved:
+            badges.append(NotebookCellStateBadge(id: "saved", systemImage: "checkmark.circle.fill", label: "Sincronizado", tint: NotebookStyle.successTint))
+        case .idle:
+            if hasPendingDraft {
+                badges.append(NotebookCellStateBadge(id: "pending", systemImage: "circle.dotted", label: "Pendiente de guardar", tint: NotebookStyle.warningTint))
+            }
+        }
+
+        if formulaDisplay?.isError == true {
+            badges.append(NotebookCellStateBadge(id: "error", systemImage: "exclamationmark.triangle.fill", label: "Error", tint: NotebookStyle.warningTint))
+        }
+
+        return badges
+    }
+
+    private var hasPendingDraft: Bool {
+        switch column.type {
+        case .numeric:
+            return originalNumericDraft != numericDraft
+        case .text, .icon, .ordinal, .attendance:
+            return originalTextDraft != textDraft
+        case .check:
+            return originalCheckDraft != checkDraft
+        default:
+            return false
+        }
     }
 
     @ViewBuilder
@@ -202,15 +308,18 @@ struct NotebookEditableTableCell: View {
                     onSelect()
                     onOpenFormula()
                 } label: {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 5) {
                         Text(formulaDisplay?.text ?? bridge.numericGradeOnTenText(studentId: item.student.id, columnId: column.id))
-                            .font(.system(size: 13, weight: .bold, design: .rounded))
-                            .foregroundStyle(formulaDisplay?.isError == true ? .orange : .primary)
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .italic()
+                            .monospacedDigit()
+                            .foregroundStyle(formulaDisplay?.isError == true ? Color.orange : (isSelected ? Color.accentColor : Color.primary))
                             .lineLimit(1)
                         Image(systemName: formulaDisplay?.isError == true ? "exclamationmark.triangle.fill" : "function")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(formulaDisplay?.isError == true ? .orange : .secondary)
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(formulaDisplay?.isError == true ? Color.orange : Color.accentColor.opacity(0.75))
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 .buttonStyle(.plain)
                 .help(formulaDisplay?.isError == true ? (formulaDisplay?.text ?? "Error en la fórmula") : "Editar fórmula")
@@ -636,6 +745,7 @@ struct NotebookEditableTableCell: View {
     }
 
     private func saveNumeric(selectsCell: Bool = true, immediate: Bool = false) {
+        guard !column.isLocked else { return }
         if selectsCell {
             onSelect()
         }
@@ -648,6 +758,7 @@ struct NotebookEditableTableCell: View {
             } else {
                 bridge.saveColumnGradeDebounced(studentId: item.student.id, column: column, value: numericDraft)
             }
+            markSaveInProgress()
             onCellSaved()
         }
     }
@@ -658,6 +769,7 @@ struct NotebookEditableTableCell: View {
     }
 
     private func saveText(selectsCell: Bool = true, immediate: Bool = false) {
+        guard !column.isLocked else { return }
         if selectsCell {
             onSelect()
         }
@@ -670,6 +782,7 @@ struct NotebookEditableTableCell: View {
             } else {
                 bridge.saveColumnGradeDebounced(studentId: item.student.id, column: column, value: textDraft)
             }
+            markSaveInProgress()
             onCellSaved()
         }
     }
@@ -680,6 +793,7 @@ struct NotebookEditableTableCell: View {
     }
 
     private func saveOrdinalValue(_ option: String) {
+        guard !column.isLocked else { return }
         let previousValue = textDraft
         textDraft = option
         onSelect()
@@ -688,12 +802,18 @@ struct NotebookEditableTableCell: View {
             onPrepareUndo(previousValue, previousValue)
             originalTextDraft = option
         }
+        #if canImport(UIKit)
+        let feedback = UISelectionFeedbackGenerator()
+        feedback.selectionChanged()
+        #endif
         bridge.saveColumnGrade(studentId: item.student.id, column: column, value: option)
+        markSaveInProgress()
         onCellSaved()
         onNavigate(navigationDirection)
     }
 
     private func cycleCheckValue() {
+        guard !column.isLocked else { return }
         guard hasLoadedDrafts else { return }
         let previousValue = checkDraft ? "true" : "false"
         checkDraft.toggle()
@@ -704,12 +824,18 @@ struct NotebookEditableTableCell: View {
             onPrepareUndo(previousValue, previousValue == "true" ? "Sí" : "No")
             originalCheckDraft = checkDraft
         }
+        #if canImport(UIKit)
+        let feedback = UIImpactFeedbackGenerator(style: .light)
+        feedback.impactOccurred()
+        #endif
         bridge.saveColumnGrade(studentId: item.student.id, column: column, value: nextValue)
+        markSaveInProgress()
         onCellSaved()
         onNavigate(navigationDirection)
     }
 
     private func saveAttendanceValue(_ status: String) {
+        guard !column.isLocked else { return }
         let canonicalStatus = NotebookAttendanceStatus.canonical(status)
         let previousValue = textDraft
         textDraft = canonicalStatus
@@ -719,7 +845,12 @@ struct NotebookEditableTableCell: View {
             onPrepareUndo(previousValue, attendanceDisplay(previousValue).label)
             originalTextDraft = canonicalStatus
         }
+        #if canImport(UIKit)
+        let feedback = UISelectionFeedbackGenerator()
+        feedback.selectionChanged()
+        #endif
         bridge.saveColumnGrade(studentId: item.student.id, column: column, value: canonicalStatus)
+        markSaveInProgress()
         onCellSaved()
         onNavigate(navigationDirection)
 
@@ -787,4 +918,24 @@ struct NotebookEditableTableCell: View {
         return CGFloat(textDraft.count) * 7
         #endif
     }
+
+    private func markSaveInProgress() {
+        saveFeedbackTask?.cancel()
+        saveFeedback = .saving
+        saveFeedbackTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            guard !Task.isCancelled else { return }
+            saveFeedback = .saved
+            try? await Task.sleep(nanoseconds: 1_400_000_000)
+            guard !Task.isCancelled else { return }
+            saveFeedback = .idle
+        }
+    }
+}
+
+private struct NotebookCellStateBadge: Identifiable {
+    let id: String
+    let systemImage: String
+    let label: String
+    let tint: Color
 }

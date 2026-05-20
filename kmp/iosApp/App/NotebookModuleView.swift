@@ -15,6 +15,9 @@ struct NotebookModuleView: View {
     let notebookGridFolderLaneHeight: CGFloat = 34
 
     @EnvironmentObject var layoutState: WorkspaceLayoutState
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) var horizontalSizeClass
+    #endif
     @ObservedObject var bridge: KmpBridge
     @Binding var selectedClassId: Int64?
     @Binding var selectedStudentId: Int64?
@@ -196,6 +199,14 @@ struct NotebookModuleView: View {
         macPresentation == .inspector
     }
 
+    var isCompact: Bool {
+        #if os(iOS)
+        return horizontalSizeClass == .compact
+        #else
+        return false
+        #endif
+    }
+
     var inspectorSelectionBinding: Binding<NotebookInspectorSelection?> {
         Binding(
             get: { inspectorSelection },
@@ -319,7 +330,7 @@ struct NotebookModuleView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
-            if macPresentation == .full && isInspectorPresented {
+            if !isCompact && macPresentation == .full && isInspectorPresented {
                 Divider().opacity(0.16)
                 inspectorPanel(data: data, rows: rows)
                     .frame(width: 360)
@@ -623,6 +634,20 @@ struct NotebookModuleView: View {
                         #else
                         .presentationDetents([.large])
                         #endif
+                }
+                .sheet(isPresented: Binding(
+                    get: { isCompact && isInspectorPresented },
+                    set: { isPresented in
+                        if !isPresented {
+                            closeInspectorAndTransientState()
+                        }
+                    }
+                )) {
+                    #if os(iOS)
+                    inspectorPanel(data: data, rows: filteredRows(data: data))
+                        .presentationDetents([.medium, .large])
+                        .presentationDragIndicator(.visible)
+                    #endif
                 }
                 .navigationTitle("Cuaderno")
                 .notebookNavigationSubtitle(notebookNavigationSubtitle(data: data))

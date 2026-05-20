@@ -121,6 +121,10 @@ struct NotebookInspectorPanel: View {
                 )
                 onSaveContext()
             },
+            onClose: {
+                isInspectorPresented = false
+                inspectorSelection = nil
+            },
             auditEvents: auditEvents
         )
     }

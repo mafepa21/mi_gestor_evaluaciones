@@ -31,6 +31,7 @@ struct NotebookStudentInspector: View {
     let onOpenAttendance: () -> Void
     let onRegenerateAI: () -> Void
     let onSaveContext: () -> Void
+    let onClose: (() -> Void)?
     let auditEvents: [NotebookCellAuditEvent]
 
     var body: some View {
@@ -69,6 +70,16 @@ struct NotebookStudentInspector: View {
                     }
 
                     Spacer(minLength: 8)
+
+                    if let onClose = onClose {
+                        Button(action: onClose) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.title3)
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(-4)
+                    }
                 }
 
                 HStack(spacing: 8) {

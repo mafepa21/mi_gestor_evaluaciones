@@ -276,6 +276,7 @@ extension NotebookModuleView {
                         auditObservationTask?.cancel()
                         auditObservationTask = nil
                         currentSelectionAuditEvents = []
+                        inspectorSelection = nil
                     }
                 }
             }

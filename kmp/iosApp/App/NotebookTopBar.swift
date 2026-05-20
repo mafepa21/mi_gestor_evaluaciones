@@ -687,15 +687,15 @@ struct NotebookTopBar: View {
                 if showsClassPicker {
                     classPicker
                 }
-                saveStatusChip
+                saveStatusCompactChip
                 Spacer(minLength: 0)
-                organizationButton
-                inspectorButton
-                addColumnButton
+                compactMenu
+                addColumnButtonCompact
             }
 
             HStack(spacing: 8) {
                 searchField
+                    .frame(maxWidth: .infinity)
             }
         }
         .padding(.horizontal, 16)
@@ -722,6 +722,7 @@ struct NotebookTopBar: View {
 
                 HStack(spacing: 8) {
                     undoButton
+                    quickAttendanceButton
                     organizationButton
                     inspectorButton
                     if showAddColumnAction {
@@ -747,22 +748,39 @@ struct NotebookTopBar: View {
     private var undoButton: some View {
         Button(action: onUndo) {
             Image(systemName: "arrow.uturn.backward")
-                .frame(width: 28, height: 28)
+                .font(.body.weight(.medium))
+                .frame(width: 32, height: 32)
+                .background(Color.secondary.opacity(0.08), in: Circle())
         }
-        .buttonStyle(.borderless)
-        .foregroundStyle(canUndo ? .secondary : .tertiary)
+        .buttonStyle(.plain)
+        .foregroundStyle(canUndo ? .primary : .tertiary)
         .disabled(!canUndo)
         .keyboardShortcut("z", modifiers: .command)
-        .help("Deshacer último cambio")
+        .help("Deshacer último cambio (⌘Z)")
         .accessibilityLabel("Deshacer último cambio")
+    }
+
+    private var quickAttendanceButton: some View {
+        Button(action: onToggleAttendanceQuickMode) {
+            Image(systemName: "bolt")
+                .font(.body.weight(.medium))
+                .frame(width: 32, height: 32)
+                .background(isAttendanceQuickMode ? NotebookStyle.warningTint.opacity(0.15) : Color.secondary.opacity(0.08), in: Circle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(isAttendanceQuickMode ? NotebookStyle.warningTint : .secondary)
+        .help(isAttendanceQuickMode ? "Salir de asistencia rápida" : "Modo asistencia rápida")
+        .accessibilityLabel("Modo asistencia rápida")
     }
 
     private var organizationButton: some View {
         Button(action: onOpenOrganizationMenu) {
             Image(systemName: "rectangle.3.group")
-                .frame(width: 28, height: 28)
+                .font(.body.weight(.medium))
+                .frame(width: 32, height: 32)
+                .background(Color.secondary.opacity(0.08), in: Circle())
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(.plain)
         .foregroundStyle(.secondary)
         .help("Columnas visibles")
         .accessibilityLabel("Columnas visibles")
@@ -771,9 +789,11 @@ struct NotebookTopBar: View {
     private var inspectorButton: some View {
         Button(action: onToggleInspector) {
             Image(systemName: isInspectorPresented ? "sidebar.right" : "sidebar.squares.right")
-                .frame(width: 28, height: 28)
+                .font(.body.weight(.medium))
+                .frame(width: 32, height: 32)
+                .background(isInspectorPresented ? NotebookStyle.primaryTint.opacity(0.15) : Color.secondary.opacity(0.08), in: Circle())
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(.plain)
         .foregroundStyle(isInspectorPresented ? NotebookStyle.primaryTint : .secondary)
         .keyboardShortcut("i", modifiers: [.command, .option])
         .help("Mostrar/ocultar inspector (⌘⌥I)")
@@ -783,10 +803,70 @@ struct NotebookTopBar: View {
     private var addColumnButton: some View {
         Button(action: onOpenAddColumn) {
             Label("Nueva columna", systemImage: "plus")
+                .font(.subheadline.weight(.semibold))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color.accentColor, in: Capsule())
+                .foregroundStyle(.white)
         }
-        .buttonStyle(.borderedProminent)
-        .controlSize(.small)
+        .buttonStyle(.plain)
         .help("Añadir nueva columna de evaluación")
+    }
+
+    private var addColumnButtonCompact: some View {
+        Button(action: onOpenAddColumn) {
+            Image(systemName: "plus")
+                .font(.body.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(width: 32, height: 32)
+                .background(Color.accentColor, in: Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Nueva columna")
+    }
+
+    private var saveStatusCompactChip: some View {
+        saveStatusIcon
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(saveBadge.color)
+            .frame(width: 32, height: 32)
+            .background(saveBadge.color.opacity(0.12), in: Circle())
+            .help(saveBadge.text)
+            .accessibilityLabel(saveBadge.text)
+    }
+
+    private var compactMenu: some View {
+        Menu {
+            Button(action: onUndo) {
+                Label("Deshacer último cambio", systemImage: "arrow.uturn.backward")
+            }
+            .disabled(!canUndo)
+
+            Button(action: onToggleAttendanceQuickMode) {
+                Label(
+                    isAttendanceQuickMode ? "Salir de asistencia rápida" : "Asistencia rápida",
+                    systemImage: "bolt.fill"
+                )
+            }
+
+            Button(action: onOpenOrganizationMenu) {
+                Label("Configurar columnas", systemImage: "rectangle.3.group")
+            }
+
+            Button(action: onToggleInspector) {
+                Label(
+                    isInspectorPresented ? "Ocultar inspector" : "Mostrar inspector",
+                    systemImage: isInspectorPresented ? "sidebar.right" : "sidebar.squares.right"
+                )
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.body.weight(.medium))
+                .frame(width: 32, height: 32)
+                .background(Color.secondary.opacity(0.08), in: Circle())
+                .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder
@@ -799,6 +879,18 @@ struct NotebookTopBar: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(NotebookStyle.warningTint)
                 Spacer(minLength: 0)
+                if canMarkAllPresent {
+                    Button("Marcar todos presentes") {
+                        onMarkAllPresent()
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(NotebookStyle.warningTint)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(NotebookStyle.warningTint.opacity(0.15), in: Capsule())
+                    .buttonStyle(.plain)
+                }
+
                 Button("Salir") {
                     onToggleAttendanceQuickMode()
                 }

@@ -72,7 +72,7 @@ struct NotebookGridContainer<
         rows: [Row],
         @ViewBuilder rowContent: @escaping (Int, Row) -> Content
     ) -> some View {
-        LazyVStack(spacing: 0) {
+        VStack(spacing: 0) {
             ForEach(Array(rows.enumerated()), id: \.element.id) { index, item in
                 let isHovered = hoveredRowId == item.id
                 rowContent(index, item)
@@ -86,10 +86,15 @@ struct NotebookGridContainer<
                         }
                     }
                     #endif
-                Divider()
-                    .frame(height: 0.5)
-                    .overlay(NotebookStyle.softBorder.opacity(0.45))
-                    .padding(.horizontal, 16)
+                    .overlay(
+                        VStack {
+                            Spacer()
+                            Rectangle()
+                                .fill(NotebookStyle.softBorder.opacity(0.45))
+                                .frame(height: 0.5)
+                                .padding(.horizontal, 16)
+                        }
+                    )
             }
         }
         .padding(.bottom, 16)

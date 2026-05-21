@@ -132,3 +132,45 @@ extension ToolbarItemPlacement {
     static var topBarTrailing: ToolbarItemPlacement { .primaryAction }
 }
 #endif
+
+// MARK: - Shared Selection Store
+/// Centralises class + student selection across iOS shell (IOSRootView) and macOS shell (MacRootView).
+@MainActor
+final class StudentSelectionStore: ObservableObject {
+    @Published var selectedClassId: Int64?
+    @Published var selectedStudentId: Int64?
+    @Published private(set) var selectionRevision: Int = 0
+
+    var selectedClassBinding: Binding<Int64?> {
+        Binding(
+            get: { self.selectedClassId },
+            set: { self.setClass($0) }
+        )
+    }
+
+    var selectedStudentBinding: Binding<Int64?> {
+        Binding(
+            get: { self.selectedStudentId },
+            set: { self.setStudent($0) }
+        )
+    }
+
+    func select(classId: Int64?, studentId: Int64?) {
+        guard selectedClassId != classId || selectedStudentId != studentId else { return }
+        selectedClassId = classId
+        selectedStudentId = studentId
+        selectionRevision &+= 1
+    }
+
+    func setClass(_ classId: Int64?) {
+        guard selectedClassId != classId else { return }
+        selectedClassId = classId
+        selectionRevision &+= 1
+    }
+
+    func setStudent(_ studentId: Int64?) {
+        guard selectedStudentId != studentId else { return }
+        selectedStudentId = studentId
+        selectionRevision &+= 1
+    }
+}

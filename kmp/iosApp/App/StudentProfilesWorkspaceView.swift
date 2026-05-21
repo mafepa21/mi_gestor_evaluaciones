@@ -132,7 +132,7 @@ struct StudentProfilesWorkspaceView: View {
                                     Text("Instrumentos vinculados")
                                         .font(.headline)
                                     WorkspaceFlowLayout(spacing: 10) {
-                                        ForEach(profile.evaluationTitles, id: \.self) { evaluation in
+                                        ForEach(Array(profile.evaluationTitles.enumerated()), id: \.offset) { _, evaluation in
                                             WorkspaceTag(text: evaluation, systemImage: "checklist")
                                         }
                                     }
@@ -293,4 +293,3 @@ struct StudentProfilesWorkspaceView: View {
         profile = try? await bridge.loadStudentProfile(studentId: selectedStudentId, classId: selectedClassId)
     }
 }
-

@@ -405,7 +405,39 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
-### 2026-05-21 - Corrección de crash por suspend functions fuera del Main Thread (NSGenericException)
+### 2026-05-21 - Recuperación del selector global de clase en IOSRootView
+
+Resumen:
+- Se corrigió una regresión introducida por la nueva shell iPad-first: `kmp/iosApp/App/IOSRootView.swift` vuelve a mostrar una fila de contexto global con título de módulo, selector de clase y búsqueda, visible en Cuaderno y el resto de secciones.
+- La selección de clase en iOS vuelve a sincronizar `StudentSelectionStore`, `plannerContext.groupId`, `bridge.selectStudentsClass(classId:)` y `bridge.selectClass(id:)`, replicando el comportamiento relevante del antiguo `AppWorkspaceShell`.
+- Se eliminaron warnings SwiftUI de identidad duplicada para tags de instrumentos con nombres repetidos como `Rúbrica` o `Rúbrica Importada`, cambiando los `ForEach` de `id: \.self` a offsets en `CoursesWorkspaceView` y `StudentProfilesWorkspaceView`.
+
+Validación:
+- `xcodebuild -project MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' build` → **BUILD SUCCEEDED**.
+- No se modificó `KmpBridge.swift`, SQLDelight ni lógica KMP.
+
+Notas para futuras conversaciones:
+- `IOSRootView` no debe limitarse a la toolbar nativa: la shell iPad necesita una fila de contexto propia para selección global de clase, especialmente porque Cuaderno, Asistencia, Diario y Planner dependen de ese estado compartido.
+- En chips/tags renderizados desde títulos de instrumentos, no usar `ForEach(strings, id: \.self)` porque los nombres pueden repetirse legítimamente.
+
+### 2026-05-21 - Shell iPad-first IOSRootView equivalente a MacRootView
+
+Resumen:
+- Se creó `kmp/iosApp/App/IOSRootView.swift` (protegido con `#if !os(macOS)`) con la shell iPad-first completa: `IOSRootView`, `IOSWorkspaceSidebar`, `IOSWorkspaceContent`, `IOSContextualToolbar` y `IOSBannerHost`. El diseño usa `NavigationSplitView` (sidebar + detalle) para ofrecer una experiencia de escritorio táctil en lugar de navegar en pila como un iPhone ampliado.
+- `StudentSelectionStore` se movió de `MacApp/MacModuleStubs.swift` a `AppleShared/AppleViewCompatibility.swift` para que esté disponible en ambas plataformas. macOS y iOS lo usarán respectivamente desde `MacRootView` e `IOSRootView`.
+- `AppleShared/AppleAppRootView.swift` ahora bifurca con `#if os(macOS)` / `#else`: el target Mac sigue usando `ContentView()` → `MacRootView`, mientras iOS usa `IOSRootView()` directamente. El target Mac ya tiene su propia `@main` en `MiGestorKMPMacApp.swift` que usa `MacRootView`, por lo que `AppleAppRootView` en macOS es solo un stub de compatibilidad.
+- El `moduleContent` de `IOSWorkspaceContent` se dividió en dos `@ViewBuilder` (`academicContent` + `evaluationAndPEContent`) para evitar el timeout de type-check del compilador Swift con switches de más de 10 ramas.
+- Se regeneró el proyecto Xcode con `xcodegen generate` para incluir `IOSRootView.swift` en el build graph de ambos targets.
+
+Validación:
+- `xcodebuild -project MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' build` → **BUILD SUCCEEDED** sin errores.
+- No se modificó esquema SQLDelight, `KmpBridge.swift` ni lógica KMP.
+
+Notas para futuras conversaciones:
+- Los métodos con muchas ramas de `@ViewBuilder` (>8-10 casos) provocan timeout en el type-checker de Swift. La solución es dividirlos en dos o más `@ViewBuilder` privados.
+- Si hay errores de tipo en `IOSContextualToolbar`, revisar que el `body: some ToolbarContent` use solo `ToolbarItem` individuales con `if` guards, nunca `switch` dentro de un `ToolbarItemGroup`.
+- `xcodegen generate` debe ejecutarse desde `kmp/iosApp/` cada vez que se añade un nuevo archivo `.swift` al proyecto que no usa folder references modernas.
+
 
 Resumen:
 - Se solucionó el crash de arranque y operación en la aplicación iOS: `*** Terminating app due to uncaught exception 'NSGenericException', reason: 'Calling Kotlin suspend functions from Swift/Objective-C is currently supported only on main thread'`.

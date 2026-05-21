@@ -16,6 +16,7 @@ struct AppleAppRootView: View {
     }
 
     var body: some View {
+#if os(macOS)
         ContentView()
             .environmentObject(bridge)
             .environment(\.uiFeatureFlags, uiFeatureFlags)
@@ -29,5 +30,20 @@ struct AppleAppRootView: View {
                     lifecycleObserver = AppleLifecycleBridgeObserver(bridge: bridge)
                 }
             }
+#else
+        IOSRootView()
+            .environmentObject(bridge)
+            .environment(\.uiFeatureFlags, uiFeatureFlags)
+            .environment(\.appThemeMode, themeMode)
+            .environment(\.appleCommandCenterState, commandCenterState)
+            .preferredColorScheme(themeMode.colorSchemeOverride)
+            .task {
+                await bridge.bootstrap()
+                bridge.onAppDidBecomeActive()
+                if lifecycleObserver == nil {
+                    lifecycleObserver = AppleLifecycleBridgeObserver(bridge: bridge)
+                }
+            }
+#endif
     }
 }

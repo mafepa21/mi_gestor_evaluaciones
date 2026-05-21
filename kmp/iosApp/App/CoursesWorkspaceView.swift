@@ -76,7 +76,7 @@ struct CoursesWorkspaceView: View {
                                     Text("Evaluaciones activas")
                                         .font(.headline)
                                     WorkspaceFlowLayout(spacing: 10) {
-                                        ForEach(summary.activeEvaluationNames, id: \.self) { name in
+                                        ForEach(Array(summary.activeEvaluationNames.enumerated()), id: \.offset) { _, name in
                                             WorkspaceTag(text: name, systemImage: "chart.bar.doc.horizontal")
                                         }
                                     }
@@ -206,4 +206,3 @@ struct CoursesWorkspaceView: View {
         }
     }
 }
-

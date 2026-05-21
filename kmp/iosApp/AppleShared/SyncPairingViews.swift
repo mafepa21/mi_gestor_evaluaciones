@@ -6,101 +6,95 @@ import VisionKit
 
 #if os(macOS)
 struct MacCommandCenterPairingCard: View {
-    @Environment(\.colorScheme) private var colorScheme
     let commandCenterState: AppleCommandCenterState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Enlazar iPhone o iPad")
-                    .font(.system(size: 28, weight: .black, design: .rounded))
+        IOSSectionCard(title: "Enlazar iPhone o iPad", systemImage: "qrcode") {
+            VStack(alignment: .leading, spacing: IOSAppStyle.cardSpacing) {
                 Text(headlineText)
-                    .font(.system(size: 14, weight: .medium))
+                    .font(IOSAppStyle.bodyText)
                     .foregroundStyle(.secondary)
-            }
 
-            HStack(alignment: .center, spacing: 24) {
-                Group {
-                    if commandCenterState.serviceState.showsPairingCode,
-                       let payload = commandCenterState.pairingPayload,
-                       !payload.isEmpty {
-                        QRCodeView(payload: payload, size: 176, padding: 16)
-                    } else {
-                        RoundedRectangle(cornerRadius: 24, style: .continuous)
-                            .fill(.quaternary)
-                            .frame(width: 208, height: 208)
-                            .overlay {
-                                VStack(spacing: 8) {
-                                    Image(systemName: placeholderSymbol)
-                                        .font(.system(size: 30, weight: .semibold))
-                                        .foregroundStyle(.tertiary)
-                                    Text(placeholderText)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+                HStack(alignment: .center, spacing: 24) {
+                    Group {
+                        if commandCenterState.serviceState.showsPairingCode,
+                           let payload = commandCenterState.pairingPayload,
+                           !payload.isEmpty {
+                            QRCodeView(payload: payload, size: 176, padding: 16)
+                        } else {
+                            RoundedRectangle(cornerRadius: IOSAppStyle.innerRadius, style: .continuous)
+                                .fill(IOSAppStyle.subtleFill)
+                                .frame(width: 208, height: 208)
+                                .overlay {
+                                    VStack(spacing: 8) {
+                                        Image(systemName: placeholderSymbol)
+                                            .font(.system(size: 30, weight: .semibold))
+                                            .foregroundStyle(.tertiary)
+                                        Text(placeholderText)
+                                            .font(IOSAppStyle.captionText)
+                                            .foregroundStyle(.secondary)
+                                    }
                                 }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 16) {
+                        statusBadge
+
+                        if let host = commandCenterState.pairingHost,
+                           commandCenterState.serviceState.showsPairingCode {
+                            commandMetric(title: "Host", value: host)
+                        }
+                        if let port = commandCenterState.pairingPort,
+                           commandCenterState.serviceState.showsPairingCode {
+                            commandMetric(title: "Puerto", value: "\(port)")
+                        }
+                        if let pin = commandCenterState.pairingPin,
+                           commandCenterState.serviceState.showsPairingCode {
+                            commandMetric(title: "PIN", value: pin)
+                        }
+                        if let payload = commandCenterState.pairingPayload,
+                           !payload.isEmpty,
+                           commandCenterState.serviceState.showsPairingCode {
+                            commandMetric(title: "Payload", value: payload)
+                        }
+                        Text(commandCenterState.statusMessage)
+                            .font(IOSAppStyle.captionText)
+                            .foregroundStyle(.secondary)
+
+                        HStack(spacing: 12) {
+                            Button(primaryActionTitle) {
+                                NotificationCenter.default.post(
+                                    name: primaryActionNotification,
+                                    object: nil
+                                )
                             }
-                    }
-                }
+                            .buttonStyle(.borderedProminent)
 
-                VStack(alignment: .leading, spacing: 16) {
-                    statusBadge
-
-                    if let host = commandCenterState.pairingHost,
-                       commandCenterState.serviceState.showsPairingCode {
-                        commandMetric(title: "Host", value: host)
-                    }
-                    if let port = commandCenterState.pairingPort,
-                       commandCenterState.serviceState.showsPairingCode {
-                        commandMetric(title: "Puerto", value: "\(port)")
-                    }
-                    if let pin = commandCenterState.pairingPin,
-                       commandCenterState.serviceState.showsPairingCode {
-                        commandMetric(title: "PIN", value: pin)
-                    }
-                    if let payload = commandCenterState.pairingPayload,
-                       !payload.isEmpty,
-                       commandCenterState.serviceState.showsPairingCode {
-                        commandMetric(title: "Payload", value: payload)
-                    }
-                    Text(commandCenterState.statusMessage)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.secondary)
-
-                    HStack(spacing: 12) {
-                        Button(primaryActionTitle) {
-                            NotificationCenter.default.post(
-                                name: primaryActionNotification,
-                                object: nil
-                            )
+                            Button("Regenerar PIN") {
+                                NotificationCenter.default.post(
+                                    name: .appleCommandCenterRegeneratePinRequested,
+                                    object: nil
+                                )
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(commandCenterState.serviceState == .starting)
                         }
-                        .buttonStyle(.borderedProminent)
-
-                        Button("Regenerar PIN") {
-                            NotificationCenter.default.post(
-                                name: .appleCommandCenterRegeneratePinRequested,
-                                object: nil
-                            )
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(commandCenterState.serviceState == .starting)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .padding(24)
-        .background(appCardBackground(for: colorScheme))
-        .cornerRadius(24)
     }
 
     @ViewBuilder
     private func commandMetric(title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 4) {
             Text(title)
-                .font(.system(size: 12, weight: .bold))
+                .font(IOSAppStyle.captionText)
                 .foregroundStyle(.secondary)
             Text(value)
-                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .font(IOSAppStyle.cardTitle)
                 .textSelection(.enabled)
                 .lineLimit(3)
         }
@@ -149,12 +143,11 @@ struct MacCommandCenterPairingCard: View {
 
     @ViewBuilder
     private var statusBadge: some View {
-        Text(badgeText)
-            .font(.system(size: 12, weight: .bold))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(badgeColor.opacity(0.16), in: Capsule())
-            .foregroundStyle(badgeColor)
+        IOSStatusPill(
+            label: badgeText,
+            isActive: commandCenterState.serviceState != .stopped,
+            tint: badgeColor
+        )
     }
 
     private var badgeText: String {
@@ -177,11 +170,11 @@ struct MacCommandCenterPairingCard: View {
     private var badgeColor: Color {
         switch commandCenterState.serviceState {
         case .running, .connected:
-            return .green
+            return IOSAppStyle.success
         case .starting:
-            return .orange
+            return IOSAppStyle.warning
         case .networkError, .failed:
-            return .red
+            return IOSAppStyle.danger
         case .stopped:
             return .secondary
         }
@@ -209,137 +202,149 @@ struct MacCommandCenterPairingCard: View {
 
 struct SyncLanCard: View {
     @EnvironmentObject var bridge: KmpBridge
-    @Environment(\.colorScheme) private var colorScheme
     @State private var selectedHost: String = ""
     @State private var selectedPort: String = "8765"
     @State private var pin: String = ""
     @State private var showingQrScanner = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Label("Sincronización LAN", systemImage: "dot.radiowaves.left.and.right")
-                    .font(.system(size: 14, weight: .bold))
-                Spacer()
-                Text(bridge.syncStatusMessage)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.secondary)
-            }
+        IOSSectionCard(title: "Sincronización LAN", systemImage: "dot.radiowaves.left.and.right") {
+            VStack(alignment: .leading, spacing: IOSAppStyle.cardSpacing) {
+                if !bridge.syncStatusMessage.isEmpty {
+                    Text(bridge.syncStatusMessage)
+                        .font(IOSAppStyle.captionText)
+                        .foregroundStyle(bridge.syncStatusMessage.contains("Error") ? IOSAppStyle.danger : .secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
 
-            if bridge.pairedSyncHost != nil {
-                HStack(spacing: 10) {
-                    Text("Vinculado con \(bridge.pairedSyncHost ?? "-")")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button("Desvincular") {
+                if bridge.pairedSyncHost != nil {
+                    HStack(spacing: 10) {
+                        Text("Vinculado con \(bridge.pairedSyncHost ?? "-")")
+                            .font(IOSAppStyle.bodyText)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Desvincular") {
+                            Task {
+                                await bridge.unpairLanSync()
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 8) {
+                            TextField("Host desktop (ej. migestor.local)", text: $selectedHost)
+                                .textFieldStyle(.roundedBorder)
+                                .font(IOSAppStyle.bodyText)
+                            
+                            TextField("Puerto", text: $selectedPort)
+                                .textFieldStyle(.roundedBorder)
+                                .font(IOSAppStyle.bodyText)
+                                .frame(width: 80)
+                        }
+
+                        HStack(spacing: 8) {
+                            TextField("PIN", text: $pin)
+                                .textFieldStyle(.roundedBorder)
+                                .font(IOSAppStyle.bodyText)
+                                .frame(width: 90)
+
+                            Button {
+                                showingQrScanner = true
+                            } label: {
+                                Image(systemName: "qrcode.viewfinder")
+                                    .frame(height: 38)
+                            }
+                            .buttonStyle(.bordered)
+
+                            Button("Emparejar") {
+                                Task {
+                                    let normalizedHost = selectedHost.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    let normalizedPin = pin.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    guard !normalizedHost.isEmpty else {
+                                        bridge.syncStatusMessage = "Introduce un host LAN válido del Mac."
+                                        return
+                                    }
+                                    guard let port = Int(selectedPort), (1...65535).contains(port) else {
+                                        bridge.syncStatusMessage = "El puerto de enlace no es válido."
+                                        return
+                                    }
+                                    guard port == 8765 else {
+                                        bridge.syncStatusMessage = "Esta compilación del iPad usa el puerto 8765 para enlazar con el Mac."
+                                        return
+                                    }
+                                    guard !normalizedPin.isEmpty else {
+                                        bridge.syncStatusMessage = "Introduce el PIN de enlace."
+                                        return
+                                    }
+
+                                    do {
+                                        let hostToUse = normalizedHost.isEmpty ? bridge.discoveredSyncHosts.first ?? "" : normalizedHost
+                                        let peer = bridge.discoveredPeer(forHost: hostToUse)
+                                        try await bridge.pairLanSync(
+                                            host: hostToUse,
+                                            pin: normalizedPin,
+                                            expectedServerId: peer?.serverId,
+                                            expectedFingerprint: peer?.fingerprint
+                                        )
+                                        selectedHost = hostToUse
+                                    } catch {
+                                        bridge.syncStatusMessage = "Error emparejando: \(error.localizedDescription)"
+                                    }
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(!canAttemptPairing)
+                        }
+                    }
+                }
+
+                if !bridge.discoveredSyncHosts.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(bridge.discoveredSyncHosts, id: \.self) { host in
+                                Button(host) { selectedHost = host }
+                                    .buttonStyle(.bordered)
+                            }
+                        }
+                    }
+                }
+
+                HStack(spacing: 12) {
+                    Button("Pull") {
                         Task {
-                            await bridge.unpairLanSync()
+                            do {
+                                try await bridge.runLanPullSync()
+                            } catch {
+                                bridge.syncStatusMessage = "Error pull: \(error.localizedDescription)"
+                            }
                         }
                     }
                     .buttonStyle(.bordered)
-                }
-            } else {
-                HStack(spacing: 10) {
-                    TextField("Host desktop (ej. migestor.local)", text: $selectedHost)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                    TextField("Puerto", text: $selectedPort)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .frame(width: 80)
-                    TextField("PIN", text: $pin)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .frame(width: 90)
-                    Button {
-                        showingQrScanner = true
-                    } label: {
-                        Image(systemName: "qrcode.viewfinder")
-                    }
-                    .buttonStyle(.bordered)
-                    Button("Emparejar") {
-                        Task {
-                            let normalizedHost = selectedHost.trimmingCharacters(in: .whitespacesAndNewlines)
-                            let normalizedPin = pin.trimmingCharacters(in: .whitespacesAndNewlines)
-                            guard !normalizedHost.isEmpty else {
-                                bridge.syncStatusMessage = "Introduce un host LAN válido del Mac."
-                                return
-                            }
-                            guard let port = Int(selectedPort), (1...65535).contains(port) else {
-                                bridge.syncStatusMessage = "El puerto de enlace no es válido."
-                                return
-                            }
-                            guard port == 8765 else {
-                                bridge.syncStatusMessage = "Esta compilación del iPad usa el puerto 8765 para enlazar con el Mac."
-                                return
-                            }
-                            guard !normalizedPin.isEmpty else {
-                                bridge.syncStatusMessage = "Introduce el PIN de enlace."
-                                return
-                            }
+                    .disabled(bridge.pairedSyncHost == nil)
 
+                    Button("Push") {
+                        Task {
                             do {
-                                let hostToUse = normalizedHost.isEmpty ? bridge.discoveredSyncHosts.first ?? "" : normalizedHost
-                                let peer = bridge.discoveredPeer(forHost: hostToUse)
-                                try await bridge.pairLanSync(
-                                    host: hostToUse,
-                                    pin: normalizedPin,
-                                    expectedServerId: peer?.serverId,
-                                    expectedFingerprint: peer?.fingerprint
-                                )
-                                selectedHost = hostToUse
+                                try await bridge.runLanPushSync()
                             } catch {
-                                bridge.syncStatusMessage = "Error emparejando: \(error.localizedDescription)"
+                                bridge.syncStatusMessage = "Error push: \(error.localizedDescription)"
                             }
                         }
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(!canAttemptPairing)
-                }
-            }
+                    .disabled(bridge.pairedSyncHost == nil)
 
-            if !bridge.discoveredSyncHosts.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(bridge.discoveredSyncHosts, id: \.self) { host in
-                            Button(host) { selectedHost = host }
-                                .buttonStyle(.bordered)
-                        }
-                    }
-                }
-            }
+                    Spacer()
 
-            HStack(spacing: 12) {
-                Button("Pull") {
-                    Task {
-                        do {
-                            try await bridge.runLanPullSync()
-                        } catch {
-                            bridge.syncStatusMessage = "Error pull: \(error.localizedDescription)"
-                        }
-                    }
+                    IOSStatusPill(
+                        label: "Pendientes: \(bridge.syncPendingChanges)",
+                        isActive: bridge.syncPendingChanges > 0,
+                        tint: IOSAppStyle.warning
+                    )
                 }
-                .buttonStyle(.bordered)
-                .disabled(bridge.pairedSyncHost == nil)
-
-                Button("Push") {
-                    Task {
-                        do {
-                            try await bridge.runLanPushSync()
-                        } catch {
-                            bridge.syncStatusMessage = "Error push: \(error.localizedDescription)"
-                        }
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(bridge.pairedSyncHost == nil)
-
-                Spacer()
-                Text("Pendientes: \(bridge.syncPendingChanges)")
-                    .font(.system(size: 12, weight: .semibold))
             }
         }
-        .padding(16)
-        .background(appCardBackground(for: colorScheme))
-        .cornerRadius(20)
         .sheet(isPresented: $showingQrScanner) {
             LanQrScannerSheet { payload in
                 guard let parsed = parseSyncPayload(payload) else {

@@ -27,7 +27,7 @@ struct IOSRootView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     @StateObject private var layoutState = WorkspaceLayoutState()
-    @StateObject private var selectionStore = StudentSelectionStore()
+    @StateObject private var selectionStore = IOSSelectionStore()
 
     // Scene storage keeps state across scene lifecycle
     @SceneStorage("ios.root.sidebarVisible") private var sidebarVisible = true
@@ -109,7 +109,23 @@ struct IOSRootView: View {
         .appOnChange(of: selectionStore.selectedClassId) { newId in
             persistedClassId = Int(newId ?? 0)
             plannerContext.groupId = newId
-            Task { await bridge.selectStudentsClass(classId: newId) }
+            Task {
+                await bridge.selectStudentsClass(classId: newId)
+                if let newId = newId {
+                    if let studentId = selectionStore.selectedStudentId {
+                        let students = (try? await bridge.students(forClassId: newId)) ?? bridge.studentsInClass
+                        if !students.contains(where: { $0.id == studentId }) {
+                            await MainActor.run {
+                                selectionStore.selectedStudentId = nil
+                            }
+                        }
+                    }
+                } else {
+                    await MainActor.run {
+                        selectionStore.selectedStudentId = nil
+                    }
+                }
+            }
             if let newId {
                 bridge.selectClass(id: newId)
             }
@@ -135,12 +151,12 @@ struct IOSRootView: View {
         activeModule = AppWorkspaceModule(rawValue: persistedModule) ?? .dashboard
         if persistedClassId > 0,
            bridge.classes.contains(where: { $0.id == Int64(persistedClassId) }) {
-            selectionStore.setClass(Int64(persistedClassId))
+            selectionStore.selectedClassId = Int64(persistedClassId)
         } else if selectionStore.selectedClassId == nil {
-            selectionStore.setClass(bridge.selectedStudentsClassId ?? bridge.classes.first?.id)
+            selectionStore.selectedClassId = bridge.selectedStudentsClassId ?? bridge.classes.first?.id
         }
         if persistedStudentId > 0 {
-            selectionStore.setStudent(Int64(persistedStudentId))
+            selectionStore.selectedStudentId = Int64(persistedStudentId)
         }
         columnVisibility = sidebarVisible ? .all : .detailOnly
     }
@@ -154,12 +170,13 @@ struct IOSRootView: View {
 
     func openModule(_ module: AppWorkspaceModule, classId: Int64? = nil, studentId: Int64? = nil) {
         activeModule = module
-        if let classId {
-            selectionStore.setClass(classId)
-            bridge.selectClass(id: classId)
+        if classId != nil || studentId != nil {
+            let targetClassId = classId ?? selectionStore.selectedClassId
+            let targetStudentId = studentId ?? selectionStore.selectedStudentId
+            selectionStore.select(classId: targetClassId, studentId: targetStudentId)
         }
-        if let studentId {
-            selectionStore.setStudent(studentId)
+        if let classId {
+            bridge.selectClass(id: classId)
         }
         searchText = ""
     }
@@ -225,7 +242,7 @@ struct IOSGlobalContextRow: View {
 
     let activeModule: AppWorkspaceModule
     @ObservedObject var layoutState: WorkspaceLayoutState
-    @ObservedObject var selectionStore: StudentSelectionStore
+    @ObservedObject var selectionStore: IOSSelectionStore
     @Binding var searchText: String
 
     var body: some View {
@@ -266,11 +283,11 @@ struct IOSGlobalContextRow: View {
     private var classMenu: some View {
         Menu {
             Button("Sin clase activa") {
-                selectionStore.setClass(nil)
+                selectionStore.selectedClassId = nil
             }
             ForEach(bridge.classes, id: \.id) { schoolClass in
                 Button {
-                    selectionStore.setClass(schoolClass.id)
+                    selectionStore.selectedClassId = schoolClass.id
                 } label: {
                     HStack {
                         Text(schoolClass.name)
@@ -422,7 +439,7 @@ struct IOSWorkspaceContent: View {
 
     let activeModule: AppWorkspaceModule
     @ObservedObject var layoutState: WorkspaceLayoutState
-    @ObservedObject var selectionStore: StudentSelectionStore
+    @ObservedObject var selectionStore: IOSSelectionStore
     var plannerContext: PlannerNavigationContext
     @Binding var activeSheet: ActiveWorkspaceSheet?
     @Binding var showingRubricBuilder: Bool
@@ -453,42 +470,42 @@ struct IOSWorkspaceContent: View {
     private var academicContent: some View {
         switch activeModule {
         case .dashboard:
-            DashboardView(selectedClassId: selectionStore.selectedClassBinding)
+            DashboardView(selectedClassId: $selectionStore.selectedClassId)
         case .courses:
             CoursesWorkspaceView(
-                selectedClassId: selectionStore.selectedClassBinding,
+                selectedClassId: $selectionStore.selectedClassId,
                 onOpenModule: onOpenModule,
                 onCreateStudent: { classId in
-                    selectionStore.setClass(classId)
+                    selectionStore.selectedClassId = classId
                     activeSheet = .create(.student)
                 }
             )
             .environmentObject(bridge)
         case .students:
             StudentProfilesWorkspaceView(
-                selectedClassId: selectionStore.selectedClassBinding,
-                selectedStudentId: selectionStore.selectedStudentBinding,
+                selectedClassId: $selectionStore.selectedClassId,
+                selectedStudentId: $selectionStore.selectedStudentId,
                 onOpenModule: onOpenModule
             )
             .environmentObject(bridge)
         case .teacherRadar:
             TeacherRadarDetailView(
                 bridge: bridge,
-                selectedClassId: selectionStore.selectedClassBinding,
-                selectedStudentId: selectionStore.selectedStudentBinding,
+                selectedClassId: $selectionStore.selectedClassId,
+                selectedStudentId: $selectionStore.selectedStudentId,
                 onOpenModule: onOpenModule
             )
         case .notebook:
             NotebookModuleView(
                 bridge: bridge,
-                selectedClassId: selectionStore.selectedClassBinding,
-                selectedStudentId: selectionStore.selectedStudentBinding,
+                selectedClassId: $selectionStore.selectedClassId,
+                selectedStudentId: $selectionStore.selectedStudentId,
                 onOpenModule: onOpenModule
             )
         case .attendance:
             AttendanceWorkspaceView(
-                selectedClassId: selectionStore.selectedClassBinding,
-                preselectedStudentId: selectionStore.selectedStudentBinding,
+                selectedClassId: $selectionStore.selectedClassId,
+                preselectedStudentId: $selectionStore.selectedStudentId,
                 onOpenModule: onOpenModule
             )
             .environmentObject(bridge)
@@ -502,7 +519,7 @@ struct IOSWorkspaceContent: View {
             .environmentObject(bridge)
         case .diary:
             DiaryWorkspaceView(
-                selectedClassId: selectionStore.selectedClassBinding,
+                selectedClassId: $selectionStore.selectedClassId,
                 navigationContext: resolvedPlannerContext,
                 onOpenModule: onOpenModule,
                 onOpenPlanner: { ctx in onOpenModule(.planner, ctx.groupId, nil); onUpdatePlannerContext(ctx) },
@@ -511,7 +528,7 @@ struct IOSWorkspaceContent: View {
             .environmentObject(bridge)
         case .evaluationHub:
             EvaluationHubView(
-                selectedClassId: selectionStore.selectedClassBinding,
+                selectedClassId: $selectionStore.selectedClassId,
                 onOpenModule: onOpenModule
             )
             .environmentObject(bridge)
@@ -525,7 +542,7 @@ struct IOSWorkspaceContent: View {
         switch activeModule {
         case .rubrics:
             RubricsWorkspaceView(
-                selectedClassId: selectionStore.selectedClassBinding,
+                selectedClassId: $selectionStore.selectedClassId,
                 onOpenModule: onOpenModule,
                 onOpenBuilder: { bridge.resetRubricBuilder(); showingRubricBuilder = true },
                 onEditRubric: { rubric in bridge.loadRubricForEditing(rubric); showingRubricBuilder = true }
@@ -533,31 +550,31 @@ struct IOSWorkspaceContent: View {
             .environmentObject(bridge)
         case .reports:
             ReportsWorkspaceView(
-                selectedClassId: selectionStore.selectedClassBinding,
-                selectedStudentId: selectionStore.selectedStudentBinding
+                selectedClassId: $selectionStore.selectedClassId,
+                selectedStudentId: $selectionStore.selectedStudentId
             )
             .environmentObject(bridge)
         case .library:
             LibraryWorkspaceView(
-                selectedClassId: selectionStore.selectedClassBinding,
+                selectedClassId: $selectionStore.selectedClassId,
                 onOpenModule: onOpenModule
             )
             .environmentObject(bridge)
         case .peSessions:
             PESessionsWorkspaceView(
-                selectedClassId: selectionStore.selectedClassBinding,
+                selectedClassId: $selectionStore.selectedClassId,
                 onOpenModule: onOpenModule
             )
             .environmentObject(bridge)
         case .peTests:
             PhysicalTestsWorkspaceView(
-                selectedClassId: selectionStore.selectedClassBinding,
+                selectedClassId: $selectionStore.selectedClassId,
                 onOpenModule: onOpenModule
             )
             .environmentObject(bridge)
         case .peRubrics:
             RubricsWorkspaceView(
-                selectedClassId: selectionStore.selectedClassBinding,
+                selectedClassId: $selectionStore.selectedClassId,
                 onOpenModule: onOpenModule,
                 onOpenBuilder: { bridge.resetRubricBuilder(); showingRubricBuilder = true },
                 onEditRubric: { rubric in bridge.loadRubricForEditing(rubric); showingRubricBuilder = true },
@@ -566,24 +583,24 @@ struct IOSWorkspaceContent: View {
             .environmentObject(bridge)
         case .peIncidents:
             EFIncidentsWorkspaceView(
-                selectedClassId: selectionStore.selectedClassBinding,
+                selectedClassId: $selectionStore.selectedClassId,
                 onOpenModule: onOpenModule
             )
             .environmentObject(bridge)
         case .peMaterial:
             PEMaterialWorkspaceView(
-                selectedClassId: selectionStore.selectedClassBinding,
+                selectedClassId: $selectionStore.selectedClassId,
                 onOpenModule: onOpenModule
             )
             .environmentObject(bridge)
         case .peTournaments:
-            PETournamentsWorkspaceView(selectedClassId: selectionStore.selectedClassBinding)
+            PETournamentsWorkspaceView(selectedClassId: $selectionStore.selectedClassId)
                 .environmentObject(bridge)
         case .settings:
             SettingsWorkspaceView()
                 .environmentObject(bridge)
         case .backups:
-            BackupsWorkspaceView(selectedClassId: selectionStore.selectedClassBinding)
+            BackupsWorkspaceView(selectedClassId: $selectionStore.selectedClassId)
         default:
             EmptyView()
         }
@@ -605,7 +622,7 @@ struct IOSWorkspaceContent: View {
 struct IOSContextualToolbar: ToolbarContent {
     let activeModule: AppWorkspaceModule
     @ObservedObject var layoutState: WorkspaceLayoutState
-    @ObservedObject var selectionStore: StudentSelectionStore
+    @ObservedObject var selectionStore: IOSSelectionStore
     let onSync: () -> Void
     let onToggleInspector: () -> Void
 

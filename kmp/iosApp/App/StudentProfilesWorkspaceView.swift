@@ -22,16 +22,8 @@ struct StudentProfilesWorkspaceView: View {
     var body: some View {
         HStack(spacing: 0) {
             VStack(spacing: 0) {
-                HStack(spacing: 10) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundStyle(.secondary)
-                    TextField("Buscar alumno…", text: $searchText)
-                        .textFieldStyle(.plain)
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .padding(16)
+                IOSSearchField(text: $searchText, placeholder: "Buscar alumno…")
+                    .padding(16)
 
                 List(filteredStudents, id: \.id) { student in
                     Button {
@@ -57,35 +49,35 @@ struct StudentProfilesWorkspaceView: View {
             Group {
                 if let profile {
                     ScrollView {
-                        VStack(alignment: .leading, spacing: 20) {
+                        VStack(alignment: .leading, spacing: IOSAppStyle.sectionSpacing) {
                             WorkspaceInspectorHero(
                                 title: "\(profile.student.firstName) \(profile.student.lastName)",
                                 subtitle: profile.schoolClass?.name ?? "Sin grupo activo"
                             )
 
                             LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 16)], spacing: 16) {
-                                WorkspaceMetricCard(title: "Asistencia", value: "\(profile.attendanceRate)%", systemImage: "checklist.checked")
-                                WorkspaceMetricCard(title: "Media", value: IosFormatting.decimal(from: profile.averageScore), systemImage: "sum")
-                                WorkspaceMetricCard(title: "Incidencias", value: "\(profile.incidentCount)", systemImage: "exclamationmark.bubble.fill")
-                                WorkspaceMetricCard(title: "Seguimiento", value: "\(profile.followUpCount)", systemImage: "arrow.triangle.branch")
-                                WorkspaceMetricCard(title: "Instrumentos", value: "\(profile.instrumentsCount)", systemImage: "chart.bar.doc.horizontal")
-                                WorkspaceMetricCard(title: "Evidencias", value: "\(profile.evidenceCount)", systemImage: "paperclip")
-                                WorkspaceMetricCard(title: "Sesiones diario", value: "\(profile.journalSessionCount)", systemImage: "doc.text.fill")
-                                WorkspaceMetricCard(title: "Notas individuales", value: "\(profile.journalNoteCount)", systemImage: "note.text")
+                                IOSMetricCard(title: "Asistencia", value: "\(profile.attendanceRate)%", systemImage: "checklist.checked")
+                                IOSMetricCard(title: "Media", value: IosFormatting.decimal(from: profile.averageScore), systemImage: "sum")
+                                IOSMetricCard(title: "Incidencias", value: "\(profile.incidentCount)", systemImage: "exclamationmark.bubble.fill")
+                                IOSMetricCard(title: "Seguimiento", value: "\(profile.followUpCount)", systemImage: "arrow.triangle.branch")
+                                IOSMetricCard(title: "Instrumentos", value: "\(profile.instrumentsCount)", systemImage: "chart.bar.doc.horizontal")
+                                IOSMetricCard(title: "Evidencias", value: "\(profile.evidenceCount)", systemImage: "paperclip")
+                                IOSMetricCard(title: "Sesiones diario", value: "\(profile.journalSessionCount)", systemImage: "doc.text.fill")
+                                IOSMetricCard(title: "Notas individuales", value: "\(profile.journalNoteCount)", systemImage: "note.text")
                             }
 
                             HStack(spacing: 12) {
-                                WorkspaceCompactStat(
+                                IOSMetricCard(
                                     title: "Último estado",
                                     value: profile.latestAttendanceStatus ?? "Sin registros",
-                                    tint: profile.latestAttendanceStatus?.uppercased().contains("AUS") == true ? .red : .green
+                                    tint: profile.latestAttendanceStatus?.uppercased().contains("AUS") == true ? IOSAppStyle.danger : IOSAppStyle.success
                                 )
-                                WorkspaceCompactStat(
+                                IOSMetricCard(
                                     title: "Perfil físico",
                                     value: profile.student.isInjured ? "Lesionado" : "Disponible",
-                                    tint: profile.student.isInjured ? .orange : .blue
+                                    tint: profile.student.isInjured ? IOSAppStyle.warning : IOSAppStyle.info
                                 )
-                                WorkspaceCompactStat(
+                                IOSMetricCard(
                                     title: "Familias",
                                     value: "\(profile.familyCommunicationCount)",
                                     tint: .indigo
@@ -94,43 +86,41 @@ struct StudentProfilesWorkspaceView: View {
 
                             if !profile.recentAttendance.isEmpty {
                                 let recentAttendance = Array(profile.recentAttendance.prefix(4))
-                                VStack(alignment: .leading, spacing: 10) {
-                                    Text("Asistencia reciente")
-                                        .font(.headline)
-                                    ForEach(recentAttendance, id: \.id) { attendance in
-                                        recentAttendanceCard(attendance)
+                                IOSSectionCard(title: "Asistencia reciente", systemImage: "checklist.checked") {
+                                    VStack(alignment: .leading, spacing: 10) {
+                                        ForEach(recentAttendance, id: \.id) { attendance in
+                                            recentAttendanceCard(attendance)
+                                        }
                                     }
                                 }
                             }
 
                             if !profile.incidents.isEmpty {
-                                VStack(alignment: .leading, spacing: 10) {
-                                    Text("Incidencias destacadas")
-                                        .font(.headline)
-                                    ForEach(profile.incidents.prefix(3), id: \.id) { incident in
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            HStack {
-                                                Text(incident.title)
-                                                    .font(.subheadline.weight(.bold))
-                                                Spacer()
-                                                Text(incident.severity.capitalized)
-                                                    .font(.caption.weight(.bold))
+                                IOSSectionCard(title: "Incidencias destacadas", systemImage: "exclamationmark.bubble.fill") {
+                                    VStack(alignment: .leading, spacing: 10) {
+                                        ForEach(profile.incidents.prefix(3), id: \.id) { incident in
+                                            VStack(alignment: .leading, spacing: 4) {
+                                                HStack {
+                                                    Text(incident.title)
+                                                        .font(.subheadline.weight(.bold))
+                                                    Spacer()
+                                                    Text(incident.severity.capitalized)
+                                                        .font(.caption.weight(.bold))
+                                                        .foregroundStyle(.secondary)
+                                                }
+                                                Text(incident.detail ?? "Sin detalle")
+                                                    .font(.caption)
                                                     .foregroundStyle(.secondary)
                                             }
-                                            Text(incident.detail ?? "Sin detalle")
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
+                                            .padding(12)
+                                            .background(IOSAppStyle.subtleFill, in: RoundedRectangle(cornerRadius: IOSAppStyle.innerRadius, style: .continuous))
                                         }
-                                        .padding(12)
-                                        .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                                     }
                                 }
                             }
 
                             if !profile.evaluationTitles.isEmpty {
-                                VStack(alignment: .leading, spacing: 10) {
-                                    Text("Instrumentos vinculados")
-                                        .font(.headline)
+                                IOSSectionCard(title: "Instrumentos vinculados", systemImage: "checklist") {
                                     WorkspaceFlowLayout(spacing: 10) {
                                         ForEach(Array(profile.evaluationTitles.enumerated()), id: \.offset) { _, evaluation in
                                             WorkspaceTag(text: evaluation, systemImage: "checklist")
@@ -139,10 +129,7 @@ struct StudentProfilesWorkspaceView: View {
                                 }
                             }
 
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text("Resumen docente")
-                                    .font(.headline)
-
+                            IOSSectionCard(title: "Resumen docente", systemImage: "doc.text.magnifyingglass") {
                                 VStack(alignment: .leading, spacing: 8) {
                                     ProfileSummaryLine(
                                         title: "Grupo activo",
@@ -165,85 +152,82 @@ struct StudentProfilesWorkspaceView: View {
                                         value: "\(profile.journalSessionCount)"
                                     )
                                 }
-                                .padding(14)
-                                .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                             }
 
                             if profile.adaptationsSummary != nil || profile.familyCommunicationSummary != nil {
-                                VStack(alignment: .leading, spacing: 12) {
-                                    Text("Contexto pedagógico")
-                                        .font(.headline)
+                                IOSSectionCard(title: "Contexto pedagógico", systemImage: "person.text.rectangle") {
+                                    VStack(alignment: .leading, spacing: 12) {
+                                        if let adaptationsSummary = profile.adaptationsSummary {
+                                            WorkspaceDetailBlock(
+                                                title: "Adaptaciones recientes",
+                                                content: adaptationsSummary
+                                            )
+                                        }
 
-                                    if let adaptationsSummary = profile.adaptationsSummary {
-                                        WorkspaceDetailBlock(
-                                            title: "Adaptaciones recientes",
-                                            content: adaptationsSummary
-                                        )
-                                    }
-
-                                    if let familyCommunicationSummary = profile.familyCommunicationSummary {
-                                        WorkspaceDetailBlock(
-                                            title: "Comunicación con familias",
-                                            content: familyCommunicationSummary
-                                        )
+                                        if let familyCommunicationSummary = profile.familyCommunicationSummary {
+                                            WorkspaceDetailBlock(
+                                                title: "Comunicación con familias",
+                                                content: familyCommunicationSummary
+                                            )
+                                        }
                                     }
                                 }
                             }
 
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text("Timeline docente")
-                                    .font(.headline)
-                                if profile.timeline.isEmpty {
-                                    Text("Todavía no hay registros vinculados en esta clase.")
-                                        .foregroundStyle(.secondary)
-                                } else {
-                                    ForEach(profile.timeline) { entry in
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text(entry.title)
-                                                .font(.subheadline.weight(.bold))
-                                            Text(entry.subtitle)
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                            Text(entry.date.formatted(date: .abbreviated, time: .omitted))
-                                                .font(.caption2.weight(.bold))
-                                                .foregroundStyle(.secondary)
+                            IOSSectionCard(title: "Timeline docente", systemImage: "clock.arrow.circlepath") {
+                                VStack(alignment: .leading, spacing: 10) {
+                                    if profile.timeline.isEmpty {
+                                        Text("Todavía no hay registros vinculados en esta clase.")
+                                            .foregroundStyle(.secondary)
+                                    } else {
+                                        ForEach(profile.timeline) { entry in
+                                            VStack(alignment: .leading, spacing: 4) {
+                                                Text(entry.title)
+                                                    .font(.subheadline.weight(.bold))
+                                                Text(entry.subtitle)
+                                                    .font(.caption)
+                                                    .foregroundStyle(.secondary)
+                                                Text(entry.date.formatted(date: .abbreviated, time: .omitted))
+                                                    .font(.caption2.weight(.bold))
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                            .padding(12)
+                                            .background(IOSAppStyle.subtleFill, in: RoundedRectangle(cornerRadius: IOSAppStyle.innerRadius, style: .continuous))
                                         }
-                                        .padding(12)
-                                        .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                                     }
                                 }
                             }
 
                             HStack(spacing: 12) {
-                                Button("Ir a asistencia") {
+                                Button("Asistencia") {
                                     onOpenModule(.attendance, selectedClassId, profile.student.id)
                                 }
                                 .buttonStyle(.bordered)
-                                Button("Abrir diario") {
+                                Button("Diario") {
                                     onOpenModule(.diary, selectedClassId, profile.student.id)
                                 }
                                 .buttonStyle(.bordered)
-                                Button("Abrir cuaderno") {
+                                IOSPrimaryActionButton(label: "Cuaderno", systemImage: "doc.text.fill", action: {
                                     onOpenModule(.notebook, selectedClassId, profile.student.id)
-                                }
-                                .buttonStyle(.borderedProminent)
-                                Button("Ver informes") {
+                                })
+                                Button("Informes") {
                                     onOpenModule(.reports, selectedClassId, profile.student.id)
                                 }
                                 .buttonStyle(.bordered)
                             }
                         }
-                        .padding(24)
+                        .padding(IOSAppStyle.pagePadding)
                     }
                 } else {
-                    WorkspaceEmptyState(
+                    IOSEmptyState(
                         title: "Selecciona un alumno",
-                        subtitle: "La ficha reúne asistencia, evolución, incidencias y evidencias en un mismo flujo."
+                        subtitle: "La ficha reúne asistencia, evolución, incidencias y evidencias en un mismo flujo.",
+                        systemImage: "person.text.rectangle"
                     )
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(appPageBackground(for: colorScheme))
+            .background(IOSAppStyle.pageBackground)
         }
         .task {
             await bridge.ensureClassesLoaded()
@@ -269,7 +253,6 @@ struct StudentProfilesWorkspaceView: View {
 
     func recentAttendanceCard(_ attendance: KmpBridge.AttendanceRecordSnapshot) -> some View {
         let note = attendance.note.isEmpty ? "Registro diario" : attendance.note
-        let background = appCardBackground(for: colorScheme)
         return HStack {
             VStack(alignment: .leading, spacing: 4) {
                 Text(attendance.status)
@@ -284,7 +267,7 @@ struct StudentProfilesWorkspaceView: View {
                 .foregroundStyle(.secondary)
         }
         .padding(12)
-        .background(background, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(IOSAppStyle.subtleFill, in: RoundedRectangle(cornerRadius: IOSAppStyle.innerRadius, style: .continuous))
     }
 
     @MainActor

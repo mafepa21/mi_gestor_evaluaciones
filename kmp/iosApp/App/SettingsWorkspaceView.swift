@@ -49,6 +49,8 @@ struct SettingsWorkspaceView: View {
                     }
                 }
             }
+            .background(IOSAppStyle.pageBackground)
+            .scrollContentBackground(.hidden)
             .navigationTitle("Ajustes")
         }
     }

@@ -381,10 +381,10 @@ struct NotebookModuleView: View {
             trailingFixedSegments: trailingFixedSegments,
             scrollableSegments: scrollableSegments
         ) {
-            NotebookStateCard(
-                systemImage: "person.3.sequence",
+            IOSEmptyState(
                 title: "Sin alumnos visibles",
-                message: "Ajusta la búsqueda o el filtro de grupo para ver filas del cuaderno."
+                subtitle: "Ajusta la búsqueda o el filtro de grupo para ver filas del cuaderno.",
+                systemImage: "person.3.sequence"
             )
         } seatingContent: { rows in
             NotebookSeatingPlanView(

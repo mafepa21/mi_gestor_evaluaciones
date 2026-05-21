@@ -1,6 +1,8 @@
 import SwiftUI
 import MiGestorKit
 
+// WorkspaceModuleSwitcher routes the active workspace views on iOS/macOS shells.
+// Selection bindings are supplied directly from the hosting shell's state properties.
 extension AppWorkspaceShell {
     @ViewBuilder
     var activeWorkspace: some View {

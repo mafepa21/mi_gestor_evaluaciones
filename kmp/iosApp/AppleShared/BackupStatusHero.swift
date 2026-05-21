@@ -11,7 +11,7 @@ struct BackupStatusHero: View {
             return (
                 title: "Datos desprotegidos",
                 subtitle: "No se han detectado copias de seguridad locales. Crea una copia ahora para proteger tu trabajo diario.",
-                color: AppleDesignSystem.danger,
+                color: IOSAppStyle.danger,
                 icon: "exclamationmark.shield.fill"
             )
         }
@@ -23,7 +23,7 @@ struct BackupStatusHero: View {
             return (
                 title: "Protección desactualizada",
                 subtitle: "Tu última copia tiene más de 7 días (\(daysAgo) días). Te sugerimos realizar un respaldo reciente.",
-                color: AppleDesignSystem.warning,
+                color: IOSAppStyle.warning,
                 icon: "shield.dotted"
             )
         }
@@ -31,16 +31,16 @@ struct BackupStatusHero: View {
         return (
             title: "Datos protegidos",
             subtitle: "Tus datos están a salvo. Tienes una copia reciente y válida realizada hace menos de una semana.",
-            color: AppleDesignSystem.success,
+            color: IOSAppStyle.success,
             icon: "checkmark.shield.fill"
         )
     }
 
     var body: some View {
-        PremiumCard {
+        IOSSectionCard {
             VStack(alignment: .leading, spacing: 18) {
                 HStack(alignment: .center, spacing: 16) {
-                    // Modern pulsing / glowing status icon
+                    // Pulsing / glowing status icon
                     ZStack {
                         Circle()
                             .fill(safetyStatus.color.opacity(0.12))
@@ -53,16 +53,16 @@ struct BackupStatusHero: View {
                     
                     VStack(alignment: .leading, spacing: 4) {
                         Text(safetyStatus.title)
-                            .font(.title3.weight(.bold))
+                            .font(IOSAppStyle.sectionTitle.weight(.bold))
                             .foregroundStyle(safetyStatus.color)
                         
                         if let lastBackup = service.backups.first {
                             Text("Última: \(lastBackup.manifest.createdAt.formattedRelativeText) · \(lastBackup.sizeText)")
-                                .font(.caption.weight(.semibold))
+                                .font(IOSAppStyle.captionText)
                                 .foregroundStyle(.secondary)
                         } else {
                             Text("Sin historial de copias")
-                                .font(.caption.weight(.semibold))
+                                .font(IOSAppStyle.captionText)
                                 .foregroundStyle(.secondary)
                         }
                     }
@@ -71,7 +71,7 @@ struct BackupStatusHero: View {
                 }
                 
                 Text(safetyStatus.subtitle)
-                    .font(.subheadline)
+                    .font(IOSAppStyle.bodyText)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 
@@ -84,30 +84,19 @@ struct BackupStatusHero: View {
                             ProgressView()
                                 .controlSize(.small)
                             Text("Creando copia de seguridad...")
-                                .font(.subheadline.weight(.semibold))
+                                .font(IOSAppStyle.bodyText.weight(.semibold))
                                 .foregroundStyle(.secondary)
                         }
                         .transition(.opacity)
                     } else {
-                        Button(action: {
+                        IOSPrimaryActionButton(
+                            label: "Crear Copia en 1 Clic",
+                            systemImage: "plus.shield",
+                            tint: IOSAppStyle.info
+                        ) {
                             backupNote = ""
                             showingCreateDialog = true
-                        }) {
-                            HStack(spacing: 8) {
-                                Image(systemName: "plus.shield")
-                                    .font(.system(size: 14, weight: .bold))
-                                Text("Crear Copia en 1 Clic")
-                                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                            }
-                            .foregroundStyle(contrastingTextColor(for: AppleDesignSystem.accent))
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
-                            .background(
-                                RoundedRectangle(cornerRadius: AppleDesignSystem.controlRadius, style: .continuous)
-                                    .fill(AppleDesignSystem.accent)
-                            )
                         }
-                        .buttonStyle(.plain)
                         .transition(.opacity)
                     }
                     
@@ -181,12 +170,13 @@ struct CreateBackupSheet: View {
             #endif
             
             Text("Añade una descripción o nota (opcional) para identificar esta copia de seguridad en el historial.")
-                .font(.subheadline)
+                .font(IOSAppStyle.bodyText)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             
             TextField("Ej. Antes de importar alumnos de 3º A", text: $note)
                 .textFieldStyle(.roundedBorder)
+                .font(IOSAppStyle.bodyText)
                 .focused($isTextFieldFocused)
                 .appWritingToolsDisabled()
                 #if os(iOS)
@@ -214,6 +204,6 @@ struct CreateBackupSheet: View {
             #endif
         }
         .padding()
-        .background(AppleDesignSystem.pageBackground(for: colorScheme))
+        .background(IOSAppStyle.pageBackground)
     }
 }

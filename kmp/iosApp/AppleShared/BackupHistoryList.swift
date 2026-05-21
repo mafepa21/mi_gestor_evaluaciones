@@ -30,30 +30,10 @@ struct BackupHistoryList: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             // Search field
-            HStack {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                TextField("Buscar copias...", text: $searchText)
-                    .textFieldStyle(.plain)
-                    .appWritingToolsDisabled()
-                if !searchText.isEmpty {
-                    Button(action: { searchText = "" }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(appSecondarySystemBackgroundColor(), in: RoundedRectangle(cornerRadius: AppleDesignSystem.controlRadius))
-            .overlay(
-                RoundedRectangle(cornerRadius: AppleDesignSystem.controlRadius)
-                    .stroke(AppleDesignSystem.border, lineWidth: 1)
-            )
+            IOSSearchField(text: $searchText, placeholder: "Buscar copias…")
             
             if filteredBackups.isEmpty {
-                PremiumEmptyState(
+                IOSEmptyState(
                     title: "No se encontraron copias",
                     subtitle: searchText.isEmpty
                         ? "Aún no has creado ninguna copia de seguridad local. Tu historial aparecerá aquí."
@@ -149,17 +129,17 @@ struct BackupRowView: View {
     @State private var isHovered = false
 
     var body: some View {
-        PremiumCard(padding: 16) {
+        IOSSectionCard {
             VStack(alignment: .leading, spacing: 14) {
                 // Top Header Row
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(backup.displayName)
-                            .font(.headline.weight(.semibold))
+                            .font(IOSAppStyle.cardTitle)
                             .lineLimit(2)
                         
                         Text("\(backup.manifest.createdAt.formattedDateText) · \(backup.manifest.platform) (\(backup.manifest.deviceName))")
-                            .font(.caption)
+                            .font(IOSAppStyle.captionText)
                             .foregroundStyle(.secondary)
                     }
                     
@@ -170,22 +150,22 @@ struct BackupRowView: View {
                         if backup.isVerified {
                             if backup.verificationError != nil {
                                 Image(systemName: "exclamationmark.triangle.fill")
-                                    .foregroundStyle(AppleDesignSystem.danger)
+                                    .foregroundStyle(IOSAppStyle.danger)
                                 Text("Corrupta")
-                                    .font(.caption2.weight(.bold))
-                                    .foregroundStyle(AppleDesignSystem.danger)
+                                    .font(IOSAppStyle.captionText)
+                                    .foregroundStyle(IOSAppStyle.danger)
                             } else {
                                 Image(systemName: "checkmark.shield.fill")
-                                    .foregroundStyle(AppleDesignSystem.success)
+                                    .foregroundStyle(IOSAppStyle.success)
                                 Text("Válida")
-                                    .font(.caption2.weight(.bold))
-                                    .foregroundStyle(AppleDesignSystem.success)
+                                    .font(IOSAppStyle.captionText)
+                                    .foregroundStyle(IOSAppStyle.success)
                             }
                         } else {
                             Image(systemName: "questionmark.shield")
                                 .foregroundStyle(.secondary)
                             Text("Sin verificar")
-                                .font(.caption2.weight(.bold))
+                                .font(IOSAppStyle.captionText)
                                 .foregroundStyle(.secondary)
                         }
                     }
@@ -195,7 +175,7 @@ struct BackupRowView: View {
                         Capsule()
                             .fill(
                                 backup.isVerified
-                                    ? (backup.verificationError != nil ? AppleDesignSystem.danger.opacity(0.12) : AppleDesignSystem.success.opacity(0.12))
+                                    ? (backup.verificationError != nil ? IOSAppStyle.danger.opacity(0.12) : IOSAppStyle.success.opacity(0.12))
                                     : Color.secondary.opacity(0.12)
                             )
                     )
@@ -219,14 +199,14 @@ struct BackupRowView: View {
                 // Action Buttons
                 HStack(spacing: 12) {
                     Text(backup.sizeText)
-                        .font(.caption.weight(.bold))
+                        .font(IOSAppStyle.captionText)
                         .foregroundStyle(.secondary)
                     
                     Spacer()
                     
                     Button(action: onVerify) {
                         Label("Validar", systemImage: "shield.checkerboard")
-                            .font(.caption.weight(.semibold))
+                            .font(IOSAppStyle.captionText)
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
@@ -234,7 +214,7 @@ struct BackupRowView: View {
                     
                     Button(action: onExport) {
                         Label("Exportar", systemImage: "square.and.arrow.up")
-                            .font(.caption.weight(.semibold))
+                            .font(IOSAppStyle.captionText)
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
@@ -242,7 +222,7 @@ struct BackupRowView: View {
                     
                     Button(action: onRestore) {
                         Label("Restaurar", systemImage: "arrow.clockwise.to.line")
-                            .font(.caption.weight(.bold))
+                            .font(IOSAppStyle.captionText.weight(.bold))
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
@@ -284,7 +264,7 @@ struct CountPill: View {
         .foregroundStyle(.secondary)
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .background(IOSAppStyle.subtleFill, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
 }
 

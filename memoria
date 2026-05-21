@@ -405,6 +405,56 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-05-21 - Sistema visual premium unificado e interoperabilidad iOS/macOS
+
+Resumen:
+- Se implementó un sistema visual premium unificado para iOS mediante la creación de `IOSAppStyle` (tokens de diseño) y `IOSPremiumComponents` (un conjunto de 8 componentes reutilizables como `IOSSectionCard`, `IOSCommandBar`, `IOSSearchField`, `IOSStatusPill`, `IOSMetricCard`, `IOSPrimaryActionButton`, `IOSEmptyState` e `IOSSheetHeader`).
+- Se migraron los espacios de trabajo y módulos clave de la app iOS (Cuaderno, Planner, Alumnado, Ajustes, Sincronización LAN y Copias de Seguridad) para utilizar estos tokens y componentes unificados, eliminando espaciados mágicos, estilos inline y layouts redundantes.
+- Se corrigió un error de duplicación de bloques de código en `SyncPairingViews.swift` que causaba fallos de compilación en el target iOS.
+- Se verificó la consistencia estructural del código compartido en el grupo `AppleShared`.
+
+Validación:
+- Compilación del target iOS Simulator (`MiGestorKMPiOS`) completada con éxito (`BUILD SUCCEEDED`).
+- Compilación del target nativo macOS (`MiGestorKMPMac`) completada con éxito (`BUILD SUCCEEDED`).
+
+Notas para futuras conversaciones:
+- Al modificar archivos compartidos en `AppleShared`, verificar siempre que sigan compilando en ambos esquemas (macOS y iOS) para evitar regresiones de plataforma.
+
+### 2026-05-21 - Limpieza de código legacy y simplificación de ContentView.swift
+
+Resumen:
+- Se eliminaron más de 2950 líneas de código legacy acumuladas en `kmp/iosApp/App/ContentView.swift`, reduciéndolo a un contenedor raíz minimalista (~49 líneas) que solo aloja a `AppWorkspaceShell` y la presentación del modal de evaluación.
+- Se extrajeron todos los componentes y pantallas activos de `ContentView.swift` a archivos independientes:
+  - `kmp/iosApp/App/WeightEditorSheet.swift`: Editor de pesos y anchos de columnas del cuaderno, junto con el componente `FlowLayout`.
+  - `kmp/iosApp/App/RubricEvaluationView.swift`: Pantalla de evaluación individual de rúbricas (`RubricEvaluationView`) y fila de criterio (`RubricCriterionRow`).
+  - `kmp/iosApp/App/RubricsBuilderScreen.swift`: Diseñador de rúbricas (`RubricsBuilderScreen`) y sus subcomponentes.
+  - `kmp/iosApp/App/AssignRubricToTabView.swift`: Diálogo de asignación de rúbrica a pestañas del cuaderno.
+- Se trasladaron la utilidad `Color(hex:)` y las conformancias de `Identifiable` para los modelos Kotlin `RubricDetail` y `RubricLevel` a `kmp/iosApp/AppleShared/AppleAppEnvironment.swift`.
+- Se eliminaron de forma definitiva los archivos y vistas legacy que ya no se utilizaban en ninguna sección del proyecto: `StudentsModuleView.swift`, `PlanningModuleView.swift`, `PlannerScreenIOS.swift` y `PlannerIOSViewModel.swift`.
+- Se regeneró el proyecto Xcode usando `xcodegen generate` para registrar todos los nuevos archivos Swift.
+
+Validación:
+- Compilación de macOS (`MiGestorKMPMac`) finalizada con éxito (`BUILD SUCCEEDED`).
+- Compilación de iOS Simulator (`MiGestorKMPiOS`) finalizada con éxito (`BUILD SUCCEEDED`) tras resolver el conflicto de caché del framework multiplataforma.
+
+Notas para futuras conversaciones:
+- La reorganización no altera la funcionalidad ni el diseño visual original, únicamente desacopla la navegación y los diálogos del archivo raíz.
+- Si en futuras iteraciones se agregan nuevos archivos Swift, es imperativo ejecutar `xcodegen generate` dentro de `kmp/iosApp/` para regenerar la configuración del proyecto Xcode.
+
+### 2026-05-21 - Unificación de selección con IOSSelectionStore en iOS
+
+Resumen:
+- Se creó `kmp/iosApp/App/IOSSelectionStore.swift` para centralizar y unificar la selección de clase (`selectedClassId`) y alumno (`selectedStudentId`) entre todos los módulos de iOS.
+- Se integró `IOSSelectionStore` como un `@StateObject` en `kmp/iosApp/App/IOSRootView.swift` y se propagó su estado usando bindings proyectados (`$selectionStore.selectedClassId` y `$selectionStore.selectedStudentId`) a las sub-vistas del workspace: `NotebookModuleView`, `StudentProfilesWorkspaceView`, `AttendanceWorkspaceView`, `ReportsWorkspaceView` y `DiaryWorkspaceView`.
+- Se implementó la validación reactiva de alumnos en `IOSRootView.swift`: al cambiar de clase activa, se comprueba si el alumno seleccionado pertenece a la nueva clase (invocando `bridge.students(forClassId:)`), y en caso contrario (o si la clase pasa a ser `nil`), se limpia la selección de alumno.
+- Se actualizó el archivo de proyecto `project.pbxproj` regenerándolo con `xcodegen generate` para incluir `IOSSelectionStore.swift` en el build graph.
+
+Validación:
+- Compilación completa de la app iOS (`xcodebuild` para el target `MiGestorKMPiOS` y SDK `iphonesimulator`) finalizada con éxito (`BUILD SUCCEEDED`).
+
+Notas para futuras conversaciones:
+- La sincronización y persistencia de clase/alumno en iOS se mantiene desacoplada de la arquitectura de macOS (que sigue usando `StudentSelectionStore` en `MacRootView.swift`).
+
 ### 2026-05-21 - IOSFeatureRegistry para ordenar la navegación iPad
 
 Resumen:

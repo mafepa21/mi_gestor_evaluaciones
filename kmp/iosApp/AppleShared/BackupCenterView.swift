@@ -9,20 +9,20 @@ struct BackupCenterView: View {
             BackupBackdrop()
             
             ScrollView {
-                VStack(alignment: .leading, spacing: AppleDesignSystem.sectionSpacing) {
+                VStack(alignment: .leading, spacing: IOSAppStyle.sectionSpacing) {
                     // Title Header
                     VStack(alignment: .leading, spacing: 6) {
                         Text("MÓDULO DE SEGURIDAD")
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .font(IOSAppStyle.captionText)
                             .tracking(1.2)
-                            .foregroundStyle(AppleDesignSystem.accent)
+                            .foregroundStyle(IOSAppStyle.info)
                         
                         Text("Copias de Seguridad")
-                            .font(.system(size: 32, weight: .black, design: .rounded))
+                            .font(IOSAppStyle.pageTitle)
                             .foregroundStyle(.primary)
                         
                         Text("Protege, valida y restaura tus datos locales de forma segura.")
-                            .font(.subheadline)
+                            .font(IOSAppStyle.bodyText)
                             .foregroundStyle(.secondary)
                     }
                     .padding(.horizontal, 4)
@@ -31,11 +31,11 @@ struct BackupCenterView: View {
                     if let error = service.lastError {
                         HStack(spacing: 12) {
                             Image(systemName: "exclamationmark.octagon.fill")
-                                .foregroundStyle(AppleDesignSystem.danger)
+                                .foregroundStyle(IOSAppStyle.danger)
                                 .font(.title3)
                             
                             Text(error)
-                                .font(.subheadline)
+                                .font(IOSAppStyle.bodyText)
                                 .foregroundStyle(.primary)
                             
                             Spacer()
@@ -47,8 +47,8 @@ struct BackupCenterView: View {
                             .buttonStyle(.plain)
                         }
                         .padding()
-                        .background(AppleDesignSystem.danger.opacity(0.08), in: RoundedRectangle(cornerRadius: AppleDesignSystem.controlRadius))
-                        .overlay(RoundedRectangle(cornerRadius: AppleDesignSystem.controlRadius).stroke(AppleDesignSystem.danger.opacity(0.18), lineWidth: 1))
+                        .background(IOSAppStyle.danger.opacity(0.08), in: RoundedRectangle(cornerRadius: IOSAppStyle.controlRadius))
+                        .overlay(RoundedRectangle(cornerRadius: IOSAppStyle.controlRadius).stroke(IOSAppStyle.danger.opacity(0.18), lineWidth: 1))
                     }
                     
                     // Status Hero (Protected Card)
@@ -57,13 +57,13 @@ struct BackupCenterView: View {
                     // History Section
                     VStack(alignment: .leading, spacing: 14) {
                         Text("Copias Guardadas")
-                            .font(.title3.weight(.bold))
+                            .font(IOSAppStyle.sectionTitle)
                             .padding(.horizontal, 4)
                         
                         BackupHistoryList(service: service)
                     }
                 }
-                .padding(AppleDesignSystem.pagePadding)
+                .padding(IOSAppStyle.pagePadding)
             }
         }
         .navigationTitle("Copias de Seguridad")
@@ -80,13 +80,13 @@ struct BackupBackdrop: View {
     
     var body: some View {
         ZStack {
-            appPageBackground(for: colorScheme)
+            IOSAppStyle.pageBackground
             
             // Glowing mesh design bubbles
             Circle()
                 .fill(
                     RadialGradient(
-                        colors: [AppleDesignSystem.accent.opacity(colorScheme == .dark ? 0.08 : 0.04), .clear],
+                        colors: [IOSAppStyle.info.opacity(colorScheme == .dark ? 0.08 : 0.04), .clear],
                         center: .center,
                         startRadius: 0,
                         endRadius: 260

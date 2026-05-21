@@ -2,24 +2,24 @@ import SwiftUI
 import MiGestorKit
 
 enum NotebookStyle {
-    static let outerPadding: CGFloat = 16
-    static let sectionSpacing: CGFloat = 14
-    static let stackSpacing: CGFloat = 12
+    static let outerPadding: CGFloat = IOSAppStyle.pagePadding
+    static let sectionSpacing: CGFloat = IOSAppStyle.sectionSpacing
+    static let stackSpacing: CGFloat = IOSAppStyle.cardSpacing
     static let controlSpacing: CGFloat = 8
-    static let cardRadius: CGFloat = AppleDesignSystem.cardRadius
-    static let innerRadius: CGFloat = AppleDesignSystem.controlRadius
-    static let chipRadius: CGFloat = AppleDesignSystem.chipRadius
+    static let cardRadius: CGFloat = IOSAppStyle.cardRadius
+    static let innerRadius: CGFloat = IOSAppStyle.innerRadius
+    static let chipRadius: CGFloat = IOSAppStyle.controlRadius
     static let compactChipRadius: CGFloat = 12
     static let actionHeight: CGFloat = 44
     static let iconButtonSize: CGFloat = 44
     static let microSpacing: CGFloat = 4
-    static let border = Color.black.opacity(0.06)
-    static let softBorder = Color.black.opacity(0.04)
-    static let shadow = Color.black.opacity(0.08)
-    static let primaryTint = AppleDesignSystem.accent
-    static let successTint = AppleDesignSystem.success
-    static let warningTint = AppleDesignSystem.warning
-    static let surface = appSecondarySystemBackgroundColor().opacity(0.92)
+    static let border = IOSAppStyle.cardBorder
+    static let softBorder = Color.primary.opacity(0.04)
+    static let shadow = Color.black.opacity(0.04)
+    static let primaryTint = IOSAppStyle.info
+    static let successTint = IOSAppStyle.success
+    static let warningTint = IOSAppStyle.warning
+    static let surface = IOSAppStyle.cardBackground
     static let surfaceMuted = appTertiarySystemBackgroundColor().opacity(0.88)
     static let surfaceSoft = appSecondarySystemBackgroundColor().opacity(0.78)
     static let track = appTertiarySystemFillColor().opacity(0.55)
@@ -239,42 +239,24 @@ struct NotebookSummaryGenerationSheet: View {
     }
 
     private var introCard: some View {
-        NotebookSurface(cornerRadius: NotebookStyle.cardRadius, fill: NotebookStyle.surfaceMuted, padding: 20) {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .top, spacing: 12) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(NotebookStyle.primaryTint.opacity(0.14))
-                            .frame(width: 52, height: 52)
-
-                        Image(systemName: "apple.intelligence")
-                            .font(.system(size: 24, weight: .bold))
-                            .foregroundStyle(NotebookStyle.primaryTint)
-                            .accessibilityLabel("Síntesis pedagógica")
-                    }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(hasExistingSummary ? "Refina o actualiza la síntesis pedagógica del cuaderno." : "Genera una columna de síntesis pedagógica lista para cada alumno.")
-                            .font(.title2.weight(.bold))
-                        Text("Genera una síntesis pedagógica local a partir de las evidencias del cuaderno. Apple Intelligence se podrá usar más adelante como mejora opcional.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+        IOSSectionCard(title: "Síntesis Inteligente", systemImage: "apple.intelligence") {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(hasExistingSummary ? "Refina o actualiza la síntesis pedagógica del cuaderno." : "Genera una columna de síntesis pedagógica lista para cada alumno.")
+                    .font(IOSAppStyle.cardTitle)
+                Text("Genera una síntesis pedagógica local a partir de las evidencias del cuaderno. Apple Intelligence se podrá usar más adelante como mejora opcional.")
+                    .font(IOSAppStyle.bodyText)
+                    .foregroundStyle(.secondary)
 
                 Text("La síntesis se guarda como texto editable, no impacta en la media y no depende de servicios externos ni de modelos locales de Apple.")
-                    .font(.subheadline)
+                    .font(IOSAppStyle.captionText)
                     .foregroundStyle(.secondary)
             }
         }
     }
 
     private var configurationCard: some View {
-        NotebookSurface(cornerRadius: NotebookStyle.cardRadius, fill: NotebookStyle.surface, padding: 20) {
+        IOSSectionCard(title: "Configuración", systemImage: "slider.horizontal.3") {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Configuración")
-                    .font(.title3.weight(.bold))
-
                 if hasExistingSummary {
                     Picker("Columna destino", selection: $selectedExistingColumnId) {
                         ForEach(summaryColumns, id: \.id) { column in
@@ -284,54 +266,53 @@ struct NotebookSummaryGenerationSheet: View {
                     .pickerStyle(.menu)
                 }
 
-                HStack(spacing: 10) {
-                    NotebookPill(label: configuration.evidenceSource.title, systemImage: "tray.full", active: false, tint: NotebookStyle.primaryTint, compact: true)
-                    NotebookPill(label: configuration.length.title, systemImage: "text.alignleft", active: false, tint: NotebookStyle.primaryTint, compact: true)
-                    NotebookPill(label: configuration.generationMode.title, systemImage: "arrow.trianglehead.2.clockwise.rotate.90", active: true, tint: NotebookStyle.primaryTint, compact: true)
+                HStack(spacing: 8) {
+                    IOSStatusPill(label: configuration.evidenceSource.title, isActive: true)
+                    IOSStatusPill(label: configuration.length.title, isActive: true)
+                    IOSStatusPill(label: configuration.generationMode.title, isActive: true, tint: IOSAppStyle.warning)
                 }
 
                 Text("La configuración se toma de la columna creada desde “Síntesis pedagógica”. Si no existe ninguna, se usará la configuración por defecto.")
-                    .font(.subheadline)
+                    .font(IOSAppStyle.bodyText)
                     .foregroundStyle(.secondary)
             }
         }
     }
 
     private var generationCard: some View {
-        NotebookSurface(cornerRadius: NotebookStyle.cardRadius, fill: NotebookStyle.surfaceMuted, padding: 20) {
+        IOSSectionCard(title: "Generación", systemImage: "play.fill") {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Generación")
-                    .font(.title3.weight(.bold))
                 Text(targetSummaryText)
-                    .font(.subheadline.weight(.semibold))
+                    .font(IOSAppStyle.bodyText)
                     .foregroundStyle(.secondary)
 
                 if let progressMessage {
                     Text(progressMessage)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(NotebookStyle.primaryTint)
+                        .font(IOSAppStyle.bodyText)
+                        .foregroundStyle(IOSAppStyle.info)
                 }
 
                 if let feedbackMessage {
                     Text(feedbackMessage)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(NotebookStyle.warningTint)
+                        .font(IOSAppStyle.bodyText)
+                        .foregroundStyle(IOSAppStyle.warning)
                 }
 
-                Button {
-                    performGeneration()
-                } label: {
-                    if isGenerating {
-                        ProgressView()
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 4)
-                    } else {
-                        Label(ctaTitle, systemImage: "apple.intelligence")
-                            .frame(maxWidth: .infinity)
+                if isGenerating {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                } else {
+                    IOSPrimaryActionButton(
+                        label: ctaTitle,
+                        systemImage: "apple.intelligence",
+                        tint: IOSAppStyle.info,
+                        isEnabled: !resolvedStudentIds.isEmpty
+                    ) {
+                        performGeneration()
                     }
+                    .frame(maxWidth: .infinity, alignment: .center)
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(isGenerating || resolvedStudentIds.isEmpty)
             }
         }
     }
@@ -740,8 +721,7 @@ struct NotebookTopBar: View {
     }
 
     private var searchField: some View {
-        TextField("Buscar alumno…", text: $searchText)
-            .textFieldStyle(.roundedBorder)
+        IOSSearchField(text: $searchText, placeholder: "Buscar alumno…")
             .frame(minWidth: 180, maxWidth: 260)
     }
 
@@ -801,15 +781,9 @@ struct NotebookTopBar: View {
     }
 
     private var addColumnButton: some View {
-        Button(action: onOpenAddColumn) {
-            Label("Nueva columna", systemImage: "plus")
-                .font(.subheadline.weight(.semibold))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(Color.accentColor, in: Capsule())
-                .foregroundStyle(.white)
+        IOSPrimaryActionButton(label: "Nueva columna", systemImage: "plus") {
+            onOpenAddColumn()
         }
-        .buttonStyle(.plain)
         .help("Añadir nueva columna de evaluación")
     }
 
@@ -819,7 +793,7 @@ struct NotebookTopBar: View {
                 .font(.body.weight(.bold))
                 .foregroundStyle(.white)
                 .frame(width: 32, height: 32)
-                .background(Color.accentColor, in: Circle())
+                .background(IOSAppStyle.info, in: Circle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Nueva columna")

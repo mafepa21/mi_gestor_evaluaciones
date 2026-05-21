@@ -1834,19 +1834,8 @@ private struct PlannerToolbar: View {
             }
 
             HStack(spacing: 10) {
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundStyle(.secondary)
-                    TextField("Buscar sesión, unidad, objetivo…", text: $vm.searchText)
-                        .textFieldStyle(.plain)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(EvaluationDesign.surfaceSoft)
-                )
-                .appOnChange(of: vm.searchText) { _ in vm.applySearch() }
+                IOSSearchField(text: $vm.searchText, placeholder: "Buscar sesión, unidad, objetivo…")
+                    .appOnChange(of: vm.searchText) { _ in vm.applySearch() }
 
                 Menu {
                     Button(vm.selectionMode ? "Salir de selección" : "Seleccionar sesiones") {
@@ -2214,20 +2203,18 @@ private struct PlannerScheduleBoard: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: EvaluationDesign.cardSpacing) {
-                PremiumCard(padding: EvaluationDesign.screenPadding, cornerRadius: 18) {
+            VStack(alignment: .leading, spacing: IOSAppStyle.sectionSpacing) {
+                IOSSectionCard(title: "Resumen operativo", systemImage: "calendar.badge.clock") {
                     VStack(alignment: .leading, spacing: 16) {
-                        PremiumSectionHeader(
-                            eyebrow: "Agenda docente",
-                            title: "Resumen operativo",
-                            subtitle: "La configuración editable vive ahora en Ajustes para que Planner conserve una sola tarea principal."
-                        )
+                        Text("La configuración editable vive ahora en Ajustes para que Planner conserve una sola tarea principal.")
+                            .font(IOSAppStyle.captionText)
+                            .foregroundStyle(.secondary)
 
                         HStack(spacing: 12) {
-                            PlannerSummaryMetric(title: "Agenda", value: vm.scheduleName, tint: .blue)
-                            PlannerSummaryMetric(title: "Curso", value: "\(vm.scheduleStartDate) · \(vm.scheduleEndDate)", tint: .indigo)
-                            PlannerSummaryMetric(title: "Franjas", value: "\(vm.visibleScheduleSlotsSummaryCount)", tint: .teal)
-                            PlannerSummaryMetric(title: "Evaluaciones", value: "\(vm.evaluationPeriods.count)", tint: .orange)
+                            IOSMetricCard(title: "Agenda", value: vm.scheduleName, tint: .blue)
+                            IOSMetricCard(title: "Curso", value: "\(vm.scheduleStartDate) · \(vm.scheduleEndDate)", tint: .indigo)
+                            IOSMetricCard(title: "Franjas", value: "\(vm.visibleScheduleSlotsSummaryCount)", tint: .teal)
+                            IOSMetricCard(title: "Evaluaciones", value: "\(vm.evaluationPeriods.count)", tint: .orange)
                         }
 
                         Label(vm.activeWeekdaySummary, systemImage: "calendar.badge.clock")
@@ -2243,13 +2230,11 @@ private struct PlannerScheduleBoard: View {
                     }
                 }
 
-                PremiumCard(padding: EvaluationDesign.screenPadding, cornerRadius: 18) {
+                IOSSectionCard(title: "Franjas activas", systemImage: "clock.fill") {
                     VStack(alignment: .leading, spacing: 16) {
-                        PremiumSectionHeader(
-                            eyebrow: "Horario persistente",
-                            title: "Franjas activas",
-                            subtitle: "Resumen de las franjas que ya están alimentando el tablero semanal actual."
-                        )
+                        Text("Resumen de las franjas que ya están alimentando el tablero semanal actual.")
+                            .font(IOSAppStyle.captionText)
+                            .foregroundStyle(.secondary)
 
                         if vm.effectiveScheduleSlots.isEmpty {
                             Text("Todavía no hay franjas definidas para esta agenda.")
@@ -2287,13 +2272,11 @@ private struct PlannerScheduleBoard: View {
                     }
                 }
 
-                PremiumCard(padding: EvaluationDesign.screenPadding, cornerRadius: 18) {
+                IOSSectionCard(title: "Previsión lectiva", systemImage: "calendar.badge.exclamationmark") {
                     VStack(alignment: .leading, spacing: 16) {
-                        PremiumSectionHeader(
-                            eyebrow: "Evaluaciones",
-                            title: "Previsión lectiva",
-                            subtitle: "Sigue visible en Planner para contrastar lo previsto con lo ya creado, pero se edita desde Ajustes."
-                        )
+                        Text("Sigue visible en Planner para contrastar lo previsto con lo ya creado, pero se edita desde Ajustes.")
+                            .font(IOSAppStyle.captionText)
+                            .foregroundStyle(.secondary)
 
                         if vm.evaluationPeriods.isEmpty {
                             Text("Aún no hay periodos evaluativos configurados.")
@@ -2333,34 +2316,12 @@ private struct PlannerScheduleBoard: View {
                     }
                 }
             }
-            .padding(EvaluationDesign.screenPadding)
+            .padding(IOSAppStyle.pagePadding)
         }
     }
 }
 
-private struct PlannerSummaryMetric: View {
-    let title: String
-    let value: String
-    let tint: Color
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(.primary)
-                .lineLimit(2)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(tint.opacity(0.10))
-        )
-    }
-}
+// PlannerSummaryMetric removed in favor of IOSMetricCard
 
 private struct PlannerForecastRowView: View {
     let row: PlannerSessionForecast
@@ -3492,16 +3453,14 @@ struct PlannerSessionComposerSheet: View {
 
     private var composerContent: some View {
         ScrollView(.vertical, showsIndicators: true) {
-            VStack(alignment: .leading, spacing: 18) {
-                PremiumCard(padding: EvaluationDesign.screenPadding, cornerRadius: 18) {
+            VStack(alignment: .leading, spacing: IOSAppStyle.sectionSpacing) {
+                IOSSectionCard(title: vm.composerDraft.sessionId == 0 ? "Nueva sesión" : "Editar sesión", systemImage: "pencil.and.outline") {
                     VStack(alignment: .leading, spacing: 14) {
                         PlannerSaveStateInlineStatus(state: vm.composerSaveState)
 
-                        PremiumSectionHeader(
-                            eyebrow: "Sesión",
-                            title: vm.composerDraft.sessionId == 0 ? "Nueva sesión" : "Editar sesión",
-                            subtitle: "Redacta la sesión en formato largo y déjala ya planificada."
-                        )
+                        Text("Redacta la sesión en formato largo y déjala ya planificada.")
+                            .font(IOSAppStyle.captionText)
+                            .foregroundStyle(.secondary)
 
                         Picker("Curso", selection: $vm.composerDraft.groupId) {
                             Text("Selecciona curso").tag(Optional<Int64>.none)
@@ -3545,13 +3504,11 @@ struct PlannerSessionComposerSheet: View {
                     }
                 }
 
-                PremiumCard(padding: EvaluationDesign.screenPadding, cornerRadius: 18) {
+                IOSSectionCard(title: "Instrumentos enlazados", systemImage: "doc.plaintext.fill") {
                     VStack(alignment: .leading, spacing: 12) {
-                        PremiumSectionHeader(
-                            eyebrow: "Evaluación",
-                            title: "Instrumentos enlazados",
-                            subtitle: "Selecciona evaluaciones o rúbricas filtradas por el curso y la situación de aprendizaje."
-                        )
+                        Text("Selecciona evaluaciones o rúbricas filtradas por el curso y la situación de aprendizaje.")
+                            .font(IOSAppStyle.captionText)
+                            .foregroundStyle(.secondary)
 
                         if !vm.composerContextError.isEmpty {
                             Text(vm.composerContextError)
@@ -3569,13 +3526,11 @@ struct PlannerSessionComposerSheet: View {
                     }
                 }
 
-                PremiumCard(padding: EvaluationDesign.screenPadding, cornerRadius: 18) {
+                IOSSectionCard(title: "Dónde cae la sesión", systemImage: "calendar.badge.clock") {
                     VStack(alignment: .leading, spacing: 12) {
-                        PremiumSectionHeader(
-                            eyebrow: "Ubicación semanal",
-                            title: "Dónde cae la sesión",
-                            subtitle: "Se guardará como planificada en la franja seleccionada."
-                        )
+                        Text("Se guardará como planificada en la franja seleccionada.")
+                            .font(IOSAppStyle.captionText)
+                            .foregroundStyle(.secondary)
 
                         Picker("Día", selection: $vm.composerDraft.dayOfWeek) {
                             ForEach(vm.visibleWeekdays, id: \.self) { day in
@@ -3593,7 +3548,7 @@ struct PlannerSessionComposerSheet: View {
                     }
                 }
             }
-            .padding(EvaluationDesign.screenPadding)
+            .padding(IOSAppStyle.pagePadding)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }

@@ -265,19 +265,40 @@ extension NotebookModuleView {
 
                     if newValue == nil {
                         isInspectorPresented = false
+                        if focusedCellId == nil && activeChoiceCellId == nil {
+                            focusMode = .normal
+                        }
                     }
                 }
             }
             .appOnChange(of: isInspectorPresented) { presented in
                 Task { @MainActor in
                     if presented {
+                        focusMode = .reviewing
                         startSelectionAuditObservationIfNeeded(for: inspectorSelection)
                     } else {
                         auditObservationTask?.cancel()
                         auditObservationTask = nil
                         currentSelectionAuditEvents = []
                         inspectorSelection = nil
+                        if focusedCellId == nil && activeChoiceCellId == nil {
+                            focusMode = .normal
+                        }
                     }
+                }
+            }
+            .appOnChange(of: focusedCellId) { newValue in
+                if newValue != nil {
+                    focusMode = .editing
+                } else if activeChoiceCellId == nil && !isInspectorPresented {
+                    focusMode = .normal
+                }
+            }
+            .appOnChange(of: activeChoiceCellId) { newValue in
+                if newValue != nil {
+                    focusMode = .editing
+                } else if focusedCellId == nil && !isInspectorPresented {
+                    focusMode = .normal
                 }
             }
             .appOnChange(of: selectedAttachmentPhoto) { newValue in

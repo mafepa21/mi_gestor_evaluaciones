@@ -405,6 +405,21 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-05-21 - Cuaderno iOS compacto con focus mode
+
+Resumen:
+- Se completó el bloque de limpieza del Cuaderno iOS: `NotebookModuleView` deja de mostrar acciones inline por defecto, sustituye la cabecera alta por `NotebookCompactCommandBar`, oculta el tab strip cuando solo hay una pestaña y mueve tabs/categorías/acciones secundarias a menús.
+- Se añadió `NotebookFocusMode` (`normal`, `editing`, `reviewing`) para simplificar acciones avanzadas durante edición o revisión, se redujo la densidad del grid iOS (`56` en iPhone, `52` en iPad) y se oculta la folder lane en iPhone manteniéndola en iPad/macOS.
+- El inspector ahora usa sheet en iPhone y panel lateral cuando hay size class regular, acercando iPad al comportamiento profesional de macOS.
+- Archivos principales: `kmp/iosApp/App/NotebookModuleView.swift`, `NotebookCompactCommandBar.swift`, `NotebookFocusMode.swift`, `NotebookModuleGridCells.swift`, `NotebookModuleDialogs.swift`, `NotebookModuleToolbarState.swift` y `kmp/iosApp/MiGestorKMPiOS.xcodeproj/project.pbxproj`.
+
+Validación:
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -sdk iphonesimulator CODE_SIGNING_ALLOWED=NO build` finalizó con `BUILD SUCCEEDED`.
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -configuration Debug CODE_SIGNING_ALLOWED=NO build` finalizó con `BUILD SUCCEEDED`.
+
+Notas para futuras conversaciones:
+- Las acciones de celda críticas deben permanecer accesibles por context menu/long press o inspector; evitar volver a añadir botones persistentes dentro del grid salvo que sea imprescindible.
+
 ### 2026-05-21 - Sistema visual premium unificado e interoperabilidad iOS/macOS
 
 Resumen:

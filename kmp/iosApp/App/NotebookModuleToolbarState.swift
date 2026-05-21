@@ -88,6 +88,7 @@ extension NotebookModuleView {
         selectedGroupId = nil
         inspectorSelection = nil
         isInspectorPresented = false
+        focusMode = .normal
         highlightedRandomStudentId = nil
         bridge.setSelectedNotebookTab(id: tabId)
     }
@@ -100,6 +101,7 @@ extension NotebookModuleView {
         inspectorNoteDraft = ""
         inspectorIconDraft = ""
         inspectorAttachmentUris = []
+        focusMode = .normal
         highlightedRandomStudentId = nil
         searchText = ""
         selectedClassId = classId
@@ -127,6 +129,7 @@ extension NotebookModuleView {
                 }
                 if inspectorSelection != nil {
                     isInspectorPresented.toggle()
+                    focusMode = isInspectorPresented ? .reviewing : .normal
                 }
             },
             onAddColumn: {
@@ -174,6 +177,7 @@ extension NotebookModuleView {
                 }
                 if inspectorSelection != nil {
                     isInspectorPresented.toggle()
+                    focusMode = isInspectorPresented ? .reviewing : .normal
                 }
             },
             onAddColumn: {

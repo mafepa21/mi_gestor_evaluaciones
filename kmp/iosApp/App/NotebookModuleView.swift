@@ -9,7 +9,9 @@ struct NotebookModuleView: View {
     #if os(macOS)
     let notebookGridRowHeight: CGFloat = 50
     #else
-    let notebookGridRowHeight: CGFloat = 60
+    var notebookGridRowHeight: CGFloat {
+        isCompact ? 56 : 52
+    }
     #endif
     let notebookGridHeaderHeight: CGFloat = 56
     let notebookGridFolderLaneHeight: CGFloat = 34
@@ -86,6 +88,7 @@ struct NotebookModuleView: View {
     @State var isFormulaAIGenerating = false
     @State var activeChoiceCellId: String? = nil
     @State var organizationColumnSearchText = ""
+    @State var focusMode: NotebookFocusMode = .normal
     @State private var contextualAIOrchestrator = AppleAIOrchestrator()
     @StateObject private var formulaAIServiceStore = AppleFoundationFormulaServiceStore()
     @AppStorage("notebook.navigationDirection") var navigationDirectionRaw = NotebookNavigationDirection.down.rawValue
@@ -164,6 +167,7 @@ struct NotebookModuleView: View {
     func closeInspectorAndTransientState() {
         isInspectorPresented = false
         inspectorSelection = nil
+        focusMode = .normal
         inspectorNoteDraft = ""
         inspectorIconDraft = ""
         inspectorAttachmentUris = []
@@ -184,6 +188,7 @@ struct NotebookModuleView: View {
         highlightedRandomStudentId = nil
         activeChoiceCellId = nil
         focusedCellId = nil
+        focusMode = .normal
 
         undoStack = []
         todayAttendanceByStudentId = [:]
@@ -204,6 +209,14 @@ struct NotebookModuleView: View {
         return horizontalSizeClass == .compact
         #else
         return false
+        #endif
+    }
+
+    var shouldUseSideInspector: Bool {
+        #if os(iOS)
+        return horizontalSizeClass == .regular
+        #else
+        return true
         #endif
     }
 
@@ -257,20 +270,27 @@ struct NotebookModuleView: View {
 
     func centerPanel(data: NotebookUiStateData) -> some View {
         let rows = filteredRows(data: data)
+        let tabs = orderedNotebookTabs(data: data)
 
         return HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 0) {
-                NotebookTopBar(
+                NotebookCompactCommandBar(
                     bridge: bridge,
                     searchText: $searchText,
-                    surfaceMode: $surfaceMode,
-                    navigationDirection: navigationDirection,
+                    classTitle: activeClassLabel,
+                    subtitle: tabs.count == 1 ? tabs.first?.title : nil,
+                    selectedClassId: bridge.notebookViewModel.currentClassId?.int64Value,
+                    classes: sortedClasses,
+                    focusMode: focusMode,
                     isInspectorPresented: isInspectorPresented,
-                    isAttendanceQuickMode: isAttendanceQuickMode,
-                    canMarkAllPresent: !rows.isEmpty,
                     canUndo: !undoStack.isEmpty,
+                    isAttendanceQuickMode: isAttendanceQuickMode,
+                    showsAdvancedActions: focusMode == .normal,
                     onSelectClass: selectNotebookClass,
-                    onOpenOrganizationMenu: {
+                    onAddColumn: {
+                        addColumnContext = NotebookAddColumnContext(categoryId: nil, startsCreatingCategory: false)
+                    },
+                    onOpenOrganization: {
                         isOrganizationMenuPresented = true
                     },
                     onToggleInspector: {
@@ -281,16 +301,13 @@ struct NotebookModuleView: View {
                                 openInspectorForSelection(data)
                             }
                             isInspectorPresented = inspectorSelection != nil
+                            if isInspectorPresented {
+                                focusMode = .reviewing
+                            }
                         }
                     },
-                    onOpenAdvancedMenu: {
-                        isOrganizationMenuPresented = true
-                    },
-                    onOpenAddColumn: {
-                        addColumnContext = NotebookAddColumnContext(categoryId: nil, startsCreatingCategory: false)
-                    },
-                    onNavigationDirectionChange: { direction in
-                        navigationDirection = direction
+                    onUndo: {
+                        undoLastCellChange()
                     },
                     onToggleAttendanceQuickMode: {
                         isAttendanceQuickMode.toggle()
@@ -299,38 +316,34 @@ struct NotebookModuleView: View {
                             focusedCellId = nil
                         }
                     },
-                    onMarkAllPresent: {
-                        requestMarkAllVisibleStudentsPresent(data: data)
-                    },
-                    onUndo: {
-                        undoLastCellChange()
-                    },
-                    showsInlineActions: showsNotebookInlineActions,
-                    showsClassPicker: macPresentation != .full
-                )
-                Divider()
-                NotebookTabStrip(
-                    tabs: orderedNotebookTabs(data: data),
-                    activeTabId: activeNotebookTabId(data: data),
-                    onSelect: { tabId in
-                        selectNotebookTab(tabId)
-                    },
-                    onCreateTab: {
-                        presentCreateNotebookTab()
-                    },
-                    onRenameTab: { tab in
-                        presentRenameNotebookTab(tab)
-                    },
-                    onDeleteTab: { tab in
-                        pendingDeleteNotebookTab = tab
+                    secondaryActions: {
+                        notebookCommandMenuContent(data: data, tabs: tabs, rows: rows)
                     }
                 )
-                Divider()
+                if tabs.count > 1 && focusMode == .normal {
+                    NotebookTabStrip(
+                        tabs: tabs,
+                        activeTabId: activeNotebookTabId(data: data),
+                        onSelect: { tabId in
+                            selectNotebookTab(tabId)
+                        },
+                        onCreateTab: {
+                            presentCreateNotebookTab()
+                        },
+                        onRenameTab: { tab in
+                            presentRenameNotebookTab(tab)
+                        },
+                        onDeleteTab: { tab in
+                            pendingDeleteNotebookTab = tab
+                        }
+                    )
+                    Divider()
+                }
                 spreadsheetContent(data: data, rows: rows)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
-            if !isCompact && macPresentation == .full && isInspectorPresented {
+            if shouldUseSideInspector && macPresentation == .full && isInspectorPresented {
                 Divider().opacity(0.16)
                 inspectorPanel(data: data, rows: rows)
                     .frame(width: 360)
@@ -367,13 +380,14 @@ struct NotebookModuleView: View {
             if case .folder = $0 { return true }
             return false
         }
+        let shouldShowFolderLane = hasFolders && !isCompact
 
         NotebookGridContent(
             rows: rows,
             surfaceMode: surfaceMode,
             fixedColumnWidth: fixedZoneWidth,
             trailingFixedColumnWidth: trailingFixedSegments.isEmpty ? 0 : defaultFixedWidth(for: .average) + trailingPaddingCompensation,
-            topAccessoryHeight: hasFolders ? notebookGridFolderLaneHeight : 0,
+            topAccessoryHeight: shouldShowFolderLane ? notebookGridFolderLaneHeight : 0,
             headerHeight: notebookGridHeaderHeight,
             rowHeight: notebookGridRowHeight,
             rowInvalidationKey: gridRowInvalidationKey(data: data),
@@ -429,7 +443,7 @@ struct NotebookModuleView: View {
             )
         } topAccessory: {
             Group {
-                if hasFolders {
+                if shouldShowFolderLane {
                     HStack(alignment: .top, spacing: 8) {
                         ForEach(laneItems, id: \.id) { item in
                             switch item {
@@ -510,11 +524,86 @@ struct NotebookModuleView: View {
     var maxFixedZoneWidth: CGFloat { 700 }
 
     var showsNotebookInlineActions: Bool {
-        #if os(macOS)
-        return false
-        #else
-        return true
-        #endif
+        false
+    }
+
+    @ViewBuilder
+    func notebookCommandMenuContent(data: NotebookUiStateData, tabs: [NotebookTab], rows: [NotebookTableRow]) -> some View {
+        if !rows.isEmpty {
+            Button {
+                requestMarkAllVisibleStudentsPresent(data: data)
+            } label: {
+                Label("Marcar visibles presentes", systemImage: "checkmark.circle")
+            }
+        }
+
+        Menu("Vista") {
+            Button {
+                surfaceMode = .grid
+            } label: {
+                Label("Grid", systemImage: surfaceMode == .grid ? "checkmark" : "tablecells")
+            }
+
+            Button {
+                surfaceMode = .seatingPlan
+            } label: {
+                Label("Plano", systemImage: surfaceMode == .seatingPlan ? "checkmark" : "rectangle.3.group")
+            }
+            .disabled(focusMode != .normal)
+        }
+
+        Menu("Pestañas") {
+            Button("Nueva pestaña") {
+                presentCreateNotebookTab()
+            }
+
+            if let activeTab = activeNotebookTab(data: data) {
+                Button("Renombrar \(activeTab.title)") {
+                    presentRenameNotebookTab(activeTab)
+                }
+                Button("Eliminar \(activeTab.title)", role: .destructive) {
+                    pendingDeleteNotebookTab = activeTab
+                }
+            }
+
+            if tabs.count > 1 {
+                Divider()
+                ForEach(tabs, id: \.id) { tab in
+                    Button {
+                        selectNotebookTab(tab.id)
+                    } label: {
+                        Label(tab.title, systemImage: tab.id == activeNotebookTabId(data: data) ? "checkmark" : "rectangle.on.rectangle")
+                    }
+                }
+            }
+        }
+
+        if isCompact, !relevantCategories(data: data).isEmpty {
+            Menu("Categorías") {
+                Button("Nueva categoría") {
+                    presentCreateCategory()
+                }
+
+                ForEach(relevantCategories(data: data), id: \.id) { category in
+                    Button(isCategoryCollapsed(category) ? "Expandir \(category.name)" : "Colapsar \(category.name)") {
+                        setCategoryCollapsed(category, collapsed: !isCategoryCollapsed(category))
+                    }
+                }
+            }
+        }
+
+        if focusMode == .normal {
+            Button {
+                notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: nil)
+            } label: {
+                Label("Generar síntesis", systemImage: "apple.intelligence")
+            }
+            .disabled(data.sheet.rows.isEmpty || data.sheet.columns.filter(isNotebookIndividualSummaryColumn).isEmpty)
+        }
+
+        ShareLink(item: exportText(data: data)) {
+            Label("Exportar cuaderno", systemImage: "square.and.arrow.up")
+        }
     }
 
     func snapFixedZoneWidth() {
@@ -636,7 +725,7 @@ struct NotebookModuleView: View {
                         #endif
                 }
                 .sheet(isPresented: Binding(
-                    get: { isCompact && isInspectorPresented },
+                    get: { !shouldUseSideInspector && isInspectorPresented },
                     set: { isPresented in
                         if !isPresented {
                             closeInspectorAndTransientState()

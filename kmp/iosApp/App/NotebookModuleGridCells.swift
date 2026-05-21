@@ -324,6 +324,9 @@ extension NotebookModuleView {
                         reloadToken: cellReloadRevision,
                         onSelect: {
                             inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
+                            if focusedCellId == nil && activeChoiceCellId == nil && !isInspectorPresented {
+                                focusMode = .normal
+                            }
                         },
                         onPrepareUndo: { previousValue, previousDisplayLabel in
                             recordCellUndo(
@@ -334,16 +337,20 @@ extension NotebookModuleView {
                             )
                         },
                         onOpenFormula: {
+                            focusMode = .editing
                             presentFormulaEditor(for: column)
                         },
                         onOpenRubricIndividual: {
+                            focusMode = .editing
                             openRubricIndividual(column: column, item: item)
                         },
                         onOpenRubricBulk: {
+                            focusMode = .editing
                             openRubricBulk(column: column, data: data)
                         },
                         onGenerateSummary: {
                             inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
+                            focusMode = .reviewing
                             notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: column.id)
                         },
                         onNavigate: { direction in
@@ -368,6 +375,39 @@ extension NotebookModuleView {
                     Rectangle()
                         .stroke(notebookColumnCellBorder(for: column, isActive: isCellSelected), lineWidth: isCellSelected ? 1.4 : 0.5)
                 )
+                .contextMenu {
+                    Button("Abrir inspector") {
+                        inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
+                        isInspectorPresented = true
+                        focusMode = .reviewing
+                    }
+
+                    if column.type == .calculated {
+                        Button("Editar fórmula…") {
+                            focusMode = .editing
+                            presentFormulaEditor(for: column)
+                        }
+                    }
+
+                    if column.type == .rubric {
+                        Button("Evaluar alumno…") {
+                            focusMode = .editing
+                            openRubricIndividual(column: column, item: item)
+                        }
+                        Button("Evaluar grupo…") {
+                            focusMode = .editing
+                            openRubricBulk(column: column, data: data)
+                        }
+                    }
+
+                    if isNotebookIndividualSummaryColumn(column) {
+                        Button(summaryActionTitle(for: column, data: data)) {
+                            inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
+                            focusMode = .reviewing
+                            notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: column.id)
+                        }
+                    }
+                }
             )
         case .collapsedCategory(let category, let columns):
             let filled = filledCellCount(item, columns: columns)

@@ -7,6 +7,7 @@ extension NotebookModuleView {
         if let firstColumn = managedColumns(data: data).first,
            let firstRow = filteredRows(data: data).first {
             inspectorSelection = NotebookInspectorSelection(studentId: firstRow.student.id, columnId: firstColumn.id)
+            focusMode = .reviewing
         }
     }
 
@@ -19,6 +20,7 @@ extension NotebookModuleView {
             inspectorSelection = NotebookInspectorSelection(studentId: studentId, columnId: firstColumn.id)
         }
         isInspectorPresented = true
+        focusMode = .reviewing
     }
 
     func evaluationTitle(for column: NotebookColumnDefinition) -> String {

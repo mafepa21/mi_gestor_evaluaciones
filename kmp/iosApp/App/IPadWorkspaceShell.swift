@@ -564,6 +564,7 @@ struct AppWorkspaceShell: View {
     @State var showingRubricBuilder = false
     @StateObject var layoutState = WorkspaceLayoutState()
     @State var rootSplitVisibility: NavigationSplitViewVisibility = .all
+    @State var debouncedSearchText = ""
     @State var contextualAISheetState: ContextualAISheetState?
     @State var isLoadingContextualAI = false
     @State var classroomContext: KmpBridge.ClassroomCaptureContextSnapshot?
@@ -573,7 +574,7 @@ struct AppWorkspaceShell: View {
     @State var isSavingClassroomCapture = false
 
     var searchResults: [WorkspaceSearchResult] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let query = debouncedSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return [] }
 
         let moduleResults = AppWorkspaceModule.allCases
@@ -685,6 +686,11 @@ struct AppWorkspaceShell: View {
             Task { await reloadClassroomContext() }
         }
         .appOnChange(of: selectedStudentId) { newValue in persistedSelectedStudentId = Int(newValue ?? 0) }
+        .task(id: searchText) {
+            try? await Task.sleep(nanoseconds: 220_000_000)
+            guard !Task.isCancelled else { return }
+            debouncedSearchText = searchText
+        }
         .onAppear(perform: syncRootSplitVisibility)
         .appOnChange(of: layoutState.isSidebarVisible) { _ in syncRootSplitVisibility() }
         .appOnChange(of: layoutState.isFocusModeEnabled) { _ in syncRootSplitVisibility() }
@@ -905,113 +911,157 @@ struct AppWorkspaceShell: View {
     }
 
     var attendanceGlobalToolbarRow: some View {
-        HStack(spacing: 12) {
-            Menu {
-                Button("Sin clase activa") {
-                    updateGlobalClassContext(nil)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                attendanceClassMenu
+                attendanceSearchField
+                attendanceFilterMenu
+                attendanceActionsMenu
+                Spacer(minLength: 8)
+                attendanceDatePicker
+                attendanceModePicker(width: 250)
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 12) {
+                    attendanceClassMenu
+                    attendanceFilterMenu
+                    attendanceActionsMenu
+                    Spacer(minLength: 8)
+                    attendanceDatePicker
                 }
-                ForEach(bridge.classes, id: \.id) { schoolClass in
-                    Button {
-                        updateGlobalClassContext(schoolClass.id)
-                    } label: {
-                        HStack {
-                            Text(schoolClass.name)
-                            if selectedClassId == schoolClass.id {
-                                Image(systemName: "checkmark")
-                            }
+                HStack(spacing: 12) {
+                    attendanceSearchField
+                    attendanceModePicker(width: 280)
+                }
+            }
+        }
+    }
+
+    var attendanceClassMenu: some View {
+        Menu {
+            Button("Sin clase activa") {
+                updateGlobalClassContext(nil)
+            }
+            ForEach(bridge.classes, id: \.id) { schoolClass in
+                Button {
+                    updateGlobalClassContext(schoolClass.id)
+                } label: {
+                    HStack {
+                        Text(schoolClass.name)
+                        if selectedClassId == schoolClass.id {
+                            Image(systemName: "checkmark")
                         }
                     }
                 }
-            } label: {
-                Label(activeClassLabel, systemImage: "rectangle.3.group")
-                    .frame(minWidth: 220, alignment: .leading)
             }
-            .buttonStyle(.bordered)
-
-            HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                TextField(
-                    "Buscar alumno…",
-                    text: Binding(
-                        get: { layoutState.attendanceSearchText },
-                        set: { layoutState.setAttendanceSearchText($0) }
-                    )
-                )
-                .textFieldStyle(.plain)
-                if !layoutState.attendanceSearchText.isEmpty {
-                    Button {
-                        layoutState.setAttendanceSearchText("")
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-
-            Menu {
-                Button("Todos los estados") {
-                    layoutState.setAttendanceStatusFilter("TODOS")
-                }
-                ForEach(AttendanceStatusOption.all) { option in
-                    Button(option.label) {
-                        layoutState.setAttendanceStatusFilter(option.id)
-                    }
-                }
-            } label: {
-                Image(systemName: "line.3.horizontal.decrease.circle")
-                    .font(.title3.weight(.semibold))
-            }
-            .buttonStyle(.bordered)
-
-            Menu {
-                Button("Todos presentes") {
-                    layoutState.attendanceMarkAllPresent()
-                }
-                Button("Repetir patrón") {
-                    layoutState.attendanceRepeatPattern()
-                }
-                if layoutState.attendanceHasSelection {
-                    Button("Cerrar ficha") {
-                        layoutState.attendanceClearSelection()
-                    }
-                }
-            } label: {
-                Label("Acciones", systemImage: "ellipsis.circle")
-            }
-            .buttonStyle(.bordered)
-
-            Spacer(minLength: 8)
-
-            DatePicker(
-                "Fecha",
-                selection: Binding(
-                    get: { layoutState.attendanceSelectedDate },
-                    set: { layoutState.setAttendanceDate($0) }
-                ),
-                displayedComponents: .date
-            )
-            .labelsHidden()
-            .fixedSize()
-
-            Picker(
-                "Vista",
-                selection: Binding(
-                    get: { layoutState.attendanceBoardMode },
-                    set: { layoutState.setAttendanceBoardMode($0) }
-                )
-            ) {
-                Text("Cursos").tag("Cursos")
-                Text("Día").tag("Día")
-                Text("Historial").tag("Historial")
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 250)
+        } label: {
+            Label(activeClassLabel, systemImage: "rectangle.3.group")
+                .frame(minWidth: 220, alignment: .leading)
         }
+        .buttonStyle(.bordered)
+    }
+
+    var attendanceSearchField: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField(
+                "Buscar alumno…",
+                text: Binding(
+                    get: { layoutState.attendanceSearchText },
+                    set: { layoutState.setAttendanceSearchText($0) }
+                )
+            )
+            .textFieldStyle(.plain)
+            if !layoutState.attendanceSearchText.isEmpty {
+                Button {
+                    layoutState.setAttendanceSearchText("")
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Borrar búsqueda")
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    var attendanceFilterMenu: some View {
+        Menu {
+            Button("Todos los estados") {
+                layoutState.setAttendanceStatusFilter("TODOS")
+            }
+            ForEach(AttendanceStatusOption.all) { option in
+                Button(option.label) {
+                    layoutState.setAttendanceStatusFilter(option.id)
+                }
+            }
+        } label: {
+            Label(attendanceFilterLabel, systemImage: attendanceFilterSystemImage)
+        }
+        .buttonStyle(.bordered)
+    }
+
+    var attendanceActionsMenu: some View {
+        Menu {
+            Button("Todos presentes") {
+                layoutState.attendanceMarkAllPresent()
+            }
+            Button("Repetir patrón") {
+                layoutState.attendanceRepeatPattern()
+            }
+            if layoutState.attendanceHasSelection {
+                Button("Cerrar ficha") {
+                    layoutState.attendanceClearSelection()
+                }
+            }
+        } label: {
+            Label("Acciones", systemImage: "ellipsis.circle")
+        }
+        .buttonStyle(.bordered)
+    }
+
+    var attendanceDatePicker: some View {
+        DatePicker(
+            "Fecha",
+            selection: Binding(
+                get: { layoutState.attendanceSelectedDate },
+                set: { layoutState.setAttendanceDate($0) }
+            ),
+            displayedComponents: .date
+        )
+        .labelsHidden()
+        .fixedSize()
+    }
+
+    func attendanceModePicker(width: CGFloat) -> some View {
+        Picker(
+            "Vista",
+            selection: Binding(
+                get: { layoutState.attendanceBoardMode },
+                set: { layoutState.setAttendanceBoardMode($0) }
+            )
+        ) {
+            Text("Cursos").tag("Cursos")
+            Text("Día").tag("Día")
+            Text("Historial").tag("Historial")
+        }
+        .pickerStyle(.segmented)
+        .frame(maxWidth: width)
+    }
+
+    var attendanceFilterLabel: String {
+        layoutState.attendanceSelectedStatusFilter == "TODOS" ? "Filtros" : "Filtro activo"
+    }
+
+    var attendanceFilterSystemImage: String {
+        layoutState.attendanceSelectedStatusFilter == "TODOS"
+            ? "line.3.horizontal.decrease.circle"
+            : "line.3.horizontal.decrease.circle.fill"
     }
 
     var moduleContextToolbarRow: some View {

@@ -25,9 +25,18 @@ struct PendingEvaluationPickerSheet: View {
             footer
         }
         .background(appSecondarySystemBackgroundColor().opacity(0.55))
+        #if os(macOS)
         .frame(minWidth: 460, minHeight: 360)
+        #else
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        #endif
         .sheet(item: $selectedTarget) { target in
             AgendaRubricEvaluationSheet(bridge: bridge, target: target)
+                #if !os(macOS)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+                #endif
                 .onDisappear {
                     dismiss()
                 }
@@ -139,7 +148,9 @@ struct AgendaRubricEvaluationSheet: View {
     var body: some View {
         RubricEvaluationView()
             .environmentObject(bridge)
+            #if os(macOS)
             .frame(minWidth: 980, minHeight: 700)
+            #endif
             .task(id: target.id) {
                 guard !hasOpenedTarget else { return }
                 hasOpenedTarget = true

@@ -16,9 +16,9 @@ struct AttendanceStatusOption: Identifiable, Hashable {
     let color: Color
 
     static let all: [AttendanceStatusOption] = [
-        .init(id: "PRESENTE", label: "Presente", shortLabel: "P", color: .green),
-        .init(id: "AUSENTE", label: "Ausente", shortLabel: "A", color: .red),
-        .init(id: "TARDE", label: "Retraso", shortLabel: "R", color: .orange),
+        .init(id: "PRESENTE", label: "Presente", shortLabel: "P", color: EvaluationDesign.success),
+        .init(id: "AUSENTE", label: "Ausente", shortLabel: "A", color: EvaluationDesign.danger),
+        .init(id: "TARDE", label: "Retraso", shortLabel: "R", color: AppleDesignSystem.warning),
         .init(id: "JUSTIFICADO", label: "Justificada", shortLabel: "J", color: .gray),
         .init(id: "SIN_MATERIAL", label: "Sin material", shortLabel: "M", color: .brown),
         .init(id: "EXENTO", label: "Exento", shortLabel: "E", color: .indigo)
@@ -55,7 +55,6 @@ struct AttendanceWorkspaceView: View {
     @State var searchText = ""
     @State var selectedStudentId: Int64?
     @State var historySelection: AttendanceHistorySelection?
-    @State var isFilterPopoverPresented = false
     @State var recordsByStudentId: [Int64: KmpBridge.AttendanceRecordSnapshot] = [:]
     @State var classOverviews: [KmpBridge.AttendanceClassOverview] = []
     @State var savingStudentIds: Set<Int64> = []
@@ -209,125 +208,29 @@ struct AttendanceWorkspaceView: View {
     }
 
     var attendanceHeader: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            HStack(alignment: .top, spacing: 16) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Asistencia")
-                        .font(.system(size: 34, weight: .black, design: .rounded))
-                    Text(selectedClass?.name ?? "Todos los cursos")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                Menu {
-                    Button("Todos los cursos") {
-                        boardMode = .courses
-                    }
-                    Divider()
-                    ForEach(bridge.classes, id: \.id) { schoolClass in
-                        Button {
-                            selectedClassId = schoolClass.id
-                            if boardMode == .courses {
-                                boardMode = .day
-                            }
-                        } label: {
-                            HStack {
-                                Text(schoolClass.name)
-                                if schoolClass.id == selectedClassId {
-                                    Image(systemName: "checkmark")
-                                }
-                            }
-                        }
-                    }
-                } label: {
-                    Label(selectedClass?.name ?? "Todos los cursos", systemImage: "rectangle.3.group")
-                        .font(.subheadline.weight(.bold))
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                }
-                .buttonStyle(.plain)
+        HStack(alignment: .top, spacing: 16) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Asistencia")
+                    .font(.system(size: 30, weight: .black, design: .rounded))
+                Text(attendanceContextSummary)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
             }
 
-            HStack(spacing: 16) {
-                Picker("Vista", selection: $boardMode) {
-                    ForEach(AttendanceBoardMode.allCases) { mode in
-                        Text(mode.rawValue).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 360)
-
-                DatePicker("", selection: $selectedDate, displayedComponents: .date)
-                    .labelsHidden()
-
-                Spacer()
-
-                Button {
-                    isFilterPopoverPresented.toggle()
-                } label: {
-                    Label(activeAttendanceFilterLabel, systemImage: activeAttendanceFilterIcon)
-                        .font(.subheadline.weight(.semibold))
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .disabled(boardMode == .courses)
-                .popover(isPresented: $isFilterPopoverPresented, arrowEdge: .bottom) {
-                    attendanceFilterPopover
-                }
-            }
+            Spacer()
         }
         .padding(.horizontal, 24)
-        .padding(.top, 24)
-        .padding(.bottom, 24)
+        .padding(.top, 20)
+        .padding(.bottom, 16)
         .background(appPageBackground(for: colorScheme))
     }
 
-    var activeAttendanceFilterLabel: String {
-        var active = 0
-        if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            active += 1
-        }
-        if selectedStatusFilter != "TODOS" {
-            active += 1
-        }
-        return active == 0 ? "Filtrar" : "Filtros \(active)"
-    }
-
-    var activeAttendanceFilterIcon: String {
-        searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedStatusFilter == "TODOS"
-            ? "line.3.horizontal.decrease.circle"
-            : "line.3.horizontal.decrease.circle.fill"
-    }
-
-    var attendanceFilterPopover: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            TextField("Buscar alumno", text: $searchText)
-                .textFieldStyle(.roundedBorder)
-
-            Picker("Estado", selection: $selectedStatusFilter) {
-                Text("Todos").tag("TODOS")
-                ForEach(AttendanceStatusOption.all) { option in
-                    Text(option.label).tag(option.id)
-                }
-            }
-            .pickerStyle(.menu)
-
-            Button {
-                searchText = ""
-                selectedStatusFilter = "TODOS"
-            } label: {
-                Label("Limpiar filtros", systemImage: "xmark.circle")
-            }
-            .buttonStyle(.bordered)
-            .disabled(searchText.isEmpty && selectedStatusFilter == "TODOS")
-        }
-        .padding(24)
-        .frame(width: 320)
+    var attendanceContextSummary: String {
+        let className = selectedClass?.name ?? "Todos los cursos"
+        let filter = selectedStatusFilter == "TODOS"
+            ? nil
+            : AttendanceStatusOption.all.first(where: { $0.id == selectedStatusFilter })?.label
+        return [className, boardMode.rawValue, filter].compactMap { $0 }.joined(separator: " · ")
     }
 
     @ViewBuilder
@@ -363,13 +266,13 @@ struct AttendanceWorkspaceView: View {
                                 Spacer()
                                 Text("\(overview.attendanceRate)%")
                                     .font(.system(size: 28, weight: .black, design: .rounded))
-                                    .foregroundStyle(.green)
+                                    .foregroundStyle(EvaluationDesign.success)
                             }
 
                             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                                overviewMiniStat("Presentes", overview.presentCount, .green)
-                                overviewMiniStat("Ausencias", overview.absentCount, .red)
-                                overviewMiniStat("Retrasos", overview.lateCount, .orange)
+                                overviewMiniStat("Presentes", overview.presentCount, EvaluationDesign.success)
+                                overviewMiniStat("Ausencias", overview.absentCount, EvaluationDesign.danger)
+                                overviewMiniStat("Retrasos", overview.lateCount, AppleDesignSystem.warning)
                                 overviewMiniStat("Pendientes", overview.pendingTodayCount, .gray)
                             }
                         }
@@ -478,19 +381,19 @@ struct AttendanceWorkspaceView: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 12)], spacing: 12) {
                 if boardMode == .courses {
                     WorkspaceCompactStat(title: "Cursos", value: "\(classOverviews.count)", tint: .blue)
-                    WorkspaceCompactStat(title: "Alumnado", value: "\(classOverviews.map(\.studentCount).reduce(0, +))", tint: .green)
-                    WorkspaceCompactStat(title: "Pendientes hoy", value: "\(classOverviews.map(\.pendingTodayCount).reduce(0, +))", tint: .orange)
+                    WorkspaceCompactStat(title: "Alumnado", value: "\(classOverviews.map(\.studentCount).reduce(0, +))", tint: EvaluationDesign.success)
+                    WorkspaceCompactStat(title: "Pendientes hoy", value: "\(classOverviews.map(\.pendingTodayCount).reduce(0, +))", tint: AppleDesignSystem.warning)
                     WorkspaceCompactStat(title: "Media", value: "\(averageOverviewRate)%", tint: .indigo)
                 } else {
-                    WorkspaceCompactStat(title: "Presentes", value: "\(boardSummary.present)", tint: .green)
-                    WorkspaceCompactStat(title: "Ausencias", value: "\(boardSummary.absent)", tint: .red)
-                    WorkspaceCompactStat(title: "Retrasos", value: "\(boardSummary.late)", tint: .orange)
+                    WorkspaceCompactStat(title: "Presentes", value: "\(boardSummary.present)", tint: EvaluationDesign.success)
+                    WorkspaceCompactStat(title: "Ausencias", value: "\(boardSummary.absent)", tint: EvaluationDesign.danger)
+                    WorkspaceCompactStat(title: "Retrasos", value: "\(boardSummary.late)", tint: AppleDesignSystem.warning)
                     WorkspaceCompactStat(title: "Pendientes", value: "\(boardSummary.untracked)", tint: .gray)
                 }
             }
         }
         .padding(.horizontal, 24)
-        .padding(.bottom, 24)
+        .padding(.bottom, 16)
         .background(appPageBackground(for: colorScheme))
     }
 
@@ -966,4 +869,3 @@ struct AttendanceWorkspaceView: View {
         }
     }
 }
-

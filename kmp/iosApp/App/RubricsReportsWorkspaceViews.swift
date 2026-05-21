@@ -454,7 +454,7 @@ struct RubricsWorkspaceView: View {
             )
         ) {
             WorkspaceFlowLayout(spacing: 8) {
-                ForEach(item.levels, id: \.self) { level in
+                ForEach(Array(item.levels.enumerated()), id: \.offset) { _, level in
                     WorkspaceTag(text: level, systemImage: "checkmark.circle")
                 }
             }

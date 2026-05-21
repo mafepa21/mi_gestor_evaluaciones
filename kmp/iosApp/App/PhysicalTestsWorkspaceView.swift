@@ -384,6 +384,10 @@ struct PhysicalTestsWorkspaceView: View {
                             }
                         }
                 }
+                #if !os(macOS)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+                #endif
             }
         }
     }

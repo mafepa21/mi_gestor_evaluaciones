@@ -35,6 +35,8 @@ struct BackupRestorePreviewSheet: View {
                     }
                 }
         }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
         #endif
     }
     
@@ -87,14 +89,26 @@ struct BackupRestorePreviewSheet: View {
             
             // Side-by-side comparison tables
             if let current = currentSummary {
-                HStack(spacing: 12) {
-                    ComparisonCard(title: "Base de Datos Actual", summary: current, isBackup: false)
-                    
-                    Image(systemName: "arrow.right.circle.fill")
-                        .font(.title2)
-                        .foregroundStyle(AppleDesignSystem.accent)
-                    
-                    ComparisonCard(title: "Copia a Restaurar", summary: backup.manifest.summary, isBackup: true)
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 12) {
+                        ComparisonCard(title: "Base de Datos Actual", summary: current, isBackup: false)
+
+                        Image(systemName: "arrow.right.circle.fill")
+                            .font(.title2)
+                            .foregroundStyle(AppleDesignSystem.accent)
+
+                        ComparisonCard(title: "Copia a Restaurar", summary: backup.manifest.summary, isBackup: true)
+                    }
+
+                    VStack(spacing: 12) {
+                        ComparisonCard(title: "Base de Datos Actual", summary: current, isBackup: false)
+
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.title2)
+                            .foregroundStyle(AppleDesignSystem.accent)
+
+                        ComparisonCard(title: "Copia a Restaurar", summary: backup.manifest.summary, isBackup: true)
+                    }
                 }
             } else {
                 HStack {

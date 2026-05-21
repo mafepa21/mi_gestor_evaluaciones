@@ -405,6 +405,39 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-05-20 - Fix idempotente de LAN Sync para sesiones de planner
+
+Resumen:
+- Se diagnosticó que los logs `tcp_input`, `ManagedConfiguration` y `fopen failed for data file` eran ruido del sistema/simulador; el fallo accionable era `UNIQUE constraint failed: planner_session.id`.
+- La causa estaba en `Planner.sq`: `upsertSession` sólo resolvía conflictos por clave natural `(date, group_id, period)`, pero LAN Sync preserva el `id` remoto. Al reaplicar una `planning_session` ya existente por `id`, SQLite lanzaba conflicto de clave primaria.
+- Se añadió una rama `ON CONFLICT(id) DO UPDATE` antes del conflicto natural para que los cambios LAN sean idempotentes y actualicen la fila existente sin depender de Swift/KmpBridge.
+- Se añadió un test de repositorio que inserta dos veces una `PlanningSession(id=99, ...)` y valida que se actualiza la fila en lugar de duplicar o fallar.
+
+Validación:
+- `./gradlew :data:generateCommonMainAppDatabaseInterface :data:compileKotlinIosSimulatorArm64` terminó correctamente.
+- `./gradlew :data:desktopTest --tests 'com.migestor.data.RepositoriesIntegrationTest.planner upsert updates existing remote id idempotently'` terminó correctamente.
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` terminó con `BUILD SUCCEEDED`.
+
+Notas para futuras conversaciones:
+- Para conflictos de sincronización LAN sobre tablas con IDs remotos preservados, revisar primero el `UPSERT` SQLDelight de la tabla. Evitar resolver estos conflictos en `KmpBridge.swift` si la semántica pertenece a persistencia.
+
+### 2026-05-20 - Pulido premium SwiftUI iOS del shell, asistencia y sheets adaptativas
+
+Resumen:
+- Se sustituyó el overlay fijo de evaluación de rúbricas en `ContentView.swift` por una sheet adaptativa con detent `.large`, indicador de arrastre y bloqueo de dismiss mientras carga.
+- Se unificó la propiedad de filtros/fecha/modo de asistencia en la toolbar global de `IPadWorkspaceShell.swift`; `AttendanceWorkspaceView.swift` queda con header contextual y métricas, eliminando controles duplicados.
+- Se añadió debounce de 220 ms a la búsqueda global del workspace para reducir recomputaciones sobre módulos, clases y alumnado.
+- Se adaptaron sheets con tamaños de escritorio en `PendingEvaluationPickerSheet.swift`, `PhysicalTestScaleEditor.swift`, `PhysicalTestsWorkspaceView.swift` y `BackupRestorePreviewSheet.swift` usando detents iOS, `ViewThatFits` y frames fijos sólo en macOS.
+- Se empezaron a homogeneizar colores de asistencia con tokens compartidos (`EvaluationDesign` / `AppleDesignSystem`) en lugar de colores directos para estados críticos.
+
+Validación:
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` terminó con `BUILD SUCCEEDED`.
+- `git diff --check` no reportó problemas.
+
+Notas para futuras conversaciones:
+- La toolbar global es ahora la fuente de verdad para los controles de asistencia; evitar reintroducir picker/fecha/filtros dentro de `AttendanceWorkspaceView`.
+- Los frames grandes en sheets iOS deben quedar protegidos por `#if os(macOS)` o reemplazarse por `presentationDetents` y layouts adaptativos.
+
 ### 2026-05-20 - Rediseño premium de la pantalla Cuaderno iOS (grid, inspector, top bar)
 
 Resumen:

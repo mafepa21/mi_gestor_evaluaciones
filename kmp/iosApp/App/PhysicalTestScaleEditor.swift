@@ -326,31 +326,56 @@ struct PhysicalTestScaleEditor: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 24) {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 24) {
+                scaleEditorColumn
+                    .frame(minWidth: 430, maxWidth: 560, maxHeight: .infinity)
+
+                Divider()
+
+                scalePreviewColumn
+                    .frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
+            }
+
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     scaleConfiguration
                     rangesEditor
-                }
-                .padding(20)
-            }
-            .frame(minWidth: 430, maxWidth: 560, maxHeight: .infinity)
-
-            Divider()
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
                     validationPanel
                     previewPanel
                     aiSuggestionPanel
                 }
                 .padding(20)
             }
-            .frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
         }
         .navigationTitle("Baremo")
+        #if os(macOS)
         .frame(minWidth: 860, minHeight: 600)
+        #else
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        #endif
         .task { refreshAIAvailability() }
+    }
+
+    private var scaleEditorColumn: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                scaleConfiguration
+                rangesEditor
+            }
+            .padding(20)
+        }
+    }
+
+    private var scalePreviewColumn: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                validationPanel
+                previewPanel
+                aiSuggestionPanel
+            }
+            .padding(20)
+        }
     }
 
     private var scaleConfiguration: some View {

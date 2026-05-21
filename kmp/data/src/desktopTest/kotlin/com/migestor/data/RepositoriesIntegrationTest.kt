@@ -275,6 +275,49 @@ class RepositoriesIntegrationTest {
     }
 
     @Test
+    fun `planner upsert updates existing remote id idempotently`() = runTest {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        AppDatabase.Schema.create(driver)
+        val db = AppDatabase(driver)
+
+        val classes = ClassesRepositorySqlDelight(db)
+        val planner = PlannerRepositorySqlDelight(db)
+        val classId = classes.saveClass(name = "4 ESO A", course = 4, description = null)
+
+        val remoteSession = PlanningSession(
+            id = 99,
+            teachingUnitId = 0,
+            teachingUnitName = "Unidad",
+            groupId = classId,
+            groupName = "4 ESO A",
+            dayOfWeek = 2,
+            period = 3,
+            weekNumber = 12,
+            year = 2026,
+            objectives = "Primera versión",
+            activities = "Tarea inicial",
+            evaluation = "",
+            status = SessionStatus.PLANNED,
+        )
+
+        assertEquals(99, planner.upsertSession(remoteSession))
+        assertEquals(
+            99,
+            planner.upsertSession(
+                remoteSession.copy(
+                    objectives = "Versión sincronizada",
+                    activities = "Tarea actualizada",
+                )
+            )
+        )
+
+        val saved = planner.listSessions(weekNumber = 12, year = 2026).single()
+        assertEquals(99, saved.id)
+        assertEquals("Versión sincronizada", saved.objectives)
+        assertEquals("Tarea actualizada", saved.activities)
+    }
+
+    @Test
     fun `persists structured planner journal aggregate`() = runTest {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         AppDatabase.Schema.create(driver)

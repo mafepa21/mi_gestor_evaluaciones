@@ -11,27 +11,38 @@ struct ContentView: View {
     
     var body: some View {
         AppWorkspaceShell()
-        .tint(.accentColor)
-        .overlay(alignment: .bottom) {
-            if bridge.rubricEvaluationState.isLoading ||
-                bridge.rubricEvaluationState.rubricDetail != nil ||
-                bridge.rubricEvaluationState.error != nil {
-                Color.black.opacity(0.4)
-                    .ignoresSafeArea()
-                    .onTapGesture { bridge.closeRubricEvaluation() }
-                
+            .tint(.accentColor)
+            .sheet(isPresented: rubricEvaluationPresentation) {
                 RubricEvaluationView()
-                    .frame(height: 650)
-                    .appCornerRadius(32, corners: [.topLeft, .topRight])
-                    .transition(.move(edge: .bottom))
-                    .shadow(radius: 20)
+                    .environmentObject(bridge)
+                    #if os(macOS)
+                    .frame(minWidth: 980, minHeight: 700)
+                    #else
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+                    .interactiveDismissDisabled(bridge.rubricEvaluationState.isLoading)
+                    #endif
             }
-        }
-        .animation(
-            uiFeatureFlags.reduceMotion ? .none : .spring(),
-            value: bridge.rubricEvaluationState.isLoading ||
-                bridge.rubricEvaluationState.rubricDetail != nil ||
-                bridge.rubricEvaluationState.error != nil
+            .animation(
+                uiFeatureFlags.reduceMotion ? .none : .spring(response: 0.35, dampingFraction: 0.82),
+                value: bridge.rubricEvaluationState.isLoading ||
+                    bridge.rubricEvaluationState.rubricDetail != nil ||
+                    bridge.rubricEvaluationState.error != nil
+            )
+    }
+
+    private var rubricEvaluationPresentation: Binding<Bool> {
+        Binding(
+            get: {
+                bridge.rubricEvaluationState.isLoading ||
+                    bridge.rubricEvaluationState.rubricDetail != nil ||
+                    bridge.rubricEvaluationState.error != nil
+            },
+            set: { isPresented in
+                if !isPresented {
+                    bridge.closeRubricEvaluation()
+                }
+            }
         )
     }
 }

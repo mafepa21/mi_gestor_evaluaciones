@@ -4295,24 +4295,32 @@ final class KmpBridge: ObservableObject {
 
         guard refreshAfterApply else { return }
 
-        try await refreshDashboard()
-        try await refreshClasses()
-        try await refreshStudentsDirectory()
-        try await refreshRubrics()
-        try await refreshRubricClassLinks()
-        try await refreshPlanning()
+        // Ejecutamos los refreshes en una Task de utilidad para no bloquear el
+        // MainActor run loop durante las queries encadenadas. Esto evita que la UI
+        // se congele cuando el servidor LAN tarda o no está disponible.
+        let capturedChanges = changes
+        let capturedLocalDeviceId = localDeviceId
+        Task(priority: .utility) { [weak self] in
+            guard let self else { return }
+            try await self.refreshDashboard()
+            try await self.refreshClasses()
+            try await self.refreshStudentsDirectory()
+            try await self.refreshRubrics()
+            try await self.refreshRubricClassLinks()
+            try await self.refreshPlanning()
 
-        // Solo refrescar el cuaderno si alguno de los cambios sincronizados
-        // afecta a entidades del cuaderno (grades, columnas, celdas, rúbricas).
-        // Esto evita recargas innecesarias cuando solo cambian clases o alumnos.
-        let notebookEntityTypes: Set<String> = [
-            "grade", "notebook_tab", "notebook_column", "notebook_column_category", "notebook_cell", "rubric_assessment", "student", "class_roster", "evaluation", "notebook_group", "notebook_group_member"
-        ]
-        let hasNotebookChangesFromRemote = changes.contains {
-            notebookEntityTypes.contains($0.entity) && $0.deviceId != localDeviceId
-        }
-        if hasNotebookChangesFromRemote {
-            refreshCurrentNotebook()
+            // Solo refrescar el cuaderno si alguno de los cambios sincronizados
+            // afecta a entidades del cuaderno (grades, columnas, celdas, rúbricas).
+            // Esto evita recargas innecesarias cuando solo cambian clases o alumnos.
+            let notebookEntityTypes: Set<String> = [
+                "grade", "notebook_tab", "notebook_column", "notebook_column_category", "notebook_cell", "rubric_assessment", "student", "class_roster", "evaluation", "notebook_group", "notebook_group_member"
+            ]
+            let hasNotebookChangesFromRemote = capturedChanges.contains {
+                notebookEntityTypes.contains($0.entity) && $0.deviceId != capturedLocalDeviceId
+            }
+            if hasNotebookChangesFromRemote {
+                self.refreshCurrentNotebook()
+            }
         }
     }
 

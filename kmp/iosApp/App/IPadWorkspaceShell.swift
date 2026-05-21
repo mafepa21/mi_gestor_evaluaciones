@@ -618,9 +618,9 @@ struct AppWorkspaceShell: View {
         let query = debouncedSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return [] }
 
-        let moduleResults = AppWorkspaceModule.allCases
+        let moduleResults = IOSFeatureRegistry.all
             .filter { $0.title.localizedCaseInsensitiveContains(query) || $0.subtitle.localizedCaseInsensitiveContains(query) }
-            .map { WorkspaceSearchResult(title: $0.title, subtitle: $0.subtitle, kind: .module($0)) }
+            .map { WorkspaceSearchResult(title: $0.title, subtitle: $0.subtitle, kind: .module($0.module)) }
 
         let classResults = bridge.classes
             .filter { $0.name.localizedCaseInsensitiveContains(query) }

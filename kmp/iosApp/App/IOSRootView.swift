@@ -366,11 +366,15 @@ struct IOSWorkspaceSidebar: View {
                 .padding(.vertical, 8)
             }
 
-            ForEach(AppWorkspaceSection.allCases) { section in
-                Section(section.rawValue) {
-                    ForEach(AppWorkspaceModule.allCases.filter { $0.section == section }) { module in
-                        sidebarRow(for: module)
-                    }
+            Section("Uso diario") {
+                ForEach(IOSFeatureRegistry.daily) { feature in
+                    sidebarRow(for: feature)
+                }
+            }
+
+            Section("Más herramientas") {
+                ForEach(IOSFeatureRegistry.secondary) { feature in
+                    sidebarRow(for: feature)
                 }
             }
         }
@@ -379,20 +383,20 @@ struct IOSWorkspaceSidebar: View {
     }
 
     @ViewBuilder
-    private func sidebarRow(for module: AppWorkspaceModule) -> some View {
-        let isSelected = activeModule == module
+    private func sidebarRow(for feature: IOSFeatureDescriptor) -> some View {
+        let isSelected = activeModule == feature.module
         Button {
-            onSelectModule(module)
+            onSelectModule(feature.module)
         } label: {
             HStack(spacing: 10) {
-                Image(systemName: module.systemImage)
+                Image(systemName: feature.systemImage)
                     .frame(width: 22, height: 22)
                     .foregroundColor(isSelected ? Color.accentColor : Color.secondary)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(module.title)
+                    Text(feature.title)
                         .font(.callout.weight(.medium))
                         .foregroundColor(isSelected ? Color.accentColor : Color.primary)
-                    Text(module.subtitle)
+                    Text(feature.subtitle)
                         .font(.caption2)
                         .foregroundColor(Color.secondary)
                         .lineLimit(1)

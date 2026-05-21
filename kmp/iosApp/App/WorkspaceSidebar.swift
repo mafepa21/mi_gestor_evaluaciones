@@ -15,15 +15,24 @@ extension AppWorkspaceShell {
                 .padding(.vertical, 10)
             }
 
-            ForEach(AppWorkspaceSection.allCases) { section in
-                Section(section.rawValue) {
-                    ForEach(AppWorkspaceModule.allCases.filter { $0.section == section }) { module in
-                        Button {
-                            open(module: module)
-                        } label: {
-                            Label(module.title, systemImage: module.systemImage)
-                                .foregroundStyle(activeModule == module ? Color.accentColor : .primary)
-                        }
+            Section("Uso diario") {
+                ForEach(IOSFeatureRegistry.daily) { feature in
+                    Button {
+                        open(module: feature.module)
+                    } label: {
+                        Label(feature.title, systemImage: feature.systemImage)
+                            .foregroundStyle(activeModule == feature.module ? Color.accentColor : .primary)
+                    }
+                }
+            }
+
+            Section("Más herramientas") {
+                ForEach(IOSFeatureRegistry.secondary) { feature in
+                    Button {
+                        open(module: feature.module)
+                    } label: {
+                        Label(feature.title, systemImage: feature.systemImage)
+                            .foregroundStyle(activeModule == feature.module ? Color.accentColor : .primary)
                     }
                 }
             }

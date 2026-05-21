@@ -32,6 +32,7 @@
 		1680A7159701320DC112E710 /* MacPhysicalTestsToolbarActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 418B317080940EE2A662D215 /* MacPhysicalTestsToolbarActions.swift */; };
 		17C72CB98D707507A9BA78E1 /* PlannerWorkspaceIOS.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AFC9FBC11C0B8B50E847112 /* PlannerWorkspaceIOS.swift */; };
 		183BC57A71CD453F65D09EEE /* IOSRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FF2D2638711055DB9781524 /* IOSRootView.swift */; };
+		18496A8A15519A99F30D2EB9 /* IOSFeatureRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F7F4975295A62E74C9C8224 /* IOSFeatureRegistry.swift */; };
 		18CA65D488DBF76D4F217E93 /* NotebookDeletionImpactSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9178079E080B287EE7008FE1 /* NotebookDeletionImpactSheet.swift */; };
 		18F587AFE2D0738D7101D464 /* NotebookGridContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBDA814F8187BFDA3302D347 /* NotebookGridContainer.swift */; };
 		1CB0C6C869915B2E832E376F /* PhysicalTestCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60FB4440A1EC9C54F45F11BC /* PhysicalTestCaptureView.swift */; };
@@ -78,6 +79,7 @@
 		4D9E5932EA17C6365467B154 /* NotebookTabStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E112239AB1D009CECE6FC5F /* NotebookTabStrip.swift */; };
 		4DA54612ADD4CCE7CBCF9577 /* GeneralSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDF85B72D878968E171D9F9C /* GeneralSettingsView.swift */; };
 		4F9BD7F10F63E099B881A0A5 /* IOSRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FF2D2638711055DB9781524 /* IOSRootView.swift */; };
+		4FDC6E673F1BF56A47C58BF2 /* IOSFeatureRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F7F4975295A62E74C9C8224 /* IOSFeatureRegistry.swift */; };
 		4FC65E1EA9E7488F1442911F /* MiGestorKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D60E195E650E3C66A0B033A6 /* MiGestorKit.framework */; };
 		502317102099671C9E3C0220 /* RubricsReportsWorkspaceViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58D7199BBDD6580774907119 /* RubricsReportsWorkspaceViews.swift */; };
 		5033CB201B8092F976545934 /* ClassroomCaptureBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ECAFCB0C2D05856472D5371 /* ClassroomCaptureBar.swift */; };
@@ -341,6 +343,7 @@
 		6DFB7CB99B772BA64AA591A9 /* NotebookAICommentSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookAICommentSheet.swift; sourceTree = "<group>"; };
 		72D234C2A47232591178F898 /* PendingEvaluationPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingEvaluationPickerSheet.swift; sourceTree = "<group>"; };
 		74BD0F6DDCBB48B737A44D3C /* IPadWorkspaceShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPadWorkspaceShell.swift; sourceTree = "<group>"; };
+		7F7F4975295A62E74C9C8224 /* IOSFeatureRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSFeatureRegistry.swift; sourceTree = "<group>"; };
 		75913A6148C5D164F2EFA2A7 /* MacCommandCenterCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacCommandCenterCoordinator.swift; sourceTree = "<group>"; };
 		75BBE6314E371EFE7E28E853 /* AppSettingsModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettingsModels.swift; sourceTree = "<group>"; };
 		776A4EE42CD278E7AD2E5E2A /* BackupsWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupsWorkspaceView.swift; sourceTree = "<group>"; };
@@ -559,6 +562,7 @@
 				4ED9D8451FE6172EFBD59BC5 /* DiaryWorkspaceView.swift */,
 				61DBB79CD6256350F830529A /* EvaluationDesign.swift */,
 				2960F7D65E3A8DF5997306CD /* EvaluationHubView.swift */,
+				7F7F4975295A62E74C9C8224 /* IOSFeatureRegistry.swift */,
 				8FF2D2638711055DB9781524 /* IOSRootView.swift */,
 				74BD0F6DDCBB48B737A44D3C /* IPadWorkspaceShell.swift */,
 				B819027ADD26559CC96B1BDB /* KmpBridge.swift */,
@@ -833,6 +837,7 @@
 				47D80C34D5057F3AEA01A558 /* EvaluationHubView.swift in Sources */,
 				E87B821CC8CE67E56C40621C /* EvaluationSettingsView.swift in Sources */,
 				8CDF2E982B870BD83D430A83 /* GeneralSettingsView.swift in Sources */,
+				18496A8A15519A99F30D2EB9 /* IOSFeatureRegistry.swift in Sources */,
 				183BC57A71CD453F65D09EEE /* IOSRootView.swift in Sources */,
 				A955FA3E7711CA5298A75589 /* IPadWorkspaceShell.swift in Sources */,
 				9886188422D810036E17FDCD /* ImportPreviewModels.swift in Sources */,
@@ -969,6 +974,7 @@
 				3DEC9F6A7A9FF704B88EFFF9 /* EvaluationHubView.swift in Sources */,
 				C0F3F85AFC82CC3FCD3EEB38 /* EvaluationSettingsView.swift in Sources */,
 				4DA54612ADD4CCE7CBCF9577 /* GeneralSettingsView.swift in Sources */,
+				4FDC6E673F1BF56A47C58BF2 /* IOSFeatureRegistry.swift in Sources */,
 				4F9BD7F10F63E099B881A0A5 /* IOSRootView.swift in Sources */,
 				86BC90A2A4604BC6B4545E27 /* IPadWorkspaceShell.swift in Sources */,
 				A917D167542448BDD9007211 /* ImportPreviewModels.swift in Sources */,

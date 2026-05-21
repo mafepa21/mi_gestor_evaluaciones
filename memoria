@@ -405,6 +405,22 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-05-21 - IOSFeatureRegistry para ordenar la navegación iPad
+
+Resumen:
+- Se creó `kmp/iosApp/App/IOSFeatureRegistry.swift` como registro iOS de módulos, con prioridad diaria y bloque secundario, alineando la navegación iPad con la idea de `MacFeatureRegistry`.
+- `WorkspaceSidebar.swift` e `IOSRootView.swift` dejan de listar `AppWorkspaceModule.allCases` por secciones amplias y muestran primero `Uso diario` (`Hoy`, `Radar`, `Cuaderno`, `Asistencia`, `Planificación`) y después `Más herramientas` con el resto de módulos.
+- `IPadWorkspaceShell.swift` usa el mismo registro para resultados de búsqueda de módulos, de modo que navegación y acceso rápido comparten títulos, subtítulos y orden.
+- Se añadió el nuevo archivo al proyecto Xcode (`MiGestorKMPiOS.xcodeproj`) para que compile en los targets existentes.
+
+Validación:
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -destination 'generic/platform=iOS Simulator' -quiet build` → **BUILD SUCCEEDED**.
+- No se eliminó ningún módulo: los 20 casos de `AppWorkspaceModule` quedan cubiertos por `IOSFeatureRegistry.daily + secondary`.
+
+Notas para futuras conversaciones:
+- Si se añade un nuevo `AppWorkspaceModule`, hay que registrarlo también en `IOSFeatureRegistry` para mantener orden, búsqueda y sidebar sincronizados.
+- La shell activa actual tiene una sidebar en `IOSRootView.swift` y queda una variante heredada en `WorkspaceSidebar.swift`; ambas deben mantenerse coherentes mientras convivan.
+
 ### 2026-05-21 - Recuperación del selector global de clase en IOSRootView
 
 Resumen:

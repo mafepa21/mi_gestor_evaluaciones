@@ -405,6 +405,37 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-05-21 - Corrección de crash por suspend functions fuera del Main Thread (NSGenericException)
+
+Resumen:
+- Se solucionó el crash de arranque y operación en la aplicación iOS: `*** Terminating app due to uncaught exception 'NSGenericException', reason: 'Calling Kotlin suspend functions from Swift/Objective-C is currently supported only on main thread'`.
+- **Swift-side Reversion**: Se revirtieron los bloques `Task.detached` introducidos previamente en [KmpBridge.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/KmpBridge.swift) para llamar a funciones suspendidas de KMP (`refreshDashboard()`, `refreshClasses()`, etc.) de vuelta a llamadas síncronas/asíncronas ejecutadas en el hilo principal (`@MainActor`).
+- **Kotlin-side Main-Safety**: Se envolvieron todas las llamadas de base de datos síncronas/bloqueantes de los repositorios de SQLDelight en `withContext(Dispatchers.Default)` dentro de los repositorios comunes de Kotlin Multiplatform ([SqlDelightRepositories.kt](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/data/src/commonMain/kotlin/com/migestor/data/repository/SqlDelightRepositories.kt), [PlannerRepositorySqlDelight.kt](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/data/src/commonMain/kotlin/com/migestor/data/repository/PlannerRepositorySqlDelight.kt), [NotebookConfigRepositorySqlDelight.kt](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/data/src/commonMain/kotlin/com/migestor/data/repository/NotebookConfigRepositorySqlDelight.kt)). Esto hace que los métodos de repositorio sean main-safe en Kotlin y puedan llamarse sin bloquear el MainActor de Swift/iOS.
+
+Validación:
+- Compilación del módulo KMP (`./gradlew :data:compileKotlinIosSimulatorArm64`) completada con éxito.
+- Compilación de iOS (`xcodebuild` en `kmp/iosApp` para simulador de iPhone) completada con éxito (`BUILD SUCCEEDED`).
+
+Notas para futuras conversaciones:
+- Kotlin/Native en iOS restringe el hilo desde el que se pueden invocar funciones marcadas con `suspend` exportadas a Swift si no se configura un dispatch multiplataforma nativo avanzado. La solución recomendada para evitar el crash `NSGenericException` es realizar la llamada a la suspend function de KMP desde el Main Actor / Main Thread en Swift, garantizando la seguridad (main-safety) en el lado de Kotlin envolviendo los bloques pesados con `withContext(Dispatchers.Default)`.
+
+### 2026-05-21 - Optimización de hilos en SyncLAN y Consolidación de Sheets en iOS
+
+Resumen:
+- Se corrigió el problema de congelamiento de la app iOS durante la sincronización LAN desactivando las llamadas que bloqueaban la interfaz en el hilo principal (`@MainActor`).
+- **Database Threading**: Se envolvieron las llamadas de consulta a la base de datos de los métodos de refresco (`refreshDashboard`, `refreshClasses`, `refreshStudentsDirectory`, `refreshRubrics`, `refreshRubricClassLinks`, `refreshPlanning`) de [KmpBridge.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/KmpBridge.swift) en bloques `Task.detached(priority: .utility)`. El cálculo de porcentajes del dashboard se simplificó para evitar la sobrecarga del type-checker de Swift.
+- **SSE Network Threading**: Se modificaron los bucles de reconexión y escucha HTTP en [SyncEventListener.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/AppleShared/SyncEventListener.swift) para ejecutarse en hilos de background con `Task.detached(priority: .background)`.
+- **Servidor SSE GET `/sync/events`**: Se implementó el endpoint Server-Sent Events `/sync/events` en el servidor de escritorio ([LocalSyncServer.kt](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/data/src/desktopMain/kotlin/com/migestor/desktop/sync/LocalSyncServer.kt)) utilizando un pool de conexiones `CopyOnWriteArrayList` thread-safe. Envía periódicamente eventos `keep-alive` y transmite cambios a los dispositivos móviles conectados en tiempo real.
+- **Consolidación de Sheets**: Se unificaron las múltiples cláusulas `.sheet` de [IPadWorkspaceShell.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/IPadWorkspaceShell.swift) en un único modificador basado en un enum `ActiveWorkspaceSheet`. Esto corrige la colisión de sheets en SwiftUI y las alertas en consola.
+
+Validación:
+- Compilación de iOS (`xcodebuild` en `kmp/iosApp`) completada correctamente (`BUILD SUCCEEDED`).
+- Compilación de Kotlin Desktop (`./gradlew compileKotlinDesktop` en `kmp/data`) completada correctamente.
+
+Notas para futuras conversaciones:
+- Al invocar tareas asíncronas desde componentes de interfaz o ViewModels marcados con `@MainActor` (o ejecutados desde el hilo principal), usar `Task.detached` para asegurar la liberación del hilo principal si la operación realiza accesos síncronos pesados al driver SQLite de SQLDelight.
+- Mantener una única cláusula `.sheet` en las vistas SwiftUI complejas para evitar advertencias de presentación y freezes de UI en iOS 16+.
+
 ### 2026-05-20 - Fix idempotente de LAN Sync para sesiones de planner
 
 Resumen:

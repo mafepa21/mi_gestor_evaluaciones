@@ -1064,26 +1064,17 @@ final class KmpBridge: ObservableObject {
     }
 
     private func refreshDashboard() async throws {
-        let stats: DashboardStats = try await container.dashboardRepository.getStats()
-
-        statsText = "Alumnos \(stats.totalStudents) · Clases \(stats.totalClasses) · Eval \(stats.totalEvaluations)"
+        let stats = try await container.dashboardRepository.getStats()
         
         // Fetch Upcoming Classes
         let allEvents = try await container.calendarRepository.listEvents(classId: nil)
-        
         let now = ClockSystem.shared.now()
-        self.upcomingClasses = allEvents.filter { $0.startAt.epochSeconds > now.epochSeconds }
+        let upcoming = allEvents.filter { $0.startAt.epochSeconds > now.epochSeconds }
             .sorted { $0.startAt.epochSeconds < $1.startAt.epochSeconds }
             .prefix(3).map { $0 }
 
         // Fetch Classes for distribution and tasks
         let allClasses = try await container.classesRepository.listClasses()
-        
-        // Distribution
-        let esoCount = allClasses.filter { $0.course <= 4 }.count
-        let totalC = max(allClasses.count, 1)
-        self.esoPercentage = Int((Double(esoCount) / Double(totalC)) * 100)
-        self.bachPercentage = 100 - self.esoPercentage
         
         // Pending Tasks (Incidents)
         var allIncidents: [Incident] = []
@@ -1091,7 +1082,7 @@ final class KmpBridge: ObservableObject {
             let incidents = try await container.incidentsRepository.listIncidents(classId: cls.id)
             allIncidents.append(contentsOf: incidents)
         }
-        self.pendingTasks = Array(allIncidents.prefix(3))
+        let pending = Array(allIncidents.prefix(3))
         
         // Activity Groups (Averages by Class)
         var groups: [ActivityGroup] = []
@@ -1102,6 +1093,18 @@ final class KmpBridge: ObservableObject {
             let avg = values.isEmpty ? 0.0 : values.reduce(0, +) / Double(values.count)
             groups.append(ActivityGroup(name: cls.name, average: avg))
         }
+
+        statsText = "Alumnos \(stats.totalStudents) · Clases \(stats.totalClasses) · Eval \(stats.totalEvaluations)"
+        self.upcomingClasses = upcoming
+        
+        // Distribution
+        let esoCount = allClasses.filter { $0.course <= 4 }.count
+        let totalC = max(allClasses.count, 1)
+        let ratio = Double(esoCount) / Double(totalC)
+        self.esoPercentage = Int(ratio * 100)
+        self.bachPercentage = 100 - self.esoPercentage
+        
+        self.pendingTasks = pending
         self.activityGroups = groups
     }
 
@@ -1236,7 +1239,8 @@ final class KmpBridge: ObservableObject {
     }
 
     private func refreshClasses() async throws {
-        classes = try await container.classesRepository.listClasses()
+        let classes = try await container.classesRepository.listClasses()
+        self.classes = classes
         // If notebook has no class selected, pick the first one
         if notebookViewModel.currentClassId == nil, let first = classes.first {
             selectClass(id: first.id)
@@ -1253,16 +1257,24 @@ final class KmpBridge: ObservableObject {
         if classes.isEmpty {
             try await refreshClasses()
         }
-        allStudents = try await container.studentsRepository.listStudents()
+        let currentClasses = self.classes
+        let currentSelectedClassId = selectedStudentsClassId
 
-        if selectedStudentsClassId == nil {
-            selectedStudentsClassId = classes.first?.id
-        }
-        if let selectedClassId = selectedStudentsClassId {
-            studentsInClass = try await container.classesRepository.listStudentsInClass(classId: selectedClassId)
+        let all = try await container.studentsRepository.listStudents()
+        let resolvedClassId = currentSelectedClassId ?? currentClasses.first?.id
+        
+        let inClass: [Student]
+        if let classId = resolvedClassId {
+            inClass = try await container.classesRepository.listStudentsInClass(classId: classId)
         } else {
-            studentsInClass = []
+            inClass = []
         }
+
+        self.allStudents = all
+        if selectedStudentsClassId == nil {
+            selectedStudentsClassId = resolvedClassId
+        }
+        self.studentsInClass = inClass
     }
 
     func selectStudentsClass(classId: Int64?) async {
@@ -1411,7 +1423,8 @@ final class KmpBridge: ObservableObject {
     }
 
     func refreshRubrics() async throws {
-        rubrics = try await container.rubricsRepository.listRubrics()
+        let rubrics = try await container.rubricsRepository.listRubrics()
+        self.rubrics = rubrics
     }
 
     func refreshRubricClassLinks() async throws {
@@ -1419,8 +1432,9 @@ final class KmpBridge: ObservableObject {
             try await refreshClasses()
         }
 
+        let currentClasses = self.classes
         var links: [Int64: Set<Int64>] = [:]
-        for schoolClass in classes {
+        for schoolClass in currentClasses {
             let evaluations = try await container.evaluationsRepository.listClassEvaluations(classId: schoolClass.id)
             for evaluation in evaluations {
                 if let rubricId = evaluation.rubricId?.int64Value {
@@ -1430,7 +1444,7 @@ final class KmpBridge: ObservableObject {
                 }
             }
         }
-        rubricClassLinks = links
+        self.rubricClassLinks = links
     }
 
     private func refreshRubricBuilderTeachingUnits(for classId: Int64?) async throws {

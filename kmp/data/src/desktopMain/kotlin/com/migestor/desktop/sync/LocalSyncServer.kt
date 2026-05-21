@@ -96,6 +96,7 @@ class LocalSyncServer(
     private val stateListener: ((CommandCenterSnapshot) -> Unit)? = null,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
+    private val sseConnections = java.util.concurrent.CopyOnWriteArrayList<HttpExchange>()
     private var server: HttpsServer? = null
     private var jmDns: JmDNS? = null
     private var serviceInfo: ServiceInfo? = null
@@ -247,6 +248,50 @@ class LocalSyncServer(
             ex.respond(200, encodePullResponse(response))
         }
 
+        https.createContext("/sync/events") { ex ->
+            if (ex.requestMethod != "GET") {
+                ex.respond(405, """{"error":"method_not_allowed"}""")
+                return@createContext
+            }
+            if (!isAuthorized(ex)) return@createContext
+
+            ex.responseHeaders.add("Content-Type", "text/event-stream")
+            ex.responseHeaders.add("Cache-Control", "no-cache")
+            ex.responseHeaders.add("Connection", "keep-alive")
+            ex.sendResponseHeaders(200, 0)
+
+            val out = ex.responseBody
+            sseConnections.add(ex)
+            println("📡 Conexión SSE abierta desde ${ex.remoteAddress}")
+
+            try {
+                out.write(": ok\n\n".toByteArray())
+                out.flush()
+            } catch (e: Exception) {
+                sseConnections.remove(ex)
+                runCatching { ex.close() }
+                return@createContext
+            }
+
+            try {
+                while (server != null && sseConnections.contains(ex)) {
+                    Thread.sleep(15000)
+                    try {
+                        out.write(": keep-alive\n\n".toByteArray())
+                        out.flush()
+                    } catch (e: Exception) {
+                        break
+                    }
+                }
+            } catch (e: InterruptedException) {
+                // Interrupted
+            } finally {
+                sseConnections.remove(ex)
+                runCatching { ex.close() }
+                println("📡 Conexión SSE cerrada desde ${ex.remoteAddress}")
+            }
+        }
+
         https.createContext("/sync/push") { ex ->
             if (ex.requestMethod != "POST") {
                 ex.respond(405, """{"error":"method_not_allowed"}""")
@@ -259,6 +304,10 @@ class LocalSyncServer(
                 syncCoordinator.pushChanges(req, serverNowEpochMs = System.currentTimeMillis())
             }
             ex.respond(200, encodeAck(ack))
+
+            if (req.changes.isNotEmpty()) {
+                broadcastSseEvent(req.changes, ack.serverEpochMs)
+            }
         }
 
         https.createContext("/sync/unpair") { ex ->
@@ -286,6 +335,11 @@ class LocalSyncServer(
         stopNetworkMonitor()
         server?.stop(0)
         server = null
+
+        val connections = sseConnections.toList()
+        sseConnections.clear()
+        connections.forEach { runCatching { it.close() } }
+
         serviceInfo?.let { jmDns?.unregisterService(it) }
         serviceInfo = null
         jmDns?.close()
@@ -523,6 +577,47 @@ class LocalSyncServer(
         val bytes = body.toByteArray()
         sendResponseHeaders(status, bytes.size.toLong())
         responseBody.use { it.write(bytes) }
+    }
+
+    private fun broadcastSseEvent(changes: List<SyncChange>, serverEpochMs: Long) {
+        if (sseConnections.isEmpty()) return
+
+        val entities = changes.map { it.entity }.distinct()
+
+        val eventJson = buildJsonObject {
+            put("serverEpochMs", JsonPrimitive(serverEpochMs))
+            put("entities", JsonArray(entities.map { JsonPrimitive(it) }))
+            put("changes", JsonArray(changes.map { change ->
+                buildJsonObject {
+                    put("entity", JsonPrimitive(change.entity))
+                    put("id", JsonPrimitive(change.id))
+                    put("updatedAtEpochMs", JsonPrimitive(change.updatedAtEpochMs))
+                    put("deviceId", JsonPrimitive(change.deviceId))
+                    put("payload", JsonPrimitive(change.payload))
+                    put("op", JsonPrimitive(change.op))
+                    put("schemaVersion", JsonPrimitive(change.schemaVersion))
+                }
+            }))
+        }.toString()
+
+        val ssePayload = "data: $eventJson\n\n"
+        val bytes = ssePayload.toByteArray()
+
+        println("📡 Transmitiendo evento SSE a ${sseConnections.size} clientes...")
+        val disconnected = mutableListOf<HttpExchange>()
+        for (conn in sseConnections) {
+            try {
+                val out = conn.responseBody
+                out.write(bytes)
+                out.flush()
+            } catch (e: Exception) {
+                disconnected.add(conn)
+            }
+        }
+        if (disconnected.isNotEmpty()) {
+            sseConnections.removeAll(disconnected)
+            disconnected.forEach { runCatching { it.close() } }
+        }
     }
 }
 

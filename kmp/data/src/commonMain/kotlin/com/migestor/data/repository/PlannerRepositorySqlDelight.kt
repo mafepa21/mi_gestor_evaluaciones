@@ -7,6 +7,7 @@ import com.migestor.shared.domain.*
 import com.migestor.shared.repository.PlannerRepository
 import com.migestor.shared.util.IsoWeekHelper
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.datetime.Clock
@@ -39,9 +40,9 @@ class PlannerRepositorySqlDelight(
             }
     }
 
-    override suspend fun upsertTeachingUnit(unit: TeachingUnit): Long {
+    override suspend fun upsertTeachingUnit(unit: TeachingUnit): Long = withContext(Dispatchers.Default) {
         val now = Clock.System.now().toEpochMilliseconds()
-        return db.transactionWithResult {
+        db.transactionWithResult {
             db.plannerQueries.upsertTeachingUnit(
                 id = if (unit.id == 0L) null else unit.id,
                 group_id = unit.groupId,
@@ -59,10 +60,10 @@ class PlannerRepositorySqlDelight(
         }
     }
 
-    override suspend fun deleteTeachingUnit(unitId: Long): Boolean {
+    override suspend fun deleteTeachingUnit(unitId: Long): Boolean = withContext(Dispatchers.Default) {
         // En una implementación real, verificaríamos si hay sesiones antes de borrar
         db.plannerQueries.deleteTeachingUnit(unitId)
-        return true
+        true
     }
 
     override fun observeSessions(weekNumber: Int, year: Int): Flow<List<PlanningSession>> {
@@ -76,32 +77,32 @@ class PlannerRepositorySqlDelight(
             .map { rows -> rows.map { mapToDomain(it) } }
     }
 
-    override suspend fun listSessions(weekNumber: Int, year: Int): List<PlanningSession> {
+    override suspend fun listSessions(weekNumber: Int, year: Int): List<PlanningSession> = withContext(Dispatchers.Default) {
         val days = IsoWeekHelper.daysOf(weekNumber, year)
         val startDate = days.first().toString()
         val endDate = days.last().toString()
-        return db.plannerQueries.selectSessionsForWeek(startDate, endDate)
+        db.plannerQueries.selectSessionsForWeek(startDate, endDate)
             .executeAsList()
             .map { mapToDomain(it) }
     }
 
-    override suspend fun listSessionsInRange(groupId: Long?, fromDate: LocalDate, toDate: LocalDate): List<PlanningSession> {
+    override suspend fun listSessionsInRange(groupId: Long?, fromDate: LocalDate, toDate: LocalDate): List<PlanningSession> = withContext(Dispatchers.Default) {
         val all = db.plannerQueries.selectSessionsForWeek(fromDate.toString(), toDate.toString())
             .executeAsList()
             .map { mapToDomain(it) }
-        return if (groupId == null) all else all.filter { it.groupId == groupId }
+        if (groupId == null) all else all.filter { it.groupId == groupId }
     }
 
-    override suspend fun listAllSessions(): List<PlanningSession> {
-        return db.plannerQueries.selectAllSessions()
+    override suspend fun listAllSessions(): List<PlanningSession> = withContext(Dispatchers.Default) {
+        db.plannerQueries.selectAllSessions()
             .executeAsList()
             .map { mapToDomain(it) }
     }
 
-    override suspend fun upsertSession(session: PlanningSession): Long {
+    override suspend fun upsertSession(session: PlanningSession): Long = withContext(Dispatchers.Default) {
         val now = Clock.System.now().toEpochMilliseconds()
         val date = sessionDate(session).toString()
-        return db.transactionWithResult {
+        db.transactionWithResult {
             db.plannerQueries.upsertSession(
                 id = if (session.id == 0L) null else session.id,
                 date = date,
@@ -124,8 +125,8 @@ class PlannerRepositorySqlDelight(
         }
     }
 
-    override suspend fun bulkUpsertSessions(sessions: List<PlanningSession>): List<Long> {
-        if (sessions.isEmpty()) return emptyList()
+    override suspend fun bulkUpsertSessions(sessions: List<PlanningSession>): List<Long> = withContext(Dispatchers.Default) {
+        if (sessions.isEmpty()) return@withContext emptyList()
         val ids = mutableListOf<Long>()
         db.transaction {
             sessions.forEach { session ->
@@ -151,33 +152,33 @@ class PlannerRepositorySqlDelight(
                 ids += if (session.id == 0L) db.plannerQueries.lastInsertedId().executeAsOne() else session.id
             }
         }
-        return ids
+        ids
     }
 
-    override suspend fun deleteSession(sessionId: Long) {
+    override suspend fun deleteSession(sessionId: Long) = withContext(Dispatchers.Default) {
         db.plannerQueries.deleteSession(sessionId)
     }
 
-    override suspend fun deleteSessions(sessionIds: List<Long>) {
-        if (sessionIds.isEmpty()) return
+    override suspend fun deleteSessions(sessionIds: List<Long>) = withContext(Dispatchers.Default) {
+        if (sessionIds.isEmpty()) return@withContext
         db.transaction {
             sessionIds.forEach { db.plannerQueries.deleteSession(it) }
         }
     }
 
-    override suspend fun deleteFutureSessionsGeneratedFromScheduleSlot(slotId: Long, fromDate: LocalDate): Int {
+    override suspend fun deleteFutureSessionsGeneratedFromScheduleSlot(slotId: Long, fromDate: LocalDate): Int = withContext(Dispatchers.Default) {
         val ids = db.plannerQueries
             .selectFutureGeneratedSessionIdsForScheduleSlot(slotId = slotId, fromDate = fromDate.toString())
             .executeAsList()
-        if (ids.isEmpty()) return 0
+        if (ids.isEmpty()) return@withContext 0
         db.transaction {
             ids.forEach { db.plannerQueries.deleteSession(it) }
         }
-        return ids.size
+        ids.size
     }
 
-    override suspend fun listAllTeachingUnits(): List<TeachingUnit> {
-        return db.plannerQueries.selectAllTeachingUnits()
+    override suspend fun listAllTeachingUnits(): List<TeachingUnit> = withContext(Dispatchers.Default) {
+        db.plannerQueries.selectAllTeachingUnits()
             .executeAsList()
             .map {
                 TeachingUnit(
@@ -197,10 +198,10 @@ class PlannerRepositorySqlDelight(
         return DEFAULT_TIME_SLOTS
     }
 
-    override suspend fun moveSessionsFromWeek(fromWeek: Int, fromYear: Int, offsetWeeks: Int) {
-        if (offsetWeeks == 0) return
+    override suspend fun moveSessionsFromWeek(fromWeek: Int, fromYear: Int, offsetWeeks: Int) = withContext(Dispatchers.Default) {
+        if (offsetWeeks == 0) return@withContext
         val source = listSessions(fromWeek, fromYear)
-        if (source.isEmpty()) return
+        if (source.isEmpty()) return@withContext
         shiftSelectedSessions(
             request = SessionRelocationRequest(
                 sourceSessionIds = source.map { it.id },
@@ -208,20 +209,21 @@ class PlannerRepositorySqlDelight(
             ),
             resolution = CollisionResolution.SKIP
         )
+        Unit
     }
 
-    override suspend fun previewSessionRelocation(request: SessionRelocationRequest): List<SessionRelocationConflict> {
-        return buildRelocationPlan(request).conflicts
+    override suspend fun previewSessionRelocation(request: SessionRelocationRequest): List<SessionRelocationConflict> = withContext(Dispatchers.Default) {
+        buildRelocationPlan(request).conflicts
     }
 
     override suspend fun copySessions(
         request: SessionRelocationRequest,
         resolution: CollisionResolution
-    ): SessionBulkResult {
+    ): SessionBulkResult = withContext(Dispatchers.Default) {
         val plan = buildRelocationPlan(request)
-        if (plan.relocations.isEmpty()) return SessionBulkResult(skipped = plan.conflicts.size)
+        if (plan.relocations.isEmpty()) return@withContext SessionBulkResult(skipped = plan.conflicts.size)
         if (resolution == CollisionResolution.CANCEL && plan.conflicts.isNotEmpty()) {
-            return SessionBulkResult(skipped = plan.relocations.size, failed = plan.conflicts.size)
+            return@withContext SessionBulkResult(skipped = plan.relocations.size, failed = plan.conflicts.size)
         }
 
         val conflictBySource = plan.conflicts.associateBy { it.sourceSessionId }
@@ -231,7 +233,7 @@ class PlannerRepositorySqlDelight(
             CollisionResolution.CANCEL -> emptyList()
         }
         if (sessionsToApply.isEmpty()) {
-            return SessionBulkResult(skipped = plan.relocations.size, failed = plan.conflicts.size)
+            return@withContext SessionBulkResult(skipped = plan.relocations.size, failed = plan.conflicts.size)
         }
 
         val overwrittenIds = mutableSetOf<Long>()
@@ -247,7 +249,7 @@ class PlannerRepositorySqlDelight(
             }
         }
 
-        return SessionBulkResult(
+        SessionBulkResult(
             affectedSessionIds = insertedIds,
             movedOrCopied = insertedIds.size,
             overwritten = overwrittenIds.size,
@@ -259,11 +261,11 @@ class PlannerRepositorySqlDelight(
     override suspend fun shiftSelectedSessions(
         request: SessionRelocationRequest,
         resolution: CollisionResolution
-    ): SessionBulkResult {
+    ): SessionBulkResult = withContext(Dispatchers.Default) {
         val plan = buildRelocationPlan(request)
-        if (plan.relocations.isEmpty()) return SessionBulkResult(skipped = plan.conflicts.size)
+        if (plan.relocations.isEmpty()) return@withContext SessionBulkResult(skipped = plan.conflicts.size)
         if (resolution == CollisionResolution.CANCEL && plan.conflicts.isNotEmpty()) {
-            return SessionBulkResult(skipped = plan.relocations.size, failed = plan.conflicts.size)
+            return@withContext SessionBulkResult(skipped = plan.relocations.size, failed = plan.conflicts.size)
         }
 
         val conflictBySource = plan.conflicts.associateBy { it.sourceSessionId }
@@ -273,7 +275,7 @@ class PlannerRepositorySqlDelight(
             CollisionResolution.CANCEL -> emptyList()
         }
         if (sessionsToApply.isEmpty()) {
-            return SessionBulkResult(skipped = plan.relocations.size, failed = plan.conflicts.size)
+            return@withContext SessionBulkResult(skipped = plan.relocations.size, failed = plan.conflicts.size)
         }
 
         val sourceIds = sessionsToApply.map { it.source.id }.toSet()
@@ -297,7 +299,7 @@ class PlannerRepositorySqlDelight(
             }
         }
 
-        return SessionBulkResult(
+        SessionBulkResult(
             affectedSessionIds = insertedIds,
             movedOrCopied = insertedIds.size,
             overwritten = overwrittenIds.size,

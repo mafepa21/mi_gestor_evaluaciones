@@ -22,6 +22,7 @@ import com.migestor.shared.domain.NotebookEmptyCellPolicy
 import com.migestor.shared.repository.NotebookConfigRepository
 import com.migestor.shared.util.NotebookRefreshBus
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.datetime.Instant
@@ -84,8 +85,8 @@ class NotebookConfigRepositorySqlDelight(
             }
     }
 
-    override suspend fun listTabs(classId: Long): List<NotebookTab> {
-        return db.appDatabaseQueries.selectTabsByClass(classId).executeAsList().map {
+    override suspend fun listTabs(classId: Long): List<NotebookTab> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectTabsByClass(classId).executeAsList().map {
             NotebookTab(
                 id = it.id,
                 title = it.title,
@@ -101,7 +102,7 @@ class NotebookConfigRepositorySqlDelight(
         }
     }
 
-    override suspend fun saveTab(classId: Long, tab: NotebookTab) {
+    override suspend fun saveTab(classId: Long, tab: NotebookTab) = withContext(Dispatchers.Default) {
         val tabs = listTabs(classId)
         val siblingTabs = tabs.filter { it.parentTabId == tab.parentTabId && it.id != tab.id }
         val resolvedOrder = if (tab.order >= 0) tab.order else (siblingTabs.maxOfOrNull { it.order }?.plus(1) ?: 0)
@@ -119,7 +120,7 @@ class NotebookConfigRepositorySqlDelight(
         NotebookRefreshBus.emitRefresh()
     }
 
-    override suspend fun deleteTab(tabId: String) {
+    override suspend fun deleteTab(tabId: String) = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.deleteTab(tabId)
     }
 
@@ -169,8 +170,8 @@ class NotebookConfigRepositorySqlDelight(
             }
     }
 
-    override suspend fun listColumns(classId: Long): List<NotebookColumnDefinition> {
-        return db.appDatabaseQueries.selectColumnsByClass(classId).executeAsList().map { row ->
+    override suspend fun listColumns(classId: Long): List<NotebookColumnDefinition> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectColumnsByClass(classId).executeAsList().map { row ->
             val resolvedVisibility = row.visibility.toNotebookVisibility()
             NotebookColumnDefinition(
                 id = row.id,
@@ -209,7 +210,7 @@ class NotebookConfigRepositorySqlDelight(
         }
     }
 
-    override suspend fun saveColumn(classId: Long, column: NotebookColumnDefinition) {
+    override suspend fun saveColumn(classId: Long, column: NotebookColumnDefinition) = withContext(Dispatchers.Default) {
         // Migración: Eliminar cualquier columna previa para esta evaluación que tenga un ID distinto al estandarizado
         column.evaluationId?.let { evalId ->
             if (evalId > 0) {
@@ -276,8 +277,8 @@ class NotebookConfigRepositorySqlDelight(
         NotebookRefreshBus.emitRefresh()
     }
 
-    override suspend fun saveAverageConfiguration(classId: Long, updates: List<NotebookAverageColumnConfig>) {
-        if (updates.isEmpty()) return
+    override suspend fun saveAverageConfiguration(classId: Long, updates: List<NotebookAverageColumnConfig>) = withContext(Dispatchers.Default) {
+        if (updates.isEmpty()) return@withContext
         val updatesById = updates.associateBy { it.columnId }
         val now = Clock.System.now().toEpochMilliseconds()
 
@@ -324,7 +325,7 @@ class NotebookConfigRepositorySqlDelight(
         NotebookRefreshBus.emitRefresh()
     }
 
-    override suspend fun deleteColumn(columnId: String) {
+    override suspend fun deleteColumn(columnId: String) = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.deleteColumn(columnId)
     }
 
@@ -353,13 +354,13 @@ class NotebookConfigRepositorySqlDelight(
         }
     }
 
-    override suspend fun listColumnCategories(classId: Long, tabId: String?): List<NotebookColumnCategory> {
+    override suspend fun listColumnCategories(classId: Long, tabId: String?): List<NotebookColumnCategory> = withContext(Dispatchers.Default) {
         val rows = if (tabId == null) {
             db.appDatabaseQueries.selectColumnCategoriesByClass(classId).executeAsList()
         } else {
             db.appDatabaseQueries.selectColumnCategoriesByClassAndTab(classId, tabId).executeAsList()
         }
-        return rows.map { row ->
+        rows.map { row ->
             NotebookColumnCategory(
                 id = row.id,
                 classId = row.class_id,
@@ -376,7 +377,7 @@ class NotebookConfigRepositorySqlDelight(
         }
     }
 
-    override suspend fun saveColumnCategory(classId: Long, category: NotebookColumnCategory) {
+    override suspend fun saveColumnCategory(classId: Long, category: NotebookColumnCategory) = withContext(Dispatchers.Default) {
         val categories = listColumnCategories(classId, category.tabId)
         val siblingCategories = categories.filter { it.id != category.id }
         val resolvedOrder = if (category.order >= 0) category.order else (siblingCategories.maxOfOrNull { it.order }?.plus(1) ?: 0)
@@ -394,7 +395,7 @@ class NotebookConfigRepositorySqlDelight(
         NotebookRefreshBus.emitRefresh()
     }
 
-    override suspend fun deleteColumnCategory(classId: Long, categoryId: String, preserveColumns: Boolean) {
+    override suspend fun deleteColumnCategory(classId: Long, categoryId: String, preserveColumns: Boolean) = withContext(Dispatchers.Default) {
         db.transaction {
             val categoryColumns = db.appDatabaseQueries.selectColumnsByClass(classId).executeAsList()
                 .filter { it.category_id == categoryId }
@@ -445,9 +446,9 @@ class NotebookConfigRepositorySqlDelight(
         NotebookRefreshBus.emitRefresh()
     }
 
-    override suspend fun toggleCategoryCollapsed(classId: Long, categoryId: String, isCollapsed: Boolean) {
+    override suspend fun toggleCategoryCollapsed(classId: Long, categoryId: String, isCollapsed: Boolean) = withContext(Dispatchers.Default) {
         val current = db.appDatabaseQueries.selectColumnCategoriesByClass(classId).executeAsList()
-            .firstOrNull { it.id == categoryId } ?: return
+            .firstOrNull { it.id == categoryId } ?: return@withContext
         db.appDatabaseQueries.upsertColumnCategory(
             id = current.id,
             class_id = current.class_id,
@@ -462,14 +463,14 @@ class NotebookConfigRepositorySqlDelight(
         NotebookRefreshBus.emitRefresh()
     }
 
-    override suspend fun reorderCategory(classId: Long, tabId: String, categoryId: String, targetCategoryId: String) {
+    override suspend fun reorderCategory(classId: Long, tabId: String, categoryId: String, targetCategoryId: String) = withContext(Dispatchers.Default) {
         val categories = listColumnCategories(classId, tabId)
             .sortedWith(compareBy<NotebookColumnCategory> { it.order }.thenBy { it.id })
             .toMutableList()
 
         val fromIndex = categories.indexOfFirst { it.id == categoryId }
         val targetIndex = categories.indexOfFirst { it.id == targetCategoryId }
-        if (fromIndex < 0 || targetIndex < 0 || fromIndex == targetIndex) return
+        if (fromIndex < 0 || targetIndex < 0 || fromIndex == targetIndex) return@withContext
 
         val moved = categories.removeAt(fromIndex)
         val adjustedTarget = if (fromIndex < targetIndex) targetIndex - 1 else targetIndex
@@ -483,8 +484,8 @@ class NotebookConfigRepositorySqlDelight(
         NotebookRefreshBus.emitRefresh()
     }
 
-    override suspend fun assignColumnToCategory(classId: Long, columnId: String, categoryId: String?) {
-        val row = db.appDatabaseQueries.selectColumnById(columnId).executeAsOneOrNull() ?: return
+    override suspend fun assignColumnToCategory(classId: Long, columnId: String, categoryId: String?) = withContext(Dispatchers.Default) {
+        val row = db.appDatabaseQueries.selectColumnById(columnId).executeAsOneOrNull() ?: return@withContext
         db.appDatabaseQueries.upsertColumn(
             id = row.id,
             class_id = row.class_id,
@@ -545,13 +546,13 @@ class NotebookConfigRepositorySqlDelight(
         }
     }
 
-    override suspend fun listWorkGroups(classId: Long, tabId: String?): List<NotebookWorkGroup> {
+    override suspend fun listWorkGroups(classId: Long, tabId: String?): List<NotebookWorkGroup> = withContext(Dispatchers.Default) {
         val rows = if (tabId == null) {
             db.appDatabaseQueries.selectWorkGroupsByClass(classId).executeAsList()
         } else {
             db.appDatabaseQueries.selectWorkGroupsByClassAndTab(classId, tabId).executeAsList()
         }
-        return rows.map { row ->
+        rows.map { row ->
             NotebookWorkGroup(
                 id = row.id,
                 classId = row.class_id,
@@ -567,7 +568,7 @@ class NotebookConfigRepositorySqlDelight(
         }
     }
 
-    override suspend fun saveWorkGroup(classId: Long, workGroup: NotebookWorkGroup): Long {
+    override suspend fun saveWorkGroup(classId: Long, workGroup: NotebookWorkGroup): Long = withContext(Dispatchers.Default) {
         val now = workGroup.trace.updatedAt.toEpochMilliseconds().takeIf { it > 0 } ?: Clock.System.now().toEpochMilliseconds()
         val uniqueName = resolveUniqueWorkGroupName(
             classId = classId,
@@ -602,7 +603,7 @@ class NotebookConfigRepositorySqlDelight(
             }
         }
         NotebookRefreshBus.emitRefresh()
-        return savedId
+        savedId
     }
 
     private suspend fun resolveUniqueWorkGroupName(
@@ -627,7 +628,7 @@ class NotebookConfigRepositorySqlDelight(
         return candidate
     }
 
-    override suspend fun deleteWorkGroup(groupId: Long) {
+    override suspend fun deleteWorkGroup(groupId: Long) = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.deleteWorkGroup(groupId)
         NotebookRefreshBus.emitRefresh()
     }
@@ -655,13 +656,13 @@ class NotebookConfigRepositorySqlDelight(
         }
     }
 
-    override suspend fun listWorkGroupMembers(classId: Long, tabId: String?): List<NotebookWorkGroupMember> {
+    override suspend fun listWorkGroupMembers(classId: Long, tabId: String?): List<NotebookWorkGroupMember> = withContext(Dispatchers.Default) {
         val rows = if (tabId == null) {
             db.appDatabaseQueries.selectWorkGroupMembersByClass(classId).executeAsList()
         } else {
             db.appDatabaseQueries.selectWorkGroupMembersByClassAndTab(classId, tabId).executeAsList()
         }
-        return rows.map { row ->
+        rows.map { row ->
             NotebookWorkGroupMember(
                 classId = row.class_id,
                 tabId = row.tab_id,
@@ -681,7 +682,7 @@ class NotebookConfigRepositorySqlDelight(
         tabId: String,
         groupId: Long,
         studentIds: List<Long>,
-    ) {
+    ) = withContext(Dispatchers.Default) {
         val now = Clock.System.now().toEpochMilliseconds()
         studentIds.forEach { studentId ->
             db.appDatabaseQueries.deleteWorkGroupMember(classId, tabId, studentId)
@@ -702,14 +703,14 @@ class NotebookConfigRepositorySqlDelight(
         classId: Long,
         tabId: String,
         studentIds: List<Long>,
-    ) {
+    ) = withContext(Dispatchers.Default) {
         studentIds.forEach { studentId ->
             db.appDatabaseQueries.deleteWorkGroupMember(classId, tabId, studentId)
         }
         NotebookRefreshBus.emitRefresh()
     }
 
-    override suspend fun duplicateConfigToClass(sourceClassId: Long, targetClassId: Long) {
+    override suspend fun duplicateConfigToClass(sourceClassId: Long, targetClassId: Long) = withContext(Dispatchers.Default) {
         val tabs = listTabs(sourceClassId)
         val columns = listColumns(sourceClassId)
         val columnCategories = listColumnCategories(sourceClassId)
@@ -865,8 +866,8 @@ class NotebookConfigRepositorySqlDelight(
         }
     }
 
-    override suspend fun getNotebookConfig(classId: Long): NotebookConfig {
-        return NotebookConfig(
+    override suspend fun getNotebookConfig(classId: Long): NotebookConfig = withContext(Dispatchers.Default) {
+        NotebookConfig(
             classId = classId,
             tabs = listTabs(classId),
             columns = listColumns(classId),

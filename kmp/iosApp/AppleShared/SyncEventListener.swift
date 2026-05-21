@@ -23,7 +23,7 @@ final class SyncEventListener {
 
         stop()
         currentConnectionKey = connectionKey
-        eventTask = Task { [weak self] in
+        eventTask = Task.detached(priority: .background) { [weak self] in
             await self?.listen(
                 host: host,
                 token: token,

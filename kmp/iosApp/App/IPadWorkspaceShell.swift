@@ -549,6 +549,22 @@ enum ClassroomCaptureSheet: Identifiable {
     }
 }
 
+enum ActiveWorkspaceSheet: Identifiable {
+    case create(WorkspaceCreateSheet)
+    case contextualAI(ContextualAISheetState)
+    case classroomCapture(ClassroomCaptureSheet)
+    case bulkRubricEvaluation
+
+    var id: String {
+        switch self {
+        case .create(let sheet): return "create_\(sheet.id)"
+        case .contextualAI(let state): return "contextualAI_\(state.id)"
+        case .classroomCapture(let sheet): return "classroomCapture_\(sheet.id)"
+        case .bulkRubricEvaluation: return "bulkRubricEvaluation"
+        }
+    }
+}
+
 struct AppWorkspaceShell: View {
     @EnvironmentObject var bridge: KmpBridge
     @Environment(\.colorScheme) var colorScheme
@@ -560,15 +576,40 @@ struct AppWorkspaceShell: View {
     @State var selectedClassId: Int64? = nil
     @State var selectedStudentId: Int64? = nil
     @State var plannerContext = PlannerNavigationContext()
-    @State var createSheet: WorkspaceCreateSheet?
+    @State var activeWorkspaceSheet: ActiveWorkspaceSheet?
+    var createSheet: WorkspaceCreateSheet? {
+        get {
+            if case .create(let s) = activeWorkspaceSheet { return s }
+            return nil
+        }
+        nonmutating set {
+            activeWorkspaceSheet = newValue.map { .create($0) }
+        }
+    }
     @State var showingRubricBuilder = false
     @StateObject var layoutState = WorkspaceLayoutState()
     @State var rootSplitVisibility: NavigationSplitViewVisibility = .all
     @State var debouncedSearchText = ""
-    @State var contextualAISheetState: ContextualAISheetState?
+    var contextualAISheetState: ContextualAISheetState? {
+        get {
+            if case .contextualAI(let s) = activeWorkspaceSheet { return s }
+            return nil
+        }
+        nonmutating set {
+            activeWorkspaceSheet = newValue.map { .contextualAI($0) }
+        }
+    }
     @State var isLoadingContextualAI = false
     @State var classroomContext: KmpBridge.ClassroomCaptureContextSnapshot?
-    @State var classroomCaptureSheet: ClassroomCaptureSheet?
+    var classroomCaptureSheet: ClassroomCaptureSheet? {
+        get {
+            if case .classroomCapture(let s) = activeWorkspaceSheet { return s }
+            return nil
+        }
+        nonmutating set {
+            activeWorkspaceSheet = newValue.map { .classroomCapture($0) }
+        }
+    }
     @State var classroomCaptureStudentId: Int64?
     @State var classroomCaptureText = ""
     @State var isSavingClassroomCapture = false
@@ -622,45 +663,52 @@ struct AppWorkspaceShell: View {
         #if os(macOS)
         .ignoresSafeArea(.all, edges: .leading)
         #endif
-        .sheet(item: $createSheet) { sheet in
+        .sheet(item: Binding<ActiveWorkspaceSheet?>(
+            get: { activeWorkspaceSheet },
+            set: { newValue in
+                if activeWorkspaceSheet != nil && newValue == nil {
+                    if case .bulkRubricEvaluation = activeWorkspaceSheet {
+                        bridge.closeBulkRubricEvaluation()
+                    }
+                }
+                activeWorkspaceSheet = newValue
+            }
+        )) { sheet in
             switch sheet {
-            case .course:
-                CreateCourseSheet {
-                    createSheet = nil
+            case .create(let workspaceCreateSheet):
+                switch workspaceCreateSheet {
+                case .course:
+                    CreateCourseSheet {
+                        activeWorkspaceSheet = nil
+                    }
+                    .environmentObject(bridge)
+                case .student:
+                    CreateStudentSheet(defaultClassId: selectedClassId) {
+                        activeWorkspaceSheet = nil
+                    }
+                    .environmentObject(bridge)
+                case .evaluation:
+                    CreateEvaluationSheet(defaultClassId: selectedClassId) {
+                        activeWorkspaceSheet = nil
+                    }
+                    .environmentObject(bridge)
                 }
-                .environmentObject(bridge)
-            case .student:
-                CreateStudentSheet(defaultClassId: selectedClassId) {
-                    createSheet = nil
-                }
-                .environmentObject(bridge)
-            case .evaluation:
-                CreateEvaluationSheet(defaultClassId: selectedClassId) {
-                    createSheet = nil
-                }
-                .environmentObject(bridge)
+            case .contextualAI(let state):
+                contextualAISheet(state)
+            case .classroomCapture(let kind):
+                classroomCaptureSheetView(kind)
+            case .bulkRubricEvaluation:
+                RubricBulkEvaluationSheet(bridge: bridge)
+                    #if os(macOS)
+                    .frame(width: 1180, height: 760)
+                    #else
+                    .presentationDetents([.large])
+                    #endif
             }
         }
         .appFullScreenCover(isPresented: $showingRubricBuilder) {
             RubricsBuilderScreen()
                 .environmentObject(bridge)
-        }
-        .sheet(item: $contextualAISheetState, content: contextualAISheet)
-        .sheet(item: $classroomCaptureSheet, content: classroomCaptureSheetView)
-        .sheet(isPresented: Binding(
-            get: { bridge.showingBulkRubricEvaluation && activeModule != .notebook },
-            set: { isPresented in
-                if !isPresented {
-                    bridge.closeBulkRubricEvaluation()
-                }
-            }
-        )) {
-            RubricBulkEvaluationSheet(bridge: bridge)
-                #if os(macOS)
-                .frame(width: 1180, height: 760)
-                #else
-                .presentationDetents([.large])
-                #endif
         }
         .task {
             await bridge.ensureClassesLoaded()
@@ -679,8 +727,15 @@ struct AppWorkspaceShell: View {
                 await bridge.selectStudentsClass(classId: selectedClassId)
             }
             await reloadClassroomContext()
+            updateBulkRubricSheetState(showing: bridge.showingBulkRubricEvaluation, module: activeModule)
         }
-        .appOnChange(of: activeModule) { newValue in persistedActiveModule = newValue.rawValue }
+        .appOnChange(of: activeModule) { newValue in
+            persistedActiveModule = newValue.rawValue
+            updateBulkRubricSheetState(showing: bridge.showingBulkRubricEvaluation, module: newValue)
+        }
+        .appOnChange(of: bridge.showingBulkRubricEvaluation) { newValue in
+            updateBulkRubricSheetState(showing: newValue, module: activeModule)
+        }
         .appOnChange(of: selectedClassId) { newValue in
             persistedSelectedClassId = Int(newValue ?? 0)
             Task { await reloadClassroomContext() }
@@ -702,6 +757,18 @@ struct AppWorkspaceShell: View {
             module: sheet.module,
             context: sheet.context
         )
+    }
+
+    func updateBulkRubricSheetState(showing: Bool, module: AppWorkspaceModule) {
+        if showing && module != .notebook {
+            if activeWorkspaceSheet == nil {
+                activeWorkspaceSheet = .bulkRubricEvaluation
+            }
+        } else {
+            if case .bulkRubricEvaluation = activeWorkspaceSheet {
+                activeWorkspaceSheet = nil
+            }
+        }
     }
 
     var workspaceToolbar: some View {

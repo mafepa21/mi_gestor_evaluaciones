@@ -641,9 +641,9 @@ struct AppWorkspaceShell: View {
         } detail: {
             ZStack(alignment: .top) {
                 VStack(spacing: 0) {
-                    if layoutState.isFocusModeEnabled {
+                    if layoutState.isFocusModeEnabled && activeModule != .notebook {
                         compactFocusToolbar
-                    } else {
+                    } else if activeModule != .notebook {
                         workspaceToolbar
                         Divider().opacity(0.24)
                     }
@@ -842,7 +842,7 @@ struct AppWorkspaceShell: View {
                 attendanceGlobalToolbarRow
             } else if activeModule == .planner || activeModule == .diary {
                 moduleContextToolbarRow
-            } else {
+            } else if activeModule != .notebook {
                 HStack(spacing: 12) {
                     Menu {
                         Button("Sin clase activa") {

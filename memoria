@@ -405,6 +405,47 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-05-21 - Timeout SSE iOS de sincronización LAN
+
+Resumen:
+- Se corrigió `kmp/iosApp/AppleShared/SyncEventListener.swift` para que el stream Server-Sent Events `/sync/events` no se corte a los 120 segundos por `timeoutIntervalForResource`.
+- El cliente iOS mantiene `timeoutIntervalForRequest = 60` para fallar rápido al abrir conexión, pero permite que el recurso SSE permanezca vivo hasta 7 días, alineado con una conexión persistente con keep-alives del servidor.
+- El log `NSURLErrorDomain Code=-1001` contra `https://<host>:8765/sync/events` era compatible con el timeout de recurso, no con un fallo del endpoint ni del token.
+
+Validación:
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS' build` terminó con `BUILD SUCCEEDED`.
+
+Notas para futuras conversaciones:
+- Si reaparece el error en menos de 60 segundos, investigar conectividad, TLS/fingerprint o disponibilidad del Mac servidor. Si reaparece alrededor de varios minutos u horas, revisar política de red/backgrounding de iOS antes de tocar `LocalSyncServer.kt`.
+
+### 2026-05-21 - Cuaderno iPad sin toolbar global duplicado
+
+Resumen:
+- Se corrigio `kmp/iosApp/App/IPadWorkspaceShell.swift` para que el shell iPad no renderice `workspaceToolbar` cuando el modulo activo es `.notebook`.
+- La barra global que mostraba "Registro evaluativo", selector de curso y buscador de alumnos queda eliminada del Cuaderno; el modulo conserva su `NotebookCompactCommandBar`, que es la unica barra local con clase, busqueda y acciones reales.
+- El cambio preserva las toolbars especiales de Asistencia, Planner y Diario, y evita dejar padding/fondo vacio del shell encima del grid.
+
+Validacion:
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -sdk iphonesimulator CODE_SIGNING_ALLOWED=NO build` finalizo con `BUILD SUCCEEDED`.
+
+Notas para futuras conversaciones:
+- En Cuaderno, el ownership de clase/busqueda/acciones vive en `NotebookCompactCommandBar`; no volver a exponer esos controles desde `IPadWorkspaceShell`.
+
+### 2026-05-21 - Guia visual interna Apple UI
+
+Resumen:
+- Se creo `docs/apple-ui-guidelines.md` como guia visual interna para nuevas pantallas iOS/iPadOS.
+- La guia fija reglas de espaciado, cards, tipografia, toolbars, empty states, sheets, inspectores, loading, errores y acciones destructivas.
+- Referencia explicitamente `kmp/iosApp/App/IOSAppStyle.swift` y `kmp/iosApp/App/IOSPremiumComponents.swift` como fuente obligatoria de tokens y componentes antes de crear estilos locales.
+- Incluye ejemplos SwiftUI y una lista de patrones que no deben usarse para evitar que nuevos modulos vuelvan a divergir visualmente.
+
+Validacion:
+- Revision documental y contraste con los patrones actuales del Cuaderno iOS (`NotebookModuleView`, `NotebookCompactCommandBar`, `NotebookDataGrid`, `NotebookInspectorPanel`).
+- No se ejecutaron builds porque el cambio solo agrega documentacion Markdown.
+
+Notas para futuras conversaciones:
+- Ante una nueva pantalla Apple, empezar por esta guia y reutilizar `IOSAppStyle`/`IOSPremiumComponents`; crear variantes locales solo si el modulo ya tiene componentes propios o hay una necesidad funcional clara.
+
 ### 2026-05-21 - Cuaderno iOS compacto con focus mode
 
 Resumen:

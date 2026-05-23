@@ -115,9 +115,7 @@ extension NotebookModuleView {
         case .collapsedCategory(let category, let columns):
             return AnyView(
                 Button {
-                    withAnimation(.snappy(duration: 0.18)) {
-                        setCategoryCollapsed(category, collapsed: false)
-                    }
+                    setCategoryCollapsed(category, collapsed: false)
                 } label: {
                     collapsedCategoryHeader(
                         category: category,
@@ -125,7 +123,7 @@ extension NotebookModuleView {
                         width: segmentWidth(segment)
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(NotebookCategoryHeaderButtonStyle())
                 .contextMenu {
                     categoryContextMenu(category, data: data)
                 }
@@ -427,9 +425,7 @@ extension NotebookModuleView {
 
             return AnyView(
                 Button {
-                    withAnimation(.snappy(duration: 0.18)) {
-                        setCategoryCollapsed(category, collapsed: false)
-                    }
+                    setCategoryCollapsed(category, collapsed: false)
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "rectangle.stack")
@@ -455,8 +451,9 @@ extension NotebookModuleView {
                             RoundedRectangle(cornerRadius: 10, style: .continuous)
                                 .stroke(categoryTint.opacity(0.12), lineWidth: 1)
                         )
+                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(NotebookCategoryHeaderButtonStyle())
                 .frame(width: segmentWidth(segment), height: notebookGridRowHeight)
                 .contextMenu {
                     categoryContextMenu(category, data: data)
@@ -472,9 +469,7 @@ extension NotebookModuleView {
         let countText = categoryColumnCountText(allColumns)
         let statusText = categoryHiddenColumnCount(allColumns) > 0 ? "expandida · con ocultas" : "expandida"
         return Button {
-            withAnimation(.snappy(duration: 0.18)) {
-                setCategoryCollapsed(category, collapsed: true)
-            }
+            setCategoryCollapsed(category, collapsed: true)
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: "chevron.down")
@@ -513,7 +508,7 @@ extension NotebookModuleView {
                     .stroke(categoryTint.opacity(0.20), lineWidth: 1)
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(NotebookCategoryHeaderButtonStyle())
         .contextMenu {
             categoryContextMenu(category, data: bridge.notebookState as? NotebookUiStateData)
         }
@@ -725,4 +720,11 @@ extension NotebookModuleView {
         }
     }
 
+}
+
+private struct NotebookCategoryHeaderButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.86 : 1)
+    }
 }

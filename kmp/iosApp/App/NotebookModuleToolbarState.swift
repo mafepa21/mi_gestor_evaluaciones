@@ -123,6 +123,10 @@ extension NotebookModuleView {
                 NotebookToolbarGroupOption(id: $0.id, name: $0.name, studentCount: memberCount($0.id, in: data))
             },
             organizationMenuAvailable: true,
+            canUndo: !undoStack.isEmpty,
+            isAttendanceQuickMode: isAttendanceQuickMode,
+            canMarkAllPresent: canMarkAllPresent,
+            exportText: exportText(data: data),
             onToggleInspector: {
                 if inspectorSelection == nil {
                     openInspectorForSelection(data)
@@ -146,6 +150,27 @@ extension NotebookModuleView {
             },
             onOpenOrganizationMenu: {
                 isOrganizationMenuPresented = true
+            },
+            onUndo: {
+                undoLastCellChange()
+            },
+            onToggleAttendanceQuickMode: {
+                isAttendanceQuickMode.toggle()
+                if isAttendanceQuickMode {
+                    activeChoiceCellId = nil
+                    focusedCellId = nil
+                }
+            },
+            onMarkAllPresent: {
+                requestMarkAllVisibleStudentsPresent(data: data)
+            },
+            onRefresh: {
+                Task {
+                    await refreshNotebookSignals()
+                }
+            },
+            onGenerateSummary: {
+                notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: nil)
             }
         )
 

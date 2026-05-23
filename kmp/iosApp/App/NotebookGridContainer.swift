@@ -17,6 +17,7 @@ struct NotebookGridContainer<
     let surfaceMode: NotebookSurfaceMode
     let fixedColumnWidth: CGFloat
     let trailingFixedColumnWidth: CGFloat
+    let isFixedColumnResizing: Bool
     let topAccessoryHeight: CGFloat
     let headerHeight: CGFloat
     let rowHeight: CGFloat
@@ -42,6 +43,7 @@ struct NotebookGridContainer<
             NotebookDataGrid(
                 fixedColumnWidth: fixedColumnWidth,
                 trailingFixedColumnWidth: trailingFixedColumnWidth,
+                isFixedColumnResizing: isFixedColumnResizing,
                 topAccessoryHeight: topAccessoryHeight,
                 headerHeight: headerHeight
             ) {

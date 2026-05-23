@@ -12,10 +12,12 @@ struct NotebookGridContent<
     let surfaceMode: NotebookSurfaceMode
     let fixedColumnWidth: CGFloat
     let trailingFixedColumnWidth: CGFloat
+    let isFixedColumnResizing: Bool
     let topAccessoryHeight: CGFloat
     let headerHeight: CGFloat
     let rowHeight: CGFloat
     let rowInvalidationKey: String
+    let transientCellIds: Set<String>
     let fixedSegments: [NotebookDisplaySegment]
     let trailingFixedSegments: [NotebookDisplaySegment]
     let scrollableSegments: [NotebookDisplaySegment]
@@ -41,6 +43,7 @@ struct NotebookGridContent<
             surfaceMode: surfaceMode,
             fixedColumnWidth: fixedColumnWidth,
             trailingFixedColumnWidth: trailingFixedColumnWidth,
+            isFixedColumnResizing: isFixedColumnResizing,
             topAccessoryHeight: topAccessoryHeight,
             headerHeight: headerHeight,
             rowHeight: rowHeight
@@ -90,6 +93,24 @@ struct NotebookGridContent<
     }
 
     private func rowSignature(index: Int, item: NotebookTableRow, segmentKey: String, visibleColumnIds: Set<String>) -> String {
+        guard !visibleColumnIds.isEmpty else {
+            return [
+                "\(item.student.id)",
+                item.row.weightedAverage.map { "\($0.doubleValue)" } ?? "nil",
+                segmentKey,
+                rowInvalidationKey
+            ].joined(separator: "¬")
+        }
+
+        let studentPrefix = "\(item.student.id)|"
+        let transientCellDigest = transientCellIds
+            .compactMap { cellId -> String? in
+                guard cellId.hasPrefix(studentPrefix) else { return nil }
+                let columnId = String(cellId.dropFirst(studentPrefix.count))
+                return visibleColumnIds.contains(columnId) ? columnId : nil
+            }
+            .sorted()
+            .joined(separator: "|")
         let visibleCellDigest = item.row.persistedCells
             .filter { visibleColumnIds.contains($0.columnId) }
             .sorted { $0.columnId < $1.columnId }
@@ -109,17 +130,18 @@ struct NotebookGridContent<
             .map { grade in
                 [
                     grade.columnId,
-                    grade.value.map { String(format: "%.4f", $0.doubleValue) } ?? "",
+                    grade.value.map { "\($0.doubleValue)" } ?? "",
                     grade.evidencePath ?? "",
                     grade.rubricSelections ?? ""
                 ].joined(separator: ":")
             }
             .joined(separator: "|")
-        let average = item.row.weightedAverage.map { String(format: "%.2f", $0.doubleValue) } ?? "nil"
+        let average = item.row.weightedAverage.map { "\($0.doubleValue)" } ?? "nil"
         return [
             "\(item.student.id)",
             average,
             segmentKey,
+            transientCellDigest,
             visibleCellDigest,
             visibleGradeDigest,
             rowInvalidationKey

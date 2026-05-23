@@ -140,7 +140,10 @@ struct NotebookModuleView: View {
     }
 
     func setCategoryCollapsed(_ category: NotebookColumnCategory, collapsed: Bool) {
-        withAnimation(.snappy(duration: 0.18)) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        transaction.animation = nil
+        withTransaction(transaction) {
             gridLayoutModel.setCategoryCollapsed(category, collapsed: collapsed)
             if !collapsed {
                 expandedEmptyCategoryIds.insert(category.id)
@@ -417,10 +420,12 @@ struct NotebookModuleView: View {
             surfaceMode: surfaceMode,
             fixedColumnWidth: fixedZoneWidth,
             trailingFixedColumnWidth: trailingFixedSegments.isEmpty ? 0 : defaultFixedWidth(for: .average) + trailingPaddingCompensation,
+            isFixedColumnResizing: isDraggingFixedZoneDivider,
             topAccessoryHeight: shouldShowFolderLane ? notebookGridFolderLaneHeight : 0,
             headerHeight: notebookGridHeaderHeight,
             rowHeight: notebookGridRowHeight,
             rowInvalidationKey: gridRowInvalidationKey(data: data),
+            transientCellIds: transientGridCellIds,
             fixedSegments: leadingFixedSegments,
             trailingFixedSegments: trailingFixedSegments,
             scrollableSegments: scrollableSegments
@@ -492,13 +497,13 @@ struct NotebookModuleView: View {
         } dividerHandle: {
             NotebookDividerHandle(isDragging: isDraggingFixedZoneDivider) { translationWidth in
                 if !isDraggingFixedZoneDivider {
-                    isDraggingFixedZoneDivider = true
+                    updateFixedZoneDragState(isDragging: true)
                     fixedZoneDragStartWidth = fixedZoneWidth
                 }
                 let newWidth = fixedZoneDragStartWidth + translationWidth
-                fixedZoneLiveWidth = min(maxFixedZoneWidth, max(minFixedZoneWidth, newWidth))
+                updateFixedZoneLiveWidth(newWidth)
             } onDragEnded: {
-                isDraggingFixedZoneDivider = false
+                updateFixedZoneDragState(isDragging: false)
                 snapFixedZoneWidth()
             }
         } header: { segments in
@@ -646,7 +651,10 @@ struct NotebookModuleView: View {
         } else {
             snappedWidth = current
         }
-        withAnimation(.spring(duration: 0.2, bounce: 0.15)) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        transaction.animation = nil
+        withTransaction(transaction) {
             fixedZoneLiveWidth = snappedWidth
             if let data = bridge.notebookState as? NotebookUiStateData,
                let tabId = activeNotebookTabId(data: data) {
@@ -655,6 +663,28 @@ struct NotebookModuleView: View {
                 fixedZoneWidthStored = Double(snappedWidth)
             }
             fixedZoneLiveWidth = nil
+        }
+    }
+
+    func updateFixedZoneDragState(isDragging: Bool) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        transaction.animation = nil
+        withTransaction(transaction) {
+            isDraggingFixedZoneDivider = isDragging
+        }
+    }
+
+    func updateFixedZoneLiveWidth(_ proposedWidth: CGFloat) {
+        let clamped = min(maxFixedZoneWidth, max(minFixedZoneWidth, proposedWidth))
+        let quantized = (clamped / 2).rounded() * 2
+        guard fixedZoneLiveWidth != quantized else { return }
+
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        transaction.animation = nil
+        withTransaction(transaction) {
+            fixedZoneLiveWidth = quantized
         }
     }
 
@@ -904,14 +934,25 @@ struct NotebookModuleView: View {
 
     func gridRowInvalidationKey(data: NotebookUiStateData) -> String {
         [
-            inspectorSelection?.id ?? "none",
             "\(isAttendanceQuickMode)",
             "\(cellReloadRevision)",
-            activeChoiceCellId ?? "none",
-            focusedCellId ?? "none",
             "columns:\(data.sheet.columns.count)",
             "rows:\(data.sheet.rows.count)"
         ].joined(separator: "¬")
+    }
+
+    var transientGridCellIds: Set<String> {
+        var ids = Set<String>()
+        if let selectionId = inspectorSelection?.id {
+            ids.insert(selectionId)
+        }
+        if let focusedCellId {
+            ids.insert(focusedCellId)
+        }
+        if let activeChoiceCellId {
+            ids.insert(activeChoiceCellId)
+        }
+        return ids
     }
 
     func notebookTabsStateKey(data: NotebookUiStateData) -> String {

@@ -1490,6 +1490,14 @@ final class KmpBridge: ObservableObject {
         return sessions.filter { $0.groupId == classId }
     }
 
+    func plannerGetSession(id: Int64) async throws -> PlanningSession {
+        let sessions = try await container.plannerRepository.listAllSessions()
+        guard let session = sessions.first(where: { $0.id == id }) else {
+            throw NSError(domain: "KmpBridge", code: 404, userInfo: [NSLocalizedDescriptionKey: "Session not found"])
+        }
+        return session
+    }
+
     func plannerWeeklySlots(classId: Int64?) -> [WeeklySlotTemplate] {
         if let classId {
             return container.weeklyTemplateRepository.getSlotsForClass(schoolClassId: classId)

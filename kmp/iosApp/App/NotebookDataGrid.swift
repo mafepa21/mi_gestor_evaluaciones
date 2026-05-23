@@ -192,6 +192,7 @@ private struct NotebookResizeCursorModifier: ViewModifier {
 struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, TrailingFixedTopAccessory: View, ScrollTopAccessory: View, FixedHeader: View, TrailingFixedHeader: View, ScrollHeader: View, FixedRows: View, TrailingFixedRows: View, ScrollRows: View>: View {
     let fixedColumnWidth: CGFloat
     let trailingFixedColumnWidth: CGFloat
+    let isFixedColumnResizing: Bool
     let topAccessoryHeight: CGFloat
     let headerHeight: CGFloat
     let fixedTopAccessory: FixedTopAccessory
@@ -210,6 +211,7 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, TrailingFi
     init(
         fixedColumnWidth: CGFloat,
         trailingFixedColumnWidth: CGFloat,
+        isFixedColumnResizing: Bool = false,
         topAccessoryHeight: CGFloat,
         headerHeight: CGFloat,
         @ViewBuilder fixedTopAccessory: () -> FixedTopAccessory,
@@ -225,6 +227,7 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, TrailingFi
     ) {
         self.fixedColumnWidth = fixedColumnWidth
         self.trailingFixedColumnWidth = trailingFixedColumnWidth
+        self.isFixedColumnResizing = isFixedColumnResizing
         self.topAccessoryHeight = topAccessoryHeight
         self.headerHeight = headerHeight
         self.fixedTopAccessory = fixedTopAccessory()
@@ -271,7 +274,18 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, TrailingFi
         .overlay(alignment: .trailing) {
             fixedColumnSeparator
         }
-        .shadow(color: fixedColumnShadowColor, radius: fixedColumnShadowRadius, x: 1, y: 0)
+        .shadow(
+            color: isFixedColumnResizing ? .clear : fixedColumnShadowColor,
+            radius: isFixedColumnResizing ? 0 : fixedColumnShadowRadius,
+            x: 1,
+            y: 0
+        )
+        .transaction { transaction in
+            if isFixedColumnResizing {
+                transaction.disablesAnimations = true
+                transaction.animation = nil
+            }
+        }
         .zIndex(2)
     }
 
@@ -316,9 +330,13 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, TrailingFi
     @ViewBuilder
     private var fixedColumnBackground: some View {
         #if os(macOS)
-        Rectangle()
-            .fill(.thinMaterial)
-            .overlay(appSecondarySystemBackgroundColor().opacity(0.72))
+        if isFixedColumnResizing {
+            appSecondarySystemBackgroundColor().opacity(0.94)
+        } else {
+            Rectangle()
+                .fill(.thinMaterial)
+                .overlay(appSecondarySystemBackgroundColor().opacity(0.72))
+        }
         #else
         appSecondarySystemBackgroundColor().opacity(0.94)
         #endif

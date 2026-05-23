@@ -310,7 +310,28 @@ extension NotebookModuleView {
     }
 
     func filledCellCount(_ item: NotebookTableRow, columns: [NotebookColumnDefinition]) -> Int {
-        columns.filter { !displayValue(for: item, column: $0).isEmpty }.count
+        let columnIds = Set(columns.map(\.id))
+        guard !columnIds.isEmpty else { return 0 }
+
+        let filledGradeIds = item.row.persistedGrades.compactMap { grade -> String? in
+            guard columnIds.contains(grade.columnId) else { return nil }
+            if grade.value != nil || !(grade.rubricSelections ?? "").isEmpty {
+                return grade.columnId
+            }
+            return nil
+        }
+
+        let filledCellIds = item.row.persistedCells.compactMap { cell -> String? in
+            guard columnIds.contains(cell.columnId) else { return nil }
+            if cell.boolValue?.boolValue == true { return cell.columnId }
+            if !(cell.textValue ?? "").isEmpty { return cell.columnId }
+            if !(cell.displayValue ?? "").isEmpty { return cell.columnId }
+            if !(cell.iconValue ?? "").isEmpty { return cell.columnId }
+            if !(cell.ordinalValue ?? "").isEmpty { return cell.columnId }
+            return nil
+        }
+
+        return min(columnIds.count, Set(filledGradeIds + filledCellIds).count)
     }
 
     func displayValue(for item: NotebookTableRow, column: NotebookColumnDefinition) -> String {

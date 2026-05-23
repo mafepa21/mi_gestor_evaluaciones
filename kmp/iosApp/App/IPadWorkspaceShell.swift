@@ -19,6 +19,10 @@ final class WorkspaceLayoutState: ObservableObject {
     @Published var notebookSurfaceMode: String = "grid"
     @Published var notebookSelectedGroupId: Int64? = nil
     @Published var notebookAvailableGroups: [NotebookToolbarGroupOption] = []
+    @Published var notebookCanUndo: Bool = false
+    @Published var notebookIsAttendanceQuickMode: Bool = false
+    @Published var notebookCanMarkAllPresent: Bool = false
+    @Published var notebookExportText: String? = nil
     @Published var dashboardInspectorAvailable: Bool = false
     @Published var isDashboardInspectorPresented: Bool = false
     @Published var dashboardActionsAvailable: Bool = false
@@ -38,6 +42,12 @@ final class WorkspaceLayoutState: ObservableObject {
     var notebookSurfaceModeAction: ((String) -> Void)?
     var notebookGroupFilterAction: ((Int64?) -> Void)?
     var notebookOrganizationMenuAction: (() -> Void)?
+    var notebookUndoAction: (() -> Void)?
+    var notebookToggleAttendanceQuickModeAction: (() -> Void)?
+    var notebookMarkAllPresentAction: (() -> Void)?
+    var notebookRefreshAction: (() -> Void)?
+    var notebookGenerateSummaryAction: (() -> Void)?
+
     var dashboardInspectorAction: (() -> Void)?
     var dashboardRefreshAction: (() -> Void)?
     var dashboardPassListAction: (() -> Void)?
@@ -74,12 +84,21 @@ final class WorkspaceLayoutState: ObservableObject {
         selectedGroupId: Int64?,
         availableGroups: [NotebookToolbarGroupOption],
         organizationMenuAvailable: Bool,
+        canUndo: Bool = false,
+        isAttendanceQuickMode: Bool = false,
+        canMarkAllPresent: Bool = false,
+        exportText: String? = nil,
         onToggleInspector: @escaping () -> Void,
         onAddColumn: @escaping () -> Void,
         onSearchChange: @escaping (String) -> Void,
         onSurfaceModeChange: @escaping (String) -> Void,
         onGroupFilterChange: @escaping (Int64?) -> Void,
-        onOpenOrganizationMenu: @escaping () -> Void
+        onOpenOrganizationMenu: @escaping () -> Void,
+        onUndo: (() -> Void)? = nil,
+        onToggleAttendanceQuickMode: (() -> Void)? = nil,
+        onMarkAllPresent: (() -> Void)? = nil,
+        onRefresh: (() -> Void)? = nil,
+        onGenerateSummary: (() -> Void)? = nil
     ) {
         publishDeferred {
             self.notebookInspectorAvailable = inspectorAvailable
@@ -90,12 +109,21 @@ final class WorkspaceLayoutState: ObservableObject {
             self.notebookSelectedGroupId = selectedGroupId
             self.notebookAvailableGroups = availableGroups
             self.notebookOrganizationMenuAvailable = organizationMenuAvailable
+            self.notebookCanUndo = canUndo
+            self.notebookIsAttendanceQuickMode = isAttendanceQuickMode
+            self.notebookCanMarkAllPresent = canMarkAllPresent
+            self.notebookExportText = exportText
             self.notebookInspectorAction = onToggleInspector
             self.notebookAddColumnAction = onAddColumn
             self.notebookSearchAction = onSearchChange
             self.notebookSurfaceModeAction = onSurfaceModeChange
             self.notebookGroupFilterAction = onGroupFilterChange
             self.notebookOrganizationMenuAction = onOpenOrganizationMenu
+            self.notebookUndoAction = onUndo
+            self.notebookToggleAttendanceQuickModeAction = onToggleAttendanceQuickMode
+            self.notebookMarkAllPresentAction = onMarkAllPresent
+            self.notebookRefreshAction = onRefresh
+            self.notebookGenerateSummaryAction = onGenerateSummary
         }
     }
 
@@ -107,7 +135,11 @@ final class WorkspaceLayoutState: ObservableObject {
         surfaceMode: String,
         selectedGroupId: Int64?,
         availableGroups: [NotebookToolbarGroupOption],
-        organizationMenuAvailable: Bool
+        organizationMenuAvailable: Bool,
+        canUndo: Bool = false,
+        isAttendanceQuickMode: Bool = false,
+        canMarkAllPresent: Bool = false,
+        exportText: String? = nil
     ) {
         publishDeferred {
             self.notebookInspectorAvailable = inspectorAvailable
@@ -118,6 +150,10 @@ final class WorkspaceLayoutState: ObservableObject {
             self.notebookSelectedGroupId = selectedGroupId
             self.notebookAvailableGroups = availableGroups
             self.notebookOrganizationMenuAvailable = organizationMenuAvailable
+            self.notebookCanUndo = canUndo
+            self.notebookIsAttendanceQuickMode = isAttendanceQuickMode
+            self.notebookCanMarkAllPresent = canMarkAllPresent
+            self.notebookExportText = exportText
         }
     }
 
@@ -131,12 +167,21 @@ final class WorkspaceLayoutState: ObservableObject {
             self.notebookSurfaceMode = "grid"
             self.notebookSelectedGroupId = nil
             self.notebookAvailableGroups = []
+            self.notebookCanUndo = false
+            self.notebookIsAttendanceQuickMode = false
+            self.notebookCanMarkAllPresent = false
+            self.notebookExportText = nil
             self.notebookInspectorAction = nil
             self.notebookAddColumnAction = nil
             self.notebookSearchAction = nil
             self.notebookSurfaceModeAction = nil
             self.notebookGroupFilterAction = nil
             self.notebookOrganizationMenuAction = nil
+            self.notebookUndoAction = nil
+            self.notebookToggleAttendanceQuickModeAction = nil
+            self.notebookMarkAllPresentAction = nil
+            self.notebookRefreshAction = nil
+            self.notebookGenerateSummaryAction = nil
         }
     }
 
@@ -146,6 +191,26 @@ final class WorkspaceLayoutState: ObservableObject {
 
     func showNotebookAddColumn() {
         notebookAddColumnAction?()
+    }
+
+    func notebookUndo() {
+        notebookUndoAction?()
+    }
+
+    func notebookToggleAttendanceQuickMode() {
+        notebookToggleAttendanceQuickModeAction?()
+    }
+
+    func notebookMarkAllPresent() {
+        notebookMarkAllPresentAction?()
+    }
+
+    func notebookRefresh() {
+        notebookRefreshAction?()
+    }
+
+    func notebookGenerateSummary() {
+        notebookGenerateSummaryAction?()
     }
 
     func setNotebookSearchText(_ value: String) {
@@ -617,6 +682,26 @@ struct AppWorkspaceShell: View {
     @State var classroomCaptureText = ""
     @State var isSavingClassroomCapture = false
 
+    var activeNotebookClassLabel: String {
+        guard let selectedClassId,
+              let schoolClass = bridge.classes.first(where: { $0.id == selectedClassId })
+        else { return "Seleccionar clase" }
+        return "\(schoolClass.name) · \(schoolClass.course)º"
+    }
+
+    var groupedNotebookClasses: [(course: Int32, classes: [SchoolClass])] {
+        Dictionary(grouping: bridge.classes, by: \.course)
+            .map { course, classes in
+                (
+                    course: course,
+                    classes: classes.sorted {
+                        $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+                    }
+                )
+            }
+            .sorted { $0.course < $1.course }
+    }
+
     var searchResults: [WorkspaceSearchResult] {
         let query = debouncedSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return [] }
@@ -783,172 +868,182 @@ struct AppWorkspaceShell: View {
     }
 
     var workspaceToolbar: some View {
-        VStack(spacing: 14) {
-            HStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(activeModule.subtitle.uppercased())
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                        .tracking(0.8)
-                        .foregroundStyle(.secondary)
-                    Text(activeModule.title)
-                        .font(.system(size: 30, weight: .black, design: .rounded))
-                }
+        Group {
+            if activeModule == .notebook {
+                notebookMacLikeToolbar
+            } else {
+                VStack(spacing: 14) {
+                    HStack(spacing: 16) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(activeModule.subtitle.uppercased())
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .tracking(0.8)
+                                .foregroundStyle(.secondary)
+                            Text(activeModule.title)
+                                .font(.system(size: 30, weight: .black, design: .rounded))
+                        }
 
-                Spacer()
+                        Spacer()
 
-                if activeModule == .dashboard {
-                    dashboardToolbarActions
-                } else if activeModule == .planner {
-                    plannerToolbarActions
-                } else if activeModule == .diary {
-                    diaryToolbarActions
-                } else if activeModule == .attendance {
-                    focusToggleButton
-                } else {
-                    focusToggleButton
+                        if activeModule == .dashboard {
+                            dashboardToolbarActions
+                        } else if activeModule == .planner {
+                            plannerToolbarActions
+                        } else if activeModule == .diary {
+                            diaryToolbarActions
+                        } else if activeModule == .notebook {
+                            notebookToolbarActions
+                        } else if activeModule == .attendance {
+                            focusToggleButton
+                        } else {
+                            focusToggleButton
 
-                    if activeModule != .notebook {
-                        if shouldShowGlobalContextualAIButton {
-                            Button {
-                                presentContextualAI()
-                            } label: {
-                                if isLoadingContextualAI {
-                                    ProgressView()
-                                        .controlSize(.small)
-                                        .frame(minWidth: 18)
-                                } else {
-                                    Label("IA", systemImage: "apple.intelligence")
+                            if activeModule != .notebook {
+                                if shouldShowGlobalContextualAIButton {
+                                    Button {
+                                        presentContextualAI()
+                                    } label: {
+                                        if isLoadingContextualAI {
+                                            ProgressView()
+                                                .controlSize(.small)
+                                                .frame(minWidth: 18)
+                                        } else {
+                                            Label("IA", systemImage: "apple.intelligence")
+                                        }
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .disabled(isLoadingContextualAI)
                                 }
+
+                                Menu {
+                                    Button("Recargar dashboard") { Task { await bridge.refreshDashboard(mode: .office) } }
+                                    Button("Recargar alumnado") { Task { try? await bridge.refreshStudentsDirectory() } }
+                                    Button("Recargar rúbricas") {
+                                        Task {
+                                            try? await bridge.refreshRubrics()
+                                            try? await bridge.refreshRubricClassLinks()
+                                        }
+                                    }
+                                } label: {
+                                    Image(systemName: "arrow.clockwise.circle")
+                                        .font(.title3.weight(.semibold))
+                                }
+                                .buttonStyle(.bordered)
+
+                                Button {
+                                    triggerPrimaryAction()
+                                } label: {
+                                    Label(primaryActionLabel, systemImage: "plus")
+                                }
+                                .buttonStyle(.borderedProminent)
+                            }
+                        }
+                    }
+
+                    if activeModule == .attendance && layoutState.attendanceToolbarAvailable {
+                        attendanceGlobalToolbarRow
+                    } else if activeModule == .planner || activeModule == .diary {
+                        moduleContextToolbarRow
+                    } else if activeModule == .notebook {
+                        notebookContextToolbarRow
+                    } else {
+                        HStack(spacing: 12) {
+                            Menu {
+                                Button("Sin clase activa") {
+                                    updateGlobalClassContext(nil)
+                                }
+                                ForEach(bridge.classes, id: \.id) { schoolClass in
+                                    Button {
+                                        updateGlobalClassContext(schoolClass.id)
+                                    } label: {
+                                        HStack {
+                                            Text(schoolClass.name)
+                                            if selectedClassId == schoolClass.id {
+                                                Image(systemName: "checkmark")
+                                            }
+                                        }
+                                    }
+                                }
+                            } label: {
+                                Label(activeClassLabel, systemImage: "rectangle.3.group")
+                                    .frame(minWidth: 220, alignment: .leading)
                             }
                             .buttonStyle(.bordered)
-                            .disabled(isLoadingContextualAI)
-                        }
 
-                        Menu {
-                            Button("Recargar dashboard") { Task { await bridge.refreshDashboard(mode: .office) } }
-                            Button("Recargar alumnado") { Task { try? await bridge.refreshStudentsDirectory() } }
-                            Button("Recargar rúbricas") {
-                                Task {
-                                    try? await bridge.refreshRubrics()
-                                    try? await bridge.refreshRubricClassLinks()
-                                }
-                            }
-                        } label: {
-                            Image(systemName: "arrow.clockwise.circle")
-                                .font(.title3.weight(.semibold))
-                        }
-                        .buttonStyle(.bordered)
-
-                        Button {
-                            triggerPrimaryAction()
-                        } label: {
-                            Label(primaryActionLabel, systemImage: "plus")
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
-                }
-            }
-
-            if activeModule == .attendance && layoutState.attendanceToolbarAvailable {
-                attendanceGlobalToolbarRow
-            } else if activeModule == .planner || activeModule == .diary {
-                moduleContextToolbarRow
-            } else {
-                HStack(spacing: 12) {
-                    Menu {
-                        Button("Sin clase activa") {
-                            updateGlobalClassContext(nil)
-                        }
-                        ForEach(bridge.classes, id: \.id) { schoolClass in
-                            Button {
-                                updateGlobalClassContext(schoolClass.id)
-                            } label: {
-                                HStack {
-                                    Text(schoolClass.name)
-                                    if selectedClassId == schoolClass.id {
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
-                            }
-                        }
-                    } label: {
-                        Label(activeClassLabel, systemImage: "rectangle.3.group")
-                            .frame(minWidth: 220, alignment: .leading)
-                    }
-                    .buttonStyle(.bordered)
-
-                    HStack(spacing: 10) {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundStyle(.secondary)
-                        TextField(
-                            activeModule == .notebook ? "Buscar alumno…" : "Buscar módulos, grupos o alumnado…",
-                            text: Binding(
-                                get: {
-                                    activeModule == .notebook ? layoutState.notebookSearchText : searchText
-                                },
-                                set: { newValue in
-                                    if activeModule == .notebook {
-                                        layoutState.setNotebookSearchText(newValue)
-                                    } else {
-                                        searchText = newValue
-                                    }
-                                }
-                            )
-                        )
-                            .textFieldStyle(.plain)
-                        if !(activeModule == .notebook ? layoutState.notebookSearchText : searchText).isEmpty {
-                            Button {
-                                if activeModule == .notebook {
-                                    layoutState.setNotebookSearchText("")
-                                } else {
-                                    searchText = ""
-                                }
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
+                            HStack(spacing: 10) {
+                                Image(systemName: "magnifyingglass")
                                     .foregroundStyle(.secondary)
+                                TextField(
+                                    activeModule == .notebook ? "Buscar alumno…" : "Buscar módulos, grupos o alumnado…",
+                                    text: Binding(
+                                        get: {
+                                            activeModule == .notebook ? layoutState.notebookSearchText : searchText
+                                        },
+                                        set: { newValue in
+                                            if activeModule == .notebook {
+                                                layoutState.setNotebookSearchText(newValue)
+                                            } else {
+                                                searchText = newValue
+                                            }
+                                        }
+                                    )
+                                )
+                                    .textFieldStyle(.plain)
+                                if !(activeModule == .notebook ? layoutState.notebookSearchText : searchText).isEmpty {
+                                    Button {
+                                        if activeModule == .notebook {
+                                            layoutState.setNotebookSearchText("")
+                                        } else {
+                                            searchText = ""
+                                        }
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
                             }
-                            .buttonStyle(.plain)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 12)
+                            .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                         }
                     }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                }
-            }
 
-            if shouldShowClassroomCaptureBar {
-                ClassroomCaptureBar(
-                    contextTitle: classroomCaptureTitle,
-                    isCompactNotebookMode: activeModule == .notebook && layoutState.notebookSurfaceMode != "grid",
-                    onOpenAttendance: {
-                        open(module: .attendance, classId: selectedClassId, studentId: selectedStudentId)
-                    },
-                    onOpenRubric: {
-                        Task { await openClassroomRubricCapture() }
-                    },
-                    onQuickNote: {
-                        presentClassroomCapture(.quickNote)
-                    },
-                    onInjury: {
-                        presentClassroomCapture(.injury)
-                    },
-                    onObservation: {
-                        presentClassroomCapture(.observation)
+                    if shouldShowClassroomCaptureBar {
+                        ClassroomCaptureBar(
+                            contextTitle: classroomCaptureTitle,
+                            isCompactNotebookMode: activeModule == .notebook && layoutState.notebookSurfaceMode != "grid",
+                            onOpenAttendance: {
+                                open(module: .attendance, classId: selectedClassId, studentId: selectedStudentId)
+                            },
+                            onOpenRubric: {
+                                Task { await openClassroomRubricCapture() }
+                            },
+                            onQuickNote: {
+                                presentClassroomCapture(.quickNote)
+                            },
+                            onInjury: {
+                                presentClassroomCapture(.injury)
+                            },
+                            onObservation: {
+                                presentClassroomCapture(.observation)
+                            }
+                        )
                     }
-                )
-            }
 
-            Text(bridge.status)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .opacity(0)
-                .overlay(
-                    Text(activeModule == .notebook ? "" : statusLineText)
+                    Text(bridge.status)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                )
+                        .opacity(0)
+                        .overlay(
+                            Text(activeModule == .notebook ? "" : statusLineText)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        )
+                }
+            }
         }
         .padding(.horizontal, 24)
         .padding(.top, 18)
@@ -1313,6 +1408,327 @@ struct AppWorkspaceShell: View {
             .buttonStyle(.borderedProminent)
             .disabled(!layoutState.plannerAddSessionAvailable)
         }
+    }
+
+    var notebookMacLikeToolbar: some View {
+        HStack(spacing: 12) {
+            Menu {
+                ForEach(groupedNotebookClasses, id: \.course) { group in
+                    Section("\(group.course)º") {
+                        ForEach(group.classes, id: \.id) { schoolClass in
+                            Button {
+                                updateGlobalClassContext(schoolClass.id)
+                            } label: {
+                                HStack {
+                                    Text("\(schoolClass.name) · \(schoolClass.course)º")
+                                    if selectedClassId == schoolClass.id {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if bridge.classes.isEmpty {
+                    Text("Sin clases disponibles")
+                }
+            } label: {
+                Label(activeNotebookClassLabel, systemImage: "rectangle.3.group")
+                    .lineLimit(1)
+                    .frame(minWidth: 132, maxWidth: 180, alignment: .leading)
+            }
+            .buttonStyle(.bordered)
+            .disabled(bridge.classes.isEmpty)
+            .help("Cambiar clase del cuaderno")
+
+            Picker("Vista", selection: Binding(
+                get: { layoutState.notebookSurfaceMode },
+                set: { layoutState.setNotebookSurfaceMode($0) }
+            )) {
+                Text("Grid").tag("grid")
+                Text("Plano").tag("seatingPlan")
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 112)
+
+            if bridge.syncPendingChanges > 0 {
+                HStack(spacing: 4) {
+                    Text("\(bridge.syncPendingChanges) pendientes")
+                        .font(.footnote.weight(.semibold))
+                }
+                .foregroundStyle(IOSAppStyle.warning)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(IOSAppStyle.warning.opacity(0.12), in: Capsule())
+            }
+
+            Button {
+                layoutState.showNotebookAddColumn()
+            } label: {
+                Label("Nueva columna", systemImage: "plus")
+            }
+            .buttonStyle(.bordered)
+            .disabled(!layoutState.notebookAddColumnAvailable)
+            .keyboardShortcut("n", modifiers: .command)
+            .help("Añadir nueva columna (⌘N)")
+
+            Button {
+                layoutState.openNotebookOrganizationMenu()
+            } label: {
+                Label("Organizar columnas", systemImage: "slider.horizontal.3")
+            }
+            .buttonStyle(.bordered)
+            .disabled(!layoutState.notebookOrganizationMenuAvailable)
+            .help("Organizar columnas")
+
+            Button {
+                layoutState.toggleNotebookInspector()
+            } label: {
+                Label(layoutState.isNotebookInspectorPresented ? "Ocultar inspector" : "Mostrar inspector", systemImage: "sidebar.right")
+            }
+            .buttonStyle(.bordered)
+            .disabled(!layoutState.notebookInspectorAvailable)
+            .keyboardShortcut("i", modifiers: [.command])
+            .help(layoutState.isNotebookInspectorPresented ? "Ocultar inspector" : "Mostrar inspector")
+
+            Label("Buscar", systemImage: "magnifyingglass")
+                .labelStyle(.iconOnly)
+                .foregroundStyle(.secondary)
+
+            TextField(
+                "Buscar",
+                text: Binding(
+                    get: { layoutState.notebookSearchText },
+                    set: { layoutState.setNotebookSearchText($0) }
+                )
+            )
+            .textFieldStyle(.roundedBorder)
+            .frame(width: 220)
+
+            Menu {
+                Button {
+                    layoutState.notebookRefresh()
+                } label: {
+                    Label("Recargar", systemImage: "arrow.clockwise")
+                }
+
+                if let exportText = layoutState.notebookExportText {
+                    ShareLink(item: exportText) {
+                        Label("Exportar", systemImage: "square.and.arrow.up")
+                    }
+                }
+
+                Button {
+                    layoutState.notebookUndo()
+                } label: {
+                    Label("Deshacer", systemImage: "arrow.uturn.backward")
+                }
+                .disabled(!layoutState.notebookCanUndo)
+
+                Button {
+                    layoutState.notebookToggleAttendanceQuickMode()
+                } label: {
+                    Label(
+                        layoutState.notebookIsAttendanceQuickMode ? "Salir de asistencia rápida" : "Asistencia rápida",
+                        systemImage: layoutState.notebookIsAttendanceQuickMode ? "figure.walk.circle.fill" : "figure.walk.circle"
+                    )
+                }
+
+                Button {
+                    layoutState.notebookGenerateSummary()
+                } label: {
+                    Label("Opciones avanzadas", systemImage: "ellipsis.circle")
+                }
+            } label: {
+                Label("Más", systemImage: "ellipsis.circle")
+            }
+            .buttonStyle(.bordered)
+            .help("Más acciones del cuaderno")
+        }
+    }
+
+    var notebookToolbarActions: some View {
+        HStack(spacing: 12) {
+            focusToggleButton
+
+            if bridge.syncPendingChanges > 0 {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.footnote)
+                    Text("\(bridge.syncPendingChanges) pendientes")
+                        .font(.footnote.weight(.semibold))
+                }
+                .foregroundStyle(IOSAppStyle.warning)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(IOSAppStyle.warning.opacity(0.12), in: Capsule())
+            }
+
+            Picker("Vista", selection: Binding(
+                get: { layoutState.notebookSurfaceMode },
+                set: { layoutState.setNotebookSurfaceMode($0) }
+            )) {
+                Image(systemName: "tablecells").tag("grid")
+                Image(systemName: "rectangle.3.group").tag("seatingPlan")
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 90)
+
+            Button {
+                layoutState.showNotebookAddColumn()
+            } label: {
+                Label("Nueva columna", systemImage: "plus")
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(!layoutState.notebookAddColumnAvailable)
+
+            Button {
+                layoutState.openNotebookOrganizationMenu()
+            } label: {
+                Label("Organizar", systemImage: "slider.horizontal.3")
+            }
+            .buttonStyle(.bordered)
+            .disabled(!layoutState.notebookOrganizationMenuAvailable)
+
+            if layoutState.isNotebookInspectorPresented {
+                Button {
+                    layoutState.toggleNotebookInspector()
+                } label: {
+                    Label("Ocultar inspector", systemImage: "sidebar.right")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!layoutState.notebookInspectorAvailable)
+            } else {
+                Button {
+                    layoutState.toggleNotebookInspector()
+                } label: {
+                    Label("Mostrar inspector", systemImage: "sidebar.right")
+                }
+                .buttonStyle(.bordered)
+                .disabled(!layoutState.notebookInspectorAvailable)
+            }
+
+            Menu {
+                Button {
+                    layoutState.notebookUndo()
+                } label: {
+                    Label("Deshacer", systemImage: "arrow.uturn.backward")
+                }
+                .disabled(!layoutState.notebookCanUndo)
+
+                Button {
+                    layoutState.notebookToggleAttendanceQuickMode()
+                } label: {
+                    Label(
+                        layoutState.notebookIsAttendanceQuickMode ? "Salir de asistencia rápida" : "Asistencia rápida",
+                        systemImage: layoutState.notebookIsAttendanceQuickMode ? "bolt.slash" : "bolt"
+                    )
+                }
+
+                Button {
+                    layoutState.notebookGenerateSummary()
+                } label: {
+                    Label("Generar síntesis", systemImage: "apple.intelligence")
+                }
+
+                Button {
+                    layoutState.notebookRefresh()
+                } label: {
+                    Label("Recargar", systemImage: "arrow.clockwise")
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.title3)
+                    .frame(width: 32, height: 32)
+                    .background(Color.secondary.opacity(0.08), in: Circle())
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    var notebookContextToolbarRow: some View {
+        HStack(spacing: 12) {
+            Menu {
+                ForEach(bridge.classes, id: \.id) { schoolClass in
+                    Button {
+                        updateGlobalClassContext(schoolClass.id)
+                    } label: {
+                        HStack {
+                            Text("\(schoolClass.name) · \(schoolClass.course)º")
+                            if selectedClassId == schoolClass.id {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                Label(activeClassLabel, systemImage: "rectangle.3.group")
+                    .frame(minWidth: 200, alignment: .leading)
+            }
+            .buttonStyle(.bordered)
+            .disabled(bridge.classes.isEmpty)
+
+            if !layoutState.notebookAvailableGroups.isEmpty {
+                notebookGroupFilterMenu
+            }
+
+            notebookSearchField
+
+            Spacer(minLength: 8)
+        }
+    }
+
+    var notebookGroupFilterMenu: some View {
+        Menu {
+            Button("Grupo completo") {
+                layoutState.setNotebookGroupFilter(nil)
+            }
+            ForEach(layoutState.notebookAvailableGroups) { groupOption in
+                Button {
+                    layoutState.setNotebookGroupFilter(groupOption.id)
+                } label: {
+                    HStack {
+                        Text("\(groupOption.name) (\(groupOption.studentCount))")
+                        if layoutState.notebookSelectedGroupId == groupOption.id {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+        } label: {
+            Label(notebookGroupFilterLabel, systemImage: "person.2")
+        }
+        .buttonStyle(.bordered)
+    }
+
+    var notebookSearchField: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField(
+                "Buscar alumno…",
+                text: Binding(
+                    get: { layoutState.notebookSearchText },
+                    set: { layoutState.setNotebookSearchText($0) }
+                )
+            )
+            .textFieldStyle(.plain)
+            if !layoutState.notebookSearchText.isEmpty {
+                Button {
+                    layoutState.setNotebookSearchText("")
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Borrar búsqueda")
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .frame(minWidth: 200, maxWidth: 300)
     }
 
     var searchResultsOverlay: some View {

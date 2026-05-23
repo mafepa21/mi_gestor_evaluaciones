@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import MiGestorKit
 
 struct MacRootView: View {
     @ObservedObject var session: MacAppSessionController
@@ -21,6 +22,7 @@ struct MacRootView: View {
     @State private var isInspectorVisible = true
     @State private var selectedFeature: MacFeatureDescriptor.Feature = .dashboard
     @State private var banner: MacRootBanner?
+    @State private var selectedPlannerSessionId: Int64? = nil
     @State private var bannerDismissTask: Task<Void, Never>?
     @State private var didRequestCommandCenterStart = false
 
@@ -246,7 +248,7 @@ struct MacRootView: View {
                 selectedStudentId: studentSelection.selectedStudentBinding
             )
         case .planner:
-            PlannerMacLayout(bridge: session.bridge)
+            PlannerMacLayout(bridge: session.bridge, selectedSessionId: $selectedPlannerSessionId)
         case .sync:
             MacSyncView(bridge: session.bridge, commandCenter: commandCenter)
         case .backups:
@@ -309,6 +311,35 @@ struct MacRootView: View {
     @ToolbarContentBuilder
     private var macNotebookToolbar: some ToolbarContent {
         ToolbarItemGroup {
+            Menu {
+                ForEach(groupedNotebookClasses, id: \.course) { group in
+                    Section("\(group.course)º") {
+                        ForEach(group.classes, id: \.id) { schoolClass in
+                            Button {
+                                selectNotebookClass(schoolClass.id)
+                            } label: {
+                                HStack {
+                                    Text(notebookClassLabel(for: schoolClass))
+                                    if activeNotebookClass?.id == schoolClass.id {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if session.bridge.classes.isEmpty {
+                    Text("Sin clases disponibles")
+                }
+            } label: {
+                Label(activeNotebookClassLabel, systemImage: "rectangle.3.group")
+                    .lineLimit(1)
+                    .frame(minWidth: 132, maxWidth: 180, alignment: .leading)
+            }
+            .disabled(session.bridge.classes.isEmpty)
+            .help("Cambiar clase del cuaderno")
+
             Picker("Vista", selection: Binding(
                 get: { layoutState.notebookSurfaceMode },
                 set: { layoutState.setNotebookSurfaceMode($0) }
@@ -402,6 +433,46 @@ struct MacRootView: View {
                 Label("Más", systemImage: "ellipsis.circle")
             }
             .help("Más acciones del cuaderno")
+        }
+    }
+
+    private var activeNotebookClass: SchoolClass? {
+        let activeId = studentSelection.selectedClassId
+            ?? session.bridge.notebookViewModel.currentClassId?.int64Value
+            ?? session.bridge.selectedStudentsClassId
+        guard let activeId else { return nil }
+        return session.bridge.classes.first { $0.id == activeId }
+    }
+
+    private var activeNotebookClassLabel: String {
+        guard let schoolClass = activeNotebookClass else {
+            return "Seleccionar clase"
+        }
+        return notebookClassLabel(for: schoolClass)
+    }
+
+    private var groupedNotebookClasses: [(course: Int32, classes: [SchoolClass])] {
+        Dictionary(grouping: session.bridge.classes, by: \.course)
+            .map { course, classes in
+                (
+                    course: course,
+                    classes: classes.sorted {
+                        $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+                    }
+                )
+            }
+            .sorted { $0.course < $1.course }
+    }
+
+    private func notebookClassLabel(for schoolClass: SchoolClass) -> String {
+        "\(schoolClass.name) · \(schoolClass.course)º"
+    }
+
+    private func selectNotebookClass(_ classId: Int64) {
+        studentSelection.select(classId: classId, studentId: nil)
+        session.bridge.selectClass(id: classId)
+        Task { @MainActor in
+            await session.bridge.selectStudentsClass(classId: classId)
         }
     }
 
@@ -589,6 +660,7 @@ struct MacRootView: View {
         case .plannerAgenda:
             selectFeature(.planner)
         case .plannerSession(let sessionId):
+            selectedPlannerSessionId = sessionId
             selectFeature(.planner)
             if let sessionId {
                 session.bridge.status = "Abriendo Planner para la sesión \(sessionId)."

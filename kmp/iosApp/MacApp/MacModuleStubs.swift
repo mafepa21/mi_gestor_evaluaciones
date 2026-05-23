@@ -964,6 +964,7 @@ private extension Data {
 
 struct MacPlannerView: View {
     @ObservedObject var bridge: KmpBridge
+    @Binding var selectedSessionIdFromRoot: Int64?
     @StateObject private var vm = PlannerWorkspaceViewModel()
     @State private var activeSection: MacPlannerSection = .week
     @State private var selectedTableSessionId: Int64?
@@ -976,6 +977,7 @@ struct MacPlannerView: View {
     @State private var inspectorWidth: CGFloat = 380
     @State private var sessionFilter: MacPlannerSessionFilter = .all
     @State private var groupFilterId: Int64?
+    @State private var selectedDetailSession: PlanningSession? = nil
 
     var body: some View {
         GeometryReader { proxy in
@@ -1006,6 +1008,15 @@ struct MacPlannerView: View {
         .task {
             await vm.bind(bridge: bridge)
             await syncInspectorStudents(for: vm.selectedSession)
+            if let sessionId = selectedSessionIdFromRoot {
+                await applySessionIdFromRoot(sessionId)
+            }
+        }
+        .appOnChange(of: selectedSessionIdFromRoot) { newValue in
+            guard let newValue else { return }
+            Task {
+                await applySessionIdFromRoot(newValue)
+            }
         }
         .appOnChange(of: selectedTableSessionId) { newValue in
             guard let newValue,
@@ -1067,6 +1078,102 @@ struct MacPlannerView: View {
             }
         } message: {
             Text("No hay franjas en la agenda. Se eliminarán las sesiones planificadas de la semana actual y se conservarán las completadas.")
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { selectedDetailSession != nil },
+                set: { if !$0 { selectedDetailSession = nil } }
+            )
+        ) {
+            if let session = selectedDetailSession {
+                PlannerSessionDetailSheet(
+                    session: session,
+                    onOpenDiary: {
+                        selectedDetailSession = nil
+                        Task {
+                            await vm.select(session: session)
+                            isInspectorVisible = true
+                        }
+                    },
+                    onEdit: {
+                        selectedDetailSession = nil
+                        vm.openComposer(for: session)
+                    }
+                )
+                .environmentObject(bridge)
+                .frame(minWidth: 550, minHeight: 650)
+            }
+        }
+    }
+
+    private func openMacSession(_ session: PlanningSession) {
+        if hasSessionPassed(session) {
+            Task {
+                await vm.select(session: session)
+                isInspectorVisible = true
+            }
+        } else {
+            selectedDetailSession = session
+        }
+    }
+
+    private func applySessionIdFromRoot(_ sessionId: Int64) async {
+        do {
+            let session = try await bridge.plannerGetSession(id: sessionId)
+            await vm.applyExternalContext(
+                week: Int(session.weekNumber),
+                year: Int(session.year),
+                groupId: session.groupId,
+                sessionId: session.id
+            )
+            selectedSessionIdFromRoot = nil
+            
+            if hasSessionPassed(session) {
+                await vm.select(session: session)
+                isInspectorVisible = true
+            } else {
+                selectedDetailSession = session
+            }
+        } catch {
+            print("Error getting session from root: \(error)")
+        }
+    }
+
+    private func hasSessionPassed(_ session: PlanningSession) -> Bool {
+        if session.status == .completed {
+            return true
+        }
+        
+        var components = DateComponents()
+        components.calendar = Calendar(identifier: .iso8601)
+        components.yearForWeekOfYear = Int(session.year)
+        components.weekOfYear = Int(session.weekNumber)
+        components.weekday = Int(session.dayOfWeek) + 1
+        
+        guard let sessionDate = components.date else { return true }
+        
+        let now = Date()
+        let calendar = Calendar.current
+        
+        if calendar.compare(sessionDate, to: now, toGranularity: .day) == .orderedAscending {
+            return true
+        } else if calendar.compare(sessionDate, to: now, toGranularity: .day) == .orderedDescending {
+            return false
+        } else {
+            // Es hoy. Comparamos la hora de fin.
+            if let endTimeStr = session.endTime?.trimmingCharacters(in: .whitespacesAndNewlines), !endTimeStr.isEmpty {
+                let parts = endTimeStr.split(separator: ":")
+                if parts.count == 2, let hours = Int(parts[0]), let minutes = Int(parts[1]) {
+                    var timeComponents = calendar.dateComponents([.year, .month, .day], from: now)
+                    timeComponents.hour = hours
+                    timeComponents.minute = minutes
+                    timeComponents.second = 0
+                    if let sessionEndDateTime = calendar.date(from: timeComponents) {
+                        return now > sessionEndDateTime
+                    }
+                }
+            }
+            return false
         }
     }
 
@@ -1257,16 +1364,16 @@ struct MacPlannerView: View {
                     }
                 },
                 onDoubleOpenSession: { session in
-                    Task {
-                        await vm.select(session: session)
-                        isInspectorVisible = true
-                    }
+                    openMacSession(session)
                 }
             )
         case .sessions:
             MacPlannerSessionsTable(
                 rows: displayedRows,
-                selectedSessionId: $selectedTableSessionId
+                selectedSessionId: $selectedTableSessionId,
+                onOpenSession: { session in
+                    openMacSession(session)
+                }
             )
         case .agenda:
             MacPlannerAgendaView(
@@ -1298,6 +1405,43 @@ struct MacPlannerView: View {
             .padding(MacAppStyle.innerPadding)
 
             Divider()
+
+            if let session = vm.selectedSession, !hasSessionPassed(session) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "calendar.badge.clock")
+                            .foregroundStyle(Color(hex: session.teachingUnitColor))
+                            .font(.title3)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Sesión Programada")
+                                .font(.headline)
+                            Text("Esta sesión aún no ha transcurrido.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    
+                    Button {
+                        selectedDetailSession = session
+                    } label: {
+                        Label("Ver detalles de sesión", systemImage: "info.circle")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Color(hex: session.teachingUnitColor))
+                }
+                .padding(MacAppStyle.innerPadding)
+                .background(Color(hex: session.teachingUnitColor).opacity(0.06))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color(hex: session.teachingUnitColor).opacity(0.2), lineWidth: 1)
+                )
+                .padding(.horizontal, MacAppStyle.innerPadding)
+                .padding(.top, 8)
+                
+                Divider()
+                    .padding(.top, 8)
+            }
 
             PlannerJournalDetailPane(vm: vm)
                 .environmentObject(bridge)
@@ -1504,6 +1648,7 @@ private struct MacPlannerBanner: View {
 private struct MacPlannerSessionsTable: View {
     let rows: [MacPlannerSessionRow]
     @Binding var selectedSessionId: Int64?
+    let onOpenSession: (PlanningSession) -> Void
 
     var body: some View {
         if rows.isEmpty {
@@ -1517,31 +1662,55 @@ private struct MacPlannerSessionsTable: View {
                 TableColumn("Unidad") { row in
                     Text(row.unit)
                         .lineLimit(2)
+                        .contentShape(Rectangle())
+                        .onTapGesture(count: 2) {
+                            onOpenSession(row.session)
+                        }
                 }
                 .width(min: 180, ideal: 240)
 
                 TableColumn("Grupo") { row in
                     Text(row.group)
+                        .contentShape(Rectangle())
+                        .onTapGesture(count: 2) {
+                            onOpenSession(row.session)
+                        }
                 }
                 .width(min: 120, ideal: 160)
 
                 TableColumn("Día") { row in
                     Text(row.day)
+                        .contentShape(Rectangle())
+                        .onTapGesture(count: 2) {
+                            onOpenSession(row.session)
+                        }
                 }
                 .width(min: 70, ideal: 80)
 
                 TableColumn("Franja") { row in
                     Text(row.time)
+                        .contentShape(Rectangle())
+                        .onTapGesture(count: 2) {
+                            onOpenSession(row.session)
+                        }
                 }
                 .width(min: 110, ideal: 120)
 
                 TableColumn("Estado") { row in
                     Text(row.sessionStatus)
+                        .contentShape(Rectangle())
+                        .onTapGesture(count: 2) {
+                            onOpenSession(row.session)
+                        }
                 }
                 .width(min: 100, ideal: 110)
 
                 TableColumn("Diario") { row in
                     Text(row.diaryStatus)
+                        .contentShape(Rectangle())
+                        .onTapGesture(count: 2) {
+                            onOpenSession(row.session)
+                        }
                 }
                 .width(min: 90, ideal: 100)
             }
@@ -1748,17 +1917,17 @@ private struct MacPlannerWeekEntryRow: View {
                 }
             }
         }
-        .onTapGesture {
-            if let session = resolvedSession {
-                onSelectSession(session)
-            }
-        }
         .onTapGesture(count: 2) {
             if let session = resolvedSession {
                 onDoubleOpenSession(session)
             } else {
                 vm.openComposer(day: entry.dayOfWeek, period: entry.period)
                 vm.composerDraft.groupId = entry.classId
+            }
+        }
+        .onTapGesture {
+            if let session = resolvedSession {
+                onSelectSession(session)
             }
         }
     }

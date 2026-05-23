@@ -1689,6 +1689,7 @@ struct PlannerWorkspaceIOS: View {
     @EnvironmentObject private var layoutState: WorkspaceLayoutState
     @Environment(\.colorScheme) private var colorScheme
     @StateObject private var vm = PlannerWorkspaceViewModel()
+    @State private var selectedDetailSession: PlanningSession? = nil
     private let initialSection: PlannerWorkspaceSection
     private let context: PlannerNavigationContext
     private let onOpenDiary: ((PlannerNavigationContext) -> Void)?
@@ -1744,6 +1745,34 @@ struct PlannerWorkspaceIOS: View {
         .sheet(isPresented: $vm.showingComposer) {
             PlannerSessionComposerSheet(vm: vm)
         }
+        .sheet(
+            isPresented: Binding(
+                get: { selectedDetailSession != nil },
+                set: { if !$0 { selectedDetailSession = nil } }
+            )
+        ) {
+            if let session = selectedDetailSession {
+                PlannerSessionDetailSheet(
+                    session: session,
+                    onOpenDiary: {
+                        selectedDetailSession = nil
+                        onOpenDiary?(
+                            PlannerNavigationContext(
+                                week: vm.week,
+                                year: vm.year,
+                                groupId: session.groupId,
+                                sessionId: session.id
+                            )
+                        )
+                    },
+                    onEdit: {
+                        selectedDetailSession = nil
+                        vm.openComposer(for: session)
+                    }
+                )
+                .environmentObject(bridge)
+            }
+        }
         .onDisappear {
             layoutState.clearPlannerToolbar()
         }
@@ -1781,14 +1810,56 @@ struct PlannerWorkspaceIOS: View {
     }
 
     private func openSessionInDiary(_ session: PlanningSession) {
-        onOpenDiary?(
-            PlannerNavigationContext(
-                week: vm.week,
-                year: vm.year,
-                groupId: session.groupId,
-                sessionId: session.id
+        if hasSessionPassed(session) {
+            onOpenDiary?(
+                PlannerNavigationContext(
+                    week: vm.week,
+                    year: vm.year,
+                    groupId: session.groupId,
+                    sessionId: session.id
+                )
             )
-        )
+        } else {
+            selectedDetailSession = session
+        }
+    }
+
+    private func hasSessionPassed(_ session: PlanningSession) -> Bool {
+        if session.status == .completed {
+            return true
+        }
+        
+        var components = DateComponents()
+        components.calendar = Calendar(identifier: .iso8601)
+        components.yearForWeekOfYear = Int(session.year)
+        components.weekOfYear = Int(session.weekNumber)
+        components.weekday = Int(session.dayOfWeek) + 1
+        
+        guard let sessionDate = components.date else { return true }
+        
+        let now = Date()
+        let calendar = Calendar.current
+        
+        if calendar.compare(sessionDate, to: now, toGranularity: .day) == .orderedAscending {
+            return true
+        } else if calendar.compare(sessionDate, to: now, toGranularity: .day) == .orderedDescending {
+            return false
+        } else {
+            // Es hoy. Comparamos la hora de fin.
+            if let endTimeStr = session.endTime?.trimmingCharacters(in: .whitespacesAndNewlines), !endTimeStr.isEmpty {
+                let parts = endTimeStr.split(separator: ":")
+                if parts.count == 2, let hours = Int(parts[0]), let minutes = Int(parts[1]) {
+                    var timeComponents = calendar.dateComponents([.year, .month, .day], from: now)
+                    timeComponents.hour = hours
+                    timeComponents.minute = minutes
+                    timeComponents.second = 0
+                    if let sessionEndDateTime = calendar.date(from: timeComponents) {
+                        return now > sessionEndDateTime
+                    }
+                }
+            }
+            return false
+        }
     }
 
     private func syncNavigationContext() {
@@ -2672,32 +2743,23 @@ private struct JournalIndividualNotesList: View {
             title: "Observaciones individuales",
             subtitle: "Notas breves por alumno con intención de seguimiento."
         ) {
-            ForEach(Array(vm.journalDraft.notes.enumerated()), id: \.element.id) { index, _ in
+            ForEach(vm.journalDraft.notes, id: \.id) { note in
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
-                        TextField("Alumno", text: Binding(
-                            get: { vm.journalDraft.notes[index].studentName },
-                            set: { vm.journalDraft.notes[index].studentName = $0 }
-                        ))
+                        TextField("Alumno", text: noteBinding(note.id, \.studentName))
                         .textFieldStyle(RoundedBorderTextFieldStyle())
 
-                        TextField("Tag", text: Binding(
-                            get: { vm.journalDraft.notes[index].tag },
-                            set: { vm.journalDraft.notes[index].tag = $0 }
-                        ))
+                        TextField("Tag", text: noteBinding(note.id, \.tag))
                         .textFieldStyle(RoundedBorderTextFieldStyle())
 
                         Button(role: .destructive) {
-                            vm.journalDraft.notes.remove(at: index)
+                            vm.journalDraft.notes.removeAll { $0.id == note.id }
                         } label: {
                             Image(systemName: "trash")
                         }
                     }
 
-                    TextField("Observación", text: Binding(
-                        get: { vm.journalDraft.notes[index].note },
-                        set: { vm.journalDraft.notes[index].note = $0 }
-                    ), axis: .vertical)
+                    TextField("Observación", text: noteBinding(note.id, \.note), axis: .vertical)
                     .lineLimit(2...4)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
                 }
@@ -2711,6 +2773,18 @@ private struct JournalIndividualNotesList: View {
             }
             .buttonStyle(.bordered)
         }
+    }
+
+    private func noteBinding(_ id: UUID, _ keyPath: WritableKeyPath<PlannerJournalDraftNote, String>) -> Binding<String> {
+        Binding(
+            get: {
+                vm.journalDraft.notes.first(where: { $0.id == id })?[keyPath: keyPath] ?? ""
+            },
+            set: { newValue in
+                guard let index = vm.journalDraft.notes.firstIndex(where: { $0.id == id }) else { return }
+                vm.journalDraft.notes[index][keyPath: keyPath] = newValue
+            }
+        )
     }
 }
 
@@ -2756,7 +2830,7 @@ private struct JournalMediaDock: View {
                 .buttonStyle(.bordered)
             }
 
-            ForEach(Array(vm.journalDraft.media.enumerated()), id: \.element.id) { index, media in
+            ForEach(vm.journalDraft.media, id: \.id) { media in
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text(media.type.title)
@@ -2764,35 +2838,41 @@ private struct JournalMediaDock: View {
                             .foregroundStyle(.secondary)
                         Spacer()
                         Button(role: .destructive) {
-                            vm.journalDraft.media.remove(at: index)
+                            vm.journalDraft.media.removeAll { $0.id == media.id }
                         } label: {
                             Image(systemName: "trash")
                         }
                     }
 
-                    TextField("Título", text: Binding(
-                        get: { vm.journalDraft.media[index].caption },
-                        set: { vm.journalDraft.media[index].caption = $0 }
-                    ))
+                    TextField("Título", text: mediaBinding(media.id, \.caption))
                     .textFieldStyle(RoundedBorderTextFieldStyle())
 
-                    if !vm.journalDraft.media[index].uri.isEmpty {
-                        Text(vm.journalDraft.media[index].uri)
+                    if !media.uri.isEmpty {
+                        Text(media.uri)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
 
-                    TextField("Transcripción editable", text: Binding(
-                        get: { vm.journalDraft.media[index].transcript },
-                        set: { vm.journalDraft.media[index].transcript = $0 }
-                    ), axis: .vertical)
+                    TextField("Transcripción editable", text: mediaBinding(media.id, \.transcript), axis: .vertical)
                     .lineLimit(2...5)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
                 }
                 .padding(.vertical, 4)
             }
         }
+    }
+
+    private func mediaBinding(_ id: UUID, _ keyPath: WritableKeyPath<PlannerJournalDraftMedia, String>) -> Binding<String> {
+        Binding(
+            get: {
+                vm.journalDraft.media.first(where: { $0.id == id })?[keyPath: keyPath] ?? ""
+            },
+            set: { newValue in
+                guard let index = vm.journalDraft.media.firstIndex(where: { $0.id == id }) else { return }
+                vm.journalDraft.media[index][keyPath: keyPath] = newValue
+            }
+        )
     }
 }
 
@@ -3651,5 +3731,279 @@ private extension Optional where Wrapped == String {
 private extension String {
     var nilIfBlank: String? {
         trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : self
+    }
+}
+
+struct PlannerSessionDetailSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var bridge: KmpBridge
+    @Environment(\.colorScheme) private var colorScheme
+    
+    let session: PlanningSession
+    let onOpenDiary: () -> Void
+    let onEdit: () -> Void
+    
+    @State private var linkedInstruments: [PlannerAssessmentInstrument] = []
+    @State private var isLoadingInstruments = false
+    
+    private var tint: Color {
+        Color(hex: session.teachingUnitColor)
+    }
+    
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Header card
+                    headerSection
+                    
+                    // Main CTA
+                    Button(action: onOpenDiary) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "play.fill")
+                                .font(.headline)
+                            Text("Iniciar clase (Diario)")
+                                .font(.system(.headline, design: .rounded))
+                                .bold()
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(tint)
+                        .foregroundColor(.white)
+                        .cornerRadius(16)
+                        .shadow(color: tint.opacity(0.3), radius: 8, x: 0, y: 4)
+                    }
+                    .padding(.horizontal, 16)
+                    
+                    // Information Sections
+                    VStack(spacing: 16) {
+                        let objText = session.objectives.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !objText.isEmpty {
+                            detailSection(title: "Objetivos de aprendizaje", icon: "target", text: objText)
+                        }
+                        
+                        let actText = session.activities.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !actText.isEmpty {
+                            detailSection(title: "Actividades programadas", icon: "list.bullet.rectangle.portrait", text: actText)
+                        }
+                        
+                        let evalText = session.evaluation.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !evalText.isEmpty {
+                            detailSection(title: "Evaluación", icon: "checkmark.seal", text: evalText)
+                        }
+                        
+                        instrumentsSection
+                    }
+                    .padding(.horizontal, 16)
+                }
+                .padding(.vertical, 20)
+            }
+            .background(appPageBackground(for: colorScheme).ignoresSafeArea())
+            .navigationTitle("Detalle de Sesión")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cerrar") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: onEdit) {
+                        Label("Editar", systemImage: "pencil")
+                    }
+                }
+            }
+            .task {
+                await loadLinkedInstruments()
+            }
+        }
+    }
+    
+    private var headerSection: some View {
+        VStack(spacing: 12) {
+            HStack {
+                Text(session.groupName)
+                    .font(.system(.subheadline, design: .rounded))
+                    .bold()
+                    .foregroundColor(tint)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(tint.opacity(0.12))
+                    .cornerRadius(8)
+                
+                Spacer()
+                
+                Text("Planificada")
+                    .font(.caption.bold())
+                    .foregroundColor(tint)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(tint.opacity(0.1))
+                    .cornerRadius(6)
+            }
+            
+            Text(session.teachingUnitName)
+                .font(.system(size: 24, weight: .black, design: .rounded))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .foregroundColor(.primary)
+            
+            HStack(spacing: 8) {
+                Image(systemName: "calendar")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                
+                Text(dateString)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                
+                if let startTime = session.startTime, let endTime = session.endTime {
+                    Text("·")
+                        .foregroundColor(.secondary)
+                    Image(systemName: "clock")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    Text("\(startTime) - \(endTime)")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                } else {
+                    Text("·")
+                        .foregroundColor(.secondary)
+                    Text("Periodo \(session.period)")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(EvaluationDesign.surfaceSoft)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(EvaluationDesign.border, lineWidth: 1)
+        )
+        .padding(.horizontal, 16)
+    }
+    
+    private func detailSection(title: String, icon: String, text: String) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .foregroundColor(tint)
+                    .font(.headline)
+                Text(title)
+                    .font(.system(.headline, design: .rounded))
+                    .bold()
+                    .foregroundColor(.primary)
+            }
+            
+            Text(text)
+                .font(.body)
+                .foregroundColor(.primary.opacity(0.85))
+                .lineSpacing(4)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(EvaluationDesign.surfaceSoft)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(EvaluationDesign.border, lineWidth: 1)
+        )
+    }
+    
+    private var instrumentsSection: some View {
+        Group {
+            if isLoadingInstruments {
+                ProgressView()
+                    .padding()
+            } else if !linkedInstruments.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "doc.plaintext.fill")
+                            .foregroundColor(tint)
+                            .font(.headline)
+                        Text("Evaluaciones enlazadas")
+                            .font(.system(.headline, design: .rounded))
+                            .bold()
+                            .foregroundColor(.primary)
+                    }
+                    
+                    VStack(spacing: 10) {
+                        ForEach(linkedInstruments, id: \.id) { instrument in
+                            HStack(spacing: 12) {
+                                Image(systemName: instrument.kind == .rubric ? "tablecells" : "doc.text.magnifyingglass")
+                                    .foregroundColor(tint)
+                                    .font(.subheadline)
+                                    .padding(8)
+                                    .background(tint.opacity(0.1))
+                                    .clipShape(Circle())
+                                
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(instrument.title)
+                                        .font(.subheadline.bold())
+                                        .foregroundColor(.primary)
+                                    Text(instrument.subtitle)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                            }
+                            .padding(12)
+                            .background(Color.primary.opacity(0.03))
+                            .cornerRadius(12)
+                        }
+                    }
+                }
+                .padding(20)
+                .background(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(EvaluationDesign.surfaceSoft)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(EvaluationDesign.border, lineWidth: 1)
+                )
+            }
+        }
+    }
+    
+    private var dateString: String {
+        var components = DateComponents()
+        components.calendar = Calendar(identifier: .iso8601)
+        components.yearForWeekOfYear = Int(session.year)
+        components.weekOfYear = Int(session.weekNumber)
+        components.weekday = Int(session.dayOfWeek) + 1
+        
+        guard let date = components.date else { return "" }
+        
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "es_ES")
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter.string(from: date)
+    }
+    
+    private func loadLinkedInstruments() async {
+        guard !session.linkedAssessmentIdsCsv.isEmpty else { return }
+        isLoadingInstruments = true
+        defer { isLoadingInstruments = false }
+        
+        do {
+            let allInstruments = try await bridge.plannerAvailableAssessmentInstruments(
+                classId: session.groupId,
+                teachingUnitId: session.teachingUnitId == 0 ? nil : session.teachingUnitId
+            )
+            let linkedIds = Set(session.linkedAssessmentIdsCsv.split(separator: ",").map(String.init))
+            linkedInstruments = allInstruments.filter { linkedIds.contains($0.id) }
+        } catch {
+            print("Error loading linked instruments: \(error)")
+        }
     }
 }

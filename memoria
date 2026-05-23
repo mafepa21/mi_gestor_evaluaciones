@@ -405,6 +405,76 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-05-23 - Paridad de detalle de sesión y gestiones del Planificador en macOS
+
+Resumen:
+- Se implementó la paridad completa del flujo de detalle de sesiones planificadas en macOS Catalyst/nativo.
+- Se corrigió el bug de apertura automática de sheets al cargar el Planificador o cambiar de semana mediante la separación de la selección simple (que solo actualiza el inspector de diario en el panel derecho) de la acción de apertura.
+- Se habilitó la navegación directa por ID de sesión desde el Dashboard en macOS, agregando el estado `selectedPlannerSessionId` en `MacRootView.swift` y `selectedSessionIdFromRoot` en `MacPlannerView` (dentro de `MacModuleStubs.swift`), y propagándolo mediante `PlannerMacLayout.swift`.
+- Se implementó el método público `plannerGetSession(id:)` en `KmpBridge.swift` para permitir la recuperación de una sesión por su ID de forma nativa desde la base de datos local-first.
+- Se añadió soporte para doble clic (`onTapGesture(count: 2)`) en las columnas de la tabla de sesiones (`MacPlannerSessionsTable`) para abrir la sheet de detalle o diario, manteniendo la coherencia de interacción de macOS.
+- Se reordenaron los gestos en las celdas semanales del planificador (`MacPlannerWeekEntryRow`) para garantizar la correcta distinción entre clic simple (selección) y doble clic (apertura).
+- Se diseñó un banner de estado en el panel inspector de macOS cuando la sesión seleccionada está planificada en el futuro, ofreciendo un botón explícito de "Ver detalles de sesión".
+
+Validación:
+- Compilación del target macOS `MiGestorKMPMac` completada con éxito (`BUILD SUCCEEDED`) mediante `xcodebuild`.
+- Compilación del target iOS `MiGestorKMPiOS` verificada y mantenida con éxito.
+
+### 2026-05-23 - Rediseño del toolbar del Cuaderno iOS (paridad con macOS)
+
+Resumen:
+- Se rediseñó por completo el toolbar del Cuaderno en iPadOS/iOS para unificarlo en una sola línea horizontal compacta estilo macOS, eliminando la doble fila previa.
+- Se implementó la propiedad computed `notebookMacLikeToolbar` en `IPadWorkspaceShell.swift` con todos los elementos alineados horizontalmente: Selector de clase agrupado por curso, selector de grupo (si aplica), segmented picker para Vista (Grid/Plano), indicador de sincronización (cambios pendientes), botón de "Nueva columna", botón de "Organizar", botón de "Inspector" y menú de "Más" acciones.
+- Se añadieron las propiedades computed `groupedNotebookClasses` y `activeNotebookClassLabel` en `IPadWorkspaceShell.swift` para dar soporte al menú de clase exacto de macOS.
+- Se integró la nueva barra de herramientas en `workspaceToolbar` sustituyendo el layout anterior de doble fila cuando la sección activa es `.notebook`.
+
+Validación:
+- Compilación del target iOS (`MiGestorKMPiOS` para simulador de iPhone/iPad) completada con éxito (`BUILD SUCCEEDED`) mediante `xcodebuild`.
+
+### 2026-05-23 - Detalle flotante de sesión planificada antes de su impartición
+
+Resumen:
+- Se implementó un modal de detalle para las sesiones del planificador que están planificadas y no han transcurrido, sustituyendo el comportamiento previo que redirigía directamente al diario de seguimiento.
+- Se incorporó la lógica de comparación de fecha y hora `hasSessionPassed` en `PlannerWorkspaceIOS.swift` para decidir si navegar directamente al diario o abrir la vista de detalle.
+- Se creó la vista `PlannerSessionDetailSheet` que muestra los objetivos, actividades, evaluación y carga asíncronamente las rúbricas y columnas de evaluación vinculadas a la sesión.
+- Se extendió el modelo Kotlin `PlanningSession` en Swift para conformar al protocolo `Identifiable`, permitiendo su presentación directa en sheets de SwiftUI.
+
+Validación:
+- Compilación del target iOS `MiGestorKMPiOS` (simulador) completada con éxito (`BUILD SUCCEEDED`) mediante `xcodebuild`.
+- Compilación del target macOS `MiGestorKMPMac` completada con éxito (`BUILD SUCCEEDED`) tras resolver la incompatibilidad del modificador `.navigationBarTitleDisplayMode` envolviéndolo en un condicional `#if os(iOS)`.
+
+Notas para futuras conversaciones:
+- Las clases Kotlin de KMP se compilan como clases Objective-C y para usarse con hojas de SwiftUI `.sheet(item:)` requieren conformar explícitamente a `Identifiable` mediante extensiones de Swift.
+
+### 2026-05-23 - Fluidez del grid y categorías del Cuaderno
+
+Resumen:
+- Se redujo el lag del Cuaderno en SwiftUI evitando animaciones estructurales al plegar/desplegar categorías en `kmp/iosApp/App/NotebookModuleView.swift`.
+- Se optimizó `kmp/iosApp/App/NotebookGridContent.swift` para no recalcular digest de celdas en panes sin columnas editables y para hacer más barata la firma de filas.
+- Se optimizó `kmp/iosApp/App/NotebookModuleDisplayFormatting.swift` para que el resumen de categorías colapsadas cuente celdas llenas desde los datos persistidos de la fila, sin consultar el bridge por cada celda visible.
+- Tras ver el aviso `Invalid sample AnimatablePair`, se eliminaron animaciones de escala/transición en cabeceras de categoría y el spring del ajuste de ancho fijo.
+
+Validación:
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -sdk macosx -derivedDataPath /tmp/MiGestorNotebookAnimFixDerived CODE_SIGNING_ALLOWED=NO build` terminó con `BUILD SUCCEEDED`.
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath /tmp/MiGestorNotebookAnimFixIOSDerived CODE_SIGNING_ALLOWED=NO build` terminó con `BUILD SUCCEEDED`.
+
+Notas para futuras conversaciones:
+- En grids grandes, evitar envolver cambios de segmentos/categorías en `withAnimation`: la animación de inserción/eliminación de muchas columnas/fila es más cara que el feedback visual que aporta.
+- Los resúmenes masivos del Cuaderno deben usar `NotebookRow.persistedCells`/`persistedGrades` cuando sea posible y reservar llamadas a `KmpBridge` para edición o cálculo puntual.
+
+### 2026-05-23 - Selector de clase en toolbar macOS del Cuaderno
+
+Resumen:
+- Se añadió en `kmp/iosApp/MacApp/MacRootView.swift` un selector compacto de clase dentro de la toolbar específica del Cuaderno macOS.
+- El menú agrupa las clases por curso, marca la clase activa y reutiliza el estado compartido `StudentSelectionStore` para que el cambio de clase afecte al Cuaderno sin rehacer la navegación ni tocar lógica KMP.
+- La selección llama a `selectClass` y `selectStudentsClass`, dejando el grid, inspector, buscador y acciones existentes en su ownership actual.
+
+Validación:
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -sdk macosx -derivedDataPath /tmp/MiGestorNotebookToolbarClassPickerDerived CODE_SIGNING_ALLOWED=NO build` terminó con `BUILD SUCCEEDED`.
+
+Notas para futuras conversaciones:
+- En macOS, el Cuaderno usa toolbar propiedad de `MacRootView`; los controles globales diarios de clase deben añadirse ahí, no en `NotebookModuleView`, salvo que se quiera compartir el control con iPad/iOS.
+
 ### 2026-05-23 - AGENTS.md raiz para reglas permanentes del repo
 
 Resumen:

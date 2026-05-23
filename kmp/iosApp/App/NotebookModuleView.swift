@@ -480,8 +480,8 @@ struct NotebookModuleView: View {
                             case .spacer(_, let width):
                                 Color.clear
                                     .frame(width: width, height: 1)
-                            case .folder(let category, let columns, let width):
-                                categoryFolderHeader(category: category, columns: columns, rows: rows, width: width)
+                            case .folder(let category, _, let width):
+                                categoryFolderHeader(category: category, data: data, width: width)
                             }
                         }
                     }

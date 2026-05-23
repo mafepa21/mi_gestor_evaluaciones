@@ -139,10 +139,13 @@ extension NotebookModuleView {
         width: CGFloat
     ) -> some View {
         let categoryTint = tint(for: category)
+        let isEmpty = categoryVisibleColumnCount(columns) == 0 && categoryHiddenColumnCount(columns) == 0
+        let statusText = isEmpty ? "Vacía" : categoryColumnCountText(columns)
+        let countText = categoryColumnCountText(columns)
 
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
-                Image(systemName: "folder.fill")
+                Image(systemName: isEmpty ? "folder" : "chevron.right")
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(categoryTint)
                     .accessibilityHidden(true)
@@ -154,15 +157,21 @@ extension NotebookModuleView {
                     .minimumScaleFactor(0.75)
 
                 Spacer(minLength: 0)
+
+                Text(countText)
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(categoryTint)
+                    .monospacedDigit()
+                    .lineLimit(1)
             }
 
             HStack(spacing: 6) {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(categoryTint.opacity(0.85))
-                    .accessibilityHidden(true)
+                Text(isEmpty ? "vacía" : "colapsada")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(isEmpty ? Color.secondary.opacity(0.65) : categoryTint.opacity(0.9))
+                    .lineLimit(1)
 
-                Text("\(columns.count) columnas")
+                Text(statusText)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -172,16 +181,17 @@ extension NotebookModuleView {
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .frame(width: width, height: 52, alignment: .leading)
+        .contentShape(Rectangle())
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(categoryTint.opacity(0.16))
+                .fill(NotebookStyle.surfaceSoft.opacity(isEmpty ? 0.22 : 0.34))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(categoryTint.opacity(0.50), lineWidth: 1)
+                .stroke(isEmpty ? NotebookStyle.softBorder.opacity(0.55) : categoryTint.opacity(0.24), lineWidth: 1)
         )
-        .help("Categoría colapsada. Contiene \(columns.count) columna(s). Haz clic para abrir.")
-        .accessibilityLabel("Categoría colapsada \(category.name). Contiene \(columns.count) columna(s). Haz clic para abrir.")
+        .help("\(categoryAccessibilityState(isCollapsed: true, columns: columns)). Haz clic para abrir.")
+        .accessibilityLabel("\(category.name). \(categoryAccessibilityState(isCollapsed: true, columns: columns)). Haz clic para abrir.")
     }
 
     func tint(for fixed: NotebookFixedColumn) -> Color {
@@ -410,8 +420,9 @@ extension NotebookModuleView {
                 }
             )
         case .collapsedCategory(let category, let columns):
-            let filled = filledCellCount(item, columns: columns)
-            let total = columns.count
+            let visibleColumns = columns.filter(\.isVisibleInGrid)
+            let filled = filledCellCount(item, columns: visibleColumns)
+            let total = visibleColumns.count
             let categoryTint = tint(for: category)
 
             return AnyView(
@@ -426,10 +437,11 @@ extension NotebookModuleView {
                             .foregroundStyle(categoryTint.opacity(0.82))
                             .accessibilityHidden(true)
 
-                        Text("\(filled)/\(total)")
+                        Text(total == 0 ? "Vacía" : "\(filled)/\(total)")
                             .font(.system(size: 12, weight: .bold, design: .rounded))
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(total == 0 ? .secondary : .primary)
                             .monospacedDigit()
+                            .lineLimit(1)
 
                         Spacer(minLength: 0)
                     }
@@ -449,20 +461,23 @@ extension NotebookModuleView {
                 .contextMenu {
                     categoryContextMenu(category, data: data)
                 }
-                .help("Resumen de categoría colapsada: \(filled) de \(total) columnas con datos.")
+                .help(total == 0 ? "Categoría vacía." : "Resumen de categoría colapsada: \(filled) de \(total) columnas con datos.")
             )
         }
     }
 
-    func categoryFolderHeader(category: NotebookColumnCategory, columns: [NotebookColumnDefinition], rows: [NotebookTableRow], width: CGFloat) -> some View {
+    func categoryFolderHeader(category: NotebookColumnCategory, data: NotebookUiStateData, width: CGFloat) -> some View {
         let categoryTint = tint(for: category)
+        let allColumns = self.columns(in: category, data: data, includeHidden: true)
+        let countText = categoryColumnCountText(allColumns)
+        let statusText = categoryHiddenColumnCount(allColumns) > 0 ? "expandida · con ocultas" : "expandida"
         return Button {
             withAnimation(.snappy(duration: 0.18)) {
                 setCategoryCollapsed(category, collapsed: true)
             }
         } label: {
             HStack(spacing: 8) {
-                Image(systemName: "chevron.down.circle.fill")
+                Image(systemName: "chevron.down")
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(categoryTint)
                     .accessibilityHidden(true)
@@ -472,29 +487,78 @@ extension NotebookModuleView {
                     .foregroundStyle(.primary)
                     .lineLimit(1)
 
-                Text("\(columns.count)")
+                Text(countText)
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(categoryTint)
                     .monospacedDigit()
+                    .lineLimit(1)
+
+                Text(statusText)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
 
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .frame(width: width, height: 32, alignment: .leading)
+            .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(categoryTint.opacity(0.10))
+                    .fill(NotebookStyle.surfaceSoft.opacity(0.30))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(categoryTint.opacity(0.28), lineWidth: 1)
+                    .stroke(categoryTint.opacity(0.20), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
         .contextMenu {
             categoryContextMenu(category, data: bridge.notebookState as? NotebookUiStateData)
         }
+        .help("\(categoryAccessibilityState(isCollapsed: false, columns: allColumns)). Haz clic para cerrar.")
+        .accessibilityLabel("\(category.name). \(categoryAccessibilityState(isCollapsed: false, columns: allColumns)). Haz clic para cerrar.")
+    }
+
+    func categoryVisibleColumnCount(_ columns: [NotebookColumnDefinition]) -> Int {
+        columns.filter(\.isVisibleInGrid).count
+    }
+
+    func categoryHiddenColumnCount(_ columns: [NotebookColumnDefinition]) -> Int {
+        columns.filter(\.isTemporarilyHidden).count
+    }
+
+    func categoryColumnCountText(_ columns: [NotebookColumnDefinition]) -> String {
+        let visibleCount = categoryVisibleColumnCount(columns)
+        let hiddenCount = categoryHiddenColumnCount(columns)
+
+        if visibleCount == 0 && hiddenCount == 0 {
+            return "0"
+        }
+
+        if hiddenCount > 0 {
+            let visibleText = visibleCount == 1 ? "1 visible" : "\(visibleCount) visibles"
+            let hiddenText = hiddenCount == 1 ? "1 oculta" : "\(hiddenCount) ocultas"
+            return "\(visibleText) · \(hiddenText)"
+        }
+
+        return visibleCount == 1 ? "1 columna" : "\(visibleCount) columnas"
+    }
+
+    func categoryAccessibilityState(isCollapsed: Bool, columns: [NotebookColumnDefinition]) -> String {
+        let visibleCount = categoryVisibleColumnCount(columns)
+        let hiddenCount = categoryHiddenColumnCount(columns)
+
+        if visibleCount == 0 && hiddenCount == 0 {
+            return "Categoría vacía"
+        }
+
+        let state = isCollapsed ? "Categoría colapsada" : "Categoría expandida"
+        if hiddenCount > 0 {
+            return "\(state), \(categoryColumnCountText(columns))"
+        }
+        return "\(state), \(categoryColumnCountText(columns))"
     }
 
     @ViewBuilder

@@ -122,18 +122,24 @@ final class NotebookGridLayoutModel: ObservableObject {
         segments.append(contentsOf: uncategorizedColumns.map(NotebookDisplaySegment.column))
 
         for category in categories {
-            let categoryColumns = columns(
+            let visibleCategoryColumns = columns(
                 in: category,
                 data: data,
                 activeTabId: activeTabId,
                 viewPreset: viewPreset
             )
-            guard !categoryColumns.isEmpty else { continue }
+            let allCategoryColumns = columns(
+                in: category,
+                data: data,
+                activeTabId: activeTabId,
+                viewPreset: viewPreset,
+                includeHidden: true
+            )
 
-            if isCategoryCollapsed(category) {
-                segments.append(.collapsedCategory(category, categoryColumns))
+            if visibleCategoryColumns.isEmpty || isCategoryCollapsed(category) {
+                segments.append(.collapsedCategory(category, allCategoryColumns))
             } else {
-                segments.append(contentsOf: categoryColumns.map(NotebookDisplaySegment.column))
+                segments.append(contentsOf: visibleCategoryColumns.map(NotebookDisplaySegment.column))
             }
         }
         return segments

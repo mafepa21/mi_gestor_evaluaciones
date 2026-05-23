@@ -8,6 +8,7 @@ struct MacRootView: View {
     @StateObject private var notebookInspectorState = NotebookMacInspectorState()
     @StateObject private var notebookToolbarActions = NotebookMacToolbarActions()
     @StateObject private var physicalTestsToolbarActions = MacPhysicalTestsToolbarActions()
+    @StateObject private var physicalTestsInspectorState = PhysicalTestsMacInspectorState()
     @StateObject private var studentsStore = MacStudentsStore()
     @StateObject private var studentSelection = StudentSelectionStore()
     @StateObject private var backupStore: MacBackupStore
@@ -235,7 +236,8 @@ struct MacRootView: View {
                 selectedClassId: studentSelection.selectedClassBinding,
                 selectedStudentId: studentSelection.selectedStudentBinding,
                 onOpenModule: open(module:classId:studentId:),
-                toolbarActions: physicalTestsToolbarActions
+                toolbarActions: physicalTestsToolbarActions,
+                inspectorState: physicalTestsInspectorState
             )
         case .reports:
             MacReportsView(
@@ -282,6 +284,14 @@ struct MacRootView: View {
             )
         case .backups:
             MacBackupInspectorView(store: backupStore)
+        case .physicalTests:
+            MacPhysicalTestsInspectorView(
+                bridge: session.bridge,
+                inspectorState: physicalTestsInspectorState,
+                selectedClassId: studentSelection.selectedClassBinding,
+                selectedStudentId: studentSelection.selectedStudentBinding,
+                onOpenModule: open(module:classId:studentId:)
+            )
         default:
             MacModuleInspectorPlaceholder(feature: MacFeatureRegistry.descriptor(for: feature))
         }
@@ -299,6 +309,49 @@ struct MacRootView: View {
 
             if selectedFeature == .notebook {
                 Button {
+                    notebookToolbarActions.undo()
+                } label: {
+                    Label("Deshacer", systemImage: "arrow.uturn.backward")
+                }
+                .disabled(!notebookToolbarActions.canUndo)
+                .keyboardShortcut("z", modifiers: .command)
+                .help("Deshacer último cambio (⌘Z)")
+
+                Button {
+                    notebookToolbarActions.addColumn()
+                } label: {
+                    Label("Nueva columna", systemImage: "plus")
+                }
+                .disabled(!notebookToolbarActions.addColumnAvailable)
+                .keyboardShortcut("n", modifiers: .command)
+                .help("Añadir nueva columna (⌘N)")
+
+                Button {
+                    notebookToolbarActions.openOrganizationMenu()
+                } label: {
+                    Label("Organizar columnas", systemImage: "slider.horizontal.3")
+                }
+                .disabled(!notebookToolbarActions.organizationMenuAvailable)
+                .help("Organizar columnas")
+
+                if let exportText = notebookToolbarActions.exportText {
+                    ShareLink(item: exportText) {
+                        Label("Exportar", systemImage: "square.and.arrow.up")
+                    }
+                    .help("Exportar cuaderno")
+                }
+
+                Picker("Vista", selection: Binding(
+                    get: { layoutState.notebookSurfaceMode },
+                    set: { layoutState.setNotebookSurfaceMode($0) }
+                )) {
+                    Text("Grid").tag("grid")
+                    Text("Plano").tag("seatingPlan")
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 100)
+
+                Button {
                     notebookToolbarActions.markAllPresent()
                 } label: {
                     Label("Todos presentes", systemImage: "checkmark.circle.fill")
@@ -312,7 +365,6 @@ struct MacRootView: View {
                     Label("Pase rápido", systemImage: notebookToolbarActions.isAttendanceQuickMode ? "figure.walk.circle.fill" : "figure.walk.circle")
                 }
                 .help("Activar pase rápido de asistencia")
-
             }
 
             if selectedFeature == .dashboard, let dashboardToolbarActions {
@@ -385,22 +437,20 @@ struct MacRootView: View {
                 .help("Crear columnas de marca y nota en el cuaderno")
             }
 
-            if selectedFeature != .notebook {
-                Button {
-                    refreshCurrentFeature()
-                } label: {
-                    Label("Refrescar", systemImage: "arrow.clockwise")
-                }
-                .keyboardShortcut("r", modifiers: [.command])
-                .help("Refrescar datos")
+            Button {
+                refreshCurrentFeature()
+            } label: {
+                Label("Refrescar", systemImage: "arrow.clockwise")
             }
+            .keyboardShortcut("r", modifiers: [.command])
+            .help("Refrescar datos")
 
             Button {
                 toggleInspector()
             } label: {
                 Label(isInspectorVisible ? "Ocultar inspector" : "Mostrar inspector", systemImage: "sidebar.right")
             }
-            .keyboardShortcut("i", modifiers: [.command, .option])
+            .keyboardShortcut("i", modifiers: [.command])
             .help(isInspectorVisible ? "Ocultar inspector" : "Mostrar inspector")
         }
 

@@ -641,9 +641,9 @@ struct AppWorkspaceShell: View {
         } detail: {
             ZStack(alignment: .top) {
                 VStack(spacing: 0) {
-                    if layoutState.isFocusModeEnabled && activeModule != .notebook {
+                    if layoutState.isFocusModeEnabled {
                         compactFocusToolbar
-                    } else if activeModule != .notebook {
+                    } else {
                         workspaceToolbar
                         Divider().opacity(0.24)
                     }
@@ -774,15 +774,13 @@ struct AppWorkspaceShell: View {
     var workspaceToolbar: some View {
         VStack(spacing: 14) {
             HStack(spacing: 16) {
-                if activeModule != .notebook {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(activeModule.subtitle.uppercased())
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .tracking(0.8)
-                            .foregroundStyle(.secondary)
-                        Text(activeModule.title)
-                            .font(.system(size: 30, weight: .black, design: .rounded))
-                    }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(activeModule.subtitle.uppercased())
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .tracking(0.8)
+                        .foregroundStyle(.secondary)
+                    Text(activeModule.title)
+                        .font(.system(size: 30, weight: .black, design: .rounded))
                 }
 
                 Spacer()
@@ -795,46 +793,48 @@ struct AppWorkspaceShell: View {
                     diaryToolbarActions
                 } else if activeModule == .attendance {
                     focusToggleButton
-                } else if activeModule != .notebook {
+                } else {
                     focusToggleButton
 
-                    if shouldShowGlobalContextualAIButton {
-                        Button {
-                            presentContextualAI()
-                        } label: {
-                            if isLoadingContextualAI {
-                                ProgressView()
-                                    .controlSize(.small)
-                                    .frame(minWidth: 18)
-                            } else {
-                                Label("IA", systemImage: "apple.intelligence")
+                    if activeModule != .notebook {
+                        if shouldShowGlobalContextualAIButton {
+                            Button {
+                                presentContextualAI()
+                            } label: {
+                                if isLoadingContextualAI {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                        .frame(minWidth: 18)
+                                } else {
+                                    Label("IA", systemImage: "apple.intelligence")
+                                }
                             }
+                            .buttonStyle(.bordered)
+                            .disabled(isLoadingContextualAI)
+                        }
+
+                        Menu {
+                            Button("Recargar dashboard") { Task { await bridge.refreshDashboard(mode: .office) } }
+                            Button("Recargar alumnado") { Task { try? await bridge.refreshStudentsDirectory() } }
+                            Button("Recargar rúbricas") {
+                                Task {
+                                    try? await bridge.refreshRubrics()
+                                    try? await bridge.refreshRubricClassLinks()
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "arrow.clockwise.circle")
+                                .font(.title3.weight(.semibold))
                         }
                         .buttonStyle(.bordered)
-                        .disabled(isLoadingContextualAI)
-                    }
 
-                    Menu {
-                        Button("Recargar dashboard") { Task { await bridge.refreshDashboard(mode: .office) } }
-                        Button("Recargar alumnado") { Task { try? await bridge.refreshStudentsDirectory() } }
-                        Button("Recargar rúbricas") {
-                            Task {
-                                try? await bridge.refreshRubrics()
-                                try? await bridge.refreshRubricClassLinks()
-                            }
+                        Button {
+                            triggerPrimaryAction()
+                        } label: {
+                            Label(primaryActionLabel, systemImage: "plus")
                         }
-                    } label: {
-                        Image(systemName: "arrow.clockwise.circle")
-                            .font(.title3.weight(.semibold))
+                        .buttonStyle(.borderedProminent)
                     }
-                    .buttonStyle(.bordered)
-
-                    Button {
-                        triggerPrimaryAction()
-                    } label: {
-                        Label(primaryActionLabel, systemImage: "plus")
-                    }
-                    .buttonStyle(.borderedProminent)
                 }
             }
 
@@ -842,7 +842,7 @@ struct AppWorkspaceShell: View {
                 attendanceGlobalToolbarRow
             } else if activeModule == .planner || activeModule == .diary {
                 moduleContextToolbarRow
-            } else if activeModule != .notebook {
+            } else {
                 HStack(spacing: 12) {
                     Menu {
                         Button("Sin clase activa") {

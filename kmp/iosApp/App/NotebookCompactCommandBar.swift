@@ -33,7 +33,20 @@ struct NotebookCompactCommandBar<SecondaryActions: View>: View {
         #endif
     }
 
+    #if os(iOS)
+    private var isPad: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad
+    }
+    #else
+    private var isPad: Bool {
+        false
+    }
+    #endif
+
     var body: some View {
+        #if os(macOS)
+        EmptyView()
+        #else
         Group {
             if isCompact {
                 compactBody
@@ -44,6 +57,7 @@ struct NotebookCompactCommandBar<SecondaryActions: View>: View {
         .padding(.horizontal, IOSAppStyle.pagePadding)
         .padding(.vertical, 8)
         .background(.bar)
+        #endif
     }
 
     private var compactBody: some View {
@@ -61,8 +75,10 @@ struct NotebookCompactCommandBar<SecondaryActions: View>: View {
 
     private var regularBody: some View {
         HStack(spacing: 10) {
-            classPicker
-                .frame(maxWidth: 230)
+            if !isPad {
+                classPicker
+                    .frame(maxWidth: 230)
+            }
 
             if let subtitle, !subtitle.isEmpty {
                 Text(subtitle)
@@ -71,8 +87,10 @@ struct NotebookCompactCommandBar<SecondaryActions: View>: View {
                     .lineLimit(1)
             }
 
-            IOSSearchField(text: $searchText, placeholder: "Buscar alumno")
-                .frame(minWidth: 210, maxWidth: 300)
+            if !isPad {
+                IOSSearchField(text: $searchText, placeholder: "Buscar alumno")
+                    .frame(minWidth: 210, maxWidth: 300)
+            }
 
             Spacer(minLength: 0)
 

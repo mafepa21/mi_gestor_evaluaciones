@@ -436,6 +436,9 @@ struct IOSWorkspaceSidebar: View {
 struct IOSWorkspaceContent: View {
     @EnvironmentObject private var bridge: KmpBridge
     @Environment(\.colorScheme) private var colorScheme
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
 
     let activeModule: AppWorkspaceModule
     @ObservedObject var layoutState: WorkspaceLayoutState
@@ -500,7 +503,8 @@ struct IOSWorkspaceContent: View {
                 bridge: bridge,
                 selectedClassId: $selectionStore.selectedClassId,
                 selectedStudentId: $selectionStore.selectedStudentId,
-                onOpenModule: onOpenModule
+                onOpenModule: onOpenModule,
+                toolbarMode: notebookToolbarMode
             )
         case .attendance:
             AttendanceWorkspaceView(
@@ -613,6 +617,14 @@ struct IOSWorkspaceContent: View {
             groupId: plannerContext.groupId ?? selectionStore.selectedClassId,
             sessionId: plannerContext.sessionId
         )
+    }
+
+    private var notebookToolbarMode: NotebookToolbarMode {
+        #if os(iOS)
+        horizontalSizeClass == .compact ? .inlineCompact : .shellOwned
+        #else
+        .shellOwned
+        #endif
     }
 }
 

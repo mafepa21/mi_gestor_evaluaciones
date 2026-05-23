@@ -78,14 +78,6 @@ private enum PhysicalTestsWorkspaceTab: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-private enum PhysicalNotebookColumnMode: String, CaseIterable, Identifiable {
-    case rawOnly = "Solo marca"
-    case rawAndScore = "Marca + nota baremada"
-    case scoreOnly = "Solo nota baremada"
-
-    var id: String { rawValue }
-}
-
 private enum PhysicalCompletionFilter: String, CaseIterable, Identifiable {
     case all = "Todos"
     case pending = "Pendiente"
@@ -612,13 +604,10 @@ struct PhysicalTestsWorkspaceView: View {
                                 .disabled(selectedClassId == nil || trimmedOrNil(newAssignmentNotebookTabName) == nil)
                             }
                         }
-                        Picker("Columnas", selection: $batteryColumnMode) {
-                            ForEach(PhysicalNotebookColumnMode.allCases) { mode in
-                                Text(mode.rawValue).tag(mode)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        Toggle("La nota cuenta para la media", isOn: $scoreCountsTowardAverage)
+                        PhysicalTestsColumnOptionsView(
+                            columnMode: $batteryColumnMode,
+                            scoreCountsTowardAverage: $scoreCountsTowardAverage
+                        )
                         Button {
                             Task { await createAssignment() }
                         } label: {
@@ -987,83 +976,19 @@ struct PhysicalTestsWorkspaceView: View {
         )
         do {
             try await bridge.assignPhysicalBatteryToClass(assignment)
-            try await createNotebookColumns(for: battery, assignment: assignment)
+            try await PhysicalTestsColumnCreationPolicy.createNotebookColumns(
+                bridge: bridge,
+                battery: battery,
+                assignment: assignment,
+                selectedAssignmentNotebookTabId: selectedAssignmentNotebookTabId,
+                scoreCountsTowardAverage: scoreCountsTowardAverage
+            )
+            let tabName = selectedAssignmentNotebookTab?.title ?? "la pestaña seleccionada"
+            bridge.status = "Asignación creada y columnas preparadas en \(tabName)."
             await reload()
         } catch {
             bridge.status = "No se pudo crear la asignación: \(error.localizedDescription)"
         }
-    }
-
-    private func createNotebookColumns(for battery: MiGestorKit.PhysicalTestBattery, assignment: MiGestorKit.PhysicalTestAssignment) async throws {
-        let selectedClassId = assignment.classId
-        bridge.selectClass(id: selectedClassId)
-        guard let selectedAssignmentNotebookTabId else {
-            throw NSError(domain: "PhysicalTestsWorkspaceView", code: 422, userInfo: [NSLocalizedDescriptionKey: "Selecciona una pestaña del cuaderno para crear las columnas."])
-        }
-        bridge.setSelectedNotebookTab(id: selectedAssignmentNotebookTabId)
-        let selectedTemplates = PhysicalTestTemplate.defaults.filter { battery.testIds.contains($0.id) }
-        let categoryId = assignment.id
-        bridge.saveColumnCategory(name: "\(battery.name) · \(assignment.termLabel ?? "Evaluación física")", categoryId: categoryId)
-        let persistedLinks = (try? await bridge.listPhysicalNotebookLinksForAssignment(assignmentId: assignment.id)) ?? []
-
-        for template in selectedTemplates {
-            let existingLink = persistedLinks.first { $0.testId == template.id } ??
-                notebookLinks.first { $0.assignmentId == assignment.id && $0.testId == template.id }
-            var rawColumnId = existingLink?.rawColumnId
-            var scoreColumnId = existingLink?.scoreColumnId
-            if assignment.rawColumnMode && rawColumnId == nil {
-                let title = "\(template.name) · marca"
-                if let existingColumnId = existingNotebookPhysicalColumnId(title: title, categoryId: categoryId) {
-                    rawColumnId = existingColumnId
-                } else {
-                    rawColumnId = try await bridge.createNotebookPhysicalColumnForClass(
-                        classId: selectedClassId,
-                        name: title,
-                        categoryId: categoryId,
-                        inputKind: template.measurement.inputKind,
-                        unitOrSituation: template.unit,
-                        scaleKind: template.measurement.scaleKind,
-                        iconName: "stopwatch.fill",
-                        weight: 0,
-                        countsTowardAverage: false,
-                        dateEpochMs: assignment.dateEpochMs
-                    )
-                }
-            }
-
-            if assignment.scoreColumnMode && scoreColumnId == nil {
-                let title = "\(template.name) · nota"
-                if let existingColumnId = existingNotebookPhysicalColumnId(title: title, categoryId: categoryId) {
-                    scoreColumnId = existingColumnId
-                } else {
-                    scoreColumnId = try await bridge.createNotebookPhysicalColumnForClass(
-                        classId: selectedClassId,
-                        name: title,
-                        categoryId: categoryId,
-                        inputKind: .numeric010,
-                        unitOrSituation: "Nota baremada",
-                        scaleKind: .tenPoint,
-                        iconName: "chart.bar.fill",
-                        weight: 10,
-                        countsTowardAverage: scoreCountsTowardAverage,
-                        dateEpochMs: assignment.dateEpochMs
-                    )
-                }
-            }
-            if existingLink?.rawColumnId != rawColumnId || existingLink?.scoreColumnId != scoreColumnId {
-                try await bridge.savePhysicalNotebookLink(
-                    MiGestorKit.PhysicalTestNotebookLink(
-                        assignmentId: assignment.id,
-                        testId: template.id,
-                        rawColumnId: rawColumnId,
-                        scoreColumnId: scoreColumnId,
-                        trace: auditTrace()
-                    )
-                )
-            }
-        }
-        let tabName = selectedAssignmentNotebookTab?.title ?? "la pestaña seleccionada"
-        bridge.status = "Asignación creada y columnas preparadas en \(tabName)."
     }
 
     @MainActor
@@ -1146,14 +1071,7 @@ struct PhysicalTestsWorkspaceView: View {
         )
     }
 
-    private func existingNotebookPhysicalColumnId(title: String, categoryId: String) -> String? {
-        guard let data = bridge.notebookState as? NotebookUiStateData else { return nil }
-        return data.sheet.columns.first { column in
-            column.title == title &&
-            column.categoryId == categoryId &&
-            column.instrumentKind == .physicalTest
-        }?.id
-    }
+
 
     private func syncSelectedClassDefaults() {
         guard let selectedSchoolClass else { return }
@@ -1433,6 +1351,8 @@ private struct PhysicalBatteryBuilder: View {
     @Binding var columnMode: PhysicalNotebookColumnMode
     let onCreate: (PhysicalTestBattery) -> Void
 
+    @State private var dummyScoreCountsTowardAverage = true
+
     private var quickTemplates: [PhysicalBatteryQuickTemplate] {
         PhysicalBatteryQuickTemplate.defaults(for: templates)
     }
@@ -1502,18 +1422,10 @@ private struct PhysicalBatteryBuilder: View {
                 }
 
                 DisclosureGroup("Opciones avanzadas") {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Picker("Columnas en cuaderno", selection: $columnMode) {
-                            ForEach(PhysicalNotebookColumnMode.allCases) { mode in
-                                Text(mode.rawValue).tag(mode)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-
-                        Text("Las notas se podrán ponderar después desde la columna Media.")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
+                    PhysicalTestsColumnOptionsView(
+                        columnMode: $columnMode,
+                        scoreCountsTowardAverage: $dummyScoreCountsTowardAverage
+                    )
                     .padding(.top, 8)
                 }
 

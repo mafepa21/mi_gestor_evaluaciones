@@ -524,13 +524,7 @@ extension NotebookModuleView {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .popover(item: $averageExplanationRow) { item in
-                    NotebookAverageExplanationView(
-                        studentName: "\(item.student.firstName) \(item.student.lastName)",
-                        explanation: item.row.averageExplanation
-                    )
-                        .frame(width: 320)
-                }
+                .notebookAverageExplanation(item: mappedExplanationItemBinding)
             }
         }
     }

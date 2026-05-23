@@ -46,7 +46,7 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         FRAMEWORK_SEARCH_PATHS:
           - "$(inherited)"
-          - "$(SRCROOT)/Frameworks"
+          - "$(SRCROOT)/Frameworks/ios"
         LD_RUNPATH_SEARCH_PATHS:
           - "$(inherited)"
           - "@executable_path/Frameworks"
@@ -55,7 +55,7 @@ targets:
           - "-lsqlite3"
         EXCLUDED_ARCHS[sdk=iphonesimulator*]: x86_64
     dependencies:
-      - framework: Frameworks/MiGestorKit.framework
+      - framework: Frameworks/ios/MiGestorKit.framework
       - package: CoreXLSX
     preBuildScripts:
       - name: Build KMP Framework
@@ -66,7 +66,7 @@ targets:
           mkdir -p "${GRADLE_USER_HOME}"
           ./scripts/build_apple_framework.sh
         outputFiles:
-          - "$(SRCROOT)/Frameworks/MiGestorKit.framework/MiGestorKit"
+          - "$(SRCROOT)/Frameworks/ios/MiGestorKit.framework/MiGestorKit"
   MiGestorKMPMac:
     type: application
     platform: macOS
@@ -92,7 +92,7 @@ targets:
         INFOPLIST_KEY_CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         FRAMEWORK_SEARCH_PATHS:
           - "$(inherited)"
-          - "$(SRCROOT)/Frameworks"
+          - "$(SRCROOT)/Frameworks/macos"
         LD_RUNPATH_SEARCH_PATHS:
           - "$(inherited)"
           - "@executable_path/../Frameworks"
@@ -100,7 +100,7 @@ targets:
           - "$(inherited)"
           - "-lsqlite3"
     dependencies:
-      - framework: Frameworks/MiGestorKit.framework
+      - framework: Frameworks/macos/MiGestorKit.framework
       - package: CoreXLSX
     preBuildScripts:
       - name: Build KMP Framework
@@ -111,7 +111,7 @@ targets:
           mkdir -p "${GRADLE_USER_HOME}"
           ./scripts/build_apple_framework.sh
         outputFiles:
-          - "$(SRCROOT)/Frameworks/MiGestorKit.framework/MiGestorKit"
+          - "$(SRCROOT)/Frameworks/macos/MiGestorKit.framework/MiGestorKit"
       - name: Build Command Center Helper
         script: |
           set -euo pipefail

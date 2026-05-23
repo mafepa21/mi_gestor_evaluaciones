@@ -60,25 +60,9 @@ struct NotebookMacLayout: View {
             }
         }
         .background(MacAppStyle.pageBackground)
-        .toolbar {
-            if showsNotebookToolbar {
-                notebookToolbar
-            }
-        }
         .onAppear {
             searchText = layoutState.notebookSearchText
         }
-        .modifier(NotebookMacSearchModifier(
-            isEnabled: showsNotebookToolbar,
-            searchText: Binding(
-                get: { searchText },
-                set: { newValue in
-                    searchText = newValue
-                    layoutState.setNotebookSearchText(newValue)
-                }
-            ),
-            isSearchFocused: $isSearchFocused
-        ))
     }
 
     private var notebookContent: some View {
@@ -87,6 +71,7 @@ struct NotebookMacLayout: View {
             selectedClassId: $selectedClassId,
             selectedStudentId: $selectedStudentId,
             onOpenModule: onOpenModule,
+            toolbarMode: .macWindowOwned,
             macPresentation: presentation,
             macInspectorState: inspectorState,
             macToolbarActions: showsNotebookToolbar ? toolbarActions : nil
@@ -140,68 +125,4 @@ struct NotebookMacLayout: View {
             .sorted { $0.course < $1.course }
     }
 
-    @ToolbarContentBuilder
-    private var notebookToolbar: some ToolbarContent {
-        ToolbarItemGroup(placement: .primaryAction) {
-            Button {
-                toolbarActions.undo()
-            } label: {
-                Label("Deshacer", systemImage: "arrow.uturn.backward")
-            }
-            .disabled(!toolbarActions.canUndo)
-
-            Button {
-                toolbarActions.addColumn()
-            } label: {
-                Label("Añadir columna", systemImage: "plus.rectangle.on.rectangle")
-            }
-            .disabled(!toolbarActions.addColumnAvailable)
-
-            Button {
-                toolbarActions.openOrganizationMenu()
-            } label: {
-                Label("Organizar", systemImage: "slider.horizontal.3")
-            }
-
-            Button {
-                if let onToggleInspectorColumn {
-                    onToggleInspectorColumn()
-                } else {
-                    toolbarActions.toggleInspector()
-                }
-            } label: {
-                Label("Inspector", systemImage: "sidebar.right")
-            }
-            .disabled(!toolbarActions.canToggleInspector && !inspectorState.isPresented && !toolbarActions.isInspectorPresented)
-        }
-
-        ToolbarItem(placement: .secondaryAction) {
-            Button {
-                toolbarActions.refresh()
-            } label: {
-                Label("Refrescar", systemImage: "arrow.clockwise")
-            }
-        }
-    }
-}
-
-private struct NotebookMacSearchModifier: ViewModifier {
-    let isEnabled: Bool
-    @Binding var searchText: String
-    var isSearchFocused: FocusState<Bool>.Binding
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if isEnabled {
-            content
-                .searchable(
-                    text: $searchText,
-                    placement: .toolbar,
-                    prompt: "Buscar alumno..."
-                )
-                .searchFocused(isSearchFocused)
-        } else {
-            content
-        }
-    }
 }

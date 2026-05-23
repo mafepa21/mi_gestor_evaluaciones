@@ -10,7 +10,7 @@ extension PhysicalTestBattery: @retroactive Identifiable {}
 extension PhysicalTestAssignment: @retroactive Identifiable {}
 extension PhysicalTestResult: @retroactive Identifiable {}
 
-private enum PhysicalTestsMacSection: String, CaseIterable, Identifiable {
+enum PhysicalTestsMacSection: String, CaseIterable, Identifiable {
     case dashboard
     case bank
     case batteries
@@ -46,20 +46,12 @@ private enum PhysicalTestsMacSection: String, CaseIterable, Identifiable {
     }
 }
 
-private enum MacPhysicalNotebookColumnMode: String, CaseIterable, Identifiable {
-    case rawOnly = "Solo marca"
-    case rawAndScore = "Marca + nota baremada"
-    case scoreOnly = "Solo nota baremada"
-
-    var id: String { rawValue }
-}
-
 private struct MacPhysicalTestBattery: Identifiable {
     let id: String
     var name: String
     var date: Date
     var templateIds: Set<String>
-    var columnMode: MacPhysicalNotebookColumnMode
+    var columnMode: PhysicalNotebookColumnMode
 }
 
 private struct MacPhysicalTestAssignment: Identifiable {
@@ -72,7 +64,7 @@ private struct MacPhysicalTestAssignment: Identifiable {
     var ageTo: Int
     var termLabel: String
     var date: Date
-    var columnMode: MacPhysicalNotebookColumnMode
+    var columnMode: PhysicalNotebookColumnMode
 }
 
 private enum MacPhysicalAssignmentStatus: String {
@@ -155,8 +147,8 @@ struct MacPhysicalTestsView: View {
     @Binding var selectedStudentId: Int64?
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
     @ObservedObject var toolbarActions: MacPhysicalTestsToolbarActions
+    @ObservedObject var inspectorState: PhysicalTestsMacInspectorState
 
-    @State private var section: PhysicalTestsMacSection = .dashboard
     @State private var tests: [KmpBridge.PhysicalTestSnapshot] = []
     @State private var selectedTestId: Int64?
     @State private var selectedTemplateId: String? = PhysicalTestTemplate.defaults.first?.id
@@ -168,7 +160,8 @@ struct MacPhysicalTestsView: View {
     @State private var batteryName = "Condición física inicial"
     @State private var batteryDate = Date()
     @State private var batteryTemplateIds = Set(PhysicalTestTemplate.defaults.prefix(4).map(\.id))
-    @State private var batteryColumnMode: MacPhysicalNotebookColumnMode = .rawAndScore
+    @State private var batteryColumnMode: PhysicalNotebookColumnMode = .rawAndScore
+    @State private var scoreCountsTowardAverage = true
     @State private var selectedBatteryId: String?
     @State private var assignmentCourse = 1
     @State private var assignmentAgeFrom = 12
@@ -185,6 +178,11 @@ struct MacPhysicalTestsView: View {
     @State private var physicalScalesByTestId: [String: [MiGestorKit.PhysicalTestScale]] = [:]
     @State private var captureDrafts: [Int64: [String]] = [:]
     @State private var scale = PhysicalTestScaleDraft.defaultJump
+
+    private var section: PhysicalTestsMacSection {
+        get { inspectorState.selectedSection }
+        nonmutating set { inspectorState.selectedSection = newValue }
+    }
 
     private var selectedClassName: String {
         selectedClassId.flatMap { id in bridge.classes.first(where: { $0.id == id })?.name } ?? "Sin clase seleccionada"
@@ -312,34 +310,32 @@ struct MacPhysicalTestsView: View {
     }
 
     var body: some View {
-        NavigationSplitView {
-            List(selection: $section) {
-                Section("Condición física") {
-                    ForEach(PhysicalTestsMacSection.allCases) { item in
-                        Label(item.title, systemImage: item.systemImage)
-                            .tag(item)
-                    }
+        VStack(spacing: 0) {
+            Picker("", selection: $inspectorState.selectedSection) {
+                ForEach(PhysicalTestsMacSection.allCases) { item in
+                    Label(item.title, systemImage: item.systemImage)
+                        .tag(item)
                 }
             }
-            .listStyle(.sidebar)
-            .navigationTitle("EF")
-            .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 260)
-        } detail: {
-            HStack(spacing: 0) {
-                content
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                Divider()
-                inspector
-                    .frame(width: 280)
-                    .background(MacAppStyle.cardBackground)
-            }
-            .background(MacAppStyle.pageBackground)
+            .pickerStyle(.segmented)
+            .padding(.horizontal, MacAppStyle.pagePadding)
+            .padding(.vertical, 10)
+            .background(MacAppStyle.cardBackground)
+
+            Divider()
+
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .background(MacAppStyle.pageBackground)
         .task { await reload() }
         .appOnChange(of: selectedClassId) { _ in Task { await reload() } }
-        .appOnChange(of: selectedTestId) { _ in syncSelectedStudent() }
+        .appOnChange(of: selectedTestId) { _ in
+            syncSelectedStudent()
+            syncSelectedTest()
+        }
         .onAppear(perform: configureToolbar)
-        .appOnChange(of: section) { _ in configureToolbar() }
+        .appOnChange(of: inspectorState.selectedSection) { _ in configureToolbar() }
         .appOnChange(of: selectedClassId) { _ in configureToolbar() }
     }
 
@@ -470,18 +466,10 @@ struct MacPhysicalTestsView: View {
                     }
 
                     DisclosureGroup("Opciones avanzadas") {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Picker("Columnas", selection: $batteryColumnMode) {
-                                ForEach(MacPhysicalNotebookColumnMode.allCases) { mode in
-                                    Text(mode.rawValue).tag(mode)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-
-                            Text("Las notas se podrán ponderar después desde la columna Media.")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                        }
+                        PhysicalTestsColumnOptionsView(
+                            columnMode: $batteryColumnMode,
+                            scoreCountsTowardAverage: $scoreCountsTowardAverage
+                        )
                         .padding(.top, 8)
                     }
 
@@ -645,12 +633,10 @@ struct MacPhysicalTestsView: View {
 
             DatePicker("Fecha", selection: $batteryDate, displayedComponents: .date)
 
-            Picker("Columnas", selection: $batteryColumnMode) {
-                ForEach(MacPhysicalNotebookColumnMode.allCases) { mode in
-                    Text(mode.rawValue).tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
+            PhysicalTestsColumnOptionsView(
+                columnMode: $batteryColumnMode,
+                scoreCountsTowardAverage: $scoreCountsTowardAverage
+            )
 
             Picker("Batería", selection: Binding<String?>(
                 get: { selectedBatteryId ?? batteries.first?.id },
@@ -1110,52 +1096,7 @@ struct MacPhysicalTestsView: View {
             && scale.validationMessages.isEmpty
     }
 
-    private var inspector: some View {
-        VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
-            Label("Inspector", systemImage: "sidebar.right")
-                .font(.headline)
 
-            Divider()
-
-            if let selectedTest {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(selectedTest.evaluation.name)
-                        .font(.title3.weight(.semibold))
-                    Text(selectedTest.evaluation.type)
-                        .foregroundStyle(.secondary)
-                    MacStatusPill(label: "\(selectedTest.recordedCount) registros", isActive: selectedTest.recordedCount > 0, tint: .orange)
-                }
-
-                Divider()
-
-                InspectorLine(title: "Media", value: PhysicalTestsFormatting.decimal(selectedTest.average))
-                InspectorLine(title: "Mejor marca", value: selectedTest.best.map { PhysicalTestsFormatting.decimal($0) } ?? "-")
-                InspectorLine(title: "Alumnos", value: "\(selectedTest.results.count)")
-
-                Button {
-                    section = .capture
-                } label: {
-                    Label("Abrir captura", systemImage: "tablecells")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-
-                Button {
-                    onOpenModule(.notebook, selectedClassId, selectedStudentId)
-                } label: {
-                    Label("Abrir cuaderno", systemImage: "book.closed")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-            } else {
-                Text("Selecciona o crea una prueba física para ver detalles.")
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-        }
-        .padding(MacAppStyle.pagePadding)
-    }
 
     private func header(title: String, subtitle: String) -> some View {
         HStack(alignment: .firstTextBaseline) {
@@ -1202,6 +1143,7 @@ struct MacPhysicalTestsView: View {
             selectedScaleAssignmentId = nil
             selectedScaleTestId = nil
             physicalScalesByTestId = [:]
+            inspectorState.selectedTest = nil
             configureToolbar()
             return
         }
@@ -1228,6 +1170,7 @@ struct MacPhysicalTestsView: View {
             selectedTestId = tests.first?.evaluation.id
         }
         syncSelectedStudent()
+        syncSelectedTest()
         syncScaleDraftFromSelection()
         configureToolbar()
     }
@@ -1236,6 +1179,10 @@ struct MacPhysicalTestsView: View {
         if selectedStudentId == nil || !(selectedTest?.results.contains(where: { $0.student.id == selectedStudentId }) ?? false) {
             selectedStudentId = selectedTest?.results.first?.student.id
         }
+    }
+
+    private func syncSelectedTest() {
+        inspectorState.selectedTest = selectedTest
     }
 
     private func createTest(from template: PhysicalTestTemplate) async {
@@ -1515,68 +1462,19 @@ struct MacPhysicalTestsView: View {
         )
         do {
             try await bridge.assignPhysicalBatteryToClass(assignment)
-            try await createNotebookColumns(for: battery, assignment: assignment)
+            try await PhysicalTestsColumnCreationPolicy.createNotebookColumns(
+                bridge: bridge,
+                battery: battery,
+                assignment: assignment,
+                selectedAssignmentNotebookTabId: selectedAssignmentNotebookTabId,
+                scoreCountsTowardAverage: scoreCountsTowardAverage
+            )
+            let tabName = selectedAssignmentNotebookTab?.title ?? "la pestaña seleccionada"
+            bridge.status = "Columnas de condición física preparadas en \(tabName)."
             await reload()
         } catch {
             bridge.status = "No se pudo crear la asignación: \(error.localizedDescription)"
         }
-    }
-
-    private func createNotebookColumns(for battery: MiGestorKit.PhysicalTestBattery, assignment: MiGestorKit.PhysicalTestAssignment) async throws {
-        let selectedClassId = assignment.classId
-        bridge.selectClass(id: selectedClassId)
-        guard let selectedAssignmentNotebookTabId else {
-            throw NSError(domain: "MacPhysicalTestsView", code: 422, userInfo: [NSLocalizedDescriptionKey: "Selecciona una pestaña del cuaderno para crear las columnas."])
-        }
-        bridge.setSelectedNotebookTab(id: selectedAssignmentNotebookTabId)
-        let selectedTemplates = PhysicalTestTemplate.defaults.filter { battery.testIds.contains($0.id) }
-        let categoryId = assignment.id
-        bridge.saveColumnCategory(name: "\(battery.name) · \(assignment.termLabel ?? "Evaluación física")", categoryId: categoryId)
-
-        for template in selectedTemplates {
-            var rawColumnId: String?
-            var scoreColumnId: String?
-            if assignment.rawColumnMode {
-                rawColumnId = try await bridge.createNotebookPhysicalColumnForClass(
-                    classId: selectedClassId,
-                    name: "\(template.name) · marca",
-                    categoryId: categoryId,
-                    inputKind: template.measurement.inputKind,
-                    unitOrSituation: template.unit,
-                    scaleKind: template.measurement.scaleKind,
-                    iconName: "stopwatch.fill",
-                    weight: 0,
-                    countsTowardAverage: false,
-                    dateEpochMs: assignment.dateEpochMs
-                )
-            }
-
-            if assignment.scoreColumnMode {
-                scoreColumnId = try await bridge.createNotebookPhysicalColumnForClass(
-                    classId: selectedClassId,
-                    name: "\(template.name) · nota",
-                    categoryId: categoryId,
-                    inputKind: .numeric010,
-                    unitOrSituation: "Nota baremada",
-                    scaleKind: .tenPoint,
-                    iconName: "chart.bar.fill",
-                    weight: 10,
-                    countsTowardAverage: true,
-                    dateEpochMs: assignment.dateEpochMs
-                )
-            }
-            try await bridge.savePhysicalNotebookLink(
-                MiGestorKit.PhysicalTestNotebookLink(
-                    assignmentId: assignment.id,
-                    testId: template.id,
-                    rawColumnId: rawColumnId,
-                    scoreColumnId: scoreColumnId,
-                    trace: auditTrace()
-                )
-            )
-        }
-        let tabName = selectedAssignmentNotebookTab?.title ?? "la pestaña seleccionada"
-        bridge.status = "Columnas de condición física preparadas en \(tabName)."
     }
 
     private func attemptBinding(studentId: Int64, index: Int) -> Binding<String> {
@@ -1713,9 +1611,9 @@ struct MacPhysicalTestsView: View {
 
     private func columnModeLabel(for assignment: MiGestorKit.PhysicalTestAssignment) -> String {
         switch (assignment.rawColumnMode, assignment.scoreColumnMode) {
-        case (true, true): return MacPhysicalNotebookColumnMode.rawAndScore.rawValue
-        case (true, false): return MacPhysicalNotebookColumnMode.rawOnly.rawValue
-        case (false, true): return MacPhysicalNotebookColumnMode.scoreOnly.rawValue
+        case (true, true): return PhysicalNotebookColumnMode.rawAndScore.rawValue
+        case (true, false): return PhysicalNotebookColumnMode.rawOnly.rawValue
+        case (false, true): return PhysicalNotebookColumnMode.scoreOnly.rawValue
         default: return "Sin columnas"
         }
     }

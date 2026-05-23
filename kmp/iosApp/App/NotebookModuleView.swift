@@ -5,6 +5,13 @@ import MiGestorKit
 import UIKit
 #endif
 
+enum NotebookToolbarMode {
+    case inlineCompact
+    case shellOwned
+    case macWindowOwned
+    case hidden
+}
+
 struct NotebookModuleView: View {
     #if os(macOS)
     let notebookGridRowHeight: CGFloat = 50
@@ -24,6 +31,7 @@ struct NotebookModuleView: View {
     @Binding var selectedClassId: Int64?
     @Binding var selectedStudentId: Int64?
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
+    let toolbarMode: NotebookToolbarMode
     let macToolbarActions: NotebookMacToolbarActions?
     @StateObject var inspectorState: NotebookMacInspectorState
     @StateObject var gridLayoutModel = NotebookGridLayoutModel()
@@ -107,6 +115,7 @@ struct NotebookModuleView: View {
         selectedClassId: Binding<Int64?>,
         selectedStudentId: Binding<Int64?>,
         onOpenModule: @escaping (AppWorkspaceModule, Int64?, Int64?) -> Void,
+        toolbarMode: NotebookToolbarMode = .inlineCompact,
         macPresentation: NotebookMacPresentation = .full,
         macInspectorState: NotebookMacInspectorState? = nil,
         macToolbarActions: NotebookMacToolbarActions? = nil
@@ -115,6 +124,7 @@ struct NotebookModuleView: View {
         self._selectedClassId = selectedClassId
         self._selectedStudentId = selectedStudentId
         self.onOpenModule = onOpenModule
+        self.toolbarMode = toolbarMode
         self.macToolbarActions = macToolbarActions
         self.macPresentation = macPresentation
         self._inspectorState = StateObject(wrappedValue: macInspectorState ?? NotebookMacInspectorState())
@@ -248,6 +258,24 @@ struct NotebookModuleView: View {
         )
     }
 
+    var mappedExplanationItemBinding: Binding<NotebookAverageExplanationItem?> {
+        Binding(
+            get: {
+                guard let row = averageExplanationRow else { return nil }
+                return NotebookAverageExplanationItem(
+                    id: String(row.student.id),
+                    studentName: "\(row.student.firstName) \(row.student.lastName)",
+                    explanation: row.row.averageExplanation
+                )
+            },
+            set: { newValue in
+                if newValue == nil {
+                    averageExplanationRow = nil
+                }
+            }
+        )
+    }
+
     var isInspectorPresentedBinding: Binding<Bool> {
         Binding(
             get: { isInspectorPresented },
@@ -274,52 +302,54 @@ struct NotebookModuleView: View {
 
         return HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 0) {
-                NotebookCompactCommandBar(
-                    bridge: bridge,
-                    searchText: $searchText,
-                    classTitle: activeClassLabel,
-                    subtitle: tabs.count == 1 ? tabs.first?.title : nil,
-                    selectedClassId: bridge.notebookViewModel.currentClassId?.int64Value,
-                    classes: sortedClasses,
-                    focusMode: focusMode,
-                    isInspectorPresented: isInspectorPresented,
-                    canUndo: !undoStack.isEmpty,
-                    isAttendanceQuickMode: isAttendanceQuickMode,
-                    showsAdvancedActions: focusMode == .normal,
-                    onSelectClass: selectNotebookClass,
-                    onAddColumn: {
-                        addColumnContext = NotebookAddColumnContext(categoryId: nil, startsCreatingCategory: false)
-                    },
-                    onOpenOrganization: {
-                        isOrganizationMenuPresented = true
-                    },
-                    onToggleInspector: {
-                        if isInspectorPresented {
-                            closeInspectorAndTransientState()
-                        } else {
-                            if inspectorSelection == nil {
-                                openInspectorForSelection(data)
-                            }
-                            isInspectorPresented = inspectorSelection != nil
+                if toolbarMode == .inlineCompact {
+                    NotebookCompactCommandBar(
+                        bridge: bridge,
+                        searchText: $searchText,
+                        classTitle: activeClassLabel,
+                        subtitle: tabs.count == 1 ? tabs.first?.title : nil,
+                        selectedClassId: bridge.notebookViewModel.currentClassId?.int64Value,
+                        classes: sortedClasses,
+                        focusMode: focusMode,
+                        isInspectorPresented: isInspectorPresented,
+                        canUndo: !undoStack.isEmpty,
+                        isAttendanceQuickMode: isAttendanceQuickMode,
+                        showsAdvancedActions: focusMode == .normal,
+                        onSelectClass: selectNotebookClass,
+                        onAddColumn: {
+                            addColumnContext = NotebookAddColumnContext(categoryId: nil, startsCreatingCategory: false)
+                        },
+                        onOpenOrganization: {
+                            isOrganizationMenuPresented = true
+                        },
+                        onToggleInspector: {
                             if isInspectorPresented {
-                                focusMode = .reviewing
+                                closeInspectorAndTransientState()
+                            } else {
+                                if inspectorSelection == nil {
+                                    openInspectorForSelection(data)
+                                }
+                                isInspectorPresented = inspectorSelection != nil
+                                if isInspectorPresented {
+                                    focusMode = .reviewing
+                                }
                             }
+                        },
+                        onUndo: {
+                            undoLastCellChange()
+                        },
+                        onToggleAttendanceQuickMode: {
+                            isAttendanceQuickMode.toggle()
+                            if isAttendanceQuickMode {
+                                activeChoiceCellId = nil
+                                focusedCellId = nil
+                            }
+                        },
+                        secondaryActions: {
+                            notebookCommandMenuContent(data: data, tabs: tabs, rows: rows)
                         }
-                    },
-                    onUndo: {
-                        undoLastCellChange()
-                    },
-                    onToggleAttendanceQuickMode: {
-                        isAttendanceQuickMode.toggle()
-                        if isAttendanceQuickMode {
-                            activeChoiceCellId = nil
-                            focusedCellId = nil
-                        }
-                    },
-                    secondaryActions: {
-                        notebookCommandMenuContent(data: data, tabs: tabs, rows: rows)
-                    }
-                )
+                    )
+                }
                 if tabs.count > 1 && focusMode == .normal {
                     NotebookTabStrip(
                         tabs: tabs,

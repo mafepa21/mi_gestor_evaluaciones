@@ -38,7 +38,8 @@ extension AppWorkspaceShell {
                 bridge: bridge,
                 selectedClassId: $selectedClassId,
                 selectedStudentId: $selectedStudentId,
-                onOpenModule: open(module:classId:studentId:)
+                onOpenModule: open(module:classId:studentId:),
+                toolbarMode: notebookToolbarMode
             )
         case .attendance:
             AttendanceWorkspaceView(

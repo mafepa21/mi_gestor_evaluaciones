@@ -43,7 +43,11 @@ esac
 
 CONF_LOWER=$(echo "$APPLE_CONFIG" | tr '[:upper:]' '[:lower:]')
 GRADLE_TASK="link${APPLE_CONFIG}Framework${GRADLE_TARGET}"
-OUT_DIR="$ROOT_DIR/iosApp/Frameworks"
+if [ "$APPLE_PLATFORM" = "macosx" ]; then
+    OUT_DIR="$ROOT_DIR/iosApp/Frameworks/macos"
+else
+    OUT_DIR="$ROOT_DIR/iosApp/Frameworks/ios"
+fi
 FRAMEWORK_SRC="$ROOT_DIR/data/build/bin/$SRC_ARCH/${CONF_LOWER}Framework/MiGestorKit.framework"
 
 echo "Building KMP Framework for $APPLE_PLATFORM ($APPLE_ARCHS) in $APPLE_CONFIG mode..."

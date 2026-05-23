@@ -5407,15 +5407,53 @@ final class KmpBridge: ObservableObject {
     }
     
     func bulkSelectedLevelId(studentId: Int64, criterionId: Int64) -> Int64? {
-        guard let state = bulkRubricEvaluationState,
-              let studentMap = state.assessments[KotlinLong(value: studentId)] else {
-            return nil
-        }
-        return studentMap[KotlinLong(value: criterionId)]?.int64Value
+        bulkAssessmentSnapshot()[studentId]?[criterionId]
     }
     
     func bulkScore(studentId: Int64) -> Double? {
-        bulkRubricEvaluationState?.scores[KotlinLong(value: studentId)]?.doubleValue
+        bulkScoreSnapshot()[studentId]
+    }
+
+    func bulkAssessmentSnapshot() -> [Int64: [Int64: Int64]] {
+        guard let rawAssessments = bulkRubricEvaluationState?.assessments as NSDictionary? else {
+            return [:]
+        }
+
+        var snapshot: [Int64: [Int64: Int64]] = [:]
+        for (rawStudentId, rawStudentAssessments) in rawAssessments {
+            guard let studentId = int64Value(rawStudentId),
+                  let rawStudentAssessments = rawStudentAssessments as? NSDictionary else {
+                continue
+            }
+
+            var selections: [Int64: Int64] = [:]
+            for (rawCriterionId, rawLevelId) in rawStudentAssessments {
+                guard let criterionId = int64Value(rawCriterionId),
+                      let levelId = int64Value(rawLevelId) else {
+                    continue
+                }
+                selections[criterionId] = levelId
+            }
+            snapshot[studentId] = selections
+        }
+
+        return snapshot
+    }
+
+    func bulkScoreSnapshot() -> [Int64: Double] {
+        guard let rawScores = bulkRubricEvaluationState?.scores as NSDictionary? else {
+            return [:]
+        }
+
+        var snapshot: [Int64: Double] = [:]
+        for (rawStudentId, rawScore) in rawScores {
+            guard let studentId = int64Value(rawStudentId),
+                  let score = doubleValue(rawScore) else {
+                continue
+            }
+            snapshot[studentId] = score
+        }
+        return snapshot
     }
     
     func bulkSaveAllAndClose() {

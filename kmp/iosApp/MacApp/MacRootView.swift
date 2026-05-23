@@ -299,15 +299,83 @@ struct MacRootView: View {
 
     @ToolbarContentBuilder
     private var macToolbar: some ToolbarContent {
-        ToolbarItemGroup {
-            Button {
-                Task { await session.bridge.pullMissingSyncChanges() }
-            } label: {
-                Label("Sync", systemImage: "arrow.triangle.2.circlepath")
-            }
-            .help("Sincronizar con desktop")
+        if selectedFeature == .notebook {
+            macNotebookToolbar
+        } else {
+            macDefaultWorkspaceToolbar
+        }
+    }
 
-            if selectedFeature == .notebook {
+    @ToolbarContentBuilder
+    private var macNotebookToolbar: some ToolbarContent {
+        ToolbarItemGroup {
+            Picker("Vista", selection: Binding(
+                get: { layoutState.notebookSurfaceMode },
+                set: { layoutState.setNotebookSurfaceMode($0) }
+            )) {
+                Text("Grid").tag("grid")
+                Text("Plano").tag("seatingPlan")
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 112)
+
+            if session.bridge.syncPendingChanges > 0 {
+                MacStatusPill(
+                    label: "\(session.bridge.syncPendingChanges) pendientes",
+                    isActive: true,
+                    tint: MacAppStyle.warningTint
+                )
+            }
+
+            Button {
+                notebookToolbarActions.addColumn()
+            } label: {
+                Label("Nueva columna", systemImage: "plus")
+            }
+            .disabled(!notebookToolbarActions.addColumnAvailable)
+            .keyboardShortcut("n", modifiers: .command)
+            .help("Añadir nueva columna (⌘N)")
+
+            Button {
+                notebookToolbarActions.openOrganizationMenu()
+            } label: {
+                Label("Organizar columnas", systemImage: "slider.horizontal.3")
+            }
+            .disabled(!notebookToolbarActions.organizationMenuAvailable)
+            .help("Organizar columnas")
+
+            Button {
+                toggleInspector()
+            } label: {
+                Label(isInspectorVisible ? "Ocultar inspector" : "Mostrar inspector", systemImage: "sidebar.right")
+            }
+            .keyboardShortcut("i", modifiers: [.command])
+            .help(isInspectorVisible ? "Ocultar inspector" : "Mostrar inspector")
+
+            Label("Buscar", systemImage: "magnifyingglass")
+                .labelStyle(.iconOnly)
+                .foregroundStyle(.secondary)
+
+            TextField("Buscar", text: Binding(
+                get: { layoutState.notebookSearchText },
+                set: { layoutState.setNotebookSearchText($0) }
+            ))
+            .textFieldStyle(.roundedBorder)
+            .frame(width: 220)
+
+            Menu {
+                Button {
+                    notebookToolbarActions.refresh()
+                } label: {
+                    Label("Recargar", systemImage: "arrow.clockwise")
+                }
+
+                if let exportText = notebookToolbarActions.exportText {
+                    ShareLink(item: exportText) {
+                        Label("Exportar", systemImage: "square.and.arrow.up")
+                    }
+                }
+
                 Button {
                     notebookToolbarActions.undo()
                 } label: {
@@ -315,57 +383,37 @@ struct MacRootView: View {
                 }
                 .disabled(!notebookToolbarActions.canUndo)
                 .keyboardShortcut("z", modifiers: .command)
-                .help("Deshacer último cambio (⌘Z)")
-
-                Button {
-                    notebookToolbarActions.addColumn()
-                } label: {
-                    Label("Nueva columna", systemImage: "plus")
-                }
-                .disabled(!notebookToolbarActions.addColumnAvailable)
-                .keyboardShortcut("n", modifiers: .command)
-                .help("Añadir nueva columna (⌘N)")
-
-                Button {
-                    notebookToolbarActions.openOrganizationMenu()
-                } label: {
-                    Label("Organizar columnas", systemImage: "slider.horizontal.3")
-                }
-                .disabled(!notebookToolbarActions.organizationMenuAvailable)
-                .help("Organizar columnas")
-
-                if let exportText = notebookToolbarActions.exportText {
-                    ShareLink(item: exportText) {
-                        Label("Exportar", systemImage: "square.and.arrow.up")
-                    }
-                    .help("Exportar cuaderno")
-                }
-
-                Picker("Vista", selection: Binding(
-                    get: { layoutState.notebookSurfaceMode },
-                    set: { layoutState.setNotebookSurfaceMode($0) }
-                )) {
-                    Text("Grid").tag("grid")
-                    Text("Plano").tag("seatingPlan")
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 100)
-
-                Button {
-                    notebookToolbarActions.markAllPresent()
-                } label: {
-                    Label("Todos presentes", systemImage: "checkmark.circle.fill")
-                }
-                .disabled(!notebookToolbarActions.canMarkAllPresent)
-                .help("Marcar como presentes los alumnos filtrados")
 
                 Button {
                     notebookToolbarActions.toggleAttendanceQuickMode()
                 } label: {
-                    Label("Pase rápido", systemImage: notebookToolbarActions.isAttendanceQuickMode ? "figure.walk.circle.fill" : "figure.walk.circle")
+                    Label(
+                        notebookToolbarActions.isAttendanceQuickMode ? "Salir de asistencia rápida" : "Asistencia rápida",
+                        systemImage: notebookToolbarActions.isAttendanceQuickMode ? "figure.walk.circle.fill" : "figure.walk.circle"
+                    )
                 }
-                .help("Activar pase rápido de asistencia")
+
+                Button {
+                    notebookToolbarActions.openAdvancedMenu()
+                } label: {
+                    Label("Opciones avanzadas", systemImage: "ellipsis.circle")
+                }
+            } label: {
+                Label("Más", systemImage: "ellipsis.circle")
             }
+            .help("Más acciones del cuaderno")
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var macDefaultWorkspaceToolbar: some ToolbarContent {
+        ToolbarItemGroup {
+            Button {
+                Task { await session.bridge.pullMissingSyncChanges() }
+            } label: {
+                Label("Sync", systemImage: "arrow.triangle.2.circlepath")
+            }
+            .help("Sincronizar con desktop")
 
             if selectedFeature == .dashboard, let dashboardToolbarActions {
                 Button {

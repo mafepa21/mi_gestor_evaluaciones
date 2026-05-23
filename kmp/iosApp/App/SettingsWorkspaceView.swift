@@ -53,7 +53,9 @@ struct SettingsWorkspaceView: View {
         } detail: {
             if let section = selectedSection {
                 settingsDetail(for: section)
+                    #if os(iOS)
                     .navigationBarTitleDisplayMode(.inline)
+                    #endif
             } else {
                 settingsEmptyDetail
             }
@@ -67,7 +69,9 @@ struct SettingsWorkspaceView: View {
         NavigationStack {
             sidebarList
                 .navigationTitle("Ajustes")
+                #if os(iOS)
                 .navigationBarTitleDisplayMode(.large)
+                #endif
         }
     }
 
@@ -96,7 +100,9 @@ struct SettingsWorkspaceView: View {
         .background(IOSAppStyle.pageBackground)
         .scrollContentBackground(.hidden)
         .navigationTitle("Ajustes")
+        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        #endif
     }
 
     // MARK: - Detail router

@@ -405,6 +405,19 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-05-23 - AGENTS.md raiz para reglas permanentes del repo
+
+Resumen:
+- Se creo `AGENTS.md` en la raiz del proyecto como archivo estandar de instrucciones permanentes para Codex.
+- El documento fija arquitectura, regla de oro de alcance iOS/macOS, mapa de skills, rutas frecuentes, archivos protegidos, criterios UI/UX, reglas del Cuaderno, limites para KMP/SQLDelight y formato de entregable.
+- Se incorporo como paso previo obligatorio razonar los cambios con la filosofia del skill `jobs-design-philosophy`: simplicidad radical, whitespace, rejilla de 8pt, jerarquia clara y cambios quirurgicos sin tocar logica de negocio salvo peticion expresa.
+
+Validacion:
+- No validado con build porque el cambio es documental y no toca codigo ejecutable.
+
+Notas para futuras conversaciones:
+- Mantener `AGENT.md` antiguo intacto por compatibilidad historica, pero usar `AGENTS.md` como referencia estandar nueva. Si aparecen errores recurrentes en una subzona, crear un `AGENTS.md` especifico dentro de esa carpeta.
+
 ### 2026-05-21 - Timeout SSE iOS de sincronización LAN
 
 Resumen:

@@ -33,7 +33,12 @@ struct RubricBulkEvaluationSheet: View {
                     GeometryReader { proxy in
                         let isWide = proxy.size.width >= 980
                         let className = className(for: state)
-                        let cache = BulkRubricEvaluationCache(state: state, rubric: rubric)
+                        let cache = BulkRubricEvaluationCache(
+                            state: state,
+                            rubric: rubric,
+                            assessments: bridge.bulkAssessmentSnapshot(),
+                            scores: bridge.bulkScoreSnapshot()
+                        )
 
                         ScrollView {
                             VStack(alignment: .leading, spacing: EvaluationDesign.sectionSpacing) {
@@ -793,7 +798,12 @@ struct RubricBulkEvaluationSheet: View {
                                 Button {
                                     Task {
                                         guard let rubric = state.rubricDetail else { return }
-                                        let cache = BulkRubricEvaluationCache(state: state, rubric: rubric)
+                                        let cache = BulkRubricEvaluationCache(
+                                            state: state,
+                                            rubric: rubric,
+                                            assessments: bridge.bulkAssessmentSnapshot(),
+                                            scores: bridge.bulkScoreSnapshot()
+                                        )
                                         await toggleInjuryStatus(for: student, classId: state.classId, cache: cache)
                                     }
                                 } label: {
@@ -893,7 +903,12 @@ private struct BulkRubricEvaluationCache {
         }
     }
 
-    init(state: BulkRubricEvaluationUiState, rubric: RubricDetail) {
+    init(
+        state: BulkRubricEvaluationUiState,
+        rubric: RubricDetail,
+        assessments: [Int64: [Int64: Int64]],
+        scores: [Int64: Double]
+    ) {
         criteriaCount = rubric.criteria.count
         var selectedLevels: [BulkRubricCellKey: Int64] = [:]
         var completedCriteriaCountByStudentId: [Int64: Int] = [:]
@@ -902,19 +917,13 @@ private struct BulkRubricEvaluationCache {
             completedCriteriaCountByStudentId[student.id] = 0
         }
 
-        for (studentKey, studentMap) in state.assessments {
-            let studentId = studentKey.int64Value
+        for (studentId, studentMap) in assessments {
             var completedCount = completedCriteriaCountByStudentId[studentId] ?? 0
-            for (criterionKey, levelKey) in studentMap {
-                selectedLevels[BulkRubricCellKey(studentId: studentId, criterionId: criterionKey.int64Value)] = levelKey.int64Value
+            for (criterionId, levelId) in studentMap {
+                selectedLevels[BulkRubricCellKey(studentId: studentId, criterionId: criterionId)] = levelId
                 completedCount += 1
             }
             completedCriteriaCountByStudentId[studentId] = min(completedCount, criteriaCount)
-        }
-
-        var scores: [Int64: Double] = [:]
-        for (studentKey, score) in state.scores {
-            scores[studentKey.int64Value] = score.doubleValue
         }
 
         self.selectedLevels = selectedLevels

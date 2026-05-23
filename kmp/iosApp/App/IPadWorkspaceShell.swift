@@ -568,6 +568,9 @@ enum ActiveWorkspaceSheet: Identifiable {
 struct AppWorkspaceShell: View {
     @EnvironmentObject var bridge: KmpBridge
     @Environment(\.colorScheme) var colorScheme
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) var horizontalSizeClass
+    #endif
     @AppStorage("workspace.active.module") var persistedActiveModule = AppWorkspaceModule.dashboard.rawValue
     @AppStorage("workspace.selected.class.id") var persistedSelectedClassId: Int = 0
     @AppStorage("workspace.selected.student.id") var persistedSelectedStudentId: Int = 0
@@ -749,6 +752,14 @@ struct AppWorkspaceShell: View {
         .onAppear(perform: syncRootSplitVisibility)
         .appOnChange(of: layoutState.isSidebarVisible) { _ in syncRootSplitVisibility() }
         .appOnChange(of: layoutState.isFocusModeEnabled) { _ in syncRootSplitVisibility() }
+    }
+
+    var notebookToolbarMode: NotebookToolbarMode {
+        #if os(iOS)
+        horizontalSizeClass == .compact ? .inlineCompact : .shellOwned
+        #else
+        .shellOwned
+        #endif
     }
 
     func contextualAISheet(_ sheet: ContextualAISheetState) -> some View {

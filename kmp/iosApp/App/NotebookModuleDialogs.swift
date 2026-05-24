@@ -159,6 +159,12 @@ extension NotebookModuleView {
                                 )
                             }
                         },
+                        onCreateCategory: {
+                            isOrganizationMenuPresented = false
+                            DispatchQueue.main.async {
+                                presentCreateCategory()
+                            }
+                        },
                         onCreateSummary: {
                             isOrganizationMenuPresented = false
                             UserDefaults.standard.set("individual_summary", forKey: "notebook.addColumn.lastBlueprintId")

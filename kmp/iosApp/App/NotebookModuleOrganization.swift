@@ -471,16 +471,23 @@ extension NotebookModuleView {
                             Text("\(item.student.firstName) \(item.student.lastName)")
                                 .font(.system(size: 14, weight: .semibold, design: .rounded))
                                 .foregroundStyle(.primary)
-                                .lineLimit(1)
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.6)
+                                .layoutPriority(1)
                             riskBadge(for: item.student.id)
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
                         let isInjured = isStudentInjured(item.student)
                         if isInjured {
                             Text("Seguimiento físico")
                                 .font(.system(size: 11, weight: .medium, design: .rounded))
                                 .foregroundStyle(.orange)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
                         }
                     }
+                    .padding(.horizontal, 6)
                     .frame(width: resolvedFixedWidth(for: fixed), alignment: .leading)
                     .contentShape(Rectangle())
                     .contextMenu {

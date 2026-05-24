@@ -80,18 +80,23 @@ struct MacRootView: View {
     private var navigationSplit: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             macSidebar
-        } detail: {
+        } content: {
             featureContent(for: selectedFeature)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(MacAppStyle.pageBackground)
+        } detail: {
+            Group {
+                if isInspectorVisible {
+                    featureInspector(for: selectedFeature)
+                        .frame(minWidth: 320, idealWidth: 360, maxWidth: 440)
+                } else {
+                    EmptyView()
+                        .frame(width: 0)
+                }
+            }
+            .background(MacAppStyle.pageBackground)
         }
         .navigationSplitViewStyle(.balanced)
-        .inspector(isPresented: $isInspectorVisible) {
-            featureInspector(for: selectedFeature)
-                .frame(minWidth: 320, idealWidth: 360, maxWidth: 440)
-                .inspectorColumnWidth(min: 320, ideal: 360, max: 440)
-                .background(MacAppStyle.pageBackground)
-        }
         .overlay(alignment: .topTrailing) {
             if let banner {
                 MacRootTransientBanner(banner: banner)

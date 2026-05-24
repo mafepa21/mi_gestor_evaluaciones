@@ -51,6 +51,17 @@ extension NotebookModuleView {
         }
     }
 
+    func cellAlignment(for segment: NotebookDisplaySegment) -> Alignment {
+        switch segment {
+        case .fixed(let fixed):
+            return fixed == .photo ? .center : .leading
+        case .collapsedCategory:
+            return .leading
+        case .column:
+            return .center
+        }
+    }
+
     func notebookRowView(
         item: NotebookTableRow,
         data: NotebookUiStateData,
@@ -72,9 +83,10 @@ extension NotebookModuleView {
                         allRows: allRows,
                         navigableSegments: navigableSegments
                     )
-                    .frame(width: segmentWidth(segment), height: notebookGridRowHeight, alignment: .center)
+                    .frame(width: segmentWidth(segment), height: notebookGridRowHeight, alignment: cellAlignment(for: segment))
                 }
             }
+            Spacer(minLength: 0)
         }
         .frame(height: notebookGridRowHeight, alignment: .center)
         .padding(.horizontal, 16)

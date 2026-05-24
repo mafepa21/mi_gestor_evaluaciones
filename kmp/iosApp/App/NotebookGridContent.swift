@@ -16,7 +16,8 @@ struct NotebookGridContent<
     let topAccessoryHeight: CGFloat
     let headerHeight: CGFloat
     let rowHeight: CGFloat
-    let rowInvalidationKey: String
+    let structuralInvalidationKey: String
+    let rowReloadRevisions: [Int64: Int]
     let transientCellIds: Set<String>
     let fixedSegments: [NotebookDisplaySegment]
     let trailingFixedSegments: [NotebookDisplaySegment]
@@ -65,14 +66,17 @@ struct NotebookGridContent<
             NotebookEquatableGridRow(signature: rowSignature(index: index, item: item, segmentKey: fixedSegmentKey, visibleColumnIds: fixedColumnIds)) {
                 rowContent(index, item, fixedSegments)
             }
+            .equatable()
         } trailingFixedRow: { index, item in
             NotebookEquatableGridRow(signature: rowSignature(index: index, item: item, segmentKey: trailingFixedSegmentKey, visibleColumnIds: trailingFixedColumnIds)) {
                 rowContent(index, item, trailingFixedSegments)
             }
+            .equatable()
         } scrollRow: { index, item in
             NotebookEquatableGridRow(signature: rowSignature(index: index, item: item, segmentKey: scrollableSegmentKey, visibleColumnIds: scrollableColumnIds)) {
                 rowContent(index, item, scrollableSegments)
             }
+            .equatable()
         }
     }
 
@@ -93,24 +97,23 @@ struct NotebookGridContent<
     }
 
     private func rowSignature(index: Int, item: NotebookTableRow, segmentKey: String, visibleColumnIds: Set<String>) -> String {
+        let rowReloadRevision = rowReloadRevisions[item.student.id, default: 0]
+        let studentPrefix = "\(item.student.id)|"
+        let transientRowDigest = transientCellIds
+            .filter { $0.hasPrefix(studentPrefix) }
+            .sorted()
+            .joined(separator: "|")
         guard !visibleColumnIds.isEmpty else {
             return [
                 "\(item.student.id)",
                 item.row.weightedAverage.map { "\($0.doubleValue)" } ?? "nil",
                 segmentKey,
-                rowInvalidationKey
+                transientRowDigest,
+                "\(rowReloadRevision)",
+                structuralInvalidationKey
             ].joined(separator: "¬")
         }
 
-        let studentPrefix = "\(item.student.id)|"
-        let transientCellDigest = transientCellIds
-            .compactMap { cellId -> String? in
-                guard cellId.hasPrefix(studentPrefix) else { return nil }
-                let columnId = String(cellId.dropFirst(studentPrefix.count))
-                return visibleColumnIds.contains(columnId) ? columnId : nil
-            }
-            .sorted()
-            .joined(separator: "|")
         let visibleCellDigest = item.row.persistedCells
             .filter { visibleColumnIds.contains($0.columnId) }
             .sorted { $0.columnId < $1.columnId }
@@ -141,10 +144,11 @@ struct NotebookGridContent<
             "\(item.student.id)",
             average,
             segmentKey,
-            transientCellDigest,
+            transientRowDigest,
             visibleCellDigest,
             visibleGradeDigest,
-            rowInvalidationKey
+            "\(rowReloadRevision)",
+            structuralInvalidationKey
         ].joined(separator: "¬")
     }
 }

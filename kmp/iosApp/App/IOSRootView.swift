@@ -54,12 +54,16 @@ struct IOSRootView: View {
             .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 280)
         } detail: {
             VStack(spacing: 0) {
-                IOSGlobalContextRow(
-                    activeModule: activeModule,
-                    layoutState: layoutState,
-                    selectionStore: selectionStore,
-                    searchText: $searchText
-                )
+                if activeModule == .notebook {
+                    notebookMacLikeToolbar
+                } else {
+                    IOSGlobalContextRow(
+                        activeModule: activeModule,
+                        layoutState: layoutState,
+                        selectionStore: selectionStore,
+                        searchText: $searchText
+                    )
+                }
                 Divider().opacity(0.24)
                 IOSWorkspaceContent(
                     activeModule: activeModule,
@@ -74,17 +78,17 @@ struct IOSRootView: View {
                     onShowBanner: showBanner(_:)
                 )
             }
+            .toolbar {
+                IOSContextualToolbar(
+                    activeModule: activeModule,
+                    layoutState: layoutState,
+                    selectionStore: selectionStore,
+                    onSync: { Task { await bridge.pullMissingSyncChanges() } },
+                    onToggleInspector: toggleInspector
+                )
+            }
         }
         .navigationSplitViewStyle(.balanced)
-        .toolbar {
-            IOSContextualToolbar(
-                activeModule: activeModule,
-                layoutState: layoutState,
-                selectionStore: selectionStore,
-                onSync: { Task { await bridge.pullMissingSyncChanges() } },
-                onToggleInspector: toggleInspector
-            )
-        }
         .overlay(alignment: .top) {
             IOSBannerHost(banner: banner)
                 .padding(.top, 8)
@@ -232,6 +236,232 @@ struct IOSRootView: View {
             RubricBulkEvaluationSheet(bridge: bridge)
                 .presentationDetents([.large])
         }
+    }
+
+    private var activeNotebookClassLabel: String {
+        guard let classId = selectionStore.selectedClassId,
+              let schoolClass = bridge.classes.first(where: { $0.id == classId })
+        else { return "Seleccionar clase" }
+        return "\(schoolClass.name) · \(schoolClass.course)º"
+    }
+
+    private var groupedNotebookClasses: [(course: Int32, classes: [SchoolClass])] {
+        Dictionary(grouping: bridge.classes, by: \.course)
+            .map { course, classes in
+                (
+                    course: course,
+                    classes: classes.sorted {
+                        $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+                    }
+                )
+            }
+            .sorted { $0.course < $1.course }
+    }
+
+    private var notebookGroupFilterLabel: String {
+        guard let selectedId = layoutState.notebookSelectedGroupId,
+              let group = layoutState.notebookAvailableGroups.first(where: { $0.id == selectedId }) else {
+            return "Grupo completo"
+        }
+        return group.name
+    }
+
+    @ViewBuilder
+    private var notebookGroupFilterMenu: some View {
+        Menu {
+            Button("Grupo completo") {
+                layoutState.setNotebookGroupFilter(nil)
+            }
+            ForEach(layoutState.notebookAvailableGroups) { groupOption in
+                Button {
+                    layoutState.setNotebookGroupFilter(groupOption.id)
+                } label: {
+                    HStack {
+                        Text("\(groupOption.name) (\(groupOption.studentCount))")
+                        if layoutState.notebookSelectedGroupId == groupOption.id {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+        } label: {
+            Label(notebookGroupFilterLabel, systemImage: "person.2")
+        }
+        .buttonStyle(.bordered)
+    }
+
+    @ViewBuilder
+    private var notebookMacLikeToolbar: some View {
+        HStack(spacing: 12) {
+            // Selector de clase
+            Menu {
+                ForEach(groupedNotebookClasses, id: \.course) { group in
+                    Section("\(group.course)º") {
+                        ForEach(group.classes, id: \.id) { schoolClass in
+                            Button {
+                                selectionStore.selectedClassId = schoolClass.id
+                            } label: {
+                                HStack {
+                                    Text("\(schoolClass.name) · \(schoolClass.course)º")
+                                    if selectionStore.selectedClassId == schoolClass.id {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } label: {
+                Label(activeNotebookClassLabel, systemImage: "rectangle.3.group")
+                    .lineLimit(1)
+            }
+            .buttonStyle(.bordered)
+            .disabled(bridge.classes.isEmpty)
+
+            // Selector de grupo (si está disponible)
+            if !layoutState.notebookAvailableGroups.isEmpty {
+                notebookGroupFilterMenu
+            }
+
+            // Selector de vista
+            Picker("Vista", selection: Binding(
+                get: { layoutState.notebookSurfaceMode },
+                set: { layoutState.setNotebookSurfaceMode($0) }
+            )) {
+                Text("Grid").tag("grid")
+                Text("Plano").tag("seatingPlan")
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 112)
+
+            // Indicador de sincronización
+            if bridge.syncPendingChanges > 0 {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.footnote)
+                    Text("\(bridge.syncPendingChanges) pendientes")
+                        .font(.footnote.weight(.semibold))
+                }
+                .foregroundStyle(IOSAppStyle.warning)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(IOSAppStyle.warning.opacity(0.12), in: Capsule())
+            }
+
+            Spacer()
+
+            // Botón Nueva columna
+            Button {
+                layoutState.showNotebookAddColumn()
+            } label: {
+                Label("Nueva columna", systemImage: "plus")
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(!layoutState.notebookAddColumnAvailable)
+
+            // Botón Organizar (icon-only para HIG e integración limpia)
+            Button {
+                layoutState.openNotebookOrganizationMenu()
+            } label: {
+                Label("Organizar", systemImage: "slider.horizontal.3")
+                    .labelStyle(.iconOnly)
+            }
+            .buttonStyle(.bordered)
+            .disabled(!layoutState.notebookOrganizationMenuAvailable)
+
+            // Botón Inspector (icon-only para HIG e integración limpia, evitando bug de ternaria en buttonStyle)
+            if layoutState.isNotebookInspectorPresented {
+                Button {
+                    layoutState.toggleNotebookInspector()
+                } label: {
+                    Label("Ocultar inspector", systemImage: "sidebar.right")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!layoutState.notebookInspectorAvailable)
+            } else {
+                Button {
+                    layoutState.toggleNotebookInspector()
+                } label: {
+                    Label("Mostrar inspector", systemImage: "sidebar.right")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.bordered)
+                .disabled(!layoutState.notebookInspectorAvailable)
+            }
+
+            // Campo de búsqueda compacto (con ancho adaptativo)
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField(
+                    "Buscar",
+                    text: Binding(
+                        get: { layoutState.notebookSearchText },
+                        set: { layoutState.setNotebookSearchText($0) }
+                    )
+                )
+                .textFieldStyle(.plain)
+                if !layoutState.notebookSearchText.isEmpty {
+                    Button {
+                        layoutState.setNotebookSearchText("")
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Borrar búsqueda")
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .frame(minWidth: 120, idealWidth: 180, maxWidth: 220)
+
+            // Menú de más acciones
+            Menu {
+                Button {
+                    layoutState.notebookRefresh()
+                } label: {
+                    Label("Recargar", systemImage: "arrow.clockwise")
+                }
+
+                if let exportText = layoutState.notebookExportText {
+                    ShareLink(item: exportText) {
+                        Label("Exportar", systemImage: "square.and.arrow.up")
+                    }
+                }
+
+                Button {
+                    layoutState.notebookUndo()
+                } label: {
+                    Label("Deshacer", systemImage: "arrow.uturn.backward")
+                }
+                .disabled(!layoutState.notebookCanUndo)
+
+                Button {
+                    layoutState.notebookToggleAttendanceQuickMode()
+                } label: {
+                    Label(
+                        layoutState.notebookIsAttendanceQuickMode ? "Salir de asistencia rápida" : "Asistencia rápida",
+                        systemImage: layoutState.notebookIsAttendanceQuickMode ? "bolt.slash" : "bolt"
+                    )
+                }
+
+                Button {
+                    layoutState.notebookGenerateSummary()
+                } label: {
+                    Label("Opciones avanzadas", systemImage: "ellipsis.circle")
+                }
+            } label: {
+                Label("Más", systemImage: "ellipsis.circle")
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 14)
+        .padding(.bottom, 12)
+        .background(appMutedCardBackground(for: colorScheme).opacity(0.94))
     }
 }
 
@@ -647,24 +877,6 @@ struct IOSContextualToolbar: ToolbarContent {
             .help("Sincronizar cambios pendientes")
         }
 
-        // Notebook-specific actions
-        if activeModule == .notebook {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { layoutState.showNotebookAddColumn() } label: {
-                    Label("Añadir columna", systemImage: "plus.rectangle.on.rectangle")
-                }
-                .disabled(!layoutState.notebookAddColumnAvailable)
-                .help("Añadir columna de evaluación")
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { layoutState.openNotebookOrganizationMenu() } label: {
-                    Label("Organizar", systemImage: "list.bullet.indent")
-                }
-                .disabled(!layoutState.notebookOrganizationMenuAvailable)
-                .help("Organizar columnas y pestañas")
-            }
-        }
-
         // Dashboard-specific actions
         if activeModule == .dashboard {
             ToolbarItem(placement: .topBarTrailing) {
@@ -723,7 +935,7 @@ struct IOSContextualToolbar: ToolbarContent {
 private extension AppWorkspaceModule {
     var supportsInspector: Bool {
         switch self {
-        case .notebook, .dashboard, .diary, .students: return true
+        case .dashboard, .diary, .students: return true
         default: return false
         }
     }

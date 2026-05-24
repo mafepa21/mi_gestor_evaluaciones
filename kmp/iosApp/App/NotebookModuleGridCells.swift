@@ -18,17 +18,19 @@ extension NotebookModuleView {
                 .font(.caption.weight(isSystemColumn ? .medium : .semibold))
                 .foregroundStyle(isSystemColumn ? .secondary : .primary)
                 .lineLimit(1)
+                .minimumScaleFactor(0.8)
 
             HStack(spacing: 6) {
                 Text(subtitle)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 8)
-        .frame(width: width)
+        .frame(width: width, alignment: .leading)
         .frame(minHeight: 52, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -329,7 +331,7 @@ extension NotebookModuleView {
                         formulaDisplay: formulaDisplay(for: item, column: column, data: data),
                         isSelected: isCellSelected,
                         isAttendanceQuickMode: isAttendanceQuickMode,
-                        reloadToken: cellReloadRevision,
+                        reloadToken: rowReloadRevisions[item.student.id, default: 0],
                         onSelect: {
                             inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
                             if focusedCellId == nil && activeChoiceCellId == nil && !isInspectorPresented {
@@ -371,7 +373,7 @@ extension NotebookModuleView {
                             )
                         },
                         onCellSaved: {
-                            cellReloadRevision += 1
+                            reloadNotebookRow(item.student.id)
                         },
                         onAttendanceSaved: {
                             Task { await refreshNotebookSignals() }

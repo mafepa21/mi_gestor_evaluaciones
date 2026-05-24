@@ -7,6 +7,7 @@ struct NotebookColumnOrganizerSheet: View {
     let onRename: (NotebookColumnDefinition) -> Void
     let onDelete: (NotebookColumnDefinition) -> Void
     let onAddColumn: () -> Void
+    let onCreateCategory: () -> Void
     let onCreateSummary: () -> Void
     let onGenerateSummary: (String?) -> Void
     let onOpenHiddenColumns: () -> Void
@@ -173,6 +174,14 @@ struct NotebookColumnOrganizerSheet: View {
             }
             .buttonStyle(.bordered)
             .disabled(hiddenCount == 0)
+            .fixedSize()
+
+            Button {
+                onCreateCategory()
+            } label: {
+                Label("Nueva categoría", systemImage: "folder.badge.plus")
+            }
+            .buttonStyle(.bordered)
             .fixedSize()
 
             Button {

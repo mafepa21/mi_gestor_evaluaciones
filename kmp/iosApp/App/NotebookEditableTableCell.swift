@@ -23,7 +23,7 @@ private enum NotebookCellSaveFeedback: Equatable {
 }
 
 struct NotebookEditableTableCell: View {
-    @ObservedObject var bridge: KmpBridge
+    let bridge: KmpBridge
     let item: NotebookTableRow
     let column: NotebookColumnDefinition
     let classId: Int64?

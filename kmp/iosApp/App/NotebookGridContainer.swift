@@ -74,7 +74,7 @@ struct NotebookGridContainer<
         rows: [Row],
         @ViewBuilder rowContent: @escaping (Int, Row) -> Content
     ) -> some View {
-        VStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(rows.enumerated()), id: \.element.id) { index, item in
                 let isHovered = hoveredRowId == item.id
                 rowContent(index, item)

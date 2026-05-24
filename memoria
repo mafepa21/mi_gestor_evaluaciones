@@ -405,6 +405,51 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-05-24 - Corrección del Desplazamiento y Corte en la Columna de Nombres del Alumnado
+
+Resumen:
+- Se corrigió el bug que causaba que la columna fija del nombre del alumno y el chip de cabecera "Nombre Alumno" se desplazaran hacia la izquierda (cortándose en el borde izquierdo) al reducir el ancho de la zona fija.
+- Se cambió la alineación horizontal de `rowStack` en `NotebookGridContainer.swift` de la por defecto `.center` a `.leading`.
+- Se añadió un `Spacer(minLength: 0)` al final del `HStack` de filas (`NotebookModuleDataState.swift`) y cabeceras (`NotebookModuleView.swift`) para forzar a las celdas a permanecer alineadas a la izquierda.
+- Se implementó la alineación dinámica de celdas mediante la función `cellAlignment(for:)` en el grid (`NotebookModuleDataState.swift`) y se modificó la cabecera `headerChip` en `NotebookModuleGridCells.swift` para que su primer `.frame` respete la alineación `.leading`.
+
+Validación:
+- Compilación y verificación limpias de macOS e iOS Simulator con `./scripts/verify_apple_builds.sh` (resumen de verificación: ambos targets compilados correctamente con éxito).
+
+Notas para futuras conversaciones:
+- Al modificar o ajustar celdas en el grid, asegurarse de definir alineaciones explícitas en los contenedores padres (`VStack` y `HStack`) para evitar que SwiftUI centre el contenido desbordante y lo corte a la izquierda.
+
+### 2026-05-24 - Corrección y Pulido de Toolbar iOS y Celdas de Alumno en el Grid
+
+Resumen:
+- Se corrigió un error de sintaxis (llaves `{}` desalineadas en `iosSheetContent` dentro de `IOSRootView.swift`) que impedía compilar la app iOS en el simulador, permitiendo destrabar el build.
+- Se rediseñó el toolbar del Cuaderno en iPadOS (`notebookMacLikeToolbar` en `IOSRootView.swift`) para cumplir con Apple HIG en pantallas medianas, convirtiendo los botones "Organizar" e "Inspector" en versiones compactas icon-only (`.labelStyle(.iconOnly)`).
+- Se configuró el buscador a un ancho adaptativo (`minWidth: 120, idealWidth: 180, maxWidth: 220`) evitando desbordamientos en modo Split View de iPad.
+- Se corrigió el truncamiento del nombre del alumno en el grid (`NotebookModuleOrganization.swift`) al estrechar la columna: se añadió horizontal padding de 6 para separación del borde y se aplicó `.frame(maxWidth: .infinity, alignment: .leading)` en el `HStack` interno, lo que fuerza al texto a escalar (hasta 60%) y envolverse en 2 líneas.
+
+Validación:
+- Compilación y verificación limpias de macOS e iOS Simulator con `./scripts/verify_apple_builds.sh` (resumen de verificación: ambos targets compilados correctamente con éxito).
+
+Notas para futuras conversaciones:
+- Al modificar o ajustar celdas en el grid, usar paddings internos y restricciones de ancho infinito (`maxWidth: .infinity`) en vistas secundarias dentro de layouts dinámicos para evitar que excedan el tamaño de columna propuesto.
+
+### 2026-05-24 - Automatización de compilaciones Apple y Guías de Concurrencia KMP
+
+Resumen:
+- Se identificaron workflows repetitivos a partir del historial reciente: la verificación manual de compilación de ambos targets Apple (`xcodebuild` para iOS y macOS) y la depuración de crashes por hilos/concurrencia de KMP suspend functions en Swift (`NSGenericException`).
+- Se creó una automatización/script local `scripts/verify_apple_builds.sh` que ejecuta `xcodegen generate` y compila en lote de depuración ambos targets de Apple.
+- Se crearon dos nuevas skills locales:
+  - `apple-build-verify` para guiar a los agentes en la verificación rápida de compilación.
+  - `kmp-concurrency-guidelines` para proveer un playbook robusto sobre cómo manejar la concurrencia Swift-Kotlin evitando crashes de Main Thread e hilos bloqueados en la UI.
+
+Validación:
+- Creación y verificación de permisos de ejecución del script de compilación.
+- Validación de la estructura de las skills locales.
+
+Notas para futuras conversaciones:
+- Al modificar archivos Swift o dependencias compartidas, utilizar el script de verificación para detectar fallas antes del fin de turno.
+- Ante cualquier fallo de hilos o UI freeze, aplicar estrictamente las directrices del skill de concurrencia.
+
 ### 2026-05-24 - Skills locales para workflows repetidos del Cuaderno
 
 Resumen:

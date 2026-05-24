@@ -67,7 +67,8 @@ struct NotebookModuleView: View {
     @State var isAttendanceQuickMode = false
     @State var isMarkAllPresentDialogPresented = false
     @State var undoStack: [NotebookCellUndoEntry] = []
-    @State var cellReloadRevision = 0
+    @State var structuralGridRevision = 0
+    @State var rowReloadRevisions: [Int64: Int] = [:]
     @State var highlightedCategoryId: String? = nil
     @State var highlightedColumnId: String? = nil
     @State var expandedEmptyCategoryIds: Set<String> = []
@@ -85,7 +86,7 @@ struct NotebookModuleView: View {
     @State var riskLevelCache: [Int64: RiskLevel] = [:]
     @State var riskComputationKey: String?
     @State var isPrecomputingRiskLevels = false
-    @AppStorage("notebook.fixedZoneWidth") var fixedZoneWidthStored = 460.0
+    @AppStorage("notebook.fixedZoneWidth") var fixedZoneWidthStored = 240.0
     @State var isDraggingFixedZoneDivider = false
     @State var fixedZoneDragStartWidth: CGFloat = 0
     @State var fixedZoneLiveWidth: CGFloat? = nil
@@ -210,7 +211,8 @@ struct NotebookModuleView: View {
         riskComputationKey = nil
         isPrecomputingRiskLevels = false
 
-        cellReloadRevision += 1
+        rowReloadRevisions = [:]
+        structuralGridRevision += 1
     }
 
     var isMacInspectorOnly: Bool {
@@ -424,7 +426,8 @@ struct NotebookModuleView: View {
             topAccessoryHeight: shouldShowFolderLane ? notebookGridFolderLaneHeight : 0,
             headerHeight: notebookGridHeaderHeight,
             rowHeight: notebookGridRowHeight,
-            rowInvalidationKey: gridRowInvalidationKey(data: data),
+            structuralInvalidationKey: gridStructuralInvalidationKey(data: data),
+            rowReloadRevisions: rowReloadRevisions,
             transientCellIds: transientGridCellIds,
             fixedSegments: leadingFixedSegments,
             trailingFixedSegments: trailingFixedSegments,
@@ -526,6 +529,7 @@ struct NotebookModuleView: View {
             ForEach(segments, id: \.id) { segment in
                 headerChip(for: segment, data: data)
             }
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
@@ -937,13 +941,17 @@ struct NotebookModuleView: View {
         return "\(context) · \(studentCount) alumnos"
     }
 
-    func gridRowInvalidationKey(data: NotebookUiStateData) -> String {
+    func gridStructuralInvalidationKey(data: NotebookUiStateData) -> String {
         [
             "\(isAttendanceQuickMode)",
-            "\(cellReloadRevision)",
+            "\(structuralGridRevision)",
             "columns:\(data.sheet.columns.count)",
             "rows:\(data.sheet.rows.count)"
         ].joined(separator: "¬")
+    }
+
+    func reloadNotebookRow(_ studentId: Int64) {
+        rowReloadRevisions[studentId, default: 0] += 1
     }
 
     var transientGridCellIds: Set<String> {
@@ -1027,7 +1035,9 @@ struct NotebookModuleView: View {
                 notebookAISheetRequest = request
             },
             onSaveContext: {
-                cellReloadRevision += 1
+                if let studentId = inspectorSelection?.studentId {
+                    reloadNotebookRow(studentId)
+                }
             }
         )
     }

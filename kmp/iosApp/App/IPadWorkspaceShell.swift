@@ -15,6 +15,7 @@ final class WorkspaceLayoutState: ObservableObject {
     @Published var isNotebookInspectorPresented: Bool = false
     @Published var notebookAddColumnAvailable: Bool = false
     @Published var notebookOrganizationMenuAvailable: Bool = false
+    @Published var notebookHiddenColumnsRequestID: UUID?
     @Published var notebookSearchText: String = ""
     @Published var notebookSurfaceMode: String = "grid"
     @Published var notebookSelectedGroupId: Int64? = nil
@@ -163,6 +164,7 @@ final class WorkspaceLayoutState: ObservableObject {
             self.isNotebookInspectorPresented = false
             self.notebookAddColumnAvailable = false
             self.notebookOrganizationMenuAvailable = false
+            self.notebookHiddenColumnsRequestID = nil
             self.notebookSearchText = ""
             self.notebookSurfaceMode = "grid"
             self.notebookSelectedGroupId = nil
@@ -236,6 +238,10 @@ final class WorkspaceLayoutState: ObservableObject {
 
     func openNotebookOrganizationMenu() {
         notebookOrganizationMenuAction?()
+    }
+
+    func openNotebookHiddenColumns() {
+        notebookHiddenColumnsRequestID = UUID()
     }
 
     func configureDashboardToolbar(
@@ -1466,13 +1472,18 @@ struct AppWorkspaceShell: View {
             Button {
                 layoutState.showNotebookAddColumn()
             } label: {
-                Label("Nueva columna", systemImage: "plus")
+                Label("Añadir columna", systemImage: "plus")
             }
+            #if os(iOS)
+            .buttonStyle(.borderedProminent)
+            #else
             .buttonStyle(.bordered)
+            #endif
             .disabled(!layoutState.notebookAddColumnAvailable)
             .keyboardShortcut("n", modifiers: .command)
             .help("Añadir nueva columna (⌘N)")
 
+            #if os(macOS)
             Button {
                 layoutState.openNotebookOrganizationMenu()
             } label: {
@@ -1481,7 +1492,9 @@ struct AppWorkspaceShell: View {
             .buttonStyle(.bordered)
             .disabled(!layoutState.notebookOrganizationMenuAvailable)
             .help("Organizar columnas")
+            #endif
 
+            #if os(macOS)
             Button {
                 layoutState.toggleNotebookInspector()
             } label: {
@@ -1491,6 +1504,7 @@ struct AppWorkspaceShell: View {
             .disabled(!layoutState.notebookInspectorAvailable)
             .keyboardShortcut("i", modifiers: [.command])
             .help(layoutState.isNotebookInspectorPresented ? "Ocultar inspector" : "Mostrar inspector")
+            #endif
 
             Label("Buscar", systemImage: "magnifyingglass")
                 .labelStyle(.iconOnly)
@@ -1507,6 +1521,42 @@ struct AppWorkspaceShell: View {
             .frame(width: 220)
 
             Menu {
+                #if os(iOS)
+                Button {
+                    UserDefaults.standard.set("calculated", forKey: "notebook.addColumn.lastBlueprintId")
+                    layoutState.showNotebookAddColumn()
+                } label: {
+                    Label("Columnas indirectas", systemImage: "function")
+                }
+                .disabled(!layoutState.notebookAddColumnAvailable)
+
+                Button {
+                    layoutState.openNotebookOrganizationMenu()
+                } label: {
+                    Label("Organizar / reordenar columnas", systemImage: "arrow.up.arrow.down")
+                }
+                .disabled(!layoutState.notebookOrganizationMenuAvailable)
+
+                Button {
+                    layoutState.openNotebookHiddenColumns()
+                } label: {
+                    Label("Mostrar columnas ocultas", systemImage: "eye.slash")
+                }
+                .disabled(!layoutState.notebookOrganizationMenuAvailable)
+
+                Button {
+                    layoutState.toggleNotebookInspector()
+                } label: {
+                    Label(
+                        layoutState.isNotebookInspectorPresented ? "Ocultar inspector" : "Mostrar inspector",
+                        systemImage: "sidebar.right"
+                    )
+                }
+                .disabled(!layoutState.notebookInspectorAvailable)
+
+                Divider()
+                #endif
+
                 Button {
                     layoutState.notebookRefresh()
                 } label: {

@@ -405,6 +405,21 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-05-24 - Skills locales para workflows repetidos del Cuaderno
+
+Resumen:
+- Se revisaron sesiones recientes de Codex, `memoria`, skills locales y automatizaciones disponibles para detectar workflows manuales repetidos.
+- Se crearon dos skills locales estrechas en `.agents/skills`: `notebook-grid-performance` para diagnosticar lag del grid/categorias/resize del Cuaderno, y `notebook-toolbar-ownership` para mantener ownership y paridad de toolbars iOS/iPad/macOS.
+- La decision se basa en repeticiones registradas entre 2026-05-21 y 2026-05-24 sobre fluidez del Cuaderno, categorias, toolbar duplicada, toolbar iOS redisenada, selector de clase macOS y acciones criticas faltantes.
+
+Validacion:
+- Validacion basica de frontmatter realizada con script local simple.
+- El validador oficial `quick_validate.py` no se pudo ejecutar porque el entorno no tiene `PyYAML`.
+
+Notas para futuras conversaciones:
+- Usar `notebook-grid-performance` antes de `swiftui-polish` cuando el sintoma sea lag del grid.
+- Usar `notebook-toolbar-ownership` antes de cambios de toolbar del Cuaderno para evitar duplicados y regresiones de paridad.
+
 ### 2026-05-23 - Paridad de detalle de sesión y gestiones del Planificador en macOS
 
 Resumen:

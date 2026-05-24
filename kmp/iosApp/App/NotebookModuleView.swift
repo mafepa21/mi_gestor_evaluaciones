@@ -807,6 +807,11 @@ struct NotebookModuleView: View {
                     scheduleActiveNotebookTabSync(data: data)
                     scheduleToolbarStateSync(data: data)
                 }
+                .appOnChange(of: layoutState.notebookHiddenColumnsRequestID) { requestID in
+                    guard requestID != nil else { return }
+                    isOrganizationMenuPresented = false
+                    isHiddenColumnsSheetPresented = true
+                }
                 .appOnChange(of: "\(data.sheet.classId)") { _ in
                     resetNotebookTransientStateForClassChange()
                 }

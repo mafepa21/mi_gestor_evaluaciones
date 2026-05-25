@@ -44,6 +44,7 @@ struct AttendanceHistorySelection: Identifiable {
 struct AttendanceWorkspaceView: View {
     @EnvironmentObject var bridge: KmpBridge
     @Environment(\.colorScheme) var colorScheme
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     @EnvironmentObject var layoutState: WorkspaceLayoutState
     @Binding var selectedClassId: Int64?
     @Binding var preselectedStudentId: Int64?
@@ -164,7 +165,7 @@ struct AttendanceWorkspaceView: View {
                 attendanceInspector
                     .frame(width: 336)
                     .background(appMutedCardBackground(for: colorScheme))
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                    .transition(uiFeatureFlags.inspectorTransition)
             }
         }
         .task {
@@ -204,7 +205,7 @@ struct AttendanceWorkspaceView: View {
         .onDisappear {
             layoutState.clearAttendanceToolbar()
         }
-        .animation(.spring(response: 0.28, dampingFraction: 0.88), value: isInspectorPresented)
+        .animation(uiFeatureFlags.interactionAnimation, value: isInspectorPresented)
     }
 
     var attendanceHeader: some View {
@@ -302,9 +303,26 @@ struct AttendanceWorkspaceView: View {
                         onSelect: {
                             historySelection = nil
                             selectedStudentId = row.student.id
+                            AppleInteractionFeedback.play(.selection)
                         },
                         isSaving: savingStudentIds.contains(row.student.id)
                     )
+                    #if os(iOS)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button("Presente") {
+                            Task { await updateAttendance(for: row.student, status: "PRESENTE") }
+                        }
+                        .tint(AppleDesignSystem.success)
+                        Button("Ausente") {
+                            Task { await updateAttendance(for: row.student, status: "AUSENTE") }
+                        }
+                        .tint(AppleDesignSystem.danger)
+                        Button("Retraso") {
+                            Task { await updateAttendance(for: row.student, status: "TARDE") }
+                        }
+                        .tint(AppleDesignSystem.warning)
+                    }
+                    #endif
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
@@ -687,6 +705,7 @@ struct AttendanceWorkspaceView: View {
             if saveRevisionByStudentId[student.id] == revision {
                 savingStudentIds.remove(student.id)
                 bridge.status = "Asistencia actualizada."
+                AppleInteractionFeedback.play(.success)
             }
         } catch {
             if saveRevisionByStudentId[student.id] == revision {
@@ -694,6 +713,7 @@ struct AttendanceWorkspaceView: View {
                 savingStudentIds.remove(student.id)
             }
             bridge.status = "No se pudo guardar la asistencia: \(error.localizedDescription)"
+            AppleInteractionFeedback.play(.error)
         }
     }
 

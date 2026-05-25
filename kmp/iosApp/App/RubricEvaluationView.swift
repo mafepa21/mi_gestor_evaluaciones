@@ -207,6 +207,7 @@ struct RubricEvaluationView: View {
 }
 
 struct RubricCriterionRow: View {
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     let item: RubricCriterionWithLevels
     let selectedLevelId: Int64?
     let onSelectLevel: (Int64) -> Void
@@ -245,6 +246,7 @@ struct RubricCriterionRow: View {
                                 isSelected: isSelected,
                                 tint: EvaluationDesign.accent
                             ) {
+                                AppleInteractionFeedback.play(.selection)
                                 onSelectLevel(level.id)
                             }
                             .frame(width: 160)
@@ -297,7 +299,7 @@ struct RubricCriterionRow: View {
                             .fill(EvaluationDesign.accent.opacity(0.08))
                     )
                     .transition(
-                        .asymmetric(
+                        uiFeatureFlags.reduceMotion ? .opacity : .asymmetric(
                             insertion: .move(edge: .top).combined(with: .opacity),
                             removal: .move(edge: .bottom).combined(with: .opacity)
                         )
@@ -305,7 +307,7 @@ struct RubricCriterionRow: View {
                 }
             }
         }
-        .animation(.spring(response: 0.35, dampingFraction: 0.75), value: selectedLevelId)
+        .animation(uiFeatureFlags.interactionAnimation, value: selectedLevelId)
         .onDisappear {
             hoverTask?.cancel()
             hoveredLevelId = nil
@@ -324,7 +326,7 @@ struct RubricCriterionRow: View {
             do {
                 try await Task.sleep(nanoseconds: 500_000_000)
                 await MainActor.run {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                    withAnimation(uiFeatureFlags.interactionAnimation) {
                         hoveredLevelId = levelId
                     }
                 }
@@ -335,7 +337,7 @@ struct RubricCriterionRow: View {
     private func cancelPopover(for levelId: Int64) {
         hoverTask?.cancel()
         guard hoveredLevelId == levelId else { return }
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+        withAnimation(uiFeatureFlags.interactionAnimation) {
             hoveredLevelId = nil
         }
     }

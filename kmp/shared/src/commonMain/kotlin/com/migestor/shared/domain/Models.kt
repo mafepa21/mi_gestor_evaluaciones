@@ -1285,6 +1285,40 @@ data class SessionBulkResult(
     val failed: Int = 0
 )
 
+data class SessionPlacement(
+    val sessionId: Long,
+    val weekNumber: Int,
+    val year: Int,
+    val dayOfWeek: Int,
+    val period: Int,
+    val teacherScheduleSlotId: Long? = null,
+    val startTime: String? = null,
+    val endTime: String? = null,
+)
+
+data class SessionCascadeMoveRequest(
+    val sourceSessionId: Long,
+    val targetWeekNumber: Int,
+    val targetYear: Int,
+    val targetDayOfWeek: Int,
+    val targetPeriod: Int,
+)
+
+data class SessionCascadeMovePreview(
+    val previousPlacements: List<SessionPlacement> = emptyList(),
+    val nextPlacements: List<SessionPlacement> = emptyList(),
+    val completedSessionIds: List<Long> = emptyList(),
+    val crossesWeekBoundary: Boolean = false,
+    val isNoOp: Boolean = false,
+)
+
+data class SessionCascadeMoveResult(
+    val previousPlacements: List<SessionPlacement> = emptyList(),
+    val nextPlacements: List<SessionPlacement> = emptyList(),
+    val movedCount: Int = 0,
+    val crossesWeekBoundary: Boolean = false,
+)
+
 // ─── Configuración de franjas horarias ─────────────────────────────────────
 data class TimeSlotConfig(val period: Int, val startTime: String, val endTime: String)
 

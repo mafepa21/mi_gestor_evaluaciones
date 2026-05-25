@@ -29,6 +29,7 @@ import com.migestor.shared.domain.SessionJournalMedia
 import com.migestor.shared.domain.SessionJournalMediaType
 import com.migestor.shared.domain.SessionJournalStatus
 import com.migestor.shared.domain.SessionStatus
+import com.migestor.shared.domain.SessionCascadeMoveRequest
 import com.migestor.shared.usecase.GetNotebookUseCase
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -422,5 +423,107 @@ class RepositoriesIntegrationTest {
         assertTrue(schedule.id >= 0L)
         assertEquals("Agenda docente", schedule.name)
         assertEquals("1,2,3,4,5", schedule.activeWeekdaysCsv)
+    }
+
+    @Test
+    fun `planner cascade move preserves ids crosses week and restores placements`() = runTest {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        AppDatabase.Schema.create(driver)
+        val db = AppDatabase(driver)
+        val classes = ClassesRepositorySqlDelight(db)
+        val planner = PlannerRepositorySqlDelight(db)
+        val classId = classes.saveClass(name = "2 ESO A", course = 2, description = null)
+
+        val sourceId = planner.upsertSession(
+            PlanningSession(
+                teachingUnitId = 0,
+                teachingUnitName = "Origen",
+                groupId = classId,
+                groupName = "2 ESO A",
+                dayOfWeek = 5,
+                period = 8,
+                weekNumber = 12,
+                year = 2026,
+            )
+        )
+        val displacedId = planner.upsertSession(
+            PlanningSession(
+                teachingUnitId = 0,
+                teachingUnitName = "Impartida",
+                groupId = classId,
+                groupName = "2 ESO A",
+                dayOfWeek = 5,
+                period = 9,
+                weekNumber = 12,
+                year = 2026,
+                status = SessionStatus.COMPLETED,
+            )
+        )
+        val request = SessionCascadeMoveRequest(
+            sourceSessionId = sourceId,
+            targetWeekNumber = 12,
+            targetYear = 2026,
+            targetDayOfWeek = 5,
+            targetPeriod = 9,
+        )
+
+        val preview = planner.previewCascadeMove(request)
+        assertEquals(listOf(displacedId), preview.completedSessionIds)
+        assertTrue(preview.crossesWeekBoundary)
+        assertEquals(2, preview.nextPlacements.size)
+
+        val committed = planner.commitCascadeMove(request)
+        assertEquals(2, committed.movedCount)
+        val week12 = planner.listSessions(12, 2026).associateBy { it.id }
+        val week13 = planner.listSessions(13, 2026).associateBy { it.id }
+        assertEquals(9, week12.getValue(sourceId).period)
+        assertEquals("15:55", week12.getValue(sourceId).startTime)
+        assertEquals("16:50", week12.getValue(sourceId).endTime)
+        assertEquals(null, week12.getValue(sourceId).teacherScheduleSlotId)
+        assertEquals(displacedId, week13.getValue(displacedId).id)
+        assertEquals(1, week13.getValue(displacedId).dayOfWeek)
+        assertEquals(1, week13.getValue(displacedId).period)
+        assertEquals("08:05", week13.getValue(displacedId).startTime)
+        assertEquals("09:00", week13.getValue(displacedId).endTime)
+
+        planner.restoreCascadeMove(committed.previousPlacements)
+        val restored = planner.listSessions(12, 2026).associateBy { it.id }
+        assertEquals(8, restored.getValue(sourceId).period)
+        assertEquals(9, restored.getValue(displacedId).period)
+    }
+
+    @Test
+    fun `planner cascade can exchange backwards into source vacancy`() = runTest {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        AppDatabase.Schema.create(driver)
+        val db = AppDatabase(driver)
+        val classes = ClassesRepositorySqlDelight(db)
+        val planner = PlannerRepositorySqlDelight(db)
+        val classId = classes.saveClass(name = "3 ESO B", course = 3, description = null)
+        val sourceId = planner.upsertSession(
+            PlanningSession(
+                teachingUnitId = 0, teachingUnitName = "P2", groupId = classId, groupName = "3 ESO B",
+                dayOfWeek = 1, period = 2, weekNumber = 14, year = 2026,
+            )
+        )
+        val occupantId = planner.upsertSession(
+            PlanningSession(
+                teachingUnitId = 0, teachingUnitName = "P1", groupId = classId, groupName = "3 ESO B",
+                dayOfWeek = 1, period = 1, weekNumber = 14, year = 2026,
+            )
+        )
+
+        val result = planner.commitCascadeMove(
+            SessionCascadeMoveRequest(sourceId, 14, 2026, 1, 1)
+        )
+        val moved = planner.listSessions(14, 2026).associateBy { it.id }
+        assertEquals(2, result.movedCount)
+        assertEquals(1, moved.getValue(sourceId).period)
+        assertEquals(2, moved.getValue(occupantId).period)
+
+        planner.restoreCascadeMove(result.previousPlacements)
+        val restored = planner.listSessions(14, 2026).associateBy { it.id }
+        assertEquals(2, restored.getValue(sourceId).period)
+        assertEquals(1, restored.getValue(occupantId).period)
     }
 }

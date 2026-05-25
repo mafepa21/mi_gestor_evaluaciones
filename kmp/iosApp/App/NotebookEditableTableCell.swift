@@ -60,6 +60,8 @@ struct NotebookEditableTableCell: View {
     @State private var originalCheckDraft = false
     @State private var pendingCheckDraft: Bool?
     @State private var numericDragStartValue: Double?
+    @State private var numericDragLastWholeValue: Int?
+    @State private var isNumericDragging = false
     @State private var showTextPopover = false
     @State private var isNumericKeyboardPresented = false
     @State private var hasLoadedDrafts = false
@@ -113,6 +115,16 @@ struct NotebookEditableTableCell: View {
             }
 
             cellStateOverlay
+
+            if isNumericDragging {
+                Text("Desliza para ajustar")
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color.accentColor)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(.thinMaterial, in: Capsule())
+                    .transition(.opacity)
+            }
         }
         .frame(width: width, height: 44)
         .contentShape(Rectangle())
@@ -604,16 +616,26 @@ struct NotebookEditableTableCell: View {
             .onChanged { value in
                 if numericDragStartValue == nil {
                     numericDragStartValue = parseEditableNumber(numericDraft) ?? 0
+                    numericDragLastWholeValue = Int((parseEditableNumber(numericDraft) ?? 0).rounded(.down))
+                    isNumericDragging = true
                 }
                 guard let start = numericDragStartValue else { return }
                 let delta = Double(-value.translation.height / 20.0)
                 let adjusted = min(10.0, max(0.0, start + delta))
                 let rounded = (adjusted * 10).rounded() / 10
                 numericDraft = String(format: "%.1f", rounded)
+                let wholeValue = Int(rounded.rounded(.down))
+                if wholeValue != numericDragLastWholeValue {
+                    numericDragLastWholeValue = wholeValue
+                    AppleInteractionFeedback.play(wholeValue == 0 || wholeValue == 10 ? .warning : .selection)
+                }
             }
             .onEnded { _ in
                 numericDragStartValue = nil
+                numericDragLastWholeValue = nil
+                isNumericDragging = false
                 saveNumeric()
+                AppleInteractionFeedback.play(.success)
             }
     }
 
@@ -802,10 +824,7 @@ struct NotebookEditableTableCell: View {
             onPrepareUndo(previousValue, previousValue)
             originalTextDraft = option
         }
-        #if canImport(UIKit)
-        let feedback = UISelectionFeedbackGenerator()
-        feedback.selectionChanged()
-        #endif
+        AppleInteractionFeedback.play(.selection)
         bridge.saveColumnGrade(studentId: item.student.id, column: column, value: option)
         markSaveInProgress()
         onCellSaved()
@@ -824,10 +843,7 @@ struct NotebookEditableTableCell: View {
             onPrepareUndo(previousValue, previousValue == "true" ? "Sí" : "No")
             originalCheckDraft = checkDraft
         }
-        #if canImport(UIKit)
-        let feedback = UIImpactFeedbackGenerator(style: .light)
-        feedback.impactOccurred()
-        #endif
+        AppleInteractionFeedback.play(.lightImpact)
         bridge.saveColumnGrade(studentId: item.student.id, column: column, value: nextValue)
         markSaveInProgress()
         onCellSaved()
@@ -845,10 +861,7 @@ struct NotebookEditableTableCell: View {
             onPrepareUndo(previousValue, attendanceDisplay(previousValue).label)
             originalTextDraft = canonicalStatus
         }
-        #if canImport(UIKit)
-        let feedback = UISelectionFeedbackGenerator()
-        feedback.selectionChanged()
-        #endif
+        AppleInteractionFeedback.play(.selection)
         bridge.saveColumnGrade(studentId: item.student.id, column: column, value: canonicalStatus)
         markSaveInProgress()
         onCellSaved()

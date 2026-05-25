@@ -308,9 +308,169 @@ class PlannerRepositorySqlDelight(
         )
     }
 
+    override suspend fun previewCascadeMove(request: SessionCascadeMoveRequest): SessionCascadeMovePreview = withContext(Dispatchers.Default) {
+        buildCascadeMovePreview(request)
+    }
+
+    override suspend fun commitCascadeMove(request: SessionCascadeMoveRequest): SessionCascadeMoveResult = withContext(Dispatchers.Default) {
+        val preview = buildCascadeMovePreview(request)
+        if (preview.isNoOp || preview.nextPlacements.isEmpty()) {
+            return@withContext SessionCascadeMoveResult()
+        }
+        val sessionsById = allSessionsById()
+        db.transaction {
+            applyCascadePlacements(preview.nextPlacements, sessionsById)
+        }
+        SessionCascadeMoveResult(
+            previousPlacements = preview.previousPlacements,
+            nextPlacements = preview.nextPlacements,
+            movedCount = preview.nextPlacements.size,
+            crossesWeekBoundary = preview.crossesWeekBoundary,
+        )
+    }
+
+    override suspend fun restoreCascadeMove(previousPlacements: List<SessionPlacement>): SessionCascadeMoveResult = withContext(Dispatchers.Default) {
+        if (previousPlacements.isEmpty()) return@withContext SessionCascadeMoveResult()
+        val sessionsById = allSessionsById()
+        val currentPlacements = previousPlacements.mapNotNull { placement ->
+            sessionsById[placement.sessionId]?.toPlacement()
+        }
+        db.transaction {
+            applyCascadePlacements(previousPlacements, sessionsById)
+        }
+        SessionCascadeMoveResult(
+            previousPlacements = currentPlacements,
+            nextPlacements = previousPlacements,
+            movedCount = previousPlacements.size,
+            crossesWeekBoundary = currentPlacements.zip(previousPlacements).any { (from, to) ->
+                from.weekNumber != to.weekNumber || from.year != to.year
+            },
+        )
+    }
+
     private fun sessionDate(session: PlanningSession): LocalDate {
         val days = IsoWeekHelper.daysOf(session.weekNumber, session.year)
         return days[(session.dayOfWeek - 1).coerceIn(0, days.lastIndex)]
+    }
+
+    private fun allSessionsById(): Map<Long, PlanningSession> =
+        db.plannerQueries.selectAllSessions().executeAsList().map(::mapToDomain).associateBy { it.id }
+
+    private fun applyCascadePlacements(
+        placements: List<SessionPlacement>,
+        sessionsById: Map<Long, PlanningSession>,
+    ) {
+        // Stage affected rows inside the transaction so backward moves/swaps cannot violate the unique cell key.
+        placements.forEachIndexed { index, placement ->
+            val session = requireNotNull(sessionsById[placement.sessionId]) { "Sesión no encontrada: ${placement.sessionId}" }
+            insertPlannerSession(session.copy(period = -(index + 1)))
+        }
+        placements.asReversed().forEach { placement ->
+            val session = requireNotNull(sessionsById[placement.sessionId]) { "Sesión no encontrada: ${placement.sessionId}" }
+            insertPlannerSession(session.at(placement))
+        }
+    }
+
+    private fun buildCascadeMovePreview(request: SessionCascadeMoveRequest): SessionCascadeMovePreview {
+        require(request.targetDayOfWeek in 1..5) { "Día de destino no válido" }
+        require(request.targetPeriod > 0) { "Periodo de destino no válido" }
+        val sessions = allSessionsById().values.toList()
+        val source = requireNotNull(sessions.firstOrNull { it.id == request.sourceSessionId }) {
+            "Sesión no encontrada: ${request.sourceSessionId}"
+        }
+        val targetDate = IsoWeekHelper.daysOf(request.targetWeekNumber, request.targetYear)[request.targetDayOfWeek - 1]
+        if (sessionDate(source) == targetDate && source.period == request.targetPeriod) {
+            return SessionCascadeMovePreview(isNoOp = true)
+        }
+
+        val previous = mutableListOf<SessionPlacement>()
+        val next = mutableListOf<SessionPlacement>()
+        val completed = mutableListOf<Long>()
+        val candidates = sessions
+            .filter { it.groupId == source.groupId && it.id != source.id }
+            .toMutableList()
+        var movedSession = source
+        var destinationDate = targetDate
+        var destinationPeriod = request.targetPeriod
+
+        while (true) {
+            previous += movedSession.toPlacement()
+            next += resolvedPlacement(movedSession, destinationDate, destinationPeriod)
+            if (movedSession.status == SessionStatus.COMPLETED) completed += movedSession.id
+
+            val occupied = candidates.firstOrNull {
+                sessionDate(it) == destinationDate && it.period == destinationPeriod
+            } ?: break
+            candidates.remove(occupied)
+            movedSession = occupied
+            val nextDestination = nextTeachingPosition(destinationDate, destinationPeriod)
+            destinationDate = nextDestination.first
+            destinationPeriod = nextDestination.second
+        }
+
+        return SessionCascadeMovePreview(
+            previousPlacements = previous,
+            nextPlacements = next,
+            completedSessionIds = completed,
+            crossesWeekBoundary = next.any { it.weekNumber != source.weekNumber || it.year != source.year },
+        )
+    }
+
+    private fun PlanningSession.toPlacement(): SessionPlacement =
+        SessionPlacement(
+            sessionId = id,
+            weekNumber = weekNumber,
+            year = year,
+            dayOfWeek = dayOfWeek,
+            period = period,
+            teacherScheduleSlotId = teacherScheduleSlotId,
+            startTime = startTime,
+            endTime = endTime,
+        )
+
+    private fun PlanningSession.at(placement: SessionPlacement): PlanningSession =
+        copy(
+            id = placement.sessionId,
+            weekNumber = placement.weekNumber,
+            year = placement.year,
+            dayOfWeek = placement.dayOfWeek,
+            period = placement.period,
+            teacherScheduleSlotId = placement.teacherScheduleSlotId,
+            startTime = placement.startTime,
+            endTime = placement.endTime,
+        )
+
+    private fun resolvedPlacement(session: PlanningSession, date: LocalDate, period: Int): SessionPlacement {
+        val slot = db.appDatabaseQueries.selectAllTeacherSchedules().executeAsList()
+            .flatMap { schedule -> db.appDatabaseQueries.selectTeacherScheduleSlots(schedule.id).executeAsList() }
+            .filter { it.school_class_id == session.groupId && it.day_of_week.toInt() == date.dayOfWeek.isoDayNumber }
+            .sortedBy { it.start_time }
+            .getOrNull(period - 1)
+        val fallback = DEFAULT_TIME_SLOTS.firstOrNull { it.period == period }
+        val week = IsoWeekHelper.isoWeekOf(date)
+        val isoYear = when {
+            date.monthNumber == 12 && week == 1 -> date.year + 1
+            date.monthNumber == 1 && week >= 52 -> date.year - 1
+            else -> date.year
+        }
+        return SessionPlacement(
+            sessionId = session.id,
+            weekNumber = week,
+            year = isoYear,
+            dayOfWeek = date.dayOfWeek.isoDayNumber,
+            period = period,
+            teacherScheduleSlotId = slot?.id,
+            startTime = slot?.start_time ?: fallback?.startTime,
+            endTime = slot?.end_time ?: fallback?.endTime,
+        )
+    }
+
+    private fun nextTeachingPosition(date: LocalDate, period: Int): Pair<LocalDate, Int> {
+        val periods = DEFAULT_TIME_SLOTS.map { it.period }.sorted()
+        val nextPeriod = periods.firstOrNull { it > period }
+        if (nextPeriod != null) return date to nextPeriod
+        val additionalDays = if (date.dayOfWeek.isoDayNumber >= 5) 3 else 1
+        return date.plus(additionalDays.toLong(), DateTimeUnit.DAY) to periods.first()
     }
 
     private data class SessionRelocationItem(

@@ -498,6 +498,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     @Published var scheduleGenerationPreview: [PlannerScheduleGenerationPreviewRow] = []
     @Published var scheduleGenerationSummary = ""
     @Published var isGeneratingScheduleSessions = false
+    @Published var lastCascadeMove: SessionCascadeMoveResult?
 
     private weak var bridge: KmpBridge?
     private var autosaveTask: Task<Void, Never>?
@@ -687,6 +688,38 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         selectedSession = session
         selectedGroupId = session.groupId
         await loadJournalForSelectedSession()
+    }
+
+    func previewCascadeMove(sessionId: Int64, day: Int, period: Int) async throws -> SessionCascadeMovePreview {
+        guard let bridge else { throw PlannerCascadeMoveError.bridgeUnavailable }
+        return try await bridge.plannerPreviewCascadeMove(
+            sourceSessionId: sessionId,
+            targetWeekNumber: week,
+            targetYear: year,
+            targetDayOfWeek: day,
+            targetPeriod: period
+        )
+    }
+
+    func commitCascadeMove(sessionId: Int64, day: Int, period: Int) async throws -> SessionCascadeMoveResult {
+        guard let bridge else { throw PlannerCascadeMoveError.bridgeUnavailable }
+        let result = try await bridge.plannerCommitCascadeMove(
+            sourceSessionId: sessionId,
+            targetWeekNumber: week,
+            targetYear: year,
+            targetDayOfWeek: day,
+            targetPeriod: period
+        )
+        lastCascadeMove = result
+        await reloadSessionsOnly()
+        return result
+    }
+
+    func restoreLastCascadeMove() async throws {
+        guard let bridge, let lastCascadeMove else { return }
+        _ = try await bridge.plannerRestoreCascadeMove(lastCascadeMove.previousPlacements)
+        self.lastCascadeMove = nil
+        await reloadSessionsOnly()
     }
 
     func clearSelection() {
@@ -1682,6 +1715,12 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         }
         return sections
     }
+}
+
+private enum PlannerCascadeMoveError: LocalizedError {
+    case bridgeUnavailable
+
+    var errorDescription: String? { "El Planner todavía no está preparado." }
 }
 
 struct PlannerWorkspaceIOS: View {
@@ -3047,6 +3086,7 @@ private struct JournalQuickChips: View {
 
 private struct PlannerInstrumentCompactPicker: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     @State private var isExpanded = false
     @State private var searchText = ""
     @State private var expandedGroupTitles: Set<String> = []
@@ -3119,9 +3159,10 @@ private struct PlannerInstrumentCompactPicker: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Button {
-                withAnimation(.easeInOut(duration: 0.18)) {
+                withAnimation(uiFeatureFlags.interactionAnimation) {
                     isExpanded.toggle()
                 }
+                AppleInteractionFeedback.play(.lightImpact)
             } label: {
                 HStack(spacing: 10) {
                     Image(systemName: "checklist")
@@ -3168,14 +3209,15 @@ private struct PlannerInstrumentCompactPicker: View {
 
                         HStack(spacing: 16) {
                             Button("Expandir recomendadas") {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                withAnimation(uiFeatureFlags.interactionAnimation) {
                                     expandedGroupTitles = recommendedGroupTitles
                                 }
+                                AppleInteractionFeedback.play(.lightImpact)
                             }
                             .buttonStyle(.borderless)
 
                             Button("Contraer todo") {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                withAnimation(uiFeatureFlags.interactionAnimation) {
                                     expandedGroupTitles.removeAll()
                                 }
                             }
@@ -3204,6 +3246,7 @@ private struct PlannerInstrumentCompactPicker: View {
                                 selectedIds: vm.composerDraft.selectedInstrumentIds,
                                 toggle: { instrument in
                                     vm.toggleComposerInstrument(instrument.id)
+                                    AppleInteractionFeedback.play(.selection)
                                 }
                             )
                         }
@@ -3215,7 +3258,7 @@ private struct PlannerInstrumentCompactPicker: View {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .stroke(EvaluationDesign.border, lineWidth: 0.5)
                 }
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(uiFeatureFlags.reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
             }
         }
         .task {
@@ -3249,6 +3292,7 @@ private struct PlannerInstrumentCompactGroup: Identifiable {
 }
 
 private struct PlannerInstrumentDisclosureSection: View {
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     let title: String
     let items: [PlannerAssessmentInstrument]
     @Binding var isExpanded: Bool
@@ -3266,9 +3310,10 @@ private struct PlannerInstrumentDisclosureSection: View {
     var body: some View {
         VStack(spacing: 0) {
             Button {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                withAnimation(uiFeatureFlags.interactionAnimation) {
                     isExpanded.toggle()
                 }
+                AppleInteractionFeedback.play(.lightImpact)
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
@@ -3326,7 +3371,7 @@ private struct PlannerInstrumentDisclosureSection: View {
                 }
                 .padding(.top, 8)
                 .padding(.bottom, 8)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(uiFeatureFlags.reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
             }
         }
         .padding(8)

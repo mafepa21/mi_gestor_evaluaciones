@@ -2248,6 +2248,44 @@ final class KmpBridge: ObservableObject {
         return try await container.plannerRepository.shiftSelectedSessions(request: request, resolution: resolution)
     }
 
+    func plannerPreviewCascadeMove(
+        sourceSessionId: Int64,
+        targetWeekNumber: Int,
+        targetYear: Int,
+        targetDayOfWeek: Int,
+        targetPeriod: Int
+    ) async throws -> SessionCascadeMovePreview {
+        let request = SessionCascadeMoveRequest(
+            sourceSessionId: sourceSessionId,
+            targetWeekNumber: Int32(targetWeekNumber),
+            targetYear: Int32(targetYear),
+            targetDayOfWeek: Int32(targetDayOfWeek),
+            targetPeriod: Int32(targetPeriod)
+        )
+        return try await container.plannerRepository.previewCascadeMove(request: request)
+    }
+
+    func plannerCommitCascadeMove(
+        sourceSessionId: Int64,
+        targetWeekNumber: Int,
+        targetYear: Int,
+        targetDayOfWeek: Int,
+        targetPeriod: Int
+    ) async throws -> SessionCascadeMoveResult {
+        let request = SessionCascadeMoveRequest(
+            sourceSessionId: sourceSessionId,
+            targetWeekNumber: Int32(targetWeekNumber),
+            targetYear: Int32(targetYear),
+            targetDayOfWeek: Int32(targetDayOfWeek),
+            targetPeriod: Int32(targetPeriod)
+        )
+        return try await container.plannerRepository.commitCascadeMove(request: request)
+    }
+
+    func plannerRestoreCascadeMove(_ previousPlacements: [SessionPlacement]) async throws -> SessionCascadeMoveResult {
+        try await container.plannerRepository.restoreCascadeMove(previousPlacements: previousPlacements)
+    }
+
     private func rangesOverlap(startA: String, endA: String, startB: String, endB: String) -> Bool {
         guard let a0 = plannerMinutes(startA), let a1 = plannerMinutes(endA), let b0 = plannerMinutes(startB), let b1 = plannerMinutes(endB) else {
             return false

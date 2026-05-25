@@ -268,6 +268,12 @@ interface PlannerRepository {
         request: SessionRelocationRequest,
         resolution: CollisionResolution
     ): SessionBulkResult = SessionBulkResult()
+    suspend fun previewCascadeMove(request: SessionCascadeMoveRequest): SessionCascadeMovePreview =
+        SessionCascadeMovePreview()
+    suspend fun commitCascadeMove(request: SessionCascadeMoveRequest): SessionCascadeMoveResult =
+        SessionCascadeMoveResult()
+    suspend fun restoreCascadeMove(previousPlacements: List<SessionPlacement>): SessionCascadeMoveResult =
+        SessionCascadeMoveResult()
 }
 
 interface SessionJournalRepository {

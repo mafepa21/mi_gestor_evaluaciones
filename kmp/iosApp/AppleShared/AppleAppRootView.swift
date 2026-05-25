@@ -3,7 +3,8 @@ import SwiftUI
 struct AppleAppRootView: View {
     @StateObject private var bridge = KmpBridge()
     @State private var lifecycleObserver: AppleLifecycleBridgeObserver?
-    private let uiFeatureFlags = UiFeatureFlags.default
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @AppStorage("mac_reduce_motion") private var prefersReducedMotion = false
     private let themeMode: AppThemeMode
     private let commandCenterState: AppleCommandCenterState
 
@@ -13,6 +14,10 @@ struct AppleAppRootView: View {
     ) {
         self.themeMode = themeMode
         self.commandCenterState = commandCenterState
+    }
+
+    private var uiFeatureFlags: UiFeatureFlags {
+        UiFeatureFlags.default.withReducedMotion(accessibilityReduceMotion || prefersReducedMotion)
     }
 
     var body: some View {

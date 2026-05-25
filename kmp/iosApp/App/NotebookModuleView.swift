@@ -508,6 +508,8 @@ struct NotebookModuleView: View {
             } onDragEnded: {
                 updateFixedZoneDragState(isDragging: false)
                 snapFixedZoneWidth()
+            } onResetWidth: {
+                restoreRecommendedFixedZoneWidth()
             }
         } header: { segments in
             headerRow(segments: segments, data: data)
@@ -668,6 +670,24 @@ struct NotebookModuleView: View {
             }
             fixedZoneLiveWidth = nil
         }
+    }
+
+    func restoreRecommendedFixedZoneWidth() {
+        let recommendedWidth: CGFloat = 360
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        transaction.animation = nil
+        withTransaction(transaction) {
+            fixedZoneLiveWidth = recommendedWidth
+            if let data = bridge.notebookState as? NotebookUiStateData,
+               let tabId = activeNotebookTabId(data: data) {
+                bridge.saveTabFixedWidth(tabId: tabId, widthDp: Double(recommendedWidth))
+            } else {
+                fixedZoneWidthStored = Double(recommendedWidth)
+            }
+            fixedZoneLiveWidth = nil
+        }
+        AppleInteractionFeedback.play(.lightImpact)
     }
 
     func updateFixedZoneDragState(isDragging: Bool) {

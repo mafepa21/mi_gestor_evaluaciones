@@ -11,6 +11,7 @@ private enum StudentTrackingFilter: String, CaseIterable {
 struct StudentProfilesWorkspaceView: View {
     @EnvironmentObject var bridge: KmpBridge
     @Environment(\.colorScheme) var colorScheme
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     @Binding var selectedClassId: Int64?
     @Binding var selectedStudentId: Int64?
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
@@ -124,9 +125,10 @@ struct StudentProfilesWorkspaceView: View {
                     )
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                        withAnimation(uiFeatureFlags.interactionAnimation) {
                             selectedStudentId = student.id
                         }
+                        AppleInteractionFeedback.play(.selection)
                     }
                     .listRowInsets(EdgeInsets(top: 4, leading: 10, bottom: 4, trailing: 10))
                     .listRowBackground(

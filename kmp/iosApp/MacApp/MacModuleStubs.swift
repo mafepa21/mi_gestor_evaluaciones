@@ -964,6 +964,7 @@ private extension Data {
 
 struct MacPlannerView: View {
     @ObservedObject var bridge: KmpBridge
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     @Binding var selectedSessionIdFromRoot: Int64?
     @StateObject private var vm = PlannerWorkspaceViewModel()
     @State private var activeSection: MacPlannerSection = .week
@@ -978,6 +979,7 @@ struct MacPlannerView: View {
     @State private var sessionFilter: MacPlannerSessionFilter = .all
     @State private var groupFilterId: Int64?
     @State private var selectedDetailSession: PlanningSession? = nil
+    @State private var pendingCascadeDrop: MacPlannerPendingDrop?
 
     var body: some View {
         GeometryReader { proxy in
@@ -989,8 +991,10 @@ struct MacPlannerView: View {
                     plannerHeader
                     if let transientMessage, !transientMessage.isEmpty {
                         MacPlannerBanner(message: transientMessage)
+                            .transition(uiFeatureFlags.bannerTransition)
                     } else if !vm.bulkSummary.isEmpty {
                         MacPlannerBanner(message: vm.bulkSummary)
+                            .transition(uiFeatureFlags.bannerTransition)
                     }
                     plannerCenterContent
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -1005,6 +1009,7 @@ struct MacPlannerView: View {
             }
         }
         .background(MacAppStyle.pageBackground)
+        .animation(uiFeatureFlags.interactionAnimation, value: transientMessage)
         .task {
             await vm.bind(bridge: bridge)
             await syncInspectorStudents(for: vm.selectedSession)
@@ -1078,6 +1083,31 @@ struct MacPlannerView: View {
             }
         } message: {
             Text("No hay franjas en la agenda. Se eliminarán las sesiones planificadas de la semana actual y se conservarán las completadas.")
+        }
+        .alert(
+            "Mover sesiones impartidas",
+            isPresented: Binding(
+                get: { pendingCascadeDrop != nil },
+                set: { if !$0 { pendingCascadeDrop = nil } }
+            )
+        ) {
+            Button("Cancelar", role: .cancel) {
+                pendingCascadeDrop = nil
+                AppleInteractionFeedback.play(.warning)
+            }
+            Button("Mover") {
+                guard let pendingCascadeDrop else { return }
+                self.pendingCascadeDrop = nil
+                Task {
+                    await commitCascadeDrop(
+                        sessionId: pendingCascadeDrop.sessionId,
+                        day: pendingCascadeDrop.day,
+                        period: pendingCascadeDrop.period
+                    )
+                }
+            }
+        } message: {
+            Text("La cascada incluye una o más sesiones ya impartidas. Se conservarán sus diarios y referencias.")
         }
         .sheet(
             isPresented: Binding(
@@ -1336,6 +1366,13 @@ struct MacPlannerView: View {
                 }
                 .buttonStyle(.bordered)
 
+                if vm.lastCascadeMove != nil {
+                    Button("Deshacer movimiento") {
+                        Task { await undoCascadeMove() }
+                    }
+                    .buttonStyle(.bordered)
+                }
+
                 Button("Agenda") {
                     showingScheduleSettings = true
                 }
@@ -1365,6 +1402,9 @@ struct MacPlannerView: View {
                 },
                 onDoubleOpenSession: { session in
                     openMacSession(session)
+                },
+                onDropSession: { sessionId, day, period in
+                    Task { await receiveCascadeDrop(sessionId: sessionId, day: day, period: period) }
                 }
             )
         case .sessions:
@@ -1537,6 +1577,47 @@ struct MacPlannerView: View {
         await vm.bulkMoveOneDay()
     }
 
+    @MainActor
+    private func receiveCascadeDrop(sessionId: Int64, day: Int, period: Int) async {
+        do {
+            let preview = try await vm.previewCascadeMove(sessionId: sessionId, day: day, period: period)
+            guard !preview.isNoOp else { return }
+            if !preview.completedSessionIds.isEmpty {
+                pendingCascadeDrop = MacPlannerPendingDrop(sessionId: sessionId, day: day, period: period)
+            } else {
+                await commitCascadeDrop(sessionId: sessionId, day: day, period: period)
+            }
+        } catch {
+            transientMessage = "No se puede mover la sesión: \(error.localizedDescription)"
+            AppleInteractionFeedback.play(.error)
+        }
+    }
+
+    @MainActor
+    private func commitCascadeDrop(sessionId: Int64, day: Int, period: Int) async {
+        do {
+            let result = try await vm.commitCascadeMove(sessionId: sessionId, day: day, period: period)
+            let suffix = result.crossesWeekBoundary ? " Se ha continuado en la semana siguiente." : ""
+            transientMessage = "Sesión movida; \(result.movedCount) sesión(es) recolocadas.\(suffix)"
+            AppleInteractionFeedback.play(.success)
+        } catch {
+            transientMessage = "No se pudo completar el movimiento: \(error.localizedDescription)"
+            AppleInteractionFeedback.play(.error)
+        }
+    }
+
+    @MainActor
+    private func undoCascadeMove() async {
+        do {
+            try await vm.restoreLastCascadeMove()
+            transientMessage = "Movimiento deshecho."
+            AppleInteractionFeedback.play(.success)
+        } catch {
+            transientMessage = "No se pudo deshacer: \(error.localizedDescription)"
+            AppleInteractionFeedback.play(.error)
+        }
+    }
+
     private func normalizeSelectionForDisplayedSessions() async {
         let visible = displayedSessions
         if let selectedSession = vm.selectedSession,
@@ -1568,6 +1649,12 @@ struct MacPlannerView: View {
         transientMessage = "Resumen exportado al portapapeles."
         showingExportConfirmation = true
     }
+}
+
+private struct MacPlannerPendingDrop {
+    let sessionId: Int64
+    let day: Int
+    let period: Int
 }
 
 private enum MacPlannerSection: String, CaseIterable, Identifiable {
@@ -1724,6 +1811,7 @@ private struct MacPlannerWeekBoard: View {
     let entriesProvider: (Int, Int) -> [PlannerWeekCellEntry]
     let onSelectSession: (PlanningSession) -> Void
     let onDoubleOpenSession: (PlanningSession) -> Void
+    let onDropSession: (Int64, Int, Int) -> Void
 
     var body: some View {
         ScrollView([.horizontal, .vertical]) {
@@ -1755,7 +1843,8 @@ private struct MacPlannerWeekBoard: View {
                                 vm: vm,
                                 defaultGroupId: defaultGroupId,
                                 onSelectSession: onSelectSession,
-                                onDoubleOpenSession: onDoubleOpenSession
+                                onDoubleOpenSession: onDoubleOpenSession,
+                                onDropSession: onDropSession
                             )
                         }
                     }
@@ -1781,7 +1870,9 @@ private struct MacPlannerWeekCell: View {
     let defaultGroupId: Int64?
     let onSelectSession: (PlanningSession) -> Void
     let onDoubleOpenSession: (PlanningSession) -> Void
+    let onDropSession: (Int64, Int, Int) -> Void
     @State private var isHovering = false
+    @State private var isDropTargeted = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -1818,11 +1909,11 @@ private struct MacPlannerWeekCell: View {
         .frame(width: 214, height: 122, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(isHovering ? MacAppStyle.infoTint.opacity(0.08) : MacAppStyle.cardBackground)
+                .fill(isDropTargeted ? MacAppStyle.infoTint.opacity(0.14) : (isHovering ? MacAppStyle.infoTint.opacity(0.08) : MacAppStyle.cardBackground))
         )
         .overlay {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(isHovering ? MacAppStyle.infoTint.opacity(0.45) : MacAppStyle.cardBorder, lineWidth: 1)
+                .stroke(isDropTargeted ? MacAppStyle.infoTint : (isHovering ? MacAppStyle.infoTint.opacity(0.45) : MacAppStyle.cardBorder), lineWidth: isDropTargeted ? 2 : 1)
         }
         .contentShape(Rectangle())
         .onHover { hovering in
@@ -1837,6 +1928,15 @@ private struct MacPlannerWeekCell: View {
             if entries.isEmpty, isHovering {
                 openComposer()
             }
+        }
+        .dropDestination(for: String.self) { values, _ in
+            guard let value = values.first,
+                  value.hasPrefix("planner-session:"),
+                  let sessionId = Int64(value.dropFirst("planner-session:".count)) else { return false }
+            onDropSession(sessionId, day, period)
+            return true
+        } isTargeted: { targeted in
+            isDropTargeted = targeted
         }
     }
 
@@ -1930,6 +2030,7 @@ private struct MacPlannerWeekEntryRow: View {
                 onSelectSession(session)
             }
         }
+        .modifier(MacPlannerSessionDragModifier(sessionId: resolvedSession?.id))
     }
 
     private var resolvedSession: PlanningSession? {
@@ -1968,6 +2069,19 @@ private struct MacPlannerWeekEntryRow: View {
         if entry.kind == .scheduledSlot { return MacAppStyle.warningTint }
         if entry.journalStatus == .draft { return MacAppStyle.warningTint }
         return .secondary
+    }
+}
+
+private struct MacPlannerSessionDragModifier: ViewModifier {
+    let sessionId: Int64?
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let sessionId {
+            content.draggable("planner-session:\(sessionId)")
+        } else {
+            content
+        }
     }
 }
 

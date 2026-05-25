@@ -12,6 +12,7 @@ struct NotebookDividerHandle: View {
     let isDragging: Bool
     let onDragChanged: (CGFloat) -> Void
     let onDragEnded: () -> Void
+    let onResetWidth: () -> Void
     
     @State private var isHovering = false
 
@@ -52,6 +53,15 @@ struct NotebookDividerHandle: View {
                     onDragEnded()
                 }
         )
+        .onTapGesture(count: 2) {
+            onResetWidth()
+        }
+        .contextMenu {
+            Button("Restaurar ancho recomendado") {
+                onResetWidth()
+            }
+        }
+        .help("Arrastrar para redimensionar. Doble clic para restaurar el ancho.")
         .animation(.easeInOut(duration: 0.2), value: isDragging)
         .animation(.easeInOut(duration: 0.2), value: isHovering)
     }

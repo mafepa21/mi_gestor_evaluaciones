@@ -18,6 +18,7 @@ struct PhysicalTestCaptureView: View {
     let onSaved: () async -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     @State private var selectedIndex = 0
     @State private var attempts: [String] = []
     @State private var isSaving = false
@@ -93,6 +94,8 @@ struct PhysicalTestCaptureView: View {
                         Spacer(minLength: 0)
                     }
                     .padding(24)
+                    .id(currentResult.student.id)
+                    .transition(.opacity)
                 } else {
                     CaptureEmptyState(
                         title: "Sin alumnado",
@@ -123,6 +126,7 @@ struct PhysicalTestCaptureView: View {
                 }
                 .padding(16)
             }
+            .animation(uiFeatureFlags.interactionAnimation, value: selectedIndex)
             .navigationTitle("Captura en pista")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -242,6 +246,7 @@ struct PhysicalTestCaptureView: View {
                 bridge.status = score == nil ? "Marca física guardada." : "Marca y nota física guardadas."
             }
             await onSaved()
+            AppleInteractionFeedback.play(.success)
             if selectedIndex < test.results.count - 1 {
                 move(by: 1)
             } else {
@@ -249,6 +254,7 @@ struct PhysicalTestCaptureView: View {
             }
         } catch {
             bridge.status = "No se pudo guardar la marca: \(error.localizedDescription)"
+            AppleInteractionFeedback.play(.error)
         }
     }
 

@@ -20,6 +20,7 @@ struct NotebookCompactCommandBar<SecondaryActions: View>: View {
     let onUndo: () -> Void
     let onToggleAttendanceQuickMode: () -> Void
     let secondaryActions: () -> SecondaryActions
+    @State private var isClassPickerPresented = false
 
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -97,19 +98,8 @@ struct NotebookCompactCommandBar<SecondaryActions: View>: View {
     }
 
     private var classPicker: some View {
-        Menu {
-            ForEach(classes, id: \.id) { schoolClass in
-                Button {
-                    onSelectClass(Int64(schoolClass.id))
-                } label: {
-                    HStack {
-                        Text("\(schoolClass.name) · \(schoolClass.course)º")
-                        if Int64(schoolClass.id) == selectedClassId {
-                            Image(systemName: "checkmark")
-                        }
-                    }
-                }
-            }
+        Button {
+            isClassPickerPresented = true
         } label: {
             HStack(spacing: 7) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -140,6 +130,14 @@ struct NotebookCompactCommandBar<SecondaryActions: View>: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Seleccionar clase")
+        .popover(isPresented: $isClassPickerPresented, arrowEdge: .top) {
+            NotebookClassPickerPopover(
+                classes: classes,
+                selectedClassId: selectedClassId,
+                onSelectClass: { onSelectClass($0) },
+                onClose: { isClassPickerPresented = false }
+            )
+        }
     }
 
     private var secondaryMenu: some View {

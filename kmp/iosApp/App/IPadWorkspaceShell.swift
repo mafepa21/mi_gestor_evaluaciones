@@ -687,6 +687,7 @@ struct AppWorkspaceShell: View {
     @State var classroomCaptureStudentId: Int64?
     @State var classroomCaptureText = ""
     @State var isSavingClassroomCapture = false
+    @State private var isClassPickerPresented = false
 
     var activeNotebookClassLabel: String {
         guard let selectedClassId,
@@ -1418,27 +1419,8 @@ struct AppWorkspaceShell: View {
 
     var notebookMacLikeToolbar: some View {
         HStack(spacing: 12) {
-            Menu {
-                ForEach(groupedNotebookClasses, id: \.course) { group in
-                    Section("\(group.course)º") {
-                        ForEach(group.classes, id: \.id) { schoolClass in
-                            Button {
-                                updateGlobalClassContext(schoolClass.id)
-                            } label: {
-                                HStack {
-                                    Text("\(schoolClass.name) · \(schoolClass.course)º")
-                                    if selectedClassId == schoolClass.id {
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if bridge.classes.isEmpty {
-                    Text("Sin clases disponibles")
-                }
+            Button {
+                isClassPickerPresented = true
             } label: {
                 Label(activeNotebookClassLabel, systemImage: "rectangle.3.group")
                     .lineLimit(1)
@@ -1446,6 +1428,14 @@ struct AppWorkspaceShell: View {
             }
             .buttonStyle(.bordered)
             .disabled(bridge.classes.isEmpty)
+            .popover(isPresented: $isClassPickerPresented, arrowEdge: .top) {
+                NotebookClassPickerPopover(
+                    classes: bridge.classes,
+                    selectedClassId: selectedClassId,
+                    onSelectClass: { updateGlobalClassContext($0) },
+                    onClose: { isClassPickerPresented = false }
+                )
+            }
             .help("Cambiar clase del cuaderno")
 
             Picker("Vista", selection: Binding(

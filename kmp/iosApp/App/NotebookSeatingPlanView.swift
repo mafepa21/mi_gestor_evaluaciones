@@ -2,6 +2,7 @@ import SwiftUI
 import MiGestorKit
 
 struct NotebookSeatingPlanView: View {
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     let rows: [NotebookTableRow]
     let averageText: (NotebookTableRow) -> String
     let attendanceText: (Int64) -> String
@@ -17,6 +18,8 @@ struct NotebookSeatingPlanView: View {
     let onMarkAbsent: (Int64) -> Void
     let onMarkLate: (Int64) -> Void
     let onFollowUp: (Student) -> Void
+    @State private var draggingStudentId: Int64?
+    @State private var hoveredStudentId: Int64?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -70,8 +73,17 @@ struct NotebookSeatingPlanView: View {
                     .strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
                     .padding(18)
 
+                if draggingStudentId != nil {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .strokeBorder(NotebookStyle.primaryTint.opacity(0.28), style: StrokeStyle(lineWidth: 1, dash: [7, 7]))
+                        .padding(26)
+                        .transition(.opacity)
+                        .accessibilityHidden(true)
+                }
+
                 ForEach(Array(rows.enumerated()), id: \.element.id) { index, item in
                     let position = resolvedSeatPosition(for: item.student.id, index: index, total: rows.count)
+                    let isDragging = draggingStudentId == item.student.id
                     NotebookSeatCard(
                         student: item.student,
                         averageText: averageText(item),
@@ -79,6 +91,8 @@ struct NotebookSeatingPlanView: View {
                         incidentCount: incidentCount(item.student.id),
                         isHighlighted: highlightedStudentId == item.student.id,
                         isSelected: selectedStudentId == item.student.id,
+                        isDragging: isDragging,
+                        isHovering: hoveredStudentId == item.student.id,
                         onTap: {
                             onOpenStudent(item.student.id)
                         },
@@ -100,15 +114,28 @@ struct NotebookSeatingPlanView: View {
                         x: max(96, min(proxy.size.width - 96, CGFloat(position.x) * proxy.size.width)),
                         y: max(86, min(proxy.size.height - 86, CGFloat(position.y) * proxy.size.height))
                     )
+                    .zIndex(isDragging ? 1 : 0)
+                    #if os(macOS)
+                    .onHover { isHovering in
+                        hoveredStudentId = isHovering ? item.student.id : nil
+                    }
+                    #endif
                     .gesture(
                         DragGesture()
                             .onChanged { value in
+                                if draggingStudentId != item.student.id {
+                                    draggingStudentId = item.student.id
+                                }
                                 let clampedX = min(max(value.location.x / max(proxy.size.width, 1), 0.12), 0.88)
                                 let clampedY = min(max(value.location.y / max(proxy.size.height, 1), 0.12), 0.88)
                                 seatPositions[item.student.id] = NotebookSeatPosition(x: clampedX, y: clampedY)
                             }
                             .onEnded { _ in
                                 onPersistSeats()
+                                AppleInteractionFeedback.play(.success)
+                                withAnimation(uiFeatureFlags.interactionAnimation) {
+                                    draggingStudentId = nil
+                                }
                             }
                     )
                 }
@@ -141,6 +168,8 @@ private struct NotebookSeatCard: View {
     let incidentCount: Int
     let isHighlighted: Bool
     let isSelected: Bool
+    let isDragging: Bool
+    let isHovering: Bool
     let onTap: () -> Void
     let onMarkPresent: () -> Void
     let onMarkAbsent: () -> Void
@@ -187,18 +216,22 @@ private struct NotebookSeatCard: View {
                 quickAction("R", tint: NotebookStyle.warningTint, action: onMarkLate)
                 quickAction("Seg", tint: .orange, action: onFollowUp)
             }
+            .opacity(isDragging ? 0.42 : 1)
         }
         .padding(14)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(isHighlighted ? NotebookStyle.primaryTint.opacity(0.18) : NotebookStyle.surface)
+                .fill(isHighlighted || isDragging ? NotebookStyle.primaryTint.opacity(0.18) : NotebookStyle.surface)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .strokeBorder((isSelected ? NotebookStyle.primaryTint : Color.white.opacity(0.10)), lineWidth: isSelected ? 2 : 1)
+                .strokeBorder(
+                    (isSelected || isDragging || isHovering ? NotebookStyle.primaryTint : Color.white.opacity(0.10)),
+                    lineWidth: isSelected || isDragging ? 2 : 1
+                )
         )
-        .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: 8)
+        .shadow(color: Color.black.opacity(isDragging ? 0.18 : 0.08), radius: isDragging ? 20 : 12, x: 0, y: isDragging ? 14 : 8)
         .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .onTapGesture(perform: onTap)
     }

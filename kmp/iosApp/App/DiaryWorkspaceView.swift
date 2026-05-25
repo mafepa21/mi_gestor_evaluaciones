@@ -5,6 +5,7 @@ struct DiaryWorkspaceView: View {
     @EnvironmentObject var bridge: KmpBridge
     @EnvironmentObject var layoutState: WorkspaceLayoutState
     @Environment(\.colorScheme) var colorScheme
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     @Binding var selectedClassId: Int64?
     let navigationContext: PlannerNavigationContext
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
@@ -98,6 +99,7 @@ struct DiaryWorkspaceView: View {
                                 isSelected: isSessionSelected,
                                 timeLabel: sessionTimeLabel,
                                 onTap: {
+                                    AppleInteractionFeedback.play(.selection)
                                     Task { await vm.select(session: session) }
                                 }
                             )
@@ -155,6 +157,7 @@ struct DiaryWorkspaceView: View {
                 )
                 .frame(width: 340)
                 .background(appMutedCardBackground(for: colorScheme).opacity(0.22))
+                .transition(uiFeatureFlags.inspectorTransition)
             }
         }
         .task {
@@ -211,6 +214,7 @@ struct DiaryWorkspaceView: View {
         .onDisappear {
             layoutState.clearDiaryToolbar()
         }
+        .animation(uiFeatureFlags.interactionAnimation, value: showingInspector)
     }
 
     func weekdayLabel(_ dayOfWeek: Int32) -> String {
@@ -352,6 +356,7 @@ enum DiaryStatusFilter: String, CaseIterable, Identifiable {
 }
 
 struct DiarySessionRailCard: View {
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     let session: PlanningSession
     let summary: SessionJournalSummary?
     let isSelected: Bool
@@ -406,6 +411,7 @@ struct DiarySessionRailCard: View {
             )
         }
         .buttonStyle(.plain)
+        .animation(uiFeatureFlags.interactionAnimation, value: isSelected)
     }
 
     var badgeTint: Color {
@@ -523,4 +529,3 @@ struct DiaryInspectorPanel: View {
         value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? placeholder : value
     }
 }
-

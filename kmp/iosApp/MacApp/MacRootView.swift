@@ -4,6 +4,7 @@ import MiGestorKit
 
 struct MacRootView: View {
     @ObservedObject var session: MacAppSessionController
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     @StateObject private var commandCenter = MacCommandCenterCoordinator()
     @StateObject private var layoutState = WorkspaceLayoutState()
     @StateObject private var notebookInspectorState = NotebookMacInspectorState()
@@ -89,6 +90,7 @@ struct MacRootView: View {
                 if isInspectorVisible {
                     featureInspector(for: selectedFeature)
                         .frame(minWidth: 320, idealWidth: 360, maxWidth: 440)
+                        .transition(uiFeatureFlags.inspectorTransition)
                 } else {
                     EmptyView()
                         .frame(width: 0)
@@ -102,10 +104,11 @@ struct MacRootView: View {
                 MacRootTransientBanner(banner: banner)
                     .padding(.top, 12)
                     .padding(.trailing, 16)
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .transition(uiFeatureFlags.bannerTransition)
             }
         }
-        .animation(.snappy(duration: 0.18), value: banner?.id)
+        .animation(uiFeatureFlags.interactionAnimation, value: banner?.id)
+        .animation(uiFeatureFlags.interactionAnimation, value: isInspectorVisible)
         .toolbar {
             macToolbar
         }

@@ -17,7 +17,7 @@ struct MiGestorKMPMacApp: App {
 
     var body: some Scene {
         WindowGroup("MiGestor") {
-            MacRootView(session: session)
+            MacApplicationRootView(session: session)
                 .environment(\.appThemeMode, themeMode)
                 .preferredColorScheme(themeMode.colorSchemeOverride)
                 .frame(minWidth: 900, minHeight: 600)
@@ -88,6 +88,20 @@ struct MiGestorKMPMacApp: App {
         @unknown default:
             break
         }
+    }
+}
+
+private struct MacApplicationRootView: View {
+    @ObservedObject var session: MacAppSessionController
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @AppStorage("mac_reduce_motion") private var prefersReducedMotion = false
+
+    var body: some View {
+        MacRootView(session: session)
+            .environment(
+                \.uiFeatureFlags,
+                UiFeatureFlags.default.withReducedMotion(accessibilityReduceMotion || prefersReducedMotion)
+            )
     }
 }
 

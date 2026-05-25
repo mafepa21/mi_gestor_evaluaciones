@@ -612,6 +612,7 @@ struct NotebookTopBar: View {
     let onUndo: () -> Void
     var showsInlineActions: Bool = true
     var showsClassPicker: Bool = true
+    @State private var isClassPickerPresented = false
 
     private var selectedClass: SchoolClass? {
         bridge.classes.first(where: { $0.id == bridge.notebookViewModel.currentClassId?.int64Value ?? 0 })
@@ -879,19 +880,8 @@ struct NotebookTopBar: View {
     }
 
     private var classPicker: some View {
-        Menu {
-            ForEach(bridge.classes, id: \.id) { schoolClass in
-                Button {
-                    onSelectClass(Int64(schoolClass.id))
-                } label: {
-                    HStack {
-                        Text(schoolClass.name)
-                        if schoolClass.id == selectedClass?.id {
-                            Image(systemName: "checkmark")
-                        }
-                    }
-                }
-            }
+        Button {
+            isClassPickerPresented = true
         } label: {
             HStack(spacing: 8) {
                 Text(selectedClass?.name ?? "Seleccionar clase")
@@ -916,6 +906,14 @@ struct NotebookTopBar: View {
             )
         }
         .buttonStyle(.plain)
+        .popover(isPresented: $isClassPickerPresented, arrowEdge: .top) {
+            SimpleClassPickerPopover(
+                classes: bridge.classes,
+                selectedClassId: selectedClass?.id,
+                onSelectClass: { onSelectClass($0) },
+                onClose: { isClassPickerPresented = false }
+            )
+        }
     }
 
     private var saveStatusChip: some View {

@@ -42,6 +42,66 @@ struct UiFeatureFlags {
         accessibilitySurfaceFallback: false,
         reduceMotion: false
     )
+
+    func withReducedMotion(_ value: Bool) -> UiFeatureFlags {
+        UiFeatureFlags(
+            newShell: newShell,
+            notebookToolbarSimplified: notebookToolbarSimplified,
+            accessibilitySurfaceFallback: accessibilitySurfaceFallback,
+            reduceMotion: value
+        )
+    }
+
+    var interactionAnimation: Animation {
+        reduceMotion
+            ? .easeInOut(duration: 0.15)
+            : .spring(response: 0.35, dampingFraction: 0.75)
+    }
+
+    var inspectorTransition: AnyTransition {
+        reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity)
+    }
+
+    var bannerTransition: AnyTransition {
+        reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity)
+    }
+}
+
+@MainActor
+enum AppleInteractionFeedback {
+    enum Event {
+        case selection
+        case lightImpact
+        case success
+        case warning
+        case error
+    }
+
+    static func play(_ event: Event) {
+        #if canImport(UIKit)
+        switch event {
+        case .selection:
+            UISelectionFeedbackGenerator().selectionChanged()
+        case .lightImpact:
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        case .success:
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        case .warning:
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        case .error:
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+        }
+        #elseif canImport(AppKit)
+        switch event {
+        case .selection:
+            break
+        case .lightImpact, .success:
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+        case .warning, .error:
+            NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
+        }
+        #endif
+    }
 }
 
 enum ApplePairingServiceState: Equatable {

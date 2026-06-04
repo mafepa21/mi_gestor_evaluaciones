@@ -605,3 +605,38 @@ interface PlannedSessionRepository {
     }
     suspend fun bulkUpsertOrReplacePlannedSessions(sessions: List<PlannedSession>): List<Long> = sessions.map { insert(it) }
 }
+
+interface AITrendsRepository {
+    suspend fun getStudentGradesHistory(classId: Long, studentId: Long): List<StudentGradeHistoryPoint>
+    suspend fun getStudentAttendanceStats(classId: Long, studentId: Long): StudentAttendanceStats
+    suspend fun getStudentIncidentsHistory(classId: Long, studentId: Long): List<StudentIncidentPoint>
+    suspend fun getCompetencyCoverage(classId: Long): List<CompetencyCoveragePoint>
+}
+
+data class StudentGradeHistoryPoint(
+    val columnId: String,
+    val columnTitle: String,
+    val dateEpochMs: Long?,
+    val score: Double
+)
+
+data class StudentAttendanceStats(
+    val absentCount: Long,
+    val lateCount: Long,
+    val totalRecords: Long
+)
+
+data class StudentIncidentPoint(
+    val id: Long,
+    val title: String,
+    val detail: String?,
+    val severity: String,
+    val dateEpochMs: Long
+)
+
+data class CompetencyCoveragePoint(
+    val id: Long,
+    val code: String,
+    val name: String,
+    val columnsCount: Long
+)

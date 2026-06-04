@@ -50,6 +50,11 @@ import com.migestor.shared.repository.NotebookCellsRepository
 import com.migestor.shared.repository.PlannerRepository
 import com.migestor.shared.repository.RubricsRepository
 import com.migestor.shared.repository.StudentsRepository
+import com.migestor.shared.repository.AITrendsRepository
+import com.migestor.shared.repository.StudentGradeHistoryPoint
+import com.migestor.shared.repository.StudentAttendanceStats
+import com.migestor.shared.repository.StudentIncidentPoint
+import com.migestor.shared.repository.CompetencyCoveragePoint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
@@ -1820,5 +1825,53 @@ private fun buildRubrics(
                 )
             },
         )
+    }
+}
+
+class AITrendsRepositorySqlDelight(
+    private val db: AppDatabase,
+) : AITrendsRepository {
+    override suspend fun getStudentGradesHistory(classId: Long, studentId: Long): List<StudentGradeHistoryPoint> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectStudentGradesHistory(classId, studentId).executeAsList().map {
+            StudentGradeHistoryPoint(
+                columnId = it.column_id,
+                columnTitle = it.column_title,
+                dateEpochMs = it.date_epoch_ms,
+                score = it.score.toDoubleOrNull() ?: 0.0
+            )
+        }
+    }
+
+    override suspend fun getStudentAttendanceStats(classId: Long, studentId: Long): StudentAttendanceStats = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.countStudentAttendanceStats(classId, studentId).executeAsOne().let {
+            StudentAttendanceStats(
+                absentCount = it.absent_count,
+                lateCount = it.late_count,
+                totalRecords = it.total_records
+            )
+        }
+    }
+
+    override suspend fun getStudentIncidentsHistory(classId: Long, studentId: Long): List<StudentIncidentPoint> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectStudentIncidentsHistory(classId, studentId).executeAsList().map {
+            StudentIncidentPoint(
+                id = it.id,
+                title = it.title,
+                detail = it.detail,
+                severity = it.severity,
+                dateEpochMs = it.date_epoch_ms
+            )
+        }
+    }
+
+    override suspend fun getCompetencyCoverage(classId: Long): List<CompetencyCoveragePoint> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectCompetencyCoverage(classId).executeAsList().map {
+            CompetencyCoveragePoint(
+                id = it.id,
+                code = it.code,
+                name = it.name,
+                columnsCount = it.columns_count
+            )
+        }
     }
 }

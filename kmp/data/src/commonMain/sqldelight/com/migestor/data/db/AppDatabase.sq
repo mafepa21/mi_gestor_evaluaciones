@@ -1749,3 +1749,32 @@ SELECT id, class_id, student_id, column_id,
 FROM notebook_cell_audit_events
 WHERE class_id = ? AND student_id = ? AND column_id = ?
 ORDER BY changed_at_epoch_ms DESC;
+
+selectStudentGradesHistory:
+SELECT c.id AS column_id, c.title AS column_title, c.date_epoch_ms, e.value_ordinal AS score
+FROM notebook_cell_entries e
+JOIN notebook_columns c ON e.column_id = c.id
+WHERE e.class_id = ? AND e.student_id = ? AND c.counts_toward_average = 1 AND e.value_ordinal IS NOT NULL
+ORDER BY c.date_epoch_ms ASC;
+
+countStudentAttendanceStats:
+SELECT 
+    COUNT(CASE WHEN LOWER(status) LIKE 'aus%' THEN 1 END) AS absent_count,
+    COUNT(CASE WHEN LOWER(status) LIKE 'ret%' OR LOWER(status) LIKE 'tar%' THEN 1 END) AS late_count,
+    COUNT(*) AS total_records
+FROM attendance
+WHERE class_id = ? AND student_id = ?;
+
+selectStudentIncidentsHistory:
+SELECT id, title, detail, severity, date_epoch_ms
+FROM incidents
+WHERE class_id = ? AND student_id = ?
+ORDER BY date_epoch_ms DESC;
+
+selectCompetencyCoverage:
+SELECT c.id, c.code, c.name,
+       (SELECT COUNT(*) 
+        FROM notebook_columns col 
+        WHERE col.class_id = ? AND col.competency_criteria_ids_csv LIKE '%' || c.code || '%') AS columns_count
+FROM competency_criteria c
+ORDER BY c.code;

@@ -25,6 +25,7 @@ import com.migestor.data.repository.TeacherScheduleRepositorySqlDelight
 import com.migestor.data.repository.WeeklyTemplateRepositorySqlDelight
 import com.migestor.data.repository.PlannedSessionRepositorySqlDelight
 import com.migestor.data.repository.LearningSituationsRepositorySqlDelight
+import com.migestor.data.repository.AITrendsRepositorySqlDelight
 import com.migestor.data.service.CsvImportServiceImpl
 import com.migestor.data.service.createPlatformBackupService
 import com.migestor.data.service.createPlatformReportService
@@ -113,6 +114,8 @@ class KmpContainer(val driver: SqlDriver) {
     val buildNotebookSheet = BuildNotebookSheetUseCase(getNotebook)
     val getNotebookConfig = GetNotebookConfigUseCase(notebookConfigRepository)
     val getOperationalDashboardSnapshot = GetOperationalDashboardSnapshotUseCase(dashboardOperationalRepository)
+    val aiTrendsRepository = AITrendsRepositorySqlDelight(database)
+    val getAITrendsAndMetrics = GetAITrendsAndMetricsUseCase(aiTrendsRepository)
 
     val notebookRepository = NotebookRepositorySqlDelight(
         db = database,

@@ -28,3 +28,12 @@ jobs:
 
       - name: Verify Apple builds
         run: scripts/verify_apple_builds.sh
+
+      - name: Upload Apple build logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apple-build-logs
+          path: |
+            /tmp/mac_build.log
+            /tmp/ios_build.log

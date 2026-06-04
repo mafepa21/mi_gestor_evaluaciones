@@ -12,6 +12,10 @@ cd "$ROOT_DIR"
 
 export GRADLE_USER_HOME="${GRADLE_USER_HOME:-$ROOT_DIR/.gradle}"
 mkdir -p "$GRADLE_USER_HOME"
+GRADLE_JAVA_HOME_ARG=""
+if [ "${CI:-}" = "true" ] && [ -n "${JAVA_HOME:-}" ]; then
+    GRADLE_JAVA_HOME_ARG="-Dorg.gradle.java.home=$JAVA_HOME"
+fi
 
 APPLE_PLATFORM="${PLATFORM_NAME:-iphonesimulator}"
 APPLE_CONFIG="${CONFIGURATION:-Debug}"
@@ -53,9 +57,9 @@ FRAMEWORK_SRC="$ROOT_DIR/data/build/bin/$SRC_ARCH/${CONF_LOWER}Framework/MiGesto
 echo "Building KMP Framework for $APPLE_PLATFORM ($APPLE_ARCHS) in $APPLE_CONFIG mode..."
 LOCAL_GRADLE_BIN="$(find "$GRADLE_USER_HOME/wrapper/dists/gradle-8.6-all" -path '*/gradle-8.6/bin/gradle' -type f 2>/dev/null | head -n 1 || true)"
 if [ -x "$LOCAL_GRADLE_BIN" ]; then
-    "$LOCAL_GRADLE_BIN" --no-daemon ":data:$GRADLE_TASK"
+    "$LOCAL_GRADLE_BIN" ${GRADLE_JAVA_HOME_ARG:+"$GRADLE_JAVA_HOME_ARG"} --no-daemon ":data:$GRADLE_TASK"
 else
-    ./gradlew --no-daemon ":data:$GRADLE_TASK"
+    ./gradlew ${GRADLE_JAVA_HOME_ARG:+"$GRADLE_JAVA_HOME_ARG"} --no-daemon ":data:$GRADLE_TASK"
 fi
 
 rm -rf "$OUT_DIR/MiGestorKit.framework"
@@ -74,4 +78,3 @@ if [ "$APPLE_PLATFORM" = "macosx" ]; then
 fi
 
 echo "SUCCESS: Framework actualizado en $OUT_DIR"
-

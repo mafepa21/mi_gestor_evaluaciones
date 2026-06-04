@@ -81,6 +81,7 @@ class KmpContainer(val driver: SqlDriver) {
         attendanceRepository = attendanceRepository,
         evaluationsRepository = evaluationsRepository,
         gradesRepository = gradesRepository,
+        notebookConfigRepository = notebookConfigRepository,
         incidentsRepository = incidentsRepository,
         calendarRepository = calendarRepository,
         plannerRepository = plannerRepository,

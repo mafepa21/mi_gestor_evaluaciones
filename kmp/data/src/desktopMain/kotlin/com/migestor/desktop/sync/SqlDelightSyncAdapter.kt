@@ -12,8 +12,11 @@ import com.migestor.shared.domain.LearningSituationVersion
 import com.migestor.shared.domain.NotebookColumnDefinition
 import com.migestor.shared.domain.NotebookColumnType
 import com.migestor.shared.domain.NotebookTab
+import com.migestor.shared.domain.PlannerEvaluationPeriod
 import com.migestor.shared.domain.PlanningSession
 import com.migestor.shared.domain.SessionStatus
+import com.migestor.shared.domain.TeacherSchedule
+import com.migestor.shared.domain.TeacherScheduleSlot
 import com.migestor.shared.domain.TeachingUnit
 import com.migestor.shared.domain.WeeklySlotTemplate
 import com.migestor.shared.sync.SyncAck
@@ -43,8 +46,10 @@ class SqlDelightSyncAdapter(
 ) : SyncStoreAdapter {
     private val json = Json { ignoreUnknownKeys = true }
     private val syncIdSnapshotByScope = mutableMapOf<String, Set<String>>()
+    private val syncSignatureSnapshotByScope = mutableMapOf<String, Map<String, String>>()
+    private val syncSyntheticUpdatedAtByScope = mutableMapOf<String, MutableMap<String, Long>>()
+    private val syncDeleteTombstonesByScope = mutableMapOf<String, MutableMap<String, SyncChange>>()
     private val rosterSnapshotByClass = mutableMapOf<Long, Set<Long>>()
-    private val weeklySlotSnapshotByClass = mutableMapOf<Long, Map<Long, String>>()
 
     // ---------------------------------------------------------------------------
     // COLLECT LOCAL CHANGES
@@ -104,19 +109,22 @@ class SqlDelightSyncAdapter(
 
             val weeklySlots = container.weeklyTemplateRepository.getSlotsForClass(schoolClass.id)
             val currentWeeklySlotIds = weeklySlots.map { it.id.toString() }.toSet()
+            val weeklySlotScope = "class:${schoolClass.id}:weekly_slot"
             val currentWeeklySlotSignatures = weeklySlots.associate { slot ->
-                slot.id to "${slot.schoolClassId}|${slot.dayOfWeek}|${slot.startTime}|${slot.endTime}"
+                slot.id.toString() to "${slot.schoolClassId}|${slot.dayOfWeek}|${slot.startTime}|${slot.endTime}"
             }
-            val previousWeeklySlotSignatures = weeklySlotSnapshotByClass[schoolClass.id]
             weeklySlots.forEach { slot ->
-                val signature = currentWeeklySlotSignatures[slot.id]
-                val previousSignature = previousWeeklySlotSignatures?.get(slot.id)
-                val shouldSendWeeklySlot = sinceEpochMs == 0L || previousSignature == null || previousSignature != signature
+                val updatedAt = syntheticUpdatedAt(
+                    scope = weeklySlotScope,
+                    id = slot.id.toString(),
+                    signature = currentWeeklySlotSignatures.getValue(slot.id.toString()),
+                )
+                val shouldSendWeeklySlot = sinceEpochMs == 0L || updatedAt > sinceEpochMs
                 if (shouldSendWeeklySlot) {
                     changes += SyncChange(
                         entity = "weekly_slot",
                         id = slot.id.toString(),
-                        updatedAtEpochMs = Clock.System.now().toEpochMilliseconds(),
+                        updatedAtEpochMs = updatedAt.takeIf { it > 0L } ?: Clock.System.now().toEpochMilliseconds(),
                         deviceId = localDeviceId,
                         payload = buildJsonObject {
                             put("id", JsonPrimitive(slot.id))
@@ -130,7 +138,8 @@ class SqlDelightSyncAdapter(
             }
             appendDeletesByScope(
                 changes = changes,
-                scope = "class:${schoolClass.id}:weekly_slot",
+                sinceEpochMs = sinceEpochMs,
+                scope = weeklySlotScope,
                 entity = "weekly_slot",
                 currentIds = currentWeeklySlotIds,
             ) { deletedId ->
@@ -139,7 +148,7 @@ class SqlDelightSyncAdapter(
                     put("schoolClassId", JsonPrimitive(schoolClass.id))
                 }
             }
-            weeklySlotSnapshotByClass[schoolClass.id] = currentWeeklySlotSignatures
+            syncSignatureSnapshotByScope[weeklySlotScope] = currentWeeklySlotSignatures
 
             // evaluations
             container.evaluationsRepository.listClassEvaluations(schoolClass.id)
@@ -213,6 +222,7 @@ class SqlDelightSyncAdapter(
             }
             appendDeletesByScope(
                 changes = changes,
+                sinceEpochMs = sinceEpochMs,
                 scope = "class:${schoolClass.id}:notebook_tab",
                 entity = "notebook_tab",
                 currentIds = currentTabIds,
@@ -247,6 +257,7 @@ class SqlDelightSyncAdapter(
             }
             appendDeletesByScope(
                 changes = changes,
+                sinceEpochMs = sinceEpochMs,
                 scope = "class:${schoolClass.id}:notebook_group",
                 entity = "notebook_group",
                 currentIds = currentWorkGroupIds,
@@ -278,6 +289,7 @@ class SqlDelightSyncAdapter(
             }
             appendDeletesByScope(
                 changes = changes,
+                sinceEpochMs = sinceEpochMs,
                 scope = "class:${schoolClass.id}:notebook_group_member",
                 entity = "notebook_group_member",
                 currentIds = currentWorkGroupMemberIds,
@@ -335,6 +347,7 @@ class SqlDelightSyncAdapter(
             }
             appendDeletesByScope(
                 changes = changes,
+                sinceEpochMs = sinceEpochMs,
                 scope = "class:${schoolClass.id}:notebook_column",
                 entity = "notebook_column",
                 currentIds = currentColumnIds,
@@ -446,6 +459,7 @@ class SqlDelightSyncAdapter(
         }
         appendDeletesByScope(
             changes = changes,
+            sinceEpochMs = sinceEpochMs,
             scope = "global:student",
             entity = "student",
             currentIds = currentStudentIds,
@@ -507,6 +521,7 @@ class SqlDelightSyncAdapter(
         }
         appendDeletesByScope(
             changes = changes,
+            sinceEpochMs = sinceEpochMs,
             scope = "global:rubric_bundle",
             entity = "rubric_bundle",
             currentIds = currentRubricIds,
@@ -569,13 +584,26 @@ class SqlDelightSyncAdapter(
         }
 
         // ── Planner: Teaching Units y Sessions ────────────────────────────────
-        container.plannerRepository.listAllTeachingUnits().forEach { unit ->
-            // Teaching units no tienen campo updatedAt aún, enviamos siempre si sinceEpochMs==0
-            if (sinceEpochMs == 0L) {
+        val teachingUnits = container.plannerRepository.listAllTeachingUnits()
+        val teachingUnitScope = "global:teaching_unit"
+        val teachingUnitSignatures = teachingUnits.associate { unit ->
+            unit.id.toString() to listOf(
+                unit.name,
+                unit.description,
+                unit.colorHex,
+                unit.groupId?.toString().orEmpty(),
+                unit.schoolClassId?.toString().orEmpty(),
+                unit.startDate?.toString().orEmpty(),
+                unit.endDate?.toString().orEmpty(),
+            ).joinToString("|")
+        }
+        teachingUnits.forEach { unit ->
+            val updatedAt = syntheticUpdatedAt(teachingUnitScope, unit.id.toString(), teachingUnitSignatures.getValue(unit.id.toString()))
+            if (sinceEpochMs == 0L || updatedAt > sinceEpochMs) {
                 changes += SyncChange(
                     entity = "teaching_unit",
                     id = unit.id.toString(),
-                    updatedAtEpochMs = Clock.System.now().toEpochMilliseconds(),
+                    updatedAtEpochMs = updatedAt.takeIf { it > 0L } ?: Clock.System.now().toEpochMilliseconds(),
                     deviceId = localDeviceId,
                     payload = buildJsonObject {
                         put("id", JsonPrimitive(unit.id))
@@ -590,13 +618,41 @@ class SqlDelightSyncAdapter(
                 )
             }
         }
+        appendDeletesByScope(
+            changes = changes,
+            sinceEpochMs = sinceEpochMs,
+            scope = teachingUnitScope,
+            entity = "teaching_unit",
+            currentIds = teachingUnits.map { it.id.toString() }.toSet(),
+        ) { deletedId ->
+            buildJsonObject { put("id", JsonPrimitive(deletedId.toLongOrNull() ?: 0L)) }
+        }
+        syncSignatureSnapshotByScope[teachingUnitScope] = teachingUnitSignatures
 
-        container.plannerRepository.listAllSessions().forEach { session ->
-            if (sinceEpochMs == 0L) {
+        val plannerSessions = container.plannerRepository.listAllSessions()
+        val plannerSessionScope = "global:planning_session"
+        val plannerSessionSignatures = plannerSessions.associate { session ->
+            session.id.toString() to listOf(
+                session.teachingUnitId.toString(),
+                session.groupId.toString(),
+                session.dayOfWeek.toString(),
+                session.period.toString(),
+                session.weekNumber.toString(),
+                session.year.toString(),
+                session.objectives,
+                session.activities,
+                session.evaluation,
+                session.linkedAssessmentIdsCsv,
+                session.status.name,
+            ).joinToString("|")
+        }
+        plannerSessions.forEach { session ->
+            val updatedAt = syntheticUpdatedAt(plannerSessionScope, session.id.toString(), plannerSessionSignatures.getValue(session.id.toString()))
+            if (sinceEpochMs == 0L || updatedAt > sinceEpochMs) {
                 changes += SyncChange(
                     entity = "planning_session",
                     id = session.id.toString(),
-                    updatedAtEpochMs = Clock.System.now().toEpochMilliseconds(),
+                    updatedAtEpochMs = updatedAt.takeIf { it > 0L } ?: Clock.System.now().toEpochMilliseconds(),
                     deviceId = localDeviceId,
                     payload = buildJsonObject {
                         put("id", JsonPrimitive(session.id))
@@ -617,6 +673,145 @@ class SqlDelightSyncAdapter(
                     }.toString(),
                 )
             }
+        }
+        appendDeletesByScope(
+            changes = changes,
+            sinceEpochMs = sinceEpochMs,
+            scope = plannerSessionScope,
+            entity = "planning_session",
+            currentIds = plannerSessions.map { it.id.toString() }.toSet(),
+        ) { deletedId ->
+            buildJsonObject { put("id", JsonPrimitive(deletedId.toLongOrNull() ?: 0L)) }
+        }
+        syncSignatureSnapshotByScope[plannerSessionScope] = plannerSessionSignatures
+
+        val teacherSchedules = container.database.appDatabaseQueries.selectAllTeacherSchedules().executeAsList()
+        val currentTeacherScheduleIds = teacherSchedules.map { it.id.toString() }.toSet()
+        teacherSchedules.forEach { schedule ->
+            if (schedule.updated_at_epoch_ms > sinceEpochMs) {
+                changes += SyncChange(
+                    entity = "teacher_schedule",
+                    id = schedule.id.toString(),
+                    updatedAtEpochMs = schedule.updated_at_epoch_ms,
+                    deviceId = schedule.device_id ?: localDeviceId,
+                    payload = buildJsonObject {
+                        put("id", JsonPrimitive(schedule.id))
+                        put("ownerUserId", JsonPrimitive(schedule.owner_user_id))
+                        put("academicYearId", JsonPrimitive(schedule.academic_year_id))
+                        put("name", JsonPrimitive(schedule.name))
+                        put("startDateIso", JsonPrimitive(schedule.start_date))
+                        put("endDateIso", JsonPrimitive(schedule.end_date))
+                        put("activeWeekdaysCsv", JsonPrimitive(schedule.active_weekdays))
+                        put("authorUserId", schedule.author_user_id?.let(::JsonPrimitive) ?: JsonPrimitive(0L))
+                        put("createdAtEpochMs", JsonPrimitive(schedule.created_at_epoch_ms))
+                        put("updatedAtEpochMs", JsonPrimitive(schedule.updated_at_epoch_ms))
+                        put("associatedGroupId", schedule.associated_group_id?.let(::JsonPrimitive) ?: JsonPrimitive(0L))
+                    }.toString(),
+                )
+            }
+
+            val scheduleSlots = container.teacherScheduleRepository.listScheduleSlots(schedule.id)
+            val slotScope = "teacher_schedule:${schedule.id}:slot"
+            val slotSignatures = scheduleSlots.associate { slot ->
+                slot.id.toString() to listOf(
+                    slot.teacherScheduleId.toString(),
+                    slot.schoolClassId.toString(),
+                    slot.subjectLabel,
+                    slot.unitLabel.orEmpty(),
+                    slot.dayOfWeek.toString(),
+                    slot.startTime,
+                    slot.endTime,
+                    slot.weeklyTemplateId?.toString().orEmpty(),
+                ).joinToString("|")
+            }
+            scheduleSlots.forEach { slot ->
+                val updatedAt = syntheticUpdatedAt(slotScope, slot.id.toString(), slotSignatures.getValue(slot.id.toString()))
+                if (sinceEpochMs == 0L || updatedAt > sinceEpochMs) {
+                    changes += SyncChange(
+                        entity = "teacher_schedule_slot",
+                        id = slot.id.toString(),
+                        updatedAtEpochMs = updatedAt.takeIf { it > 0L } ?: Clock.System.now().toEpochMilliseconds(),
+                        deviceId = localDeviceId,
+                        payload = buildJsonObject {
+                            put("id", JsonPrimitive(slot.id))
+                            put("teacherScheduleId", JsonPrimitive(slot.teacherScheduleId))
+                            put("schoolClassId", JsonPrimitive(slot.schoolClassId))
+                            put("subjectLabel", JsonPrimitive(slot.subjectLabel))
+                            put("unitLabel", slot.unitLabel?.let(::JsonPrimitive) ?: JsonPrimitive(""))
+                            put("dayOfWeek", JsonPrimitive(slot.dayOfWeek))
+                            put("startTime", JsonPrimitive(slot.startTime))
+                            put("endTime", JsonPrimitive(slot.endTime))
+                            put("weeklyTemplateId", slot.weeklyTemplateId?.let(::JsonPrimitive) ?: JsonPrimitive(0L))
+                        }.toString(),
+                    )
+                }
+            }
+            appendDeletesByScope(
+                changes = changes,
+                sinceEpochMs = sinceEpochMs,
+                scope = slotScope,
+                entity = "teacher_schedule_slot",
+                currentIds = scheduleSlots.map { it.id.toString() }.toSet(),
+            ) { deletedId ->
+                buildJsonObject {
+                    put("id", JsonPrimitive(deletedId.toLongOrNull() ?: 0L))
+                    put("teacherScheduleId", JsonPrimitive(schedule.id))
+                }
+            }
+            syncSignatureSnapshotByScope[slotScope] = slotSignatures
+
+            val periods = container.teacherScheduleRepository.listEvaluationPeriods(schedule.id)
+            val periodScope = "teacher_schedule:${schedule.id}:evaluation_period"
+            val periodSignatures = periods.associate { period ->
+                period.id.toString() to listOf(
+                    period.teacherScheduleId.toString(),
+                    period.name,
+                    period.startDateIso,
+                    period.endDateIso,
+                    period.sortOrder.toString(),
+                ).joinToString("|")
+            }
+            periods.forEach { period ->
+                val updatedAt = syntheticUpdatedAt(periodScope, period.id.toString(), periodSignatures.getValue(period.id.toString()))
+                if (sinceEpochMs == 0L || updatedAt > sinceEpochMs) {
+                    changes += SyncChange(
+                        entity = "planner_evaluation_period",
+                        id = period.id.toString(),
+                        updatedAtEpochMs = updatedAt.takeIf { it > 0L } ?: Clock.System.now().toEpochMilliseconds(),
+                        deviceId = localDeviceId,
+                        payload = buildJsonObject {
+                            put("id", JsonPrimitive(period.id))
+                            put("teacherScheduleId", JsonPrimitive(period.teacherScheduleId))
+                            put("name", JsonPrimitive(period.name))
+                            put("startDateIso", JsonPrimitive(period.startDateIso))
+                            put("endDateIso", JsonPrimitive(period.endDateIso))
+                            put("sortOrder", JsonPrimitive(period.sortOrder))
+                        }.toString(),
+                    )
+                }
+            }
+            appendDeletesByScope(
+                changes = changes,
+                sinceEpochMs = sinceEpochMs,
+                scope = periodScope,
+                entity = "planner_evaluation_period",
+                currentIds = periods.map { it.id.toString() }.toSet(),
+            ) { deletedId ->
+                buildJsonObject {
+                    put("id", JsonPrimitive(deletedId.toLongOrNull() ?: 0L))
+                    put("teacherScheduleId", JsonPrimitive(schedule.id))
+                }
+            }
+            syncSignatureSnapshotByScope[periodScope] = periodSignatures
+        }
+        appendDeletesByScope(
+            changes = changes,
+            sinceEpochMs = sinceEpochMs,
+            scope = "global:teacher_schedule",
+            entity = "teacher_schedule",
+            currentIds = currentTeacherScheduleIds,
+        ) { deletedId ->
+            buildJsonObject { put("id", JsonPrimitive(deletedId.toLongOrNull() ?: 0L)) }
         }
 
         // ── Situaciones: metadatos; el DOCX se transfiere por hash fuera de JSON ──
@@ -750,18 +945,31 @@ class SqlDelightSyncAdapter(
         return changes
     }
 
+    private fun syntheticUpdatedAt(scope: String, id: String, signature: String): Long {
+        val previousSignature = syncSignatureSnapshotByScope[scope]?.get(id)
+        val updatedAtById = syncSyntheticUpdatedAtByScope.getOrPut(scope) { mutableMapOf() }
+        return when {
+            previousSignature == null -> updatedAtById[id] ?: 0L
+            previousSignature != signature -> Clock.System.now().toEpochMilliseconds().also { updatedAtById[id] = it }
+            else -> updatedAtById[id] ?: 0L
+        }
+    }
+
     private fun appendDeletesByScope(
         changes: MutableList<SyncChange>,
+        sinceEpochMs: Long,
         scope: String,
         entity: String,
         currentIds: Set<String>,
         payloadBuilder: (String) -> JsonObject,
     ) {
         val previousIds = syncIdSnapshotByScope[scope]
+        val tombstones = syncDeleteTombstonesByScope.getOrPut(scope) { mutableMapOf() }
+        val emittedIds = mutableSetOf<String>()
         if (previousIds != null) {
             val now = Clock.System.now().toEpochMilliseconds()
             previousIds.subtract(currentIds).forEach { deletedId ->
-                changes += SyncChange(
+                val change = SyncChange(
                     entity = entity,
                     id = deletedId,
                     updatedAtEpochMs = now,
@@ -769,8 +977,16 @@ class SqlDelightSyncAdapter(
                     payload = payloadBuilder(deletedId).toString(),
                     op = "delete",
                 )
+                tombstones[deletedId] = change
+                if (now > sinceEpochMs) {
+                    changes += change
+                    emittedIds += deletedId
+                }
             }
         }
+        tombstones.values
+            .filter { it.id !in currentIds && it.id !in emittedIds && it.updatedAtEpochMs > sinceEpochMs }
+            .forEach { changes += it }
         syncIdSnapshotByScope[scope] = currentIds
     }
 
@@ -1301,6 +1517,61 @@ class SqlDelightSyncAdapter(
                         applied++
                     }
 
+                    "teacher_schedule" -> {
+                        val updatedAt = Instant.fromEpochMilliseconds(change.updatedAtEpochMs)
+                        container.teacherScheduleRepository.saveSchedule(
+                            TeacherSchedule(
+                                id = payload.long("id") ?: 0L,
+                                ownerUserId = payload.long("ownerUserId") ?: 1L,
+                                academicYearId = payload.long("academicYearId") ?: 1L,
+                                name = payload.string("name") ?: "Agenda docente",
+                                startDateIso = payload.string("startDateIso") ?: "",
+                                endDateIso = payload.string("endDateIso") ?: "",
+                                activeWeekdaysCsv = payload.string("activeWeekdaysCsv") ?: "1,2,3,4,5",
+                                trace = AuditTrace(
+                                    authorUserId = payload.long("authorUserId")?.takeIf { it > 0L },
+                                    createdAt = Instant.fromEpochMilliseconds(payload.long("createdAtEpochMs") ?: change.updatedAtEpochMs),
+                                    updatedAt = updatedAt,
+                                    associatedGroupId = payload.long("associatedGroupId")?.takeIf { it > 0L },
+                                    deviceId = change.deviceId,
+                                    syncVersion = 1,
+                                ),
+                            ),
+                        )
+                        applied++
+                    }
+
+                    "teacher_schedule_slot" -> {
+                        container.teacherScheduleRepository.saveScheduleSlot(
+                            TeacherScheduleSlot(
+                                id = payload.long("id") ?: 0L,
+                                teacherScheduleId = payload.long("teacherScheduleId") ?: return@forEach,
+                                schoolClassId = payload.long("schoolClassId") ?: return@forEach,
+                                subjectLabel = payload.string("subjectLabel") ?: "",
+                                unitLabel = payload.string("unitLabel"),
+                                dayOfWeek = payload.int("dayOfWeek") ?: 1,
+                                startTime = payload.string("startTime") ?: return@forEach,
+                                endTime = payload.string("endTime") ?: return@forEach,
+                                weeklyTemplateId = payload.long("weeklyTemplateId")?.takeIf { it > 0L },
+                            ),
+                        )
+                        applied++
+                    }
+
+                    "planner_evaluation_period" -> {
+                        container.teacherScheduleRepository.saveEvaluationPeriod(
+                            PlannerEvaluationPeriod(
+                                id = payload.long("id") ?: 0L,
+                                teacherScheduleId = payload.long("teacherScheduleId") ?: return@forEach,
+                                name = payload.string("name") ?: "",
+                                startDateIso = payload.string("startDateIso") ?: "",
+                                endDateIso = payload.string("endDateIso") ?: "",
+                                sortOrder = payload.int("sortOrder") ?: 0,
+                            ),
+                        )
+                        applied++
+                    }
+
                     "rubric_bundle" -> {
                         val rubricId = payload.long("rubricId")
                         val name = payload.string("name") ?: return@forEach
@@ -1416,6 +1687,12 @@ class SqlDelightSyncAdapter(
             }
             "teaching_unit" -> {
                 payload.long("id")?.let { container.plannerRepository.deleteTeachingUnit(it); true } ?: false
+            }
+            "teacher_schedule_slot" -> {
+                payload.long("id")?.let { container.teacherScheduleRepository.deleteScheduleSlot(it); true } ?: false
+            }
+            "planner_evaluation_period" -> {
+                payload.long("id")?.let { container.teacherScheduleRepository.deleteEvaluationPeriod(it); true } ?: false
             }
             else -> false
         }

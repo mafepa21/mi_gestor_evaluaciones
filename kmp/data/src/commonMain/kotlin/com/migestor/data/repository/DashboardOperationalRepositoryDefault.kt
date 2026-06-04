@@ -1,11 +1,15 @@
 package com.migestor.data.repository
 
+import com.migestor.shared.domain.AgendaNavigationTarget
 import com.migestor.shared.domain.AgendaItem
 import com.migestor.shared.domain.AlertItem
 import com.migestor.shared.domain.DashboardFilters
 import com.migestor.shared.domain.DashboardMode
 import com.migestor.shared.domain.DashboardSnapshot
+import com.migestor.shared.domain.Evaluation
+import com.migestor.shared.domain.Grade
 import com.migestor.shared.domain.GroupSummary
+import com.migestor.shared.domain.NotebookColumnDefinition
 import com.migestor.shared.domain.PEOperationalItem
 import com.migestor.shared.domain.QuickActionCommand
 import com.migestor.shared.domain.QuickActionResult
@@ -18,6 +22,7 @@ import com.migestor.shared.repository.DashboardOperationalRepository
 import com.migestor.shared.repository.EvaluationsRepository
 import com.migestor.shared.repository.GradesRepository
 import com.migestor.shared.repository.IncidentsRepository
+import com.migestor.shared.repository.NotebookConfigRepository
 import com.migestor.shared.repository.PlannerRepository
 import com.migestor.shared.repository.RubricsRepository
 import kotlinx.datetime.Clock
@@ -36,6 +41,7 @@ class DashboardOperationalRepositoryDefault(
     private val attendanceRepository: AttendanceRepository,
     private val evaluationsRepository: EvaluationsRepository,
     private val gradesRepository: GradesRepository,
+    private val notebookConfigRepository: NotebookConfigRepository,
     private val incidentsRepository: IncidentsRepository,
     private val calendarRepository: CalendarRepository,
     private val plannerRepository: PlannerRepository,
@@ -60,6 +66,7 @@ class DashboardOperationalRepositoryDefault(
         val studentsByClass = targetClasses.associate { it.id to classesRepository.listStudentsInClass(it.id) }
         val gradesByClass = targetClasses.associate { it.id to gradesRepository.listGradesForClass(it.id) }
         val evaluationsByClass = targetClasses.associate { it.id to evaluationsRepository.listClassEvaluations(it.id) }
+        val columnsByClass = targetClasses.associate { it.id to notebookConfigRepository.listColumns(it.id) }
         val incidencesByClass = targetClasses.associate { it.id to incidentsRepository.listIncidents(it.id) }
         val attendanceByClass = targetClasses.associate {
             it.id to attendanceRepository.getAttendanceForClassBetweenDates(
@@ -234,6 +241,12 @@ class DashboardOperationalRepositoryDefault(
         }.sortedBy { it.groupName }
 
         val pendingAgenda = filteredAlerts.take(4).mapIndexed { index, alert ->
+            val navigationTargets = resolveAgendaNavigationTargets(
+                alert = alert,
+                evaluationsByClass = evaluationsByClass,
+                gradesByClass = gradesByClass,
+                columnsByClass = columnsByClass,
+            )
             AgendaItem(
                 id = "agenda_alert_$index",
                 classId = alert.classId,
@@ -242,6 +255,8 @@ class DashboardOperationalRepositoryDefault(
                 subtitle = alert.detail,
                 timeLabel = "Hoy",
                 status = "pendiente",
+                navigationKind = if (navigationTargets.isNotEmpty()) "rubric" else "none",
+                navigationTargets = navigationTargets,
             )
         }
         val sessionAgenda = filteredTodaySessions.mapIndexed { index, session ->
@@ -253,6 +268,7 @@ class DashboardOperationalRepositoryDefault(
                 subtitle = "Estado: ${session.sessionStatus}",
                 timeLabel = session.timeLabel,
                 status = session.sessionStatus,
+                navigationKind = "none",
             )
         }
         val plannerAgenda = plannerRepository.listSessionsInRange(
@@ -268,6 +284,7 @@ class DashboardOperationalRepositoryDefault(
                 subtitle = session.activities.ifBlank { session.objectives.ifBlank { "Sin detalle" } },
                 timeLabel = "P${session.period}",
                 status = session.status.label.lowercase(),
+                navigationKind = "none",
             )
         }
         val agendaItems = (sessionAgenda + plannerAgenda + pendingAgenda).distinctBy { it.id }.take(12)
@@ -316,6 +333,60 @@ class DashboardOperationalRepositoryDefault(
             agendaItems = agendaItems,
             peItems = peItems,
         )
+    }
+
+    private fun resolveAgendaNavigationTargets(
+        alert: AlertItem,
+        evaluationsByClass: Map<Long, List<Evaluation>>,
+        gradesByClass: Map<Long, List<Grade>>,
+        columnsByClass: Map<Long, List<NotebookColumnDefinition>>,
+    ): List<AgendaNavigationTarget> {
+        val classId = alert.classId ?: return emptyList()
+        val studentId = alert.studentId ?: return emptyList()
+        if (!alert.type.equals("sin_evaluar", ignoreCase = true)) return emptyList()
+
+        val rubricEvaluations = evaluationsByClass[classId]
+            .orEmpty()
+            .filter { it.rubricId != null }
+        if (rubricEvaluations.isEmpty()) return emptyList()
+
+        val gradesByEvaluationId = gradesByClass[classId]
+            .orEmpty()
+            .asSequence()
+            .filter { it.studentId == studentId && it.evaluationId != null }
+            .associateBy { it.evaluationId!! }
+        val columnsByEvaluationId = columnsByClass[classId]
+            .orEmpty()
+            .filter { it.evaluationId != null }
+            .groupBy { it.evaluationId!! }
+
+        return rubricEvaluations.mapNotNull { evaluation ->
+            val rubricId = evaluation.rubricId ?: return@mapNotNull null
+            val existingGrade = gradesByEvaluationId[evaluation.id]
+            if (existingGrade?.value != null) return@mapNotNull null
+
+            val column = columnsByEvaluationId[evaluation.id]
+                .orEmpty()
+                .firstOrNull { candidate ->
+                    val candidateRubricId = candidate.rubricId
+                    candidateRubricId == null || candidateRubricId == rubricId
+                }
+                ?: return@mapNotNull null
+
+            AgendaNavigationTarget(
+                id = "agenda_rubric_${classId}_${studentId}_${evaluation.id}",
+                navigationKind = "rubric",
+                label = listOf(evaluation.name, column.title)
+                    .distinct()
+                    .joinToString(" · ")
+                    .ifBlank { "Rúbrica pendiente" },
+                studentId = studentId,
+                classId = classId,
+                evaluationId = evaluation.id,
+                rubricId = rubricId,
+                columnId = column.id,
+            )
+        }
     }
 
     override suspend fun executeQuickAction(command: QuickActionCommand): QuickActionResult {

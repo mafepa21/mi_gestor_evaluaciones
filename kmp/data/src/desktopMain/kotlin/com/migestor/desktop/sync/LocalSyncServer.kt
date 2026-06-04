@@ -90,6 +90,50 @@ class InMemorySyncAdapter : SyncStoreAdapter {
     }
 }
 
+internal object LanSyncJsonCodec {
+    fun encodeSyncEventPayload(serverEpochMs: Long, entities: List<String>, changes: List<SyncChange>): String {
+        return buildJsonObject {
+            put("serverEpochMs", JsonPrimitive(serverEpochMs))
+            put("entities", JsonArray(entities.map { JsonPrimitive(it) }))
+            put("changes", JsonArray(changes.map(::encodeSyncChange)))
+        }.toString()
+    }
+
+    private fun encodeSyncChange(change: SyncChange): JsonObject {
+        return buildJsonObject {
+            put("entity", JsonPrimitive(change.entity))
+            put("id", JsonPrimitive(change.id))
+            put("updatedAtEpochMs", JsonPrimitive(change.updatedAtEpochMs))
+            put("deviceId", JsonPrimitive(change.deviceId))
+            put("payload", JsonPrimitive(change.payload))
+            put("op", JsonPrimitive(change.op))
+            put("schemaVersion", JsonPrimitive(change.schemaVersion))
+        }
+    }
+}
+
+internal fun filterDesktopChangesForSse(changes: List<SyncChange>, pairedDeviceId: String?): List<SyncChange> {
+    return changes.filter { change ->
+        pairedDeviceId.isNullOrBlank() || change.deviceId != pairedDeviceId
+    }
+}
+
+internal fun selectPreferredLanAddress(candidates: List<Pair<String, InetAddress>>): InetAddress? {
+    return candidates
+        .sortedWith(
+            compareBy<Pair<String, InetAddress>> { (name, _) ->
+                when {
+                    name == "en0" -> 0
+                    name.startsWith("en") -> 1
+                    name.startsWith("eth") -> 2
+                    else -> 3
+                }
+            }.thenBy { it.first }
+        )
+        .firstOrNull()
+        ?.second
+}
+
 class LocalSyncServer(
     private val port: Int = 8765,
     private val syncCoordinator: SyncCoordinator = SyncCoordinator(InMemorySyncAdapter()),
@@ -566,12 +610,23 @@ class LocalSyncServer(
     }
 
     private fun resolveLanAddressOrNull(): InetAddress? {
-        return NetworkInterface.getNetworkInterfaces()
+        val candidates = NetworkInterface.getNetworkInterfaces()
             ?.toList()
-            ?.asSequence()
-            ?.filter { it.isUp && !it.isLoopback && !it.isVirtual }
-            ?.flatMap { it.inetAddresses.toList().asSequence() }
-            ?.firstOrNull { !it.isLoopbackAddress && !it.isLinkLocalAddress && it.hostAddress?.contains(":") == false }
+            .orEmpty()
+            .asSequence()
+            .filter { it.isUp && !it.isLoopback && !it.isVirtual }
+            .flatMap { networkInterface ->
+                networkInterface.inetAddresses.toList().asSequence()
+                    .filter { address ->
+                        !address.isLoopbackAddress &&
+                            !address.isLinkLocalAddress &&
+                            address.hostAddress?.contains(":") == false
+                    }
+                    .map { address -> networkInterface.name to address }
+            }
+            .toList()
+
+        return selectPreferredLanAddress(candidates)
     }
 
     private fun sanitizeLanHost(host: String?): String? {
@@ -672,21 +727,7 @@ class LocalSyncServer(
 
         val entities = changes.map { it.entity }.distinct()
 
-        val eventJson = buildJsonObject {
-            put("serverEpochMs", JsonPrimitive(serverEpochMs))
-            put("entities", JsonArray(entities.map { JsonPrimitive(it) }))
-            put("changes", JsonArray(changes.map { change ->
-                buildJsonObject {
-                    put("entity", JsonPrimitive(change.entity))
-                    put("id", JsonPrimitive(change.id))
-                    put("updatedAtEpochMs", JsonPrimitive(change.updatedAtEpochMs))
-                    put("deviceId", JsonPrimitive(change.deviceId))
-                    put("payload", JsonPrimitive(change.payload))
-                    put("op", JsonPrimitive(change.op))
-                    put("schemaVersion", JsonPrimitive(change.schemaVersion))
-                }
-            }))
-        }.toString()
+        val eventJson = LanSyncJsonCodec.encodeSyncEventPayload(serverEpochMs, entities, changes)
 
         val ssePayload = "data: $eventJson\n\n"
         val bytes = ssePayload.toByteArray()

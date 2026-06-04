@@ -519,7 +519,28 @@ class _GridView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    int? readAlumnoId(PlutoRow row) {
+      final value = row.cells['alumno_id']?.value;
+      return switch (value) {
+        int id => id,
+        num id => id.toInt(),
+        String text => int.tryParse(text),
+        _ => null,
+      };
+    }
+
+    final filasByAlumnoId = <int, CuadernoAlumnoView>{
+      for (final fila in cuaderno.filas) fila.alumno.id: fila,
+    };
+
     final columns = <PlutoColumn>[
+      PlutoColumn(
+        title: 'AlumnoId',
+        field: 'alumno_id',
+        hide: true,
+        readOnly: true,
+        type: PlutoColumnType.number(),
+      ),
       PlutoColumn(
         title: 'Alumno',
         field: 'alumno',
@@ -542,12 +563,19 @@ class _GridView extends ConsumerWidget {
                 ),
           renderer: evaluacion.tipo == 'rubrica'
               ? (rendererContext) => _RubricaCell(
-                    value:
-                        cuaderno.filas[rendererContext.rowIdx].celdas[evaluacion.id]?.valor,
-                    onTap: () => onOpenRubrica(
-                      cuaderno.filas[rendererContext.rowIdx],
-                      evaluacion,
-                    ),
+                    value: (() {
+                      final alumnoId = readAlumnoId(rendererContext.row);
+                      final fila = alumnoId == null ? null : filasByAlumnoId[alumnoId];
+                      return fila?.celdas[evaluacion.id]?.valor;
+                    })(),
+                    onTap: () {
+                      final alumnoId = readAlumnoId(rendererContext.row);
+                      final fila = alumnoId == null ? null : filasByAlumnoId[alumnoId];
+                      if (fila == null) {
+                        return;
+                      }
+                      onOpenRubrica(fila, evaluacion);
+                    },
                   )
               : null,
           footerRenderer: (_) => Padding(
@@ -571,6 +599,7 @@ class _GridView extends ConsumerWidget {
         .map(
           (fila) => PlutoRow(
             cells: {
+              'alumno_id': PlutoCell(value: fila.alumno.id),
               'alumno': PlutoCell(
                 value: '${fila.alumno.apellidos}, ${fila.alumno.nombre}',
               ),
@@ -596,8 +625,11 @@ class _GridView extends ConsumerWidget {
         }
 
         final evaluacionId = int.parse(field.replaceFirst('eval_', ''));
-        final rowIndex = event.rowIdx;
-        final fila = cuaderno.filas[rowIndex];
+        final alumnoId = readAlumnoId(event.row);
+        final fila = alumnoId == null ? null : filasByAlumnoId[alumnoId];
+        if (fila == null) {
+          return;
+        }
         final evaluacion = evaluacionesVisibles.firstWhere(
           (item) => item.id == evaluacionId,
         );

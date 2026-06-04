@@ -1,11 +1,9 @@
 package com.migestor.desktop.ui.rubrics
 
-import com.migestor.desktop.ui.rubrics.AssignRubricToTabDialog
-
-
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -23,14 +21,21 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.animation.*
 import androidx.compose.ui.input.key.*
+import androidx.compose.ui.text.style.TextAlign
 import com.migestor.desktop.ui.components.OrganicGlassCard
+import com.migestor.desktop.ui.navigation.Navigator
+import com.migestor.desktop.ui.navigation.Screen
 import com.migestor.desktop.ui.system.LocalUiFeatureFlags
+import com.migestor.shared.domain.RubricDetail
 import com.migestor.shared.usecase.RubricImporter
+import com.migestor.shared.viewmodel.RubricBulkEvaluationTarget
 import com.migestor.shared.viewmodel.RubricsViewModel
+import com.migestor.shared.viewmodel.RubricEvaluationUsage
 import com.migestor.shared.viewmodel.RubricUiState
 import com.migestor.shared.viewmodel.RubricCriterionState
 import com.migestor.shared.viewmodel.RubricLevelState
 import com.migestor.shared.viewmodel.RubricMode
+import com.migestor.shared.viewmodel.RubricUsageState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.foundation.layout.FlowRow
@@ -39,6 +44,9 @@ import java.io.File
 import java.io.FileInputStream
 import java.awt.FileDialog
 import java.awt.Frame
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import org.apache.poi.ss.usermodel.DataFormatter
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 
@@ -60,41 +68,52 @@ fun RubricsScreen(viewModel: RubricsViewModel, onStatus: (String) -> Unit) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun RubricsBankMode(state: RubricUiState, viewModel: RubricsViewModel, onStatus: (String) -> Unit) {
+    val filteredRubrics = remember(state.savedRubrics, state.selectedFilterClassId) {
+        state.savedRubrics.filter { rubric ->
+            state.selectedFilterClassId == null || rubric.rubric.classId == state.selectedFilterClassId
+        }
+    }
+    val selectedRubric = filteredRubrics.firstOrNull { it.rubric.id == state.selectedWorkspaceRubricId }
+        ?: filteredRubrics.firstOrNull()
+    val usageSummary = selectedRubric?.let { state.usageSummaries[it.rubric.id] }
+    val canOpenBulkEvaluation = usageSummary?.evaluationCount ?: 0 > 0
+
+    LaunchedEffect(state.pendingBulkEvaluationTarget) {
+        val target = state.pendingBulkEvaluationTarget ?: return@LaunchedEffect
+        openBulkEvaluationTarget(target)
+        viewModel.consumePendingBulkEvaluationTarget()
+    }
+
+    BulkEvaluationContextDialog(state, viewModel)
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(32.dp)
+            .padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        // Top Header
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    "Banco de Rúbricas",
-                    fontSize = 32.sp,
+                    "Rúbricas",
+                    fontSize = 30.sp,
                     fontWeight = FontWeight.ExtraBold,
                     letterSpacing = (-1).sp
                 )
                 Text(
-                    "Gestiona y organiza tus herramientas de evaluación",
-                    fontSize = 16.sp,
+                    "Workspace de evaluación con tabla, detalle e impacto evaluativo",
+                    fontSize = 15.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            
-            Button(
-                onClick = { viewModel.resetBuilder() },
-                shape = RoundedCornerShape(12.dp),
-                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 12.dp)
-            ) {
-                Icon(Icons.Default.Add, null, modifier = Modifier.size(20.dp))
+
+            FilledTonalButton(onClick = { viewModel.resetBuilder() }) {
+                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Nueva Rúbrica", fontWeight = FontWeight.Bold)
+                Text("Nueva rúbrica", fontWeight = FontWeight.Bold)
             }
         }
 
-        Spacer(modifier = Modifier.height(32.dp))
-
-        // Filter Chips
         Row(
             modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -102,111 +121,54 @@ private fun RubricsBankMode(state: RubricUiState, viewModel: RubricsViewModel, o
             FilterChip(
                 selected = state.selectedFilterClassId == null,
                 onClick = { viewModel.setFilterClass(null) },
-                label = { Text("Todas") },
-                shape = RoundedCornerShape(20.dp)
+                label = { Text("Todas") }
             )
             state.allClasses.forEach { schoolClass ->
                 FilterChip(
                     selected = state.selectedFilterClassId == schoolClass.id,
                     onClick = { viewModel.setFilterClass(schoolClass.id) },
-                    label = { Text(schoolClass.name) },
-                    shape = RoundedCornerShape(20.dp)
+                    label = { Text(schoolClass.name) }
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // Grouped Rubrics
-        val groupedRubrics = if (state.selectedFilterClassId != null) {
-            val className = state.allClasses.find { it.id == state.selectedFilterClassId }?.name ?: "Sin clase"
-            mapOf(className to state.savedRubrics.filter { it.rubric.id % 2 == 0L }) // Dummy filter for now
-        } else {
-            // Group by class if linked, otherwise "Sin clasificar"
-            // For now, let's just show them in a clean list as per the request
-            mapOf("Tus Rúbricas" to state.savedRubrics)
-        }
-
-        LazyColumn(
+        Row(
             modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(32.dp), // Gestalt whitespace
-            contentPadding = PaddingValues(bottom = 40.dp)
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            groupedRubrics.forEach { (groupName, rubrics) ->
-                item {
-                    Text(
-                        groupName.uppercase(),
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        letterSpacing = 1.sp
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    
-                    @OptIn(ExperimentalLayoutApi::class)
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        rubrics.forEach { rubric ->
-                            RubricBankCard(
-                                rubric = rubric,
-                                onClick = { viewModel.loadRubric(rubric) },
-                                onDelete = { viewModel.deleteRubric(rubric.rubric.id) },
-                                onAssign = { viewModel.startAssignRubricToClass(rubric.rubric) }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun RubricBankCard(
-    rubric: com.migestor.shared.domain.RubricDetail,
-    onClick: () -> Unit,
-    onDelete: () -> Unit,
-    onAssign: () -> Unit
-) {
-    OrganicGlassCard(
-        modifier = Modifier
-            .width(280.dp)
-            .height(120.dp)
-            .clickable(onClick = onClick),
-        backgroundColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.4f)
-    ) {
-        Box(modifier = Modifier.fillMaxSize().padding(20.dp)) {
-            Column {
-                Text(
-                    rubric.rubric.name,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    SuggestionChip(
-                        onClick = {},
-                        label = { Text("${rubric.criteria.size} criterios", fontSize = 10.sp) },
-                        shape = RoundedCornerShape(8.dp)
-                    )
-                }
-            }
-
-            // Small discrete actions
-            Row(
-                modifier = Modifier.align(Alignment.TopEnd),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            WorkspaceCard(
+                title = "Banco",
+                modifier = Modifier.weight(0.48f)
             ) {
-                IconButton(onClick = onAssign, modifier = Modifier.size(44.dp)) {
-                    Icon(Icons.Default.Output, "Asignar rúbrica", tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f), modifier = Modifier.size(16.dp))
-                }
-                IconButton(onClick = onDelete, modifier = Modifier.size(44.dp)) {
-                    Icon(Icons.Default.Delete, "Eliminar rúbrica", tint = MaterialTheme.colorScheme.error.copy(alpha = 0.85f), modifier = Modifier.size(14.dp))
+                RubricsTable(
+                    rubrics = filteredRubrics,
+                    state = state,
+                    onSelect = viewModel::selectWorkspaceRubric
+                )
+            }
+
+            WorkspaceCard(
+                title = selectedRubric?.rubric?.name ?: "Detalle",
+                modifier = Modifier.weight(0.52f)
+            ) {
+                if (selectedRubric == null) {
+                    EmptyWorkspaceState("No hay rúbricas disponibles con este filtro.")
+                } else {
+                    RubricDetailPanel(
+                        rubric = selectedRubric,
+                        state = state,
+                        canOpenBulkEvaluation = canOpenBulkEvaluation,
+                        onOpenBulkEvaluation = {
+                            if (canOpenBulkEvaluation) {
+                                viewModel.requestBulkEvaluationForSelectedRubric()
+                            } else {
+                                onStatus("Esta rúbrica todavía no tiene evaluaciones vinculadas.")
+                            }
+                        },
+                        onEdit = { viewModel.loadRubric(selectedRubric) },
+                        onAssign = { viewModel.startAssignRubricToClass(selectedRubric.rubric) },
+                        onDelete = { viewModel.deleteRubric(selectedRubric.rubric.id) }
+                    )
                 }
             }
         }
@@ -254,6 +216,400 @@ private fun RubricsBankRail(viewModel: RubricsViewModel) {
             Icon(Icons.Default.AccountBalance, null, tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f), modifier = Modifier.size(20.dp))
         }
     }
+}
+
+@Composable
+private fun WorkspaceCard(
+    title: String,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Surface(
+        modifier = modifier.fillMaxHeight(),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
+        tonalElevation = 1.dp,
+        shape = RoundedCornerShape(28.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+            content = {
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                content()
+            }
+        )
+    }
+}
+
+@Composable
+private fun EmptyWorkspaceState(message: String) {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
+private fun RubricsTable(
+    rubrics: List<RubricDetail>,
+    state: RubricUiState,
+    onSelect: (Long) -> Unit
+) {
+    val headerStyle = MaterialTheme.typography.labelSmall.copy(
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+
+    if (rubrics.isEmpty()) {
+        EmptyWorkspaceState("No hay rúbricas para este filtro.")
+        return
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text("Nombre", modifier = Modifier.weight(0.34f), style = headerStyle)
+            Text("Criterios", modifier = Modifier.weight(0.11f), style = headerStyle)
+            Text("Curso", modifier = Modifier.weight(0.20f), style = headerStyle)
+            Text("Última edición", modifier = Modifier.weight(0.17f), style = headerStyle)
+            Text("Estado", modifier = Modifier.weight(0.18f), style = headerStyle)
+        }
+
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(vertical = 10.dp)
+        ) {
+            items(rubrics, key = { it.rubric.id }) { rubric ->
+                val className = state.allClasses.firstOrNull { it.id == rubric.rubric.classId }?.name ?: "Sin clase"
+                val usageSummary = state.usageSummaries[rubric.rubric.id]
+                val stateLabel = usageLabel(usageSummary?.usageState)
+                val selected = state.selectedWorkspaceRubricId == rubric.rubric.id
+
+                Surface(
+                    modifier = Modifier.fillMaxWidth().clickable { onSelect(rubric.rubric.id) },
+                    color = if (selected) {
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                    } else {
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.74f)
+                    },
+                    shape = RoundedCornerShape(18.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 14.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            rubric.rubric.name,
+                            modifier = Modifier.weight(0.34f),
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text("${rubric.criteria.size}", modifier = Modifier.weight(0.11f))
+                        Text(className, modifier = Modifier.weight(0.20f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(formatRubricDate(rubric), modifier = Modifier.weight(0.17f))
+                        SuggestionChip(
+                            onClick = { onSelect(rubric.rubric.id) },
+                            label = { Text(stateLabel, maxLines = 1) },
+                            modifier = Modifier.weight(0.18f)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun RubricDetailPanel(
+    rubric: RubricDetail,
+    state: RubricUiState,
+    canOpenBulkEvaluation: Boolean,
+    onOpenBulkEvaluation: () -> Unit,
+    onEdit: () -> Unit,
+    onAssign: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val linkedClass = state.allClasses.firstOrNull { it.id == rubric.rubric.classId }?.name ?: "Sin clase asociada"
+    val usageSummary = state.usageSummaries[rubric.rubric.id]
+    val usageCount = usageSummary?.evaluationCount ?: 0
+    val linkedClasses = usageSummary?.linkedClassNames.orEmpty()
+    val maxLevels = rubric.criteria.maxOfOrNull { it.levels.size } ?: 0
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(bottom = 8.dp)
+    ) {
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(rubric.rubric.name, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
+                Text(
+                    "Curso: $linkedClass · Última edición: ${formatRubricDate(rubric)}",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (!rubric.rubric.description.isNullOrBlank()) {
+                    Text(
+                        rubric.rubric.description!!,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        item {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                DetailMetricCard("Criterios", "${rubric.criteria.size}", Icons.Default.Checklist)
+                DetailMetricCard("Niveles", "$maxLevels", Icons.Default.LinearScale)
+                DetailMetricCard("Evaluaciones", "$usageCount", Icons.Default.Grading)
+                DetailMetricCard("Estado", usageLabel(usageSummary?.usageState), Icons.Default.Timeline)
+            }
+        }
+
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(onClick = onOpenBulkEvaluation, enabled = canOpenBulkEvaluation) {
+                    Icon(Icons.Default.ViewModule, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Evaluación masiva")
+                }
+                OutlinedButton(onClick = onEdit) {
+                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Abrir vista de edición")
+                }
+                OutlinedButton(onClick = onAssign) {
+                    Icon(Icons.Default.Output, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Asignar a clase")
+                }
+                IconButton(onClick = onDelete) {
+                    Icon(Icons.Default.Delete, contentDescription = "Eliminar rúbrica")
+                }
+            }
+        }
+
+        item {
+            Text("Impacto evaluativo", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(8.dp))
+            if (usageCount == 0) {
+                SupportingBlock("Todavía no hay evaluaciones activas enlazadas a esta rúbrica.")
+            } else {
+                SupportingBlock(
+                    "Esta rúbrica está vinculada a $usageCount evaluación(es) en ${linkedClasses.size} clase(s)."
+                )
+                if (linkedClasses.isNotEmpty()) {
+                    Spacer(Modifier.height(10.dp))
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        linkedClasses.forEach { className ->
+                            AssistChip(onClick = {}, label = { Text(className) })
+                        }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    usageSummary?.evaluationUsages?.take(6)?.forEach { usage ->
+                        EvaluationUsageRow(usage)
+                    }
+                }
+            }
+        }
+
+        item {
+            Text("Criterios y niveles", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        }
+
+        items(rubric.criteria, key = { it.criterion.id }) { criterion ->
+            Surface(
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            criterion.criterion.description,
+                            modifier = Modifier.weight(1f),
+                            fontWeight = FontWeight.Bold
+                        )
+                        AssistChip(
+                            onClick = {},
+                            label = { Text("Peso ${(criterion.criterion.weight * 100).toInt()}%") }
+                        )
+                    }
+
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        criterion.levels.sortedBy { it.order }.forEach { level ->
+                            FilterChip(
+                                selected = false,
+                                onClick = {},
+                                label = { Text("${level.name} · ${level.points}") }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetailMetricCard(label: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector) {
+    Surface(
+        modifier = Modifier.widthIn(min = 160.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+        shape = RoundedCornerShape(18.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Column {
+                Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SupportingBlock(text: String) {
+    Surface(
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.68f),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun EvaluationUsageRow(usage: RubricEvaluationUsage) {
+    Surface(
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(usage.evaluationName, fontWeight = FontWeight.Bold)
+            Text(
+                "${usage.className} · ${usage.evaluationType} · Peso ${String.format("%.1f", usage.weight)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun BulkEvaluationContextDialog(state: RubricUiState, viewModel: RubricsViewModel) {
+    val dialog = state.bulkEvaluationContextDialog ?: return
+    var selectedEvaluationId by remember(dialog) { mutableStateOf(dialog.options.firstOrNull()?.evaluationId) }
+
+    AlertDialog(
+        onDismissRequest = viewModel::dismissBulkEvaluationContextDialog,
+        title = { Text("Elegir evaluación masiva") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Selecciona la clase y evaluación que quieres abrir para ${dialog.rubricName}.")
+                dialog.options.forEach { option ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable { selectedEvaluationId = option.evaluationId }
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f))
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = selectedEvaluationId == option.evaluationId,
+                            onClick = { selectedEvaluationId = option.evaluationId }
+                        )
+                        Column {
+                            Text(option.evaluationName, fontWeight = FontWeight.Bold)
+                            Text(
+                                "${option.className} · ${option.evaluationType}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    selectedEvaluationId?.let(viewModel::confirmBulkEvaluationContext)
+                },
+                enabled = selectedEvaluationId != null
+            ) {
+                Text("Abrir")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = viewModel::dismissBulkEvaluationContextDialog) {
+                Text("Cancelar")
+            }
+        }
+    )
+}
+
+private fun openBulkEvaluationTarget(target: RubricBulkEvaluationTarget) {
+    Navigator.navigateTo(
+        Screen.RubricBulkEvaluation(
+            classId = target.classId,
+            evaluationId = target.evaluationId,
+            rubricId = target.rubricId,
+            columnId = target.columnId,
+            tabId = target.tabId
+        )
+    )
+}
+
+private fun usageLabel(state: RubricUsageState?): String = when (state) {
+    RubricUsageState.UNUSED, null -> "Sin uso"
+    RubricUsageState.SINGLE -> "1 evaluación"
+    RubricUsageState.MULTIPLE -> "En uso"
+}
+
+private fun formatRubricDate(rubric: RubricDetail): String {
+    val formatter = DateTimeFormatter.ofPattern("dd MMM yyyy").withZone(ZoneId.systemDefault())
+    return formatter.format(Instant.ofEpochMilli(rubric.rubric.trace.updatedAt.toEpochMilliseconds()))
 }
 
 @Composable

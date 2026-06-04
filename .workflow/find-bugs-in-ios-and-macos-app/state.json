@@ -1,0 +1,68 @@
+{
+  "title": "Find bugs in iOS and macOS app",
+  "slug": "find-bugs-in-ios-and-macos-app",
+  "created_at": "2026-05-30T19:53:39+00:00",
+  "status": "completed",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Read-only audit and workflow artifact writes only. Production code edits require later explicit approval."
+  },
+  "packets": [
+    {
+      "id": "P0-discovery",
+      "status": "completed",
+      "owner": "local"
+    },
+    {
+      "id": "P1-ios-swiftui-audit",
+      "status": "completed",
+      "owner": "subagent"
+    },
+    {
+      "id": "P2-macos-swiftui-audit",
+      "status": "completed",
+      "owner": "subagent"
+    },
+    {
+      "id": "P3-build-config-audit",
+      "status": "completed",
+      "owner": "subagent"
+    },
+    {
+      "id": "P4-verification",
+      "status": "completed",
+      "owner": "local"
+    },
+    {
+      "id": "P5-integration",
+      "status": "completed",
+      "owner": "local"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      {
+        "name": "xcodebuild -list",
+        "status": "passed",
+        "notes": "Detected schemes MiGestorKMPiOS and MiGestorKMPMac."
+      },
+      {
+        "name": "iOS simulator build",
+        "status": "passed",
+        "notes": "Debug iphonesimulator build succeeded with DerivedData at /private/tmp/migestor_ios_audit_derived2."
+      },
+      {
+        "name": "macOS build",
+        "status": "passed",
+        "notes": "Debug macosx build succeeded with DerivedData at /private/tmp/migestor_mac_audit_derived2."
+      },
+      {
+        "name": "macOS helper bundle check",
+        "status": "failed_expected",
+        "notes": "find found no MiGestorCommandCenter* inside the built MiGestorKMPMac.app bundle."
+      }
+    ]
+  }
+}

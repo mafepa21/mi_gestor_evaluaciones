@@ -405,6 +405,377 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-06-03 - Corrección de escala de notas por rúbricas en iOS/macOS y mapeo completo de sync
+
+Resumen:
+- Se corrigió el cálculo de la nota de rúbrica en la consulta SQLDelight `selectWeightedRubricScore` de la base de datos local para que normalice cada criterio a [0, 1] respecto a sus niveles de puntuación máximos y devuelva la nota ponderada en escala de 0.0 a 10.0, coincidiendo con la lógica de negocio Kotlin (`calculateScore` en `Models.kt`). Anteriormente, se sumaban los puntos brutos sin normalizar, provocando que se mostraran notas sobre la escala de niveles (ej. 3.00 o 4.00) pero presentadas con el sufijo "/ 10".
+- Se completó el mapeo de los campos `evidence`, `evidencePath` y `rubricSelections` en el receptor del payload de sincronización `"grade"` en iOS dentro de `KmpBridge.swift`, garantizando la consistencia y paridad bidireccional de datos al recibir sincronizaciones de notas y rúbricas desde el servidor de sync.
+- Cambios ubicados en:
+  - [AppDatabase.sq](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/data/src/commonMain/sqldelight/com/migestor/data/db/AppDatabase.sq) [MODIFY]
+  - [KmpBridge.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/KmpBridge.swift) [MODIFY]
+
+Validación:
+- Verificación automática y exitosa de las compilaciones nativas de macOS y iOS Simulator mediante `./scripts/verify_apple_builds.sh` (resumen de verificación: ambos targets COMPILADO CORRECTAMENTE).
+
+### 2026-06-03 - Sincronización en tiempo real y consistencia de rúbricas entre iOS y macOS
+
+
+Resumen:
+- Se implementó la serialización y deserialización de rúbricas (`rubricSelections`) y evidencias (`evidence`, `evidencePath`) dentro del payload de notas (`grade`) en la sincronización local.
+- Se eliminó el requisito de token bearer de emparejamiento para conexiones SSE/peticiones HTTP originadas en la dirección loopback local (`127.0.0.1` / `localhost`) en el servidor de sincronización.
+- Se implementó un monitor periódico (`dbMonitor` ejecutado cada 3 segundos) en el servidor de sincronización (`LocalSyncServer`) que detecta cambios locales en la base de datos SQLite compartida y los retransmite a través del canal de Eventos del Servidor (SSE).
+- Se configuró la app de macOS en `KmpBridge.swift` para inicializar por defecto la dirección de emparejamiento a `127.0.0.1` con credenciales locales ficticias, conectándola automáticamente al listener SSE local.
+- **Detección Automática de Cambios en Disco (macOS Bypass)**: Se implementó un monitor en Swift (`checkLocalDbFileModification`) dentro del bucle de sincronización en segundo plano de la app de macOS que detecta si el archivo SQLite local en disco (`desktop_mi_gestor_kmp.db`) ha sido modificado fuera de proceso (por el helper de sincronización tras un Push del iPad). Si detecta cambios que no proceden de una mutación local de la propia app, dispara inmediatamente la recarga de las vistas y viewmodels de SQLDelight, garantizando la paridad automática en tiempo real en la plataforma de destino sin intervención manual del usuario.
+- Cambios ubicados en:
+  - [SqlDelightSyncAdapter.kt](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/data/src/desktopMain/kotlin/com/migestor/desktop/sync/SqlDelightSyncAdapter.kt) [MODIFY]
+  - [LocalSyncServer.kt](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/data/src/desktopMain/kotlin/com/migestor/desktop/sync/LocalSyncServer.kt) [MODIFY]
+  - [KmpBridge.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/KmpBridge.swift) [MODIFY]
+
+Validación:
+- Verificación automática y exitosa de las compilaciones nativas de macOS y iOS Simulator mediante `./scripts/verify_apple_builds.sh` (resumen de verificación: ambos targets COMPILADO CORRECTAMENTE).
+
+Notas para futuras conversaciones:
+- Dado que el helper de sincronización (`MiGestorCommandCenter`) y la app de escritorio de macOS comparten el mismo archivo SQLite local, la app de macOS solo necesita aplicar refrescos de UI/cache locales tras recibir notificaciones de SSE o detectar la modificación del archivo en disco, y no requiere volver a descargar y reescribir físicamente los datos locales en el disco.
+
+### 2026-06-03 - Mejora del espacio visual y adaptabilidad en la evaluación por rúbrica (iOS/iPadOS)
+
+Resumen:
+- Se reemplazaron las presentaciones tipo `.sheet` de la evaluación individual (`RubricEvaluationView`) y masiva (`RubricBulkEvaluationSheet`) en iOS/iPadOS por `.appFullScreenCover`. Esto evita el tamaño limitado por defecto de los diálogos en iPad (540x620 pt) y protege contra cierres accidentales por deslizamiento vertical. En macOS sigue comportándose como una hoja modal de gran tamaño de forma nativa.
+- Se redujo el umbral `isWide` de `960pt`/`980pt` a `720pt` en ambas pantallas, activando el diseño nativo de dos columnas (criterios a la izquierda y resumen lateral a la derecha) y la tabla bidimensional interactiva completa (`evaluationTable`) en todas las iPads (vertical y horizontal).
+- Se rediseñó la lista de niveles en la evaluación individual (`RubricCriterionRow`) para mostrar las opciones horizontalmente en un `ScrollView(.horizontal, showsIndicators: false)` con tarjetas de tamaño fijo uniforme (`170x110 pt`), evitando abultamiento vertical en pantallas estrechas.
+- **Refinamiento de Rúbricas Masivas (Fase 2)**:
+  - Incrementado `criterionWidth` a `240` y habilitada la envoltura de cabeceras en hasta 2 líneas (`lineLimit(2)` con `.fixedSize` y `.multilineTextAlignment`) para evitar títulos recortados (ej. *"Expresión corporal y comu..."*).
+  - Rediseñados los botones de nivel en la celda de la tabla (`inlineCriterionCell`) a rectángulos redondeados con el texto del nivel completo (hasta 10 caracteres mediante `levelButtonTitle`) y un checkmark inline cuando están seleccionados, reemplazando a los antiguos círculos de `28x28`.
+  - Rediseñado el popover `RubricLevelDescriptionPopover` con un icono descriptivo, una cápsula de puntos rellena, mayor tamaño de fuente y altura de línea 4. Modificado el detent de la presentación en iOS a `.fraction(0.32)` para evitar cortes en iPhone.
+- Cambios ubicados en:
+  - [ContentView.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/ContentView.swift) [MODIFY]
+  - [NotebookModuleView.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/NotebookModuleView.swift) [MODIFY]
+  - [PendingEvaluationPickerSheet.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/AppleShared/PendingEvaluationPickerSheet.swift) [MODIFY]
+  - [RubricEvaluationView.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/RubricEvaluationView.swift) [MODIFY]
+  - [RubricBulkEvaluationSheet.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/RubricBulkEvaluationSheet.swift) [MODIFY]
+  - [AppleViewCompatibility.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/AppleShared/AppleViewCompatibility.swift) [MODIFY] (añadido overload de `appFullScreenCover` para bindings `item:`)
+
+Validación:
+- Verificación automática y exitosa de las compilaciones nativas de macOS y iOS Simulator mediante `./scripts/verify_apple_builds.sh` (resumen de verificación: ambos targets COMPILADO CORRECTAMENTE).
+
+### 2026-06-03 - Corrección de pantallas de error e indicador de carga indefinido al abrir Rúbricas (iOS/macOS)
+
+Resumen:
+- Se solucionó un bug en la evaluación masiva (bulk rubric evaluation) donde la interfaz de usuario mostraba inmediatamente la pantalla de error "No se pudo cargar la evaluación" debido a que el estado `bulkRubricEvaluationState` es inicialmente `nil` antes de recibir la primera emisión asíncrona del ViewModel. Se cambió la condición del spinner de carga a `state == nil || state!.isLoading`.
+- Se implementó un panel de error detallado en la evaluación masiva para cuando la carga finalice sin datos (`rubricDetail == nil`), mostrando el mensaje de error correspondiente y proporcionando un botón "Cerrar" que cancela la evaluación masiva y descarta la hoja (`dismiss`), evitando que el usuario quede atrapado en la pantalla de error.
+- Se corrigió un bug en la evaluación individual de rúbricas (`RubricEvaluationView`) que causaba que el indicador de carga "Cargando rúbrica..." se mostrara indefinidamente si la rúbrica seleccionada no existía o no se podía cargar (cuando el repositorio devolvía `rubricDetail = null` y `error = null`).
+- Se introdujo una bifurcación en el estado de carga individual: si la carga finaliza con `rubricDetail == nil` y no hay un error explícito en `state.error` (y el estado no está en su valor inicial por defecto `studentId == 0`), se muestra una pantalla de error limpia indicando que la rúbrica no se pudo cargar y un botón de "Cerrar" para salir.
+- Cambios ubicados en:
+  - [RubricBulkEvaluationSheet.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/RubricBulkEvaluationSheet.swift) [MODIFY]
+  - [RubricEvaluationView.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/RubricEvaluationView.swift) [MODIFY]
+
+Validación:
+- Compilación y verificación limpias de macOS (`MiGestorKMPMac`) y de iOS Simulator (`MiGestorKMPiOS`) mediante `./scripts/verify_apple_builds.sh` (COMPILACIÓN COMPLETADA CON ÉXITO).
+
+### 2026-06-02 - Resolución de warnings de recursión en Rúbricas (popovers) y compatibilidad macOS Explicit Modules (KMP Framework)
+
+Resumen:
+- Se corrigieron los errores y warnings del sistema de recursión infinita en el ciclo de AutoLayout (`-layoutSubtreeIfNeeded` / `_NSDetectedLayoutRecursion`) y desconexiones de `ViewBridge` en la evaluación individual y masiva (rúbricas) de iOS/macOS.
+- Se centralizó el estado de los popovers de descripción de nivel de rúbrica a nivel de los contenedores principales (`RubricEvaluationView` y `RubricBulkEvaluationSheet`) a través de un `@Binding` al estado único `@State private var activePopoverLevel: RubricLevel?`, eliminando las colisiones por instancias redundantes en grids repetitivos (`LazyVGrid` y celdas del grid masivo).
+- Se resolvió el error de macOS por el límite de 3 acciones nativas en `.confirmationDialog` (que causaba warnings en macOS y ocultaba evaluaciones masivas disponibles) reemplazándolo por un `.sheet` personalizado limpio con macOS HIG en `MacRubricsView.swift`.
+- Se corrigió un error crítico que impedía compilar el target macOS (`MiGestorKMPMac`) debido a la corrupción de la caché de módulos precompilados de Swift (`SwiftExplicitPrecompiledModules`), ocasionada por un bug de Xcode 16 Explicit Modules con enlaces simbólicos en frameworks estáticos.
+- Se modificó `build_apple_framework.sh` para reemplazar únicamente los enlaces simbólicos de `Headers` y `Modules` en la raíz del framework de macOS (`MiGestorKit.framework`) por directorios físicos reales copiados de `Versions/A/`. Esto soluciona de raíz el bug de Swift Explicit Modules sin duplicar binarios ejecutables ni violar las firmas de código de macOS, evitando fallos de `CodeSign` y satisfaciendo al validador de Xcode (`Versions/Current/Resources/Info.plist`).
+- Cambios ubicados en:
+  - [RubricBulkEvaluationSheet.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/RubricBulkEvaluationSheet.swift) [MODIFY]
+  - [RubricEvaluationView.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/RubricEvaluationView.swift) [MODIFY]
+  - [MacRubricsView.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/MacApp/MacRubricsView.swift) [MODIFY]
+  - [build_apple_framework.sh](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/scripts/build_apple_framework.sh) [MODIFY]
+
+Validación:
+- Compilación, firmado (`codesign`) y verificación limpios tanto de macOS Native (`MiGestorKMPMac`) como de iOS Simulator (`MiGestorKMPiOS`) mediante `./scripts/verify_apple_builds.sh` (resumen de verificación: ambos targets COMPILADO CORRECTAMENTE con éxito).
+
+### 2026-06-02 - Creación de grupos de trabajo sin pestañas en el Cuaderno (iOS/macOS)
+
+Resumen:
+- Se corrigió un bug donde intentar crear un grupo de trabajo en un curso recién creado (que no tiene pestañas configuradas en el Cuaderno) fallaba silenciosamente en el ViewModel de Kotlin y causaba inconsistencia con la interfaz de usuario en Swift, la cual mostraba un aviso optimista de éxito ("Grupo creado").
+- Se modificó `saveWorkGroup` en `NotebookViewModel` para crear de forma automática y transparente una pestaña por defecto denominada "Evaluación" si el cuaderno del curso no tiene ninguna pestaña. Esto satisface las restricciones de clave foránea de la base de datos (donde `tab_id` no puede ser nulo) y permite guardar el grupo correctamente.
+- Cambios ubicados en:
+  - [NotebookViewModel.kt](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/shared/src/commonMain/kotlin/com/migestor/shared/viewmodel/NotebookViewModel.kt) [MODIFY]
+  - [NotebookViewModelTest.kt](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/shared/src/commonTest/kotlin/com/migestor/shared/viewmodel/NotebookViewModelTest.kt) [MODIFY]
+
+Validación:
+- Se añadió un test unitario `saveWorkGroup auto creates a default tab if none exists` en Kotlin para verificar la auto-creación.
+- Compilación y verificación limpias de macOS e iOS Simulator mediante `./scripts/verify_apple_builds.sh` (COMPILADO CORRECTAMENTE).
+
+### 2026-06-02 - Adaptación y robustez en la importación de Situaciones de Aprendizaje desde DOCX (iOS/macOS)
+
+Resumen:
+- Se adaptó y mejoró el parser de importación de Situaciones de Aprendizaje (SA) desde documentos Word (.docx) para admitir tanto documentos redactados en español como en inglés (CLIL/bilingüe).
+- Se implementó un extractor de metadatos basado en expresiones regulares (`metadataValue(forPatterns:in:)`) que detecta y extrae campos como Etapa, Curso, Materia, Trimestre, Centro/Contexto y Duración sin importar el idioma de las etiquetas ni formatos (listas, negritas o bullets).
+- Se mejoró la extracción de criterios de evaluación (`criterionDrafts(from:)`) para dar soporte a formatos de una sola línea (ej. `Criterion 2.1 - Plan design: baseline diagnosis...`) separando automáticamente el identificador de la evidencia a través de dos puntos (`:`).
+- Se flexibilizó el reconocimiento de competencias clave (`CE.`) y los elementos/ponderaciones de evaluación para capturar rúbricas y porcentajes vinculados a códigos de competencias (ej. `CE 2.1 Plan Design - 40%`).
+- Se ampliaron los términos reconocidos para medidas de inclusión/DUA y se actualizó la expresión de detección de sesiones en `LearningSituationSessionSequenceDocumentImportService` para dar soporte a `SESSION` y `SESSIONS`.
+- Cambios ubicados en:
+  - [LearningSituationDocumentImportService.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/AppleShared/LearningSituationDocumentImportService.swift) [MODIFY]
+
+Validación:
+- Compilación y verificación limpias de macOS e iOS Simulator con `./scripts/verify_apple_builds.sh` (COMPILADO CORRECTAMENTE).
+
+### 2026-06-02 - Selección múltiple y eliminación en lote de columnas del Cuaderno (iOS/macOS)
+
+Resumen:
+- Se implementó la selección múltiple de columnas del cuaderno y la capacidad de eliminarlas en lote en un solo paso.
+- Se añadió un botón "Seleccionar" en el panel de Organización que activa el modo de edición y muestra checkboxes individuales en cada columna y un lock icon en las bloqueadas.
+- Al pulsar "Eliminar seleccionadas", se presenta una hoja de impacto con los totales acumulados de notas, fórmulas y medias afectadas. Si la selección incluye columnas bloqueadas, el botón final de confirmación se desactiva.
+- Se implementó el método `deleteColumns(idsAndEvalIds:)` en `KmpBridge.swift` para realizar el borrado en lote local y sincronización en una sola transacción, optimizando el rendimiento y evitando flickering de UI.
+- Cambios ubicados en:
+  - `kmp/iosApp/App/KmpBridge.swift` [MODIFY]
+  - `kmp/iosApp/App/NotebookModuleTypes.swift` [MODIFY]
+  - `kmp/iosApp/App/NotebookDeletionImpactSheet.swift` [MODIFY]
+  - `kmp/iosApp/App/NotebookModuleOrganization.swift` [MODIFY]
+  - `kmp/iosApp/App/NotebookColumnOrganizerSheet.swift` [MODIFY]
+  - `kmp/iosApp/App/NotebookModuleDialogs.swift` [MODIFY]
+
+Validación:
+- Compilación y verificación limpias de macOS e iOS Simulator con `./scripts/verify_apple_builds.sh` (COMPILADO CORRECTAMENTE).
+
+Notas para futuras conversaciones:
+- Al agregar más tipos de columnas al Cuaderno, validar que el cálculo de impacto de borrado acumulativo en `presentDeleteColumnsImpact` en `NotebookModuleOrganization.swift` incluya correctamente sus relaciones.
+
+### 2026-06-02 - Soporte de deslizamiento con dos dedos en macOS (Trackpad) sin hacer clic
+
+Resumen:
+- Se implementó la capacidad de realizar gestos de deslizamiento (*swipe-to-reveal*) utilizando dos dedos en el trackpad en macOS sin necesidad de hacer clic.
+- Creado `MacTrackpadSwipeHelper.swift` en `AppleShared/` para interceptar eventos de tipo `.scrollWheel` a nivel de ventana cuando el puntero está sobre la fila. El helper distingue inteligentemente gestos horizontales (que consumen el evento de swipe) de verticales (que se dejan pasar para el scroll normal).
+- Integrado el modificador `.macTrackpadSwipe` en las vistas de Diario, Asistencia de macOS y Cuaderno para actualizar el offset de desplazamiento en paralelo a los gestos de arrastre clásicos.
+- Cambios ubicados en:
+  - `kmp/iosApp/AppleShared/MacTrackpadSwipeHelper.swift` [NEW]
+  - `kmp/iosApp/App/DiaryWorkspaceView.swift` [MODIFY]
+  - `kmp/iosApp/MacApp/MacAttendanceDayRow.swift` [MODIFY]
+  - `kmp/iosApp/App/NotebookModuleOrganization.swift` [MODIFY]
+
+Validación:
+- Compilación y verificación limpias de macOS e iOS Simulator con `./scripts/verify_apple_builds.sh` (BUILD SUCCESSFUL).
+
+### 2026-06-02 - Corrección de gestos de deslizamiento (swipe) en SwiftUI para Diario, Asistencia en macOS y Cuaderno
+
+Resumen:
+- Se corrigió un problema de usabilidad en los gestos de deslizamiento personalizados de la aplicación (swipe actions), donde cerrar una fila o tarjeta abierta requería arrastrarla casi por completo de vuelta.
+- Se implementó una lógica de deslizamiento relativo basada en `translation.width` de modo que pequeños deslizamientos en el sentido opuesto al que están abiertas las acciones (e.g., >36pt en iOS, >44pt en macOS) cierran el elemento de inmediato.
+- Se unificó el comportamiento de la animación utilizando `uiFeatureFlags.interactionAnimation` para aprovechar las físicas de resorte compartidas de la aplicación y respetar la accesibilidad (Motion Reducido) automáticamente.
+- Cambios ubicados en:
+  - `kmp/iosApp/App/DiaryWorkspaceView.swift` [MODIFY]
+  - `kmp/iosApp/MacApp/MacAttendanceDayRow.swift` [MODIFY]
+  - `kmp/iosApp/App/NotebookModuleOrganization.swift` [MODIFY]
+
+Validación:
+- Compilación y verificación limpias de macOS e iOS Simulator con `./scripts/verify_apple_builds.sh` (BUILD SUCCESSFUL).
+
+### 2026-06-02 - Corrección de fallos en pruebas unitarias de migración SQLDelight
+
+Resumen:
+- Se solucionó un bug en las pruebas de migración de esquema (`:data:desktopTest`) de SQLDelight provocado por la adición de la migración `25.sqm`.
+- La migración `25.sqm` altera la tabla `notebook_work_groups` agregando `learning_situation_id`. Dado que los entornos de prueba creaban baselines de base de datos mínimos sin dicha tabla, la migración fallaba con `SQLiteException: no such table: notebook_work_groups` en tres tests.
+- Se introdujeron funciones auxiliares compartidas (`createLegacyClassesTable()` y `createLegacyWorkGroupsTable()`) en `SqlDriverTestHelpers.kt` para inicializar correctamente el esquema heredado en los baselines de test.
+- Cambios ubicados en:
+  - `kmp/data/src/desktopTest/kotlin/com/migestor/data/repository/SqlDriverTestHelpers.kt` [MODIFY]
+  - `kmp/data/src/desktopTest/kotlin/com/migestor/data/repository/LearningSituationsRepositorySqlDelightTest.kt` [MODIFY]
+  - `kmp/data/src/desktopTest/kotlin/com/migestor/data/repository/NotebookRepositorySqlDelightTest.kt` [MODIFY]
+  - `kmp/data/src/desktopTest/kotlin/com/migestor/data/repository/PhysicalTestsRepositorySqlDelightTest.kt` [MODIFY]
+
+Validación:
+- Ejecución exitosa de `./gradlew :data:desktopTest` pasando las 44 pruebas de persistencia.
+- Ejecución exitosa de compilaciones nativas macOS y iOS Simulator con `./scripts/verify_apple_builds.sh`.
+
+### 2026-06-01 - Corrección de alineación del Grid y Modos de Agrupación por Situaciones (iOS/macOS)
+
+Resumen:
+- Se solucionó el descuadre visual y solapamiento del grid del cuaderno al activar el agrupamiento por grupos: se convirtió `minFixedZoneWidth` en una propiedad calculada dinámicamente según las columnas fijas visibles y se aplicó `.clipped()` a los paneles laterales en `NotebookDataGrid.swift`.
+- Se introdujo `groupByWorkGroupMode` (String) en sustitución del booleano global, soportando agrupación por "No agrupar", "Grupos generales" y situaciones de aprendizaje específicas.
+- Se implementó la ordenación y agrupamiento dinámico en Swift en `filteredRows` (DataState).
+- Se reemplazó el botón simple en la cabecera "Nombre" con un menú desplegable (`Menu`) interactivo con checkmarks que permite seleccionar el modo y la situación.
+- Se actualizó el formulario de edición de grupo para mostrar una sección deshabilitada explicativa si no hay situaciones creadas, en lugar de ocultarla.
+- Cambios ubicados en:
+  - `kmp/iosApp/App/NotebookModuleView.swift` [MODIFY]
+  - `kmp/iosApp/App/NotebookDataGrid.swift` [MODIFY]
+  - `kmp/iosApp/App/NotebookModuleGridCells.swift` [MODIFY]
+  - `kmp/iosApp/App/NotebookModuleDataState.swift` [MODIFY]
+  - `kmp/iosApp/App/NotebookModuleColumnModel.swift` [MODIFY]
+  - `kmp/iosApp/App/NotebookModuleOrganization.swift` [MODIFY]
+  - `kmp/iosApp/App/NotebookColumnOrganizerSheet.swift` [MODIFY]
+  - `kmp/iosApp/App/NotebookGroupManagementSheet.swift` [MODIFY]
+
+Validación:
+- Compilación y verificación limpias de macOS e iOS Simulator con `./scripts/verify_apple_builds.sh` (resumen de verificación: ambos targets compilados correctamente con éxito).
+
+### 2026-06-01 - Resolución de interoperabilidad en la sincronización de grupos y verificación de compilación (iOS/macOS)
+
+Resumen:
+- Se resolvió un error de compilación en Swift en `KmpBridge.swift` debido a la falta del parámetro `learningSituationId` al instanciar `NotebookWorkGroup` en el gestor de eventos de sincronización.
+- Se pasó el valor `nil` (mapeado a `KotlinLong?`) para cumplir con la firma generada por el exportador de Kotlin Native a Swift, ya que los valores por defecto de parámetros Kotlin no se sobrecargan automáticamente en firmas Swift de inicializadores primarios.
+- Cambios ubicados en:
+  - `kmp/iosApp/App/KmpBridge.swift` [MODIFY]
+
+Validación:
+- Verificación automática y exitosa de las builds nativas de macOS (`MiGestorKMPMac`) y iOS Simulator (`MiGestorKMPiOS`) con `./scripts/verify_apple_builds.sh`, garantizando la estabilidad de todos los targets de la app.
+
+### 2026-06-01 - Corrección de refresco reactivo en la gestión de grupos de trabajo (iOS/macOS)
+
+Resumen:
+- Se corrigió un bug de captura de estado estático en SwiftUI que causaba que los grupos de trabajo creados no se refrescaran reactivamente en `NotebookGroupManagementSheet` ni en la asignación de miembros.
+- Se eliminó el parámetro constructor estático `data: NotebookUiStateData` de `NotebookGroupManagementSheet` y `GroupMembersView`, convirtiéndolo en una propiedad computada reactiva ligada a la propiedad `@Published` del `@ObservedObject var bridge: KmpBridge`.
+- Se actualizó la instanciación de la hoja en `NotebookModuleView.swift` para omitir el parámetro de datos eliminado.
+- Cambios ubicados en:
+  - `kmp/iosApp/App/NotebookGroupManagementSheet.swift` [MODIFY]
+  - `kmp/iosApp/App/NotebookModuleView.swift` [MODIFY]
+
+Validación:
+- Verificación automática y exitosa de las builds nativas de macOS y iOS Simulator con `./scripts/verify_apple_builds.sh` (resumen de verificación: ambos targets compilados correctamente con éxito).
+
+### 2026-06-01 - Creación y ordenación por grupos de trabajo en el Cuaderno (iOS/macOS)
+
+Resumen:
+- Se implementó la gestión completa de grupos de trabajo directamente desde el panel de "Organización" en SwiftUI (compartido entre iOS y macOS).
+- Se creó `NotebookGroupManagementSheet.swift` que permite añadir, renombrar, eliminar grupos y gestionar la pertenencia de los alumnos mediante un listado de selección interactivo.
+- Se añadió la configuración `notebook.groupByWorkGroup` en `@AppStorage` para alternar entre el orden alfabético clásico y la ordenación agrupada por grupos de trabajo en el cuaderno.
+- Se modificó `filteredRows` para aplicar ordenación estándar con `localizedStandardCompare` al estar desactivado el agrupamiento, y el agrupamiento KMP al estar activado.
+- Se modificó `NotebookModuleColumnModel.swift` para mostrar/ocultar dinámicamente la columna fija "Grupo" según el estado de la ordenación por grupos de trabajo.
+- Cambios ubicados en:
+  - `kmp/iosApp/App/NotebookGroupManagementSheet.swift` [NEW]
+  - `kmp/iosApp/App/NotebookModuleView.swift` [MODIFY]
+  - `kmp/iosApp/App/NotebookModuleOrganization.swift` [MODIFY]
+  - `kmp/iosApp/App/NotebookColumnOrganizerSheet.swift` [MODIFY]
+  - `kmp/iosApp/App/NotebookModuleDialogs.swift` [MODIFY]
+  - `kmp/iosApp/App/NotebookModuleDataState.swift` [MODIFY]
+  - `kmp/iosApp/App/NotebookModuleColumnModel.swift` [MODIFY]
+  - `kmp/iosApp/MiGestorKMPiOS.xcodeproj/project.pbxproj` [MODIFY]
+
+Validación:
+- Verificación automática y exitosa de las builds nativas de macOS Simulator y iOS Simulator con `./scripts/verify_apple_builds.sh` (BUILD SUCCEEDED para ambos targets).
+
+### 2026-05-31 - Selector desplegable del Cuaderno en macOS (sin barra lateral secundaria)
+
+Resumen:
+- Se eliminó por completo la barra lateral de clases secundaria (`classSidebar`) y el `HSplitView` en `NotebookMacLayout.swift`, maximizando el área del grid del cuaderno.
+- Se implementó un selector de clases tipo menú desplegable (`Menu`) agrupado por curso mediante submenús anidados en la barra de herramientas de macOS (`macNotebookToolbar` en `MacRootView.swift`), utilizando deduplicación de clases por ID.
+- Se implementó la selección automática de la primera clase disponible en `.onAppear` de `NotebookMacLayout.swift` para evitar pantallas vacías iniciales.
+- Se cambió el título de la ventana de macOS a dinámico, mostrando el nombre de la clase activa y una línea de estadísticas con recuentos de alumnos y filtros sin redundancias en `NotebookModuleView.swift`.
+- Se rediseñó el selector de vista en `MacRootView.swift` usando iconos compactos de SF Symbols (`tablecells` y `rectangle.3.group`) en el segmented picker.
+
+Validación:
+- Compilación y verificación limpias de macOS e iOS Simulator con `./scripts/verify_apple_builds.sh` (resumen de verificación: ambos targets compilados correctamente con éxito).
+
+Notas para futuras conversaciones:
+- No hubo cambios en el esquema de base de datos ni lógica de negocio Kotlin, limitándose exclusivamente a la capa visual SwiftUI y flujos de UI.
+
+### 2026-05-31 - Habilitación del Layout nativo de 3 columnas para el Cuaderno en macOS
+
+Resumen:
+- Se cambió la presentación del cuaderno a `.full` en macOS (`MacRootView.swift`), activando la barra lateral nativa de clases (`classSidebar`) persistida a la izquierda del grid mediante un `HSplitView`.
+- Se eliminó el menú/dropdown redundante de selección de clase en la barra de herramientas (`macNotebookToolbar`), eliminando la duplicación de controles visuales de navegación de clase y mejorando la ergonomía de la interfaz de escritorio.
+- Cambios ubicados en:
+  - `kmp/iosApp/MacApp/MacRootView.swift`
+
+Validación:
+- Compilación y verificación limpias de macOS e iOS Simulator con `./scripts/verify_apple_builds.sh` (resumen de verificación: ambos targets compilados correctamente con éxito).
+
+### 2026-05-31 - Corte P0 de fiabilidad: migraciones, situaciones, backup y helper macOS
+
+Resumen:
+- Se llevó a cabo el punto 8 de `docs/AVANCES_Y_MADUREZ_PREMIUM_2026-05-31.md`.
+- Se añadieron pruebas `desktopTest` para validar la migración SQLDelight desde versión 22 hasta el esquema actual, comprobando que las tablas de situaciones de aprendizaje y la columna `planner_session.learning_situation_session_plan_id` quedan creadas sin perder una sesión existente.
+- Se añadió cobertura de `LearningSituationsRepositorySqlDelight` para guardar/listar situación, versión importada, versión de secuencia, plan de sesión, vínculo con clase y recurso vinculado.
+- Se añadió un fixture de backup/restore para `DesktopBackupService` usando un `user.home` temporal, verificando que se crea una copia y que la restauración recupera el contenido original.
+- Se confirmó en un build macOS limpio que `MiGestorCommandCenter.app` queda embebido en el bundle de `MiGestorKMPMac.app`.
+
+Validación:
+- `./gradlew :data:desktopTest`: correcto.
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -configuration Debug -sdk macosx -derivedDataPath /private/tmp/migestor_p0_derived CODE_SIGNING_ALLOWED=NO clean build`: correcto.
+- `test -x /private/tmp/migestor_p0_derived/Build/Products/Debug/MiGestorKMPMac.app/Contents/Resources/MiGestorCommandCenter.app/Contents/MacOS/MiGestorCommandCenter`: correcto.
+
+Notas para futuras conversaciones:
+- Las pruebas nuevas viven en `kmp/data/src/desktopTest/kotlin/com/migestor/data/repository/LearningSituationsRepositorySqlDelightTest.kt`, `kmp/data/src/desktopTest/kotlin/com/migestor/data/repository/SqlDriverTestHelpers.kt` y `kmp/data/src/desktopTest/kotlin/com/migestor/data/service/DesktopBackupServiceTest.kt`.
+- Queda pendiente una prueba signed/notarized de distribución y una prueba manual de backup Apple `.migestorbackup` con adjuntos reales.
+
+### 2026-05-31 - Documento ejecutivo de avances, hilos y madurez premium
+
+Resumen:
+- Se creó `docs/AVANCES_Y_MADUREZ_PREMIUM_2026-05-31.md` para consolidar avances del repositorio, memoria, workflows `.workflow/` e hilos recientes accesibles desde Codex.
+- El documento organiza el historial por áreas: arquitectura KMP/persistencia, iOS/iPadOS, macOS, IA/informes, sync/backups y situaciones de aprendizaje.
+- También identifica lo que falta para una app madura y premium de uso diario: fiabilidad de datos, Cuaderno sin lag, macOS de escritorio real, iPadOS de aula, IA trazable y modularidad sostenible.
+- Se definió una taxonomía recomendada para próximos hilos: `MiGestor | Cuaderno | ...`, `MiGestor | macOS | ...`, `MiGestor | KMP/Data | ...`, `MiGestor | Sync/Backup | ...`, entre otras.
+
+Validación:
+- Revisión documental y estática del repositorio, `memoria`, `progress.md`, `findings.md`, `task_plan.md`, `kmp/docs/architecture/MACOS_PARITY_MATRIX.md` y reportes finales de `.workflow/`.
+- No se ejecutaron builds porque no hubo cambios de código de producción.
+
+Notas para futuras conversaciones:
+- La siguiente acción recomendada es un corte P0 de fiabilidad: migraciones SQLDelight 23/24, repositorio de situaciones de aprendizaje, backup/restore con fixture y helper macOS en build limpio.
+
+### 2026-05-28 - Síntesis pedagógica no editable (solo lectura) en el Cuaderno
+
+Resumen:
+- Se modificaron las celdas del Cuaderno (`NotebookEditableTableCell.swift`) para que la columna de Síntesis Pedagógica (`isNotebookIndividualSummaryColumn`) no sea editable mediante teclado directo.
+- En su lugar, la celda renderiza un componente `Text` estático con soporte para popover de lectura completa de texto.
+- Se mantiene el botón de generación con IA (`apple.intelligence`) si la celda está vacía y los flujos de regeneración desde el inspector contextual.
+- Cambios ubicados en:
+  - [NotebookEditableTableCell.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/NotebookEditableTableCell.swift)
+
+Validación:
+- Verificación de compilación de ambos targets Apple (`MiGestorKMPMac` para macOS y `MiGestorKMPiOS` para iOS Simulator) con éxito usando el script `./scripts/verify_apple_builds.sh`.
+
+Notas para futuras conversaciones:
+- Al no ser editable por teclado directo, se reduce el ruido de llamadas a controladores remotos de entrada de texto nativos (`TextInputUI` / `CursorUI` de macOS/iOS) y se garantiza que el contenido se rija exclusivamente por el motor de síntesis o regeneración IA.
+
+### 2026-05-28 - Rediseño visual premium y pulido estético de la pantalla del Cuaderno (Notebook)
+
+Resumen:
+- Se implementaron mejoras estéticas y de interacción en la pantalla de Cuaderno aplicando la filosofía de Steve Jobs y las directrices de `swiftui-polish` (Organic Precision v2.2).
+- Se cambiaron los fondos de `NotebookCompactCommandBar` y `NotebookTabStrip` a `.ultraThinMaterial` nativo, unificando visualmente el área de control superior en un panel translúcido de vidrio.
+- Se rediseñó el selector de clase en iOS/iPadOS con esquinas de radio `16` (`NotebookStyle.innerRadius`) y fondo `.thinMaterial`.
+- Se introdujo `NotebookScaleButtonStyle` para dar feedback físico háptico visual (escala a `0.95` con spring) a todos los botones principales de la toolbar y de las pestañas del Cuaderno.
+- Se refinó la fila de cabeceras (`headerRow`) con fondo `.thinMaterial` y se incorporó sombreado suave y rellenos translúcidos coloreados a las fichas de cabecera (`headerChip`), categorías colapsadas y carpetas expandidas.
+- Se actualizó el fondo del panel del inspector lateral y stand-alone a `.ultraThinMaterial`.
+- Cambios ubicados en:
+  - `kmp/iosApp/App/NotebookCompactCommandBar.swift`
+  - `kmp/iosApp/App/NotebookTabStrip.swift`
+  - `kmp/iosApp/App/NotebookModuleGridCells.swift`
+  - `kmp/iosApp/App/NotebookModuleView.swift`
+
+Validación:
+- Se verificó la compilación de ambos targets Apple (`MiGestorKMPMac` para macOS y `MiGestorKMPiOS` para iOS Simulator) con éxito usando el script `./scripts/verify_apple_builds.sh`.
+
+Notas para futuras conversaciones:
+- Al declarar ButtonStyles o helpers en Swift a nivel de archivo dentro de un módulo compartido, utilizar prefijos únicos o marcarlos como `private` para evitar conflictos de doble declaración en la compilación global.
+
+### 2026-05-27 - Corrección de congelamiento en el Sanitizador de Menús de macOS
+
+Resumen:
+- Se corrigió un bug crítico que provocaba que la aplicación macOS se congelara por completo debido a una recursión infinita en el ciclo de AutoLayout (`_NSDetectedLayoutRecursion`).
+- El problema ocurría cuando Apple Intelligence (Writing Tools) intentaba agregar elementos a los menús contextuales y del sistema. La clase `MacWritingToolsMenuSanitizer` en `MiGestorKMPMacApp.swift` escuchaba la notificación `NSMenu.didAddItemNotification` y modificaba el menú de forma síncrona en el hilo principal durante el propio pase de adición/diseño de AppKit.
+- Se solucionó envolviendo la llamada a `sanitizeMainMenu()` dentro de un bloque `DispatchQueue.main.async` para diferir de forma asíncrona la sanitización al siguiente ciclo de ejecución de la runloop, evitando así interferir con el pase de layout en curso.
+- Cambios ubicados en:
+  - `kmp/iosApp/MacApp/MiGestorKMPMacApp.swift` (modificado `NSMenu.didAddItemNotification` observer)
+
+Validación:
+- Se verificó la compilación de ambos targets Apple (`MiGestorKMPMac` para macOS y `MiGestorKMPiOS` para iOS Simulator) con éxito usando el script `./scripts/verify_apple_builds.sh`.
+
+Notas para futuras conversaciones:
+- Al interceptar notificaciones del ciclo de vida de la interfaz de usuario nativa de AppKit o UIKit que se disparen durante fases de disposición de elementos (layout/drawing), realizar las modificaciones de interfaz de forma diferida (`DispatchQueue.main.async`) para evitar bucles recursivos de layout.
+
+### 2026-05-27 - Marcar Festivos directamente desde el Planner Semanal (iOS/macOS)
+
+Resumen:
+- Se implementó la función para que el docente marque y desmarque cualquier día de la semana actual como festivo (no lectivo) directamente haciendo long-press/clic derecho sobre la cabecera del día en el Planner semanal.
+- Para desmarcar el festivo de forma limpia sin requerir consultas de borrado (que no están implementadas para eventos de calendario en el core), modificamos el título del `CalendarEvent` a `"Lectivo"`. El repositorio de Kotlin y el cliente de Swift ignoran este evento al no contener marcas de festivo, considerándose lectivo de nuevo de forma segura.
+- La lógica de cálculo y asignación de rangos de fechas (epoch ms de inicio y fin del día) se realiza en Swift usando el `Calendar` nativo de Foundation, evitando dependencias con tipos no expuestos de `kotlinx.datetime` en KMP y garantizando portabilidad absoluta.
+- Cambios ubicados en:
+  - `kmp/iosApp/App/KmpBridge.swift` (añadido `plannerSaveCalendarEvent`)
+  - `kmp/iosApp/App/PlannerWorkspaceIOS.swift` (ViewModel, PlannerWeekBoard y PlannerWeekCellCard de iOS/iPadOS)
+  - `kmp/iosApp/MacApp/MacModuleStubs.swift` (cabeceras, menú contextual y celdas de macOS)
+  - `kmp/iosApp/App/DashboardView.swift` (corrección de alineación horizontal `.top` en `LazyVGrid` para corregir compilación global)
+  
+Validación:
+- Compilación y verificación limpias de macOS e iOS Simulator con `./scripts/verify_apple_builds.sh` (resumen de verificación: ambos targets compilados correctamente con éxito).
+
+Notas para futuras conversaciones:
+- Al trabajar con fechas en Swift que provienen de o van hacia KMP, usar la zona horaria del sistema y el `Calendar` nativo de Swift para calcular marcas de tiempo epoch (ms) y mapearlas con los repositorios, en lugar de intentar operar tipos internos de `kotlinx.datetime` en Swift.
+
 ### 2026-05-24 - Corrección del Desplazamiento y Corte en la Columna de Nombres del Alumnado
 
 Resumen:

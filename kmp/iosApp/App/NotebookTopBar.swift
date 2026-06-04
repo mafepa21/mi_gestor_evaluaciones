@@ -182,6 +182,7 @@ struct NotebookSummaryGenerationSheet: View {
     @State private var isGenerating = false
     @State private var progressMessage: String?
     @State private var feedbackMessage: String?
+    @State private var idsWithEvidence: [Int64] = []
 
     private let reportService = AppleFoundationReportService()
 
@@ -231,9 +232,14 @@ struct NotebookSummaryGenerationSheet: View {
                 } else {
                     selectedExistingColumnId = nil
                 }
+                recalculateEvidence()
             }
             .appOnChange(of: selectedExistingColumnId) { newValue in
                 configuration = NotebookIndividualSummaryPreferences.load(columnId: newValue)
+                recalculateEvidence()
+            }
+            .appOnChange(of: configuration.evidenceSource) { _ in
+                recalculateEvidence()
             }
         }
     }
@@ -318,7 +324,7 @@ struct NotebookSummaryGenerationSheet: View {
     }
 
     private var targetSummaryText: String {
-        let evidenceCount = studentIdsWithEvidence(in: resolvedIncludedColumnIds()).count
+        let evidenceCount = idsWithEvidence.count
         let totalCount = resolvedStudentIds.count
         if totalCount == 0 {
             return "No hay alumnos disponibles para generar síntesis."
@@ -334,15 +340,18 @@ struct NotebookSummaryGenerationSheet: View {
         return data.sheet.rows.map { $0.student.id }
     }
 
-    private func studentIdsWithEvidence(in includedColumnIds: [String]) -> [Int64] {
-        bridge.generateNotebookAICommentContexts(
-            includedColumnIds: includedColumnIds,
-            studentIds: resolvedStudentIds
-        )
-        .filter { context in
-            hasUsableSummarySignal(context)
+    private func recalculateEvidence() {
+        Task {
+            let cols = resolvedIncludedColumnIds()
+            let contexts = await bridge.generateNotebookAICommentContexts(
+                includedColumnIds: cols,
+                studentIds: resolvedStudentIds
+            )
+            let filtered = contexts.filter { hasUsableSummarySignal($0) }.map(\.studentId)
+            await MainActor.run {
+                self.idsWithEvidence = filtered
+            }
         }
-        .map(\.studentId)
     }
 
     private func hasUsableSummarySignal(_ context: KmpBridge.NotebookAICommentContext) -> Bool {

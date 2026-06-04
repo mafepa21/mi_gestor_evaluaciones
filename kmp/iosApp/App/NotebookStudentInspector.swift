@@ -3,6 +3,9 @@ import PhotosUI
 import MiGestorKit
 
 struct NotebookStudentInspector: View {
+    let bridge: KmpBridge
+    let classId: Int64?
+    let studentId: Int64
     let studentName: String
     let columnTitle: String
     let valueText: String
@@ -34,11 +37,15 @@ struct NotebookStudentInspector: View {
     let onClose: (() -> Void)?
     let auditEvents: [NotebookCellAuditEvent]
 
+    @State private var trends: KmpBridge.AITrendsSnapshot? = nil
+    @State private var isLoadingTrends = false
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 inspectorHeader
                 detailsSection
+                trendsSection
                 aiSection
                 quickActions
                 evidenceEditor
@@ -47,6 +54,9 @@ struct NotebookStudentInspector: View {
             .padding(24)
         }
         .background(EvaluationBackdrop())
+        .task(id: studentId) {
+            await loadTrends()
+        }
     }
 
     private var inspectorHeader: some View {
@@ -312,6 +322,149 @@ struct NotebookStudentInspector: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private var trendsSection: some View {
+        NotebookInspectorSection(title: "Análisis de Tendencias IA", systemImage: "chart.line.uptrend.xyaxis") {
+            if isLoadingTrends {
+                HStack {
+                    Spacer()
+                    ProgressView()
+                        .tint(NotebookStyle.primaryTint)
+                    Spacer()
+                }
+                .padding(.vertical, 8)
+            } else if let trends = trends {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 8) {
+                        let directionInfo = trendDirectionInfo(trends.trendDirection, delta: trends.averageGradeDelta)
+                        Image(systemName: directionInfo.icon)
+                            .foregroundStyle(directionInfo.color)
+                        Text(directionInfo.label)
+                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .foregroundStyle(directionInfo.color)
+                        
+                        Spacer()
+                        
+                        Text("Asistencia: \(IosFormatting.decimal(from: trends.attendanceRate))%")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(trendBgColor(trends.trendDirection).opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    
+                    if !trends.recentGrades.isEmpty {
+                        HStack(spacing: 4) {
+                            Text("Últimas notas:")
+                                .font(.caption.bold())
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            ForEach(trends.recentGrades.prefix(5), id: \.self) { grade in
+                                Text(IosFormatting.decimal(from: grade))
+                                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(NotebookStyle.surfaceSoft, in: RoundedRectangle(cornerRadius: 6))
+                            }
+                        }
+                    }
+                    
+                    if !trends.attendanceCorrelationNote.isEmpty {
+                        Text(trends.attendanceCorrelationNote)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(3)
+                    }
+                    
+                    if !trends.behaviorIncidentSummary.isEmpty {
+                        Text(trends.behaviorIncidentSummary)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(3)
+                    }
+                    
+                    Divider()
+                        .background(NotebookStyle.softBorder)
+                    
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Cobertura Curricular LOMLOE")
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Text("\(IosFormatting.decimal(from: trends.curriculumCoveragePct))%")
+                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .foregroundStyle(NotebookStyle.primaryTint)
+                        }
+                        
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(NotebookStyle.softBorder)
+                                    .frame(height: 6)
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(NotebookStyle.primaryTint)
+                                    .frame(width: geo.size.width * CGFloat(trends.curriculumCoveragePct / 100.0), height: 6)
+                            }
+                        }
+                        .frame(height: 6)
+                    }
+                    
+                    if !trends.missingCompetencyLabels.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Falta evaluar en cuaderno:")
+                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .foregroundStyle(.secondary)
+                            
+                            FlexibleTagRow(
+                                items: trends.missingCompetencyLabels,
+                                selected: ""
+                            ) { _ in }
+                            .disabled(true)
+                        }
+                    }
+                }
+            } else {
+                Text("No hay datos históricos suficientes para trazar tendencias.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func trendDirectionInfo(_ direction: String, delta: Double) -> (icon: String, label: String, color: Color) {
+        switch direction {
+        case "UPWARD":
+            return ("arrow.up.right", "Rendimiento al alza (+ \(IosFormatting.decimal(from: delta)))", .green)
+        case "DOWNWARD":
+            return ("arrow.down.right", "Rendimiento a la baja (- \(IosFormatting.decimal(from: abs(delta))))", .red)
+        case "STABLE":
+            return ("arrow.right", "Estable", .blue)
+        default:
+            return ("questionmark.circle", "Insuficiente", .gray)
+        }
+    }
+    
+    private func trendBgColor(_ direction: String) -> Color {
+        switch direction {
+        case "UPWARD": return .green
+        case "DOWNWARD": return .red
+        case "STABLE": return .blue
+        default: return .gray
+        }
+    }
+
+    private func loadTrends() async {
+        guard let classId = classId else { return }
+        isLoadingTrends = true
+        do {
+            trends = try await bridge.getAITrendsAndMetrics(classId: classId, studentId: studentId)
+        } catch {
+            print("Error loading trends: \(error)")
+        }
+        isLoadingTrends = false
     }
 }
 

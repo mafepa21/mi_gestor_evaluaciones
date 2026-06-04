@@ -946,6 +946,10 @@ struct ReportsWorkspaceView: View {
                         if let dataQualityNote = reportContext?.dataQualityNote {
                             WorkspaceDetailBlock(title: "Calidad de datos", content: dataQualityNote)
                         }
+                        if let trends = reportContext?.trends {
+                            let trendText = "Trayectoria \(trends.trendDirection == "UPWARD" ? "ascendente" : trends.trendDirection == "DOWNWARD" ? "descendente" : "estable"). Cobertura LOMLOE: \(IosFormatting.decimal(from: trends.curriculumCoveragePct))%. Asistencia: \(IosFormatting.decimal(from: trends.attendanceRate))%."
+                            WorkspaceDetailBlock(title: "Auditoría de Tendencias IA", content: trendText)
+                        }
                     }
 
                     VStack(alignment: .leading, spacing: 14) {

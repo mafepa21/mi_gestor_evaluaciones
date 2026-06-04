@@ -54,6 +54,9 @@ struct NotebookInspectorPanel: View {
         let isSummaryColumn = isSummaryColumn(column)
 
         return NotebookStudentInspector(
+            bridge: bridge,
+            classId: currentClassId,
+            studentId: item.student.id,
             studentName: "\(item.student.firstName) \(item.student.lastName)",
             columnTitle: column.title,
             valueText: displayValue(item, column),

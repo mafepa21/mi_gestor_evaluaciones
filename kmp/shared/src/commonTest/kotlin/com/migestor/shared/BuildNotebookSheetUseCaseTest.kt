@@ -5,6 +5,11 @@ import com.migestor.shared.domain.Grade
 import com.migestor.shared.domain.NotebookColumnDefinition
 import com.migestor.shared.domain.NotebookColumnType
 import com.migestor.shared.domain.NotebookCellAnnotation
+import com.migestor.shared.domain.NotebookEmptyCellPolicy
+import com.migestor.shared.domain.NotebookAverageExclusionReason
+import com.migestor.shared.domain.NotebookColumnVisibility
+import com.migestor.shared.domain.NotebookInstrumentKind
+import com.migestor.shared.domain.NotebookScaleKind
 import com.migestor.shared.domain.NotebookTab
 import com.migestor.shared.domain.SchoolClass
 import com.migestor.shared.domain.Student
@@ -77,7 +82,8 @@ class BuildNotebookSheetUseCaseTest {
         assertEquals("notes", sheet.columns.last().id)
         assertEquals(180.0, sheet.columns.last().widthDp)
         assertNotNull(sheet.rows.first().weightedAverage)
-        assertEquals(7.2, sheet.rows.first().weightedAverage)
+        assertEquals(7.1, sheet.rows.first().weightedAverage)
+        assertTrue(sheet.rows.first().averageExplanation?.included?.any { it.columnId == "calc_final" && it.value == 7.2 } == true)
     }
 
     @Test
@@ -235,6 +241,273 @@ class BuildNotebookSheetUseCaseTest {
         )
 
         assertEquals(6.8, sheet.rows.first().weightedAverage)
+    }
+
+    @Test
+    fun `uses weighted average with custom persisted numeric columns`() = runTest {
+        val classId = 1L
+        val student = Student(id = 1, firstName = "Ana", lastName = "Lopez")
+        val evaluations = listOf(
+            Evaluation(id = 11, classId = classId, code = "EX1", name = "Examen", type = "EX", weight = 1.0),
+        )
+        val grades = listOf(
+            Grade(id = 1, classId = classId, studentId = 1, columnId = "eval_11", evaluationId = 11, value = 6.0),
+            Grade(id = 2, classId = classId, studentId = 1, columnId = "custom_1", evaluationId = null, value = 9.0),
+        )
+
+        val useCase = BuildNotebookSheetUseCase(
+            getNotebookUseCase = GetNotebookUseCase(
+                classesRepository = FakeClassesRepository2(student, classId),
+                evaluationsRepository = FakeEvaluationsRepository2(evaluations),
+                gradesRepository = FakeGradesRepository2(grades),
+                notebookCellsRepository = FakeNotebookCellsRepository2()
+            )
+        )
+
+        val sheet = useCase.build(
+            classId = classId,
+            evaluations = evaluations,
+            students = listOf(student),
+            tabs = listOf(NotebookTab(id = "eval", title = "Evaluación", order = 0)),
+            configuredColumns = listOf(
+                NotebookColumnDefinition(id = "eval_11", title = "Examen", type = NotebookColumnType.NUMERIC, evaluationId = 11L, tabIds = listOf("eval"), weight = 40.0),
+                NotebookColumnDefinition(id = "custom_1", title = "Reto", type = NotebookColumnType.NUMERIC, tabIds = listOf("eval"), weight = 60.0),
+            )
+        )
+
+        assertEquals(7.8, sheet.rows.first().weightedAverage)
+    }
+
+    @Test
+    fun `excluded columns do not affect weighted average`() = runTest {
+        val classId = 1L
+        val student = Student(id = 1, firstName = "Ana", lastName = "Lopez")
+        val evaluations = listOf(
+            Evaluation(id = 11, classId = classId, code = "EX1", name = "Examen", type = "EX", weight = 1.0),
+        )
+        val grades = listOf(
+            Grade(id = 1, classId = classId, studentId = 1, columnId = "eval_11", evaluationId = 11, value = 8.0),
+            Grade(id = 2, classId = classId, studentId = 1, columnId = "practice_1", evaluationId = null, value = 2.0),
+        )
+
+        val useCase = BuildNotebookSheetUseCase(
+            getNotebookUseCase = GetNotebookUseCase(
+                classesRepository = FakeClassesRepository2(student, classId),
+                evaluationsRepository = FakeEvaluationsRepository2(evaluations),
+                gradesRepository = FakeGradesRepository2(grades),
+                notebookCellsRepository = FakeNotebookCellsRepository2()
+            )
+        )
+
+        val sheet = useCase.build(
+            classId = classId,
+            evaluations = evaluations,
+            students = listOf(student),
+            tabs = listOf(NotebookTab(id = "eval", title = "Evaluación", order = 0)),
+            configuredColumns = listOf(
+                NotebookColumnDefinition(id = "eval_11", title = "Examen", type = NotebookColumnType.NUMERIC, evaluationId = 11L, tabIds = listOf("eval"), weight = 100.0),
+                NotebookColumnDefinition(id = "practice_1", title = "Práctica", type = NotebookColumnType.NUMERIC, tabIds = listOf("eval"), weight = 100.0, countsTowardAverage = false),
+            )
+        )
+
+        assertEquals(8.0, sheet.rows.first().weightedAverage)
+    }
+
+    @Test
+    fun `empty cells are pending and do not count as zero by default`() = runTest {
+        val classId = 1L
+        val student = Student(id = 1, firstName = "Ana", lastName = "Lopez")
+        val evaluations = listOf(
+            Evaluation(id = 11, classId = classId, code = "EX1", name = "Examen 1", type = "EX", weight = 1.0),
+            Evaluation(id = 12, classId = classId, code = "EX2", name = "Examen 2", type = "EX", weight = 1.0),
+        )
+        val grades = listOf(
+            Grade(id = 1, classId = classId, studentId = 1, columnId = "eval_11", evaluationId = 11, value = 7.0),
+        )
+
+        val useCase = BuildNotebookSheetUseCase(
+            getNotebookUseCase = GetNotebookUseCase(
+                classesRepository = FakeClassesRepository2(student, classId),
+                evaluationsRepository = FakeEvaluationsRepository2(evaluations),
+                gradesRepository = FakeGradesRepository2(grades),
+                notebookCellsRepository = FakeNotebookCellsRepository2()
+            )
+        )
+
+        val sheet = useCase.build(
+            classId = classId,
+            evaluations = evaluations,
+            students = listOf(student),
+            tabs = listOf(NotebookTab(id = "eval", title = "Evaluación", order = 0)),
+            configuredColumns = listOf(
+                NotebookColumnDefinition(id = "eval_11", title = "Examen 1", type = NotebookColumnType.NUMERIC, evaluationId = 11L, weight = 50.0),
+                NotebookColumnDefinition(id = "eval_12", title = "Examen 2", type = NotebookColumnType.NUMERIC, evaluationId = 12L, weight = 50.0),
+            )
+        )
+
+        val explanation = sheet.rows.first().averageExplanation
+        assertEquals(7.0, sheet.rows.first().weightedAverage)
+        assertEquals(50.0, explanation?.totalIncludedWeight)
+        assertEquals(NotebookAverageExclusionReason.EMPTY, explanation?.excluded?.single { it.columnId == "eval_12" }?.reason)
+    }
+
+    @Test
+    fun `empty cells can explicitly count as zero`() = runTest {
+        val classId = 1L
+        val student = Student(id = 1, firstName = "Ana", lastName = "Lopez")
+        val evaluations = listOf(
+            Evaluation(id = 11, classId = classId, code = "EX1", name = "Examen 1", type = "EX", weight = 1.0),
+            Evaluation(id = 12, classId = classId, code = "EX2", name = "Examen 2", type = "EX", weight = 1.0),
+        )
+        val grades = listOf(
+            Grade(id = 1, classId = classId, studentId = 1, columnId = "eval_11", evaluationId = 11, value = 8.0),
+        )
+
+        val useCase = BuildNotebookSheetUseCase(
+            getNotebookUseCase = GetNotebookUseCase(
+                classesRepository = FakeClassesRepository2(student, classId),
+                evaluationsRepository = FakeEvaluationsRepository2(evaluations),
+                gradesRepository = FakeGradesRepository2(grades),
+                notebookCellsRepository = FakeNotebookCellsRepository2()
+            )
+        )
+
+        val sheet = useCase.build(
+            classId = classId,
+            evaluations = evaluations,
+            students = listOf(student),
+            tabs = listOf(NotebookTab(id = "eval", title = "Evaluación", order = 0)),
+            configuredColumns = listOf(
+                NotebookColumnDefinition(id = "eval_11", title = "Examen 1", type = NotebookColumnType.NUMERIC, evaluationId = 11L, weight = 50.0),
+                NotebookColumnDefinition(
+                    id = "eval_12",
+                    title = "Examen 2",
+                    type = NotebookColumnType.NUMERIC,
+                    evaluationId = 12L,
+                    weight = 50.0,
+                    emptyCellPolicy = NotebookEmptyCellPolicy.COUNT_AS_ZERO,
+                ),
+            )
+        )
+
+        val explanation = sheet.rows.first().averageExplanation
+        assertEquals(4.0, sheet.rows.first().weightedAverage)
+        assertEquals(2, explanation?.included?.size)
+        assertEquals(0.0, explanation?.included?.single { it.columnId == "eval_12" }?.value)
+    }
+
+    @Test
+    fun `raw physical marks are excluded and scaled physical scores count`() = runTest {
+        val classId = 1L
+        val student = Student(id = 1, firstName = "Ana", lastName = "Lopez")
+        val evaluations = listOf(
+            Evaluation(id = 11, classId = classId, code = "RAW", name = "Salto marca", type = "EF", weight = 1.0),
+            Evaluation(id = 12, classId = classId, code = "SCORE", name = "Salto nota", type = "EF", weight = 1.0),
+        )
+        val grades = listOf(
+            Grade(id = 1, classId = classId, studentId = 1, columnId = "eval_11", evaluationId = 11, value = 185.0),
+            Grade(id = 2, classId = classId, studentId = 1, columnId = "eval_12", evaluationId = 12, value = 9.0),
+        )
+
+        val useCase = BuildNotebookSheetUseCase(
+            getNotebookUseCase = GetNotebookUseCase(
+                classesRepository = FakeClassesRepository2(student, classId),
+                evaluationsRepository = FakeEvaluationsRepository2(evaluations),
+                gradesRepository = FakeGradesRepository2(grades),
+                notebookCellsRepository = FakeNotebookCellsRepository2()
+            )
+        )
+
+        val sheet = useCase.build(
+            classId = classId,
+            evaluations = evaluations,
+            students = listOf(student),
+            tabs = listOf(NotebookTab(id = "eval", title = "Evaluación", order = 0)),
+            configuredColumns = listOf(
+                NotebookColumnDefinition(
+                    id = "eval_11",
+                    title = "Salto · marca",
+                    type = NotebookColumnType.NUMERIC,
+                    evaluationId = 11L,
+                    instrumentKind = NotebookInstrumentKind.PHYSICAL_TEST,
+                    scaleKind = NotebookScaleKind.DISTANCE,
+                    tabIds = listOf("eval"),
+                    weight = 50.0,
+                    countsTowardAverage = true,
+                ),
+                NotebookColumnDefinition(
+                    id = "eval_12",
+                    title = "Salto · nota",
+                    type = NotebookColumnType.NUMERIC,
+                    evaluationId = 12L,
+                    instrumentKind = NotebookInstrumentKind.PHYSICAL_TEST,
+                    scaleKind = NotebookScaleKind.TEN_POINT,
+                    tabIds = listOf("eval"),
+                    weight = 50.0,
+                    countsTowardAverage = true,
+                ),
+            )
+        )
+
+        assertEquals(9.0, sheet.rows.first().weightedAverage)
+    }
+
+    @Test
+    fun `hidden and rubric columns can count while archived columns are excluded`() = runTest {
+        val classId = 1L
+        val student = Student(id = 1, firstName = "Ana", lastName = "Lopez")
+        val evaluations = emptyList<Evaluation>()
+        val grades = listOf(
+            Grade(id = 1, classId = classId, studentId = 1, columnId = "hidden_numeric", evaluationId = null, value = 6.0),
+            Grade(id = 2, classId = classId, studentId = 1, columnId = "rubric_final", evaluationId = null, value = 9.0),
+            Grade(id = 3, classId = classId, studentId = 1, columnId = "archived_numeric", evaluationId = null, value = 1.0),
+        )
+
+        val useCase = BuildNotebookSheetUseCase(
+            getNotebookUseCase = GetNotebookUseCase(
+                classesRepository = FakeClassesRepository2(student, classId),
+                evaluationsRepository = FakeEvaluationsRepository2(evaluations),
+                gradesRepository = FakeGradesRepository2(grades),
+                notebookCellsRepository = FakeNotebookCellsRepository2()
+            )
+        )
+
+        val sheet = useCase.build(
+            classId = classId,
+            evaluations = evaluations,
+            students = listOf(student),
+            tabs = listOf(NotebookTab(id = "eval", title = "Evaluación", order = 0)),
+            configuredColumns = listOf(
+                NotebookColumnDefinition(
+                    id = "hidden_numeric",
+                    title = "Oculta",
+                    type = NotebookColumnType.NUMERIC,
+                    visibility = NotebookColumnVisibility.HIDDEN,
+                    isHidden = true,
+                    weight = 2.0,
+                ),
+                NotebookColumnDefinition(
+                    id = "rubric_final",
+                    title = "Rúbrica",
+                    type = NotebookColumnType.RUBRIC,
+                    weight = 1.0,
+                ),
+                NotebookColumnDefinition(
+                    id = "archived_numeric",
+                    title = "Archivada",
+                    type = NotebookColumnType.NUMERIC,
+                    visibility = NotebookColumnVisibility.ARCHIVED,
+                    weight = 100.0,
+                ),
+            )
+        )
+
+        val explanation = sheet.rows.first().averageExplanation
+        assertEquals(7.0, sheet.rows.first().weightedAverage)
+        assertEquals(3.0, explanation?.totalIncludedWeight)
+        assertTrue(explanation?.included?.any { it.columnId == "hidden_numeric" } == true)
+        assertTrue(explanation?.included?.any { it.columnId == "rubric_final" } == true)
+        assertTrue(explanation?.excluded?.none { it.columnId == "archived_numeric" } == true)
     }
 
     @Test
@@ -409,4 +682,10 @@ private class FakeNotebookCellsRepository2(
         deviceId: String?,
         syncVersion: Long,
     ) = Unit
+
+    override fun observeCellAudit(
+        classId: Long,
+        studentId: Long,
+        columnId: String,
+    ): Flow<List<com.migestor.shared.domain.NotebookCellAuditEvent>> = flowOf(emptyList())
 }

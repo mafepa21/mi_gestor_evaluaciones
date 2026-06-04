@@ -55,19 +55,29 @@ class RubricEvaluationViewModel(
 
 
     fun loadEvaluation(studentId: Long, evaluationId: Long, rubricId: Long) {
-        _uiState.update { it.copy(isLoading = true, error = null, studentId = studentId, evaluationId = evaluationId, columnId = null) }
+        _uiState.update {
+            it.copy(
+                isLoading = true,
+                error = null,
+                studentId = studentId,
+                evaluationId = evaluationId,
+                columnId = null,
+                isSaveSuccessful = false,
+                shouldDismissDialog = false
+            )
+        }
         scope.launch {
             try {
-                val evaluation = evaluationsRepository.getEvaluation(evaluationId)
+                val evaluationDeferred = async { evaluationsRepository.getEvaluation(evaluationId) }
+                val studentDeferred = async { studentsRepository.getStudent(studentId) }
+                val rubricDeferred = async { rubricsRepository.getRubricDetail(rubricId) }
+                val assessmentsDeferred = async { rubricsRepository.listRubricAssessments(studentId, evaluationId) }
+
+                val evaluation = evaluationDeferred.await()
                 val classId = evaluation?.classId ?: 0L
-                
-                val students = studentsRepository.listStudents()
-                val student = students.find { it.id == studentId }
-                
-                val rubrics = rubricsRepository.listRubrics()
-                val rubricDetail = rubrics.find { it.rubric.id == rubricId }
-                
-                val initialAssessments = rubricsRepository.listRubricAssessments(studentId, evaluationId)
+                val student = studentDeferred.await()
+                val rubricDetail = rubricDeferred.await()
+                val initialAssessments = assessmentsDeferred.await()
                 val initialSelectedLevels = initialAssessments.associate { it.criterionId to it.levelId }
                 
                 _uiState.update { state ->
@@ -93,22 +103,23 @@ class RubricEvaluationViewModel(
             error = null,
             studentId = studentId, 
             evaluationId = evaluationId,
-            columnId = columnId
+            columnId = columnId,
+            isSaveSuccessful = false,
+            shouldDismissDialog = false
         ) }
         
         scope.launch {
             try {
-                val evaluation = evaluationsRepository.getEvaluation(evaluationId)
-                val classId = evaluation?.classId ?: 0L
+                val evaluationDeferred = async { evaluationsRepository.getEvaluation(evaluationId) }
+                val studentDeferred = async { studentsRepository.getStudent(studentId) }
+                val rubricDeferred = async { rubricsRepository.getRubricDetail(rubricId) }
+                val gradeDeferred = async { notebookRepository.getGradeForColumn(studentId, columnId) }
 
-                val students = studentsRepository.listStudents()
-                val student = students.find { it.id == studentId }
-                
-                val rubrics = rubricsRepository.listRubrics()
-                val rubricDetail = rubrics.find { it.rubric.id == rubricId }
-                
-                // Intentar cargar evaluación previa desde Grades (sistema Cuaderno)
-                val previousGrade = notebookRepository.getGradeForColumn(studentId, columnId)
+                val evaluation = evaluationDeferred.await()
+                val classId = evaluation?.classId ?: 0L
+                val student = studentDeferred.await()
+                val rubricDetail = rubricDeferred.await()
+                val previousGrade = gradeDeferred.await()
                 
                 // Si hay rubricSelections (JSON/String), parsearlo
                 val initialSelectedLevels = if (!previousGrade?.rubricSelections.isNullOrBlank()) {
@@ -169,7 +180,7 @@ class RubricEvaluationViewModel(
         }
     }
 
-    fun save(manual: Boolean = true, onSuccess: () -> Unit) {
+    fun save(manual: Boolean = true, emitNotebookRefresh: Boolean = true, onSuccess: () -> Unit) {
         val state = _uiState.value
         if (state.isSaving) return
         
@@ -200,6 +211,7 @@ class RubricEvaluationViewModel(
                     classId = classId,
                     studentId = state.studentId,
                     columnId = effectiveColumnId,
+                    evaluationId = state.evaluationId,
                     numericValue = computedScore,
                     rubricSelections = selectionsString,
                     evidence = state.notes.takeIf { it.isNotBlank() }
@@ -224,7 +236,9 @@ class RubricEvaluationViewModel(
                 // No llamamos a notebookRepository.upsertGrade de nuevo si state.columnId es redundante con effectiveColumnId
                 
                 // NOTIFICAR REFRESH
-                NotebookRefreshBus.emitRefresh()
+                if (emitNotebookRefresh) {
+                    NotebookRefreshBus.emitRefresh()
+                }
                 
                 // NOTIFICAR AL BUS PARA SINCRONIZACIÓN REACTIVA
                 RubricEvaluationBus.emit(

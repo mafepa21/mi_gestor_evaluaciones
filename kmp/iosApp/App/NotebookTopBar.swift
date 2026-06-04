@@ -2,24 +2,24 @@ import SwiftUI
 import MiGestorKit
 
 enum NotebookStyle {
-    static let outerPadding: CGFloat = 16
-    static let sectionSpacing: CGFloat = 14
-    static let stackSpacing: CGFloat = 12
+    static let outerPadding: CGFloat = IOSAppStyle.pagePadding
+    static let sectionSpacing: CGFloat = IOSAppStyle.sectionSpacing
+    static let stackSpacing: CGFloat = IOSAppStyle.cardSpacing
     static let controlSpacing: CGFloat = 8
-    static let cardRadius: CGFloat = 20
-    static let innerRadius: CGFloat = 14
-    static let chipRadius: CGFloat = 16
+    static let cardRadius: CGFloat = IOSAppStyle.cardRadius
+    static let innerRadius: CGFloat = IOSAppStyle.innerRadius
+    static let chipRadius: CGFloat = IOSAppStyle.controlRadius
     static let compactChipRadius: CGFloat = 12
     static let actionHeight: CGFloat = 44
     static let iconButtonSize: CGFloat = 44
     static let microSpacing: CGFloat = 4
-    static let border = Color.black.opacity(0.06)
-    static let softBorder = Color.black.opacity(0.04)
-    static let shadow = Color.black.opacity(0.08)
-    static let primaryTint = EvaluationDesign.accent
-    static let successTint = EvaluationDesign.success
-    static let warningTint = Color(red: 0.86, green: 0.52, blue: 0.12)
-    static let surface = appSecondarySystemBackgroundColor().opacity(0.92)
+    static let border = IOSAppStyle.cardBorder
+    static let softBorder = Color.primary.opacity(0.04)
+    static let shadow = Color.black.opacity(0.04)
+    static let primaryTint = IOSAppStyle.info
+    static let successTint = IOSAppStyle.success
+    static let warningTint = IOSAppStyle.warning
+    static let surface = IOSAppStyle.cardBackground
     static let surfaceMuted = appTertiarySystemBackgroundColor().opacity(0.88)
     static let surfaceSoft = appSecondarySystemBackgroundColor().opacity(0.78)
     static let track = appTertiarySystemFillColor().opacity(0.55)
@@ -177,13 +177,13 @@ struct NotebookSummaryGenerationSheet: View {
     let onComplete: (String, NotebookToastStyle) -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @State private var selectedExistingColumnId = ""
+    @State private var selectedExistingColumnId: String?
     @State private var configuration = NotebookIndividualSummaryConfiguration()
     @State private var isGenerating = false
     @State private var progressMessage: String?
     @State private var feedbackMessage: String?
 
-    private let aiService = AppleFoundationContextualAIService()
+    private let reportService = AppleFoundationReportService()
 
     private var notebookData: NotebookUiStateData? {
         bridge.notebookState as? NotebookUiStateData
@@ -192,10 +192,6 @@ struct NotebookSummaryGenerationSheet: View {
     private var summaryColumns: [NotebookColumnDefinition] {
         guard let data = notebookData else { return [] }
         return data.sheet.columns.filter { isNotebookIndividualSummaryColumn($0) }
-    }
-
-    private var availability: AIContextualAvailabilityState {
-        aiService.currentAvailability()
     }
 
     private var hasExistingSummary: Bool {
@@ -225,7 +221,6 @@ struct NotebookSummaryGenerationSheet: View {
                 }
             }
             .onAppear {
-                aiService.prewarm()
                 if let initialTargetColumnId,
                    summaryColumns.contains(where: { $0.id == initialTargetColumnId }) {
                     selectedExistingColumnId = initialTargetColumnId
@@ -233,114 +228,105 @@ struct NotebookSummaryGenerationSheet: View {
                 } else if let first = summaryColumns.first {
                     selectedExistingColumnId = first.id
                     configuration = NotebookIndividualSummaryPreferences.load(columnId: first.id)
+                } else {
+                    selectedExistingColumnId = nil
                 }
             }
-            .onChange(of: selectedExistingColumnId) { newValue in
-                configuration = NotebookIndividualSummaryPreferences.load(columnId: newValue.isEmpty ? nil : newValue)
+            .appOnChange(of: selectedExistingColumnId) { newValue in
+                configuration = NotebookIndividualSummaryPreferences.load(columnId: newValue)
             }
         }
     }
 
     private var introCard: some View {
-        NotebookSurface(cornerRadius: NotebookStyle.cardRadius, fill: NotebookStyle.surfaceMuted, padding: 20) {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .top, spacing: 12) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(NotebookStyle.primaryTint.opacity(0.14))
-                            .frame(width: 52, height: 52)
+        IOSSectionCard(title: "Síntesis Inteligente", systemImage: "apple.intelligence") {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(hasExistingSummary ? "Refina o actualiza la síntesis pedagógica del cuaderno." : "Genera una columna de síntesis pedagógica lista para cada alumno.")
+                    .font(IOSAppStyle.cardTitle)
+                Text("Genera una síntesis pedagógica local a partir de las evidencias del cuaderno. Apple Intelligence se podrá usar más adelante como mejora opcional.")
+                    .font(IOSAppStyle.bodyText)
+                    .foregroundStyle(.secondary)
 
-                        Image(systemName: "apple.intelligence")
-                            .font(.system(size: 24, weight: .bold))
-                            .foregroundStyle(NotebookStyle.primaryTint)
-                            .accessibilityLabel("Síntesis pedagógica")
-                    }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(hasExistingSummary ? "Refina o actualiza la síntesis pedagógica del cuaderno." : "Genera una columna de síntesis pedagógica lista para cada alumno.")
-                            .font(.title2.weight(.bold))
-                        Text(availability.message)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(availability.isAvailable ? NotebookStyle.successTint : NotebookStyle.warningTint)
-                    }
-                }
-
-                Text("La síntesis reutiliza la infraestructura IA del cuaderno, se guarda como texto editable y no impacta en la media.")
-                    .font(.subheadline)
+                Text("La síntesis se guarda como texto editable, no impacta en la media y no depende de servicios externos ni de modelos locales de Apple.")
+                    .font(IOSAppStyle.captionText)
                     .foregroundStyle(.secondary)
             }
         }
     }
 
     private var configurationCard: some View {
-        NotebookSurface(cornerRadius: NotebookStyle.cardRadius, fill: NotebookStyle.surface, padding: 20) {
+        IOSSectionCard(title: "Configuración", systemImage: "slider.horizontal.3") {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Configuración")
-                    .font(.title3.weight(.bold))
-
                 if hasExistingSummary {
                     Picker("Columna destino", selection: $selectedExistingColumnId) {
                         ForEach(summaryColumns, id: \.id) { column in
-                            Text(column.title).tag(column.id)
+                            Text(column.title).tag(Optional(column.id))
                         }
                     }
                     .pickerStyle(.menu)
                 }
 
-                HStack(spacing: 10) {
-                    NotebookPill(label: configuration.evidenceSource.title, systemImage: "tray.full", active: false, tint: NotebookStyle.primaryTint, compact: true)
-                    NotebookPill(label: configuration.length.title, systemImage: "text.alignleft", active: false, tint: NotebookStyle.primaryTint, compact: true)
-                    NotebookPill(label: configuration.generationMode.title, systemImage: "arrow.trianglehead.2.clockwise.rotate.90", active: true, tint: NotebookStyle.primaryTint, compact: true)
+                HStack(spacing: 8) {
+                    IOSStatusPill(label: configuration.evidenceSource.title, isActive: true)
+                    IOSStatusPill(label: configuration.length.title, isActive: true)
+                    IOSStatusPill(label: configuration.generationMode.title, isActive: true, tint: IOSAppStyle.warning)
                 }
 
                 Text("La configuración se toma de la columna creada desde “Síntesis pedagógica”. Si no existe ninguna, se usará la configuración por defecto.")
-                    .font(.subheadline)
+                    .font(IOSAppStyle.bodyText)
                     .foregroundStyle(.secondary)
             }
         }
     }
 
     private var generationCard: some View {
-        NotebookSurface(cornerRadius: NotebookStyle.cardRadius, fill: NotebookStyle.surfaceMuted, padding: 20) {
+        IOSSectionCard(title: "Generación", systemImage: "play.fill") {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Generación")
-                    .font(.title3.weight(.bold))
                 Text(targetSummaryText)
-                    .font(.subheadline.weight(.semibold))
+                    .font(IOSAppStyle.bodyText)
                     .foregroundStyle(.secondary)
 
                 if let progressMessage {
                     Text(progressMessage)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(NotebookStyle.primaryTint)
+                        .font(IOSAppStyle.bodyText)
+                        .foregroundStyle(IOSAppStyle.info)
                 }
 
                 if let feedbackMessage {
                     Text(feedbackMessage)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(NotebookStyle.warningTint)
+                        .font(IOSAppStyle.bodyText)
+                        .foregroundStyle(IOSAppStyle.warning)
                 }
 
-                Button {
-                    performGeneration()
-                } label: {
-                    if isGenerating {
-                        ProgressView()
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 4)
-                    } else {
-                        Label(ctaTitle, systemImage: "apple.intelligence")
-                            .frame(maxWidth: .infinity)
+                if isGenerating {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                } else {
+                    IOSPrimaryActionButton(
+                        label: ctaTitle,
+                        systemImage: "apple.intelligence",
+                        tint: IOSAppStyle.info,
+                        isEnabled: !resolvedStudentIds.isEmpty
+                    ) {
+                        performGeneration()
                     }
+                    .frame(maxWidth: .infinity, alignment: .center)
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(isGenerating || resolvedStudentIds.isEmpty || resolvedIncludedColumnIds().isEmpty)
             }
         }
     }
 
     private var targetSummaryText: String {
-        "\(resolvedStudentIds.count) alumnos preparados para síntesis individual."
+        let evidenceCount = studentIdsWithEvidence(in: resolvedIncludedColumnIds()).count
+        let totalCount = resolvedStudentIds.count
+        if totalCount == 0 {
+            return "No hay alumnos disponibles para generar síntesis."
+        }
+        if evidenceCount == totalCount {
+            return "\(evidenceCount) alumnos con datos preparados para síntesis individual."
+        }
+        return "\(evidenceCount) alumnos con señales claras; se preparará una síntesis prudente para \(totalCount - evidenceCount) sin evidencias suficientes."
     }
 
     private var resolvedStudentIds: [Int64] {
@@ -348,20 +334,50 @@ struct NotebookSummaryGenerationSheet: View {
         return data.sheet.rows.map { $0.student.id }
     }
 
+    private func studentIdsWithEvidence(in includedColumnIds: [String]) -> [Int64] {
+        bridge.generateNotebookAICommentContexts(
+            includedColumnIds: includedColumnIds,
+            studentIds: resolvedStudentIds
+        )
+        .filter { context in
+            hasUsableSummarySignal(context)
+        }
+        .map(\.studentId)
+    }
+
+    private func hasUsableSummarySignal(_ context: KmpBridge.NotebookAICommentContext) -> Bool {
+        if context.hasEnoughData { return true }
+        if context.averageScore != nil { return true }
+        if !context.relevantValues.isEmpty { return true }
+        if context.followUpCount > 0 { return true }
+        if context.incidentCount > 0 { return true }
+        if context.evidenceCount > 0 { return true }
+        if context.attendanceStatus != nil { return true }
+        return false
+    }
+
     private func resolvedIncludedColumnIds() -> [String] {
         guard let data = notebookData else { return [] }
-        let allColumns = data.sheet.columns.filter { !bridge.isNotebookAICommentColumn($0) }
+        let allColumns = data.sheet.columns.filter { column in
+            !bridge.isNotebookAICommentColumn(column)
+        }
 
         switch configuration.evidenceSource {
         case .visibleColumns:
-            return allColumns.filter { !$0.isHidden }.map(\.id)
+            return allColumns.filter(\.isVisibleInGrid).map(\.id)
         case .evaluableColumns:
-            return allColumns.filter {
-                $0.countsTowardAverage ||
-                $0.categoryKind == .evaluation ||
-                $0.type == .rubric ||
-                $0.type == .numeric ||
-                $0.type == .calculated
+            return allColumns.filter { column in
+                guard column.type != .text,
+                      column.inputKind != .evidence,
+                      column.instrumentKind != .privateComment,
+                      !bridge.isNotebookAICommentColumn(column) else {
+                    return false
+                }
+                return column.countsTowardAverage ||
+                    column.categoryKind == .evaluation ||
+                    column.type == .rubric ||
+                    column.type == .numeric ||
+                    column.type == .calculated
             }.map(\.id)
         case .allManagedColumns:
             return allColumns.map(\.id)
@@ -371,136 +387,198 @@ struct NotebookSummaryGenerationSheet: View {
     private func resolveTargetColumnId() -> String? {
         let mode = configuration.generationMode
 
-        if mode == .createNewVersion || selectedExistingColumnId.isEmpty {
+        if mode == .createNewVersion || selectedExistingColumnId == nil {
             let baseTitle = summaryColumns.first(where: { $0.id == selectedExistingColumnId })?.title
                 ?? summaryColumns.first?.title
                 ?? "Síntesis pedagógica"
             let resolvedTitle = mode == .createNewVersion ? "\(baseTitle) \(formattedRunStamp())" : baseTitle
-            guard let newColumnId = bridge.createNotebookAICommentColumn(name: resolvedTitle),
-                  let data = notebookData,
-                  let createdColumn = data.sheet.columns.first(where: { $0.id == newColumnId }) else {
+            guard let newColumnId = bridge.createNotebookAICommentColumn(name: resolvedTitle) else {
                 return nil
             }
 
-            let referenceColumn = summaryColumns.first(where: { $0.id == selectedExistingColumnId }) ?? summaryColumns.first
-            let updatedColumn = NotebookColumnDefinition(
-                id: createdColumn.id,
-                title: createdColumn.title,
-                type: createdColumn.type,
-                categoryKind: referenceColumn?.categoryKind ?? .followUp,
-                instrumentKind: createdColumn.instrumentKind,
-                inputKind: createdColumn.inputKind,
-                evaluationId: createdColumn.evaluationId,
-                rubricId: createdColumn.rubricId,
-                formula: createdColumn.formula,
-                weight: 0,
-                dateEpochMs: createdColumn.dateEpochMs,
-                unitOrSituation: NotebookIndividualSummaryPreferences.marker,
-                competencyCriteriaIds: createdColumn.competencyCriteriaIds,
-                scaleKind: createdColumn.scaleKind,
-                tabIds: createdColumn.tabIds,
-                sessions: createdColumn.sessions,
-                sharedAcrossTabs: createdColumn.sharedAcrossTabs,
-                colorHex: createdColumn.colorHex,
-                iconName: createdColumn.iconName,
-                order: createdColumn.order,
-                widthDp: createdColumn.widthDp,
-                categoryId: referenceColumn?.categoryId,
-                ordinalLevels: createdColumn.ordinalLevels,
-                availableIcons: createdColumn.availableIcons,
-                countsTowardAverage: false,
-                isPinned: referenceColumn?.isPinned ?? false,
-                isHidden: false,
-                visibility: .visible,
-                isLocked: referenceColumn?.isLocked ?? false,
-                isTemplate: referenceColumn?.isTemplate ?? false,
-                trace: createdColumn.trace
-            )
-            bridge.saveColumn(column: updatedColumn)
+            // The SwiftUI/KMP snapshot can lag right after creation; generation can use the returned id immediately.
             NotebookIndividualSummaryPreferences.save(configuration, columnId: newColumnId)
+            Task { @MainActor in
+                await Task.yield()
+                guard let data = notebookData,
+                      let createdColumn = data.sheet.columns.first(where: { $0.id == newColumnId }) else {
+                    return
+                }
+
+                let currentSummaryColumns = data.sheet.columns.filter { isNotebookIndividualSummaryColumn($0) }
+                let referenceColumn = currentSummaryColumns.first(where: { $0.id == selectedExistingColumnId }) ?? currentSummaryColumns.first
+                let updatedColumn = NotebookColumnDefinition(
+                    id: createdColumn.id,
+                    title: createdColumn.title,
+                    type: .text,
+                    categoryKind: referenceColumn?.categoryKind ?? .followUp,
+                    instrumentKind: .privateComment,
+                    inputKind: .text,
+                    evaluationId: createdColumn.evaluationId,
+                    rubricId: createdColumn.rubricId,
+                    formula: createdColumn.formula,
+                    weight: 0,
+                    dateEpochMs: createdColumn.dateEpochMs,
+                    unitOrSituation: NotebookIndividualSummaryPreferences.marker,
+                    competencyCriteriaIds: createdColumn.competencyCriteriaIds,
+                    scaleKind: .custom,
+                    tabIds: createdColumn.tabIds,
+                    sessions: createdColumn.sessions,
+                    sharedAcrossTabs: createdColumn.sharedAcrossTabs,
+                    colorHex: createdColumn.colorHex,
+                    iconName: "apple.intelligence",
+                    order: createdColumn.order,
+                    widthDp: createdColumn.widthDp,
+                    categoryId: referenceColumn?.categoryId,
+                    ordinalLevels: createdColumn.ordinalLevels,
+                    availableIcons: createdColumn.availableIcons,
+                    countsTowardAverage: false,
+                    isPinned: referenceColumn?.isPinned ?? false,
+                    isHidden: false,
+                    visibility: .visible,
+                    isLocked: referenceColumn?.isLocked ?? false,
+                    isTemplate: referenceColumn?.isTemplate ?? false,
+                    emptyCellPolicy: referenceColumn?.emptyCellPolicy ?? createdColumn.emptyCellPolicy,
+                    trace: createdColumn.trace
+                )
+                bridge.saveColumn(column: updatedColumn)
+            }
             return newColumnId
         }
 
-        return selectedExistingColumnId.isEmpty ? summaryColumns.first?.id : selectedExistingColumnId
+        return selectedExistingColumnId ?? summaryColumns.first?.id
     }
 
     private func performGeneration() {
-        let includedColumnIds = resolvedIncludedColumnIds()
-        guard !includedColumnIds.isEmpty else {
-            feedbackMessage = "Selecciona al menos una fuente de evidencias con datos."
+        let studentIds = resolvedStudentIds
+        guard !studentIds.isEmpty else {
+            feedbackMessage = "No hay alumnado disponible para generar síntesis."
             return
         }
 
         guard let targetColumnId = resolveTargetColumnId() else {
-            feedbackMessage = "No se pudo crear o resolver la columna de síntesis."
+            feedbackMessage = "No se pudo resolver la columna de síntesis."
+            return
+        }
+
+        guard let classId = bridge.currentNotebookClassId else {
+            feedbackMessage = "No se pudo resolver la clase actual para guardar la síntesis."
             return
         }
 
         let onlyEmptyCells = configuration.generationMode == .onlyEmptyCells
         isGenerating = true
         feedbackMessage = nil
-        progressMessage = nil
+        progressMessage = "Generando síntesis pedagógicas..."
 
-        Task {
-            if !availability.isAvailable {
-                await MainActor.run {
-                    feedbackMessage = availability.message
-                    isGenerating = false
-                }
-                return
-            }
-
-            let contexts = bridge.generateNotebookAICommentContexts(
-                includedColumnIds: includedColumnIds,
-                studentIds: resolvedStudentIds
-            )
-
-            if contexts.isEmpty {
-                await MainActor.run {
-                    feedbackMessage = "No hay suficiente contexto de cuaderno para generar síntesis."
-                    isGenerating = false
-                }
-                return
-            }
-
+        Task { @MainActor in
             var savedCount = 0
             var skippedCount = 0
 
-            for (index, context) in contexts.enumerated() {
-                await MainActor.run {
-                    progressMessage = "Generando \(index + 1) de \(contexts.count): \(context.studentName)"
-                }
+            for (index, studentId) in studentIds.enumerated() {
+                let studentName = notebookData?.sheet.rows.first(where: { $0.student.id == studentId })?.student.fullName ?? "alumno"
+                progressMessage = "Generando \(index + 1) de \(studentIds.count): \(studentName)"
 
+                let currentText = (try? await bridge.notebookTextCell(classId: classId, studentId: studentId, columnId: targetColumnId))
+                    ?? bridge.cellText(studentId: studentId, columnId: targetColumnId)
                 if onlyEmptyCells,
-                   !bridge.cellText(studentId: context.studentId, columnId: targetColumnId)
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                    .isEmpty {
+                   !currentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     skippedCount += 1
                     continue
                 }
 
-                do {
-                    let draft = try await aiService.generateNotebookComment(
-                        from: context,
-                        audience: .docente,
-                        tone: .claro
-                    )
-                    let text = notebookIndividualSummaryText(from: draft, length: configuration.length)
-                    bridge.saveNotebookAIComment(studentId: context.studentId, columnId: targetColumnId, text: text)
+                let saved = await generateSummaryFromReportSystem(
+                    studentId: studentId,
+                    targetColumnId: targetColumnId,
+                    termLabel: nil
+                )
+
+                if saved {
                     savedCount += 1
-                } catch {
+                } else {
                     skippedCount += 1
                 }
             }
 
-            await MainActor.run {
-                onComplete(
-                    "Síntesis guardadas: \(savedCount). Omitidas: \(skippedCount).",
-                    savedCount > 0 ? .success : .warning
-                )
-                isGenerating = false
+            isGenerating = false
+            progressMessage = nil
+
+            if savedCount > 0 {
+                onComplete("Síntesis pedagógicas guardadas: \(savedCount). Omitidas: \(skippedCount).", .success)
                 dismiss()
+            } else {
+                feedbackMessage = "No se ha podido generar ninguna síntesis. Revisa que el cuaderno tenga datos suficientes."
             }
+        }
+    }
+
+    @MainActor
+    private func generateSummaryFromReportSystem(
+        studentId: Int64,
+        targetColumnId: String,
+        termLabel: String?
+    ) async -> Bool {
+        guard let data = notebookData else { return false }
+
+        do {
+            let context = try await bridge.buildReportGenerationContext(
+                classId: data.sheet.classId,
+                studentId: studentId,
+                kind: .studentSummary,
+                termLabel: termLabel
+            )
+
+            let draft = try await reportService.generateDraft(
+                from: context,
+                audience: .docente,
+                tone: .claro
+            )
+
+            let text = compactNotebookSummary(from: draft, context: context, length: configuration.length)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+
+            guard !text.isEmpty else { return false }
+
+            try await bridge.saveNotebookAICommentDirect(
+                classId: data.sheet.classId,
+                studentId: studentId,
+                columnId: targetColumnId,
+                text: text
+            )
+
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    private func compactNotebookSummary(
+        from draft: AIReportDraft,
+        context: KmpBridge.ReportGenerationContext,
+        length: NotebookIndividualSummaryLength
+    ) -> String {
+        let teacher = draft.teacherNotesVersion.trimmingCharacters(in: .whitespacesAndNewlines)
+        let summary = draft.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        let contextSummary = context.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        let baseText = teacher.isEmpty ? (summary.isEmpty ? contextSummary : summary) : teacher
+
+        switch length {
+        case .brief:
+            let pieces = baseText
+                .split(whereSeparator: { $0.isNewline })
+                .flatMap { $0.split(separator: ".") }
+                .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            let selected = Array(pieces.prefix(2)).map { "\($0)." }
+            return selected.isEmpty ? baseText : selected.joined(separator: " ")
+        case .balanced:
+            return baseText
+        case .expanded:
+            let strengths = draft.strengths.prefix(2).joined(separator: " ")
+            let action = draft.recommendedActions.first ?? ""
+            let strengthsText = strengths.isEmpty ? "" : "\nFortalezas observables: \(strengths)"
+            let actionText = action.isEmpty ? "" : "\nPróximo paso sugerido: \(action)"
+            return baseText + strengthsText + actionText
         }
     }
 
@@ -515,6 +593,9 @@ struct NotebookTopBar: View {
     @ObservedObject var bridge: KmpBridge
     @Binding var searchText: String
     @Binding var surfaceMode: NotebookSurfaceMode
+#if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+#endif
     let navigationDirection: NotebookNavigationDirection
     let isInspectorPresented: Bool
     let isAttendanceQuickMode: Bool
@@ -529,171 +610,292 @@ struct NotebookTopBar: View {
     let onToggleAttendanceQuickMode: () -> Void
     let onMarkAllPresent: () -> Void
     let onUndo: () -> Void
-    var onGenerateSummaryFallback: (() -> Void)? = nil
-    var exportText: String? = nil
+    var showsInlineActions: Bool = true
+    var showsClassPicker: Bool = true
+    @State private var isClassPickerPresented = false
 
     private var selectedClass: SchoolClass? {
         bridge.classes.first(where: { $0.id == bridge.notebookViewModel.currentClassId?.int64Value ?? 0 })
     }
 
     private var saveBadge: (text: String, icon: String, color: Color) {
-        switch bridge.notebookSaveState {
-        case .saved:
+        if bridge.notebookSaveState == .saved {
             return ("Guardado", "checkmark.circle.fill", .secondary)
-        case .saving:
+        } else if bridge.notebookSaveState == .saving {
             return ("Guardando…", "arrow.triangle.2.circlepath", .secondary)
-        default:
+        } else if bridge.notebookSaveState == .unsaved {
             return ("Sin guardar", "circle.dotted", NotebookStyle.warningTint)
         }
+
+        return ("Estado pendiente", "circle", .secondary)
     }
 
     var body: some View {
-        HStack(spacing: 12) {
-            classPicker
-
-            TextField("Buscar alumno…", text: $searchText)
-                .textFieldStyle(.roundedBorder)
-                .frame(minWidth: 180, maxWidth: 260)
-
-            Spacer(minLength: 0)
-
-            Picker("Vista", selection: $surfaceMode) {
-                Label("Rejilla", systemImage: "rectangle.grid.2x2").tag(NotebookSurfaceMode.grid)
-                Label("Plano", systemImage: "list.bullet").tag(NotebookSurfaceMode.seatingPlan)
+        Group {
+        #if os(macOS)
+            if showsInlineActions {
+                regularTopBar(showAddColumnAction: true)
+            } else {
+                macContextTopBar
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(width: 138)
+        #else
+            if horizontalSizeClass == .compact {
+                compactTopBar
+            } else {
+                regularTopBar(showAddColumnAction: true)
+            }
+        #endif
+        }
+    }
+
+    private var macContextTopBar: some View {
+        HStack(spacing: 12) {
+            if showsClassPicker {
+                classPicker
+            }
 
             Spacer(minLength: 0)
 
             saveStatusChip
-            navigationDirectionMenu
-
-            Button(action: onMarkAllPresent) {
-                Image(systemName: "checkmark.circle.fill")
-                    .frame(width: 28, height: 28)
-            }
-            .buttonStyle(.borderless)
-            .foregroundStyle(canMarkAllPresent ? .green : .secondary)
-            .disabled(!canMarkAllPresent)
-            .help("Todos presentes")
-
-            Button(action: onToggleAttendanceQuickMode) {
-                Image(systemName: isAttendanceQuickMode ? "figure.walk.circle.fill" : "figure.walk.circle")
-                    .frame(width: 28, height: 28)
-            }
-            .buttonStyle(.borderless)
-            .foregroundStyle(isAttendanceQuickMode ? NotebookStyle.warningTint : .secondary)
-            .help("Pase rápido")
-
-            Button(action: onUndo) {
-                Image(systemName: "arrow.uturn.backward")
-                    .frame(width: 28, height: 28)
-            }
-            .buttonStyle(.borderless)
-            .foregroundStyle(canUndo ? .secondary : .tertiary)
-            .disabled(!canUndo)
-            .keyboardShortcut("z", modifiers: .command)
-            .help("Deshacer último cambio")
-
-            Button(action: onOpenOrganizationMenu) {
-                Image(systemName: "rectangle.3.group")
-                    .frame(width: 28, height: 28)
-            }
-            .buttonStyle(.borderless)
-            .foregroundStyle(.secondary)
-            .help("Columnas visibles")
-
-            Button(action: onToggleInspector) {
-                Image(systemName: isInspectorPresented ? "sidebar.right" : "sidebar.right")
-                    .frame(width: 28, height: 28)
-            }
-            .buttonStyle(.borderless)
-            .foregroundStyle(isInspectorPresented ? NotebookStyle.primaryTint : .secondary)
-            .help("Inspector")
-
-            Menu {
-                Button("Organizar columnas…", action: onOpenOrganizationMenu)
-                Button("Opciones avanzadas…", action: onOpenAdvancedMenu)
-
-                if let onGenerateSummaryFallback {
-                    Divider()
-                    Button("Generar síntesis…", action: onGenerateSummaryFallback)
-                }
-
-                if let exportText {
-                    Divider()
-                    ShareLink(item: exportText) {
-                        Label("Exportar…", systemImage: "square.and.arrow.up")
-                    }
-                }
-            } label: {
-                Image(systemName: "ellipsis.circle")
-                    .frame(width: 28, height: 28)
-            }
-            .menuStyle(.borderlessButton)
-            .foregroundStyle(.secondary)
-            .help("Más opciones")
-
-            Button(action: onOpenAddColumn) {
-                Label("Nueva columna", systemImage: "plus")
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.vertical, 8)
         .background(.bar)
     }
 
-    private var navigationDirectionMenu: some View {
-        Menu {
-            ForEach(NotebookNavigationDirection.allCases) { direction in
-                Button {
-                    onNavigationDirectionChange(direction)
-                } label: {
-                    Label(direction.title, systemImage: direction.systemImage)
-                    if direction == navigationDirection {
-                        Image(systemName: "checkmark")
+    private var compactTopBar: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                if showsClassPicker {
+                    classPicker
+                }
+                saveStatusCompactChip
+                Spacer(minLength: 0)
+                compactMenu
+                addColumnButtonCompact
+            }
+
+            HStack(spacing: 8) {
+                searchField
+                    .frame(maxWidth: .infinity)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(.bar)
+    }
+
+    private func regularTopBar(showAddColumnAction: Bool) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 16) {
+                if showsClassPicker {
+                    classPicker
+                }
+
+                searchField
+
+                Spacer(minLength: 0)
+
+                HStack(spacing: 8) {
+                    saveStatusChip
+                }
+
+                Spacer(minLength: 0)
+
+                HStack(spacing: 8) {
+                    undoButton
+                    quickAttendanceButton
+                    organizationButton
+                    inspectorButton
+                    if showAddColumnAction {
+                        addColumnButton
                     }
                 }
             }
-        } label: {
-            Image(systemName: navigationDirection.systemImage)
-                .frame(width: 28, height: 28)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+
+            quickAttendanceBanner
         }
-        .menuStyle(.borderlessButton)
+        .background(.bar)
+        .animation(.easeInOut(duration: 0.22), value: isAttendanceQuickMode)
+    }
+
+    private var searchField: some View {
+        IOSSearchField(text: $searchText, placeholder: "Buscar alumno…")
+            .frame(minWidth: 180, maxWidth: 260)
+    }
+
+    private var undoButton: some View {
+        Button(action: onUndo) {
+            Image(systemName: "arrow.uturn.backward")
+                .font(.body.weight(.medium))
+                .frame(width: 32, height: 32)
+                .background(Color.secondary.opacity(0.08), in: Circle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(canUndo ? .primary : .tertiary)
+        .disabled(!canUndo)
+        .keyboardShortcut("z", modifiers: .command)
+        .help("Deshacer último cambio (⌘Z)")
+        .accessibilityLabel("Deshacer último cambio")
+    }
+
+    private var quickAttendanceButton: some View {
+        Button(action: onToggleAttendanceQuickMode) {
+            Image(systemName: "bolt")
+                .font(.body.weight(.medium))
+                .frame(width: 32, height: 32)
+                .background(isAttendanceQuickMode ? NotebookStyle.warningTint.opacity(0.15) : Color.secondary.opacity(0.08), in: Circle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(isAttendanceQuickMode ? NotebookStyle.warningTint : .secondary)
+        .help(isAttendanceQuickMode ? "Salir de asistencia rápida" : "Modo asistencia rápida")
+        .accessibilityLabel("Modo asistencia rápida")
+    }
+
+    private var organizationButton: some View {
+        Button(action: onOpenOrganizationMenu) {
+            Image(systemName: "rectangle.3.group")
+                .font(.body.weight(.medium))
+                .frame(width: 32, height: 32)
+                .background(Color.secondary.opacity(0.08), in: Circle())
+        }
+        .buttonStyle(.plain)
         .foregroundStyle(.secondary)
-        .help("Dirección al guardar")
+        .help("Columnas visibles")
+        .accessibilityLabel("Columnas visibles")
+    }
+
+    private var inspectorButton: some View {
+        Button(action: onToggleInspector) {
+            Image(systemName: isInspectorPresented ? "sidebar.right" : "sidebar.squares.right")
+                .font(.body.weight(.medium))
+                .frame(width: 32, height: 32)
+                .background(isInspectorPresented ? NotebookStyle.primaryTint.opacity(0.15) : Color.secondary.opacity(0.08), in: Circle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(isInspectorPresented ? NotebookStyle.primaryTint : .secondary)
+        .keyboardShortcut("i", modifiers: [.command, .option])
+        .help("Mostrar/ocultar inspector (⌘⌥I)")
+        .accessibilityLabel("Inspector")
+    }
+
+    private var addColumnButton: some View {
+        IOSPrimaryActionButton(label: "Nueva columna", systemImage: "plus") {
+            onOpenAddColumn()
+        }
+        .help("Añadir nueva columna de evaluación")
+    }
+
+    private var addColumnButtonCompact: some View {
+        Button(action: onOpenAddColumn) {
+            Image(systemName: "plus")
+                .font(.body.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(width: 32, height: 32)
+                .background(IOSAppStyle.info, in: Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Nueva columna")
+    }
+
+    private var saveStatusCompactChip: some View {
+        saveStatusIcon
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(saveBadge.color)
+            .frame(width: 32, height: 32)
+            .background(saveBadge.color.opacity(0.12), in: Circle())
+            .help(saveBadge.text)
+            .accessibilityLabel(saveBadge.text)
+    }
+
+    private var compactMenu: some View {
+        Menu {
+            Button(action: onUndo) {
+                Label("Deshacer último cambio", systemImage: "arrow.uturn.backward")
+            }
+            .disabled(!canUndo)
+
+            Button(action: onToggleAttendanceQuickMode) {
+                Label(
+                    isAttendanceQuickMode ? "Salir de asistencia rápida" : "Asistencia rápida",
+                    systemImage: "bolt.fill"
+                )
+            }
+
+            Button(action: onOpenOrganizationMenu) {
+                Label("Configurar columnas", systemImage: "rectangle.3.group")
+            }
+
+            Button(action: onToggleInspector) {
+                Label(
+                    isInspectorPresented ? "Ocultar inspector" : "Mostrar inspector",
+                    systemImage: isInspectorPresented ? "sidebar.right" : "sidebar.squares.right"
+                )
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.body.weight(.medium))
+                .frame(width: 32, height: 32)
+                .background(Color.secondary.opacity(0.08), in: Circle())
+                .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var quickAttendanceBanner: some View {
+        if isAttendanceQuickMode {
+            HStack(spacing: 8) {
+                Image(systemName: "bolt.fill")
+                    .foregroundStyle(NotebookStyle.warningTint)
+                Text("Modo asistencia rápida activo")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(NotebookStyle.warningTint)
+                Spacer(minLength: 0)
+                if canMarkAllPresent {
+                    Button("Marcar todos presentes") {
+                        onMarkAllPresent()
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(NotebookStyle.warningTint)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(NotebookStyle.warningTint.opacity(0.15), in: Capsule())
+                    .buttonStyle(.plain)
+                }
+
+                Button("Salir") {
+                    onToggleAttendanceQuickMode()
+                }
+                .font(.caption.weight(.semibold))
+                .buttonStyle(.borderless)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 6)
+            .background(NotebookStyle.warningTint.opacity(0.12))
+            .transition(.move(edge: .top).combined(with: .opacity))
+        }
     }
 
     private var classPicker: some View {
-        Menu {
-            ForEach(bridge.classes, id: \.id) { schoolClass in
-                Button {
-                    onSelectClass(Int64(schoolClass.id))
-                } label: {
-                    HStack {
-                        Text(schoolClass.name)
-                        if schoolClass.id == selectedClass?.id {
-                            Image(systemName: "checkmark")
-                        }
-                    }
-                }
-            }
+        Button {
+            isClassPickerPresented = true
         } label: {
             HStack(spacing: 8) {
                 Text(selectedClass?.name ?? "Seleccionar clase")
                     .lineLimit(1)
+                    .truncationMode(.middle)
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.caption.weight(.semibold))
             }
+            .fixedSize(horizontal: true, vertical: false)
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(.primary)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .frame(width: 160, alignment: .leading)
+            .frame(maxWidth: 220, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(NotebookStyle.surfaceSoft)
@@ -704,6 +906,14 @@ struct NotebookTopBar: View {
             )
         }
         .buttonStyle(.plain)
+        .popover(isPresented: $isClassPickerPresented, arrowEdge: .top) {
+            SimpleClassPickerPopover(
+                classes: bridge.classes,
+                selectedClassId: selectedClass?.id,
+                onSelectClass: { onSelectClass($0) },
+                onClose: { isClassPickerPresented = false }
+            )
+        }
     }
 
     private var saveStatusChip: some View {

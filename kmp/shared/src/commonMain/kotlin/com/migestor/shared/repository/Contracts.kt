@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.Flow
 interface StudentsRepository {
     fun observeStudents(): Flow<List<Student>>
     suspend fun listStudents(): List<Student>
+    suspend fun getStudent(studentId: Long): Student? = listStudents().find { it.id == studentId }
     suspend fun saveStudent(
         id: Long? = null,
         firstName: String,
@@ -14,6 +15,9 @@ interface StudentsRepository {
         email: String? = null,
         photoPath: String? = null,
         isInjured: Boolean = false,
+        sex: StudentSex = StudentSex.UNSPECIFIED,
+        sexSource: StudentSexSource = StudentSexSource.UNKNOWN,
+        birthDate: LocalDate? = null,
         updatedAtEpochMs: Long = 0,
         deviceId: String? = null,
         syncVersion: Long = 0,
@@ -126,6 +130,7 @@ interface NotebookCellsRepository {
         deviceId: String? = null,
         syncVersion: Long = 0,
     )
+    fun observeCellAudit(classId: Long, studentId: Long, columnId: String): Flow<List<NotebookCellAuditEvent>>
 }
 
 interface NotebookRepository {
@@ -140,9 +145,12 @@ interface NotebookRepository {
     suspend fun saveTab(classId: Long, tab: NotebookTab)
     suspend fun deleteTab(tabId: String)
     suspend fun saveColumn(classId: Long, column: NotebookColumnDefinition)
+    suspend fun saveAverageConfiguration(classId: Long, updates: List<NotebookAverageColumnConfig>)
+    suspend fun previewDeleteColumn(classId: Long, columnId: String): NotebookDeletionImpact
     suspend fun deleteColumn(columnId: String)
     suspend fun listColumnCategories(classId: Long, tabId: String? = null): List<NotebookColumnCategory>
     suspend fun saveColumnCategory(classId: Long, category: NotebookColumnCategory)
+    suspend fun previewDeleteColumnCategory(classId: Long, categoryId: String): NotebookDeletionImpact
     suspend fun deleteColumnCategory(classId: Long, categoryId: String, preserveColumns: Boolean = true)
     suspend fun toggleCategoryCollapsed(classId: Long, categoryId: String, isCollapsed: Boolean)
     suspend fun reorderCategory(classId: Long, tabId: String, categoryId: String, targetCategoryId: String)
@@ -191,6 +199,7 @@ interface NotebookRepository {
         classId: Long,
         studentId: Long,
         columnId: String,
+        evaluationId: Long?,
         numericValue: Double,
         rubricSelections: String? = null,
         evidence: String? = null,
@@ -199,6 +208,36 @@ interface NotebookRepository {
         deviceId: String? = null,
         syncVersion: Long = 0,
     )
+    fun observeCellAudit(classId: Long, studentId: Long, columnId: String): Flow<List<NotebookCellAuditEvent>>
+}
+
+interface PhysicalTestsRepository {
+    suspend fun listDefinitions(): List<PhysicalTestDefinition>
+    suspend fun saveDefinition(definition: PhysicalTestDefinition)
+
+    suspend fun listBatteries(): List<PhysicalTestBattery>
+    suspend fun saveBattery(battery: PhysicalTestBattery)
+
+    suspend fun assignBatteryToClass(assignment: PhysicalTestAssignment)
+    suspend fun listAssignmentsForClass(classId: Long): List<PhysicalTestAssignment>
+
+    suspend fun listScalesForTest(testId: String): List<PhysicalTestScale>
+    suspend fun saveScale(scale: PhysicalTestScale)
+
+    suspend fun resolveScale(
+        testId: String,
+        course: Int?,
+        age: Int?,
+        sex: String?,
+        batteryId: String?,
+    ): PhysicalTestScale?
+
+    suspend fun saveNotebookLink(link: PhysicalTestNotebookLink)
+    suspend fun listNotebookLinksForAssignment(assignmentId: String): List<PhysicalTestNotebookLink>
+
+    suspend fun saveResult(result: PhysicalTestResult, attempts: List<PhysicalTestAttempt>)
+    suspend fun listResultsForAssignment(assignmentId: String): List<PhysicalTestResult>
+    suspend fun listResultsForStudent(studentId: Long, testId: String): List<PhysicalTestResult>
 }
 
 interface PlannerRepository {
@@ -213,6 +252,7 @@ interface PlannerRepository {
     suspend fun deleteSessions(sessionIds: List<Long>) {
         sessionIds.forEach { deleteSession(it) }
     }
+    suspend fun deleteFutureSessionsGeneratedFromScheduleSlot(slotId: Long, fromDate: LocalDate): Int = 0
     fun observeTeachingUnits(groupId: Long? = null): Flow<List<TeachingUnit>>
     suspend fun listAllTeachingUnits(): List<TeachingUnit> = emptyList()
     suspend fun upsertTeachingUnit(unit: TeachingUnit): Long
@@ -228,6 +268,12 @@ interface PlannerRepository {
         request: SessionRelocationRequest,
         resolution: CollisionResolution
     ): SessionBulkResult = SessionBulkResult()
+    suspend fun previewCascadeMove(request: SessionCascadeMoveRequest): SessionCascadeMovePreview =
+        SessionCascadeMovePreview()
+    suspend fun commitCascadeMove(request: SessionCascadeMoveRequest): SessionCascadeMoveResult =
+        SessionCascadeMoveResult()
+    suspend fun restoreCascadeMove(previousPlacements: List<SessionPlacement>): SessionCascadeMoveResult =
+        SessionCascadeMoveResult()
 }
 
 interface SessionJournalRepository {
@@ -247,6 +293,7 @@ data class ConflictPreview(
 interface RubricsRepository {
     fun observeRubrics(): Flow<List<RubricDetail>>
     suspend fun listRubrics(): List<RubricDetail>
+    suspend fun getRubricDetail(rubricId: Long): RubricDetail? = listRubrics().find { it.rubric.id == rubricId }
     suspend fun saveRubric(
         id: Long? = null, 
         name: String, 
@@ -409,6 +456,26 @@ interface ConfigurationTemplateRepository {
     ): Long
 }
 
+interface LearningSituationsRepository {
+    fun observeSituations(): Flow<List<LearningSituation>>
+    suspend fun listSituations(): List<LearningSituation>
+    suspend fun getSituation(id: Long): LearningSituation?
+    suspend fun saveSituation(situation: LearningSituation): Long
+    suspend fun saveVersion(version: LearningSituationVersion): Long
+    suspend fun listVersions(learningSituationId: Long): List<LearningSituationVersion>
+    suspend fun saveSessionSequenceVersion(version: LearningSituationSessionSequenceVersion): Long
+    suspend fun listSessionSequenceVersions(learningSituationId: Long): List<LearningSituationSessionSequenceVersion>
+    suspend fun saveSessionPlan(plan: LearningSituationSessionPlan): Long
+    suspend fun listSessionPlans(sequenceVersionId: Long): List<LearningSituationSessionPlan>
+    suspend fun getSessionPlan(id: Long): LearningSituationSessionPlan?
+    suspend fun replaceClassLinks(learningSituationId: Long, classIds: List<Long>)
+    suspend fun listClassLinks(learningSituationId: Long): List<LearningSituationClassLink>
+    suspend fun saveLinkedResource(resource: LearningSituationLinkedResource): Long
+    suspend fun listLinkedResources(learningSituationId: Long): List<LearningSituationLinkedResource>
+    suspend fun deleteSituation(id: Long)
+}
+
+
 interface DashboardRepository {
     fun observeStats(): Flow<DashboardStats>
     suspend fun getStats(): DashboardStats
@@ -510,6 +577,8 @@ interface TeacherScheduleRepository {
     suspend fun saveScheduleSlot(slot: TeacherScheduleSlot): Long
     @Throws(Exception::class)
     suspend fun deleteScheduleSlot(slotId: Long)
+    @Throws(Exception::class)
+    suspend fun deleteScheduleSlotAndGeneratedPlannerSessions(slotId: Long)
     @Throws(Exception::class)
     suspend fun listEvaluationPeriods(scheduleId: Long): List<PlannerEvaluationPeriod>
     @Throws(Exception::class)

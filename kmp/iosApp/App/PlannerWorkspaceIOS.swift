@@ -27,23 +27,19 @@ enum PlannerWorkspaceSection: String, CaseIterable, Identifiable {
     }
 }
 
-enum PlannerSessionFilter: String, CaseIterable, Identifiable {
-    case all = "Todos"
-    case planned = "Planificadas"
-    case completed = "Impartidas"
-    case draftDiary = "Diario borrador"
-    case closedDiary = "Diario cerrado"
-    case emptyDiary = "Sin diario"
-
-    var id: String { rawValue }
-}
-
 struct PlannerJournalDraftNote: Identifiable, Equatable {
     var id = UUID()
     var studentId: Int64? = nil
     var studentName = ""
     var note = ""
     var tag = ""
+
+    static func == (lhs: PlannerJournalDraftNote, rhs: PlannerJournalDraftNote) -> Bool {
+        lhs.studentId == rhs.studentId
+            && lhs.studentName == rhs.studentName
+            && lhs.note == rhs.note
+            && lhs.tag == rhs.tag
+    }
 }
 
 struct PlannerJournalDraftAction: Identifiable, Equatable {
@@ -51,6 +47,12 @@ struct PlannerJournalDraftAction: Identifiable, Equatable {
     var title = ""
     var detail = ""
     var isCompleted = false
+
+    static func == (lhs: PlannerJournalDraftAction, rhs: PlannerJournalDraftAction) -> Bool {
+        lhs.title == rhs.title
+            && lhs.detail == rhs.detail
+            && lhs.isCompleted == rhs.isCompleted
+    }
 }
 
 struct PlannerJournalDraftMedia: Identifiable, Equatable {
@@ -59,6 +61,13 @@ struct PlannerJournalDraftMedia: Identifiable, Equatable {
     var uri = ""
     var transcript = ""
     var caption = ""
+
+    static func == (lhs: PlannerJournalDraftMedia, rhs: PlannerJournalDraftMedia) -> Bool {
+        lhs.type == rhs.type
+            && lhs.uri == rhs.uri
+            && lhs.transcript == rhs.transcript
+            && lhs.caption == rhs.caption
+    }
 }
 
 struct PlannerJournalDraftLink: Identifiable, Equatable {
@@ -66,6 +75,12 @@ struct PlannerJournalDraftLink: Identifiable, Equatable {
     var type: SessionJournalLinkType
     var targetId = ""
     var label = ""
+
+    static func == (lhs: PlannerJournalDraftLink, rhs: PlannerJournalDraftLink) -> Bool {
+        lhs.type == rhs.type
+            && lhs.targetId == rhs.targetId
+            && lhs.label == rhs.label
+    }
 }
 
 struct PlannerJournalDraft: Equatable {
@@ -194,7 +209,17 @@ struct PlannerComposerDraft {
     var activities = ""
     var dayOfWeek = 1
     var period = 1
+    var teacherScheduleSlotId: Int64? = nil
+    var startTime: String? = nil
+    var endTime: String? = nil
     var selectedInstrumentIds: Set<String> = []
+}
+
+enum PlannerSaveState: Equatable {
+    case idle
+    case saving
+    case saved(Date)
+    case failed(String)
 }
 
 struct PlannerSectionPreview: Identifiable, Hashable {
@@ -236,6 +261,15 @@ struct PlannerWeekCellEntry: Identifiable, Hashable {
     let journalStatus: SessionJournalStatus?
     let scheduledSlotId: Int64?
     let isCompleted: Bool
+}
+
+struct PlannerScheduleGenerationPreviewRow: Identifiable, Hashable {
+    let classId: Int64
+    let className: String
+    let detectedSessions: Int
+    let existingSessions: Int
+
+    var id: Int64 { classId }
 }
 
 @MainActor
@@ -296,24 +330,135 @@ private final class PlannerAudioRecorder: NSObject, ObservableObject, AVAudioRec
 }
 
 @MainActor
+private final class PlannerCalendarStore: ObservableObject {
+    @Published var week = 1
+    @Published var year = 2026
+    @Published var groups: [SchoolClass] = []
+    @Published var selectedGroupId: Int64?
+    @Published var classColorHexById: [Int64: String] = [:]
+    @Published var timeSlots: [TimeSlotConfig] = []
+    @Published var visibleSlots: [PlannerVisibleSlot] = []
+    @Published var visibleWeekdays: [Int] = [1, 2, 3, 4, 5]
+
+    func reloadBootstrap(bridge: KmpBridge, scheduleFormGroupId: Int64?) async -> Int64? {
+        await bridge.ensureClassesLoaded()
+        groups = bridge.classes.sorted { $0.name < $1.name }
+        classColorHexById = bridge.plannerCourseColors(for: groups.map(\.id))
+        return scheduleFormGroupId ?? groups.first?.id
+    }
+}
+
+@MainActor
+private final class PlannerSessionStore: ObservableObject {
+    @Published var sessions: [PlanningSession] = []
+    @Published var filteredSessions: [PlanningSession] = []
+    @Published var selectedSession: PlanningSession?
+    @Published var searchText = ""
+    @Published var selectionMode = false
+    @Published var selectedSessionIds: Set<Int64> = []
+    @Published var bulkSummary = ""
+
+    func reload(bridge: KmpBridge, week: Int, year: Int) async {
+        sessions = (try? await bridge.plannerListSessions(weekNumber: week, year: year, classId: nil)) ?? []
+    }
+
+    func upsertLocal(_ session: PlanningSession) {
+        if let index = sessions.firstIndex(where: { $0.id == session.id }) {
+            sessions[index] = session
+        } else {
+            sessions.append(session)
+        }
+    }
+}
+
+@MainActor
+private final class PlannerScheduleStore: ObservableObject {
+    @Published var weeklySlots: [WeeklySlotTemplate] = []
+    @Published var teacherSchedule: TeacherSchedule?
+    @Published var teacherScheduleSlots: [TeacherScheduleSlot] = []
+    @Published var evaluationPeriods: [PlannerEvaluationPeriod] = []
+    @Published var forecastRows: [PlannerSessionForecast] = []
+    @Published var scheduleError = ""
+    @Published var scheduleSaveState: PlannerSaveState = .idle
+
+    func reload(bridge: KmpBridge, groups: [SchoolClass], scheduleFormGroupId: Int64?) async -> Int64? {
+        do {
+            let schedule = try await bridge.plannerTeacherSchedule()
+            teacherSchedule = schedule
+            teacherScheduleSlots = (try? await bridge.plannerTeacherScheduleSlots(scheduleId: schedule.id)) ?? []
+            weeklySlots = bridge.plannerWeeklySlots(classId: nil)
+            evaluationPeriods = (try? await bridge.plannerEvaluationPeriods(scheduleId: schedule.id)) ?? []
+            forecastRows = (try? await bridge.plannerForecast(scheduleId: schedule.id, classId: nil)) ?? []
+            return scheduleFormGroupId ?? groups.first?.id
+        } catch {
+            scheduleError = error.localizedDescription
+            return scheduleFormGroupId
+        }
+    }
+}
+
+@MainActor
+private final class PlannerJournalStore: ObservableObject {
+    @Published var journalDraft: PlannerJournalDraft = .empty
+    @Published var journalSaveState: PlannerSaveState = .idle
+    @Published var journalSummaryBySessionId: [Int64: SessionJournalSummary] = [:]
+    var loadedAggregate: SessionJournalAggregate?
+
+    func reloadSummaries(bridge: KmpBridge, sessionIds: [Int64]) async {
+        let summaries = (try? await bridge.plannerJournalSummaries(sessionIds: sessionIds)) ?? []
+        journalSummaryBySessionId = Dictionary(uniqueKeysWithValues: summaries.map { ($0.planningSessionId, $0) })
+    }
+}
+
+@MainActor
+private final class PlannerComposerStore: ObservableObject {
+    @Published var draft = PlannerComposerDraft()
+    @Published var teachingUnits: [TeachingUnit] = []
+    @Published var availableInstruments: [PlannerAssessmentInstrument] = []
+    @Published var contextError = ""
+    @Published var isSaving = false
+    @Published var saveState: PlannerSaveState = .idle
+
+    func reloadContext(bridge: KmpBridge, groupId: Int64?, teachingUnitId: Int64?) async {
+        guard let groupId else {
+            teachingUnits = []
+            availableInstruments = []
+            contextError = ""
+            return
+        }
+        do {
+            teachingUnits = try await bridge.plannerTeachingUnits(for: groupId)
+            availableInstruments = try await bridge.plannerAvailableAssessmentInstruments(
+                classId: groupId,
+                teachingUnitId: teachingUnitId
+            )
+            contextError = ""
+        } catch {
+            contextError = error.localizedDescription
+        }
+    }
+}
+
+@MainActor
 final class PlannerWorkspaceViewModel: ObservableObject {
+    private let calendarStore = PlannerCalendarStore()
+    private let sessionStore = PlannerSessionStore()
+    private let scheduleStore = PlannerScheduleStore()
+    private let journalStore = PlannerJournalStore()
+    private let composerStore = PlannerComposerStore()
+
     @Published var isLoaded = false
     @Published var activeSection: PlannerWorkspaceSection = .week
     @Published var week = 1
     @Published var year = 2026
     @Published var groups: [SchoolClass] = []
     @Published var selectedGroupId: Int64?
-    @Published var groupFilterId: Int64? {
-        didSet {
-            applySearch()
-            rebuildVisiblePlannerStructure()
-        }
-    }
     @Published var classColorHexById: [Int64: String] = [:]
     @Published var sessions: [PlanningSession] = []
     @Published var filteredSessions: [PlanningSession] = []
     @Published var selectedSession: PlanningSession?
     @Published var journalDraft: PlannerJournalDraft = .empty
+    @Published var journalSaveState: PlannerSaveState = .idle
     @Published var journalSummaryBySessionId: [Int64: SessionJournalSummary] = [:]
     @Published var timeSlots: [TimeSlotConfig] = []
     @Published var visibleSlots: [PlannerVisibleSlot] = []
@@ -324,11 +469,6 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     @Published var evaluationPeriods: [PlannerEvaluationPeriod] = []
     @Published var forecastRows: [PlannerSessionForecast] = []
     @Published var searchText = ""
-    @Published var sessionFilter: PlannerSessionFilter = .all {
-        didSet {
-            applySearch()
-        }
-    }
     @Published var selectionMode = false
     @Published var selectedSessionIds: Set<Int64> = []
     @Published var showingComposer = false
@@ -345,6 +485,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     @Published var scheduleFormSubject = ""
     @Published var scheduleFormUnit = ""
     @Published var scheduleError = ""
+    @Published var scheduleSaveState: PlannerSaveState = .idle
     @Published var evaluationFormName = ""
     @Published var evaluationFormStart = ""
     @Published var evaluationFormEnd = ""
@@ -352,6 +493,13 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     @Published var composerTeachingUnits: [TeachingUnit] = []
     @Published var composerAvailableInstruments: [PlannerAssessmentInstrument] = []
     @Published var composerContextError = ""
+    @Published var isSavingComposer = false
+    @Published var composerSaveState: PlannerSaveState = .idle
+    @Published var scheduleGenerationPreview: [PlannerScheduleGenerationPreviewRow] = []
+    @Published var scheduleGenerationSummary = ""
+    @Published var isGeneratingScheduleSessions = false
+    @Published var lastCascadeMove: SessionCascadeMoveResult?
+    @Published var holidayDays: Set<Int> = []
 
     private weak var bridge: KmpBridge?
     private var autosaveTask: Task<Void, Never>?
@@ -372,24 +520,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     }
 
     var effectiveScheduleSlots: [TeacherScheduleSlot] {
-        if !teacherScheduleSlots.isEmpty {
-            return teacherScheduleSlots.sorted(by: { ($0.dayOfWeek, $0.startTime) < ($1.dayOfWeek, $1.startTime) })
-        }
-
-        return weeklySlots.map {
-            TeacherScheduleSlot(
-                id: $0.id,
-                teacherScheduleId: teacherSchedule?.id ?? 0,
-                schoolClassId: $0.schoolClassId,
-                subjectLabel: "",
-                unitLabel: nil,
-                dayOfWeek: Int32($0.dayOfWeek),
-                startTime: $0.startTime,
-                endTime: $0.endTime,
-                weeklyTemplateId: KotlinLong(value: $0.id)
-            )
-        }
-        .sorted(by: { ($0.dayOfWeek, $0.startTime) < ($1.dayOfWeek, $1.startTime) })
+        teacherScheduleSlots.sorted(by: { ($0.dayOfWeek, $0.startTime) < ($1.dayOfWeek, $1.startTime) })
     }
 
     var visibleScheduleSlotsSummaryCount: Int {
@@ -397,7 +528,25 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     }
 
     var isUsingLegacyWeeklySlots: Bool {
-        teacherScheduleSlots.isEmpty && !weeklySlots.isEmpty
+        false
+    }
+
+    var generationPreviewTotals: (detected: Int, omitted: Int) {
+        scheduleGenerationPreview.reduce(into: (detected: 0, omitted: 0)) { result, row in
+            result.detected += row.detectedSessions
+            result.omitted += row.existingSessions
+        }
+    }
+
+    var canClearSchedulelessWeekSessions: Bool {
+        schedulelessWeekSessionsToClearCount() > 0
+    }
+
+    func schedulelessWeekSessionsToClearCount(groupId: Int64? = nil) -> Int {
+        guard effectiveScheduleSlots.isEmpty else { return 0 }
+        return sessions.count { session in
+            (groupId == nil || session.groupId == groupId) && session.status != .completed
+        }
     }
 
     func bind(bridge: KmpBridge) async {
@@ -407,80 +556,112 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         week = Int(truncating: current.first ?? KotlinInt(value: 1))
         year = Int(truncating: current.second ?? KotlinInt(value: 2026))
         timeSlots = bridge.plannerTimeSlots()
-        await reloadAll()
+        await reloadPlannerBootstrap()
+        await reloadScheduleOnly()
+        await reloadSessionsOnly(keepSelection: false)
         isLoaded = true
     }
 
     func reloadAll(keepSelection: Bool = true) async {
-        guard let bridge else { return }
-        await bridge.ensureClassesLoaded()
-        groups = bridge.classes.sorted { $0.name < $1.name }
-        classColorHexById = bridge.plannerCourseColors(for: groups.map(\.id))
-        if scheduleFormGroupId == nil {
-            scheduleFormGroupId = groups.first?.id
-        }
+        await reloadPlannerBootstrap()
+        await reloadScheduleOnly()
+        await reloadSessionsOnly(keepSelection: keepSelection)
+    }
+
+    func reloadSessionsOnly(keepSelection: Bool = true) async {
+        await reloadWeekSessions(keepSelection: keepSelection)
+    }
+
+    func reloadScheduleOnly() async {
         await reloadScheduleConfiguration()
-        weeklySlots = bridge.plannerWeeklySlots(classId: nil)
+    }
+
+    func reloadJournalOnly() async {
+        await reloadJournalSummaries()
+        await reloadSelectedJournal()
+    }
+
+    func reloadComposerContextOnly() async {
+        await refreshComposerContext()
+    }
+
+    private func reloadPlannerBootstrap() async {
+        guard let bridge else { return }
+        scheduleFormGroupId = await calendarStore.reloadBootstrap(bridge: bridge, scheduleFormGroupId: scheduleFormGroupId)
+        groups = calendarStore.groups
+        classColorHexById = calendarStore.classColorHexById
+    }
+
+    private func reloadWeekSessions(keepSelection: Bool = true) async {
+        guard let bridge else { return }
+        await sessionStore.reload(bridge: bridge, week: week, year: year)
+        sessions = sessionStore.sessions
         rebuildVisiblePlannerStructure()
-        sessions = (try? await bridge.plannerListSessions(weekNumber: week, year: year, classId: nil)) ?? []
-        rebuildVisiblePlannerStructure()
-        let summaries = (try? await bridge.plannerJournalSummaries(sessionIds: sessions.map(\.id))) ?? []
-        journalSummaryBySessionId = Dictionary(
-            summaries.map { ($0.planningSessionId, $0) },
-            uniquingKeysWith: { _, latest in latest }
-        )
+        await reloadJournalSummaries()
+        await reloadHolidays()
         applySearch()
 
         if keepSelection, let selectedSession {
             self.selectedSession = sessions.first(where: { $0.id == selectedSession.id })
             if self.selectedSession != nil {
-                await loadJournalForSelectedSession()
+                await reloadSelectedJournal()
             }
         } else if let first = filteredSessions.first {
             selectedSession = first
-            await loadJournalForSelectedSession()
+            await reloadSelectedJournal()
         } else {
-            selectedSession = nil
-            journalDraft = .empty
-            loadedAggregate = nil
+            clearSelection()
         }
+    }
+
+    private func reloadJournalSummaries() async {
+        guard let bridge else { return }
+        await journalStore.reloadSummaries(bridge: bridge, sessionIds: sessions.map(\.id))
+        journalSummaryBySessionId = journalStore.journalSummaryBySessionId
+    }
+
+    private func reloadSelectedJournal() async {
+        await loadJournalForSelectedSession()
     }
 
     func applySearch() {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        filteredSessions = sessions
-            .filter { session in
-                matchesGroupFilter(session)
-                    && matchesSessionFilter(session)
-                    && matchesSearch(session, query: query)
-            }
-            .sorted { lhs, rhs in
+        guard !query.isEmpty else {
+            filteredSessions = sessions.sorted { lhs, rhs in
                 if lhs.dayOfWeek == rhs.dayOfWeek {
                     if lhs.period == rhs.period { return lhs.groupName < rhs.groupName }
                     return lhs.period < rhs.period
                 }
                 return lhs.dayOfWeek < rhs.dayOfWeek
             }
+            return
+        }
+        filteredSessions = sessions.filter {
+            [$0.groupName, $0.teachingUnitName, $0.objectives, $0.activities]
+                .joined(separator: " ")
+                .lowercased()
+                .contains(query)
+        }
     }
 
     func previousWeek() async {
         if week <= 1 {
-            week = 52
             year -= 1
+            week = Self.isoWeeks(in: year)
         } else {
             week -= 1
         }
-        await reloadAll(keepSelection: false)
+        await reloadSessionsOnly(keepSelection: false)
     }
 
     func nextWeek() async {
-        if week >= 52 {
+        if week >= Self.isoWeeks(in: year) {
             week = 1
             year += 1
         } else {
             week += 1
         }
-        await reloadAll(keepSelection: false)
+        await reloadSessionsOnly(keepSelection: false)
     }
 
     func selectGroup(_ id: Int64?) {
@@ -511,6 +692,46 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         await loadJournalForSelectedSession()
     }
 
+    func previewCascadeMove(sessionId: Int64, day: Int, period: Int) async throws -> SessionCascadeMovePreview {
+        guard let bridge else { throw PlannerCascadeMoveError.bridgeUnavailable }
+        return try await bridge.plannerPreviewCascadeMove(
+            sourceSessionId: sessionId,
+            targetWeekNumber: week,
+            targetYear: year,
+            targetDayOfWeek: day,
+            targetPeriod: period
+        )
+    }
+
+    func commitCascadeMove(sessionId: Int64, day: Int, period: Int) async throws -> SessionCascadeMoveResult {
+        guard let bridge else { throw PlannerCascadeMoveError.bridgeUnavailable }
+        let result = try await bridge.plannerCommitCascadeMove(
+            sourceSessionId: sessionId,
+            targetWeekNumber: week,
+            targetYear: year,
+            targetDayOfWeek: day,
+            targetPeriod: period
+        )
+        lastCascadeMove = result
+        await reloadSessionsOnly()
+        return result
+    }
+
+    func restoreLastCascadeMove() async throws {
+        guard let bridge, let lastCascadeMove else { return }
+        _ = try await bridge.plannerRestoreCascadeMove(lastCascadeMove.previousPlacements)
+        self.lastCascadeMove = nil
+        await reloadSessionsOnly()
+    }
+
+    func clearSelection() {
+        autosaveTask?.cancel()
+        selectedSession = nil
+        journalDraft = .empty
+        loadedAggregate = nil
+        journalSaveState = .idle
+    }
+
     func applyExternalContext(week: Int?, year: Int?, groupId: Int64?, sessionId: Int64?) async {
         var shouldReload = false
 
@@ -524,32 +745,64 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         }
         if let groupId, self.selectedGroupId != groupId {
             self.selectedGroupId = groupId
-            self.groupFilterId = groupId
             self.scheduleFormGroupId = groupId
         }
 
         if shouldReload {
-            await reloadAll(keepSelection: false)
+            await reloadSessionsOnly(keepSelection: false)
         }
 
         if let sessionId,
            let session = sessions.first(where: { $0.id == sessionId }) {
             await select(session: session)
+        } else {
+            await selectTodaySessionIfPossible(preferredGroupId: groupId)
+        }
+    }
+
+    func selectTodaySessionIfPossible(preferredGroupId: Int64?) async {
+        let current = IsoWeekHelper.shared.current()
+        let currentWeek = Int(truncating: current.first ?? KotlinInt(value: 1))
+        let currentYear = Int(truncating: current.second ?? KotlinInt(value: 2026))
+        guard week == currentWeek, year == currentYear else { return }
+
+        var calendar = Calendar(identifier: .iso8601)
+        calendar.locale = Locale.current
+        let todayWeekday = ((calendar.component(.weekday, from: Date()) + 5) % 7) + 1
+        let candidates = sessions
+            .filter { session in
+                Int(session.dayOfWeek) == todayWeekday &&
+                    (preferredGroupId == nil || session.groupId == preferredGroupId)
+            }
+            .sorted {
+                if $0.period == $1.period {
+                    return ($0.startTime ?? "") < ($1.startTime ?? "")
+                }
+                return $0.period < $1.period
+            }
+
+        guard let todaySession = candidates.first else { return }
+        if selectedSession?.id != todaySession.id {
+            await select(session: todaySession)
         }
     }
 
     func loadJournalForSelectedSession() async {
         guard let bridge, let selectedSession else { return }
+        autosaveTask?.cancel()
         do {
             let aggregate = try await bridge.plannerJournal(for: selectedSession)
             loadedAggregate = aggregate
-            isHydratingDraft = true
-            journalDraft = PlannerJournalDraft(aggregate: aggregate)
-            isHydratingDraft = false
+            journalStore.loadedAggregate = aggregate
+            replaceJournalDraft(PlannerJournalDraft(aggregate: aggregate))
+            journalSaveState = .idle
+            journalStore.journalSaveState = .idle
         } catch {
             loadedAggregate = nil
-            isHydratingDraft = false
-            journalDraft = .empty
+            journalStore.loadedAggregate = nil
+            replaceJournalDraft(.empty)
+            journalSaveState = .failed("No se pudo cargar el diario.")
+            journalStore.journalSaveState = journalSaveState
         }
     }
 
@@ -565,7 +818,10 @@ final class PlannerWorkspaceViewModel: ObservableObject {
 
     func saveJournal() async {
         guard let bridge, let session = selectedSession else { return }
+        autosaveTask?.cancel()
+        journalSaveState = .saving
         let journalId = loadedAggregate?.journal.id ?? 0
+        let status = computedStatus()
         let aggregate = SessionJournalAggregate(
             journal: SessionJournal(
                 id: journalId,
@@ -602,7 +858,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
                 cooldownMinutes: Int32(journalDraft.cooldownMinutes),
                 stationObservationsText: journalDraft.stationObservationsText,
                 incidentTags: journalDraft.incidentTags,
-                status: computedStatus()
+                status: status
             ),
             individualNotes: journalDraft.notes.map {
                 SessionJournalIndividualNote(
@@ -647,17 +903,21 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         do {
             _ = try await bridge.plannerSaveJournal(aggregate)
             loadedAggregate = try await bridge.plannerJournal(for: session)
+            journalStore.loadedAggregate = loadedAggregate
             if let loadedAggregate {
-                isHydratingDraft = true
-                journalDraft = PlannerJournalDraft(aggregate: loadedAggregate)
-                isHydratingDraft = false
+                let refreshedDraft = PlannerJournalDraft(aggregate: loadedAggregate)
+                if refreshedDraft != journalDraft {
+                    replaceJournalDraft(refreshedDraft)
+                }
             }
             let refreshedSummaries = (try? await bridge.plannerJournalSummaries(sessionIds: sessions.map(\.id))) ?? []
-            journalSummaryBySessionId = Dictionary(
-                refreshedSummaries.map { ($0.planningSessionId, $0) },
-                uniquingKeysWith: { _, latest in latest }
-            )
+            journalSummaryBySessionId = Dictionary(uniqueKeysWithValues: refreshedSummaries.map { ($0.planningSessionId, $0) })
+            journalStore.journalSummaryBySessionId = journalSummaryBySessionId
+            journalSaveState = .saved(Date())
+            journalStore.journalSaveState = journalSaveState
         } catch {
+            journalSaveState = .failed(error.localizedDescription)
+            journalStore.journalSaveState = journalSaveState
         }
     }
 
@@ -683,7 +943,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         }
         selectionMode = false
         selectedSessionIds.removeAll()
-        await reloadAll()
+        await reloadSessionsOnly()
     }
 
     func bulkMoveOneDay() async {
@@ -699,7 +959,28 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         }
         selectionMode = false
         selectedSessionIds.removeAll()
-        await reloadAll()
+        await reloadSessionsOnly()
+    }
+
+    func clearCurrentWeekSessionsWithoutSchedule(groupId: Int64? = nil) async {
+        guard let bridge, effectiveScheduleSlots.isEmpty else { return }
+        let ids = sessions
+            .filter { session in
+                (groupId == nil || session.groupId == groupId) && session.status != .completed
+            }
+            .map(\.id)
+        guard !ids.isEmpty else {
+            bulkSummary = "No hay sesiones planificadas que limpiar en esta semana."
+            return
+        }
+
+        for id in ids {
+            try? await bridge.plannerDeleteSession(sessionId: id)
+        }
+        selectedSessionIds.removeAll()
+        selectedSession = nil
+        bulkSummary = "Eliminadas \(ids.count) sesiones de la semana sin franjas de agenda."
+        await reloadSessionsOnly(keepSelection: false)
     }
 
     func markCompleted(_ session: PlanningSession) async {
@@ -718,9 +999,14 @@ final class PlannerWorkspaceViewModel: ObservableObject {
             objectives: session.objectives,
             activities: session.activities,
             evaluation: session.evaluation,
+            linkedAssessmentIdsCsv: session.linkedAssessmentIdsCsv,
+            teacherScheduleSlotId: session.teacherScheduleSlotId?.int64Value,
+            startTime: session.startTime,
+            endTime: session.endTime,
             status: .completed
         )
-        await reloadAll()
+        updateLocalSession(session, status: .completed)
+        await reloadJournalSummaries()
     }
 
     func openComposer(for session: PlanningSession? = nil, day: Int? = nil, period: Int? = nil) {
@@ -734,45 +1020,76 @@ final class PlannerWorkspaceViewModel: ObservableObject {
                 activities: session.activities,
                 dayOfWeek: Int(session.dayOfWeek),
                 period: Int(session.period),
+                teacherScheduleSlotId: session.teacherScheduleSlotId?.int64Value,
+                startTime: session.startTime,
+                endTime: session.endTime,
                 selectedInstrumentIds: Set(session.linkedAssessmentIdsCsv.split(separator: ",").map(String.init))
             )
         } else {
             let firstVisibleDay = visibleWeekdays.first ?? 1
             let firstVisiblePeriod = visibleSlots.first?.period ?? 1
+            let resolvedDay = day ?? firstVisibleDay
+            let resolvedPeriod = period ?? firstVisiblePeriod
+            let slotMetadata = composerSlotMetadata(day: resolvedDay, period: resolvedPeriod, groupId: selectedGroupId ?? groups.first?.id)
             composerDraft = PlannerComposerDraft(
                 groupId: selectedGroupId ?? groups.first?.id,
                 teachingUnitId: nil,
                 unitTitle: "",
                 objectives: "",
                 activities: "",
-                dayOfWeek: day ?? firstVisibleDay,
-                period: period ?? firstVisiblePeriod
+                dayOfWeek: resolvedDay,
+                period: resolvedPeriod,
+                teacherScheduleSlotId: slotMetadata.slotId,
+                startTime: slotMetadata.startTime,
+                endTime: slotMetadata.endTime
             )
         }
+        composerSaveState = .idle
         Task { await refreshComposerContext() }
         showingComposer = true
     }
 
-    func saveComposer() async {
-        guard let bridge, let groupId = composerDraft.groupId else { return }
+    @discardableResult
+    func saveComposer() async -> Bool {
+        guard let bridge, let groupId = composerDraft.groupId else {
+            composerContextError = "Selecciona un grupo antes de guardar."
+            composerSaveState = .failed(composerContextError)
+            return false
+        }
         let groupName = groups.first(where: { $0.id == groupId })?.name ?? "Grupo \(groupId)"
         let selectedInstruments = composerAvailableInstruments.filter { composerDraft.selectedInstrumentIds.contains($0.id) }
-        _ = try? await bridge.plannerSaveSessionWithLinks(
-            id: composerDraft.sessionId,
-            groupId: groupId,
-            groupName: groupName,
-            dayOfWeek: composerDraft.dayOfWeek,
-            period: composerDraft.period,
-            weekNumber: week,
-            year: year,
-            teachingUnitId: composerDraft.teachingUnitId,
-            newTeachingUnitName: composerDraft.unitTitle,
-            objectives: composerDraft.objectives,
-            activities: composerDraft.activities,
-            selectedInstruments: selectedInstruments
-        )
-        showingComposer = false
-        await reloadAll(keepSelection: false)
+        let slotMetadata = composerSlotMetadata(day: composerDraft.dayOfWeek, period: composerDraft.period, groupId: groupId)
+        isSavingComposer = true
+        composerSaveState = .saving
+        defer { isSavingComposer = false }
+        do {
+            let result = try await bridge.plannerSaveSessionWithLinks(
+                id: composerDraft.sessionId,
+                groupId: groupId,
+                groupName: groupName,
+                dayOfWeek: composerDraft.dayOfWeek,
+                period: composerDraft.period,
+                weekNumber: week,
+                year: year,
+                teachingUnitId: composerDraft.teachingUnitId,
+                newTeachingUnitName: composerDraft.unitTitle,
+                objectives: composerDraft.objectives,
+                activities: composerDraft.activities,
+                teacherScheduleSlotId: slotMetadata.slotId,
+                startTime: slotMetadata.startTime,
+                endTime: slotMetadata.endTime,
+                selectedInstruments: selectedInstruments
+            )
+            composerContextError = ""
+            composerSaveState = .saved(Date())
+            showingComposer = false
+            updateSessionFromComposerSave(result: result, groupId: groupId, groupName: groupName, slotMetadata: slotMetadata)
+            return true
+        } catch {
+            composerContextError = "No se pudo guardar la sesión: \(error.localizedDescription)"
+            composerSaveState = .failed(composerContextError)
+            return false
+        }
     }
 
     func toggleComposerInstrument(_ instrumentId: String) {
@@ -790,20 +1107,99 @@ final class PlannerWorkspaceViewModel: ObservableObject {
             composerContextError = ""
             return
         }
-        do {
-            composerTeachingUnits = try await bridge.plannerTeachingUnits(for: groupId)
-            composerAvailableInstruments = try await bridge.plannerAvailableAssessmentInstruments(
-                classId: groupId,
-                teachingUnitId: composerDraft.teachingUnitId
-            )
-            composerContextError = ""
-        } catch {
-            composerContextError = error.localizedDescription
+        await composerStore.reloadContext(bridge: bridge, groupId: groupId, teachingUnitId: composerDraft.teachingUnitId)
+        composerTeachingUnits = composerStore.teachingUnits
+        composerAvailableInstruments = composerStore.availableInstruments
+        composerContextError = composerStore.contextError
+    }
+
+    private func updateSessionFromComposerSave(
+        result: PlannerSessionSaveResult,
+        groupId: Int64,
+        groupName: String,
+        slotMetadata: (slotId: Int64?, startTime: String?, endTime: String?)
+    ) {
+        let previous = sessions.first(where: { $0.id == result.sessionId || $0.id == composerDraft.sessionId })
+        let updated = PlanningSession(
+            id: result.sessionId,
+            teachingUnitId: result.teachingUnitId,
+            teachingUnitName: result.teachingUnitName,
+            teachingUnitColor: previous?.teachingUnitColor ?? EvaluationDesign.plannerCoursePalette.first ?? "#2563EB",
+            groupId: groupId,
+            groupName: groupName,
+            dayOfWeek: Int32(composerDraft.dayOfWeek),
+            period: Int32(composerDraft.period),
+            weekNumber: Int32(week),
+            year: Int32(year),
+            objectives: composerDraft.objectives,
+            activities: composerDraft.activities,
+            evaluation: result.evaluationSummary,
+            linkedAssessmentIdsCsv: result.linkedAssessmentIdsCsv,
+            teacherScheduleSlotId: slotMetadata.slotId.map { KotlinLong(value: $0) },
+            startTime: slotMetadata.startTime,
+            endTime: slotMetadata.endTime,
+            learningSituationSessionPlanId: previous?.learningSituationSessionPlanId,
+            status: previous?.status ?? .planned
+        )
+        sessionStore.upsertLocal(updated)
+        sessions = sessionStore.sessions
+        applySearch()
+        selectedSession = updated
+        selectedGroupId = groupId
+        rebuildVisiblePlannerStructure()
+    }
+
+    private func updateLocalSession(_ session: PlanningSession, status: SessionStatus) {
+        let updated = PlanningSession(
+            id: session.id,
+            teachingUnitId: session.teachingUnitId,
+            teachingUnitName: session.teachingUnitName,
+            teachingUnitColor: session.teachingUnitColor,
+            groupId: session.groupId,
+            groupName: session.groupName,
+            dayOfWeek: session.dayOfWeek,
+            period: session.period,
+            weekNumber: session.weekNumber,
+            year: session.year,
+            objectives: session.objectives,
+            activities: session.activities,
+            evaluation: session.evaluation,
+            linkedAssessmentIdsCsv: session.linkedAssessmentIdsCsv,
+            teacherScheduleSlotId: session.teacherScheduleSlotId,
+            startTime: session.startTime,
+            endTime: session.endTime,
+            learningSituationSessionPlanId: session.learningSituationSessionPlanId,
+            status: status
+        )
+        sessionStore.upsertLocal(updated)
+        sessions = sessionStore.sessions
+        applySearch()
+        if selectedSession?.id == session.id {
+            selectedSession = updated
         }
+        rebuildVisiblePlannerStructure()
+    }
+
+    private func composerSlotMetadata(day: Int, period: Int, groupId: Int64?) -> (slotId: Int64?, startTime: String?, endTime: String?) {
+        let visibleSlot = visibleSlots.first(where: { $0.period == period })
+        let scheduleSlot = teacherScheduleSlots.first { slot in
+            guard Int(slot.dayOfWeek) == day else { return false }
+            if let groupId, slot.schoolClassId != groupId { return false }
+            if let visibleSlot {
+                return slot.startTime == visibleSlot.startTime && slot.endTime == visibleSlot.endTime
+            }
+            return false
+        }
+        return (
+            scheduleSlot?.id,
+            scheduleSlot?.startTime ?? visibleSlot?.startTime,
+            scheduleSlot?.endTime ?? visibleSlot?.endTime
+        )
     }
 
     func addScheduleSlot() async {
         guard let bridge, let schedule = teacherSchedule, let groupId = scheduleFormGroupId else { return }
+        scheduleSaveState = .saving
         do {
             _ = try await bridge.plannerSaveTeacherScheduleSlot(
                 scheduleId: schedule.id,
@@ -817,22 +1213,137 @@ final class PlannerWorkspaceViewModel: ObservableObject {
             scheduleError = ""
             scheduleFormSubject = ""
             scheduleFormUnit = ""
-            await reloadScheduleConfiguration()
-            weeklySlots = bridge.plannerWeeklySlots(classId: nil)
+            await reloadScheduleOnly()
+            scheduleSaveState = .saved(Date())
         } catch {
             scheduleError = error.localizedDescription
+            scheduleSaveState = .failed(scheduleError)
         }
+    }
+
+    func buildScheduleGenerationPreview(groupId: Int64? = nil) {
+        let targetSlots = effectiveScheduleSlots.filter { slot in
+            guard let groupId else { return true }
+            return slot.schoolClassId == groupId
+        }
+        let rows = Dictionary(grouping: targetSlots, by: \.schoolClassId)
+            .compactMap { classId, slots -> PlannerScheduleGenerationPreviewRow? in
+                let className = groups.first(where: { $0.id == classId })?.name ?? "Grupo \(classId)"
+                let detected = slots.count
+                let existing = slots.filter { slot in
+                    sessions.contains { session in
+                        session.groupId == slot.schoolClassId &&
+                        Int(session.dayOfWeek) == Int(slot.dayOfWeek) &&
+                        (
+                            session.teacherScheduleSlotId?.int64Value == slot.id ||
+                            (session.startTime == slot.startTime && session.endTime == slot.endTime) ||
+                            Int(session.period) == period(for: slot)
+                        )
+                    }
+                }.count
+                return PlannerScheduleGenerationPreviewRow(
+                    classId: classId,
+                    className: className,
+                    detectedSessions: detected,
+                    existingSessions: existing
+                )
+            }
+            .sorted { $0.className < $1.className }
+        scheduleGenerationPreview = rows
+        let totals = rows.reduce(into: (detected: 0, omitted: 0)) { result, row in
+            result.detected += row.detectedSessions
+            result.omitted += row.existingSessions
+        }
+        scheduleGenerationSummary = "\(totals.detected) franjas detectadas · \(totals.omitted) sesiones ya existentes omitidas"
+    }
+
+    func generateSessionsFromSchedule(groupId: Int64? = nil) async {
+        guard let bridge else { return }
+        let targetSlots = effectiveScheduleSlots.filter { slot in
+            guard let groupId else { return true }
+            return slot.schoolClassId == groupId
+        }
+        guard !targetSlots.isEmpty else {
+            scheduleGenerationSummary = "No hay franjas para generar sesiones."
+            return
+        }
+        isGeneratingScheduleSessions = true
+        defer { isGeneratingScheduleSessions = false }
+
+        var created = 0
+        var omitted = 0
+        for slot in targetSlots {
+            let slotPeriod = period(for: slot)
+            let alreadyExists = sessions.contains { session in
+                session.groupId == slot.schoolClassId &&
+                Int(session.dayOfWeek) == Int(slot.dayOfWeek) &&
+                (
+                    session.teacherScheduleSlotId?.int64Value == slot.id ||
+                    (session.startTime == slot.startTime && session.endTime == slot.endTime) ||
+                    Int(session.period) == slotPeriod
+                )
+            }
+            if alreadyExists {
+                omitted += 1
+                continue
+            }
+
+            do {
+                _ = try await bridge.plannerSaveSessionWithLinks(
+                    id: 0,
+                    groupId: slot.schoolClassId,
+                    groupName: groups.first(where: { $0.id == slot.schoolClassId })?.name ?? "Grupo \(slot.schoolClassId)",
+                    dayOfWeek: Int(slot.dayOfWeek),
+                    period: slotPeriod,
+                    weekNumber: week,
+                    year: year,
+                    teachingUnitId: nil,
+                    newTeachingUnitName: slot.unitLabel?.nilIfBlank ?? slot.subjectLabel.nilIfBlank ?? "Planificación semanal",
+                    objectives: "",
+                    activities: "",
+                    teacherScheduleSlotId: slot.id,
+                    startTime: slot.startTime,
+                    endTime: slot.endTime,
+                    selectedInstruments: []
+                )
+                created += 1
+            } catch {
+                omitted += 1
+                scheduleGenerationSummary = "No se pudo generar una sesión: \(error.localizedDescription)"
+            }
+        }
+
+        await reloadSessionsOnly(keepSelection: false)
+        buildScheduleGenerationPreview(groupId: groupId)
+        scheduleGenerationSummary = "\(created) sesiones creadas · \(omitted) omitidas"
+    }
+
+    private func period(for slot: TeacherScheduleSlot) -> Int {
+        if let visibleSlot = visibleSlots.first(where: { $0.startTime == slot.startTime && $0.endTime == slot.endTime }) {
+            return visibleSlot.period
+        }
+        if let defaultSlot = timeSlots.first(where: { $0.startTime == slot.startTime && $0.endTime == slot.endTime }) {
+            return Int(defaultSlot.period)
+        }
+        return Int(slot.dayOfWeek) * 100 + Int(slot.id % 100)
     }
 
     func deleteScheduleSlot(_ slotId: Int64) async {
         guard let bridge else { return }
-        try? await bridge.plannerDeleteTeacherScheduleSlot(slotId: slotId)
-        await reloadScheduleConfiguration()
-        weeklySlots = bridge.plannerWeeklySlots(classId: nil)
+        scheduleSaveState = .saving
+        do {
+            try await bridge.plannerDeleteTeacherScheduleSlot(slotId: slotId)
+            await reloadScheduleOnly()
+            scheduleSaveState = .saved(Date())
+        } catch {
+            scheduleError = error.localizedDescription
+            scheduleSaveState = .failed(scheduleError)
+        }
     }
 
     func saveTeacherSchedule() async {
         guard let bridge, let schedule = teacherSchedule else { return }
+        scheduleSaveState = .saving
         do {
             let savedId = try await bridge.plannerSaveTeacherSchedule(
                 scheduleId: schedule.id,
@@ -854,9 +1365,11 @@ final class PlannerWorkspaceViewModel: ObservableObject {
                 activeWeekdaysCsv: activeWeekdays.sorted().map(String.init).joined(separator: ","),
                 trace: schedule.trace
             )
-            await reloadScheduleConfiguration()
+            await reloadScheduleOnly()
+            scheduleSaveState = .saved(Date())
         } catch {
             scheduleError = error.localizedDescription
+            scheduleSaveState = .failed(scheduleError)
         }
     }
 
@@ -865,8 +1378,10 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         let normalizedName = evaluationFormName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedName.isEmpty else {
             scheduleError = "Añade un nombre para la evaluación."
+            scheduleSaveState = .failed(scheduleError)
             return
         }
+        scheduleSaveState = .saving
         do {
             _ = try await bridge.plannerSaveEvaluationPeriod(
                 periodId: 0,
@@ -880,16 +1395,25 @@ final class PlannerWorkspaceViewModel: ObservableObject {
             evaluationFormStart = ""
             evaluationFormEnd = ""
             scheduleError = ""
-            await reloadScheduleConfiguration()
+            await reloadScheduleOnly()
+            scheduleSaveState = .saved(Date())
         } catch {
             scheduleError = error.localizedDescription
+            scheduleSaveState = .failed(scheduleError)
         }
     }
 
     func deleteEvaluationPeriod(_ periodId: Int64) async {
         guard let bridge else { return }
-        try? await bridge.plannerDeleteEvaluationPeriod(periodId: periodId)
-        await reloadScheduleConfiguration()
+        scheduleSaveState = .saving
+        do {
+            try await bridge.plannerDeleteEvaluationPeriod(periodId: periodId)
+            await reloadScheduleOnly()
+            scheduleSaveState = .saved(Date())
+        } catch {
+            scheduleError = error.localizedDescription
+            scheduleSaveState = .failed(scheduleError)
+        }
     }
 
     func toggleActiveWeekday(_ day: Int) {
@@ -972,9 +1496,14 @@ final class PlannerWorkspaceViewModel: ObservableObject {
 
     private func reloadScheduleConfiguration() async {
         guard let bridge else { return }
-        do {
-            let schedule = try await bridge.plannerTeacherSchedule()
-            teacherSchedule = schedule
+        scheduleFormGroupId = await scheduleStore.reload(bridge: bridge, groups: groups, scheduleFormGroupId: scheduleFormGroupId)
+        teacherSchedule = scheduleStore.teacherSchedule
+        teacherScheduleSlots = scheduleStore.teacherScheduleSlots
+        weeklySlots = scheduleStore.weeklySlots
+        evaluationPeriods = scheduleStore.evaluationPeriods
+        forecastRows = scheduleStore.forecastRows
+        scheduleError = scheduleStore.scheduleError
+        if let schedule = teacherSchedule {
             scheduleName = schedule.name
             scheduleStartDate = schedule.startDateIso
             scheduleEndDate = schedule.endDateIso
@@ -983,31 +1512,32 @@ final class PlannerWorkspaceViewModel: ObservableObject {
                     .split(separator: ",")
                     .compactMap { Int(String($0).trimmingCharacters(in: .whitespacesAndNewlines)) }
             )
-            teacherScheduleSlots = (try? await bridge.plannerTeacherScheduleSlots(scheduleId: schedule.id)) ?? []
-            evaluationPeriods = (try? await bridge.plannerEvaluationPeriods(scheduleId: schedule.id)) ?? []
-            forecastRows = (try? await bridge.plannerForecast(scheduleId: schedule.id, classId: nil)) ?? []
-            if scheduleFormGroupId == nil {
-                scheduleFormGroupId = groups.first?.id
-            }
             rebuildVisiblePlannerStructure()
-        } catch {
-            scheduleError = error.localizedDescription
         }
     }
 
+    private func replaceJournalDraft(_ draft: PlannerJournalDraft) {
+        autosaveTask?.cancel()
+        isHydratingDraft = true
+        journalDraft = draft
+        journalStore.journalDraft = draft
+        Task { @MainActor [weak self] in
+            await Task.yield()
+            self?.isHydratingDraft = false
+        }
+    }
+
+    private static func isoWeeks(in year: Int) -> Int {
+        var calendar = Calendar(identifier: .iso8601)
+        calendar.firstWeekday = 2
+        calendar.minimumDaysInFirstWeek = 4
+        let date = DateComponents(calendar: calendar, year: year, month: 12, day: 28).date ?? Date()
+        return calendar.component(.weekOfYear, from: date)
+    }
+
     private func rebuildVisiblePlannerStructure() {
-        let relevantTeacherSlots = teacherScheduleSlots.filter { slot in
-            guard let groupFilterId else { return true }
-            return slot.schoolClassId == groupFilterId
-        }
-        let relevantWeeklySlots = weeklySlots.filter { slot in
-            guard let groupFilterId else { return true }
-            return slot.schoolClassId == groupFilterId
-        }
-        let relevantSessions = sessions.filter { session in
-            guard let groupFilterId else { return true }
-            return session.groupId == groupFilterId
-        }
+        let relevantTeacherSlots = teacherScheduleSlots
+        let relevantWeeklySlots = weeklySlots
 
         var rangesByPeriod: [Int: PlannerVisibleSlot] = [:]
         for slot in timeSlots {
@@ -1018,12 +1548,18 @@ final class PlannerWorkspaceViewModel: ObservableObject {
             )
         }
 
-        for session in relevantSessions {
+        for session in sessions {
             if let matchingDefault = timeSlots.first(where: { Int($0.period) == Int(session.period) }) {
                 rangesByPeriod[Int(session.period)] = PlannerVisibleSlot(
                     period: Int(session.period),
                     startTime: matchingDefault.startTime,
                     endTime: matchingDefault.endTime
+                )
+            } else if let startTime = session.startTime, let endTime = session.endTime {
+                rangesByPeriod[Int(session.period)] = PlannerVisibleSlot(
+                    period: Int(session.period),
+                    startTime: startTime,
+                    endTime: endTime
                 )
             }
         }
@@ -1079,13 +1615,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
 
     func entries(for day: Int, period: Int) -> [PlannerWeekCellEntry] {
         let sessionEntries = sessions
-            .filter {
-                Int($0.dayOfWeek) == day
-                    && Int($0.period) == period
-                    && matchesGroupFilter($0)
-                    && matchesSessionFilter($0)
-                    && matchesSearch($0, query: searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
-            }
+            .filter { Int($0.dayOfWeek) == day && Int($0.period) == period }
             .sorted {
                 if $0.groupName == $1.groupName { return $0.teachingUnitName < $1.teachingUnitName }
                 return $0.groupName < $1.groupName
@@ -1124,10 +1654,9 @@ final class PlannerWorkspaceViewModel: ObservableObject {
             }
 
         let existingClassIds = Set(sessionEntries.map(\.classId))
-        let scheduledEntries = effectiveScheduleSlots
+        let scheduledEntries = teacherScheduleSlots
             .filter { slot in
                 guard Int(slot.dayOfWeek) == day else { return false }
-                if let groupFilterId, slot.schoolClassId != groupFilterId { return false }
                 guard let visibleSlot = visibleSlots.first(where: { $0.period == period }) else { return false }
                 return slot.startTime == visibleSlot.startTime && slot.endTime == visibleSlot.endTime && !existingClassIds.contains(slot.schoolClassId)
             }
@@ -1191,36 +1720,117 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         return sections
     }
 
-    private func matchesSearch(_ session: PlanningSession, query: String) -> Bool {
-        guard !query.isEmpty else { return true }
-        return [session.groupName, session.teachingUnitName, session.objectives, session.activities]
-            .joined(separator: " ")
-            .lowercased()
-            .contains(query)
-    }
-
-    private func matchesGroupFilter(_ session: PlanningSession) -> Bool {
-        guard let groupFilterId else { return true }
-        return session.groupId == groupFilterId
-    }
-
-    private func matchesSessionFilter(_ session: PlanningSession) -> Bool {
-        let journalStatus = summary(for: session.id)?.status
-        switch sessionFilter {
-        case .all:
-            return true
-        case .planned:
-            return session.status != .completed
-        case .completed:
-            return session.status == .completed
-        case .draftDiary:
-            return journalStatus == .draft
-        case .closedDiary:
-            return journalStatus == .completed
-        case .emptyDiary:
-            return journalStatus == nil || journalStatus == .empty
+    func reloadHolidays() async {
+        guard let bridge else { return }
+        do {
+            let events = try await bridge.plannerNonTeachingCalendarEvents(classId: nil)
+            let days = IsoWeekHelper.shared.daysOf(isoWeek: Int32(week), year: Int32(year))
+            var holidays: Set<Int> = []
+            
+            let calendar = Calendar.current
+            
+            for (index, dayDate) in days.enumerated() {
+                var components = DateComponents()
+                components.year = Int(dayDate.year)
+                components.month = Int(dayDate.monthNumber)
+                components.day = Int(dayDate.dayOfMonth)
+                components.hour = 0
+                components.minute = 0
+                components.second = 0
+                
+                guard let startOfDay = calendar.date(from: components) else { continue }
+                let startMs = Int64(startOfDay.timeIntervalSince1970 * 1000)
+                
+                components.hour = 23
+                components.minute = 59
+                components.second = 59
+                guard let endOfDay = calendar.date(from: components) else { continue }
+                let endMs = Int64(endOfDay.timeIntervalSince1970 * 1000)
+                
+                for event in events {
+                    let eventStartMs = event.startAt.toEpochMilliseconds()
+                    if eventStartMs >= startMs && eventStartMs <= endMs {
+                        holidays.insert(index + 1)
+                        break
+                    }
+                }
+            }
+            self.holidayDays = holidays
+        } catch {
+            print("Error al cargar festivos: \(error)")
         }
     }
+
+    func toggleHoliday(for day: Int) async {
+        guard let bridge else { return }
+        let days = IsoWeekHelper.shared.daysOf(isoWeek: Int32(week), year: Int32(year))
+        guard day >= 1 && day <= days.count else { return }
+        let targetDate = days[day - 1]
+        
+        let events = (try? await bridge.plannerNonTeachingCalendarEvents(classId: nil)) ?? []
+        let calendar = Calendar.current
+        
+        var components = DateComponents()
+        components.year = Int(targetDate.year)
+        components.month = Int(targetDate.monthNumber)
+        components.day = Int(targetDate.dayOfMonth)
+        components.hour = 0
+        components.minute = 0
+        components.second = 0
+        
+        guard let startOfDay = calendar.date(from: components) else { return }
+        let startEpochMs = Int64(startOfDay.timeIntervalSince1970 * 1000)
+        
+        components.hour = 23
+        components.minute = 59
+        components.second = 59
+        guard let endOfDay = calendar.date(from: components) else { return }
+        let endEpochMs = Int64(endOfDay.timeIntervalSince1970 * 1000)
+        
+        let existingEvent = events.first { event in
+            let eventStartMs = event.startAt.toEpochMilliseconds()
+            return eventStartMs >= startEpochMs && eventStartMs <= endEpochMs
+        }
+        
+        do {
+            if let event = existingEvent {
+                _ = try await bridge.plannerSaveCalendarEvent(
+                    id: event.id,
+                    classId: nil,
+                    title: "Lectivo",
+                    description: "Clase ordinaria",
+                    startEpochMs: event.startAt.toEpochMilliseconds(),
+                    endEpochMs: event.endAt.toEpochMilliseconds()
+                )
+            } else {
+                _ = try await bridge.plannerSaveCalendarEvent(
+                    id: nil,
+                    classId: nil,
+                    title: "Festivo",
+                    description: "Día no lectivo",
+                    startEpochMs: startEpochMs,
+                    endEpochMs: endEpochMs
+                )
+            }
+            await reloadWeekSessions()
+        } catch {
+            print("Error al alternar festivo: \(error)")
+        }
+    }
+
+    func dayHeaderLabel(for day: Int) -> String {
+        let days = IsoWeekHelper.shared.daysOf(isoWeek: Int32(week), year: Int32(year))
+        guard day >= 1 && day <= days.count else { return dayLabel(for: day) }
+        let date = days[day - 1]
+        let dayName = dayLabel(for: day)
+        return "\(dayName) \(date.dayOfMonth)/\(date.monthNumber)"
+    }
+}
+
+private enum PlannerCascadeMoveError: LocalizedError {
+    case bridgeUnavailable
+
+    var errorDescription: String? { "El Planner todavía no está preparado." }
 }
 
 struct PlannerWorkspaceIOS: View {
@@ -1228,6 +1838,7 @@ struct PlannerWorkspaceIOS: View {
     @EnvironmentObject private var layoutState: WorkspaceLayoutState
     @Environment(\.colorScheme) private var colorScheme
     @StateObject private var vm = PlannerWorkspaceViewModel()
+    @State private var selectedDetailSession: PlanningSession? = nil
     private let initialSection: PlannerWorkspaceSection
     private let context: PlannerNavigationContext
     private let onOpenDiary: ((PlannerNavigationContext) -> Void)?
@@ -1263,7 +1874,7 @@ struct PlannerWorkspaceIOS: View {
             syncNavigationContext()
         }
         .onAppear(perform: configurePlannerToolbar)
-        .onChange(of: context) { newValue in
+        .appOnChange(of: context) { newValue in
             Task {
                 await vm.applyExternalContext(
                     week: newValue.week,
@@ -1274,14 +1885,42 @@ struct PlannerWorkspaceIOS: View {
                 syncNavigationContext()
             }
         }
-        .onChange(of: vm.selectedSession?.id) { _ in configurePlannerToolbar() }
-        .onChange(of: vm.activeSection) { _ in configurePlannerToolbar() }
-        .onChange(of: vm.week) { _ in syncNavigationContext() }
-        .onChange(of: vm.year) { _ in syncNavigationContext() }
-        .onChange(of: vm.selectedGroupId) { _ in syncNavigationContext() }
-        .onChange(of: vm.selectedSession?.id) { _ in syncNavigationContext() }
+        .appOnChange(of: vm.selectedSession?.id) { _ in configurePlannerToolbar() }
+        .appOnChange(of: vm.activeSection) { _ in configurePlannerToolbar() }
+        .appOnChange(of: vm.week) { _ in syncNavigationContext() }
+        .appOnChange(of: vm.year) { _ in syncNavigationContext() }
+        .appOnChange(of: vm.selectedGroupId) { _ in syncNavigationContext() }
+        .appOnChange(of: vm.selectedSession?.id) { _ in syncNavigationContext() }
         .sheet(isPresented: $vm.showingComposer) {
             PlannerSessionComposerSheet(vm: vm)
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { selectedDetailSession != nil },
+                set: { if !$0 { selectedDetailSession = nil } }
+            )
+        ) {
+            if let session = selectedDetailSession {
+                PlannerSessionDetailSheet(
+                    session: session,
+                    onOpenDiary: {
+                        selectedDetailSession = nil
+                        onOpenDiary?(
+                            PlannerNavigationContext(
+                                week: vm.week,
+                                year: vm.year,
+                                groupId: session.groupId,
+                                sessionId: session.id
+                            )
+                        )
+                    },
+                    onEdit: {
+                        selectedDetailSession = nil
+                        vm.openComposer(for: session)
+                    }
+                )
+                .environmentObject(bridge)
+            }
         }
         .onDisappear {
             layoutState.clearPlannerToolbar()
@@ -1320,14 +1959,56 @@ struct PlannerWorkspaceIOS: View {
     }
 
     private func openSessionInDiary(_ session: PlanningSession) {
-        onOpenDiary?(
-            PlannerNavigationContext(
-                week: vm.week,
-                year: vm.year,
-                groupId: session.groupId,
-                sessionId: session.id
+        if hasSessionPassed(session) {
+            onOpenDiary?(
+                PlannerNavigationContext(
+                    week: vm.week,
+                    year: vm.year,
+                    groupId: session.groupId,
+                    sessionId: session.id
+                )
             )
-        )
+        } else {
+            selectedDetailSession = session
+        }
+    }
+
+    private func hasSessionPassed(_ session: PlanningSession) -> Bool {
+        if session.status == .completed {
+            return true
+        }
+        
+        var components = DateComponents()
+        components.calendar = Calendar(identifier: .iso8601)
+        components.yearForWeekOfYear = Int(session.year)
+        components.weekOfYear = Int(session.weekNumber)
+        components.weekday = Int(session.dayOfWeek) + 1
+        
+        guard let sessionDate = components.date else { return true }
+        
+        let now = Date()
+        let calendar = Calendar.current
+        
+        if calendar.compare(sessionDate, to: now, toGranularity: .day) == .orderedAscending {
+            return true
+        } else if calendar.compare(sessionDate, to: now, toGranularity: .day) == .orderedDescending {
+            return false
+        } else {
+            // Es hoy. Comparamos la hora de fin.
+            if let endTimeStr = session.endTime?.trimmingCharacters(in: .whitespacesAndNewlines), !endTimeStr.isEmpty {
+                let parts = endTimeStr.split(separator: ":")
+                if parts.count == 2, let hours = Int(parts[0]), let minutes = Int(parts[1]) {
+                    var timeComponents = calendar.dateComponents([.year, .month, .day], from: now)
+                    timeComponents.hour = hours
+                    timeComponents.minute = minutes
+                    timeComponents.second = 0
+                    if let sessionEndDateTime = calendar.date(from: timeComponents) {
+                        return now > sessionEndDateTime
+                    }
+                }
+            }
+            return false
+        }
     }
 
     private func syncNavigationContext() {
@@ -1345,6 +2026,7 @@ struct PlannerWorkspaceIOS: View {
 private struct PlannerToolbar: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
     let onOpenDiary: () -> Void
+    @State private var isClearSchedulelessWeekConfirmationPresented = false
 
     var body: some View {
         VStack(spacing: 12) {
@@ -1372,19 +2054,8 @@ private struct PlannerToolbar: View {
             }
 
             HStack(spacing: 10) {
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundStyle(.secondary)
-                    TextField("Buscar sesión, unidad, objetivo…", text: $vm.searchText)
-                        .textFieldStyle(.plain)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(EvaluationDesign.surfaceSoft)
-                )
-                .onChange(of: vm.searchText) { _ in vm.applySearch() }
+                IOSSearchField(text: $vm.searchText, placeholder: "Buscar sesión, unidad, objetivo…")
+                    .appOnChange(of: vm.searchText) { _ in vm.applySearch() }
 
                 Menu {
                     Button(vm.selectionMode ? "Salir de selección" : "Seleccionar sesiones") {
@@ -1395,10 +2066,27 @@ private struct PlannerToolbar: View {
                         .disabled(vm.selectedSessionIds.isEmpty)
                     Button("Mover +1 día") { Task { await vm.bulkMoveOneDay() } }
                         .disabled(vm.selectedSessionIds.isEmpty)
+                    Divider()
+                    Button("Limpiar semana sin franjas", role: .destructive) {
+                        isClearSchedulelessWeekConfirmationPresented = true
+                    }
+                    .disabled(!vm.canClearSchedulelessWeekSessions)
                 } label: {
                     Label("Acciones", systemImage: "slider.horizontal.3")
                 }
                 .buttonStyle(.bordered)
+                .confirmationDialog(
+                    "Eliminar sesiones de esta semana",
+                    isPresented: $isClearSchedulelessWeekConfirmationPresented,
+                    titleVisibility: .visible
+                ) {
+                    Button("Eliminar sesiones planificadas", role: .destructive) {
+                        Task { await vm.clearCurrentWeekSessionsWithoutSchedule() }
+                    }
+                    Button("Cancelar", role: .cancel) {}
+                } message: {
+                    Text("No hay franjas en la agenda. Se eliminarán las sesiones planificadas de la semana actual y se conservarán las completadas.")
+                }
 
                 if vm.selectedSession != nil {
                     Button(action: onOpenDiary) {
@@ -1431,7 +2119,19 @@ private struct PlannerWeekBoard: View {
                 HStack(spacing: 0) {
                     cellHeader("Franja", width: 110)
                     ForEach(vm.visibleWeekdays, id: \.self) { day in
-                        cellHeader(vm.dayLabel(for: day), width: 230)
+                        let isHoliday = vm.holidayDays.contains(day)
+                        cellHeader(vm.dayHeaderLabel(for: day) + (isHoliday ? " 🌴" : ""), width: 230)
+                            .foregroundStyle(isHoliday ? EvaluationDesign.danger : Color.primary)
+                            .contextMenu {
+                                Button {
+                                    Task { await vm.toggleHoliday(for: day) }
+                                } label: {
+                                    Label(
+                                        isHoliday ? "Marcar como lectivo" : "Marcar como festivo",
+                                        systemImage: isHoliday ? "calendar.badge.plus" : "calendar.badge.minus"
+                                    )
+                                }
+                            }
                     }
                 }
 
@@ -1450,6 +2150,7 @@ private struct PlannerWeekBoard: View {
                         ForEach(vm.visibleWeekdays, id: \.self) { day in
                             PlannerWeekCellCard(
                                 entries: vm.entries(for: day, period: Int(slot.period)),
+                                isHoliday: vm.holidayDays.contains(day),
                                 onCreate: {
                                     vm.openComposer(day: day, period: Int(slot.period))
                                 },
@@ -1506,6 +2207,7 @@ private struct PlannerWeekBoard: View {
 
 private struct PlannerWeekCellCard: View {
     let entries: [PlannerWeekCellEntry]
+    let isHoliday: Bool
     let onCreate: () -> Void
     let onOpenEntry: (PlannerWeekCellEntry) -> Void
     let onEditEntry: (PlannerWeekCellEntry) -> Void
@@ -1516,7 +2218,36 @@ private struct PlannerWeekCellCard: View {
     var body: some View {
         let singleRichEntry = entries.count == 1 && entries.first?.kind == .session
         VStack(alignment: .leading, spacing: 8) {
-            if entries.isEmpty {
+            if isHoliday {
+                ZStack {
+                    if !entries.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(entries.prefix(singleRichEntry ? 1 : 3)) { entry in
+                                PlannerWeekEntryCard(
+                                    entry: entry,
+                                    fillsCell: singleRichEntry,
+                                    onTap: {},
+                                    onEdit: {},
+                                    onDuplicate: {},
+                                    onComplete: {},
+                                    onOpenDiary: {}
+                                )
+                            }
+                        }
+                        .opacity(0.2)
+                        .disabled(true)
+                    }
+                    VStack(spacing: 4) {
+                        Image(systemName: "umbrella.fill")
+                            .font(.title2)
+                            .foregroundStyle(EvaluationDesign.danger.opacity(0.7))
+                        Text("No lectivo")
+                            .font(.caption.bold())
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            } else if entries.isEmpty {
                 Button(action: onCreate) {
                     VStack(alignment: .leading, spacing: 6) {
                         Image(systemName: "plus.circle")
@@ -1555,11 +2286,11 @@ private struct PlannerWeekCellCard: View {
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(EvaluationDesign.surfaceSoft)
+                .fill(isHoliday ? EvaluationDesign.surfaceSoft.opacity(0.5) : EvaluationDesign.surfaceSoft)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(EvaluationDesign.border, lineWidth: 1)
+                .stroke(isHoliday ? EvaluationDesign.danger.opacity(0.15) : EvaluationDesign.border, lineWidth: 1)
         )
     }
 }
@@ -1662,7 +2393,7 @@ private struct PlannerWeekEntryCard: View {
     }
 }
 
-struct PlannerStatusPill: View {
+private struct PlannerStatusPill: View {
     let status: SessionJournalStatus
 
     var body: some View {
@@ -1720,6 +2451,23 @@ private struct PlannerSessionsList: View {
                 }
             }
             .buttonStyle(.plain)
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                Button("Diario") {
+                    onOpenDiary(session)
+                }
+                .tint(EvaluationDesign.accent)
+
+                Button("Impartida") {
+                    Task { await vm.markCompleted(session) }
+                }
+                .tint(EvaluationDesign.success)
+            }
+            .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                Button("Seleccionar") {
+                    Task { await vm.select(session: session) }
+                }
+                .tint(.secondary)
+            }
             .contextMenu {
                 Button("Abrir diario") {
                     onOpenDiary(session)
@@ -1735,20 +2483,18 @@ private struct PlannerScheduleBoard: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: EvaluationDesign.cardSpacing) {
-                EvaluationGlassCard {
+            VStack(alignment: .leading, spacing: IOSAppStyle.sectionSpacing) {
+                IOSSectionCard(title: "Resumen operativo", systemImage: "calendar.badge.clock") {
                     VStack(alignment: .leading, spacing: 16) {
-                        EvaluationSectionTitle(
-                            eyebrow: "Agenda docente",
-                            title: "Resumen operativo",
-                            subtitle: "La configuración editable vive ahora en Ajustes para que Planner conserve una sola tarea principal."
-                        )
+                        Text("La configuración editable vive ahora en Ajustes para que Planner conserve una sola tarea principal.")
+                            .font(IOSAppStyle.captionText)
+                            .foregroundStyle(.secondary)
 
                         HStack(spacing: 12) {
-                            PlannerSummaryMetric(title: "Agenda", value: vm.scheduleName, tint: .blue)
-                            PlannerSummaryMetric(title: "Curso", value: "\(vm.scheduleStartDate) · \(vm.scheduleEndDate)", tint: .indigo)
-                            PlannerSummaryMetric(title: "Franjas", value: "\(vm.visibleScheduleSlotsSummaryCount)", tint: .teal)
-                            PlannerSummaryMetric(title: "Evaluaciones", value: "\(vm.evaluationPeriods.count)", tint: .orange)
+                            IOSMetricCard(title: "Agenda", value: vm.scheduleName, tint: .blue)
+                            IOSMetricCard(title: "Curso", value: "\(vm.scheduleStartDate) · \(vm.scheduleEndDate)", tint: .indigo)
+                            IOSMetricCard(title: "Franjas", value: "\(vm.visibleScheduleSlotsSummaryCount)", tint: .teal)
+                            IOSMetricCard(title: "Evaluaciones", value: "\(vm.evaluationPeriods.count)", tint: .orange)
                         }
 
                         Label(vm.activeWeekdaySummary, systemImage: "calendar.badge.clock")
@@ -1764,13 +2510,11 @@ private struct PlannerScheduleBoard: View {
                     }
                 }
 
-                EvaluationGlassCard {
+                IOSSectionCard(title: "Franjas activas", systemImage: "clock.fill") {
                     VStack(alignment: .leading, spacing: 16) {
-                        EvaluationSectionTitle(
-                            eyebrow: "Horario persistente",
-                            title: "Franjas activas",
-                            subtitle: "Resumen de las franjas que ya están alimentando el tablero semanal actual."
-                        )
+                        Text("Resumen de las franjas que ya están alimentando el tablero semanal actual.")
+                            .font(IOSAppStyle.captionText)
+                            .foregroundStyle(.secondary)
 
                         if vm.effectiveScheduleSlots.isEmpty {
                             Text("Todavía no hay franjas definidas para esta agenda.")
@@ -1808,13 +2552,11 @@ private struct PlannerScheduleBoard: View {
                     }
                 }
 
-                EvaluationGlassCard {
+                IOSSectionCard(title: "Previsión lectiva", systemImage: "calendar.badge.exclamationmark") {
                     VStack(alignment: .leading, spacing: 16) {
-                        EvaluationSectionTitle(
-                            eyebrow: "Evaluaciones",
-                            title: "Previsión lectiva",
-                            subtitle: "Sigue visible en Planner para contrastar lo previsto con lo ya creado, pero se edita desde Ajustes."
-                        )
+                        Text("Sigue visible en Planner para contrastar lo previsto con lo ya creado, pero se edita desde Ajustes.")
+                            .font(IOSAppStyle.captionText)
+                            .foregroundStyle(.secondary)
 
                         if vm.evaluationPeriods.isEmpty {
                             Text("Aún no hay periodos evaluativos configurados.")
@@ -1854,34 +2596,12 @@ private struct PlannerScheduleBoard: View {
                     }
                 }
             }
-            .padding(EvaluationDesign.screenPadding)
+            .padding(IOSAppStyle.pagePadding)
         }
     }
 }
 
-private struct PlannerSummaryMetric: View {
-    let title: String
-    let value: String
-    let tint: Color
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(.primary)
-                .lineLimit(2)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(tint.opacity(0.10))
-        )
-    }
-}
+// PlannerSummaryMetric removed in favor of IOSMetricCard
 
 private struct PlannerForecastRowView: View {
     let row: PlannerSessionForecast
@@ -1940,10 +2660,10 @@ struct PlannerJournalDetailPane: View {
                     }
                     .padding(EvaluationDesign.screenPadding)
                 }
-                .onChange(of: vm.journalDraft) { _ in
+                .appOnChange(of: vm.journalDraft) { _ in
                     vm.scheduleAutosave()
                 }
-                .onChange(of: selectedPhoto) { item in
+                .appOnChange(of: selectedPhoto) { item in
                     guard let item else { return }
                     Task {
                         if let data = try? await item.loadTransferable(type: Data.self),
@@ -2225,11 +2945,6 @@ private struct SessionJournalEFCard: View {
 
 private struct JournalIndividualNotesList: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
-    @EnvironmentObject private var bridge: KmpBridge
-
-    private var availableStudents: [Student] {
-        bridge.studentsInClass.isEmpty ? bridge.allStudents : bridge.studentsInClass
-    }
 
     var body: some View {
         SessionJournalSectionCard(
@@ -2237,24 +2952,14 @@ private struct JournalIndividualNotesList: View {
             title: "Observaciones individuales",
             subtitle: "Notas breves por alumno con intención de seguimiento."
         ) {
-            ForEach($vm.journalDraft.notes) { $note in
+            ForEach(vm.journalDraft.notes, id: \.id) { note in
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
-                        Picker("Alumno", selection: $note.studentId) {
-                            Text("Sin alumno").tag(Optional<Int64>.none)
-                            ForEach(availableStudents, id: \.id) { student in
-                                Text(student.fullName).tag(Optional<Int64>.some(student.id))
-                            }
-                        }
-                        .labelsHidden()
-                        .frame(maxWidth: .infinity)
-                        .onChange(of: note.studentId) { newId in
-                            syncStudentName(for: newId, note: $note)
-                        }
-
-                        TextField("Tag", text: $note.tag)
+                        TextField("Alumno", text: noteBinding(note.id, \.studentName))
                         .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .frame(width: 90)
+
+                        TextField("Tag", text: noteBinding(note.id, \.tag))
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
 
                         Button(role: .destructive) {
                             vm.journalDraft.notes.removeAll { $0.id == note.id }
@@ -2263,7 +2968,7 @@ private struct JournalIndividualNotesList: View {
                         }
                     }
 
-                    TextField("Observación", text: $note.note, axis: .vertical)
+                    TextField("Observación", text: noteBinding(note.id, \.note), axis: .vertical)
                     .lineLimit(2...4)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
                 }
@@ -2279,13 +2984,16 @@ private struct JournalIndividualNotesList: View {
         }
     }
 
-    private func syncStudentName(for studentId: Int64?, note: Binding<PlannerJournalDraftNote>) {
-        guard let studentId,
-              let student = availableStudents.first(where: { $0.id == studentId }) else {
-            note.wrappedValue.studentName = ""
-            return
-        }
-        note.wrappedValue.studentName = student.fullName
+    private func noteBinding(_ id: UUID, _ keyPath: WritableKeyPath<PlannerJournalDraftNote, String>) -> Binding<String> {
+        Binding(
+            get: {
+                vm.journalDraft.notes.first(where: { $0.id == id })?[keyPath: keyPath] ?? ""
+            },
+            set: { newValue in
+                guard let index = vm.journalDraft.notes.firstIndex(where: { $0.id == id }) else { return }
+                vm.journalDraft.notes[index][keyPath: keyPath] = newValue
+            }
+        )
     }
 }
 
@@ -2317,19 +3025,9 @@ private struct JournalMediaDock: View {
                         recorder.start()
                     }
                 } label: {
-                    #if os(macOS)
-                    Label("Audio no disponible", systemImage: "mic.slash")
-                    #else
                     Label(recorder.isRecording ? "Detener audio" : "Grabar audio", systemImage: recorder.isRecording ? "stop.circle.fill" : "mic.fill")
-                    #endif
                 }
-                #if os(macOS)
-                .buttonStyle(.bordered)
-                .disabled(true)
-                .help("La grabación de audio no está disponible en macOS.")
-                #else
                 .buttonStyle(.borderedProminent)
-                #endif
 
                 Button {
                     vm.journalDraft.media.append(
@@ -2341,7 +3039,7 @@ private struct JournalMediaDock: View {
                 .buttonStyle(.bordered)
             }
 
-            ForEach(Array(vm.journalDraft.media.enumerated()), id: \.element.id) { index, media in
+            ForEach(vm.journalDraft.media, id: \.id) { media in
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text(media.type.title)
@@ -2349,35 +3047,41 @@ private struct JournalMediaDock: View {
                             .foregroundStyle(.secondary)
                         Spacer()
                         Button(role: .destructive) {
-                            vm.journalDraft.media.remove(at: index)
+                            vm.journalDraft.media.removeAll { $0.id == media.id }
                         } label: {
                             Image(systemName: "trash")
                         }
                     }
 
-                    TextField("Título", text: Binding(
-                        get: { vm.journalDraft.media[index].caption },
-                        set: { vm.journalDraft.media[index].caption = $0 }
-                    ))
+                    TextField("Título", text: mediaBinding(media.id, \.caption))
                     .textFieldStyle(RoundedBorderTextFieldStyle())
 
-                    if !vm.journalDraft.media[index].uri.isEmpty {
-                        Text(vm.journalDraft.media[index].uri)
+                    if !media.uri.isEmpty {
+                        Text(media.uri)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
 
-                    TextField("Transcripción editable", text: Binding(
-                        get: { vm.journalDraft.media[index].transcript },
-                        set: { vm.journalDraft.media[index].transcript = $0 }
-                    ), axis: .vertical)
+                    TextField("Transcripción editable", text: mediaBinding(media.id, \.transcript), axis: .vertical)
                     .lineLimit(2...5)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
                 }
                 .padding(.vertical, 4)
             }
         }
+    }
+
+    private func mediaBinding(_ id: UUID, _ keyPath: WritableKeyPath<PlannerJournalDraftMedia, String>) -> Binding<String> {
+        Binding(
+            get: {
+                vm.journalDraft.media.first(where: { $0.id == id })?[keyPath: keyPath] ?? ""
+            },
+            set: { newValue in
+                guard let index = vm.journalDraft.media.firstIndex(where: { $0.id == id }) else { return }
+                vm.journalDraft.media[index][keyPath: keyPath] = newValue
+            }
+        )
     }
 }
 
@@ -2413,12 +3117,13 @@ private struct JournalActionBar: View {
             }
 
             HStack(spacing: 10) {
-                Text("Usa el dictado nativo del teclado en cualquier campo de texto para capturar voz.")
+                saveStateLabel
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(saveStateColor)
                 Spacer()
                 Button("Guardar ahora") { Task { await vm.saveJournal() } }
                     .buttonStyle(.borderedProminent)
+                    .disabled(vm.journalSaveState == .saving)
             }
 
             ForEach(vm.journalDraft.links) { link in
@@ -2431,6 +3136,29 @@ private struct JournalActionBar: View {
                 }
                 .padding(.vertical, 2)
             }
+        }
+    }
+
+    private var saveStateLabel: Text {
+        switch vm.journalSaveState {
+        case .idle:
+            return Text("Usa el dictado nativo del teclado en cualquier campo de texto para capturar voz.")
+        case .saving:
+            return Text("Guardando...")
+        case .saved(let date):
+            let seconds = max(0, Int(Date().timeIntervalSince(date)))
+            return Text(seconds < 3 ? "Guardado ahora" : "Guardado hace \(seconds) s")
+        case .failed(let message):
+            return Text("Error al guardar: \(message)")
+        }
+    }
+
+    private var saveStateColor: Color {
+        switch vm.journalSaveState {
+        case .failed:
+            return .red
+        default:
+            return .secondary
         }
     }
 }
@@ -2526,34 +3254,393 @@ private struct JournalQuickChips: View {
     }
 }
 
-private struct PlannerInstrumentSelectionRow: View {
+private struct PlannerInstrumentCompactPicker: View {
+    @ObservedObject var vm: PlannerWorkspaceViewModel
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
+    @State private var isExpanded = false
+    @State private var searchText = ""
+    @State private var expandedGroupTitles: Set<String> = []
+
+    private var summaryText: String {
+        let availableIds = Set(vm.composerAvailableInstruments.map(\.id))
+        let count = vm.composerDraft.selectedInstrumentIds.intersection(availableIds).count
+        if count == 1 { return "1 seleccionado" }
+        return "\(count) seleccionados"
+    }
+
+    private var rubricCount: Int {
+        vm.composerAvailableInstruments.filter { $0.kind == .rubric }.count
+    }
+
+    private var evaluationCount: Int {
+        vm.composerAvailableInstruments.filter { $0.kind != .rubric }.count
+    }
+
+    private var recommendedCount: Int {
+        vm.composerAvailableInstruments.filter(\.isRecommendedForCurrentSA).count
+    }
+
+    private var groupedInstruments: [PlannerInstrumentCompactGroup] {
+        let trimmedSearch = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let filtered = vm.composerAvailableInstruments.filter { instrument in
+            guard !trimmedSearch.isEmpty else { return true }
+            let haystack = [
+                safeDisplayText(instrument.title, fallback: "Instrumento"),
+                safeDisplayText(instrument.subtitle, fallback: instrument.kind == .rubric ? "Rúbrica" : "Evaluación"),
+                safeDisplayText(instrument.groupTitle, fallback: "Sin situación asignada"),
+                instrument.kind == .rubric ? "Rúbrica" : "Evaluación"
+            ].joined(separator: " ")
+            return haystack.localizedCaseInsensitiveContains(trimmedSearch)
+        }
+
+        var groups: [PlannerInstrumentCompactGroup] = []
+        let recommended = filtered
+            .filter(\.isRecommendedForCurrentSA)
+            .sorted(by: instrumentSort)
+        if !recommended.isEmpty {
+            groups.append(PlannerInstrumentCompactGroup(title: "Recomendados para esta SA", items: recommended))
+        }
+
+        let remaining = filtered.filter { !$0.isRecommendedForCurrentSA }
+        let grouped = Dictionary(grouping: remaining) { instrument in
+            safeDisplayText(instrument.groupTitle, fallback: "Sin situación asignada")
+        }
+        let sortedTitles = grouped.keys.sorted { lhs, rhs in
+            if lhs == "Sin situación asignada" { return false }
+            if rhs == "Sin situación asignada" { return true }
+            return lhs.localizedCaseInsensitiveCompare(rhs) == .orderedAscending
+        }
+        groups.append(contentsOf: sortedTitles.map { title in
+            PlannerInstrumentCompactGroup(title: title, items: (grouped[title] ?? []).sorted(by: instrumentSort))
+        })
+        return groups
+    }
+
+    private var recommendedGroupTitles: Set<String> {
+        Set(groupedInstruments.filter { group in
+            group.items.contains(where: \.isRecommendedForCurrentSA)
+        }.map(\.title))
+    }
+
+    private var trimmedSearchText: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Button {
+                withAnimation(uiFeatureFlags.interactionAnimation) {
+                    isExpanded.toggle()
+                }
+                AppleInteractionFeedback.play(.lightImpact)
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "checklist")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(EvaluationDesign.accent)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Instrumentos enlazados")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                        Text("\(summaryText) · Ver instrumentos")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(12)
+                .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(EvaluationDesign.border, lineWidth: 0.5)
+                }
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 12) {
+                    TextField("Buscar rúbrica o evaluación", text: $searchText)
+                        .textFieldStyle(.roundedBorder)
+
+                    if groupedInstruments.isEmpty {
+                        Text("No hay instrumentos que coincidan con la búsqueda.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.vertical, 8)
+                    } else {
+                        HStack(spacing: 8) {
+                            EvaluationChip(label: "\(recommendedCount) criterios SA", systemImage: "scope", active: recommendedCount > 0, tint: EvaluationDesign.accent)
+                            EvaluationChip(label: "\(rubricCount) rúbricas", systemImage: "checklist", active: rubricCount > 0, tint: EvaluationDesign.success)
+                            EvaluationChip(label: "\(evaluationCount) evaluaciones", systemImage: "chart.bar.doc.horizontal", active: evaluationCount > 0, tint: EvaluationDesign.danger)
+                        }
+
+                        HStack(spacing: 16) {
+                            Button("Expandir recomendadas") {
+                                withAnimation(uiFeatureFlags.interactionAnimation) {
+                                    expandedGroupTitles = recommendedGroupTitles
+                                }
+                                AppleInteractionFeedback.play(.lightImpact)
+                            }
+                            .buttonStyle(.borderless)
+
+                            Button("Contraer todo") {
+                                withAnimation(uiFeatureFlags.interactionAnimation) {
+                                    expandedGroupTitles.removeAll()
+                                }
+                            }
+                            .buttonStyle(.borderless)
+
+                            Spacer()
+                        }
+                        .font(.caption.weight(.semibold))
+
+                        ForEach(groupedInstruments) { group in
+                            PlannerInstrumentDisclosureSection(
+                                title: safeDisplayText(group.title, fallback: "Sin situación asignada"),
+                                items: group.items,
+                                isExpanded: Binding(
+                                    get: {
+                                        !trimmedSearchText.isEmpty || expandedGroupTitles.contains(group.title)
+                                    },
+                                    set: { newValue in
+                                        if newValue {
+                                            expandedGroupTitles.insert(group.title)
+                                        } else {
+                                            expandedGroupTitles.remove(group.title)
+                                        }
+                                    }
+                                ),
+                                selectedIds: vm.composerDraft.selectedInstrumentIds,
+                                toggle: { instrument in
+                                    vm.toggleComposerInstrument(instrument.id)
+                                    AppleInteractionFeedback.play(.selection)
+                                }
+                            )
+                        }
+                    }
+                }
+                .padding(16)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(EvaluationDesign.border, lineWidth: 0.5)
+                }
+                .transition(uiFeatureFlags.reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .task {
+            if expandedGroupTitles.isEmpty {
+                expandedGroupTitles = recommendedGroupTitles
+            }
+        }
+        .appOnChange(of: vm.composerAvailableInstruments) { _ in
+            if expandedGroupTitles.isEmpty {
+                expandedGroupTitles = recommendedGroupTitles
+            }
+        }
+    }
+
+    private func instrumentSort(_ lhs: PlannerAssessmentInstrument, _ rhs: PlannerAssessmentInstrument) -> Bool {
+        if lhs.kind != rhs.kind { return lhs.kind == .rubric }
+        return safeDisplayText(lhs.title, fallback: "Instrumento")
+            .localizedCaseInsensitiveCompare(safeDisplayText(rhs.title, fallback: "Instrumento")) == .orderedAscending
+    }
+
+    private func safeDisplayText(_ value: String, fallback: String) -> String {
+        plannerSafeDisplayText(value, fallback: fallback)
+    }
+}
+
+private struct PlannerInstrumentCompactGroup: Identifiable {
+    let title: String
+    let items: [PlannerAssessmentInstrument]
+
+    var id: String { title }
+}
+
+private struct PlannerInstrumentDisclosureSection: View {
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
+    let title: String
+    let items: [PlannerAssessmentInstrument]
+    @Binding var isExpanded: Bool
+    let selectedIds: Set<String>
+    let toggle: (PlannerAssessmentInstrument) -> Void
+
+    private var selectedCount: Int {
+        items.filter { selectedIds.contains($0.id) }.count
+    }
+
+    private var recommendedCount: Int {
+        items.filter(\.isRecommendedForCurrentSA).count
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Button {
+                withAnimation(uiFeatureFlags.interactionAnimation) {
+                    isExpanded.toggle()
+                }
+                AppleInteractionFeedback.play(.lightImpact)
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 16)
+                        .accessibilityHidden(true)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(plannerSafeDisplayText(title, fallback: "Sin situación asignada"))
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.primary)
+                            .textCase(.uppercase)
+                            .lineLimit(1)
+
+                        Text(sectionSubtitle)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    if selectedCount > 0 {
+                        Text("\(selectedCount) seleccionados")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(EvaluationDesign.accent)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(EvaluationDesign.accent.opacity(0.12), in: Capsule())
+                    }
+
+                    Text("\(items.count)")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 8)
+                .background(
+                    isExpanded ? EvaluationDesign.surfaceSoft : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                )
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                VStack(spacing: 0) {
+                    ForEach(items) { instrument in
+                        PlannerInstrumentCompactRow(
+                            instrument: instrument,
+                            isSelected: selectedIds.contains(instrument.id),
+                            toggle: { toggle(instrument) }
+                        )
+                    }
+                }
+                .padding(.top, 8)
+                .padding(.bottom, 8)
+                .transition(uiFeatureFlags.reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(8)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(EvaluationDesign.border, lineWidth: 0.5)
+        }
+        .shadow(color: EvaluationDesign.shadow, radius: 12, x: 0, y: 4)
+    }
+
+    private var sectionSubtitle: String {
+        if selectedCount > 0 {
+            return "\(selectedCount) de \(items.count) seleccionados"
+        }
+        if recommendedCount > 0 {
+            return "\(recommendedCount) recomendados para esta SA"
+        }
+        return "\(items.count) instrumentos"
+    }
+}
+
+private struct PlannerInstrumentCompactRow: View {
     let instrument: PlannerAssessmentInstrument
     let isSelected: Bool
     let toggle: () -> Void
 
     var body: some View {
         Button(action: toggle) {
-            HStack(spacing: 12) {
+            HStack(spacing: 10) {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(isSelected ? EvaluationDesign.accent : .secondary)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(instrument.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                    Text(instrument.subtitle)
+                    .font(.callout.weight(.semibold))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(safeTitle)
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+
+                        if instrument.isRecommendedForCurrentSA {
+                            Text("SA")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(EvaluationDesign.accent)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(EvaluationDesign.accent.opacity(0.12), in: Capsule())
+                        }
+                    }
+
+                    Text(safeSubtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
+
                 Spacer()
+
                 Text(instrument.kind == .rubric ? "Rúbrica" : "Evaluación")
-                    .font(.caption2.weight(.bold))
+                    .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
-            .padding(12)
-            .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(
+                isSelected ? EvaluationDesign.accent.opacity(0.08) : Color.clear,
+                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.plain)
     }
+
+    private var safeTitle: String {
+        plannerSafeDisplayText(instrument.title, fallback: "Instrumento")
+    }
+
+    private var safeSubtitle: String {
+        plannerSafeDisplayText(instrument.subtitle, fallback: instrument.kind == .rubric ? "Rúbrica" : "Evaluación")
+    }
+}
+
+private func plannerSafeDisplayText(_ value: String, fallback: String) -> String {
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    let upper = trimmed.uppercased()
+
+    if trimmed.isEmpty ||
+        upper.contains("EVALUATION(") ||
+        upper.contains("CLASSID=") ||
+        upper.contains("RUBRICID=") ||
+        upper.contains("TRACE=") ||
+        upper.contains("AUDITTRACE") ||
+        upper.contains("UPDATEDAT=") ||
+        upper.contains("CREATEDAT=") {
+        return fallback
+    }
+
+    return trimmed
 }
 
 struct PlannerSessionComposerSheet: View {
@@ -2561,47 +3648,90 @@ struct PlannerSessionComposerSheet: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
 
     var body: some View {
-        NavigationStack {
-            Group {
-                #if os(macOS)
-                VStack(spacing: 0) {
-                    MacPopupActionBar(
-                        title: vm.composerDraft.sessionId == 0 ? "Nueva sesión" : "Editar sesión",
-                        subtitle: "Planificación",
-                        saveTitle: "Guardar",
-                        canSave: vm.composerDraft.groupId != nil,
-                        onClose: { dismiss() },
-                        onSave: saveAndDismiss
-                    )
-                    composerContent
-                }
-                #else
-                composerContent
-                .navigationTitle(vm.composerDraft.sessionId == 0 ? "Nueva sesión" : "Editar sesión")
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button("Cancelar") { dismiss() }
-                    }
-                    ToolbarItem(placement: .topBarTrailing) {
+        #if os(macOS)
+        VStack(spacing: 0) {
+            MacPopupActionBar(
+                title: vm.composerDraft.sessionId == 0 ? "Nueva sesión" : "Editar sesión",
+                subtitle: "Planificación",
+                saveTitle: vm.composerSaveState == .saving ? "Guardando..." : "Guardar",
+                canSave: canSave,
+                onClose: { dismiss() },
+                onSave: saveAndDismiss
+            )
+            .frame(maxWidth: .infinity)
+            .zIndex(2)
+
+            composerContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .safeAreaInset(edge: .bottom) {
+                    HStack(spacing: 10) {
+                        PlannerSaveStateInlineStatus(state: vm.composerSaveState)
+                        Spacer()
+                        Button("Cancelar") {
+                            dismiss()
+                        }
+                        .buttonStyle(.bordered)
+                        .keyboardShortcut(.cancelAction)
+
                         Button("Guardar") {
-                            Task {
-                                await vm.saveComposer()
+                            saveAndDismiss()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!canSave)
+                        .keyboardShortcut("s", modifiers: [.command])
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(.regularMaterial)
+                    .overlay(alignment: .top) {
+                        Rectangle()
+                            .fill(MacAppStyle.divider.opacity(0.7))
+                            .frame(height: 0.5)
+                    }
+                }
+        }
+        .frame(minWidth: 920, minHeight: 720)
+        .task {
+            await vm.refreshComposerContext()
+        }
+        .appOnChange(of: vm.composerDraft.groupId) { _ in
+            vm.composerDraft.teachingUnitId = nil
+            Task { await vm.refreshComposerContext() }
+        }
+        .appOnChange(of: vm.composerDraft.teachingUnitId) { newValue in
+            if let newValue,
+               let unit = vm.composerTeachingUnits.first(where: { $0.id == newValue }) {
+                vm.composerDraft.unitTitle = unit.name
+            }
+            Task { await vm.refreshComposerContext() }
+        }
+        #else
+        NavigationStack {
+            composerContent
+            .navigationTitle(vm.composerDraft.sessionId == 0 ? "Nueva sesión" : "Editar sesión")
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancelar") { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Guardar") {
+                        Task {
+                            if await vm.saveComposer() {
                                 dismiss()
                             }
                         }
-                        .disabled(vm.composerDraft.groupId == nil)
                     }
+                    .disabled(vm.composerDraft.groupId == nil || vm.isSavingComposer)
                 }
-                #endif
             }
             .task {
                 await vm.refreshComposerContext()
             }
-            .onChange(of: vm.composerDraft.groupId) { _ in
+            .appOnChange(of: vm.composerDraft.groupId) { _ in
                 vm.composerDraft.teachingUnitId = nil
                 Task { await vm.refreshComposerContext() }
             }
-            .onChange(of: vm.composerDraft.teachingUnitId) { newValue in
+            .appOnChange(of: vm.composerDraft.teachingUnitId) { newValue in
                 if let newValue,
                    let unit = vm.composerTeachingUnits.first(where: { $0.id == newValue }) {
                     vm.composerDraft.unitTitle = unit.name
@@ -2609,18 +3739,23 @@ struct PlannerSessionComposerSheet: View {
                 Task { await vm.refreshComposerContext() }
             }
         }
+        #endif
+    }
+
+    private var canSave: Bool {
+        vm.composerDraft.groupId != nil && !vm.isSavingComposer
     }
 
     private var composerContent: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                EvaluationGlassCard {
+        ScrollView(.vertical, showsIndicators: true) {
+            VStack(alignment: .leading, spacing: IOSAppStyle.sectionSpacing) {
+                IOSSectionCard(title: vm.composerDraft.sessionId == 0 ? "Nueva sesión" : "Editar sesión", systemImage: "pencil.and.outline") {
                     VStack(alignment: .leading, spacing: 14) {
-                        EvaluationSectionTitle(
-                            eyebrow: "Sesión",
-                            title: vm.composerDraft.sessionId == 0 ? "Nueva sesión" : "Editar sesión",
-                            subtitle: "Redacta la sesión en formato largo y déjala ya planificada."
-                        )
+                        PlannerSaveStateInlineStatus(state: vm.composerSaveState)
+
+                        Text("Redacta la sesión en formato largo y déjala ya planificada.")
+                            .font(IOSAppStyle.captionText)
+                            .foregroundStyle(.secondary)
 
                         Picker("Curso", selection: $vm.composerDraft.groupId) {
                             Text("Selecciona curso").tag(Optional<Int64>.none)
@@ -2664,13 +3799,11 @@ struct PlannerSessionComposerSheet: View {
                     }
                 }
 
-                EvaluationGlassCard {
+                IOSSectionCard(title: "Instrumentos enlazados", systemImage: "doc.plaintext.fill") {
                     VStack(alignment: .leading, spacing: 12) {
-                        EvaluationSectionTitle(
-                            eyebrow: "Evaluación",
-                            title: "Instrumentos enlazados",
-                            subtitle: "Selecciona evaluaciones o rúbricas del curso para conectarlas también con Cuaderno."
-                        )
+                        Text("Selecciona evaluaciones o rúbricas filtradas por el curso y la situación de aprendizaje.")
+                            .font(IOSAppStyle.captionText)
+                            .foregroundStyle(.secondary)
 
                         if !vm.composerContextError.isEmpty {
                             Text(vm.composerContextError)
@@ -2683,26 +3816,16 @@ struct PlannerSessionComposerSheet: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         } else {
-                            LazyVStack(alignment: .leading, spacing: 10) {
-                                ForEach(vm.composerAvailableInstruments) { instrument in
-                                    PlannerInstrumentSelectionRow(
-                                        instrument: instrument,
-                                        isSelected: vm.composerDraft.selectedInstrumentIds.contains(instrument.id),
-                                        toggle: { vm.toggleComposerInstrument(instrument.id) }
-                                    )
-                                }
-                            }
+                            PlannerInstrumentCompactPicker(vm: vm)
                         }
                     }
                 }
 
-                EvaluationGlassCard {
+                IOSSectionCard(title: "Dónde cae la sesión", systemImage: "calendar.badge.clock") {
                     VStack(alignment: .leading, spacing: 12) {
-                        EvaluationSectionTitle(
-                            eyebrow: "Ubicación semanal",
-                            title: "Dónde cae la sesión",
-                            subtitle: "Se guardará como planificada en la franja seleccionada."
-                        )
+                        Text("Se guardará como planificada en la franja seleccionada.")
+                            .font(IOSAppStyle.captionText)
+                            .foregroundStyle(.secondary)
 
                         Picker("Día", selection: $vm.composerDraft.dayOfWeek) {
                             ForEach(vm.visibleWeekdays, id: \.self) { day in
@@ -2720,14 +3843,70 @@ struct PlannerSessionComposerSheet: View {
                     }
                 }
             }
-            .padding(EvaluationDesign.screenPadding)
+            .padding(IOSAppStyle.pagePadding)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
     private func saveAndDismiss() {
+        guard canSave else { return }
         Task {
-            await vm.saveComposer()
-            dismiss()
+            if await vm.saveComposer() {
+                dismiss()
+            }
+        }
+    }
+}
+
+private struct PlannerSaveStateInlineStatus: View {
+    let state: PlannerSaveState
+
+    var body: some View {
+        if let message {
+            HStack(spacing: 8) {
+                if state == .saving {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: iconName)
+                }
+                Text(message)
+                    .font(.caption.weight(.semibold))
+            }
+            .foregroundStyle(tint)
+        }
+    }
+
+    private var message: String? {
+        switch state {
+        case .idle:
+            return nil
+        case .saving:
+            return "Guardando..."
+        case .saved:
+            return "Guardado"
+        case .failed(let text):
+            return text
+        }
+    }
+
+    private var iconName: String {
+        switch state {
+        case .failed:
+            return "exclamationmark.triangle.fill"
+        default:
+            return "checkmark.circle.fill"
+        }
+    }
+
+    private var tint: Color {
+        switch state {
+        case .failed:
+            return EvaluationDesign.danger
+        case .saving:
+            return EvaluationDesign.accent
+        default:
+            return EvaluationDesign.success
         }
     }
 }
@@ -2767,5 +3946,404 @@ private extension Optional where Wrapped == String {
 private extension String {
     var nilIfBlank: String? {
         trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : self
+    }
+}
+
+struct PlannerSessionDetailSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var bridge: KmpBridge
+    @Environment(\.colorScheme) private var colorScheme
+    
+    let session: PlanningSession
+    let onOpenDiary: () -> Void
+    let onEdit: () -> Void
+    
+    @State private var linkedInstruments: [PlannerAssessmentInstrument] = []
+    @State private var isLoadingInstruments = false
+    @State private var detailedPlan: LearningSituationSessionPlan?
+    
+    private var tint: Color {
+        Color(hex: session.teachingUnitColor)
+    }
+    
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Header card
+                    headerSection
+                    
+                    // Main CTA
+                    Button(action: onOpenDiary) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "play.fill")
+                                .font(.headline)
+                            Text("Iniciar clase (Diario)")
+                                .font(.system(.headline, design: .rounded))
+                                .bold()
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(tint)
+                        .foregroundColor(.white)
+                        .cornerRadius(16)
+                        .shadow(color: tint.opacity(0.3), radius: 8, x: 0, y: 4)
+                    }
+                    .padding(.horizontal, 16)
+                    
+                    // Information Sections
+                    VStack(spacing: 16) {
+                        if let detailedPlan {
+                            detailedPlanSections(detailedPlan)
+                        } else {
+                            let objText = session.objectives.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !objText.isEmpty {
+                                detailSection(title: "Objetivos de aprendizaje", icon: "target", text: objText)
+                            }
+
+                            let actText = session.activities.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !actText.isEmpty {
+                                detailSection(title: "Actividades programadas", icon: "list.bullet.rectangle.portrait", text: actText)
+                            }
+
+                            let evalText = session.evaluation.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !evalText.isEmpty {
+                                detailSection(title: "Evaluación", icon: "checkmark.seal", text: evalText)
+                            }
+                        }
+                        
+                        instrumentsSection
+                    }
+                    .padding(.horizontal, 16)
+                }
+                .padding(.vertical, 20)
+            }
+            .background(appPageBackground(for: colorScheme).ignoresSafeArea())
+            .navigationTitle("Detalle de Sesión")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cerrar") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: onEdit) {
+                        Label("Editar", systemImage: "pencil")
+                    }
+                }
+            }
+            .task {
+                await loadDetailedPlan()
+                await loadLinkedInstruments()
+            }
+        }
+    }
+    
+    private var headerSection: some View {
+        VStack(spacing: 12) {
+            HStack {
+                Text(session.groupName)
+                    .font(.system(.subheadline, design: .rounded))
+                    .bold()
+                    .foregroundColor(tint)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(tint.opacity(0.12))
+                    .cornerRadius(8)
+                
+                Spacer()
+                
+                Text("Planificada")
+                    .font(.caption.bold())
+                    .foregroundColor(tint)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(tint.opacity(0.1))
+                    .cornerRadius(6)
+            }
+            
+            Text(detailedPlan?.title ?? session.teachingUnitName)
+                .font(.system(size: 24, weight: .black, design: .rounded))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .foregroundColor(.primary)
+            
+            HStack(spacing: 8) {
+                if let detailedPlan {
+                    Text("Sesión \(detailedPlan.sessionNumber) · \(detailedPlan.sessionType) · \(detailedPlan.effectiveMinutes) min")
+                        .font(.caption.weight(.semibold))
+                        .foregroundColor(tint)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(tint.opacity(0.1))
+                        .cornerRadius(6)
+                }
+                Image(systemName: "calendar")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                
+                Text(dateString)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                
+                if let startTime = session.startTime, let endTime = session.endTime {
+                    Text("·")
+                        .foregroundColor(.secondary)
+                    Image(systemName: "clock")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    Text("\(startTime) - \(endTime)")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                } else {
+                    Text("·")
+                        .foregroundColor(.secondary)
+                    Text("Periodo \(session.period)")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(EvaluationDesign.surfaceSoft)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(EvaluationDesign.border, lineWidth: 1)
+        )
+        .padding(.horizontal, 16)
+    }
+    
+    private func detailSection(title: String, icon: String, text: String) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .foregroundColor(tint)
+                    .font(.headline)
+                Text(title)
+                    .font(.system(.headline, design: .rounded))
+                    .bold()
+                    .foregroundColor(.primary)
+            }
+            
+            Text(text)
+                .font(.body)
+                .foregroundColor(.primary.opacity(0.85))
+                .lineSpacing(4)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(EvaluationDesign.surfaceSoft)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(EvaluationDesign.border, lineWidth: 1)
+        )
+    }
+
+    @ViewBuilder
+    private func detailedPlanSections(_ plan: LearningSituationSessionPlan) -> some View {
+        if !plan.objective.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            detailSection(title: "Objetivo", icon: "target", text: plan.objective)
+        }
+        let criteria = (try? JSONDecoder().decode([String].self, from: Data(plan.criteriaJson.utf8))) ?? []
+        if !criteria.isEmpty {
+            detailSection(title: "Criterios de evaluación", icon: "checkmark.seal", text: criteria.joined(separator: " · "))
+        }
+        if !plan.material.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            detailSection(title: "Material", icon: "shippingbox", text: plan.material)
+        }
+        let sections = (try? JSONDecoder().decode([LearningSituationSessionSectionDraft].self, from: Data(plan.developmentJson.utf8))) ?? []
+        if !sections.isEmpty {
+            VStack(alignment: .leading, spacing: 16) {
+                Label("Desarrollo planificado", systemImage: "list.bullet.rectangle.portrait")
+                    .font(.system(.headline, design: .rounded).bold())
+                    .foregroundStyle(tint)
+                ForEach(sections) { section in
+                    plannedDevelopmentBlock(section)
+                }
+            }
+            .padding(16)
+            .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(EvaluationDesign.surfaceSoft))
+            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(EvaluationDesign.border, lineWidth: 1))
+        }
+        let adaptations = (try? JSONDecoder().decode([String].self, from: Data(plan.adaptationsJson.utf8))) ?? []
+        if !adaptations.isEmpty {
+            detailSection(title: "Adaptaciones y contexto", icon: "person.crop.rectangle", text: adaptations.joined(separator: "\n"))
+        }
+        detailSection(title: "Origen", icon: "doc.text", text: "Secuenciación DOCX importada · \(plan.sourceLabel)")
+    }
+
+    private func plannedDevelopmentBlock(_ section: LearningSituationSessionSectionDraft) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 8) {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(tint)
+                    .frame(width: 4)
+                    .accessibilityHidden(true)
+                Text(section.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(spacing: 8) {
+                ForEach(Array(section.lines.enumerated()), id: \.offset) { _, line in
+                    plannedDevelopmentStep(line)
+                }
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(tint.opacity(0.05))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(tint.opacity(0.12), lineWidth: 1)
+        )
+    }
+
+    private func plannedDevelopmentStep(_ line: String) -> some View {
+        let parts = developmentLineParts(line)
+        return HStack(alignment: .top, spacing: 8) {
+            Circle()
+                .fill(tint.opacity(0.7))
+                .frame(width: 6, height: 6)
+                .padding(.top, 6)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                if let title = parts.title {
+                    Text(title)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.primary)
+                }
+                Text(parts.detail)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineSpacing(3)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(EvaluationDesign.surfaceSoft)
+        )
+    }
+
+    private func developmentLineParts(_ line: String) -> (title: String?, detail: String) {
+        guard let separator = line.firstIndex(of: ":") else {
+            return (nil, line)
+        }
+        let title = line[..<separator].trimmingCharacters(in: .whitespacesAndNewlines)
+        let detail = line[line.index(after: separator)...].trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty, !detail.isEmpty else { return (nil, line) }
+        return (title, detail)
+    }
+
+    @MainActor
+    private func loadDetailedPlan() async {
+        guard let planId = session.learningSituationSessionPlanId?.int64Value else { return }
+        detailedPlan = try? await bridge.learningSituationSessionPlan(id: planId)
+    }
+    
+    private var instrumentsSection: some View {
+        Group {
+            if isLoadingInstruments {
+                ProgressView()
+                    .padding()
+            } else if !linkedInstruments.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "doc.plaintext.fill")
+                            .foregroundColor(tint)
+                            .font(.headline)
+                        Text("Evaluaciones enlazadas")
+                            .font(.system(.headline, design: .rounded))
+                            .bold()
+                            .foregroundColor(.primary)
+                    }
+                    
+                    VStack(spacing: 10) {
+                        ForEach(linkedInstruments, id: \.id) { instrument in
+                            HStack(spacing: 12) {
+                                Image(systemName: instrument.kind == .rubric ? "tablecells" : "doc.text.magnifyingglass")
+                                    .foregroundColor(tint)
+                                    .font(.subheadline)
+                                    .padding(8)
+                                    .background(tint.opacity(0.1))
+                                    .clipShape(Circle())
+                                
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(instrument.title)
+                                        .font(.subheadline.bold())
+                                        .foregroundColor(.primary)
+                                    Text(instrument.subtitle)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                            }
+                            .padding(12)
+                            .background(Color.primary.opacity(0.03))
+                            .cornerRadius(12)
+                        }
+                    }
+                }
+                .padding(20)
+                .background(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(EvaluationDesign.surfaceSoft)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(EvaluationDesign.border, lineWidth: 1)
+                )
+            }
+        }
+    }
+    
+    private var dateString: String {
+        var components = DateComponents()
+        components.calendar = Calendar(identifier: .iso8601)
+        components.yearForWeekOfYear = Int(session.year)
+        components.weekOfYear = Int(session.weekNumber)
+        components.weekday = Int(session.dayOfWeek) + 1
+        
+        guard let date = components.date else { return "" }
+        
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "es_ES")
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter.string(from: date)
+    }
+    
+    private func loadLinkedInstruments() async {
+        guard !session.linkedAssessmentIdsCsv.isEmpty else { return }
+        isLoadingInstruments = true
+        defer { isLoadingInstruments = false }
+        
+        do {
+            let allInstruments = try await bridge.plannerAvailableAssessmentInstruments(
+                classId: session.groupId,
+                teachingUnitId: session.teachingUnitId == 0 ? nil : session.teachingUnitId
+            )
+            let linkedIds = Set(session.linkedAssessmentIdsCsv.split(separator: ",").map(String.init))
+            linkedInstruments = allInstruments.filter { linkedIds.contains($0.id) }
+        } catch {
+            print("Error loading linked instruments: \(error)")
+        }
     }
 }

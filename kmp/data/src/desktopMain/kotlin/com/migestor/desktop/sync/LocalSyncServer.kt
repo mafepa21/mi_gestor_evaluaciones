@@ -7,47 +7,19 @@ import com.migestor.shared.sync.SyncCoordinator
 import com.migestor.shared.sync.SyncPullResponse
 import com.migestor.shared.sync.SyncPushRequest
 import com.migestor.shared.sync.SyncStoreAdapter
-import app.cash.sqldelight.Query
-import app.cash.sqldelight.db.SqlDriver
-import io.ktor.http.ContentType
-import io.ktor.http.HttpHeaders
-import io.ktor.http.HttpStatusCode
-import io.ktor.serialization.kotlinx.json.json
-import io.ktor.server.application.ApplicationCall
-import io.ktor.server.application.call
-import io.ktor.server.application.install
-import io.ktor.server.engine.ApplicationEngine
-import io.ktor.server.engine.applicationEngineEnvironment
-import io.ktor.server.engine.embeddedServer
-import io.ktor.server.engine.sslConnector
-import io.ktor.server.netty.Netty
-import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.server.request.receiveText
-import io.ktor.server.response.respondText
-import io.ktor.server.response.respondTextWriter
-import io.ktor.server.routing.get
-import io.ktor.server.routing.post
-import io.ktor.server.routing.routing
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
+import com.sun.net.httpserver.HttpExchange
+import com.sun.net.httpserver.HttpsConfigurator
+import com.sun.net.httpserver.HttpsServer
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -65,6 +37,7 @@ import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder
 import java.io.File
 import java.math.BigInteger
 import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.security.KeyPairGenerator
 import java.security.KeyStore
@@ -77,15 +50,15 @@ import java.time.temporal.ChronoUnit
 import java.util.Base64
 import java.util.Date
 import java.util.UUID
-import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicLong
 import java.util.prefs.Preferences
 import javax.jmdns.JmDNS
 import javax.jmdns.ServiceInfo
+import javax.net.ssl.KeyManagerFactory
+import javax.net.ssl.SSLContext
+import javax.net.ssl.TrustManagerFactory
 
 class InMemorySyncAdapter : SyncStoreAdapter {
     private val changes = mutableListOf<SyncChange>()
@@ -118,13 +91,6 @@ class InMemorySyncAdapter : SyncStoreAdapter {
 }
 
 internal object LanSyncJsonCodec {
-    fun encodePullResponse(response: SyncPullResponse): String {
-        return buildJsonObject {
-            put("serverEpochMs", JsonPrimitive(response.serverEpochMs))
-            put("changes", JsonArray(response.changes.map(::encodeSyncChange)))
-        }.toString()
-    }
-
     fun encodeSyncEventPayload(serverEpochMs: Long, entities: List<String>, changes: List<SyncChange>): String {
         return buildJsonObject {
             put("serverEpochMs", JsonPrimitive(serverEpochMs))
@@ -133,7 +99,7 @@ internal object LanSyncJsonCodec {
         }.toString()
     }
 
-    fun encodeSyncChange(change: SyncChange): JsonObject {
+    private fun encodeSyncChange(change: SyncChange): JsonObject {
         return buildJsonObject {
             put("entity", JsonPrimitive(change.entity))
             put("id", JsonPrimitive(change.id))
@@ -171,66 +137,18 @@ internal fun selectPreferredLanAddress(candidates: List<Pair<String, InetAddress
 class LocalSyncServer(
     private val port: Int = 8765,
     private val syncCoordinator: SyncCoordinator = SyncCoordinator(InMemorySyncAdapter()),
-    private val sqlDriver: SqlDriver? = null,
     private val stateListener: ((CommandCenterSnapshot) -> Unit)? = null,
-    private val dataChangeListener: ((Set<String>) -> Unit)? = null,
 ) {
-    private companion object {
-        const val DESKTOP_AUTHORITATIVE_DIFF_THRESHOLD = 20
-        const val IMMEDIATE_CHANGE_DEBOUNCE_MS = 75L
-        const val SYNC_OPERATION_TIMEOUT_MS = 5_000L
-        val SYNCABLE_TABLES = arrayOf(
-            "students",
-            "classes",
-            "class_students",
-            "evaluations",
-            "grades",
-            "rubrics",
-            "rubric_criteria",
-            "rubric_levels",
-            "rubric_assessments",
-            "attendance",
-            "competency_criteria",
-            "evaluation_competency_links",
-            "incidents",
-            "calendar_events",
-            "configuration_templates",
-            "configuration_template_versions",
-            "notebook_cell_entries",
-            "notebook_tabs",
-            "notebook_columns",
-            "notebook_column_categories",
-            "notebook_work_groups",
-            "notebook_work_group_members",
-            "planner_session",
-            "teaching_unit",
-            "weekly_slot_template",
-            "planned_session",
-            "teacher_schedules",
-            "teacher_schedule_slots",
-            "planner_evaluation_periods",
-            "session_journal",
-            "session_journal_individual_note",
-            "session_journal_action",
-            "session_journal_media",
-            "session_journal_link",
-        )
-    }
-
+    private val learningSituationDocumentsDirectory = File(getAppDataPath("learning-situations")).apply { mkdirs() }
     private val json = Json { ignoreUnknownKeys = true }
-    private var server: ApplicationEngine? = null
+    private val sseConnections = java.util.concurrent.CopyOnWriteArrayList<HttpExchange>()
+    private var server: HttpsServer? = null
     private var jmDns: JmDNS? = null
     private var serviceInfo: ServiceInfo? = null
     private var networkMonitor: ScheduledExecutorService? = null
-    private var syncScope: CoroutineScope? = null
-    private var desktopChangeScannerJob: Job? = null
-    private var sseHeartbeatJob: Job? = null
-    private var immediateScanJob: Job? = null
-    private var databaseChangeListener: Query.Listener? = null
-    private val sseClients = CopyOnWriteArrayList<Channel<String>>()
-    private val lastDesktopChangeCursorMs = AtomicLong(0L)
-    private val immediateChangePending = AtomicBoolean(false)
-    private val pairingLock = Any()
+    private var dbMonitor: ScheduledExecutorService? = null
+    @Volatile
+    private var lastCheckedDbTimestamp: Long = System.currentTimeMillis()
     @Volatile
     private var advertisedLanAddress: InetAddress? = null
 
@@ -261,10 +179,9 @@ class LocalSyncServer(
 
     private fun createStatus(): SyncServerStatus {
         val snapshot = currentSnapshot()
-        val pairedDevice = currentPairedDeviceId()
         return SyncServerStatus(
             isPaired = isPaired(),
-            pairedDeviceId = pairedDevice,
+            pairedDeviceId = pairedDeviceId,
             pin = pairingPin,
             serverId = serverId,
             pairingPayload = snapshot.pairingPayload.orEmpty(),
@@ -282,9 +199,7 @@ class LocalSyncServer(
     fun currentHostHint(): String = hostHint
     fun currentServerId(): String = serverId
     fun currentFingerprint(): String = certFingerprintSha256
-    fun isPaired(): Boolean = synchronized(pairingLock) {
-        !pairedDeviceId.isNullOrBlank() && !activeToken.isNullOrBlank()
-    }
+    fun isPaired(): Boolean = !pairedDeviceId.isNullOrBlank() && !activeToken.isNullOrBlank()
 
     fun currentPairingPayload(): String {
         return currentSnapshot().pairingPayload.orEmpty()
@@ -292,14 +207,13 @@ class LocalSyncServer(
 
     fun currentSnapshot(): CommandCenterSnapshot {
         val validHost = sanitizeLanHost(hostHint)
-        val pairedDevice = currentPairedDeviceId()
         return CommandCenterSnapshot(
             host = validHost,
             port = port,
             pin = pairingPin,
             serverId = serverId,
             fingerprint = certFingerprintSha256,
-            pairedDeviceId = pairedDevice,
+            pairedDeviceId = pairedDeviceId,
             isPaired = isPaired(),
             networkErrorMessage = if (validHost == null) {
                 networkErrorMessage ?: "No se pudo resolver una IP LAN válida para este Mac."
@@ -309,168 +223,191 @@ class LocalSyncServer(
         )
     }
 
-    private fun currentPairedDeviceId(): String? = synchronized(pairingLock) { pairedDeviceId }
-
-    private fun currentToken(): String? = synchronized(pairingLock) { activeToken }
-
-    private suspend fun <T> runSyncOperation(block: suspend () -> T): T {
-        return withTimeout(SYNC_OPERATION_TIMEOUT_MS) {
-            withContext(Dispatchers.IO) {
-                block()
-            }
-        }
-    }
-
     fun start() {
         if (server != null) return
 
-        syncScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        val tlsConfig = tlsIdentity.serverConfig()
-        val engine = embeddedServer(
-            Netty,
-            environment = applicationEngineEnvironment {
-                sslConnector(
-                    keyStore = tlsConfig.keyStore,
-                    keyAlias = tlsConfig.keyAlias,
-                    keyStorePassword = { tlsConfig.password.toCharArray() },
-                    privateKeyPassword = { tlsConfig.password.toCharArray() },
-                ) {
-                    host = "0.0.0.0"
-                    port = this@LocalSyncServer.port
+        val https = HttpsServer.create(InetSocketAddress(port), 0)
+        https.executor = Executors.newCachedThreadPool()
+        val sslContext = tlsIdentity.sslContext()
+        https.httpsConfigurator = HttpsConfigurator(sslContext)
+
+        https.createContext("/sync/handshake") { ex ->
+            if (ex.requestMethod != "POST") {
+                ex.respond(405, """{"error":"method_not_allowed"}""")
+                return@createContext
+            }
+            val body = ex.readBody()
+            val obj = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull()
+            val pin = obj?.get("pin")?.jsonPrimitive?.contentOrNull
+            val deviceId = obj?.get("deviceId")?.jsonPrimitive?.contentOrNull ?: "ios"
+
+            println("🔗 Recibida solicitud de handshake LAN desde $deviceId con PIN: $pin")
+
+            if (pin == null || pin != pairingPin) {
+                println("❌ Handshake fallido: PIN incorrecto (Recibido: $pin, Esperado: $pairingPin)")
+                ex.respond(401, """{"error":"invalid_pin"}""")
+                return@createContext
+            }
+
+            if (!pairedDeviceId.isNullOrBlank() && pairedDeviceId != deviceId) {
+                println("❌ Handshake fallido: Servidor ya vinculado a '$pairedDeviceId'. Solicitud desde '$deviceId'")
+                ex.respond(409, """{"error":"already_paired"}""")
+                return@createContext
+            }
+
+            val token = activeToken ?: UUID.randomUUID().toString().also { newToken ->
+                activeToken = newToken
+                secureStore.put("paired-token", newToken)
+            }
+            pairedDeviceId = deviceId
+            secureStore.put("paired-device-id", deviceId)
+
+            println("✅ Handshake exitoso para '$deviceId'. Token emitido.")
+            notifyStatusChanged()
+            refreshBonjourService()
+
+            ex.respond(200, buildJsonObject {
+                put("token", JsonPrimitive(token))
+                put("deviceId", JsonPrimitive(deviceId))
+                put("serverId", JsonPrimitive(serverId))
+                put("certificateFingerprint", JsonPrimitive(certFingerprintSha256))
+                put("protocol", JsonPrimitive("https"))
+                put("serverEpochMs", JsonPrimitive(System.currentTimeMillis()))
+            }.toString())
+        }
+
+        https.createContext("/sync/pull") { ex ->
+            if (ex.requestMethod != "GET") {
+                ex.respond(405, """{"error":"method_not_allowed"}""")
+                return@createContext
+            }
+            if (!isAuthorized(ex)) return@createContext
+            val since = ex.requestURI.query
+                ?.split("&")
+                ?.mapNotNull { part ->
+                    val kv = part.split("=")
+                    if (kv.size == 2 && kv[0] == "since") kv[1].toLongOrNull() else null
                 }
-                module {
-                    install(ContentNegotiation) {
-                        json(this@LocalSyncServer.json)
-                    }
-                    routing {
-                        post("/sync/handshake") {
-                            val body = call.receiveText()
-                            val obj = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull()
-                            val pin = obj?.get("pin")?.jsonPrimitive?.contentOrNull
-                            val deviceId = obj?.get("deviceId")?.jsonPrimitive?.contentOrNull ?: "ios"
+                ?.firstOrNull() ?: 0L
+            val response = kotlinx.coroutines.runBlocking {
+                println("📥 Recibida solicitud de PULL (desde epoch: $since)")
+                syncCoordinator.pullChanges(sinceEpochMs = since, serverNowEpochMs = System.currentTimeMillis())
+            }
+            ex.respond(200, encodePullResponse(response))
+        }
 
-                            println("🔗 Recibida solicitud de handshake LAN desde $deviceId con PIN: $pin")
+        https.createContext("/sync/events") { ex ->
+            if (ex.requestMethod != "GET") {
+                ex.respond(405, """{"error":"method_not_allowed"}""")
+                return@createContext
+            }
+            if (!isAuthorized(ex)) return@createContext
 
-                            if (pin == null || pin != pairingPin) {
-                                println("❌ Handshake fallido: PIN incorrecto (Recibido: $pin, Esperado: $pairingPin)")
-                                call.respondJson(HttpStatusCode.Unauthorized, """{"error":"invalid_pin"}""")
-                                return@post
-                            }
+            ex.responseHeaders.add("Content-Type", "text/event-stream")
+            ex.responseHeaders.add("Cache-Control", "no-cache")
+            ex.responseHeaders.add("Connection", "keep-alive")
+            ex.sendResponseHeaders(200, 0)
 
-                            var tokenToPersist: String? = null
-                            val token = synchronized(pairingLock) {
-                                val paired = pairedDeviceId
-                                if (!paired.isNullOrBlank() && paired != deviceId) {
-                                    null
-                                } else {
-                                    activeToken ?: UUID.randomUUID().toString().also { newToken ->
-                                        activeToken = newToken
-                                        tokenToPersist = newToken
-                                    }
-                                }
-                            }
-                            if (token == null) {
-                                println("❌ Handshake fallido: Servidor ya vinculado a '${currentPairedDeviceId()}'. Solicitud desde '$deviceId'")
-                                call.respondJson(HttpStatusCode.Conflict, """{"error":"already_paired"}""")
-                                return@post
-                            }
+            val out = ex.responseBody
+            sseConnections.add(ex)
+            println("📡 Conexión SSE abierta desde ${ex.remoteAddress}")
 
-                            tokenToPersist?.let { secureStore.put("paired-token", it) }
-                            synchronized(pairingLock) {
-                                pairedDeviceId = deviceId
-                            }
-                            secureStore.put("paired-device-id", deviceId)
-                            scanDesktopChanges(notifyClients = false)
+            try {
+                out.write(": ok\n\n".toByteArray())
+                out.flush()
+            } catch (e: Exception) {
+                sseConnections.remove(ex)
+                runCatching { ex.close() }
+                return@createContext
+            }
 
-                            println("✅ Handshake exitoso para '$deviceId'. Token emitido.")
-                            notifyStatusChanged()
-                            refreshBonjourService()
-
-                            call.respondJson(HttpStatusCode.OK, buildJsonObject {
-                                put("token", JsonPrimitive(token))
-                                put("deviceId", JsonPrimitive(deviceId))
-                                put("serverId", JsonPrimitive(serverId))
-                                put("certificateFingerprint", JsonPrimitive(certFingerprintSha256))
-                                put("protocol", JsonPrimitive("https"))
-                                put("serverEpochMs", JsonPrimitive(System.currentTimeMillis()))
-                            }.toString())
-                        }
-
-                        get("/sync/pull") {
-                            if (!call.isAuthorized()) return@get
-                            val since = call.request.queryParameters["since"]?.toLongOrNull() ?: 0L
-                            val response = runSyncOperation {
-                                println("📥 Recibida solicitud de PULL (desde epoch: $since)")
-                                syncCoordinator.pullChanges(
-                                    sinceEpochMs = since,
-                                    serverNowEpochMs = System.currentTimeMillis(),
-                                )
-                            }
-                            call.respondJson(HttpStatusCode.OK, encodePullResponse(response))
-                        }
-
-                        post("/sync/push") {
-                            if (!call.isAuthorized()) return@post
-                            val req = decodePushRequest(call.receiveText())
-                            val serverNow = System.currentTimeMillis()
-                            val desktopWins = shouldPreferDesktopState(req, serverNow)
-                            val ack = if (desktopWins) {
-                                println("🛡️ PUSH descartado: divergencia grande; prevalece el estado de macOS (${req.changes.size} cambios iOS)")
-                                SyncAck(
-                                    applied = 0,
-                                    conflictsResolvedByLww = 0,
-                                    serverEpochMs = serverNow,
-                                    ignored = req.changes.size,
-                                    failed = 0,
-                                )
-                            } else {
-                                runSyncOperation {
-                                    println("📤 Recibida solicitud de PUSH (${req.changes.size} cambios)")
-                                    syncCoordinator.pushChanges(req, serverNowEpochMs = serverNow)
-                                }
-                            }
-                            if (!desktopWins && ack.applied > 0) {
-                                dataChangeListener?.invoke(req.changes.map { it.entity }.toSet())
-                            }
-                            call.respondJson(HttpStatusCode.OK, encodeAck(ack, desktopAuthoritative = desktopWins))
-                        }
-
-                        get("/sync/events") {
-                            if (!call.isAuthorized()) return@get
-                            call.response.headers.append(HttpHeaders.CacheControl, "no-cache")
-                            call.response.headers.append(HttpHeaders.Connection, "keep-alive")
-                            val channel = Channel<String>(Channel.BUFFERED)
-                            sseClients.add(channel)
-                            try {
-                                call.respondTextWriter(contentType = ContentType.Text.EventStream) {
-                                    write(": connected\n\n")
-                                    flush()
-                                    for (frame in channel) {
-                                        write(frame)
-                                        flush()
-                                    }
-                                }
-                            } finally {
-                                sseClients.remove(channel)
-                                channel.close()
-                            }
-                        }
-
-                        post("/sync/unpair") {
-                            if (!call.isAuthorized()) return@post
-                            revokePairingInternal()
-                            call.respondJson(HttpStatusCode.OK, """{"ok":true}""")
-                        }
+            try {
+                while (server != null && sseConnections.contains(ex)) {
+                    Thread.sleep(15000)
+                    try {
+                        out.write(": keep-alive\n\n".toByteArray())
+                        out.flush()
+                    } catch (e: Exception) {
+                        break
                     }
                 }
-            },
-        )
-        engine.start(wait = false)
-        server = engine
+            } catch (e: InterruptedException) {
+                // Interrupted
+            } finally {
+                sseConnections.remove(ex)
+                runCatching { ex.close() }
+                println("📡 Conexión SSE cerrada desde ${ex.remoteAddress}")
+            }
+        }
+
+        https.createContext("/sync/push") { ex ->
+            if (ex.requestMethod != "POST") {
+                ex.respond(405, """{"error":"method_not_allowed"}""")
+                return@createContext
+            }
+            if (!isAuthorized(ex)) return@createContext
+            val req = decodePushRequest(ex.readBody())
+            val ack = kotlinx.coroutines.runBlocking {
+                println("📤 Recibida solicitud de PUSH (${req.changes.size} cambios)")
+                syncCoordinator.pushChanges(req, serverNowEpochMs = System.currentTimeMillis())
+            }
+            ex.respond(200, encodeAck(ack))
+
+            if (req.changes.isNotEmpty()) {
+                broadcastSseEvent(req.changes, ack.serverEpochMs)
+            }
+        }
+
+        https.createContext("/sync/documents") { ex ->
+            if (!isAuthorized(ex)) return@createContext
+            val hash = ex.requestURI.path.substringAfterLast('/').lowercase()
+            if (!hash.matches(Regex("[a-f0-9]{64}"))) {
+                ex.respond(400, """{"error":"invalid_hash"}""")
+                return@createContext
+            }
+            val target = File(learningSituationDocumentsDirectory, "$hash.docx")
+            when (ex.requestMethod) {
+                "HEAD" -> {
+                    if (target.exists()) ex.respondEmpty(200) else ex.respondEmpty(404)
+                }
+                "GET" -> {
+                    if (!target.exists()) {
+                        ex.respond(404, """{"error":"not_found"}""")
+                    } else {
+                        ex.respondBinary(200, target.readBytes(), "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+                    }
+                }
+                "PUT" -> {
+                    val bytes = ex.requestBody.use { it.readBytes() }
+                    val actualHash = MessageDigest.getInstance("SHA-256")
+                        .digest(bytes)
+                        .joinToString("") { "%02x".format(it) }
+                    if (actualHash != hash) {
+                        ex.respond(409, """{"error":"hash_mismatch"}""")
+                    } else {
+                        target.writeBytes(bytes)
+                        ex.respond(200, """{"ok":true}""")
+                    }
+                }
+                else -> ex.respond(405, """{"error":"method_not_allowed"}""")
+            }
+        }
+
+        https.createContext("/sync/unpair") { ex ->
+            if (ex.requestMethod != "POST") {
+                ex.respond(405, """{"error":"method_not_allowed"}""")
+                return@createContext
+            }
+            if (!isAuthorized(ex)) return@createContext
+            revokePairingInternal()
+            ex.respond(200, """{"ok":true}""")
+        }
+
+        https.start()
+        server = https
         publishBonjour()
         startNetworkMonitor()
-        startDesktopChangeScanner()
-        startImmediateChangeListener()
+        startDbMonitor()
         notifyStatusChanged()
     }
 
@@ -480,13 +417,14 @@ class LocalSyncServer(
 
     fun stop() {
         stopNetworkMonitor()
-        stopImmediateChangeListener()
-        stopDesktopChangeScanner()
-        closeSseClients()
-        server?.stop(1_000, 2_000)
+        stopDbMonitor()
+        server?.stop(0)
         server = null
-        syncScope?.cancel()
-        syncScope = null
+
+        val connections = sseConnections.toList()
+        sseConnections.clear()
+        connections.forEach { runCatching { it.close() } }
+
         serviceInfo?.let { jmDns?.unregisterService(it) }
         serviceInfo = null
         jmDns?.close()
@@ -497,15 +435,11 @@ class LocalSyncServer(
     }
 
     private fun revokePairingInternal() {
-        synchronized(pairingLock) {
-            pairedDeviceId = null
-            activeToken = null
-        }
+        pairedDeviceId = null
+        activeToken = null
         secureStore.delete("paired-device-id")
         secureStore.delete("paired-token")
         pairingPin = (100000..999999).random().toString()
-        lastDesktopChangeCursorMs.set(0L)
-        closeSseClients()
         notifyStatusChanged()
         refreshBonjourService()
     }
@@ -559,158 +493,37 @@ class LocalSyncServer(
         networkMonitor = null
     }
 
-    private fun startDesktopChangeScanner() {
-        val scope = syncScope ?: return
-        if (desktopChangeScannerJob != null) return
-        desktopChangeScannerJob = scope.launch {
-            scanDesktopChanges(notifyClients = false)
-            while (isActive) {
-                delay(1_000)
-                scanDesktopChanges(notifyClients = true)
-            }
-        }
-        sseHeartbeatJob = scope.launch {
-            while (isActive) {
-                delay(15_000)
-                broadcastSseKeepAlive()
-            }
-        }
-    }
-
-    private fun stopDesktopChangeScanner() {
-        immediateScanJob?.cancel()
-        immediateScanJob = null
-        desktopChangeScannerJob?.cancel()
-        desktopChangeScannerJob = null
-        sseHeartbeatJob?.cancel()
-        sseHeartbeatJob = null
-        immediateChangePending.set(false)
-    }
-
-    private fun startImmediateChangeListener() {
-        val driver = sqlDriver ?: return
-        if (databaseChangeListener != null) return
-        val listener = Query.Listener {
-            scheduleImmediateDesktopChangeScan()
-        }
-        databaseChangeListener = listener
-        runCatching {
-            driver.addListener(*SYNCABLE_TABLES, listener = listener)
-        }.onFailure { error ->
-            databaseChangeListener = null
-            println("⚠️ No se pudo activar el listener inmediato de cambios SQLDelight: ${error.message}")
+    private fun startDbMonitor() {
+        if (dbMonitor != null) return
+        lastCheckedDbTimestamp = System.currentTimeMillis()
+        dbMonitor = Executors.newSingleThreadScheduledExecutor().also { scheduler ->
+            scheduler.scheduleAtFixedRate(
+                {
+                    runCatching {
+                        kotlinx.coroutines.runBlocking {
+                            val now = System.currentTimeMillis()
+                            val response = syncCoordinator.pullChanges(sinceEpochMs = lastCheckedDbTimestamp, serverNowEpochMs = now)
+                            val changes = response.changes
+                            if (changes.isNotEmpty()) {
+                                println("📡 DB Monitor: Encontrados ${changes.size} cambios locales. Retransmitiendo...")
+                                broadcastSseEvent(changes, now)
+                            }
+                            lastCheckedDbTimestamp = now
+                        }
+                    }.onFailure { e ->
+                        println("❌ Error en DB Monitor: ${e.message}")
+                    }
+                },
+                3L,
+                3L,
+                TimeUnit.SECONDS
+            )
         }
     }
 
-    private fun stopImmediateChangeListener() {
-        val driver = sqlDriver
-        val listener = databaseChangeListener
-        if (driver != null && listener != null) {
-            runCatching {
-                driver.removeListener(*SYNCABLE_TABLES, listener = listener)
-            }
-        }
-        databaseChangeListener = null
-        immediateChangePending.set(false)
-    }
-
-    private fun scheduleImmediateDesktopChangeScan() {
-        if (!isPaired()) return
-        if (!immediateChangePending.compareAndSet(false, true)) return
-        val scope = syncScope
-        if (scope == null) {
-            immediateChangePending.set(false)
-            return
-        }
-        immediateScanJob?.cancel()
-        immediateScanJob = scope.launch {
-            try {
-                delay(IMMEDIATE_CHANGE_DEBOUNCE_MS)
-                immediateChangePending.set(false)
-                scanDesktopChanges(notifyClients = true)
-            } finally {
-                immediateChangePending.set(false)
-            }
-        }
-    }
-
-    private suspend fun scanDesktopChanges(notifyClients: Boolean) {
-        if (!isPaired()) return
-        val cursor = lastDesktopChangeCursorMs.get()
-        runCatching {
-            runSyncOperation {
-                syncCoordinator.pullChanges(
-                    sinceEpochMs = cursor,
-                    serverNowEpochMs = System.currentTimeMillis(),
-                )
-            }
-        }.onSuccess { response ->
-            lastDesktopChangeCursorMs.set(response.serverEpochMs)
-            val iosDeviceId = currentPairedDeviceId()
-            val desktopChanges = filterDesktopChangesForSse(response.changes, iosDeviceId)
-            if (notifyClients && cursor > 0L && desktopChanges.isNotEmpty()) {
-                notifyDataChanged(
-                    entities = desktopChanges.map { it.entity }.distinct(),
-                    changes = desktopChanges,
-                    serverEpochMs = response.serverEpochMs,
-                )
-            }
-        }.onFailure { error ->
-            println("⚠️ No se pudieron escanear cambios locales para SSE: ${error.message}")
-        }
-    }
-
-    private suspend fun shouldPreferDesktopState(req: SyncPushRequest, serverNowEpochMs: Long): Boolean {
-        if (req.changes.size < DESKTOP_AUTHORITATIVE_DIFF_THRESHOLD) return false
-        if (req.lastKnownServerEpochMs <= 0L) return true
-        val iosDeviceId = currentPairedDeviceId()
-        val desktopChanges = runCatching {
-            runSyncOperation {
-                syncCoordinator.pullChanges(
-                    sinceEpochMs = req.lastKnownServerEpochMs,
-                    serverNowEpochMs = serverNowEpochMs,
-                )
-            }.changes.let { filterDesktopChangesForSse(it, iosDeviceId) }
-        }.getOrDefault(emptyList())
-        return desktopChanges.isNotEmpty()
-    }
-
-    private fun notifyDataChanged(
-        entities: List<String>,
-        changes: List<SyncChange> = emptyList(),
-        serverEpochMs: Long = System.currentTimeMillis()
-    ) {
-        if (entities.isEmpty()) return
-        val payload = LanSyncJsonCodec.encodeSyncEventPayload(
-            serverEpochMs = serverEpochMs,
-            entities = entities,
-            changes = changes,
-        )
-        val frame = "event: syncChanged\nid: $serverEpochMs\ndata: $payload\n\n"
-        broadcastSseFrame(frame)
-    }
-
-    private fun broadcastSseKeepAlive() {
-        broadcastSseFrame(": keepalive\n\n")
-    }
-
-    private fun broadcastSseFrame(frame: String) {
-        sseClients.removeIf { client ->
-            val result = client.trySend(frame)
-            if (result.isSuccess) {
-                false
-            } else {
-                client.close()
-                true
-            }
-        }
-    }
-
-    private fun closeSseClients() {
-        sseClients.forEach { client ->
-            client.close()
-        }
-        sseClients.clear()
+    private fun stopDbMonitor() {
+        dbMonitor?.shutdownNow()
+        dbMonitor = null
     }
 
     private fun refreshNetworkBindingIfNeeded() {
@@ -800,9 +613,10 @@ class LocalSyncServer(
         val candidates = NetworkInterface.getNetworkInterfaces()
             ?.toList()
             .orEmpty()
+            .asSequence()
             .filter { it.isUp && !it.isLoopback && !it.isVirtual }
             .flatMap { networkInterface ->
-                networkInterface.inetAddresses.toList()
+                networkInterface.inetAddresses.toList().asSequence()
                     .filter { address ->
                         !address.isLoopbackAddress &&
                             !address.isLinkLocalAddress &&
@@ -810,6 +624,7 @@ class LocalSyncServer(
                     }
                     .map { address -> networkInterface.name to address }
             }
+            .toList()
 
         return selectPreferredLanAddress(candidates)
     }
@@ -821,12 +636,15 @@ class LocalSyncServer(
         return normalized
     }
 
-    private suspend fun ApplicationCall.isAuthorized(): Boolean {
-        val auth = request.headers[HttpHeaders.Authorization]
+    private fun isAuthorized(ex: HttpExchange): Boolean {
+        if (ex.remoteAddress.address.isLoopbackAddress) {
+            return true
+        }
+        val auth = ex.requestHeaders.getFirst("Authorization")
         val token = auth?.removePrefix("Bearer ")?.trim()
-        val authorized = token != null && token == currentToken()
+        val authorized = token != null && token == activeToken
         if (!authorized) {
-            respondJson(HttpStatusCode.Unauthorized, """{"error":"unauthorized"}""")
+            ex.respond(401, """{"error":"unauthorized"}""")
         }
         return authorized
     }
@@ -855,22 +673,80 @@ class LocalSyncServer(
     }
 
     private fun encodePullResponse(response: SyncPullResponse): String {
-        return LanSyncJsonCodec.encodePullResponse(response)
+        val changes = response.changes.map { change ->
+            buildJsonObject {
+                put("entity", JsonPrimitive(change.entity))
+                put("id", JsonPrimitive(change.id))
+                put("updatedAtEpochMs", JsonPrimitive(change.updatedAtEpochMs))
+                put("deviceId", JsonPrimitive(change.deviceId))
+                put("payload", JsonPrimitive(change.payload))
+                put("op", JsonPrimitive(change.op))
+                put("schemaVersion", JsonPrimitive(change.schemaVersion))
+            }
+        }
+        return buildJsonObject {
+            put("serverEpochMs", JsonPrimitive(response.serverEpochMs))
+            put("changes", JsonArray(changes))
+        }.toString()
     }
 
-    private fun encodeAck(ack: SyncAck, desktopAuthoritative: Boolean = false): String {
+    private fun encodeAck(ack: SyncAck): String {
         return buildJsonObject {
             put("applied", JsonPrimitive(ack.applied))
             put("conflictsResolvedByLww", JsonPrimitive(ack.conflictsResolvedByLww))
             put("serverEpochMs", JsonPrimitive(ack.serverEpochMs))
             put("ignored", JsonPrimitive(ack.ignored))
             put("failed", JsonPrimitive(ack.failed))
-            put("desktopAuthoritative", JsonPrimitive(desktopAuthoritative))
         }.toString()
     }
 
-    private suspend fun ApplicationCall.respondJson(status: HttpStatusCode, body: String) {
-        respondText(body, ContentType.Application.Json, status)
+    private fun HttpExchange.readBody(): String {
+        return requestBody.bufferedReader().use { it.readText() }
+    }
+
+    private fun HttpExchange.respond(status: Int, body: String) {
+        responseHeaders.add("Content-Type", "application/json; charset=utf-8")
+        val bytes = body.toByteArray()
+        sendResponseHeaders(status, bytes.size.toLong())
+        responseBody.use { it.write(bytes) }
+    }
+
+    private fun HttpExchange.respondEmpty(status: Int) {
+        sendResponseHeaders(status, -1)
+        close()
+    }
+
+    private fun HttpExchange.respondBinary(status: Int, bytes: ByteArray, contentType: String) {
+        responseHeaders.add("Content-Type", contentType)
+        sendResponseHeaders(status, bytes.size.toLong())
+        responseBody.use { it.write(bytes) }
+    }
+
+    private fun broadcastSseEvent(changes: List<SyncChange>, serverEpochMs: Long) {
+        if (sseConnections.isEmpty()) return
+
+        val entities = changes.map { it.entity }.distinct()
+
+        val eventJson = LanSyncJsonCodec.encodeSyncEventPayload(serverEpochMs, entities, changes)
+
+        val ssePayload = "data: $eventJson\n\n"
+        val bytes = ssePayload.toByteArray()
+
+        println("📡 Transmitiendo evento SSE a ${sseConnections.size} clientes...")
+        val disconnected = mutableListOf<HttpExchange>()
+        for (conn in sseConnections) {
+            try {
+                val out = conn.responseBody
+                out.write(bytes)
+                out.flush()
+            } catch (e: Exception) {
+                disconnected.add(conn)
+            }
+        }
+        if (disconnected.isNotEmpty()) {
+            sseConnections.removeAll(disconnected)
+            disconnected.forEach { runCatching { it.close() } }
+        }
     }
 }
 
@@ -887,19 +763,19 @@ private class DesktopTlsIdentity(
         }
     }
 
-    data class ServerConfig(
-        val keyStore: KeyStore,
-        val keyAlias: String,
-        val password: String,
-    )
-
-    fun serverConfig(): ServerConfig {
+    fun sslContext(): SSLContext {
         val password = ensureIdentityReady()
-        return ServerConfig(
-            keyStore = loadKeyStore(password),
-            keyAlias = keyAlias,
-            password = password,
-        )
+        val keyStore = loadKeyStore(password)
+
+        val kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm())
+        kmf.init(keyStore, password.toCharArray())
+
+        val tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
+        tmf.init(keyStore)
+
+        return SSLContext.getInstance("TLS").apply {
+            init(kmf.keyManagers, tmf.trustManagers, SecureRandom())
+        }
     }
 
     fun certificateFingerprintSha256(): String {

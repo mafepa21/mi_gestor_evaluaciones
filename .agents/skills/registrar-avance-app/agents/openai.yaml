@@ -1,0 +1,7 @@
+interface:
+  display_name: "Registrar avance app"
+  short_description: "Documenta cambios y PRs de la app"
+  default_prompt: "Usa $registrar-avance-app para registrar este cambio en changelog, roadmap, ADRs o nota de PR segun corresponda."
+
+policy:
+  allow_implicit_invocation: true

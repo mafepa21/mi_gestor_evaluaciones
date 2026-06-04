@@ -1,6 +1,7 @@
 package com.migestor.shared.repository
 
 import com.migestor.shared.domain.NotebookColumnDefinition
+import com.migestor.shared.domain.NotebookAverageColumnConfig
 import com.migestor.shared.domain.NotebookColumnCategory
 import com.migestor.shared.domain.NotebookConfig
 import com.migestor.shared.domain.NotebookWorkGroup
@@ -17,6 +18,7 @@ interface NotebookConfigRepository {
     fun observeColumns(classId: Long): Flow<List<NotebookColumnDefinition>>
     suspend fun listColumns(classId: Long): List<NotebookColumnDefinition>
     suspend fun saveColumn(classId: Long, column: NotebookColumnDefinition)
+    suspend fun saveAverageConfiguration(classId: Long, updates: List<NotebookAverageColumnConfig>)
     suspend fun deleteColumn(columnId: String)
 
     fun observeColumnCategories(classId: Long, tabId: String? = null): Flow<List<NotebookColumnCategory>>

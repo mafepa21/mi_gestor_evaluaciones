@@ -1,0 +1,25 @@
+-- Migration from version 21 to 22.
+-- Keep planner sessions linked to their real teacher schedule slot when available,
+-- with persisted start/end fallback for custom or legacy ranges.
+CREATE TABLE IF NOT EXISTS planner_session (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT NOT NULL,
+    group_id INTEGER NOT NULL,
+    period INTEGER NOT NULL,
+    unit_id INTEGER,
+    objectives TEXT DEFAULT '',
+    activities TEXT DEFAULT '',
+    evaluation TEXT DEFAULT '',
+    linked_assessment_ids_csv TEXT NOT NULL DEFAULT '',
+    status TEXT DEFAULT 'PENDING',
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(date, group_id, period),
+    FOREIGN KEY (group_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (unit_id) REFERENCES teaching_unit(id) ON DELETE SET NULL
+);
+
+ALTER TABLE planner_session ADD COLUMN teacher_schedule_slot_id INTEGER;
+ALTER TABLE planner_session ADD COLUMN start_time TEXT;
+ALTER TABLE planner_session ADD COLUMN end_time TEXT;

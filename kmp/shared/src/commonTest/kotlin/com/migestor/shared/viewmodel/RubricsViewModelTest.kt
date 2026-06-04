@@ -287,9 +287,14 @@ private class RubricsTestFakeNotebookRepository(
     override suspend fun saveTab(classId: Long, tab: NotebookTab) = Unit
     override suspend fun deleteTab(tabId: String) = Unit
     override suspend fun saveColumn(classId: Long, column: NotebookColumnDefinition) = Unit
+    override suspend fun saveAverageConfiguration(classId: Long, updates: List<NotebookAverageColumnConfig>) = Unit
+    override suspend fun previewDeleteColumn(classId: Long, columnId: String): NotebookDeletionImpact =
+        NotebookDeletionImpact(columnId, columnId, NotebookDeletionTargetKind.COLUMN, 1, 0, 0, 0, false)
     override suspend fun deleteColumn(columnId: String) = Unit
     override suspend fun listColumnCategories(classId: Long, tabId: String?): List<NotebookColumnCategory> = emptyList()
     override suspend fun saveColumnCategory(classId: Long, category: NotebookColumnCategory) = Unit
+    override suspend fun previewDeleteColumnCategory(classId: Long, categoryId: String): NotebookDeletionImpact =
+        NotebookDeletionImpact(categoryId, categoryId, NotebookDeletionTargetKind.CATEGORY, 0, 0, 0, 0, false)
     override suspend fun deleteColumnCategory(classId: Long, categoryId: String, preserveColumns: Boolean) = Unit
     override suspend fun toggleCategoryCollapsed(classId: Long, categoryId: String, isCollapsed: Boolean) = Unit
     override suspend fun reorderCategory(classId: Long, tabId: String, categoryId: String, targetCategoryId: String) = Unit
@@ -326,6 +331,7 @@ private class RubricsTestFakeNotebookRepository(
         classId: Long,
         studentId: Long,
         columnId: String,
+        evaluationId: Long?,
         numericValue: Double,
         rubricSelections: String?,
         evidence: String?,
@@ -334,6 +340,12 @@ private class RubricsTestFakeNotebookRepository(
         deviceId: String?,
         syncVersion: Long,
     ) = Unit
+
+    override fun observeCellAudit(
+        classId: Long,
+        studentId: Long,
+        columnId: String,
+    ): Flow<List<com.migestor.shared.domain.NotebookCellAuditEvent>> = flowOf(emptyList())
 }
 
 private fun sampleRubricDetail(id: Long, name: String, classId: Long?): RubricDetail = RubricDetail(

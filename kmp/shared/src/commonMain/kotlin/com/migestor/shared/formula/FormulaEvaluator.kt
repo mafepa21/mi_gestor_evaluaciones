@@ -25,6 +25,16 @@ class FormulaEvaluator {
             val char = input[i]
             when {
                 char.isWhitespace() -> flushToken()
+                char == '[' -> {
+                    flushToken()
+                    val end = input.indexOf(']', startIndex = i + 1)
+                    if (end >= 0) {
+                        tokens += input.substring(i + 1, end)
+                        i = end
+                    } else {
+                        tokens += char.toString()
+                    }
+                }
                 i + 1 < input.length && "${input[i]}${input[i + 1]}" in setOf("<=", ">=", "==", "!=", "<>") -> {
                     flushToken()
                     tokens += "${input[i]}${input[i + 1]}"

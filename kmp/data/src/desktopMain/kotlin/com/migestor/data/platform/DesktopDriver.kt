@@ -69,9 +69,74 @@ private fun openDesktopDriver(
         setVersion(driver, latestVersion)
     }
 
+    runRescueMigrations(driver)
     ensurePlannerScheduleTables(driver)
 
     return driver
+}
+
+private fun runRescueMigrations(driver: SqlDriver) {
+    ensureColumns(
+        driver = driver,
+        tableName = "notebook_columns",
+        columnDefinitions = listOf(
+            "category_kind TEXT NOT NULL DEFAULT 'CUSTOM'",
+            "instrument_kind TEXT NOT NULL DEFAULT 'CUSTOM'",
+            "input_kind TEXT NOT NULL DEFAULT 'TEXT'",
+            "date_epoch_ms INTEGER",
+            "unit_name TEXT",
+            "competency_criteria_ids_csv TEXT NOT NULL DEFAULT ''",
+            "scale_kind TEXT NOT NULL DEFAULT 'CUSTOM'",
+            "tab_ids_csv TEXT NOT NULL DEFAULT ''",
+            "shared_across_tabs INTEGER NOT NULL DEFAULT 0",
+            "color_hex TEXT NOT NULL DEFAULT '#FFFFFF'",
+            "icon_name TEXT",
+            "sort_order INTEGER NOT NULL DEFAULT 0",
+            "width_dp REAL NOT NULL DEFAULT 132.0",
+            "category_id TEXT",
+            "visibility TEXT NOT NULL DEFAULT 'VISIBLE'",
+            "is_locked INTEGER NOT NULL DEFAULT 0",
+            "counts_toward_average INTEGER NOT NULL DEFAULT 1",
+            "is_pinned INTEGER NOT NULL DEFAULT 0",
+            "is_hidden INTEGER NOT NULL DEFAULT 0",
+            "is_template INTEGER NOT NULL DEFAULT 0",
+            "empty_cell_policy TEXT NOT NULL DEFAULT 'EXCLUDE_FROM_AVERAGE'",
+            "updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0",
+            "device_id TEXT",
+            "sync_version INTEGER NOT NULL DEFAULT 0",
+        )
+    )
+}
+
+private fun ensureColumns(
+    driver: SqlDriver,
+    tableName: String,
+    columnDefinitions: List<String>,
+) {
+    val existingColumns = tableColumns(driver, tableName)
+    if (existingColumns.isEmpty()) return
+
+    for (columnDef in columnDefinitions) {
+        val columnName = columnDef.substringBefore(" ")
+        if (columnName in existingColumns) continue
+        driver.execute(null, "ALTER TABLE $tableName ADD COLUMN $columnDef", 0)
+        println("[RescueMigration] Added column $columnName to $tableName")
+    }
+}
+
+private fun tableColumns(driver: SqlDriver, tableName: String): Set<String> {
+    return driver.executeQuery(
+        identifier = null,
+        sql = "PRAGMA table_info($tableName)",
+        mapper = { cursor ->
+            val columns = mutableSetOf<String>()
+            while (cursor.next().value) {
+                cursor.getString(1)?.let(columns::add)
+            }
+            QueryResult.Value(columns)
+        },
+        parameters = 0,
+    ).value
 }
 
 private fun resolveDesktopDatabaseFile(

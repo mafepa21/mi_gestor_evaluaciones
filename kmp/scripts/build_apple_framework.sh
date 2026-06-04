@@ -43,33 +43,35 @@ esac
 
 CONF_LOWER=$(echo "$APPLE_CONFIG" | tr '[:upper:]' '[:lower:]')
 GRADLE_TASK="link${APPLE_CONFIG}Framework${GRADLE_TARGET}"
-OUT_DIR="$ROOT_DIR/iosApp/Frameworks"
+if [ "$APPLE_PLATFORM" = "macosx" ]; then
+    OUT_DIR="$ROOT_DIR/iosApp/Frameworks/macos"
+else
+    OUT_DIR="$ROOT_DIR/iosApp/Frameworks/ios"
+fi
 FRAMEWORK_SRC="$ROOT_DIR/data/build/bin/$SRC_ARCH/${CONF_LOWER}Framework/MiGestorKit.framework"
 
 echo "Building KMP Framework for $APPLE_PLATFORM ($APPLE_ARCHS) in $APPLE_CONFIG mode..."
 LOCAL_GRADLE_BIN="$(find "$GRADLE_USER_HOME/wrapper/dists/gradle-8.6-all" -path '*/gradle-8.6/bin/gradle' -type f 2>/dev/null | head -n 1 || true)"
-BUILD_FAILED=0
 if [ -x "$LOCAL_GRADLE_BIN" ]; then
-    if ! "$LOCAL_GRADLE_BIN" --no-daemon ":data:$GRADLE_TASK"; then
-        BUILD_FAILED=1
-    fi
+    "$LOCAL_GRADLE_BIN" --no-daemon ":data:$GRADLE_TASK"
 else
-    if ! ./gradlew --no-daemon ":data:$GRADLE_TASK"; then
-        BUILD_FAILED=1
-    fi
-fi
-
-if [ "$BUILD_FAILED" -ne 0 ]; then
-    if [ -d "$FRAMEWORK_SRC" ]; then
-        echo "WARNING: Gradle build failed inside Xcode; reusing prebuilt framework at $FRAMEWORK_SRC"
-    else
-        echo "ERROR: Gradle build failed and no prebuilt framework is available."
-        exit 1
-    fi
+    ./gradlew --no-daemon ":data:$GRADLE_TASK"
 fi
 
 rm -rf "$OUT_DIR/MiGestorKit.framework"
 mkdir -p "$OUT_DIR"
 cp -R "$FRAMEWORK_SRC" "$OUT_DIR/"
 
+if [ "$APPLE_PLATFORM" = "macosx" ]; then
+    echo "Reemplazando enlaces simbólicos de Headers y Modules en el framework de macOS para compatibilidad con Swift Explicit Modules..."
+    FW_DIR="$OUT_DIR/MiGestorKit.framework"
+    if [ -d "$FW_DIR/Versions/A" ]; then
+        # Reemplazamos Headers y Modules en la raíz por directorios físicos reales copiados de Versions/A
+        rm -f "$FW_DIR/Headers" "$FW_DIR/Modules"
+        cp -R "$FW_DIR/Versions/A/Headers" "$FW_DIR/Headers"
+        cp -R "$FW_DIR/Versions/A/Modules" "$FW_DIR/Modules"
+    fi
+fi
+
 echo "SUCCESS: Framework actualizado en $OUT_DIR"
+

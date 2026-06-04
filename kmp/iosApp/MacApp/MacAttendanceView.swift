@@ -18,7 +18,7 @@ private enum MacAttendanceMode: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-private struct MacAttendanceStatusOption: Identifiable, Hashable {
+struct MacAttendanceStatusOption: Identifiable, Hashable {
     let id: String
     let label: String
     let shortLabel: String
@@ -38,9 +38,10 @@ private struct MacAttendanceStatusOption: Identifiable, Hashable {
     }
 }
 
-private struct MacAttendanceEntryRow: Identifiable {
+struct MacAttendanceEntryRow: Identifiable {
     let id: Int64
     let student: Student
+    let isInjured: Bool
     let record: KmpBridge.AttendanceRecordSnapshot?
 }
 
@@ -70,8 +71,12 @@ struct MacAttendanceView: View {
     @State private var classOverviews: [KmpBridge.AttendanceClassOverview] = []
     @State private var incidents: [Incident] = []
     @State private var sessions: [KmpBridge.AttendanceSessionSnapshot] = []
+    @State private var selectedAttendanceSessionId: Int64?
     @State private var savingStudentIds: Set<Int64> = []
+    @State private var savingInjuryStudentIds: Set<Int64> = []
+    @State private var localInjuryStatuses: [Int64: Bool] = [:]
     @State private var saveRevisionByStudentId: [Int64: Int] = [:]
+    @State private var overviewRefreshTask: Task<Void, Never>?
     @State private var historySelection: MacAttendanceHistorySelection?
     @State private var noteDraft = ""
     @State private var isLoading = false
@@ -102,7 +107,12 @@ struct MacAttendanceView: View {
     private var filteredRows: [MacAttendanceEntryRow] {
         bridge.studentsInClass
             .map { student in
-                MacAttendanceEntryRow(id: student.id, student: student, record: recordsByStudentId[student.id])
+                MacAttendanceEntryRow(
+                    id: student.id,
+                    student: student,
+                    isInjured: isStudentInjured(student),
+                    record: recordsByStudentId[student.id]
+                )
             }
             .filter { row in
                 let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -140,6 +150,10 @@ struct MacAttendanceView: View {
         return (present, absent, late, pending)
     }
 
+    private func isStudentInjured(_ student: Student) -> Bool {
+        localInjuryStatuses[student.id] ?? student.isInjured
+    }
+
     private var averageOverviewRate: Int {
         guard !classOverviews.isEmpty else { return 0 }
         return classOverviews.map(\.attendanceRate).reduce(0, +) / classOverviews.count
@@ -165,10 +179,10 @@ struct MacAttendanceView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .padding(MacAppStyle.pagePadding)
-            .frame(minWidth: 760)
+            .frame(minWidth: 640, idealWidth: 760)
 
             inspector
-                .frame(minWidth: 330, idealWidth: 360, maxWidth: 430)
+                .frame(minWidth: 320, idealWidth: 360, maxWidth: 430)
         }
         .background(MacAppStyle.pageBackground)
         .task {
@@ -181,92 +195,122 @@ struct MacAttendanceView: View {
             await reloadClassOverviews()
             await reloadAttendance()
         }
-        .onChange(of: selectedStudentId) { _, _ in
+        .appOnChange(of: selectedStudentId) { _, _ in
             noteDraft = selectedInspectionAttendance?.note ?? ""
             publishToolbarActions()
         }
-        .onChange(of: mode) { _, newValue in
+        .appOnChange(of: mode) { _, newValue in
             if newValue == .courses {
                 selectedStudentId = nil
                 historySelection = nil
             }
             publishToolbarActions()
         }
-        .onChange(of: toolbarStateKey) { _, _ in
+        .appOnChange(of: toolbarStateKey) { _, _ in
             publishToolbarActions()
         }
         .onDisappear {
+            overviewRefreshTask?.cancel()
             onToolbarActionsChange(nil)
         }
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            HStack(alignment: .top, spacing: 16) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Asistencia")
-                        .font(MacAppStyle.pageTitle)
-                    Text(selectedClass?.name ?? "Todos los cursos")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                if isLoading {
-                    ProgressView()
-                        .scaleEffect(0.75)
-                }
-            }
-
-            HStack(spacing: 16) {
-                Picker("Vista", selection: $mode) {
-                    ForEach(MacAttendanceMode.allCases) { mode in
-                        Text(mode.rawValue).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 280)
-
-                Menu {
-                    Button("Todos los cursos") {
-                        mode = .courses
-                    }
-                    Divider()
-                    ForEach(bridge.classes, id: \.id) { schoolClass in
-                        Button {
-                            selectedClassId = schoolClass.id
-                            if mode == .courses {
-                                mode = .day
-                            }
-                        } label: {
-                            if schoolClass.id == selectedClassId {
-                                Label(schoolClass.name, systemImage: "checkmark")
-                            } else {
-                                Text(schoolClass.name)
-                            }
+        VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
+            MacPremiumModuleHeader(
+                title: "Asistencia",
+                subtitle: selectedClass?.name ?? "Todos los cursos",
+                state: attendanceOperationState,
+                primaryAction: MacPremiumHeaderAction(
+                    title: "Marcar presentes",
+                    systemImage: "checkmark.circle",
+                    isDisabled: mode != .day || selectedClassId == nil || filteredRows.isEmpty
+                ) {
+                    Task { await markAllPresent() }
+                },
+                secondaryActions: [
+                    MacPremiumHeaderAction(
+                        title: "Repetir patrón",
+                        systemImage: "clock.arrow.circlepath",
+                        isDisabled: mode != .day || selectedClassId == nil
+                    ) {
+                        Task { await repeatPattern() }
+                    },
+                    MacPremiumHeaderAction(title: "Recargar", systemImage: "arrow.clockwise") {
+                        Task {
+                            await reloadClassOverviews()
+                            await reloadAttendance()
                         }
                     }
-                } label: {
-                    Label(selectedClass?.name ?? "Curso", systemImage: "rectangle.3.group")
-                        .frame(minWidth: 170, alignment: .leading)
-                }
-                .menuStyle(.button)
+                ]
+            )
 
-                DatePicker("", selection: $selectedDate, displayedComponents: .date)
-                    .labelsHidden()
-                    .disabled(mode == .courses)
+            MacPremiumControlStrip {
+                attendanceControls
+            }
+        }
+    }
 
-                Button {
-                    isFilterPopoverPresented.toggle()
-                } label: {
-                    Label(attendanceFilterLabel, systemImage: attendanceFilterIcon)
-                        .frame(minWidth: 120, alignment: .leading)
+    private var attendanceOperationState: MacPremiumOperationStateKind? {
+        if !savingStudentIds.isEmpty || !savingInjuryStudentIds.isEmpty {
+            return .saving("Guardando...")
+        }
+        if isLoading {
+            return .loading("Actualizando...")
+        }
+        return nil
+    }
+
+    private var attendanceControls: some View {
+        Group {
+            Picker("Vista", selection: $mode) {
+                ForEach(MacAttendanceMode.allCases) { mode in
+                    Text(mode.rawValue).tag(mode)
                 }
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 280)
+
+            Menu {
+                Button("Todos los cursos") {
+                    mode = .courses
+                }
+                Divider()
+                ForEach(bridge.classes, id: \.id) { schoolClass in
+                    Button {
+                        selectedClassId = schoolClass.id
+                        if mode == .courses {
+                            mode = .day
+                        }
+                    } label: {
+                        if schoolClass.id == selectedClassId {
+                            Label(schoolClass.name, systemImage: "checkmark")
+                        } else {
+                            Text(schoolClass.name)
+                        }
+                    }
+                }
+            } label: {
+                Label(selectedClass?.name ?? "Curso", systemImage: "rectangle.3.group")
+                    .frame(minWidth: 170, alignment: .leading)
+            }
+            .menuStyle(.button)
+
+            DatePicker("", selection: $selectedDate, displayedComponents: .date)
+                .labelsHidden()
                 .disabled(mode == .courses)
-                .popover(isPresented: $isFilterPopoverPresented, arrowEdge: .bottom) {
-                    attendanceFilterPopover
-                }
+
+            sessionPicker
+
+            Button {
+                isFilterPopoverPresented.toggle()
+            } label: {
+                Label(attendanceFilterLabel, systemImage: attendanceFilterIcon)
+                    .frame(minWidth: 120, alignment: .leading)
+            }
+            .disabled(mode == .courses)
+            .popover(isPresented: $isFilterPopoverPresented, arrowEdge: .bottom) {
+                attendanceFilterPopover
             }
         }
     }
@@ -406,15 +450,28 @@ struct MacAttendanceView: View {
                             MacAttendanceDayRow(
                                 row: row,
                                 isSelected: selectedStudentId == row.student.id,
-                                isSaving: savingStudentIds.contains(row.student.id),
+                                isSaving: savingStudentIds.contains(row.student.id) || savingInjuryStudentIds.contains(row.student.id),
                                 onSelect: {
                                     historySelection = nil
                                     selectedStudentId = row.student.id
                                 },
                                 onPickStatus: { status in
                                     Task { await updateAttendance(for: row.student, status: status.id) }
+                                },
+                                onMarkInjury: {
+                                    Task { await markInjuryStatus(for: row.student) }
                                 }
                             )
+                            .contextMenu {
+                                Button {
+                                    Task { await toggleInjuryStatus(for: row.student) }
+                                } label: {
+                                    Label(
+                                        row.isInjured ? "Quitar lesión" : "Marcar lesión",
+                                        systemImage: row.isInjured ? "heart.slash" : "bandage"
+                                    )
+                                }
+                            }
                         }
                     }
                     .padding(.vertical, 8)
@@ -468,30 +525,37 @@ struct MacAttendanceView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(student.fullName)
-                                .font(.title3.weight(.semibold))
-                            Text(inspectorDate.formatted(date: .abbreviated, time: .omitted))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Button {
+                    MacPremiumInspectorHeader(
+                        title: student.fullName,
+                        subtitle: inspectorDate.formatted(date: .abbreviated, time: .omitted),
+                        onClose: {
                             selectedStudentId = nil
                             historySelection = nil
-                        } label: {
-                            Image(systemName: "xmark")
                         }
-                        .buttonStyle(.borderless)
-                        .help("Cerrar ficha")
+                    ) {
+                        inspectorStatusContent(record: selectedInspectionAttendance ?? recentRecords.first)
                     }
 
-                    inspectorStatusCard(record: selectedInspectionAttendance ?? recentRecords.first)
+                    inspectorSection("Condición física") {
+                        MacStatusPill(
+                            label: isStudentInjured(student) ? "Lesión activa" : "Sin lesión",
+                            isActive: isStudentInjured(student),
+                            tint: isStudentInjured(student) ? MacAppStyle.warningTint : MacAppStyle.successTint
+                        )
+                        Button {
+                            Task { await toggleInjuryStatus(for: student) }
+                        } label: {
+                            Label(
+                                isStudentInjured(student) ? "Quitar lesión" : "Marcar lesión",
+                                systemImage: isStudentInjured(student) ? "heart.slash" : "bandage"
+                            )
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(savingInjuryStudentIds.contains(student.id))
+                    }
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Histórico reciente")
-                            .font(.headline)
+                    inspectorSection("Histórico reciente") {
                         if recentRecords.isEmpty {
                             Text("Sin registros en el mes.")
                                 .foregroundStyle(.secondary)
@@ -511,14 +575,12 @@ struct MacAttendanceView: View {
                         }
                     }
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Nota")
-                            .font(.headline)
+                    inspectorSection("Nota") {
                         TextEditor(text: $noteDraft)
                             .font(.callout)
                             .frame(minHeight: 70)
                             .padding(6)
-                            .background(Color(nsColor: .textBackgroundColor))
+                            .background(MacAppStyle.subtleFill)
                             .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.chipRadius, style: .continuous))
                             .overlay {
                                 RoundedRectangle(cornerRadius: MacAppStyle.chipRadius, style: .continuous)
@@ -533,9 +595,7 @@ struct MacAttendanceView: View {
                         .buttonStyle(.bordered)
                     }
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Sesiones vinculadas")
-                            .font(.headline)
+                    inspectorSection("Sesiones vinculadas") {
                         if sessions.isEmpty {
                             Text("No hay sesiones planificadas para este día.")
                                 .foregroundStyle(.secondary)
@@ -557,9 +617,7 @@ struct MacAttendanceView: View {
                         }
                     }
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Incidencias")
-                            .font(.headline)
+                    inspectorSection("Incidencias") {
                         if studentIncidents.isEmpty {
                             Text("Sin incidencias asociadas.")
                                 .foregroundStyle(.secondary)
@@ -577,31 +635,33 @@ struct MacAttendanceView: View {
                         }
                     }
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        Button {
-                            onOpenModule(.students, selectedClassId, student.id)
-                        } label: {
-                            Label("Abrir ficha", systemImage: "person.text.rectangle")
-                        }
-                        Button {
-                            onOpenModule(.diary, selectedClassId, student.id)
-                        } label: {
-                            Label("Abrir diario", systemImage: "book.closed")
-                        }
-                        Button {
-                            onOpenModule(.notebook, selectedClassId, student.id)
-                        } label: {
-                            Label("Abrir cuaderno", systemImage: "tablecells")
-                        }
-                        if let selectedClassId {
+                    inspectorSection("Accesos") {
+                        MacPremiumInspectorActionGroup {
                             Button {
-                                Task { await createAttendanceIncident(for: student.id, classId: selectedClassId) }
+                                onOpenModule(.students, selectedClassId, student.id)
                             } label: {
-                                Label("Registrar incidencia", systemImage: "exclamationmark.bubble")
+                                Label("Abrir ficha", systemImage: "person.text.rectangle")
+                            }
+                            Button {
+                                onOpenModule(.diary, selectedClassId, student.id)
+                            } label: {
+                                Label("Abrir diario", systemImage: "book.closed")
+                            }
+                            Button {
+                                onOpenModule(.notebook, selectedClassId, student.id)
+                            } label: {
+                                Label("Abrir cuaderno", systemImage: "tablecells")
+                            }
+                            if let selectedClassId {
+                                Button {
+                                    Task { await createAttendanceIncident(for: student.id, classId: selectedClassId) }
+                                } label: {
+                                    Label("Registrar incidencia", systemImage: "exclamationmark.bubble")
+                                }
                             }
                         }
+                        .buttonStyle(.bordered)
                     }
-                    .buttonStyle(.bordered)
                 }
                 .padding(MacAppStyle.pagePadding)
             }
@@ -624,28 +684,57 @@ struct MacAttendanceView: View {
         }
     }
 
-    private func inspectorStatusCard(record: KmpBridge.AttendanceRecordSnapshot?) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Estado")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-            HStack {
-                MacStatusPill(
-                    label: record.map { statusLabel($0.status) } ?? "Sin registro",
-                    isActive: record != nil,
-                    tint: MacAttendanceStatusOption.option(for: record?.status)?.color ?? .secondary
-                )
-                Spacer()
-                if record?.followUpRequired == true {
-                    Label("Seguimiento", systemImage: "flag.fill")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(MacAppStyle.warningTint)
-                }
+    private func inspectorSection<Content: View>(_ title: String, @ViewBuilder content: @escaping () -> Content) -> some View {
+        MacPremiumInspectorSection(title: title) {
+            VStack(alignment: .leading, spacing: 10) {
+                content()
             }
         }
-        .padding(MacAppStyle.innerPadding)
-        .background(MacAppStyle.subtleFill)
-        .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
+    }
+
+    private func inspectorStatusContent(record: KmpBridge.AttendanceRecordSnapshot?) -> some View {
+        HStack(spacing: 8) {
+            MacStatusPill(
+                label: record.map { statusLabel($0.status) } ?? "Sin registro",
+                isActive: record != nil,
+                tint: MacAttendanceStatusOption.option(for: record?.status)?.color ?? .secondary
+            )
+            if record?.followUpRequired == true {
+                MacStatusPill(label: "Seguimiento", isActive: true, tint: MacAppStyle.warningTint)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var sessionPicker: some View {
+        if mode == .day, selectedClassId != nil {
+            Menu {
+                if sessions.isEmpty {
+                    Text("No hay sesiones planificadas")
+                } else {
+                    ForEach(sessions) { entry in
+                        Button {
+                            selectedAttendanceSessionId = entry.session.id
+                        } label: {
+                            if selectedAttendanceSessionId == entry.session.id {
+                                Label(sessionLabel(for: entry), systemImage: "checkmark")
+                            } else {
+                                Text(sessionLabel(for: entry))
+                            }
+                        }
+                    }
+                }
+            } label: {
+                Label(
+                    selectedAttendanceSession.map(sessionLabel(for:)) ?? "Sin sesión",
+                    systemImage: sessions.count > 1 ? "calendar.badge.clock" : "calendar"
+                )
+                .frame(minWidth: 190, alignment: .leading)
+            }
+            .menuStyle(.button)
+            .disabled(sessions.count <= 1)
+            .help(sessions.count > 1 ? "Selecciona la sesión asociada a la asistencia." : "Sesión asociada automáticamente.")
+        }
     }
 
     @MainActor
@@ -691,6 +780,7 @@ struct MacAttendanceView: View {
         }
         incidents = (try? await bridge.incidents(for: selectedClassId)) ?? []
         sessions = (try? await bridge.attendanceSessions(for: selectedClassId, on: selectedDate)) ?? []
+        reconcileSelectedAttendanceSession()
         noteDraft = selectedInspectionAttendance?.note ?? ""
         isLoading = false
         publishToolbarActions()
@@ -724,14 +814,15 @@ struct MacAttendanceView: View {
                 status: status,
                 note: previousRecord?.note ?? "",
                 hasIncident: previousRecord?.hasIncident ?? false,
-                followUpRequired: previousRecord?.followUpRequired
+                followUpRequired: previousRecord?.followUpRequired,
+                sessionId: attendanceSessionId(for: selectedDate, existingRecord: previousRecord)
             )
             selectedStudentId = student.id
             if saveRevisionByStudentId[student.id] == revision {
                 savingStudentIds.remove(student.id)
                 bridge.status = "Asistencia actualizada."
             }
-            await reloadClassOverviews()
+            scheduleClassOverviewRefresh()
         } catch {
             if saveRevisionByStudentId[student.id] == revision {
                 recordsByStudentId[student.id] = previousRecord
@@ -742,26 +833,70 @@ struct MacAttendanceView: View {
     }
 
     @MainActor
+    private func toggleInjuryStatus(for student: Student) async {
+        guard let selectedClassId else { return }
+        let previousValue = isStudentInjured(student)
+        let newValue = !previousValue
+        localInjuryStatuses[student.id] = newValue
+        selectedStudentId = student.id
+        savingInjuryStudentIds.insert(student.id)
+        defer { savingInjuryStudentIds.remove(student.id) }
+
+        do {
+            try await bridge.updateStudentInjuryStatus(
+                studentId: student.id,
+                isInjured: newValue,
+                classId: selectedClassId
+            )
+            bridge.status = newValue ? "Alumno marcado con lesión." : "Lesión retirada."
+        } catch {
+            localInjuryStatuses[student.id] = previousValue
+            bridge.status = "No se pudo actualizar la lesión: \(error.localizedDescription)"
+        }
+    }
+
+    @MainActor
+    private func markInjuryStatus(for student: Student) async {
+        guard !isStudentInjured(student) else {
+            selectedStudentId = student.id
+            bridge.status = "La lesión de \(student.fullName) ya está activa."
+            return
+        }
+        await toggleInjuryStatus(for: student)
+    }
+
+    @MainActor
     private func markAllPresent() async {
         guard let selectedClassId else { return }
         let students = filteredRows.map(\.student)
         guard !students.isEmpty else { return }
-        for student in students {
+        let previousRecords = recordsByStudentId
+        savingStudentIds.formUnion(students.map(\.id))
+        let drafts = students.map { student in
+            let previousRecord = previousRecords[student.id]
             applyLocalAttendanceStatus("PRESENTE", for: student, classId: selectedClassId)
-            try? await bridge.saveAttendance(
+            return KmpBridge.AttendanceDraft(
                 studentId: student.id,
                 classId: selectedClassId,
-                on: selectedDate,
+                date: selectedDate,
                 status: "PRESENTE",
-                note: recordsByStudentId[student.id]?.note ?? "",
-                hasIncident: recordsByStudentId[student.id]?.hasIncident ?? false,
-                followUpRequired: recordsByStudentId[student.id]?.followUpRequired
+                note: previousRecord?.note ?? "",
+                hasIncident: previousRecord?.hasIncident ?? false,
+                followUpRequired: previousRecord?.followUpRequired,
+                sessionId: attendanceSessionId(for: selectedDate, existingRecord: previousRecord)
             )
         }
-        savingStudentIds.removeAll()
-        await reloadAttendance()
-        await reloadClassOverviews()
-        bridge.status = "Todos los alumnos filtrados marcados como presentes."
+
+        do {
+            try await bridge.saveAttendanceBatch(records: drafts)
+            savingStudentIds.subtract(students.map(\.id))
+            scheduleClassOverviewRefresh()
+            bridge.status = "Todos los alumnos filtrados marcados como presentes."
+        } catch {
+            recordsByStudentId = previousRecords
+            savingStudentIds.subtract(students.map(\.id))
+            bridge.status = "No se pudo marcar el grupo: \(error.localizedDescription)"
+        }
     }
 
     @MainActor
@@ -785,10 +920,11 @@ struct MacAttendanceView: View {
                 status: current?.status ?? "PRESENTE",
                 note: noteDraft,
                 hasIncident: current?.hasIncident ?? false,
-                followUpRequired: current?.followUpRequired
+                followUpRequired: current?.followUpRequired,
+                sessionId: attendanceSessionId(for: inspectorDate, existingRecord: current)
             )
             bridge.status = "Nota de asistencia guardada."
-            await reloadAttendance()
+            applyLocalAttendanceNote(studentId: studentId, classId: selectedClassId, record: current)
         } catch {
             bridge.status = "No se pudo guardar la nota: \(error.localizedDescription)"
         }
@@ -813,10 +949,12 @@ struct MacAttendanceView: View {
                 status: selectedInspectionAttendance?.status ?? "OBSERVACION",
                 note: selectedInspectionAttendance?.note ?? noteDraft,
                 hasIncident: true,
-                followUpRequired: true
+                followUpRequired: true,
+                sessionId: attendanceSessionId(for: inspectorDate, existingRecord: selectedInspectionAttendance)
             )
             bridge.status = "Incidencia registrada desde asistencia."
-            await reloadAttendance()
+            applyLocalAttendanceIncident(studentId: studentId, classId: classId, record: selectedInspectionAttendance)
+            scheduleClassOverviewRefresh()
         } catch {
             bridge.status = "No se pudo crear la incidencia: \(error.localizedDescription)"
         }
@@ -833,7 +971,7 @@ struct MacAttendanceView: View {
             note: baseRecord?.note ?? "",
             hasIncident: baseRecord?.hasIncident ?? false,
             followUpRequired: baseRecord?.followUpRequired ?? false,
-            sessionId: baseRecord?.sessionId
+            sessionId: attendanceSessionId(for: selectedDate, existingRecord: baseRecord)
         )
         recordsByStudentId[student.id] = updated
         upsertHistoryRecord(updated)
@@ -850,6 +988,73 @@ struct MacAttendanceView: View {
         }
     }
 
+    private func applyLocalAttendanceNote(
+        studentId: Int64,
+        classId: Int64,
+        record: KmpBridge.AttendanceRecordSnapshot?
+    ) {
+        let updated = KmpBridge.AttendanceRecordSnapshot(
+            id: record?.id ?? -studentId,
+            studentId: studentId,
+            classId: classId,
+            date: inspectorDate,
+            status: record?.status ?? "PRESENTE",
+            note: noteDraft,
+            hasIncident: record?.hasIncident ?? false,
+            followUpRequired: record?.followUpRequired ?? false,
+            sessionId: attendanceSessionId(for: inspectorDate, existingRecord: record)
+        )
+        if Calendar.current.isDate(inspectorDate, inSameDayAs: selectedDate) {
+            recordsByStudentId[studentId] = updated
+        }
+        upsertHistoryRecord(updated)
+        if let selection = historySelection, selection.studentId == studentId {
+            historySelection = MacAttendanceHistorySelection(
+                studentId: selection.studentId,
+                date: selection.date,
+                record: updated
+            )
+        }
+    }
+
+    private func applyLocalAttendanceIncident(
+        studentId: Int64,
+        classId: Int64,
+        record: KmpBridge.AttendanceRecordSnapshot?
+    ) {
+        let updated = KmpBridge.AttendanceRecordSnapshot(
+            id: record?.id ?? -studentId,
+            studentId: studentId,
+            classId: classId,
+            date: inspectorDate,
+            status: record?.status ?? "OBSERVACION",
+            note: record?.note ?? noteDraft,
+            hasIncident: true,
+            followUpRequired: true,
+            sessionId: attendanceSessionId(for: inspectorDate, existingRecord: record)
+        )
+        if Calendar.current.isDate(inspectorDate, inSameDayAs: selectedDate) {
+            recordsByStudentId[studentId] = updated
+        }
+        upsertHistoryRecord(updated)
+        if let selection = historySelection, selection.studentId == studentId {
+            historySelection = MacAttendanceHistorySelection(
+                studentId: selection.studentId,
+                date: selection.date,
+                record: updated
+            )
+        }
+    }
+
+    private func scheduleClassOverviewRefresh() {
+        overviewRefreshTask?.cancel()
+        overviewRefreshTask = Task {
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            guard !Task.isCancelled else { return }
+            await reloadClassOverviews()
+        }
+    }
+
     private func normalizedAttendanceRecords(_ records: [KmpBridge.AttendanceRecordSnapshot]) -> [KmpBridge.AttendanceRecordSnapshot] {
         Dictionary(grouping: records, by: \.studentId)
             .values
@@ -862,6 +1067,34 @@ struct MacAttendanceView: View {
 
     private func attendanceRecordPriority(_ record: KmpBridge.AttendanceRecordSnapshot) -> (Int, Int64) {
         (record.sessionId == nil ? 0 : 1, record.id)
+    }
+
+    private var selectedAttendanceSession: KmpBridge.AttendanceSessionSnapshot? {
+        guard let selectedAttendanceSessionId else { return nil }
+        return sessions.first { $0.session.id == selectedAttendanceSessionId }
+    }
+
+    private func reconcileSelectedAttendanceSession() {
+        if let selectedAttendanceSessionId, sessions.contains(where: { $0.session.id == selectedAttendanceSessionId }) {
+            return
+        }
+        selectedAttendanceSessionId = sessions.count == 1 ? sessions.first?.session.id : nil
+    }
+
+    private func attendanceSessionId(for date: Date, existingRecord: KmpBridge.AttendanceRecordSnapshot?) -> Int64? {
+        if let existingSessionId = existingRecord?.sessionId {
+            return existingSessionId
+        }
+        guard Calendar.current.isDate(date, inSameDayAs: selectedDate) else {
+            return nil
+        }
+        return selectedAttendanceSessionId
+    }
+
+    private func sessionLabel(for entry: KmpBridge.AttendanceSessionSnapshot) -> String {
+        let unit = entry.session.teachingUnitName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = unit.isEmpty ? "Sesión" : unit
+        return "Periodo \(entry.session.period) · \(title)"
     }
 
     private func historyRecord(for studentId: Int64, date: Date) -> KmpBridge.AttendanceRecordSnapshot? {
@@ -964,79 +1197,5 @@ struct MacAttendanceView: View {
     private static func isLateStatus(_ status: String?) -> Bool {
         guard let status = status?.uppercased() else { return false }
         return status.contains("TARD") || status.contains("RETR")
-    }
-}
-
-private struct MacAttendanceDayRow: View {
-    let row: MacAttendanceEntryRow
-    let isSelected: Bool
-    let isSaving: Bool
-    let onSelect: () -> Void
-    let onPickStatus: (MacAttendanceStatusOption) -> Void
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Button(action: onSelect) {
-                HStack(spacing: 12) {
-                    Circle()
-                        .fill(currentOption?.color.opacity(0.18) ?? Color.secondary.opacity(0.10))
-                        .frame(width: 34, height: 34)
-                        .overlay {
-                            Text(currentOption?.shortLabel ?? "·")
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(currentOption?.color ?? .secondary)
-                        }
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(row.student.fullName)
-                            .font(.callout.weight(.medium))
-                            .foregroundStyle(.primary)
-                        Text(row.record.map { statusLabel($0.status) } ?? "Sin pasar")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .frame(minWidth: 240, maxWidth: .infinity, alignment: .leading)
-            }
-            .buttonStyle(.plain)
-
-            if isSaving {
-                ProgressView()
-                    .scaleEffect(0.7)
-            }
-
-            HStack(spacing: 6) {
-                ForEach(MacAttendanceStatusOption.all) { option in
-                    Button {
-                        onPickStatus(option)
-                    } label: {
-                        Text(option.shortLabel)
-                            .font(.caption.weight(.bold))
-                            .frame(width: 30, height: 26)
-                    }
-                    .buttonStyle(.borderless)
-                    .background(option.color.opacity(row.record?.status == option.id ? 0.22 : 0.08))
-                    .foregroundStyle(option.color)
-                    .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.chipRadius, style: .continuous))
-                    .help(option.label)
-                }
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .background(isSelected ? Color.accentColor.opacity(0.08) : MacAppStyle.cardBackground)
-        .overlay {
-            RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous)
-                .stroke(isSelected ? Color.accentColor.opacity(0.65) : MacAppStyle.cardBorder, lineWidth: isSelected ? 1 : 0.5)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
-    }
-
-    private var currentOption: MacAttendanceStatusOption? {
-        MacAttendanceStatusOption.option(for: row.record?.status)
-    }
-
-    private func statusLabel(_ status: String) -> String {
-        MacAttendanceStatusOption.option(for: status)?.label ?? status
     }
 }

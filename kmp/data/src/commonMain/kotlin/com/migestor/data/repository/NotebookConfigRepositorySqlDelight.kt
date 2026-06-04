@@ -6,6 +6,7 @@ import com.migestor.data.db.AppDatabase
 import com.migestor.shared.domain.AuditTrace
 import com.migestor.shared.domain.Evaluation
 import com.migestor.shared.domain.NotebookColumnDefinition
+import com.migestor.shared.domain.NotebookAverageColumnConfig
 import com.migestor.shared.domain.NotebookColumnCategory
 import com.migestor.shared.domain.NotebookColumnCategoryKind
 import com.migestor.shared.domain.NotebookColumnType
@@ -17,9 +18,11 @@ import com.migestor.shared.domain.NotebookScaleKind
 import com.migestor.shared.domain.NotebookWorkGroup
 import com.migestor.shared.domain.NotebookWorkGroupMember
 import com.migestor.shared.domain.NotebookTab
+import com.migestor.shared.domain.NotebookEmptyCellPolicy
 import com.migestor.shared.repository.NotebookConfigRepository
 import com.migestor.shared.util.NotebookRefreshBus
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.datetime.Instant
@@ -55,6 +58,10 @@ class NotebookConfigRepositorySqlDelight(
         return runCatching { NotebookColumnVisibility.valueOf(this ?: "") }.getOrDefault(NotebookColumnVisibility.VISIBLE)
     }
 
+    private fun String?.toNotebookEmptyCellPolicy(): NotebookEmptyCellPolicy {
+        return runCatching { NotebookEmptyCellPolicy.valueOf(this ?: "") }.getOrDefault(NotebookEmptyCellPolicy.EXCLUDE_FROM_AVERAGE)
+    }
+
     override fun observeTabs(classId: Long): Flow<List<NotebookTab>> {
         return db.appDatabaseQueries
             .selectTabsByClass(classId)
@@ -67,6 +74,7 @@ class NotebookConfigRepositorySqlDelight(
                         title = it.title,
                         order = it.sort_order.toInt(),
                         parentTabId = it.parent_tab_id,
+                        fixedColumnWidth = it.fixed_column_width,
                         trace = AuditTrace(
                             updatedAt = Instant.fromEpochMilliseconds(it.updated_at_epoch_ms),
                             deviceId = it.device_id,
@@ -77,13 +85,14 @@ class NotebookConfigRepositorySqlDelight(
             }
     }
 
-    override suspend fun listTabs(classId: Long): List<NotebookTab> {
-        return db.appDatabaseQueries.selectTabsByClass(classId).executeAsList().map {
+    override suspend fun listTabs(classId: Long): List<NotebookTab> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectTabsByClass(classId).executeAsList().map {
             NotebookTab(
                 id = it.id,
                 title = it.title,
                 order = it.sort_order.toInt(),
                 parentTabId = it.parent_tab_id,
+                fixedColumnWidth = it.fixed_column_width,
                 trace = AuditTrace(
                     updatedAt = Instant.fromEpochMilliseconds(it.updated_at_epoch_ms),
                     deviceId = it.device_id,
@@ -93,7 +102,7 @@ class NotebookConfigRepositorySqlDelight(
         }
     }
 
-    override suspend fun saveTab(classId: Long, tab: NotebookTab) {
+    override suspend fun saveTab(classId: Long, tab: NotebookTab) = withContext(Dispatchers.Default) {
         val tabs = listTabs(classId)
         val siblingTabs = tabs.filter { it.parentTabId == tab.parentTabId && it.id != tab.id }
         val resolvedOrder = if (tab.order >= 0) tab.order else (siblingTabs.maxOfOrNull { it.order }?.plus(1) ?: 0)
@@ -105,12 +114,13 @@ class NotebookConfigRepositorySqlDelight(
             sort_order = resolvedOrder.toLong(),
             updated_at_epoch_ms = tab.trace.updatedAt.toEpochMilliseconds(),
             device_id = tab.trace.deviceId,
-            sync_version = tab.trace.syncVersion
+            sync_version = tab.trace.syncVersion,
+            fixed_column_width = tab.fixedColumnWidth
         )
         NotebookRefreshBus.emitRefresh()
     }
 
-    override suspend fun deleteTab(tabId: String) {
+    override suspend fun deleteTab(tabId: String) = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.deleteTab(tabId)
     }
 
@@ -121,6 +131,7 @@ class NotebookConfigRepositorySqlDelight(
             .mapToList(Dispatchers.Default)
             .map { rows ->
                 rows.map { row ->
+                    val resolvedVisibility = row.visibility.toNotebookVisibility()
                     NotebookColumnDefinition(
                         id = row.id,
                         title = row.title,
@@ -142,8 +153,13 @@ class NotebookConfigRepositorySqlDelight(
                         order = row.sort_order.toInt(),
                         widthDp = row.width_dp,
                         categoryId = row.category_id,
-                        visibility = row.visibility.toNotebookVisibility(),
+                        isHidden = resolvedVisibility != NotebookColumnVisibility.VISIBLE,
+                        visibility = resolvedVisibility,
                         isLocked = row.is_locked == 1L,
+                        countsTowardAverage = row.counts_toward_average == 1L,
+                        isPinned = row.is_pinned == 1L,
+                        isTemplate = row.is_template == 1L,
+                        emptyCellPolicy = row.empty_cell_policy.toNotebookEmptyCellPolicy(),
                         trace = AuditTrace(
                             updatedAt = Instant.fromEpochMilliseconds(row.updated_at_epoch_ms),
                             deviceId = row.device_id,
@@ -154,8 +170,9 @@ class NotebookConfigRepositorySqlDelight(
             }
     }
 
-    override suspend fun listColumns(classId: Long): List<NotebookColumnDefinition> {
-        return db.appDatabaseQueries.selectColumnsByClass(classId).executeAsList().map { row ->
+    override suspend fun listColumns(classId: Long): List<NotebookColumnDefinition> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectColumnsByClass(classId).executeAsList().map { row ->
+            val resolvedVisibility = row.visibility.toNotebookVisibility()
             NotebookColumnDefinition(
                 id = row.id,
                 title = row.title,
@@ -177,8 +194,13 @@ class NotebookConfigRepositorySqlDelight(
                 order = row.sort_order.toInt(),
                 widthDp = row.width_dp,
                 categoryId = row.category_id,
-                visibility = row.visibility.toNotebookVisibility(),
+                isHidden = resolvedVisibility != NotebookColumnVisibility.VISIBLE,
+                visibility = resolvedVisibility,
                 isLocked = row.is_locked == 1L,
+                countsTowardAverage = row.counts_toward_average == 1L,
+                isPinned = row.is_pinned == 1L,
+                isTemplate = row.is_template == 1L,
+                emptyCellPolicy = row.empty_cell_policy.toNotebookEmptyCellPolicy(),
                 trace = AuditTrace(
                     updatedAt = Instant.fromEpochMilliseconds(row.updated_at_epoch_ms),
                     deviceId = row.device_id,
@@ -188,7 +210,7 @@ class NotebookConfigRepositorySqlDelight(
         }
     }
 
-    override suspend fun saveColumn(classId: Long, column: NotebookColumnDefinition) {
+    override suspend fun saveColumn(classId: Long, column: NotebookColumnDefinition) = withContext(Dispatchers.Default) {
         // Migración: Eliminar cualquier columna previa para esta evaluación que tenga un ID distinto al estandarizado
         column.evaluationId?.let { evalId ->
             if (evalId > 0) {
@@ -213,6 +235,12 @@ class NotebookConfigRepositorySqlDelight(
                 ?.plus(1) ?: 0
         }
 
+        val resolvedVisibility = when {
+            column.visibility != NotebookColumnVisibility.VISIBLE -> column.visibility
+            column.isHidden -> NotebookColumnVisibility.HIDDEN
+            else -> NotebookColumnVisibility.VISIBLE
+        }
+
         db.appDatabaseQueries.upsertColumn(
             id = column.id,
             class_id = classId,
@@ -235,8 +263,13 @@ class NotebookConfigRepositorySqlDelight(
             sort_order = resolvedOrder.toLong(),
             width_dp = if (column.widthDp > 0.0) column.widthDp else 132.0,
             category_id = column.categoryId,
-            visibility = column.visibility.name,
+            visibility = resolvedVisibility.name,
             is_locked = if (column.isLocked) 1L else 0L,
+            counts_toward_average = if (column.countsTowardAverage) 1L else 0L,
+            is_pinned = if (column.isPinned) 1L else 0L,
+            is_hidden = if (resolvedVisibility != NotebookColumnVisibility.VISIBLE) 1L else 0L,
+            is_template = if (column.isTemplate) 1L else 0L,
+            empty_cell_policy = column.emptyCellPolicy.name,
             updated_at_epoch_ms = column.trace.updatedAt.toEpochMilliseconds(),
             device_id = column.trace.deviceId,
             sync_version = column.trace.syncVersion
@@ -244,7 +277,55 @@ class NotebookConfigRepositorySqlDelight(
         NotebookRefreshBus.emitRefresh()
     }
 
-    override suspend fun deleteColumn(columnId: String) {
+    override suspend fun saveAverageConfiguration(classId: Long, updates: List<NotebookAverageColumnConfig>) = withContext(Dispatchers.Default) {
+        if (updates.isEmpty()) return@withContext
+        val updatesById = updates.associateBy { it.columnId }
+        val now = Clock.System.now().toEpochMilliseconds()
+
+        db.transaction {
+            db.appDatabaseQueries.selectColumnsByClass(classId).executeAsList()
+                .filter { it.id in updatesById }
+                .forEach { row ->
+                    val update = updatesById.getValue(row.id)
+                    db.appDatabaseQueries.upsertColumn(
+                        id = row.id,
+                        class_id = row.class_id,
+                        title = row.title,
+                        type = row.type,
+                        category_kind = row.category_kind,
+                        instrument_kind = row.instrument_kind,
+                        input_kind = row.input_kind,
+                        evaluation_id = row.evaluation_id,
+                        formula = row.formula,
+                        weight = if (update.countsTowardAverage) update.weight else 0.0,
+                        date_epoch_ms = row.date_epoch_ms,
+                        unit_name = row.unit_name,
+                        competency_criteria_ids_csv = row.competency_criteria_ids_csv,
+                        scale_kind = row.scale_kind,
+                        tab_ids_csv = row.tab_ids_csv,
+                        shared_across_tabs = row.shared_across_tabs,
+                        color_hex = row.color_hex,
+                        icon_name = row.icon_name,
+                        sort_order = row.sort_order,
+                        width_dp = row.width_dp,
+                        category_id = row.category_id,
+                        visibility = row.visibility,
+                        is_locked = row.is_locked,
+                        counts_toward_average = if (update.countsTowardAverage) 1L else 0L,
+                        is_pinned = row.is_pinned,
+                        is_hidden = row.is_hidden,
+                        is_template = row.is_template,
+                        empty_cell_policy = update.emptyCellPolicy?.name ?: row.empty_cell_policy,
+                        updated_at_epoch_ms = now,
+                        device_id = row.device_id,
+                        sync_version = row.sync_version
+                    )
+                }
+        }
+        NotebookRefreshBus.emitRefresh()
+    }
+
+    override suspend fun deleteColumn(columnId: String) = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.deleteColumn(columnId)
     }
 
@@ -273,13 +354,13 @@ class NotebookConfigRepositorySqlDelight(
         }
     }
 
-    override suspend fun listColumnCategories(classId: Long, tabId: String?): List<NotebookColumnCategory> {
+    override suspend fun listColumnCategories(classId: Long, tabId: String?): List<NotebookColumnCategory> = withContext(Dispatchers.Default) {
         val rows = if (tabId == null) {
             db.appDatabaseQueries.selectColumnCategoriesByClass(classId).executeAsList()
         } else {
             db.appDatabaseQueries.selectColumnCategoriesByClassAndTab(classId, tabId).executeAsList()
         }
-        return rows.map { row ->
+        rows.map { row ->
             NotebookColumnCategory(
                 id = row.id,
                 classId = row.class_id,
@@ -296,7 +377,7 @@ class NotebookConfigRepositorySqlDelight(
         }
     }
 
-    override suspend fun saveColumnCategory(classId: Long, category: NotebookColumnCategory) {
+    override suspend fun saveColumnCategory(classId: Long, category: NotebookColumnCategory) = withContext(Dispatchers.Default) {
         val categories = listColumnCategories(classId, category.tabId)
         val siblingCategories = categories.filter { it.id != category.id }
         val resolvedOrder = if (category.order >= 0) category.order else (siblingCategories.maxOfOrNull { it.order }?.plus(1) ?: 0)
@@ -314,7 +395,7 @@ class NotebookConfigRepositorySqlDelight(
         NotebookRefreshBus.emitRefresh()
     }
 
-    override suspend fun deleteColumnCategory(classId: Long, categoryId: String, preserveColumns: Boolean) {
+    override suspend fun deleteColumnCategory(classId: Long, categoryId: String, preserveColumns: Boolean) = withContext(Dispatchers.Default) {
         db.transaction {
             val categoryColumns = db.appDatabaseQueries.selectColumnsByClass(classId).executeAsList()
                 .filter { it.category_id == categoryId }
@@ -345,6 +426,11 @@ class NotebookConfigRepositorySqlDelight(
                         category_id = null,
                         visibility = row.visibility,
                         is_locked = row.is_locked,
+                        counts_toward_average = row.counts_toward_average,
+                        is_pinned = row.is_pinned,
+                        is_hidden = row.is_hidden,
+                        is_template = row.is_template,
+                        empty_cell_policy = row.empty_cell_policy,
                         updated_at_epoch_ms = row.updated_at_epoch_ms,
                         device_id = row.device_id,
                         sync_version = row.sync_version
@@ -360,9 +446,9 @@ class NotebookConfigRepositorySqlDelight(
         NotebookRefreshBus.emitRefresh()
     }
 
-    override suspend fun toggleCategoryCollapsed(classId: Long, categoryId: String, isCollapsed: Boolean) {
+    override suspend fun toggleCategoryCollapsed(classId: Long, categoryId: String, isCollapsed: Boolean) = withContext(Dispatchers.Default) {
         val current = db.appDatabaseQueries.selectColumnCategoriesByClass(classId).executeAsList()
-            .firstOrNull { it.id == categoryId } ?: return
+            .firstOrNull { it.id == categoryId } ?: return@withContext
         db.appDatabaseQueries.upsertColumnCategory(
             id = current.id,
             class_id = current.class_id,
@@ -377,14 +463,14 @@ class NotebookConfigRepositorySqlDelight(
         NotebookRefreshBus.emitRefresh()
     }
 
-    override suspend fun reorderCategory(classId: Long, tabId: String, categoryId: String, targetCategoryId: String) {
+    override suspend fun reorderCategory(classId: Long, tabId: String, categoryId: String, targetCategoryId: String) = withContext(Dispatchers.Default) {
         val categories = listColumnCategories(classId, tabId)
             .sortedWith(compareBy<NotebookColumnCategory> { it.order }.thenBy { it.id })
             .toMutableList()
 
         val fromIndex = categories.indexOfFirst { it.id == categoryId }
         val targetIndex = categories.indexOfFirst { it.id == targetCategoryId }
-        if (fromIndex < 0 || targetIndex < 0 || fromIndex == targetIndex) return
+        if (fromIndex < 0 || targetIndex < 0 || fromIndex == targetIndex) return@withContext
 
         val moved = categories.removeAt(fromIndex)
         val adjustedTarget = if (fromIndex < targetIndex) targetIndex - 1 else targetIndex
@@ -398,8 +484,8 @@ class NotebookConfigRepositorySqlDelight(
         NotebookRefreshBus.emitRefresh()
     }
 
-    override suspend fun assignColumnToCategory(classId: Long, columnId: String, categoryId: String?) {
-        val row = db.appDatabaseQueries.selectColumnById(columnId).executeAsOneOrNull() ?: return
+    override suspend fun assignColumnToCategory(classId: Long, columnId: String, categoryId: String?) = withContext(Dispatchers.Default) {
+        val row = db.appDatabaseQueries.selectColumnById(columnId).executeAsOneOrNull() ?: return@withContext
         db.appDatabaseQueries.upsertColumn(
             id = row.id,
             class_id = row.class_id,
@@ -424,6 +510,11 @@ class NotebookConfigRepositorySqlDelight(
             category_id = categoryId,
             visibility = row.visibility,
             is_locked = row.is_locked,
+            counts_toward_average = row.counts_toward_average,
+            is_pinned = row.is_pinned,
+            is_hidden = row.is_hidden,
+            is_template = row.is_template,
+            empty_cell_policy = row.empty_cell_policy,
             updated_at_epoch_ms = Clock.System.now().toEpochMilliseconds(),
             device_id = row.device_id,
             sync_version = row.sync_version
@@ -445,6 +536,7 @@ class NotebookConfigRepositorySqlDelight(
                     tabId = row.tab_id,
                     name = row.name,
                     order = row.sort_order.toInt(),
+                    learningSituationId = row.learning_situation_id,
                     trace = AuditTrace(
                         updatedAt = Instant.fromEpochMilliseconds(row.updated_at_epoch_ms),
                         deviceId = row.device_id,
@@ -455,19 +547,20 @@ class NotebookConfigRepositorySqlDelight(
         }
     }
 
-    override suspend fun listWorkGroups(classId: Long, tabId: String?): List<NotebookWorkGroup> {
+    override suspend fun listWorkGroups(classId: Long, tabId: String?): List<NotebookWorkGroup> = withContext(Dispatchers.Default) {
         val rows = if (tabId == null) {
             db.appDatabaseQueries.selectWorkGroupsByClass(classId).executeAsList()
         } else {
             db.appDatabaseQueries.selectWorkGroupsByClassAndTab(classId, tabId).executeAsList()
         }
-        return rows.map { row ->
+        rows.map { row ->
             NotebookWorkGroup(
                 id = row.id,
                 classId = row.class_id,
                 tabId = row.tab_id,
                 name = row.name,
                 order = row.sort_order.toInt(),
+                learningSituationId = row.learning_situation_id,
                 trace = AuditTrace(
                     updatedAt = Instant.fromEpochMilliseconds(row.updated_at_epoch_ms),
                     deviceId = row.device_id,
@@ -477,7 +570,7 @@ class NotebookConfigRepositorySqlDelight(
         }
     }
 
-    override suspend fun saveWorkGroup(classId: Long, workGroup: NotebookWorkGroup): Long {
+    override suspend fun saveWorkGroup(classId: Long, workGroup: NotebookWorkGroup): Long = withContext(Dispatchers.Default) {
         val now = workGroup.trace.updatedAt.toEpochMilliseconds().takeIf { it > 0 } ?: Clock.System.now().toEpochMilliseconds()
         val uniqueName = resolveUniqueWorkGroupName(
             classId = classId,
@@ -492,6 +585,7 @@ class NotebookConfigRepositorySqlDelight(
                     tab_id = workGroup.tabId,
                     name = uniqueName,
                     sort_order = workGroup.order.toLong(),
+                    learning_situation_id = workGroup.learningSituationId,
                     updated_at_epoch_ms = now,
                     device_id = workGroup.trace.deviceId,
                     sync_version = workGroup.trace.syncVersion,
@@ -504,6 +598,7 @@ class NotebookConfigRepositorySqlDelight(
                     tab_id = workGroup.tabId,
                     name = uniqueName,
                     sort_order = workGroup.order.toLong(),
+                    learning_situation_id = workGroup.learningSituationId,
                     updated_at_epoch_ms = now,
                     device_id = workGroup.trace.deviceId,
                     sync_version = workGroup.trace.syncVersion,
@@ -512,7 +607,7 @@ class NotebookConfigRepositorySqlDelight(
             }
         }
         NotebookRefreshBus.emitRefresh()
-        return savedId
+        savedId
     }
 
     private suspend fun resolveUniqueWorkGroupName(
@@ -537,7 +632,7 @@ class NotebookConfigRepositorySqlDelight(
         return candidate
     }
 
-    override suspend fun deleteWorkGroup(groupId: Long) {
+    override suspend fun deleteWorkGroup(groupId: Long) = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.deleteWorkGroup(groupId)
         NotebookRefreshBus.emitRefresh()
     }
@@ -565,13 +660,13 @@ class NotebookConfigRepositorySqlDelight(
         }
     }
 
-    override suspend fun listWorkGroupMembers(classId: Long, tabId: String?): List<NotebookWorkGroupMember> {
+    override suspend fun listWorkGroupMembers(classId: Long, tabId: String?): List<NotebookWorkGroupMember> = withContext(Dispatchers.Default) {
         val rows = if (tabId == null) {
             db.appDatabaseQueries.selectWorkGroupMembersByClass(classId).executeAsList()
         } else {
             db.appDatabaseQueries.selectWorkGroupMembersByClassAndTab(classId, tabId).executeAsList()
         }
-        return rows.map { row ->
+        rows.map { row ->
             NotebookWorkGroupMember(
                 classId = row.class_id,
                 tabId = row.tab_id,
@@ -591,7 +686,7 @@ class NotebookConfigRepositorySqlDelight(
         tabId: String,
         groupId: Long,
         studentIds: List<Long>,
-    ) {
+    ) = withContext(Dispatchers.Default) {
         val now = Clock.System.now().toEpochMilliseconds()
         studentIds.forEach { studentId ->
             db.appDatabaseQueries.deleteWorkGroupMember(classId, tabId, studentId)
@@ -612,14 +707,14 @@ class NotebookConfigRepositorySqlDelight(
         classId: Long,
         tabId: String,
         studentIds: List<Long>,
-    ) {
+    ) = withContext(Dispatchers.Default) {
         studentIds.forEach { studentId ->
             db.appDatabaseQueries.deleteWorkGroupMember(classId, tabId, studentId)
         }
         NotebookRefreshBus.emitRefresh()
     }
 
-    override suspend fun duplicateConfigToClass(sourceClassId: Long, targetClassId: Long) {
+    override suspend fun duplicateConfigToClass(sourceClassId: Long, targetClassId: Long) = withContext(Dispatchers.Default) {
         val tabs = listTabs(sourceClassId)
         val columns = listColumns(sourceClassId)
         val columnCategories = listColumnCategories(sourceClassId)
@@ -775,8 +870,8 @@ class NotebookConfigRepositorySqlDelight(
         }
     }
 
-    override suspend fun getNotebookConfig(classId: Long): NotebookConfig {
-        return NotebookConfig(
+    override suspend fun getNotebookConfig(classId: Long): NotebookConfig = withContext(Dispatchers.Default) {
+        NotebookConfig(
             classId = classId,
             tabs = listTabs(classId),
             columns = listColumns(classId),

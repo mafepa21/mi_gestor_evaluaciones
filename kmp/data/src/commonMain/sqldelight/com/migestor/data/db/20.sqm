@@ -1,0 +1,19 @@
+-- Migration from version 20 to 21.
+-- Some local databases reached version 20 before the cell audit table existed.
+CREATE TABLE IF NOT EXISTS notebook_cell_audit_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    class_id INTEGER NOT NULL,
+    student_id INTEGER NOT NULL,
+    column_id TEXT NOT NULL,
+    previous_numeric_value REAL,
+    new_numeric_value REAL,
+    previous_text_value TEXT,
+    new_text_value TEXT,
+    action TEXT NOT NULL,
+    changed_at_epoch_ms INTEGER NOT NULL,
+    author_user_id INTEGER,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+);

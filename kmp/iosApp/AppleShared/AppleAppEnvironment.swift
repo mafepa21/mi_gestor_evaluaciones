@@ -1,4 +1,5 @@
 import SwiftUI
+import MiGestorKit
 #if canImport(UIKit)
 import UIKit
 #elseif canImport(AppKit)
@@ -41,6 +42,66 @@ struct UiFeatureFlags {
         accessibilitySurfaceFallback: false,
         reduceMotion: false
     )
+
+    func withReducedMotion(_ value: Bool) -> UiFeatureFlags {
+        UiFeatureFlags(
+            newShell: newShell,
+            notebookToolbarSimplified: notebookToolbarSimplified,
+            accessibilitySurfaceFallback: accessibilitySurfaceFallback,
+            reduceMotion: value
+        )
+    }
+
+    var interactionAnimation: Animation {
+        reduceMotion
+            ? .easeInOut(duration: 0.15)
+            : .spring(response: 0.35, dampingFraction: 0.75)
+    }
+
+    var inspectorTransition: AnyTransition {
+        reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity)
+    }
+
+    var bannerTransition: AnyTransition {
+        reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity)
+    }
+}
+
+@MainActor
+enum AppleInteractionFeedback {
+    enum Event {
+        case selection
+        case lightImpact
+        case success
+        case warning
+        case error
+    }
+
+    static func play(_ event: Event) {
+        #if canImport(UIKit)
+        switch event {
+        case .selection:
+            UISelectionFeedbackGenerator().selectionChanged()
+        case .lightImpact:
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        case .success:
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        case .warning:
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        case .error:
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+        }
+        #elseif canImport(AppKit)
+        switch event {
+        case .selection:
+            break
+        case .lightImpact, .success:
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+        case .warning, .error:
+            NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
+        }
+        #endif
+    }
 }
 
 enum ApplePairingServiceState: Equatable {
@@ -189,6 +250,175 @@ func appCardBackground(for colorScheme: ColorScheme) -> Color {
         : Color.white
 }
 
+enum AppleDesignSystem {
+    static let pagePadding: CGFloat = 24
+    static let sectionSpacing: CGFloat = 24
+    static let cardSpacing: CGFloat = 16
+    static let cardRadius: CGFloat = 14
+    static let controlRadius: CGFloat = 10
+    static let chipRadius: CGFloat = 20
+    static let inspectorWidth: CGFloat = 360
+
+    static let accent = Color.accentColor
+    static let success = Color(red: 0.12, green: 0.65, blue: 0.46)
+    static let warning = Color(red: 0.86, green: 0.52, blue: 0.12)
+    static let danger = Color(red: 0.90, green: 0.20, blue: 0.22)
+    static let border = Color.primary.opacity(0.08)
+    static let shadow = Color.black.opacity(0.08)
+
+    static func pageBackground(for colorScheme: ColorScheme) -> Color {
+        appPageBackground(for: colorScheme)
+    }
+
+    static func cardBackground(for colorScheme: ColorScheme) -> Color {
+        appCardBackground(for: colorScheme)
+    }
+
+    static func mutedBackground(for colorScheme: ColorScheme) -> Color {
+        appMutedCardBackground(for: colorScheme)
+    }
+}
+
+struct PremiumCard<Content: View>: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
+    var padding: CGFloat = AppleDesignSystem.cardSpacing
+    var cornerRadius: CGFloat = AppleDesignSystem.cardRadius
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        content
+            .padding(padding)
+            .background(
+                adaptiveSurfaceBackground(
+                    accessibilityFallback: uiFeatureFlags.accessibilitySurfaceFallback,
+                    fill: AppleDesignSystem.cardBackground(for: colorScheme).opacity(colorScheme == .dark ? 0.82 : 0.96),
+                    cornerRadius: cornerRadius
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .stroke(AppleDesignSystem.border, lineWidth: 1)
+                }
+                .shadow(color: AppleDesignSystem.shadow.opacity(0.65), radius: 16, x: 0, y: 8)
+            )
+    }
+}
+
+struct PremiumToolbarButton: View {
+    let title: String
+    let systemImage: String
+    var isProminent = false
+    var isDisabled = false
+    let action: () -> Void
+
+    var body: some View {
+        Group {
+            if isProminent {
+                Button(action: action) {
+                    Label(title, systemImage: systemImage)
+                }
+                .buttonStyle(.borderedProminent)
+            } else {
+                Button(action: action) {
+                    Label(title, systemImage: systemImage)
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .disabled(isDisabled)
+        .accessibilityLabel(title)
+    }
+}
+
+struct PremiumEmptyState: View {
+    let title: String
+    let subtitle: String
+    var systemImage = "square.stack.3d.up.slash"
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: systemImage)
+                .font(.system(size: 36, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text(title)
+                .font(.title3.weight(.semibold))
+                .multilineTextAlignment(.center)
+            Text(subtitle)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 420)
+        }
+        .padding(32)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+struct PremiumSectionHeader<Trailing: View>: View {
+    let eyebrow: String?
+    let title: String
+    let subtitle: String?
+    @ViewBuilder var trailing: Trailing
+
+    init(
+        eyebrow: String? = nil,
+        title: String,
+        subtitle: String? = nil,
+        @ViewBuilder trailing: () -> Trailing
+    ) {
+        self.eyebrow = eyebrow
+        self.title = title
+        self.subtitle = subtitle
+        self.trailing = trailing()
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                if let eyebrow {
+                    Text(eyebrow.uppercased())
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.secondary)
+                }
+                Text(title)
+                    .font(.title3.weight(.semibold))
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 12)
+            trailing
+        }
+    }
+}
+
+extension PremiumSectionHeader where Trailing == EmptyView {
+    init(eyebrow: String? = nil, title: String, subtitle: String? = nil) {
+        self.eyebrow = eyebrow
+        self.title = title
+        self.subtitle = subtitle
+        self.trailing = EmptyView()
+    }
+}
+
+struct PremiumInspectorPanel<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: AppleDesignSystem.cardSpacing) {
+                content
+            }
+            .padding(AppleDesignSystem.pagePadding)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+        .frame(minWidth: AppleDesignSystem.inspectorWidth)
+    }
+}
+
 func appMutedCardBackground(for colorScheme: ColorScheme) -> Color {
     colorScheme == .dark
         ? Color(red: 0.13, green: 0.18, blue: 0.27)
@@ -277,3 +507,24 @@ private func resolvedPlatformColorComponents(for color: Color) -> ResolvedColorC
     return ResolvedColorComponents()
 #endif
 }
+
+// MARK: - Color Hex Initialization
+extension Color {
+    init(hex: String) {
+        let cleaned = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: cleaned).scanHexInt64(&int)
+        let r, g, b: UInt64
+        switch cleaned.count {
+        case 3:
+            (r, g, b) = ((int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
+        default:
+            (r, g, b) = (int >> 16, int >> 8 & 0xFF, int & 0xFF)
+        }
+        self.init(red: Double(r) / 255, green: Double(g) / 255, blue: Double(b) / 255)
+    }
+}
+
+// MARK: - Identifiable Conformances
+extension RubricDetail: @retroactive Identifiable { public var id: Int64 { self.rubric.id } }
+extension RubricLevel: @retroactive Identifiable {}

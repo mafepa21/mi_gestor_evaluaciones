@@ -154,6 +154,20 @@ struct NotebookNumericCellKeyboard: View {
                 .buttonStyle(.bordered)
             }
 
+            HStack(spacing: 8) {
+                Button("0") {
+                    value = "0"
+                    onSave()
+                }
+                .buttonStyle(.bordered)
+
+                Button("-0,5") { adjustValue(-0.5) }
+                    .buttonStyle(.bordered)
+
+                Button("+0,5") { adjustValue(0.5) }
+                    .buttonStyle(.bordered)
+            }
+
             VStack(spacing: 8) {
                 ForEach(rows, id: \.self) { row in
                     HStack(spacing: 8) {
@@ -200,15 +214,29 @@ struct NotebookNumericCellKeyboard: View {
                 }
                 .buttonStyle(.bordered)
 
-                Button("Guardar") {
-                    onSave()
+                Button("Guardar y siguiente") {
+                    onNavigate(.down)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(tint)
+
+                Button("Guardar") {
+                    onSave()
+                }
+                .buttonStyle(.bordered)
             }
         }
         .padding(12)
         .frame(width: 260)
+    }
+
+    private func adjustValue(_ delta: Double) {
+        let current = Double(value.replacingOccurrences(of: ",", with: ".")) ?? 0
+        let next = min(10, max(0, current + delta))
+        value = next.truncatingRemainder(dividingBy: 1) == 0
+            ? String(Int(next))
+            : String(format: "%.1f", next).replacingOccurrences(of: ".", with: ",")
+        onSave()
     }
 
     private func press(_ key: String) {
@@ -236,6 +264,152 @@ struct NotebookNumericCellKeyboard: View {
     }
 }
 
+struct NotebookTimeCellKeyboard: View {
+    @Binding var value: String
+    let tint: Color
+    let onSave: () -> Void
+    let onNavigate: (NotebookNavigationDirection) -> Void
+
+    var body: some View {
+        steppedKeyboard(
+            title: value.isEmpty ? "00:00,00" : value,
+            actions: [
+                ("-1 s", { adjustSeconds(-1) }),
+                ("+1 s", { adjustSeconds(1) }),
+                ("+10 s", { adjustSeconds(10) }),
+                ("Limpiar", { value = ""; onSave() })
+            ]
+        )
+    }
+
+    private func steppedKeyboard(title: String, actions: [(String, () -> Void)]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .monospacedDigit()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.quaternary.opacity(0.24)))
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                ForEach(actions, id: \.0) { label, action in
+                    Button(label, action: action)
+                        .buttonStyle(.bordered)
+                }
+            }
+
+            Button("Guardar y siguiente") { onNavigate(.down) }
+                .buttonStyle(.borderedProminent)
+                .tint(tint)
+        }
+        .padding(12)
+        .frame(width: 260)
+    }
+
+    private func adjustSeconds(_ delta: Int) {
+        let next = max(0, parsedCentiseconds() + delta * 100)
+        let minutes = next / 6000
+        let seconds = (next / 100) % 60
+        let centiseconds = next % 100
+        value = String(format: "%02d:%02d,%02d", minutes, seconds, centiseconds)
+        onSave()
+    }
+
+    private func parsedCentiseconds() -> Int {
+        let normalized = value.replacingOccurrences(of: ".", with: ",")
+        let minuteParts = normalized.split(separator: ":", omittingEmptySubsequences: false)
+        guard minuteParts.count == 2 else { return 0 }
+        let minutes = Int(minuteParts[0]) ?? 0
+        let secondParts = minuteParts[1].split(separator: ",", omittingEmptySubsequences: false)
+        let seconds = Int(secondParts.first ?? "0") ?? 0
+        let centiseconds = Int(secondParts.dropFirst().first ?? "0") ?? 0
+        return max(0, minutes * 6000 + seconds * 100 + centiseconds)
+    }
+}
+
+struct NotebookDistanceCellKeyboard: View {
+    @Binding var value: String
+    let tint: Color
+    let unitLabel: String
+    let onSave: () -> Void
+    let onNavigate: (NotebookNavigationDirection) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(value.isEmpty ? "0" : value)
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                Spacer()
+                Text(unitLabel)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(12)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.quaternary.opacity(0.24)))
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                Button("-0,1") { adjustValue(-0.1) }.buttonStyle(.bordered)
+                Button("+0,1") { adjustValue(0.1) }.buttonStyle(.bordered)
+                Button("-1") { adjustValue(-1) }.buttonStyle(.bordered)
+                Button("+1") { adjustValue(1) }.buttonStyle(.bordered)
+            }
+
+            Button("Guardar y siguiente") { onNavigate(.down) }
+                .buttonStyle(.borderedProminent)
+                .tint(tint)
+        }
+        .padding(12)
+        .frame(width: 260)
+    }
+
+    private func adjustValue(_ delta: Double) {
+        let current = Double(value.replacingOccurrences(of: ",", with: ".")) ?? 0
+        let next = max(0, current + delta)
+        value = next.truncatingRemainder(dividingBy: 1) == 0
+            ? String(Int(next))
+            : String(format: "%.1f", next).replacingOccurrences(of: ".", with: ",")
+        onSave()
+    }
+}
+
+struct NotebookRepetitionCellKeyboard: View {
+    @Binding var value: String
+    let tint: Color
+    let onSave: () -> Void
+    let onNavigate: (NotebookNavigationDirection) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(value.isEmpty ? "0" : value)
+                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .monospacedDigit()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.quaternary.opacity(0.24)))
+
+            HStack(spacing: 8) {
+                Button("-5") { adjustValue(-5) }.buttonStyle(.bordered)
+                Button("-1") { adjustValue(-1) }.buttonStyle(.bordered)
+                Button("+1") { adjustValue(1) }.buttonStyle(.bordered)
+                Button("+5") { adjustValue(5) }.buttonStyle(.bordered)
+            }
+
+            Button("Guardar y siguiente") { onNavigate(.down) }
+                .buttonStyle(.borderedProminent)
+                .tint(tint)
+        }
+        .padding(12)
+        .frame(width: 260)
+    }
+
+    private func adjustValue(_ delta: Int) {
+        let current = Int(value) ?? 0
+        value = String(max(0, current + delta))
+        onSave()
+    }
+}
+
 enum NotebookFormulaAIError: LocalizedError {
     case unavailable(String)
     case emptyResponse
@@ -250,11 +424,23 @@ enum NotebookFormulaAIError: LocalizedError {
     }
 }
 
+@MainActor
+final class AppleFoundationFormulaServiceStore: ObservableObject {
+    let service = AppleFoundationFormulaService()
+    let orchestrator = AppleAIOrchestrator()
+}
+
+@MainActor
 final class AppleFoundationFormulaService {
     #if canImport(FoundationModels)
+    private var formulaSessionStorage: Any?
+
     @available(iOS 26.0, macOS 26.0, *)
-    private var formulaSession: LanguageModelSession {
-        LanguageModelSession(
+    private func formulaSession() -> LanguageModelSession {
+        if let session = formulaSessionStorage as? LanguageModelSession {
+            return session
+        }
+        return LanguageModelSession(
             instructions: """
             Eres un asistente local para crear y corregir fórmulas de un cuaderno docente.
             Devuelve SOLO una fórmula, sin explicación, sin markdown y sin comillas.
@@ -283,15 +469,24 @@ final class AppleFoundationFormulaService {
 
         #if canImport(FoundationModels)
         if #available(iOS 26.0, macOS 26.0, *) {
-            let response = try await formulaSession.respond(
-                to: prompt(request: request, currentFormula: currentFormula, availableColumns: availableColumns),
-                generating: String.self,
-                includeSchemaInPrompt: false,
-                options: AppleFoundationModelSupport.generationOptions(temperature: 0.0)
-            )
-            let formula = sanitize(response.content)
-            guard !formula.isEmpty else { throw NotebookFormulaAIError.emptyResponse }
-            return formula
+            let session = formulaSession()
+            formulaSessionStorage = session
+            do {
+                let response = try await session.respond(
+                    to: prompt(request: request, currentFormula: currentFormula, availableColumns: availableColumns),
+                    generating: String.self,
+                    includeSchemaInPrompt: false,
+                    options: AppleFoundationModelSupport.generationOptions(temperature: 0.0)
+                )
+                let formula = sanitize(response.content)
+                guard !formula.isEmpty else { throw NotebookFormulaAIError.emptyResponse }
+                return formula
+            } catch let error as NotebookFormulaAIError {
+                throw error
+            } catch {
+                AppleFoundationModelSupport.recordRuntimeFailure(error)
+                throw NotebookFormulaAIError.unavailable("Apple Foundation Models no está respondiendo ahora mismo. Reinténtalo más tarde.")
+            }
         }
         #endif
 
@@ -438,11 +633,15 @@ final class AppleFoundationFormulaService {
             let references = columns.map { "[\($0.id)]" }.joined(separator: ",")
             return "REDONDEAR(PROMEDIO(\(references)),2)"
         }
+        let totalWeight = weights.reduce(0, +)
+        guard totalWeight > 0 else {
+            let references = columns.map { "[\($0.id)]" }.joined(separator: ",")
+            return "REDONDEAR(PROMEDIO(\(references)),2)"
+        }
         let weightedTerms = zip(columns, weights).map { column, weight in
             let weightText = cleanWeight(weight)
             return "([\(column.id)]*\(weightText))"
         }
-        let totalWeight = weights.reduce(0, +)
         let totalWeightText = cleanWeight(totalWeight)
         return "REDONDEAR((\(weightedTerms.joined(separator: "+")))/\(totalWeightText),2)"
     }
@@ -472,6 +671,8 @@ final class AppleFoundationFormulaService {
         switch availability {
         case .disabled:
             return "La ayuda con IA local está desactivada."
+        case .localInferenceDisabled:
+            return "Apple Foundation Models está desactivado en Ajustes de la app."
         case .frameworkUnavailable:
             return "Apple Foundation Models no está disponible en este target."
         case .unsupportedOS:

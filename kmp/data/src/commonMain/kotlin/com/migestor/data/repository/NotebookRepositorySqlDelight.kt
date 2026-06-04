@@ -13,6 +13,19 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
+import kotlinx.datetime.LocalDate
+
+private fun notebookStudentSexOrDefault(value: String): StudentSex {
+    return runCatching { StudentSex.valueOf(value) }.getOrDefault(StudentSex.UNSPECIFIED)
+}
+
+private fun notebookStudentSexSourceOrDefault(value: String): StudentSexSource {
+    return runCatching { StudentSexSource.valueOf(value) }.getOrDefault(StudentSexSource.UNKNOWN)
+}
+
+private fun notebookLocalDateOrNull(value: String?): LocalDate? {
+    return value?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+}
 
 class NotebookRepositorySqlDelight(
     private val db: AppDatabase,
@@ -60,6 +73,9 @@ class NotebookRepositorySqlDelight(
                         email = row.email,
                         photoPath = row.photo_path,
                         isInjured = row.is_injured != 0L,
+                        sex = notebookStudentSexOrDefault(row.sex),
+                        sexSource = notebookStudentSexSourceOrDefault(row.sex_source),
+                        birthDate = notebookLocalDateOrNull(row.birth_date_iso),
                         trace = AuditTrace(
                             updatedAt = Instant.fromEpochMilliseconds(row.updated_at_epoch_ms),
                             deviceId = row.device_id,
@@ -114,6 +130,22 @@ class NotebookRepositorySqlDelight(
         notebookConfigRepository.saveColumn(classId, column)
     }
 
+    override suspend fun saveAverageConfiguration(classId: Long, updates: List<NotebookAverageColumnConfig>) {
+        notebookConfigRepository.saveAverageConfiguration(classId, updates)
+    }
+
+    override suspend fun previewDeleteColumn(classId: Long, columnId: String): NotebookDeletionImpact = withContext(Dispatchers.Default) {
+        val columnRow = db.appDatabaseQueries.selectColumnById(columnId).executeAsOneOrNull()
+        val columnIds = columnIdsLinkedTo(columnId, columnRow?.evaluation_id)
+        buildDeletionImpact(
+            classId = classId,
+            targetId = columnId,
+            targetName = columnRow?.title ?: columnId,
+            targetKind = NotebookDeletionTargetKind.COLUMN,
+            targetColumnIds = columnIds,
+        )
+    }
+
     override suspend fun listWorkGroups(classId: Long, tabId: String?): List<NotebookWorkGroup> {
         return notebookConfigRepository.listWorkGroups(classId, tabId)
     }
@@ -149,21 +181,27 @@ class NotebookRepositorySqlDelight(
 
     override suspend fun deleteColumn(columnId: String) {
         val columnRow = db.appDatabaseQueries.selectColumnById(columnId).executeAsOneOrNull()
-        val evaluationIdFromId = columnId.removePrefix("eval_").toLongOrNull()
+        if (columnRow?.is_locked == 1L) {
+            println("NotebookRepositorySqlDelight.deleteColumn skipped locked columnId=$columnId")
+            return
+        }
+        val evaluationIdFromId = columnId.takeIf { it.startsWith("eval_") }
+            ?.removePrefix("eval_")
+            ?.toLongOrNull()
         val evaluationId = columnRow?.evaluation_id ?: evaluationIdFromId
-
-        val columnIdsToDelete = buildSet {
-            add(columnId)
-            if (evaluationId != null && evaluationId > 0L) {
-                add("eval_$evaluationId")
-                db.appDatabaseQueries.selectColumnsByEvaluation(evaluationId)
-                    .executeAsList()
-                    .forEach { add(it.id) }
-            }
+        if (evaluationId == null && columnId.startsWith("eval_")) {
+            println("NotebookRepositorySqlDelight.deleteColumn could not resolve evaluationId for columnId=$columnId")
         }
 
+        val columnIdsToDelete = columnIdsLinkedTo(columnId, evaluationId)
+
+        val classId = columnRow?.class_id
         columnIdsToDelete.forEach { id ->
-            db.appDatabaseQueries.deleteGradesByColumnId(id)
+            if (classId != null) {
+                db.appDatabaseQueries.deleteGradesByClassAndColumnId(classId, id)
+            } else {
+                db.appDatabaseQueries.deleteGradesByColumnId(id)
+            }
             db.appDatabaseQueries.deleteNotebookCellsByColumnId(id)
             notebookConfigRepository.deleteColumn(id)
         }
@@ -183,15 +221,32 @@ class NotebookRepositorySqlDelight(
         notebookConfigRepository.saveColumnCategory(classId, category)
     }
 
+    override suspend fun previewDeleteColumnCategory(classId: Long, categoryId: String): NotebookDeletionImpact = withContext(Dispatchers.Default) {
+        val category = db.appDatabaseQueries.selectColumnCategoriesByClass(classId)
+            .executeAsList()
+            .firstOrNull { it.id == categoryId }
+        val columnIds = db.appDatabaseQueries.selectColumnsByCategory(classId, categoryId)
+            .executeAsList()
+            .map { it.id }
+            .toSet()
+        buildDeletionImpact(
+            classId = classId,
+            targetId = categoryId,
+            targetName = category?.name ?: categoryId,
+            targetKind = NotebookDeletionTargetKind.CATEGORY,
+            targetColumnIds = columnIds,
+        )
+    }
+
     override suspend fun deleteColumnCategory(classId: Long, categoryId: String, preserveColumns: Boolean) {
         if (!preserveColumns) {
-            db.appDatabaseQueries.selectColumnsByClass(classId).executeAsList()
-                .filter { it.category_id == categoryId }
+            db.appDatabaseQueries.selectColumnsByCategory(classId, categoryId).executeAsList()
+                .filter { it.is_locked != 1L }
                 .forEach { row ->
                     deleteColumn(row.id)
-                }
+            }
         }
-        notebookConfigRepository.deleteColumnCategory(classId, categoryId, preserveColumns = true)
+        notebookConfigRepository.deleteColumnCategory(classId, categoryId, preserveColumns = preserveColumns)
     }
 
     override suspend fun toggleCategoryCollapsed(classId: Long, categoryId: String, isCollapsed: Boolean) {
@@ -289,6 +344,7 @@ class NotebookRepositorySqlDelight(
         classId: Long,
         studentId: Long,
         columnId: String,
+        evaluationId: Long?,
         numericValue: Double,
         rubricSelections: String?,
         evidence: String?,
@@ -298,12 +354,12 @@ class NotebookRepositorySqlDelight(
         syncVersion: Long,
     ) = withContext(Dispatchers.Default) {
         // 1. Find the evaluation associated with the column
-        var evalId: Long? = null
+        var evalId: Long? = evaluationId?.takeIf { it > 0L }
         
         val columnRow = db.appDatabaseQueries.selectColumnById(columnId).executeAsOneOrNull()
-        if (columnRow != null) {
+        if (evalId == null && columnRow != null) {
             evalId = columnRow.evaluation_id
-        } else if (columnId.startsWith("eval_")) {
+        } else if (evalId == null && columnId.startsWith("eval_")) {
             // Handle generated columns (e.g. from BuildNotebookSheetUseCase)
             evalId = columnId.removePrefix("eval_").toLongOrNull()
         }
@@ -357,16 +413,70 @@ class NotebookRepositorySqlDelight(
         )
     }
 
+    private fun columnIdsLinkedTo(columnId: String, evaluationId: Long?): Set<String> {
+        return buildSet {
+            add(columnId)
+            val resolvedEvaluationId = evaluationId ?: columnId.takeIf { it.startsWith("eval_") }
+                ?.removePrefix("eval_")
+                ?.toLongOrNull()
+            if (resolvedEvaluationId != null && resolvedEvaluationId > 0L) {
+                add("eval_$resolvedEvaluationId")
+                db.appDatabaseQueries.selectColumnsByEvaluation(resolvedEvaluationId)
+                    .executeAsList()
+                    .forEach { add(it.id) }
+            }
+        }
+    }
+
+    private fun buildDeletionImpact(
+        classId: Long,
+        targetId: String,
+        targetName: String,
+        targetKind: NotebookDeletionTargetKind,
+        targetColumnIds: Set<String>,
+    ): NotebookDeletionImpact {
+        val allColumns = db.appDatabaseQueries.selectColumnsByClass(classId).executeAsList()
+        val affectedColumns = allColumns.filter { it.id in targetColumnIds }
+        val affectedColumnIds = affectedColumns.map { it.id }.toSet()
+        val affectedGradeCount = affectedColumnIds.sumOf { columnId ->
+            db.appDatabaseQueries.countGradesByClassAndColumn(classId, columnId).executeAsOne().toInt()
+        }
+        val affectedFormulaColumnCount = allColumns
+            .filter { it.id !in affectedColumnIds && it.type == NotebookColumnType.CALCULATED.name }
+            .count { row ->
+                val formula = row.formula.orEmpty()
+                affectedColumnIds.any { id -> formula.contains("[$id]") || formula.contains(id) }
+            }
+        val affectedAverageColumnCount = affectedColumns.count { row ->
+            row.type == NotebookColumnType.NUMERIC.name ||
+                row.type == NotebookColumnType.RUBRIC.name ||
+                row.type == NotebookColumnType.CALCULATED.name
+        }
+
+        return NotebookDeletionImpact(
+            targetId = targetId,
+            targetName = targetName,
+            targetKind = targetKind,
+            affectedColumnCount = affectedColumns.size,
+            affectedGradeCount = affectedGradeCount,
+            affectedFormulaColumnCount = affectedFormulaColumnCount,
+            affectedAverageColumnCount = affectedAverageColumnCount,
+            hasLockedColumns = affectedColumns.any { it.is_locked == 1L },
+        )
+    }
+
     override suspend fun getGradeForColumn(studentId: Long, columnId: String): Grade? = withContext(Dispatchers.Default) {
         val columnRow = db.appDatabaseQueries.selectColumnById(columnId).executeAsOneOrNull()
 
         if (columnRow != null) {
             val evalId = columnRow.evaluation_id
             val classId = columnRow.class_id
+            val grades = gradesRepository.listGradesForStudentInClass(studentId, classId)
 
-            return@withContext gradesRepository.listGradesForStudentInClass(studentId, classId).find {
-                if (evalId != null) it.evaluationId == evalId else it.columnId == columnId
+            evalId?.let { resolvedEvalId ->
+                grades.firstOrNull { it.evaluationId == resolvedEvalId }?.let { return@withContext it }
             }
+            return@withContext grades.firstOrNull { it.columnId == columnId }
         }
 
         if (!columnId.startsWith("eval_")) {
@@ -379,5 +489,13 @@ class NotebookRepositorySqlDelight(
         gradesRepository.listGradesForStudentInClass(studentId, evaluation.classId).find {
             it.evaluationId == evaluationId || it.columnId == columnId
         }
+    }
+
+    override fun observeCellAudit(
+        classId: Long,
+        studentId: Long,
+        columnId: String
+    ): Flow<List<NotebookCellAuditEvent>> {
+        return notebookCellsRepository.observeCellAudit(classId, studentId, columnId)
     }
 }

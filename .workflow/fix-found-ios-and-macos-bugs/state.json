@@ -1,0 +1,45 @@
+{
+  "title": "Fix found iOS and macOS bugs",
+  "slug": "fix-found-ios-and-macos-bugs",
+  "created_at": "2026-05-31T09:11:48+00:00",
+  "status": "complete",
+  "approval": {
+    "required": false,
+    "granted": true,
+    "notes": "Local non-destructive code/config fixes only."
+  },
+  "packets": [
+    {
+      "id": "P1",
+      "title": "Project/build integration",
+      "status": "complete"
+    },
+    {
+      "id": "P2",
+      "title": "macOS SwiftUI fixes",
+      "status": "complete"
+    },
+    {
+      "id": "P3",
+      "title": "Verification",
+      "status": "complete"
+    }
+  ],
+  "verification": {
+    "status": "passed",
+    "checks": [
+      {
+        "name": "xcodegen generate",
+        "status": "passed"
+      },
+      {
+        "name": "xcodebuild MiGestorKMPMac Debug",
+        "status": "passed"
+      },
+      {
+        "name": "embedded helper executable",
+        "status": "passed"
+      }
+    ]
+  }
+}

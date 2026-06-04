@@ -19,10 +19,12 @@ import com.migestor.data.repository.RubricsRepositorySqlDelight
 import com.migestor.data.repository.StudentsRepositorySqlDelight
 import com.migestor.data.repository.NotebookRepositorySqlDelight
 import com.migestor.data.repository.PlannerRepositorySqlDelight
+import com.migestor.data.repository.PhysicalTestsRepositorySqlDelight
 import com.migestor.data.repository.SessionJournalRepositorySqlDelight
 import com.migestor.data.repository.TeacherScheduleRepositorySqlDelight
 import com.migestor.data.repository.WeeklyTemplateRepositorySqlDelight
 import com.migestor.data.repository.PlannedSessionRepositorySqlDelight
+import com.migestor.data.repository.LearningSituationsRepositorySqlDelight
 import com.migestor.data.service.CsvImportServiceImpl
 import com.migestor.data.service.createPlatformBackupService
 import com.migestor.data.service.createPlatformReportService
@@ -63,9 +65,11 @@ class KmpContainer(val driver: SqlDriver) {
     val dashboardRepository = DashboardRepositorySqlDelight(database)
     val backupMetadataRepository = BackupMetadataRepositorySqlDelight(database)
     val plannerRepository = PlannerRepositorySqlDelight(database)
+    val physicalTestsRepository = PhysicalTestsRepositorySqlDelight(database)
     val sessionJournalRepository = SessionJournalRepositorySqlDelight(database)
     val weeklyTemplateRepository = WeeklyTemplateRepositorySqlDelight(database)
     val plannedSessionRepository = PlannedSessionRepositorySqlDelight(database)
+    val learningSituationsRepository = LearningSituationsRepositorySqlDelight(database)
     val teacherScheduleRepository = TeacherScheduleRepositorySqlDelight(
         db = database,
         plannerRepository = plannerRepository,

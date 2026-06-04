@@ -5,6 +5,9 @@ CREATE TABLE IF NOT EXISTS students (
     email TEXT,
     photo_path TEXT,
     is_injured INTEGER NOT NULL DEFAULT 0,
+    sex TEXT NOT NULL DEFAULT 'UNSPECIFIED',
+    sex_source TEXT NOT NULL DEFAULT 'UNKNOWN',
+    birth_date_iso TEXT,
     updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
     device_id TEXT,
     sync_version INTEGER NOT NULL DEFAULT 0
@@ -140,11 +143,14 @@ CREATE TABLE IF NOT EXISTS grades (
     updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
     device_id TEXT,
     sync_version INTEGER NOT NULL DEFAULT 0,
-    UNIQUE(student_id, column_id),
+    UNIQUE(class_id, student_id, column_id),
     FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
     FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
     FOREIGN KEY (evaluation_id) REFERENCES evaluations(id) ON DELETE SET NULL
 );
+CREATE INDEX IF NOT EXISTS idx_grades_class_student ON grades(class_id, student_id);
+CREATE INDEX IF NOT EXISTS idx_grades_class_column ON grades(class_id, column_id);
+CREATE INDEX IF NOT EXISTS idx_grades_evaluation ON grades(evaluation_id);
 
 CREATE TABLE IF NOT EXISTS rubric_assessments (
     student_id INTEGER NOT NULL,
@@ -422,6 +428,112 @@ CREATE TABLE IF NOT EXISTS configuration_template_versions (
     FOREIGN KEY (source_academic_year_id) REFERENCES academic_years(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS learning_situations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    stage_label TEXT NOT NULL DEFAULT '',
+    course_label TEXT NOT NULL DEFAULT '',
+    subject_label TEXT NOT NULL DEFAULT '',
+    term_label TEXT NOT NULL DEFAULT '',
+    center_label TEXT NOT NULL DEFAULT '',
+    session_count INTEGER NOT NULL DEFAULT 0,
+    challenge TEXT NOT NULL DEFAULT '',
+    final_product TEXT NOT NULL DEFAULT '',
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'DRAFT',
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS learning_situation_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    learning_situation_id INTEGER NOT NULL,
+    version_number INTEGER NOT NULL,
+    original_file_name TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    local_path TEXT,
+    size_bytes INTEGER NOT NULL DEFAULT 0,
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    warnings_json TEXT NOT NULL DEFAULT '[]',
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(learning_situation_id, version_number),
+    FOREIGN KEY (learning_situation_id) REFERENCES learning_situations(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS learning_situation_classes (
+    learning_situation_id INTEGER NOT NULL,
+    class_id INTEGER NOT NULL,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (learning_situation_id, class_id),
+    FOREIGN KEY (learning_situation_id) REFERENCES learning_situations(id) ON DELETE CASCADE,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS learning_situation_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    learning_situation_id INTEGER NOT NULL,
+    resource_kind TEXT NOT NULL,
+    resource_id TEXT NOT NULL,
+    class_id INTEGER,
+    label TEXT NOT NULL DEFAULT '',
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(learning_situation_id, resource_kind, resource_id, class_id),
+    FOREIGN KEY (learning_situation_id) REFERENCES learning_situations(id) ON DELETE CASCADE,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS learning_situation_sequence_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    learning_situation_id INTEGER NOT NULL,
+    version_number INTEGER NOT NULL,
+    original_file_name TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    local_path TEXT,
+    size_bytes INTEGER NOT NULL DEFAULT 0,
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    warnings_json TEXT NOT NULL DEFAULT '[]',
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(learning_situation_id, version_number),
+    FOREIGN KEY (learning_situation_id) REFERENCES learning_situations(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS learning_situation_session_plans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    learning_situation_id INTEGER NOT NULL,
+    sequence_version_id INTEGER NOT NULL,
+    session_number INTEGER NOT NULL,
+    source_label TEXT NOT NULL DEFAULT '',
+    title TEXT NOT NULL,
+    session_type TEXT NOT NULL DEFAULT '',
+    effective_minutes INTEGER NOT NULL DEFAULT 0,
+    objective TEXT NOT NULL DEFAULT '',
+    criteria_json TEXT NOT NULL DEFAULT '[]',
+    material TEXT NOT NULL DEFAULT '',
+    development_json TEXT NOT NULL DEFAULT '[]',
+    adaptations_json TEXT NOT NULL DEFAULT '[]',
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(sequence_version_id, session_number),
+    FOREIGN KEY (learning_situation_id) REFERENCES learning_situations(id) ON DELETE CASCADE,
+    FOREIGN KEY (sequence_version_id) REFERENCES learning_situation_sequence_versions(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS notebook_cell_entries (
     class_id INTEGER NOT NULL,
     student_id INTEGER NOT NULL,
@@ -450,13 +562,18 @@ CREATE TABLE IF NOT EXISTS notebook_cell_entries (
 );
 
 selectAllStudents:
-SELECT id, first_name, last_name, email, photo_path, is_injured, updated_at_epoch_ms, device_id, sync_version
+SELECT id, first_name, last_name, email, photo_path, is_injured, sex, sex_source, birth_date_iso, updated_at_epoch_ms, device_id, sync_version
 FROM students
 ORDER BY last_name, first_name;
 
+selectStudentById:
+SELECT id, first_name, last_name, email, photo_path, is_injured, sex, sex_source, birth_date_iso, updated_at_epoch_ms, device_id, sync_version
+FROM students
+WHERE id = ?;
+
 upsertStudent:
-INSERT OR REPLACE INTO students(id, first_name, last_name, email, photo_path, is_injured, updated_at_epoch_ms, device_id, sync_version)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO students(id, first_name, last_name, email, photo_path, is_injured, sex, sex_source, birth_date_iso, updated_at_epoch_ms, device_id, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 deleteStudent:
 DELETE FROM students WHERE id = ?;
@@ -482,7 +599,7 @@ DELETE FROM class_students
 WHERE class_id = ? AND student_id = ?;
 
 selectStudentsByClass:
-SELECT s.id, s.first_name, s.last_name, s.email, s.photo_path, s.is_injured, s.updated_at_epoch_ms, s.device_id, s.sync_version
+SELECT s.id, s.first_name, s.last_name, s.email, s.photo_path, s.is_injured, s.sex, s.sex_source, s.birth_date_iso, s.updated_at_epoch_ms, s.device_id, s.sync_version
 FROM students s
 INNER JOIN class_students cs ON cs.student_id = s.id
 WHERE cs.class_id = ?
@@ -509,7 +626,7 @@ DELETE FROM evaluations WHERE id = ?;
 upsertGrade:
 INSERT INTO grades(class_id, student_id, column_id, evaluation_id, value, evidence, evidence_path, rubric_selections, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(student_id, column_id) DO UPDATE SET
+ON CONFLICT(class_id, student_id, column_id) DO UPDATE SET
     class_id = excluded.class_id,
     evaluation_id = excluded.evaluation_id,
     value = excluded.value,
@@ -530,15 +647,24 @@ SELECT id, class_id, student_id, column_id, evaluation_id, value, evidence, evid
 FROM grades
 WHERE student_id = ? AND class_id = ?;
 
-selectGradeByStudentAndColumn:
+selectGradeByStudentClassAndColumn:
 SELECT updated_at_epoch_ms, device_id
 FROM grades
-WHERE student_id = ? AND column_id = ?
+WHERE class_id = ? AND student_id = ? AND column_id = ?
 LIMIT 1;
+
+deleteGradesByClassAndColumnId:
+DELETE FROM grades
+WHERE class_id = ? AND column_id = ?;
 
 deleteGradesByColumnId:
 DELETE FROM grades
 WHERE column_id = ?;
+
+countGradesByClassAndColumn:
+SELECT COUNT(*)
+FROM grades
+WHERE class_id = ? AND column_id = ?;
 
 selectAllPeriods:
 SELECT id, name, start_epoch_ms, end_epoch_ms, updated_at_epoch_ms, device_id, sync_version
@@ -592,6 +718,11 @@ selectAllRubrics:
 SELECT id, name, description, class_id, teaching_unit_id, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
 FROM rubrics
 ORDER BY name;
+
+selectRubricById:
+SELECT id, name, description, class_id, teaching_unit_id, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM rubrics
+WHERE id = ?;
 
 upsertRubric:
 INSERT OR REPLACE INTO rubrics(id, name, description, class_id, teaching_unit_id, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version)
@@ -652,7 +783,14 @@ WHERE student_id = ? AND evaluation_id = ? AND criterion_id = ?
 LIMIT 1;
 
 selectWeightedRubricScore:
-SELECT SUM(rl.points * rc.weight) / SUM(rc.weight) AS score
+SELECT ROUND(
+  SUM(
+    (
+      (CASE WHEN rl.points > 0 THEN rl.points ELSE rl.sort_order END * 1.0) /
+      (SELECT CASE WHEN MAX(CASE WHEN rl2.points > 0 THEN rl2.points ELSE rl2.sort_order END) > 1 THEN CAST(MAX(CASE WHEN rl2.points > 0 THEN rl2.points ELSE rl2.sort_order END) AS REAL) ELSE 1.0 END FROM rubric_levels rl2 WHERE rl2.criterion_id = rc.id)
+    ) * (CASE WHEN rc.weight > 0.0 THEN rc.weight ELSE 1.0 END)
+  ) / SUM(CASE WHEN rc.weight > 0.0 THEN rc.weight ELSE 1.0 END) * 10.0
+, 2) AS score
 FROM rubric_assessments ra
 INNER JOIN rubric_criteria rc ON rc.id = ra.criterion_id
 INNER JOIN rubric_levels rl ON rl.id = ra.level_id
@@ -877,6 +1015,104 @@ WHERE template_id = ?
 ORDER BY version_number DESC
 LIMIT 1;
 
+selectAllLearningSituations:
+SELECT id, title, stage_label, course_label, subject_label, term_label, center_label, session_count, challenge, final_product, payload_json, status, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM learning_situations
+ORDER BY updated_at_epoch_ms DESC, title;
+
+selectLearningSituationById:
+SELECT id, title, stage_label, course_label, subject_label, term_label, center_label, session_count, challenge, final_product, payload_json, status, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM learning_situations
+WHERE id = ?;
+
+upsertLearningSituation:
+INSERT OR REPLACE INTO learning_situations(
+    id, title, stage_label, course_label, subject_label, term_label, center_label, session_count, challenge, final_product, payload_json, status, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteLearningSituation:
+DELETE FROM learning_situations WHERE id = ?;
+
+
+nextLearningSituationVersion:
+SELECT COALESCE(MAX(version_number), 0) + 1 AS next_version
+FROM learning_situation_versions
+WHERE learning_situation_id = ?;
+
+upsertLearningSituationVersion:
+INSERT OR REPLACE INTO learning_situation_versions(
+    id, learning_situation_id, version_number, original_file_name, sha256, local_path, size_bytes, payload_json, warnings_json, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectLearningSituationVersions:
+SELECT id, learning_situation_id, version_number, original_file_name, sha256, local_path, size_bytes, payload_json, warnings_json, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM learning_situation_versions
+WHERE learning_situation_id = ?
+ORDER BY version_number DESC;
+
+nextLearningSituationSequenceVersion:
+SELECT COALESCE(MAX(version_number), 0) + 1 AS next_version
+FROM learning_situation_sequence_versions
+WHERE learning_situation_id = ?;
+
+upsertLearningSituationSequenceVersion:
+INSERT OR REPLACE INTO learning_situation_sequence_versions(
+    id, learning_situation_id, version_number, original_file_name, sha256, local_path, size_bytes, payload_json, warnings_json, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectLearningSituationSequenceVersions:
+SELECT id, learning_situation_id, version_number, original_file_name, sha256, local_path, size_bytes, payload_json, warnings_json, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM learning_situation_sequence_versions
+WHERE learning_situation_id = ?
+ORDER BY version_number DESC;
+
+upsertLearningSituationSessionPlan:
+INSERT OR REPLACE INTO learning_situation_session_plans(
+    id, learning_situation_id, sequence_version_id, session_number, source_label, title, session_type, effective_minutes, objective, criteria_json, material, development_json, adaptations_json, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectLearningSituationSessionPlans:
+SELECT id, learning_situation_id, sequence_version_id, session_number, source_label, title, session_type, effective_minutes, objective, criteria_json, material, development_json, adaptations_json, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM learning_situation_session_plans
+WHERE sequence_version_id = ?
+ORDER BY session_number;
+
+selectLearningSituationSessionPlanById:
+SELECT id, learning_situation_id, sequence_version_id, session_number, source_label, title, session_type, effective_minutes, objective, criteria_json, material, development_json, adaptations_json, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM learning_situation_session_plans
+WHERE id = ?;
+
+deleteLearningSituationClassLinks:
+DELETE FROM learning_situation_classes WHERE learning_situation_id = ?;
+
+upsertLearningSituationClassLink:
+INSERT OR REPLACE INTO learning_situation_classes(
+    learning_situation_id, class_id, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?);
+
+selectLearningSituationClassLinks:
+SELECT learning_situation_id, class_id, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM learning_situation_classes
+WHERE learning_situation_id = ?
+ORDER BY class_id;
+
+upsertLearningSituationLink:
+INSERT OR REPLACE INTO learning_situation_links(
+    id, learning_situation_id, resource_kind, resource_id, class_id, label, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectLearningSituationLinks:
+SELECT id, learning_situation_id, resource_kind, resource_id, class_id, label, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM learning_situation_links
+WHERE learning_situation_id = ?
+ORDER BY resource_kind, label;
+
 selectNotebookCellsByClass:
 SELECT class_id, student_id, column_id, value_text, value_bool, value_icon, value_ordinal, display_value, observed_at_epoch_ms, competency_criteria_ids_csv, effective_weight, counts_toward_average, note, color_hex, attachment_uris_csv, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
 FROM notebook_cell_entries
@@ -908,6 +1144,7 @@ CREATE TABLE IF NOT EXISTS notebook_tabs (
     updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
     device_id   TEXT,
     sync_version INTEGER NOT NULL DEFAULT 0,
+    fixed_column_width REAL,
     FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
     FOREIGN KEY (parent_tab_id) REFERENCES notebook_tabs(id) ON DELETE CASCADE
 );
@@ -938,6 +1175,11 @@ CREATE TABLE IF NOT EXISTS notebook_columns (
     category_id     TEXT,
     visibility      TEXT NOT NULL DEFAULT 'VISIBLE',
     is_locked       INTEGER NOT NULL DEFAULT 0,
+    counts_toward_average INTEGER NOT NULL DEFAULT 1,
+    is_pinned       INTEGER NOT NULL DEFAULT 0,
+    is_hidden       INTEGER NOT NULL DEFAULT 0,
+    is_template     INTEGER NOT NULL DEFAULT 0,
+    empty_cell_policy TEXT NOT NULL DEFAULT 'EXCLUDE_FROM_AVERAGE',
     updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
     device_id       TEXT,
     sync_version    INTEGER NOT NULL DEFAULT 0,
@@ -969,6 +1211,7 @@ CREATE TABLE IF NOT EXISTS notebook_work_groups (
     tab_id          TEXT NOT NULL,
     name            TEXT NOT NULL,
     sort_order      INTEGER NOT NULL DEFAULT 0,
+    learning_situation_id INTEGER REFERENCES learning_situations(id) ON DELETE SET NULL,
     updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
     device_id       TEXT,
     sync_version    INTEGER NOT NULL DEFAULT 0,
@@ -1012,34 +1255,206 @@ CREATE INDEX IF NOT EXISTS idx_ai_audit_created ON ai_audit_events(created_at_ep
 CREATE INDEX IF NOT EXISTS idx_ai_audit_use_case ON ai_audit_events(use_case, created_at_epoch_ms DESC);
 CREATE INDEX IF NOT EXISTS idx_ai_audit_success ON ai_audit_events(success, created_at_epoch_ms DESC);
 
+CREATE TABLE IF NOT EXISTS physical_test_definitions (
+    id TEXT NOT NULL PRIMARY KEY,
+    name TEXT NOT NULL,
+    capacity TEXT NOT NULL,
+    measurement_kind TEXT NOT NULL,
+    unit TEXT NOT NULL,
+    higher_is_better INTEGER NOT NULL,
+    protocol TEXT NOT NULL DEFAULT '',
+    material TEXT NOT NULL DEFAULT '',
+    attempts INTEGER NOT NULL DEFAULT 1,
+    result_mode TEXT NOT NULL DEFAULT 'BEST',
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS physical_test_batteries (
+    id TEXT NOT NULL PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    default_course INTEGER,
+    default_age_from INTEGER,
+    default_age_to INTEGER,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS physical_test_battery_items (
+    battery_id TEXT NOT NULL,
+    test_id TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (battery_id, test_id),
+    FOREIGN KEY (battery_id) REFERENCES physical_test_batteries(id) ON DELETE CASCADE,
+    FOREIGN KEY (test_id) REFERENCES physical_test_definitions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_physical_battery_items_battery ON physical_test_battery_items(battery_id);
+CREATE INDEX IF NOT EXISTS idx_physical_battery_items_test ON physical_test_battery_items(test_id);
+
+CREATE TABLE IF NOT EXISTS physical_test_assignments (
+    id TEXT NOT NULL PRIMARY KEY,
+    battery_id TEXT NOT NULL,
+    class_id INTEGER NOT NULL,
+    course INTEGER,
+    age_from INTEGER,
+    age_to INTEGER,
+    term_label TEXT,
+    date_epoch_ms INTEGER NOT NULL,
+    raw_column_mode INTEGER NOT NULL DEFAULT 1,
+    score_column_mode INTEGER NOT NULL DEFAULT 1,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (battery_id) REFERENCES physical_test_batteries(id) ON DELETE CASCADE,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_physical_assignments_class ON physical_test_assignments(class_id);
+CREATE INDEX IF NOT EXISTS idx_physical_assignments_battery ON physical_test_assignments(battery_id);
+CREATE INDEX IF NOT EXISTS idx_physical_assignments_date ON physical_test_assignments(date_epoch_ms);
+
+CREATE TABLE IF NOT EXISTS physical_test_scales (
+    id TEXT NOT NULL PRIMARY KEY,
+    test_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    course INTEGER,
+    age_from INTEGER,
+    age_to INTEGER,
+    sex TEXT,
+    battery_id TEXT,
+    direction TEXT NOT NULL,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (test_id) REFERENCES physical_test_definitions(id) ON DELETE CASCADE,
+    FOREIGN KEY (battery_id) REFERENCES physical_test_batteries(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_physical_scales_test ON physical_test_scales(test_id);
+CREATE INDEX IF NOT EXISTS idx_physical_scales_battery ON physical_test_scales(battery_id);
+
+CREATE TABLE IF NOT EXISTS physical_test_scale_ranges (
+    id TEXT NOT NULL PRIMARY KEY,
+    scale_id TEXT NOT NULL,
+    min_value REAL,
+    max_value REAL,
+    score REAL NOT NULL,
+    label TEXT,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (scale_id) REFERENCES physical_test_scales(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_physical_scale_ranges_scale ON physical_test_scale_ranges(scale_id);
+
+CREATE TABLE IF NOT EXISTS physical_test_results (
+    id TEXT NOT NULL PRIMARY KEY,
+    assignment_id TEXT NOT NULL,
+    test_id TEXT NOT NULL,
+    class_id INTEGER NOT NULL,
+    student_id INTEGER NOT NULL,
+    raw_value REAL,
+    raw_text TEXT NOT NULL DEFAULT '',
+    score REAL,
+    scale_id TEXT,
+    observed_at_epoch_ms INTEGER NOT NULL,
+    raw_column_id TEXT,
+    score_column_id TEXT,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(assignment_id, test_id, student_id),
+    FOREIGN KEY (assignment_id) REFERENCES physical_test_assignments(id) ON DELETE CASCADE,
+    FOREIGN KEY (test_id) REFERENCES physical_test_definitions(id) ON DELETE CASCADE,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    FOREIGN KEY (scale_id) REFERENCES physical_test_scales(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_physical_results_assignment ON physical_test_results(assignment_id);
+CREATE INDEX IF NOT EXISTS idx_physical_results_student ON physical_test_results(student_id);
+CREATE INDEX IF NOT EXISTS idx_physical_results_test ON physical_test_results(test_id);
+CREATE INDEX IF NOT EXISTS idx_physical_results_class ON physical_test_results(class_id);
+CREATE INDEX IF NOT EXISTS idx_physical_results_scale ON physical_test_results(scale_id);
+CREATE INDEX IF NOT EXISTS idx_physical_results_observed ON physical_test_results(observed_at_epoch_ms);
+
+CREATE TABLE IF NOT EXISTS physical_test_attempts (
+    id TEXT NOT NULL PRIMARY KEY,
+    result_id TEXT NOT NULL,
+    attempt_number INTEGER NOT NULL,
+    raw_value REAL,
+    raw_text TEXT NOT NULL DEFAULT '',
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(result_id, attempt_number),
+    FOREIGN KEY (result_id) REFERENCES physical_test_results(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_physical_attempts_result ON physical_test_attempts(result_id);
+
+CREATE TABLE IF NOT EXISTS physical_test_notebook_links (
+    assignment_id TEXT NOT NULL,
+    test_id TEXT NOT NULL,
+    raw_column_id TEXT,
+    score_column_id TEXT,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (assignment_id, test_id),
+    FOREIGN KEY (assignment_id) REFERENCES physical_test_assignments(id) ON DELETE CASCADE,
+    FOREIGN KEY (test_id) REFERENCES physical_test_definitions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_physical_links_assignment ON physical_test_notebook_links(assignment_id);
+CREATE INDEX IF NOT EXISTS idx_physical_links_test ON physical_test_notebook_links(test_id);
+
 selectTabsByClass:
-SELECT id, class_id, title, parent_tab_id, sort_order, updated_at_epoch_ms, device_id, sync_version
+SELECT id, class_id, title, parent_tab_id, sort_order, updated_at_epoch_ms, device_id, sync_version, fixed_column_width
 FROM notebook_tabs
 WHERE class_id = ?
 ORDER BY sort_order, id;
 
 upsertTab:
-INSERT OR REPLACE INTO notebook_tabs(id, class_id, title, parent_tab_id, sort_order, updated_at_epoch_ms, device_id, sync_version)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO notebook_tabs(id, class_id, title, parent_tab_id, sort_order, updated_at_epoch_ms, device_id, sync_version, fixed_column_width)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 deleteTab:
 DELETE FROM notebook_tabs WHERE id = ?;
 
 selectColumnsByClass:
-SELECT id, class_id, title, type, category_kind, instrument_kind, input_kind, evaluation_id, formula, weight, date_epoch_ms, unit_name, competency_criteria_ids_csv, scale_kind, tab_ids_csv, shared_across_tabs, color_hex, icon_name, sort_order, width_dp, category_id, visibility, is_locked, updated_at_epoch_ms, device_id, sync_version
+SELECT id, class_id, title, type, category_kind, instrument_kind, input_kind, evaluation_id, formula, weight, date_epoch_ms, unit_name, competency_criteria_ids_csv, scale_kind, tab_ids_csv, shared_across_tabs, color_hex, icon_name, sort_order, width_dp, category_id, visibility, is_locked, counts_toward_average, is_pinned, is_hidden, is_template, empty_cell_policy, updated_at_epoch_ms, device_id, sync_version
 FROM notebook_columns
 WHERE class_id = ?
 ORDER BY sort_order, id;
 
 selectColumnById:
-SELECT id, class_id, title, type, category_kind, instrument_kind, input_kind, evaluation_id, formula, weight, date_epoch_ms, unit_name, competency_criteria_ids_csv, scale_kind, tab_ids_csv, shared_across_tabs, color_hex, icon_name, sort_order, width_dp, category_id, visibility, is_locked, updated_at_epoch_ms, device_id, sync_version
+SELECT id, class_id, title, type, category_kind, instrument_kind, input_kind, evaluation_id, formula, weight, date_epoch_ms, unit_name, competency_criteria_ids_csv, scale_kind, tab_ids_csv, shared_across_tabs, color_hex, icon_name, sort_order, width_dp, category_id, visibility, is_locked, counts_toward_average, is_pinned, is_hidden, is_template, empty_cell_policy, updated_at_epoch_ms, device_id, sync_version
 FROM notebook_columns
 WHERE id = ?;
 
 selectColumnsByEvaluation:
-SELECT id, class_id, title, type, category_kind, instrument_kind, input_kind, evaluation_id, formula, weight, date_epoch_ms, unit_name, competency_criteria_ids_csv, scale_kind, tab_ids_csv, shared_across_tabs, color_hex, icon_name, sort_order, width_dp, category_id, visibility, is_locked, updated_at_epoch_ms, device_id, sync_version
+SELECT id, class_id, title, type, category_kind, instrument_kind, input_kind, evaluation_id, formula, weight, date_epoch_ms, unit_name, competency_criteria_ids_csv, scale_kind, tab_ids_csv, shared_across_tabs, color_hex, icon_name, sort_order, width_dp, category_id, visibility, is_locked, counts_toward_average, is_pinned, is_hidden, is_template, empty_cell_policy, updated_at_epoch_ms, device_id, sync_version
 FROM notebook_columns
 WHERE evaluation_id = ?;
+
+countColumnsByCategory:
+SELECT COUNT(*)
+FROM notebook_columns
+WHERE class_id = ? AND category_id = ?;
+
+selectColumnsByCategory:
+SELECT id, class_id, title, type, category_kind, instrument_kind, input_kind, evaluation_id, formula, weight, date_epoch_ms, unit_name, competency_criteria_ids_csv, scale_kind, tab_ids_csv, shared_across_tabs, color_hex, icon_name, sort_order, width_dp, category_id, visibility, is_locked, counts_toward_average, is_pinned, is_hidden, is_template, empty_cell_policy, updated_at_epoch_ms, device_id, sync_version
+FROM notebook_columns
+WHERE class_id = ? AND category_id = ?
+ORDER BY sort_order, id;
 
 selectColumnCategoriesByClass:
 SELECT id, class_id, tab_id, name, sort_order, is_collapsed, updated_at_epoch_ms, device_id, sync_version
@@ -1064,22 +1479,22 @@ DELETE FROM notebook_column_categories
 WHERE class_id = ? AND id = ?;
 
 selectWorkGroupsByClass:
-SELECT id, class_id, tab_id, name, sort_order, updated_at_epoch_ms, device_id, sync_version
+SELECT id, class_id, tab_id, name, sort_order, learning_situation_id, updated_at_epoch_ms, device_id, sync_version
 FROM notebook_work_groups
 WHERE class_id = ?
 ORDER BY tab_id, sort_order, id;
 
 selectWorkGroupsByClassAndTab:
-SELECT id, class_id, tab_id, name, sort_order, updated_at_epoch_ms, device_id, sync_version
+SELECT id, class_id, tab_id, name, sort_order, learning_situation_id, updated_at_epoch_ms, device_id, sync_version
 FROM notebook_work_groups
 WHERE class_id = ? AND tab_id = ?
 ORDER BY sort_order, id;
 
 insertWorkGroup:
 INSERT INTO notebook_work_groups(
-    class_id, tab_id, name, sort_order, updated_at_epoch_ms, device_id, sync_version
+    class_id, tab_id, name, sort_order, learning_situation_id, updated_at_epoch_ms, device_id, sync_version
 )
-VALUES (?, ?, ?, ?, ?, ?, ?);
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 
 updateWorkGroup:
 UPDATE notebook_work_groups
@@ -1087,6 +1502,7 @@ SET class_id = ?,
     tab_id = ?,
     name = ?,
     sort_order = ?,
+    learning_situation_id = ?,
     updated_at_epoch_ms = ?,
     device_id = ?,
     sync_version = ?
@@ -1121,9 +1537,11 @@ upsertColumn:
 INSERT OR REPLACE INTO notebook_columns(
     id, class_id, title, type, category_kind, instrument_kind, input_kind, evaluation_id, formula, weight,
     date_epoch_ms, unit_name, competency_criteria_ids_csv, scale_kind, tab_ids_csv, shared_across_tabs,
-    color_hex, icon_name, sort_order, width_dp, category_id, visibility, is_locked, updated_at_epoch_ms, device_id, sync_version
+    color_hex, icon_name, sort_order, width_dp, category_id, visibility, is_locked,
+    counts_toward_average, is_pinned, is_hidden, is_template, empty_cell_policy,
+    updated_at_epoch_ms, device_id, sync_version
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 deleteColumn:
 DELETE FROM notebook_columns WHERE id = ?;
@@ -1160,6 +1578,130 @@ FROM ai_audit_events
 ORDER BY created_at_epoch_ms DESC
 LIMIT 1;
 
+selectPhysicalDefinitions:
+SELECT id, name, capacity, measurement_kind, unit, higher_is_better, protocol, material, attempts, result_mode, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM physical_test_definitions
+ORDER BY name;
+
+upsertPhysicalDefinition:
+INSERT OR REPLACE INTO physical_test_definitions(
+    id, name, capacity, measurement_kind, unit, higher_is_better, protocol, material, attempts, result_mode, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectPhysicalBatteries:
+SELECT id, name, description, default_course, default_age_from, default_age_to, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM physical_test_batteries
+ORDER BY updated_at_epoch_ms DESC, name;
+
+selectPhysicalBatteryItems:
+SELECT battery_id, test_id, sort_order, updated_at_epoch_ms, device_id, sync_version
+FROM physical_test_battery_items
+WHERE battery_id = ?
+ORDER BY sort_order, test_id;
+
+upsertPhysicalBattery:
+INSERT OR REPLACE INTO physical_test_batteries(
+    id, name, description, default_course, default_age_from, default_age_to, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deletePhysicalBatteryItems:
+DELETE FROM physical_test_battery_items
+WHERE battery_id = ?;
+
+upsertPhysicalBatteryItem:
+INSERT OR REPLACE INTO physical_test_battery_items(
+    battery_id, test_id, sort_order, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?);
+
+upsertPhysicalAssignment:
+INSERT OR REPLACE INTO physical_test_assignments(
+    id, battery_id, class_id, course, age_from, age_to, term_label, date_epoch_ms, raw_column_mode, score_column_mode, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectPhysicalAssignmentsForClass:
+SELECT id, battery_id, class_id, course, age_from, age_to, term_label, date_epoch_ms, raw_column_mode, score_column_mode, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM physical_test_assignments
+WHERE class_id = ?
+ORDER BY date_epoch_ms DESC, id;
+
+selectPhysicalScalesForTest:
+SELECT id, test_id, name, course, age_from, age_to, sex, battery_id, direction, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM physical_test_scales
+WHERE test_id = ?
+ORDER BY battery_id IS NULL, course IS NULL, age_from IS NULL, name;
+
+selectPhysicalScaleRanges:
+SELECT id, scale_id, min_value, max_value, score, label, sort_order, updated_at_epoch_ms, device_id, sync_version
+FROM physical_test_scale_ranges
+WHERE scale_id = ?
+ORDER BY sort_order, min_value;
+
+upsertPhysicalScale:
+INSERT OR REPLACE INTO physical_test_scales(
+    id, test_id, name, course, age_from, age_to, sex, battery_id, direction, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deletePhysicalScaleRanges:
+DELETE FROM physical_test_scale_ranges
+WHERE scale_id = ?;
+
+upsertPhysicalScaleRange:
+INSERT OR REPLACE INTO physical_test_scale_ranges(
+    id, scale_id, min_value, max_value, score, label, sort_order, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+upsertPhysicalNotebookLink:
+INSERT OR REPLACE INTO physical_test_notebook_links(
+    assignment_id, test_id, raw_column_id, score_column_id, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+selectPhysicalNotebookLinksForAssignment:
+SELECT assignment_id, test_id, raw_column_id, score_column_id, updated_at_epoch_ms, device_id, sync_version
+FROM physical_test_notebook_links
+WHERE assignment_id = ?
+ORDER BY test_id;
+
+upsertPhysicalResult:
+INSERT OR REPLACE INTO physical_test_results(
+    id, assignment_id, test_id, class_id, student_id, raw_value, raw_text, score, scale_id, observed_at_epoch_ms, raw_column_id, score_column_id, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deletePhysicalAttemptsForResult:
+DELETE FROM physical_test_attempts
+WHERE result_id = ?;
+
+upsertPhysicalAttempt:
+INSERT OR REPLACE INTO physical_test_attempts(
+    id, result_id, attempt_number, raw_value, raw_text, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+selectPhysicalAttemptsForResult:
+SELECT id, result_id, attempt_number, raw_value, raw_text, updated_at_epoch_ms, device_id, sync_version
+FROM physical_test_attempts
+WHERE result_id = ?
+ORDER BY attempt_number;
+
+selectPhysicalResultsForAssignment:
+SELECT id, assignment_id, test_id, class_id, student_id, raw_value, raw_text, score, scale_id, observed_at_epoch_ms, raw_column_id, score_column_id, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM physical_test_results
+WHERE assignment_id = ?
+ORDER BY observed_at_epoch_ms DESC, student_id;
+
+selectPhysicalResultsForStudentAndTest:
+SELECT id, assignment_id, test_id, class_id, student_id, raw_value, raw_text, score, scale_id, observed_at_epoch_ms, raw_column_id, score_column_id, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM physical_test_results
+WHERE student_id = ? AND test_id = ?
+ORDER BY observed_at_epoch_ms DESC;
+
 selectAiAuditTotalsByUseCase:
 SELECT use_case, COUNT(*) AS total_count, SUM(success) AS success_count, MAX(created_at_epoch_ms) AS last_created_at_epoch_ms
 FROM ai_audit_events
@@ -1171,3 +1713,39 @@ SELECT availability, COUNT(*) AS total_count, MAX(created_at_epoch_ms) AS last_c
 FROM ai_audit_events
 GROUP BY availability
 ORDER BY last_created_at_epoch_ms DESC;
+
+CREATE TABLE IF NOT EXISTS notebook_cell_audit_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    class_id INTEGER NOT NULL,
+    student_id INTEGER NOT NULL,
+    column_id TEXT NOT NULL,
+    previous_numeric_value REAL,
+    new_numeric_value REAL,
+    previous_text_value TEXT,
+    new_text_value TEXT,
+    action TEXT NOT NULL,
+    changed_at_epoch_ms INTEGER NOT NULL,
+    author_user_id INTEGER,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+);
+
+insertNotebookCellAudit:
+INSERT INTO notebook_cell_audit_events(
+    class_id, student_id, column_id,
+    previous_numeric_value, new_numeric_value,
+    previous_text_value, new_text_value,
+    action, changed_at_epoch_ms, author_user_id, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectNotebookCellAudit:
+SELECT id, class_id, student_id, column_id,
+       previous_numeric_value, new_numeric_value,
+       previous_text_value, new_text_value,
+       action, changed_at_epoch_ms, author_user_id, device_id, sync_version
+FROM notebook_cell_audit_events
+WHERE class_id = ? AND student_id = ? AND column_id = ?
+ORDER BY changed_at_epoch_ms DESC;

@@ -6,6 +6,7 @@ import FoundationModels
 
 enum AppleFoundationModelAvailability: Equatable {
     case disabled
+    case localInferenceDisabled
     case frameworkUnavailable
     case unsupportedOS
     case unsupportedDevice
@@ -13,6 +14,10 @@ enum AppleFoundationModelAvailability: Equatable {
     case modelLoading
     case available
     case unavailable(String)
+}
+
+extension Notification.Name {
+    static let appleFoundationModelsRuntimeFailure = Notification.Name("appleFoundationModelsRuntimeFailure")
 }
 
 enum TeachingAssistantUseCase: String, Identifiable, CaseIterable {
@@ -23,6 +28,7 @@ enum TeachingAssistantUseCase: String, Identifiable, CaseIterable {
     case groupInsight
     case sessionClosure
     case coverageAudit
+    case physicalScaleRecommendation
 
     var id: String { rawValue }
 
@@ -35,6 +41,7 @@ enum TeachingAssistantUseCase: String, Identifiable, CaseIterable {
         case .groupInsight: return "Inspector analítico"
         case .sessionClosure: return "Cierre de sesión"
         case .coverageAudit: return "Cobertura evaluativa"
+        case .physicalScaleRecommendation: return "Recomendación de baremo físico"
         }
     }
 }
@@ -383,18 +390,15 @@ enum CoverageAuditEvidenceBuilder {
 @MainActor
 final class AppleFoundationTeachingAssistantService {
     private let contextualService = AppleFoundationContextualAIService()
-    private let reportService = AppleFoundationReportService()
-    private let analyticsService = AppleFoundationAnalyticsService()
+    private let aiOrchestrator = AppleAIOrchestrator()
 
     func prewarm() {
         contextualService.prewarm()
-        reportService.prewarm()
-        analyticsService.prewarm()
+        aiOrchestrator.prewarmIfUseful(for: .analytics)
     }
 
     func clearActiveConversation() {
         contextualService.clearActiveConversation()
-        reportService.clearActiveConversation()
     }
 
     func canHandle(_ actionId: KmpBridge.ContextualAIAction.ActionID) -> Bool {
@@ -409,36 +413,46 @@ final class AppleFoundationTeachingAssistantService {
     func generateDraft(for actionId: KmpBridge.ContextualAIAction.ActionID, bridge: KmpBridge, context: KmpBridge.ScreenAIContext, audience: AIReportAudience, tone: AIReportTone, customPrompt: String?) async throws -> TeachingAssistantDraft {
         switch actionId {
         case .dailyBriefing:
-            return try await contextualService.generateTeachingDraft(from: DailyBriefEvidenceBuilder.build(bridge: bridge, classId: context.classId), audience: audience, tone: tone, customPrompt: customPrompt)
+            let pack = try await DailyBriefEvidenceBuilder.build(bridge: bridge, classId: context.classId)
+            return try await tracedTeachingDraft(pack, audience: audience, tone: tone, customPrompt: customPrompt)
         case .studentRiskRadar:
             guard let studentId = context.studentId else {
                 throw AIContextualServiceError.insufficientContext("Selecciona un alumno para generar el radar de riesgo.")
             }
-            return try await contextualService.generateTeachingDraft(from: StudentRiskEvidenceBuilder.build(bridge: bridge, classId: context.classId, studentId: studentId), audience: audience, tone: tone, customPrompt: customPrompt)
+            let pack = try await StudentRiskEvidenceBuilder.build(bridge: bridge, classId: context.classId, studentId: studentId)
+            return try await tracedTeachingDraft(pack, audience: audience, tone: tone, customPrompt: customPrompt)
         case .tutoringDraft:
             guard let classId = context.classId else {
                 throw AIReportServiceError.insufficientContext("Selecciona una clase antes de preparar un borrador de tutoría.")
             }
             let kind: KmpBridge.ReportKind = context.studentId == nil ? .groupOverview : .studentSummary
             let reportContext = try await bridge.buildReportGenerationContext(classId: classId, studentId: context.studentId, kind: kind, termLabel: nil)
-            let draft = try await reportService.generateDraft(from: reportContext, audience: audience, tone: tone)
+            let generation = try await aiOrchestrator.generateWithTrace(.report(reportContext, audience, tone), dataSource: reportContext.className, includedEvidence: reportContext.factLines)
+            guard case .report(let draft) = generation.result else {
+                throw AIContextualServiceError.insufficientContext("No se pudo preparar el borrador de tutoría.")
+            }
             return TeachingAssistantDraft(title: draft.title, subtitle: reportContext.studentName ?? reportContext.className, summary: draft.summary, factsUsed: Array(reportContext.factLines.prefix(6)), warnings: Array(reportContext.needsAttention.prefix(4)), recommendedActions: Array(draft.recommendedActions.prefix(4)), editableText: draft.editableText(for: reportContext), confidenceNote: reportContext.dataQualityNote, riskLevel: nil)
         case .groupInsight:
             let pack = try await GroupInsightEvidenceBuilder.build(bridge: bridge, classId: context.classId)
             guard let resolvedClassId = context.classId else {
-                return try await contextualService.generateTeachingDraft(from: pack, audience: audience, tone: tone, customPrompt: customPrompt)
+                return try await tracedTeachingDraft(pack, audience: audience, tone: tone, customPrompt: customPrompt)
             }
             if let chart = try? await bridge.buildChartFacts(
                 classId: resolvedClassId,
                 request: KmpBridge.AnalyticsRequest(chartKind: .sameCourseComparison, timeRange: .last30Days, selectedClassIds: context.classId.map { [$0] } ?? [], selectedClassNames: context.className.map { [$0] } ?? [], prompt: nil, querySummary: "Comparativa global del grupo")
             ), chart.hasEnoughData {
-                let insight = try? await analyticsService.generateInsight(from: chart)
+                let generation = try? await aiOrchestrator.generateWithTrace(.chartInsight(chart), dataSource: chart.subtitle, includedEvidence: chart.factLines)
+                let insight: AIChartInsight? = {
+                    guard case .chartInsight(let value) = generation?.result else { return nil }
+                    return value
+                }()
                 let enrichedPack = TeachingEvidencePack(useCase: pack.useCase, title: pack.title, subtitle: chart.subtitle, summary: insight?.insight ?? pack.summary, metrics: chart.metrics, factsUsed: pack.factsUsed, warnings: compactTexts(pack.warningTexts, insight?.warnings ?? []).map(WarningItem.init), recommendedActions: compactTexts(pack.recommendedActionTexts, insight?.recommendedActions ?? []).map(RecommendedActionItem.init), confidenceNote: pack.confidenceNote, riskLevel: nil, sourceDigest: compactTexts([pack.sourceDigest], firstNonEmpty(insight?.insertableSummary).map { [$0] } ?? []).joined(separator: " "), hasEnoughData: true)
-                return try await contextualService.generateTeachingDraft(from: enrichedPack, audience: audience, tone: tone, customPrompt: customPrompt)
+                return try await tracedTeachingDraft(enrichedPack, audience: audience, tone: tone, customPrompt: customPrompt)
             }
-            return try await contextualService.generateTeachingDraft(from: pack, audience: audience, tone: tone, customPrompt: customPrompt)
+            return try await tracedTeachingDraft(pack, audience: audience, tone: tone, customPrompt: customPrompt)
         case .sessionClosure:
-            return try await contextualService.generateTeachingDraft(from: SessionClosureEvidenceBuilder.build(bridge: bridge, classId: context.classId), audience: audience, tone: tone, customPrompt: customPrompt)
+            let pack = try await SessionClosureEvidenceBuilder.build(bridge: bridge, classId: context.classId)
+            return try await tracedTeachingDraft(pack, audience: audience, tone: tone, customPrompt: customPrompt)
         default:
             throw AIContextualServiceError.insufficientContext("Esta acción sigue usando el flujo contextual estándar.")
         }
@@ -450,6 +464,18 @@ final class AppleFoundationTeachingAssistantService {
         } catch AIContextualServiceError.insufficientContext {
             throw AIContextualServiceError.insufficientContext("No hay un borrador docente activo para refinar.")
         }
+    }
+
+    private func tracedTeachingDraft(_ pack: TeachingEvidencePack, audience: AIReportAudience, tone: AIReportTone, customPrompt: String?) async throws -> TeachingAssistantDraft {
+        let generation = try await aiOrchestrator.generateWithTrace(
+            .teachingDraft(pack, audience, tone, customPrompt),
+            dataSource: pack.subtitle,
+            includedEvidence: pack.factTexts
+        )
+        guard case .teachingDraft(let draft) = generation.result else {
+            throw AIContextualServiceError.insufficientContext("No se pudo generar el borrador docente.")
+        }
+        return draft
     }
 }
 
@@ -466,6 +492,8 @@ struct AppleFoundationModelMessages {
         switch availability {
         case .disabled:
             return disabled
+        case .localInferenceDisabled:
+            return "Apple Foundation Models está desactivado en Ajustes de la app."
         case .available:
             return available
         case .frameworkUnavailable:
@@ -485,36 +513,188 @@ struct AppleFoundationModelMessages {
 }
 
 enum AppleFoundationModelSupport {
+    static let localInferenceEnabledDefaultsKey = "apple.foundation.models.localInference.enabled"
+    static let reportsEnabledDefaultsKey = "reports.ai.enabled"
+    static let contextualEnabledDefaultsKey = "contextual.ai.enabled"
+    static let analyticsEnabledDefaultsKey = "analytics.ai.enabled"
+
+    private static var cachedAvailability: (checkedAt: Date, value: AppleFoundationModelAvailability)?
+    private static var runtimeUnavailableUntil: Date?
+    private static var runtimeUnavailableKind: String?
+    private static let availableCacheWindow: TimeInterval = 300
+    private static let unavailableCacheWindow: TimeInterval = 300
+    private static let runtimeFailureCooldown: TimeInterval = 300
+    private static let assetsUnavailableCooldown: TimeInterval =
+        ProcessInfo.processInfo.environment["DEBUG_AI_COOLDOWN"] != nil ? 30 : 900
+
     static func resolveAvailability(isEnabled: Bool) -> AppleFoundationModelAvailability {
         guard isEnabled else {
             return .disabled
         }
+        guard isLocalInferenceEnabled else {
+            return .localInferenceDisabled
+        }
+
+        let now = Date()
+        if let runtimeUnavailableUntil, runtimeUnavailableUntil > now {
+            return runtimeUnavailableAvailability(kind: runtimeUnavailableKind ?? "runtimeFailure")
+        }
+        if let cachedAvailability,
+           now.timeIntervalSince(cachedAvailability.checkedAt) < cacheWindow(for: cachedAvailability.value) {
+            return cachedAvailability.value
+        }
 
         #if canImport(FoundationModels)
         if #available(iOS 26.0, macOS 26.0, *) {
+            let resolved: AppleFoundationModelAvailability
             switch SystemLanguageModel.default.availability {
             case .available:
-                return .available
+                resolved = .available
             case .unavailable(let reason):
                 switch reason {
                 case .deviceNotEligible:
-                    return .unsupportedDevice
+                    resolved = .unsupportedDevice
                 case .appleIntelligenceNotEnabled:
-                    return .notEnabled
+                    resolved = .notEnabled
                 case .modelNotReady:
-                    return .modelLoading
+                    resolved = .modelLoading
                 @unknown default:
-                    return .unavailable("No se pudo determinar la disponibilidad del modelo local.")
+                    resolved = .unavailable("No se pudo determinar la disponibilidad del modelo local.")
                 }
             @unknown default:
-                return .unavailable("No se pudo determinar la disponibilidad del modelo local.")
+                resolved = .unavailable("No se pudo determinar la disponibilidad del modelo local.")
             }
+            cachedAvailability = (now, resolved)
+            return resolved
         } else {
             return .unsupportedOS
         }
         #else
         return .frameworkUnavailable
         #endif
+    }
+
+    private static func cacheWindow(for availability: AppleFoundationModelAvailability) -> TimeInterval {
+        availability == .available ? availableCacheWindow : unavailableCacheWindow
+    }
+
+    static var isLocalInferenceEnabled: Bool {
+        if ProcessInfo.processInfo.environment["ENABLE_APPLE_FOUNDATION_MODELS"] == "1" {
+            return true
+        }
+        if UserDefaults.standard.object(forKey: localInferenceEnabledDefaultsKey) != nil {
+            return UserDefaults.standard.bool(forKey: localInferenceEnabledDefaultsKey)
+        }
+        return true
+    }
+
+    static func setLocalInferenceEnabled(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: localInferenceEnabledDefaultsKey)
+        clearCachedAvailability()
+    }
+
+    static func clearCachedAvailability() {
+        cachedAvailability = nil
+    }
+
+    static var lastRuntimeFailureKind: String? {
+        runtimeUnavailableKind
+    }
+
+    static var runtimeCooldownRemaining: TimeInterval? {
+        guard let runtimeUnavailableUntil else { return nil }
+        let remaining = runtimeUnavailableUntil.timeIntervalSinceNow
+        return remaining > 0 ? remaining : nil
+    }
+
+    static func diagnosticSummary() -> String {
+        let availability = resolveAvailability(isEnabled: true)
+        if let remaining = runtimeCooldownRemaining {
+            return "\(diagnosticTitle(for: availability)) · reintento en \(Int(remaining.rounded(.up))) s"
+        }
+        return diagnosticTitle(for: availability)
+    }
+
+    static func diagnosticTitle(for availability: AppleFoundationModelAvailability) -> String {
+        switch availability {
+        case .disabled:
+            return "Desactivado por módulo"
+        case .localInferenceDisabled:
+            return "Desactivado en Ajustes"
+        case .frameworkUnavailable:
+            return "Framework no incluido"
+        case .unsupportedOS:
+            return "Sistema no compatible"
+        case .unsupportedDevice:
+            return "Dispositivo no compatible"
+        case .notEnabled:
+            return "Apple Intelligence apagado"
+        case .modelLoading:
+            return "Preparando modelo"
+        case .available:
+            return "Disponible"
+        case .unavailable:
+            return "No responde"
+        }
+    }
+
+    static func recordRuntimeFailure(_ error: Error) {
+        let failureKind = runtimeFailureKind(for: error)
+        let cooldown = cooldown(for: failureKind)
+        runtimeUnavailableKind = failureKind
+        runtimeUnavailableUntil = Date().addingTimeInterval(cooldown)
+        cachedAvailability = (
+            Date(),
+            runtimeUnavailableAvailability(kind: failureKind)
+        )
+        if failureKind == "assetsUnavailable" {
+            NotificationCenter.default.post(name: .appleFoundationModelsRuntimeFailure, object: failureKind)
+        }
+        debugPrint("[AppleFoundationModels] runtime unavailable [\(failureKind), cooldown: \(Int(cooldown))s]: \(error.localizedDescription)")
+    }
+
+    static func runtimeFailureKind(for error: Error) -> String {
+        let description = "\(String(reflecting: error)) \(error.localizedDescription)".lowercased()
+        let knownGenerationErrors: [(needle: String, label: String)] = [
+            ("assetsunavailable", "assetsUnavailable"),
+            ("assets unavailable", "assetsUnavailable"),
+            ("decodingfailure", "decodingFailure"),
+            ("decoding failure", "decodingFailure"),
+            ("exceededcontextwindowsize", "exceededContextWindowSize"),
+            ("context window", "exceededContextWindowSize"),
+            ("guardrailviolation", "guardrailViolation"),
+            ("guardrail", "guardrailViolation"),
+            ("ratelimited", "rateLimited"),
+            ("rate limited", "rateLimited"),
+            ("refusal", "refusal"),
+            ("concurrentrequests", "concurrentRequests"),
+            ("concurrent requests", "concurrentRequests"),
+            ("unsupportedlanguageorlocale", "unsupportedLanguageOrLocale"),
+            ("unsupported language", "unsupportedLanguageOrLocale"),
+            ("afisdevicegreymattereligible", "deviceNotEligible"),
+            ("greymatter", "deviceNotEligible"),
+            ("os_eligibility", "deviceNotEligible"),
+            ("com.apple.modelcatalog.catalog code=4097", "assetsUnavailable"),
+            ("connection to service named com.apple.modelcatalog.catalog", "assetsUnavailable"),
+            ("modelcatalog.catalog", "assetsUnavailable"),
+            ("nscocoaerrordomain code=4097", "assetsUnavailable"),
+            ("xpc server interrupted", "assetsUnavailable")
+        ]
+        return knownGenerationErrors.first { description.contains($0.needle) }?.label ?? "runtimeFailure"
+    }
+
+    private static func cooldown(for failureKind: String) -> TimeInterval {
+        failureKind == "assetsUnavailable" ? assetsUnavailableCooldown : runtimeFailureCooldown
+    }
+
+    private static func runtimeUnavailableAvailability(kind: String) -> AppleFoundationModelAvailability {
+        if kind == "assetsUnavailable" {
+            return .unavailable("Los modelos locales de Apple Intelligence no responden ahora mismo. Se usará el flujo manual y se reintentará más tarde.")
+        }
+        if kind == "deviceNotEligible" {
+            return .unsupportedDevice
+        }
+        return .unavailable("Apple Foundation Models no está respondiendo ahora mismo. Se usará el flujo manual y se reintentará más tarde.")
     }
 
     #if canImport(FoundationModels)
@@ -569,6 +749,45 @@ struct NotebookAICommentDraft {
     let factsUsed: [String]
     let warnings: [String]
     let commentText: String
+}
+
+struct PhysicalScaleRecommendationInput: Hashable {
+    var testId: String
+    var testName: String
+    var capacity: String
+    var measurementKind: String
+    var unit: String
+    var directionLabel: String
+    var sex: String
+    var course: String
+    var ageFrom: Int?
+    var ageTo: Int?
+    var objective: String
+    var scoreScale: String = "0-10"
+}
+
+struct PhysicalScaleRecommendedRange: Identifiable, Hashable {
+    let id = UUID()
+    var minValue: Double?
+    var maxValue: Double?
+    var score: Double
+    var label: String
+}
+
+struct PhysicalScaleRecommendationDraft: Hashable {
+    var title: String
+    var summary: String
+    var ranges: [PhysicalScaleRecommendedRange]
+    var explanation: String
+    var warnings: [String]
+    var editableProposal: String
+}
+
+struct StudentSexInferenceDraft: Hashable {
+    var sex: String
+    var confidence: Double
+    var reason: String
+    var warning: String
 }
 
 enum AIContextualServiceError: LocalizedError {
@@ -630,9 +849,33 @@ final class AppleFoundationContextualAIService {
     private var cachedContextualSessionStorage: Any?
     private var cachedNotebookSessionStorage: Any?
     private var activeTeachingSessionStorage: Any?
+    #endif
+
     private var activeTeachingRiskLevel: RiskLevel?
     private var activeTeachingConfidenceFallback: String?
+    private var runtimeFailureObserver: NSObjectProtocol?
 
+    init() {
+        #if canImport(FoundationModels)
+        runtimeFailureObserver = NotificationCenter.default.addObserver(
+            forName: .appleFoundationModelsRuntimeFailure,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.clearCachedSessions()
+            }
+        }
+        #endif
+    }
+
+    deinit {
+        if let runtimeFailureObserver {
+            NotificationCenter.default.removeObserver(runtimeFailureObserver)
+        }
+    }
+
+    #if canImport(FoundationModels)
     @available(iOS 26.0, macOS 26.0, *)
     private func makeContextualSession() -> LanguageModelSession {
         LanguageModelSession(
@@ -677,6 +920,12 @@ final class AppleFoundationContextualAIService {
         }
         return makeNotebookSession()
     }
+
+    private func clearCachedSessions() {
+        cachedContextualSessionStorage = nil
+        cachedNotebookSessionStorage = nil
+        activeTeachingSessionStorage = nil
+    }
     #endif
 
     func currentAvailability() -> AIContextualAvailabilityState {
@@ -692,7 +941,7 @@ final class AppleFoundationContextualAIService {
         scheduleAvailabilityRetryIfNeeded(for: resolved)
 
         #if canImport(FoundationModels)
-        if #available(iOS 26.0, macOS 26.0, *), resolved == .available || resolved == .modelLoading {
+        if #available(iOS 26.0, macOS 26.0, *), resolved == .available {
             if cachedContextualSessionStorage == nil {
                 cachedContextualSessionStorage = makeContextualSession()
             }
@@ -727,23 +976,28 @@ final class AppleFoundationContextualAIService {
         }
         let availability = currentAvailability()
         guard availability.isAvailable else {
-            throw AIContextualServiceError.unavailable(availability.message)
+            return fallbackResult(from: context, action: action)
         }
 
         #if canImport(FoundationModels)
         if #available(iOS 26.0, macOS 26.0, *) {
-            let result = try await generateLocalResult(
-                from: context,
-                action: action,
-                audience: audience,
-                tone: tone,
-                customPrompt: customPrompt
-            )
-            AIContextualTelemetry.recordScreenGeneration(kind: context.kind, action: action.actionId)
-            return result
+            do {
+                let result = try await generateLocalResult(
+                    from: context,
+                    action: action,
+                    audience: audience,
+                    tone: tone,
+                    customPrompt: customPrompt
+                )
+                AIContextualTelemetry.recordScreenGeneration(kind: context.kind, action: action.actionId)
+                return result
+            } catch {
+                AppleFoundationModelSupport.recordRuntimeFailure(error)
+                return fallbackResult(from: context, action: action)
+            }
         }
         #endif
-        throw AIContextualServiceError.unavailable("La IA contextual requiere una versión del sistema compatible con Apple Foundation Models.")
+        return fallbackResult(from: context, action: action)
     }
 
     func generateNotebookComment(
@@ -758,17 +1012,22 @@ final class AppleFoundationContextualAIService {
         }
         let availability = currentAvailability()
         guard availability.isAvailable else {
-            throw AIContextualServiceError.unavailable(availability.message)
+            return fallbackNotebookComment(from: context)
         }
 
         #if canImport(FoundationModels)
         if #available(iOS 26.0, macOS 26.0, *) {
-            let result = try await generateLocalNotebookComment(from: context, audience: audience, tone: tone)
-            AIContextualTelemetry.recordNotebookGeneration()
-            return result
+            do {
+                let result = try await generateLocalNotebookComment(from: context, audience: audience, tone: tone)
+                AIContextualTelemetry.recordNotebookGeneration()
+                return result
+            } catch {
+                AppleFoundationModelSupport.recordRuntimeFailure(error)
+                return fallbackNotebookComment(from: context)
+            }
         }
         #endif
-        throw AIContextualServiceError.unavailable("La IA contextual requiere una versión del sistema compatible con Apple Foundation Models.")
+        return fallbackNotebookComment(from: context)
     }
 
     func generateTeachingDraft(
@@ -784,20 +1043,25 @@ final class AppleFoundationContextualAIService {
         }
         let availability = currentAvailability()
         guard availability.isAvailable else {
-            throw AIContextualServiceError.unavailable(availability.message)
+            return fallbackTeachingDraft(from: evidence)
         }
 
         #if canImport(FoundationModels)
         if #available(iOS 26.0, macOS 26.0, *) {
-            return try await generateLocalTeachingDraft(
-                from: evidence,
-                audience: audience,
-                tone: tone,
-                customPrompt: customPrompt
-            )
+            do {
+                return try await generateLocalTeachingDraft(
+                    from: evidence,
+                    audience: audience,
+                    tone: tone,
+                    customPrompt: customPrompt
+                )
+            } catch {
+                AppleFoundationModelSupport.recordRuntimeFailure(error)
+                return fallbackTeachingDraft(from: evidence)
+            }
         }
         #endif
-        throw AIContextualServiceError.unavailable("La IA contextual requiere una versión del sistema compatible con Apple Foundation Models.")
+        return fallbackTeachingDraft(from: evidence)
     }
 
     func refineActiveTeachingDraft(with followUp: String) async throws -> TeachingAssistantDraft {
@@ -816,6 +1080,33 @@ final class AppleFoundationContextualAIService {
         }
         #endif
         throw AIContextualServiceError.unavailable("La IA contextual requiere una versión del sistema compatible con Apple Foundation Models.")
+    }
+
+    func generatePhysicalScaleRecommendation(
+        from input: PhysicalScaleRecommendationInput
+    ) async throws -> PhysicalScaleRecommendationDraft {
+        let seedRanges = PhysicalScaleProfileCatalog.seedRanges(for: input)
+        let availability = currentAvailability()
+        guard availability.isAvailable else {
+            return fallbackPhysicalScaleRecommendation(from: input, seedRanges: seedRanges)
+        }
+
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, macOS 26.0, *) {
+            return try await generateLocalPhysicalScaleRecommendation(from: input, seedRanges: seedRanges)
+        }
+        #endif
+        return fallbackPhysicalScaleRecommendation(from: input, seedRanges: seedRanges)
+    }
+
+    func inferStudentSex(firstName: String, lastName: String) async throws -> StudentSexInferenceDraft {
+        let cleanedFirstName = firstName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return StudentSexInferenceDraft(
+            sex: "UNSPECIFIED",
+            confidence: 0,
+            reason: cleanedFirstName.isEmpty ? "No hay nombre suficiente para configurar sexo." : "La app no infiere sexo por nombre.",
+            warning: "Configura manualmente no especificado, masculino o femenino solo si se necesita para baremos físicos."
+        )
     }
 
     #if canImport(FoundationModels)
@@ -939,6 +1230,40 @@ final class AppleFoundationContextualAIService {
     }
 
     @available(iOS 26.0, macOS 26.0, *)
+    private func generateLocalPhysicalScaleRecommendation(
+        from input: PhysicalScaleRecommendationInput,
+        seedRanges: [PhysicalScaleRecommendedRange]
+    ) async throws -> PhysicalScaleRecommendationDraft {
+        let session = LanguageModelSession(
+            instructions: """
+            Actúas como asistente local para Educación Física.
+            Generas propuestas orientativas de baremos editables, nunca oficiales.
+            No inventes normativa, percentiles oficiales ni referencias legales.
+            No generes baremos genéricos; adapta siempre los rangos al testId, unidad, edad, objetivo y dirección.
+            Recomienda siempre revisión docente antes de usar la propuesta.
+            Prioriza claridad, rangos simples y edición rápida.
+            Redacta en español de España.
+            """
+        )
+        do {
+            let response = try await session.respond(
+                to: physicalScalePrompt(from: input, seedRanges: seedRanges),
+                generating: GeneratedPhysicalScaleRecommendation.self,
+                includeSchemaInPrompt: true,
+                options: AppleFoundationModelSupport.generationOptions(temperature: 0.1)
+            )
+            let mapped = mapPhysicalScaleRecommendation(response.content, input: input)
+            guard PhysicalScaleProfileCatalog.isValid(ranges: mapped.ranges, for: input) else {
+                return fallbackPhysicalScaleRecommendation(from: input, seedRanges: seedRanges)
+            }
+            return mapped
+        } catch {
+            AppleFoundationModelSupport.recordRuntimeFailure(error)
+            return fallbackPhysicalScaleRecommendation(from: input, seedRanges: seedRanges)
+        }
+    }
+
+    @available(iOS 26.0, macOS 26.0, *)
     private func mapTeachingDraft(
         _ content: GeneratedTeachingAssistantDraft,
         riskLevel: RiskLevel?,
@@ -984,9 +1309,9 @@ final class AppleFoundationContextualAIService {
         tone: AIReportTone,
         customPrompt: String?
     ) -> String {
-        let metrics = context.metrics.map { "- \($0.title): \($0.value)" }.joined(separator: "\n")
-        let facts = context.factLines.map { "- \($0)" }.joined(separator: "\n")
-        let notes = context.supportNotes.map { "- \($0)" }.joined(separator: "\n")
+        let metrics = context.metrics.prefix(4).map { "- \($0.title): \($0.value)" }.joined(separator: "\n")
+        let facts = context.factLines.prefix(6).map { "- \($0)" }.joined(separator: "\n")
+        let notes = context.supportNotes.prefix(3).map { "- \($0)" }.joined(separator: "\n")
 
         return """
         Genera una ayuda contextual breve para la pantalla activa.
@@ -1032,8 +1357,8 @@ final class AppleFoundationContextualAIService {
         tone: AIReportTone
     ) -> String {
         let evidence = NotebookCommentEvidenceBuilder.build(from: context)
-        let values = context.relevantValues.map { "- \($0.title) [\($0.categoryLabel)]: \($0.value)" }.joined(separator: "\n")
-        let competencies = context.competencyLabels.map { "- \($0)" }.joined(separator: "\n")
+        let values = context.relevantValues.prefix(5).map { "- \($0.title) [\($0.categoryLabel)]: \($0.value)" }.joined(separator: "\n")
+        let competencies = context.competencyLabels.prefix(3).map { "- \($0)" }.joined(separator: "\n")
         let facts = evidence.factTexts.map { "- \($0)" }.joined(separator: "\n")
         let warnings = evidence.warningTexts.map { "- \($0)" }.joined(separator: "\n")
         let actions = evidence.recommendedActionTexts.map { "- \($0)" }.joined(separator: "\n")
@@ -1090,10 +1415,10 @@ final class AppleFoundationContextualAIService {
         tone: AIReportTone,
         customPrompt: String?
     ) -> String {
-        let metrics = evidence.metrics.map { "- \($0.title): \($0.value)" }.joined(separator: "\n")
-        let facts = evidence.factTexts.map { "- \($0)" }.joined(separator: "\n")
-        let warnings = evidence.warningTexts.map { "- \($0)" }.joined(separator: "\n")
-        let actions = evidence.recommendedActionTexts.map { "- \($0)" }.joined(separator: "\n")
+        let metrics = evidence.metrics.prefix(4).map { "- \($0.title): \($0.value)" }.joined(separator: "\n")
+        let facts = evidence.factTexts.prefix(6).map { "- \($0)" }.joined(separator: "\n")
+        let warnings = evidence.warningTexts.prefix(3).map { "- \($0)" }.joined(separator: "\n")
+        let actions = evidence.recommendedActionTexts.prefix(3).map { "- \($0)" }.joined(separator: "\n")
 
         return """
         Genera una ayuda docente grounded y accionable.
@@ -1136,6 +1461,185 @@ final class AppleFoundationContextualAIService {
         """
     }
 
+    @available(iOS 26.0, macOS 26.0, *)
+    private func physicalScalePrompt(
+        from input: PhysicalScaleRecommendationInput,
+        seedRanges: [PhysicalScaleRecommendedRange]
+    ) -> String {
+        let seeds = seedRanges.enumerated().map { index, range in
+            let minText = range.minValue.map { String(format: "%.2f", $0) } ?? "null"
+            let maxText = range.maxValue.map { String(format: "%.2f", $0) } ?? "null"
+            return #"{"index":\#(index + 1),"minValue":\#(minText),"maxValue":\#(maxText),"score":\#(String(format: "%.1f", range.score)),"label":"\#(range.label)"}"#
+        }.joined(separator: "\n")
+        return """
+        Genera una propuesta editable de baremo físico para el módulo EF · Condición física.
+        Debes devolver exactamente la estructura generada por el schema, equivalente a JSON estricto.
+
+        Caso de uso: \(TeachingAssistantUseCase.physicalScaleRecommendation.title)
+        TestId: \(input.testId)
+        Nombre del test: \(input.testName)
+        Capacidad física: \(input.capacity)
+        Tipo de medición: \(input.measurementKind)
+        Unidad: \(input.unit)
+        Dirección: \(input.directionLabel)
+        Sexo del baremo: \(input.sex.isEmpty ? "Sin especificar" : input.sex)
+        Curso: \(input.course)
+        Edad desde: \(input.ageFrom.map(String.init) ?? "Sin dato")
+        Edad hasta: \(input.ageTo.map(String.init) ?? "Sin dato")
+        Objetivo: \(input.objective)
+        Escala de nota: \(input.scoreScale)
+        Perfil local: \(PhysicalScaleProfileCatalog.profileSummary(for: input))
+
+        SeedRanges deterministas. Úsalos como base numérica; puedes ajustar etiquetas y explicación, pero mantén la familia de valores:
+        \(seeds)
+
+        Reglas obligatorias
+        - La respuesta debe decir que es una propuesta orientativa.
+        - La respuesta debe incluir que la revisión docente es necesaria.
+        - No presentes los rangos como baremos oficiales.
+        - No cites normativa, percentiles oficiales ni estándares externos.
+        - Ajusta la propuesta al sexo indicado cuando sea MALE o FEMALE; si es Sin especificar, conserva un baremo neutro.
+        - Devuelve exactamente 5 rangos claros, ordenados para edición rápida.
+        - Prohibido devolver baremos genéricos como Poco/Menor/Medio sin valores minValue/maxValue adecuados.
+        - La unidad de todas las etiquetas debe ser \(input.unit).
+        - Cada rango debe tener minValue o maxValue cuando corresponda, score entre 0 y 10 y una etiqueta breve con unidad.
+        - Para mayor/mejor, las notas deben subir con la marca; para menor/mejor, las notas deben bajar con la marca.
+        - Respeta la precisión del perfil local.
+        - warnings debe incluir prudencia sobre contexto, seguridad, diversidad del alumnado y revisión docente.
+        - warnings debe incluir literalmente: \(PhysicalScaleProfileCatalog.safetyWarnings.joined(separator: " | "))
+        - editableProposal debe poder pegarse como borrador docente breve.
+        """
+    }
+
+    @available(iOS 26.0, macOS 26.0, *)
+    private func mapPhysicalScaleRecommendation(
+        _ content: GeneratedPhysicalScaleRecommendation,
+        input: PhysicalScaleRecommendationInput
+    ) -> PhysicalScaleRecommendationDraft {
+        let mappedRanges = content.ranges.map { range in
+            PhysicalScaleRecommendedRange(
+                minValue: range.minValue,
+                maxValue: range.maxValue,
+                score: min(max(range.score, 0), 10),
+                label: range.label.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+        }
+        let safetyWarnings = compactTexts(
+            content.warnings,
+            PhysicalScaleProfileCatalog.safetyWarnings
+        )
+        return PhysicalScaleRecommendationDraft(
+            title: normalizedOptional(content.title) ?? "Propuesta IA de baremo · \(input.testName)",
+            summary: normalizedOptional(content.summary) ?? "Propuesta orientativa editable para revisión docente.",
+            ranges: mappedRanges,
+            explanation: normalizedOptional(content.explanation) ?? "Rangos pensados para edición rápida y revisión docente.",
+            warnings: Array(safetyWarnings.prefix(5)),
+            editableProposal: normalizedOptional(content.editableProposal) ?? "Propuesta orientativa. Revisar y ajustar antes de usar."
+        )
+    }
+
+    #endif
+
+    private func fallbackPhysicalScaleRecommendation(
+        from input: PhysicalScaleRecommendationInput,
+        seedRanges: [PhysicalScaleRecommendedRange]
+    ) -> PhysicalScaleRecommendationDraft {
+        PhysicalScaleRecommendationDraft(
+            title: "Propuesta IA de baremo · \(input.testName)",
+            summary: "Propuesta orientativa generada desde el perfil local de \(input.testName), preparada para revisión docente.",
+            ranges: seedRanges,
+            explanation: "Se usan rangos seed deterministas adaptados a test, edad, unidad, objetivo y dirección de mejora.",
+            warnings: PhysicalScaleProfileCatalog.safetyWarnings,
+            editableProposal: "Baremo orientativo para \(input.testName). Revisar, adaptar al grupo y no usar como baremo oficial sin criterio docente."
+        )
+    }
+
+    private func fallbackResult(
+        from context: KmpBridge.ScreenAIContext,
+        action: KmpBridge.ContextualAIAction
+    ) -> ContextualAIResult {
+        let facts = Array(context.factLines.prefix(5))
+        let warnings = compactTexts(
+            Array(context.supportNotes.prefix(3)),
+            context.dataQualityNote.map { [$0] } ?? []
+        )
+        let actions = compactTexts([
+            action.promptHint,
+            "Revisar los hechos visibles antes de insertar el borrador.",
+            "Añadir o ajustar evidencias si faltan datos relevantes."
+        ])
+        let summary = context.summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "Borrador por reglas preparado con los datos visibles de la pantalla."
+            : context.summary
+        return ContextualAIResult(
+            title: action.title,
+            subtitle: context.subtitle,
+            summary: summary,
+            bullets: facts.isEmpty ? ["No hay hechos adicionales suficientes."] : facts,
+            factsUsed: facts,
+            warnings: warnings,
+            recommendedActions: Array(actions.prefix(3)),
+            editableText: """
+            \(action.title)
+
+            \(summary)
+
+            Hechos observables
+            \((facts.isEmpty ? ["Sin hechos adicionales suficientes."] : facts).map { "• \($0)" }.joined(separator: "\n"))
+
+            Próximos pasos
+            \(actions.prefix(3).map { "• \($0)" }.joined(separator: "\n"))
+            """,
+            confidenceNote: context.dataQualityNote ?? "Generado por reglas porque la IA local no está disponible."
+        )
+    }
+
+    private func fallbackNotebookComment(from context: KmpBridge.NotebookAICommentContext) -> NotebookAICommentDraft {
+        let evidence = NotebookCommentEvidenceBuilder.build(from: context)
+        let fact = evidence.factTexts.first ?? "datos visibles limitados"
+        let action = evidence.recommendedActionTexts.first ?? "recoger una nueva evidencia observable"
+        let comment = "\(context.studentName) muestra \(fact.lowercased()). Conviene reforzar \(action.lowercased()). Próximo paso: revisar el progreso en la próxima sesión."
+        return NotebookAICommentDraft(
+            summary: context.summary,
+            strengths: Array(evidence.factTexts.prefix(2)),
+            needsAttention: Array(evidence.warningTexts.prefix(2)),
+            nextSteps: Array((evidence.recommendedActionTexts.isEmpty ? [action] : evidence.recommendedActionTexts).prefix(3)),
+            factsUsed: Array(evidence.factTexts.prefix(5)),
+            warnings: Array(evidence.warningTexts.prefix(3)) + ["Generado por reglas porque la IA local no está disponible."],
+            commentText: comment
+        )
+    }
+
+    private func fallbackTeachingDraft(from evidence: TeachingEvidencePack) -> TeachingAssistantDraft {
+        let facts = Array(evidence.factTexts.prefix(6))
+        let warnings = Array(evidence.warningTexts.prefix(4))
+        let actions = Array((evidence.recommendedActionTexts.isEmpty ? ["Mantener seguimiento prudente y recoger nuevas evidencias."] : evidence.recommendedActionTexts).prefix(4))
+        return TeachingAssistantDraft(
+            title: evidence.title,
+            subtitle: evidence.subtitle,
+            summary: evidence.summary,
+            factsUsed: facts,
+            warnings: warnings,
+            recommendedActions: actions,
+            editableText: """
+            \(evidence.title)
+
+            \(evidence.summary)
+
+            Hechos usados
+            \((facts.isEmpty ? ["Sin hechos adicionales suficientes."] : facts).map { "• \($0)" }.joined(separator: "\n"))
+
+            Alertas
+            \((warnings.isEmpty ? ["Sin alertas específicas con los datos actuales."] : warnings).map { "• \($0)" }.joined(separator: "\n"))
+
+            Próximas acciones
+            \(actions.map { "• \($0)" }.joined(separator: "\n"))
+            """,
+            confidenceNote: evidence.confidenceNote ?? "Generado por reglas porque la IA local no está disponible.",
+            riskLevel: evidence.riskLevel
+        )
+    }
+
     private func normalizedOptional(_ value: String?) -> String? {
         guard let value else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1149,6 +1653,7 @@ final class AppleFoundationContextualAIService {
         case .available:
             return .available
         case .frameworkUnavailable,
+                .localInferenceDisabled,
                 .unsupportedOS,
                 .unsupportedDevice,
                 .notEnabled,
@@ -1179,6 +1684,7 @@ final class AppleFoundationContextualAIService {
         _ = currentAvailability()
     }
 
+    #if canImport(FoundationModels)
     @available(iOS 26.0, macOS 26.0, *)
     @Generable
     struct GeneratedContextualAIResult {
@@ -1215,5 +1721,26 @@ final class AppleFoundationContextualAIService {
         let recommendedActions: [String]
         let confidenceNote: String
     }
+
+    @available(iOS 26.0, macOS 26.0, *)
+    @Generable
+    struct GeneratedPhysicalScaleRange {
+        let minValue: Double?
+        let maxValue: Double?
+        let score: Double
+        let label: String
+    }
+
+    @available(iOS 26.0, macOS 26.0, *)
+    @Generable
+    struct GeneratedPhysicalScaleRecommendation {
+        let title: String
+        let summary: String
+        let ranges: [GeneratedPhysicalScaleRange]
+        let explanation: String
+        let warnings: [String]
+        let editableProposal: String
+    }
+
     #endif
 }

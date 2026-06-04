@@ -1,0 +1,4 @@
+-- Migration from version 19 to 20.
+-- Notebook column compatibility is reconciled by platform rescue migrations,
+-- because some local databases already contain part of this schema.
+CREATE TEMP TABLE IF NOT EXISTS _noop (id INTEGER);

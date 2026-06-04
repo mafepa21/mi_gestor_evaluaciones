@@ -7,6 +7,7 @@ import com.migestor.shared.domain.*
 import com.migestor.shared.repository.PlannerRepository
 import com.migestor.shared.util.IsoWeekHelper
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.datetime.Clock
@@ -39,9 +40,9 @@ class PlannerRepositorySqlDelight(
             }
     }
 
-    override suspend fun upsertTeachingUnit(unit: TeachingUnit): Long {
+    override suspend fun upsertTeachingUnit(unit: TeachingUnit): Long = withContext(Dispatchers.Default) {
         val now = Clock.System.now().toEpochMilliseconds()
-        return db.transactionWithResult {
+        db.transactionWithResult {
             db.plannerQueries.upsertTeachingUnit(
                 id = if (unit.id == 0L) null else unit.id,
                 group_id = unit.groupId,
@@ -59,10 +60,10 @@ class PlannerRepositorySqlDelight(
         }
     }
 
-    override suspend fun deleteTeachingUnit(unitId: Long): Boolean {
+    override suspend fun deleteTeachingUnit(unitId: Long): Boolean = withContext(Dispatchers.Default) {
         // En una implementación real, verificaríamos si hay sesiones antes de borrar
         db.plannerQueries.deleteTeachingUnit(unitId)
-        return true
+        true
     }
 
     override fun observeSessions(weekNumber: Int, year: Int): Flow<List<PlanningSession>> {
@@ -76,36 +77,34 @@ class PlannerRepositorySqlDelight(
             .map { rows -> rows.map { mapToDomain(it) } }
     }
 
-    override suspend fun listSessions(weekNumber: Int, year: Int): List<PlanningSession> {
+    override suspend fun listSessions(weekNumber: Int, year: Int): List<PlanningSession> = withContext(Dispatchers.Default) {
         val days = IsoWeekHelper.daysOf(weekNumber, year)
         val startDate = days.first().toString()
         val endDate = days.last().toString()
-        return db.plannerQueries.selectSessionsForWeek(startDate, endDate)
+        db.plannerQueries.selectSessionsForWeek(startDate, endDate)
             .executeAsList()
             .map { mapToDomain(it) }
     }
 
-    override suspend fun listSessionsInRange(groupId: Long?, fromDate: LocalDate, toDate: LocalDate): List<PlanningSession> {
+    override suspend fun listSessionsInRange(groupId: Long?, fromDate: LocalDate, toDate: LocalDate): List<PlanningSession> = withContext(Dispatchers.Default) {
         val all = db.plannerQueries.selectSessionsForWeek(fromDate.toString(), toDate.toString())
             .executeAsList()
             .map { mapToDomain(it) }
-        return if (groupId == null) all else all.filter { it.groupId == groupId }
+        if (groupId == null) all else all.filter { it.groupId == groupId }
     }
 
-    override suspend fun listAllSessions(): List<PlanningSession> {
-        return db.plannerQueries.selectAllSessions()
+    override suspend fun listAllSessions(): List<PlanningSession> = withContext(Dispatchers.Default) {
+        db.plannerQueries.selectAllSessions()
             .executeAsList()
             .map { mapToDomain(it) }
     }
 
-    @Throws(Exception::class)
-    override suspend fun upsertSession(session: PlanningSession): Long {
+    override suspend fun upsertSession(session: PlanningSession): Long = withContext(Dispatchers.Default) {
         val now = Clock.System.now().toEpochMilliseconds()
         val date = sessionDate(session).toString()
-        val resolvedId = resolveSessionIdForUpsert(session, date)
-        return db.transactionWithResult {
+        db.transactionWithResult {
             db.plannerQueries.upsertSession(
-                id = resolvedId,
+                id = if (session.id == 0L) null else session.id,
                 date = date,
                 group_id = session.groupId,
                 period = session.period.toLong(),
@@ -114,26 +113,28 @@ class PlannerRepositorySqlDelight(
                 activities = session.activities,
                 evaluation = session.evaluation,
                 linked_assessment_ids_csv = session.linkedAssessmentIdsCsv,
+                teacher_schedule_slot_id = session.teacherScheduleSlotId,
+                start_time = session.startTime,
+                end_time = session.endTime,
                 status = session.status.name,
+                learning_situation_session_plan_id = session.learningSituationSessionPlanId,
                 updated_at_epoch_ms = now,
                 device_id = null,
                 sync_version = 0L
             )
-            resolvedId ?: db.plannerQueries.lastInsertedId().executeAsOne()
+            if (session.id == 0L) db.plannerQueries.lastInsertedId().executeAsOne() else session.id
         }
     }
 
-    override suspend fun bulkUpsertSessions(sessions: List<PlanningSession>): List<Long> {
-        if (sessions.isEmpty()) return emptyList()
+    override suspend fun bulkUpsertSessions(sessions: List<PlanningSession>): List<Long> = withContext(Dispatchers.Default) {
+        if (sessions.isEmpty()) return@withContext emptyList()
         val ids = mutableListOf<Long>()
         db.transaction {
             sessions.forEach { session ->
                 val now = Clock.System.now().toEpochMilliseconds()
-                val date = sessionDate(session).toString()
-                val resolvedId = resolveSessionIdForUpsert(session, date)
                 db.plannerQueries.upsertSession(
-                    id = resolvedId,
-                    date = date,
+                    id = if (session.id == 0L) null else session.id,
+                    date = sessionDate(session).toString(),
                     group_id = session.groupId,
                     period = session.period.toLong(),
                     unit_id = if (session.teachingUnitId == 0L) null else session.teachingUnitId,
@@ -141,39 +142,45 @@ class PlannerRepositorySqlDelight(
                     activities = session.activities,
                     evaluation = session.evaluation,
                     linked_assessment_ids_csv = session.linkedAssessmentIdsCsv,
+                    teacher_schedule_slot_id = session.teacherScheduleSlotId,
+                    start_time = session.startTime,
+                    end_time = session.endTime,
                     status = session.status.name,
+                    learning_situation_session_plan_id = session.learningSituationSessionPlanId,
                     updated_at_epoch_ms = now,
                     device_id = null,
                     sync_version = 0L
                 )
-                ids += resolvedId ?: db.plannerQueries.lastInsertedId().executeAsOne()
+                ids += if (session.id == 0L) db.plannerQueries.lastInsertedId().executeAsOne() else session.id
             }
         }
-        return ids
+        ids
     }
 
-    private fun resolveSessionIdForUpsert(session: PlanningSession, date: String): Long? {
-        val naturalKeyId = db.plannerQueries.selectSessionByNaturalKey(
-            date = date,
-            groupId = session.groupId,
-            period = session.period.toLong()
-        ).executeAsOneOrNull()?.id
-        return naturalKeyId ?: session.id.takeIf { it > 0L }
-    }
-
-    override suspend fun deleteSession(sessionId: Long) {
+    override suspend fun deleteSession(sessionId: Long) = withContext(Dispatchers.Default) {
         db.plannerQueries.deleteSession(sessionId)
     }
 
-    override suspend fun deleteSessions(sessionIds: List<Long>) {
-        if (sessionIds.isEmpty()) return
+    override suspend fun deleteSessions(sessionIds: List<Long>) = withContext(Dispatchers.Default) {
+        if (sessionIds.isEmpty()) return@withContext
         db.transaction {
             sessionIds.forEach { db.plannerQueries.deleteSession(it) }
         }
     }
 
-    override suspend fun listAllTeachingUnits(): List<TeachingUnit> {
-        return db.plannerQueries.selectAllTeachingUnits()
+    override suspend fun deleteFutureSessionsGeneratedFromScheduleSlot(slotId: Long, fromDate: LocalDate): Int = withContext(Dispatchers.Default) {
+        val ids = db.plannerQueries
+            .selectFutureGeneratedSessionIdsForScheduleSlot(slotId = slotId, fromDate = fromDate.toString())
+            .executeAsList()
+        if (ids.isEmpty()) return@withContext 0
+        db.transaction {
+            ids.forEach { db.plannerQueries.deleteSession(it) }
+        }
+        ids.size
+    }
+
+    override suspend fun listAllTeachingUnits(): List<TeachingUnit> = withContext(Dispatchers.Default) {
+        db.plannerQueries.selectAllTeachingUnits()
             .executeAsList()
             .map {
                 TeachingUnit(
@@ -193,10 +200,10 @@ class PlannerRepositorySqlDelight(
         return DEFAULT_TIME_SLOTS
     }
 
-    override suspend fun moveSessionsFromWeek(fromWeek: Int, fromYear: Int, offsetWeeks: Int) {
-        if (offsetWeeks == 0) return
+    override suspend fun moveSessionsFromWeek(fromWeek: Int, fromYear: Int, offsetWeeks: Int) = withContext(Dispatchers.Default) {
+        if (offsetWeeks == 0) return@withContext
         val source = listSessions(fromWeek, fromYear)
-        if (source.isEmpty()) return
+        if (source.isEmpty()) return@withContext
         shiftSelectedSessions(
             request = SessionRelocationRequest(
                 sourceSessionIds = source.map { it.id },
@@ -204,20 +211,21 @@ class PlannerRepositorySqlDelight(
             ),
             resolution = CollisionResolution.SKIP
         )
+        Unit
     }
 
-    override suspend fun previewSessionRelocation(request: SessionRelocationRequest): List<SessionRelocationConflict> {
-        return buildRelocationPlan(request).conflicts
+    override suspend fun previewSessionRelocation(request: SessionRelocationRequest): List<SessionRelocationConflict> = withContext(Dispatchers.Default) {
+        buildRelocationPlan(request).conflicts
     }
 
     override suspend fun copySessions(
         request: SessionRelocationRequest,
         resolution: CollisionResolution
-    ): SessionBulkResult {
+    ): SessionBulkResult = withContext(Dispatchers.Default) {
         val plan = buildRelocationPlan(request)
-        if (plan.relocations.isEmpty()) return SessionBulkResult(skipped = plan.conflicts.size)
+        if (plan.relocations.isEmpty()) return@withContext SessionBulkResult(skipped = plan.conflicts.size)
         if (resolution == CollisionResolution.CANCEL && plan.conflicts.isNotEmpty()) {
-            return SessionBulkResult(skipped = plan.relocations.size, failed = plan.conflicts.size)
+            return@withContext SessionBulkResult(skipped = plan.relocations.size, failed = plan.conflicts.size)
         }
 
         val conflictBySource = plan.conflicts.associateBy { it.sourceSessionId }
@@ -227,7 +235,7 @@ class PlannerRepositorySqlDelight(
             CollisionResolution.CANCEL -> emptyList()
         }
         if (sessionsToApply.isEmpty()) {
-            return SessionBulkResult(skipped = plan.relocations.size, failed = plan.conflicts.size)
+            return@withContext SessionBulkResult(skipped = plan.relocations.size, failed = plan.conflicts.size)
         }
 
         val overwrittenIds = mutableSetOf<Long>()
@@ -243,7 +251,7 @@ class PlannerRepositorySqlDelight(
             }
         }
 
-        return SessionBulkResult(
+        SessionBulkResult(
             affectedSessionIds = insertedIds,
             movedOrCopied = insertedIds.size,
             overwritten = overwrittenIds.size,
@@ -255,11 +263,11 @@ class PlannerRepositorySqlDelight(
     override suspend fun shiftSelectedSessions(
         request: SessionRelocationRequest,
         resolution: CollisionResolution
-    ): SessionBulkResult {
+    ): SessionBulkResult = withContext(Dispatchers.Default) {
         val plan = buildRelocationPlan(request)
-        if (plan.relocations.isEmpty()) return SessionBulkResult(skipped = plan.conflicts.size)
+        if (plan.relocations.isEmpty()) return@withContext SessionBulkResult(skipped = plan.conflicts.size)
         if (resolution == CollisionResolution.CANCEL && plan.conflicts.isNotEmpty()) {
-            return SessionBulkResult(skipped = plan.relocations.size, failed = plan.conflicts.size)
+            return@withContext SessionBulkResult(skipped = plan.relocations.size, failed = plan.conflicts.size)
         }
 
         val conflictBySource = plan.conflicts.associateBy { it.sourceSessionId }
@@ -269,7 +277,7 @@ class PlannerRepositorySqlDelight(
             CollisionResolution.CANCEL -> emptyList()
         }
         if (sessionsToApply.isEmpty()) {
-            return SessionBulkResult(skipped = plan.relocations.size, failed = plan.conflicts.size)
+            return@withContext SessionBulkResult(skipped = plan.relocations.size, failed = plan.conflicts.size)
         }
 
         val sourceIds = sessionsToApply.map { it.source.id }.toSet()
@@ -293,7 +301,7 @@ class PlannerRepositorySqlDelight(
             }
         }
 
-        return SessionBulkResult(
+        SessionBulkResult(
             affectedSessionIds = insertedIds,
             movedOrCopied = insertedIds.size,
             overwritten = overwrittenIds.size,
@@ -302,9 +310,169 @@ class PlannerRepositorySqlDelight(
         )
     }
 
+    override suspend fun previewCascadeMove(request: SessionCascadeMoveRequest): SessionCascadeMovePreview = withContext(Dispatchers.Default) {
+        buildCascadeMovePreview(request)
+    }
+
+    override suspend fun commitCascadeMove(request: SessionCascadeMoveRequest): SessionCascadeMoveResult = withContext(Dispatchers.Default) {
+        val preview = buildCascadeMovePreview(request)
+        if (preview.isNoOp || preview.nextPlacements.isEmpty()) {
+            return@withContext SessionCascadeMoveResult()
+        }
+        val sessionsById = allSessionsById()
+        db.transaction {
+            applyCascadePlacements(preview.nextPlacements, sessionsById)
+        }
+        SessionCascadeMoveResult(
+            previousPlacements = preview.previousPlacements,
+            nextPlacements = preview.nextPlacements,
+            movedCount = preview.nextPlacements.size,
+            crossesWeekBoundary = preview.crossesWeekBoundary,
+        )
+    }
+
+    override suspend fun restoreCascadeMove(previousPlacements: List<SessionPlacement>): SessionCascadeMoveResult = withContext(Dispatchers.Default) {
+        if (previousPlacements.isEmpty()) return@withContext SessionCascadeMoveResult()
+        val sessionsById = allSessionsById()
+        val currentPlacements = previousPlacements.mapNotNull { placement ->
+            sessionsById[placement.sessionId]?.toPlacement()
+        }
+        db.transaction {
+            applyCascadePlacements(previousPlacements, sessionsById)
+        }
+        SessionCascadeMoveResult(
+            previousPlacements = currentPlacements,
+            nextPlacements = previousPlacements,
+            movedCount = previousPlacements.size,
+            crossesWeekBoundary = currentPlacements.zip(previousPlacements).any { (from, to) ->
+                from.weekNumber != to.weekNumber || from.year != to.year
+            },
+        )
+    }
+
     private fun sessionDate(session: PlanningSession): LocalDate {
         val days = IsoWeekHelper.daysOf(session.weekNumber, session.year)
         return days[(session.dayOfWeek - 1).coerceIn(0, days.lastIndex)]
+    }
+
+    private fun allSessionsById(): Map<Long, PlanningSession> =
+        db.plannerQueries.selectAllSessions().executeAsList().map(::mapToDomain).associateBy { it.id }
+
+    private fun applyCascadePlacements(
+        placements: List<SessionPlacement>,
+        sessionsById: Map<Long, PlanningSession>,
+    ) {
+        // Stage affected rows inside the transaction so backward moves/swaps cannot violate the unique cell key.
+        placements.forEachIndexed { index, placement ->
+            val session = requireNotNull(sessionsById[placement.sessionId]) { "Sesión no encontrada: ${placement.sessionId}" }
+            insertPlannerSession(session.copy(period = -(index + 1)))
+        }
+        placements.asReversed().forEach { placement ->
+            val session = requireNotNull(sessionsById[placement.sessionId]) { "Sesión no encontrada: ${placement.sessionId}" }
+            insertPlannerSession(session.at(placement))
+        }
+    }
+
+    private fun buildCascadeMovePreview(request: SessionCascadeMoveRequest): SessionCascadeMovePreview {
+        require(request.targetDayOfWeek in 1..5) { "Día de destino no válido" }
+        require(request.targetPeriod > 0) { "Periodo de destino no válido" }
+        val sessions = allSessionsById().values.toList()
+        val source = requireNotNull(sessions.firstOrNull { it.id == request.sourceSessionId }) {
+            "Sesión no encontrada: ${request.sourceSessionId}"
+        }
+        val targetDate = IsoWeekHelper.daysOf(request.targetWeekNumber, request.targetYear)[request.targetDayOfWeek - 1]
+        if (sessionDate(source) == targetDate && source.period == request.targetPeriod) {
+            return SessionCascadeMovePreview(isNoOp = true)
+        }
+
+        val previous = mutableListOf<SessionPlacement>()
+        val next = mutableListOf<SessionPlacement>()
+        val completed = mutableListOf<Long>()
+        val candidates = sessions
+            .filter { it.groupId == source.groupId && it.id != source.id }
+            .toMutableList()
+        var movedSession = source
+        var destinationDate = targetDate
+        var destinationPeriod = request.targetPeriod
+
+        while (true) {
+            previous += movedSession.toPlacement()
+            next += resolvedPlacement(movedSession, destinationDate, destinationPeriod)
+            if (movedSession.status == SessionStatus.COMPLETED) completed += movedSession.id
+
+            val occupied = candidates.firstOrNull {
+                sessionDate(it) == destinationDate && it.period == destinationPeriod
+            } ?: break
+            candidates.remove(occupied)
+            movedSession = occupied
+            val nextDestination = nextTeachingPosition(destinationDate, destinationPeriod)
+            destinationDate = nextDestination.first
+            destinationPeriod = nextDestination.second
+        }
+
+        return SessionCascadeMovePreview(
+            previousPlacements = previous,
+            nextPlacements = next,
+            completedSessionIds = completed,
+            crossesWeekBoundary = next.any { it.weekNumber != source.weekNumber || it.year != source.year },
+        )
+    }
+
+    private fun PlanningSession.toPlacement(): SessionPlacement =
+        SessionPlacement(
+            sessionId = id,
+            weekNumber = weekNumber,
+            year = year,
+            dayOfWeek = dayOfWeek,
+            period = period,
+            teacherScheduleSlotId = teacherScheduleSlotId,
+            startTime = startTime,
+            endTime = endTime,
+        )
+
+    private fun PlanningSession.at(placement: SessionPlacement): PlanningSession =
+        copy(
+            id = placement.sessionId,
+            weekNumber = placement.weekNumber,
+            year = placement.year,
+            dayOfWeek = placement.dayOfWeek,
+            period = placement.period,
+            teacherScheduleSlotId = placement.teacherScheduleSlotId,
+            startTime = placement.startTime,
+            endTime = placement.endTime,
+        )
+
+    private fun resolvedPlacement(session: PlanningSession, date: LocalDate, period: Int): SessionPlacement {
+        val slot = db.appDatabaseQueries.selectAllTeacherSchedules().executeAsList()
+            .flatMap { schedule -> db.appDatabaseQueries.selectTeacherScheduleSlots(schedule.id).executeAsList() }
+            .filter { it.school_class_id == session.groupId && it.day_of_week.toInt() == date.dayOfWeek.isoDayNumber }
+            .sortedBy { it.start_time }
+            .getOrNull(period - 1)
+        val fallback = DEFAULT_TIME_SLOTS.firstOrNull { it.period == period }
+        val week = IsoWeekHelper.isoWeekOf(date)
+        val isoYear = when {
+            date.monthNumber == 12 && week == 1 -> date.year + 1
+            date.monthNumber == 1 && week >= 52 -> date.year - 1
+            else -> date.year
+        }
+        return SessionPlacement(
+            sessionId = session.id,
+            weekNumber = week,
+            year = isoYear,
+            dayOfWeek = date.dayOfWeek.isoDayNumber,
+            period = period,
+            teacherScheduleSlotId = slot?.id,
+            startTime = slot?.start_time ?: fallback?.startTime,
+            endTime = slot?.end_time ?: fallback?.endTime,
+        )
+    }
+
+    private fun nextTeachingPosition(date: LocalDate, period: Int): Pair<LocalDate, Int> {
+        val periods = DEFAULT_TIME_SLOTS.map { it.period }.sorted()
+        val nextPeriod = periods.firstOrNull { it > period }
+        if (nextPeriod != null) return date to nextPeriod
+        val additionalDays = if (date.dayOfWeek.isoDayNumber >= 5) 3 else 1
+        return date.plus(additionalDays.toLong(), DateTimeUnit.DAY) to periods.first()
     }
 
     private data class SessionRelocationItem(
@@ -393,7 +561,11 @@ class PlannerRepositorySqlDelight(
             activities = session.activities,
             evaluation = session.evaluation,
             linked_assessment_ids_csv = session.linkedAssessmentIdsCsv,
+            teacher_schedule_slot_id = session.teacherScheduleSlotId,
+            start_time = session.startTime,
+            end_time = session.endTime,
             status = session.status.name,
+            learning_situation_session_plan_id = session.learningSituationSessionPlanId,
             updated_at_epoch_ms = now,
             device_id = null,
             sync_version = 0L
@@ -418,6 +590,10 @@ class PlannerRepositorySqlDelight(
             activities = row.activities ?: "",
             evaluation = row.evaluation ?: "",
             linkedAssessmentIdsCsv = row.linked_assessment_ids_csv,
+            teacherScheduleSlotId = row.teacher_schedule_slot_id,
+            startTime = row.start_time,
+            endTime = row.end_time,
+            learningSituationSessionPlanId = row.learning_situation_session_plan_id,
             status = try { SessionStatus.valueOf(row.status ?: "PLANNED") } catch (e: Exception) { SessionStatus.PLANNED }
         )
     }
@@ -439,6 +615,10 @@ class PlannerRepositorySqlDelight(
             activities = row.activities ?: "",
             evaluation = row.evaluation ?: "",
             linkedAssessmentIdsCsv = row.linked_assessment_ids_csv,
+            teacherScheduleSlotId = row.teacher_schedule_slot_id,
+            startTime = row.start_time,
+            endTime = row.end_time,
+            learningSituationSessionPlanId = row.learning_situation_session_plan_id,
             status = try { SessionStatus.valueOf(row.status ?: "PLANNED") } catch (e: Exception) { SessionStatus.PLANNED }
         )
     }

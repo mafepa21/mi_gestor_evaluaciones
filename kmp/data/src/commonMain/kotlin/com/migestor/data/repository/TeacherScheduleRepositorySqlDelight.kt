@@ -168,10 +168,18 @@ class TeacherScheduleRepositorySqlDelight(
     }
 
     override suspend fun deleteScheduleSlot(slotId: Long) {
+        deleteScheduleSlotAndGeneratedPlannerSessions(slotId)
+    }
+
+    override suspend fun deleteScheduleSlotAndGeneratedPlannerSessions(slotId: Long) {
         runCatching {
+            plannerRepository.deleteFutureSessionsGeneratedFromScheduleSlot(
+                slotId = slotId,
+                fromDate = LocalDate(1900, 1, 1)
+            )
             db.appDatabaseQueries.deleteTeacherScheduleSlot(slotId)
         }.onFailure { throwable ->
-            println("TeacherScheduleRepositorySqlDelight.deleteScheduleSlot failed: ${throwable.message}")
+            println("TeacherScheduleRepositorySqlDelight.deleteScheduleSlotAndGeneratedPlannerSessions failed: ${throwable.message}")
         }
     }
 

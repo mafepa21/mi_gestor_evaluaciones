@@ -1,142 +1,77 @@
 import SwiftUI
+import AppKit
+import MiGestorKit
 
 struct MacSettingsView: View {
     @ObservedObject var session: MacAppSessionController
     @ObservedObject var commandCenter: MacCommandCenterCoordinator
+    @ObservedObject var backupStore: MacBackupStore
     let onOpenSync: () -> Void
-    @State private var selectedScheduleClassId: Int64?
+
+    @StateObject private var settings = AppSettingsStore()
+    @State private var selectedRoute: SettingsRoute = .general
 
     var body: some View {
-        ScrollView(.vertical, showsIndicators: true) {
-            LazyVStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
-                Text("Ajustes")
-                    .font(MacAppStyle.pageTitle)
-                    .padding(.bottom, 4)
-
-                generalSection
-                syncSection
-                agendaSection
-                flagsAndShellSection
-            }
-            .padding(MacAppStyle.pagePadding)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(MacAppStyle.pageBackground)
-    }
-
-    private var generalSection: some View {
-        VStack(alignment: .leading, spacing: MacAppStyle.cardSpacing) {
-            MacSectionHeader(title: "General")
-            MacSettingsCard {
-                VStack(spacing: 0) {
-                    settingsRow("Plataforma", value: session.bootstrap.platformName)
-                    Divider().padding(.leading, 16)
-                    settingsRow("Base de datos", value: URL(fileURLWithPath: session.bootstrap.databasePath).lastPathComponent)
-                    Divider().padding(.leading, 16)
-                    settingsRow("Estado del bridge", value: session.bridge.status)
+        HStack(spacing: 0) {
+            List(selection: $selectedRoute) {
+                Section("Ajustes") {
+                    settingsRow("General", systemImage: "slider.horizontal.3", route: .general)
+                    settingsRow("Evaluación", systemImage: "chart.bar.doc.horizontal", route: .evaluation)
+                    settingsRow("Cuaderno", systemImage: "text.book.closed", route: .notebook)
+                    settingsRow("Datos y Seguridad", systemImage: "lock.shield", route: .dataSecurity)
+                    settingsRow("Sincronización", systemImage: "arrow.triangle.2.circlepath", route: .sync)
+                    settingsRow("IA Apple", systemImage: "sparkles", route: .appleAI)
+                    settingsRow("Apariencia", systemImage: "paintpalette", route: .appearance)
+                    settingsRow("Diagnóstico Avanzado", systemImage: "waveform.path.ecg", route: .diagnostics)
                 }
             }
-        }
-    }
+            .listStyle(.sidebar)
+            .frame(width: 224)
 
-    private var syncSection: some View {
-        VStack(alignment: .leading, spacing: MacAppStyle.cardSpacing) {
-            MacSectionHeader(title: "Sync LAN")
-            MacSettingsCard {
-                HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(commandCenter.statusMessage)
-                            .font(.callout)
-                            .lineLimit(2)
-                        Text("Emparejado, pull y observabilidad viven en el módulo Sync LAN.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button("Ir a Sync") {
-                        onOpenSync()
-                    }
-                    .buttonStyle(.bordered)
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    detailViewForRoute(selectedRoute)
                 }
+                .padding(24)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
+            .background(Color(NSColor.windowBackgroundColor))
         }
     }
 
-    private var agendaSection: some View {
-        VStack(alignment: .leading, spacing: MacAppStyle.cardSpacing) {
-            MacSectionHeader(title: "Agenda docente")
-            MacTeacherScheduleSettingsPanel(
-                bridge: session.bridge,
-                selectedClassId: $selectedScheduleClassId
-            )
+    @ViewBuilder
+    private func settingsRow(
+        _ title: String,
+        systemImage: String,
+        route: SettingsRoute
+    ) -> some View {
+        Label(title, systemImage: systemImage)
+            .tag(route)
+    }
+
+    @ViewBuilder
+    private func detailViewForRoute(_ route: SettingsRoute) -> some View {
+        switch route {
+        case .general:
+            GeneralSettingsView(settings: settings)
+        case .evaluation:
+            EvaluationSettingsView(settings: settings)
+        case .notebook:
+            NotebookSettingsView(settings: settings)
+        case .dataSecurity:
+            DataSecuritySettingsView(settings: settings)
+        case .sync:
+            SyncSettingsView(settings: settings)
+                .environmentObject(session.bridge)
+        case .appleAI:
+            AppleAISettingsView(settings: settings)
+                .environmentObject(session.bridge)
+        case .appearance:
+            AppearanceSettingsView(settings: settings)
+        case .diagnostics:
+            SettingsDiagnosticsView()
         }
-    }
-
-    private var flagsAndShellSection: some View {
-        VStack(alignment: .leading, spacing: MacAppStyle.cardSpacing) {
-            MacSectionHeader(title: "Flags / IA / shell")
-            MacSettingsCard {
-                VStack(spacing: 0) {
-                    Toggle("Mostrar inspector por defecto", isOn: $session.inspectorVisible)
-                        .toggleStyle(.switch)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-
-                    Divider().padding(.leading, 16)
-
-                    ForEach(Array(MacFeatureRegistry.all.enumerated()), id: \.element.id) { index, feature in
-                        HStack(spacing: 10) {
-                            Image(systemName: feature.systemImage)
-                                .frame(width: 20)
-                                .foregroundStyle(.secondary)
-                            Text(feature.title)
-                                .font(.callout)
-                            Spacer()
-                            Text(feature.source.rawValue)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        if index < MacFeatureRegistry.all.count - 1 {
-                            Divider().padding(.leading, 46)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private func settingsRow(_ label: String, value: String) -> some View {
-        HStack {
-            Text(label)
-                .font(.callout)
-            Spacer()
-            Text(value)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-    }
-}
-
-private struct MacSettingsCard<Content: View>: View {
-    private let content: Content
-
-    init(@ViewBuilder content: () -> Content) {
-        self.content = content()
-    }
-
-    var body: some View {
-        content
-            .padding(MacAppStyle.innerPadding)
-            .background(MacAppStyle.cardBackground)
-            .overlay {
-                RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous)
-                    .stroke(MacAppStyle.cardBorder, lineWidth: 0.5)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
     }
 }

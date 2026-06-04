@@ -23,7 +23,7 @@ final class SyncEventListener {
 
         stop()
         currentConnectionKey = connectionKey
-        eventTask = Task { [weak self] in
+        eventTask = Task.detached(priority: .background) { [weak self] in
             await self?.listen(
                 host: host,
                 token: token,
@@ -84,7 +84,7 @@ final class SyncEventListener {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         configuration.timeoutIntervalForRequest = 60
-        configuration.timeoutIntervalForResource = 120
+        configuration.timeoutIntervalForResource = 7 * 24 * 60 * 60
         configuration.waitsForConnectivity = false
 
         let session = URLSession(

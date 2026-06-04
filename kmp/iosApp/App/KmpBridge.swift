@@ -64,6 +64,8 @@ struct PlannerAssessmentInstrument: Identifiable, Hashable {
     let evaluationId: Int64?
     let rubricId: Int64?
     let resolvedEvaluationId: Int64?
+    let groupTitle: String
+    let isRecommendedForCurrentSA: Bool
 
     var id: String { "\(kind.rawValue):\(rawId)" }
 }
@@ -74,6 +76,109 @@ struct PlannerSessionSaveResult {
     let teachingUnitName: String
     let evaluationSummary: String
     let linkedAssessmentIdsCsv: String
+}
+
+struct NotebookCreatedColumnResult {
+    let column: NotebookColumnDefinition
+    let category: NotebookColumnCategory?
+}
+
+struct RubricEvaluationAdvanceSummary {
+    let evaluatedCount: Int
+    let remainingCount: Int
+}
+
+enum RubricEvaluationAdvanceResult {
+    case openedNext(studentId: Int64, remainingCount: Int)
+    case completed(RubricEvaluationAdvanceSummary)
+    case closed
+}
+
+@MainActor
+final class RubricEvaluationCoordinator: ObservableObject {
+    struct Context {
+        let columnId: String
+        let rubricId: Int64
+        let classId: Int64
+        let evaluationId: Int64
+        let studentIds: [Int64]
+        var currentStudentId: Int64
+    }
+
+    @Published private(set) var context: Context?
+    @Published private(set) var lastSummary: RubricEvaluationAdvanceSummary?
+
+    var isActive: Bool { context != nil }
+    var currentStudentId: Int64? { context?.currentStudentId }
+
+    func start(
+        columnId: String,
+        rubricId: Int64,
+        classId: Int64,
+        evaluationId: Int64,
+        studentIds: [Int64],
+        currentStudentId: Int64
+    ) {
+        let orderedIds = normalizedStudentIds(studentIds, currentStudentId: currentStudentId)
+        context = Context(
+            columnId: columnId,
+            rubricId: rubricId,
+            classId: classId,
+            evaluationId: evaluationId,
+            studentIds: orderedIds,
+            currentStudentId: currentStudentId
+        )
+        lastSummary = nil
+    }
+
+    func advance(visibleStudentIds: [Int64]? = nil) -> Int64? {
+        guard var context else { return nil }
+        let orderedIds = normalizedStudentIds(
+            visibleStudentIds?.filter { context.studentIds.contains($0) } ?? context.studentIds,
+            currentStudentId: context.currentStudentId
+        )
+        guard let currentIndex = orderedIds.firstIndex(of: context.currentStudentId) else {
+            finish(evaluatedCount: completedCount(in: orderedIds, currentStudentId: context.currentStudentId), remainingCount: 0)
+            return nil
+        }
+        let remainingIds = orderedIds.dropFirst(currentIndex + 1)
+        guard let nextStudentId = remainingIds.first else {
+            finish(evaluatedCount: orderedIds.count, remainingCount: 0)
+            return nil
+        }
+        context.currentStudentId = nextStudentId
+        self.context = context
+        lastSummary = RubricEvaluationAdvanceSummary(
+            evaluatedCount: currentIndex + 1,
+            remainingCount: remainingIds.count
+        )
+        return nextStudentId
+    }
+
+    func finish(evaluatedCount: Int? = nil, remainingCount: Int = 0) {
+        let completed = evaluatedCount ?? context?.studentIds.count ?? 0
+        lastSummary = RubricEvaluationAdvanceSummary(evaluatedCount: completed, remainingCount: remainingCount)
+        context = nil
+    }
+
+    func reset() {
+        context = nil
+        lastSummary = nil
+    }
+
+    private func normalizedStudentIds(_ studentIds: [Int64], currentStudentId: Int64) -> [Int64] {
+        var seen = Set<Int64>()
+        var ordered = studentIds.filter { seen.insert($0).inserted }
+        if !ordered.contains(currentStudentId) {
+            ordered.insert(currentStudentId, at: 0)
+        }
+        return ordered
+    }
+
+    private func completedCount(in orderedIds: [Int64], currentStudentId: Int64) -> Int {
+        guard let index = orderedIds.firstIndex(of: currentStudentId) else { return 0 }
+        return index + 1
+    }
 }
 
 @MainActor
@@ -110,6 +215,8 @@ final class KmpBridge: ObservableObject {
     
     // Rubric Evaluation State (Bridged from RubricEvaluationViewModel)
     @Published var rubricEvaluationState: RubricEvaluationUiState = RubricEvaluationUiState.companion.default()
+    @Published var isNotebookRubricAutoAdvanceActive: Bool = false
+    @Published var rubricEvaluationCoordinator = RubricEvaluationCoordinator()
     
     // Bulk Rubric Evaluation State
     @Published var bulkRubricEvaluationState: BulkRubricEvaluationUiState? = nil
@@ -125,6 +232,8 @@ final class KmpBridge: ObservableObject {
     @Published var dashboardFilters: DashboardFilters = DashboardFilters(classId: nil, severity: nil, priority: nil, sessionStatus: nil)
     @Published var allStudents: [Student] = []
     @Published var selectedStudentsClassId: Int64? = nil
+    @Published var studentImportPreview: AppleStudentImportPreview? = nil
+    @Published var isImportingStudents = false
 
     // LAN Sync State
     @Published var discoveredSyncHosts: [String] = []
@@ -165,6 +274,13 @@ final class KmpBridge: ObservableObject {
         let activeEvaluationNames: [String]
     }
 
+    struct ClassroomCaptureContextSnapshot: Equatable {
+        let classId: Int64
+        let className: String
+        let sessionId: Int64?
+        let sessionTitle: String
+    }
+
     struct StudentTimelineEntry: Identifiable {
         enum Kind {
             case attendance
@@ -188,6 +304,17 @@ final class KmpBridge: ObservableObject {
         let note: String
         let hasIncident: Bool
         let followUpRequired: Bool
+        let sessionId: Int64?
+    }
+
+    struct AttendanceDraft {
+        let studentId: Int64
+        let classId: Int64
+        let date: Date
+        let status: String
+        let note: String
+        let hasIncident: Bool
+        let followUpRequired: Bool?
         let sessionId: Int64?
     }
 
@@ -243,7 +370,9 @@ final class KmpBridge: ObservableObject {
     struct MacStudentRowSnapshot: Identifiable {
         let id: Int64
         let student: Student
+        let classId: Int64?
         let className: String
+        let allClassMemberships: [MacStudentClassMembership]
         let followUpLabel: String
         let recentAttendanceLabel: String
         let averageText: String
@@ -252,6 +381,11 @@ final class KmpBridge: ObservableObject {
         let isInjured: Bool
         let isFollowUp: Bool
         let workGroupName: String
+    }
+
+    struct MacStudentClassMembership: Identifiable {
+        let id: Int64
+        let className: String
     }
 
     struct ReportPreviewPayload {
@@ -651,6 +785,7 @@ final class KmpBridge: ObservableObject {
 
     private let container: KmpContainer
     private let appleBootstrap: AppleBridgeBootstrap
+    private let appleImportFacade = AppleImportFacade()
     let notebookViewModel: NotebookViewModel
     let plannerViewModel: PlannerViewModel
     let rubricEvaluationViewModel: RubricEvaluationViewModel
@@ -675,6 +810,7 @@ final class KmpBridge: ObservableObject {
     private var syncNeedsAnotherPass = false
     private var isAppInForeground = true
     private var lastLocalMutationAt: Date = .distantPast
+    private var lastCheckedDbModificationDate: Date = .distantPast
     private var lastSuccessfulSyncAt: Date = .distantPast
     private var lastFullPullAt: Date = .distantPast
     private var lastSilentSyncAttemptAt: Date = .distantPast
@@ -774,6 +910,12 @@ final class KmpBridge: ObservableObject {
         self.pairedSyncHost = syncSecureStore.loadString(key: "sync.host")
         self.pairedServerId = syncSecureStore.loadString(key: "sync.server.id")
         self.pairedServerFingerprint = syncSecureStore.loadString(key: "sync.server.fingerprint")
+        
+        #if os(macOS)
+        self.pairedSyncHost = "127.0.0.1"
+        self.syncToken = "loopback-token"
+        self.pairedServerFingerprint = nil
+        #endif
 
         self.lanSyncDiscovery.onPeersChanged = { [weak self] peers in
             Task { @MainActor in
@@ -857,7 +999,7 @@ final class KmpBridge: ObservableObject {
             for await state in sequence {
                 let wasSaveSuccessful = self.rubricEvaluationState.isSaveSuccessful
                 self.rubricEvaluationState = state
-                if state.isSaveSuccessful && !wasSaveSuccessful {
+                if state.isSaveSuccessful && !wasSaveSuccessful && !self.isNotebookRubricAutoAdvanceActive {
                     self.refreshCurrentNotebook()
                     if let classId = self.notebookViewModel.currentClassId?.int64Value {
                         self.scheduleNotebookSnapshotSync(forClassId: classId)
@@ -874,7 +1016,6 @@ final class KmpBridge: ObservableObject {
                 let wasSaveSuccessful = self.bulkRubricEvaluationState?.isSaveSuccessful ?? false
                 self.bulkRubricEvaluationState = state
                 if state.isSaveSuccessful && !wasSaveSuccessful {
-                    self.refreshCurrentNotebook()
                     if let classId = self.notebookViewModel.currentClassId?.int64Value {
                         self.scheduleNotebookSnapshotSync(forClassId: classId)
                     }
@@ -930,26 +1071,17 @@ final class KmpBridge: ObservableObject {
     }
 
     private func refreshDashboard() async throws {
-        let stats: DashboardStats = try await container.dashboardRepository.getStats()
-
-        statsText = "Alumnos \(stats.totalStudents) · Clases \(stats.totalClasses) · Eval \(stats.totalEvaluations)"
+        let stats = try await container.dashboardRepository.getStats()
         
         // Fetch Upcoming Classes
         let allEvents = try await container.calendarRepository.listEvents(classId: nil)
-        
         let now = ClockSystem.shared.now()
-        self.upcomingClasses = allEvents.filter { $0.startAt.epochSeconds > now.epochSeconds }
+        let upcoming = allEvents.filter { $0.startAt.epochSeconds > now.epochSeconds }
             .sorted { $0.startAt.epochSeconds < $1.startAt.epochSeconds }
             .prefix(3).map { $0 }
 
         // Fetch Classes for distribution and tasks
         let allClasses = try await container.classesRepository.listClasses()
-        
-        // Distribution
-        let esoCount = allClasses.filter { $0.course <= 4 }.count
-        let totalC = max(allClasses.count, 1)
-        self.esoPercentage = Int((Double(esoCount) / Double(totalC)) * 100)
-        self.bachPercentage = 100 - self.esoPercentage
         
         // Pending Tasks (Incidents)
         var allIncidents: [Incident] = []
@@ -957,7 +1089,7 @@ final class KmpBridge: ObservableObject {
             let incidents = try await container.incidentsRepository.listIncidents(classId: cls.id)
             allIncidents.append(contentsOf: incidents)
         }
-        self.pendingTasks = Array(allIncidents.prefix(3))
+        let pending = Array(allIncidents.prefix(3))
         
         // Activity Groups (Averages by Class)
         var groups: [ActivityGroup] = []
@@ -968,6 +1100,18 @@ final class KmpBridge: ObservableObject {
             let avg = values.isEmpty ? 0.0 : values.reduce(0, +) / Double(values.count)
             groups.append(ActivityGroup(name: cls.name, average: avg))
         }
+
+        statsText = "Alumnos \(stats.totalStudents) · Clases \(stats.totalClasses) · Eval \(stats.totalEvaluations)"
+        self.upcomingClasses = upcoming
+        
+        // Distribution
+        let esoCount = allClasses.filter { $0.course <= 4 }.count
+        let totalC = max(allClasses.count, 1)
+        let ratio = Double(esoCount) / Double(totalC)
+        self.esoPercentage = Int(ratio * 100)
+        self.bachPercentage = 100 - self.esoPercentage
+        
+        self.pendingTasks = pending
         self.activityGroups = groups
     }
 
@@ -1047,8 +1191,63 @@ final class KmpBridge: ObservableObject {
         }
     }
 
+    func classroomCaptureContext(classId: Int64, on date: Date) async throws -> ClassroomCaptureContextSnapshot? {
+        guard let schoolClass = try await container.classesRepository.listClasses().first(where: { $0.id == classId }) else {
+            return nil
+        }
+
+        let sessions = try await container.plannerRepository.listAllSessions()
+            .filter { $0.groupId == classId && Calendar.current.isDate(self.date(from: $0), inSameDayAs: date) }
+            .sorted {
+                if $0.period == $1.period {
+                    return ($0.startTime ?? "") < ($1.startTime ?? "")
+                }
+                return $0.period < $1.period
+            }
+
+        let session = sessions.first
+        let sessionTitle = session.map { session in
+            let unit = session.teachingUnitName.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !unit.isEmpty { return unit }
+            let activities = session.activities.trimmingCharacters(in: .whitespacesAndNewlines)
+            return activities.isEmpty ? "Sesión de hoy" : activities
+        } ?? ""
+
+        return ClassroomCaptureContextSnapshot(
+            classId: classId,
+            className: schoolClass.name,
+            sessionId: session?.id,
+            sessionTitle: sessionTitle
+        )
+    }
+
+    @MainActor
+    func launchFirstBulkRubricEvaluationForClass(classId: Int64) async -> Bool {
+        do {
+            let columns = try await container.notebookConfigRepository.listColumns(classId: classId)
+            guard let column = columns.first(where: { $0.rubricId != nil && $0.evaluationId != nil }),
+                  let rubricId = column.rubricId?.int64Value,
+                  let evaluationId = column.evaluationId?.int64Value else {
+                status = "No hay una rúbrica vinculada al cuaderno de esta clase."
+                return false
+            }
+            startBulkRubricEvaluation(
+                classId: classId,
+                evaluationId: evaluationId,
+                rubricId: rubricId,
+                columnId: column.id,
+                tabId: column.tabIds.first
+            )
+            return true
+        } catch {
+            status = "No se pudo abrir la rúbrica rápida: \(error.localizedDescription)"
+            return false
+        }
+    }
+
     private func refreshClasses() async throws {
-        classes = try await container.classesRepository.listClasses()
+        let classes = try await container.classesRepository.listClasses()
+        self.classes = classes
         // If notebook has no class selected, pick the first one
         if notebookViewModel.currentClassId == nil, let first = classes.first {
             selectClass(id: first.id)
@@ -1065,16 +1264,24 @@ final class KmpBridge: ObservableObject {
         if classes.isEmpty {
             try await refreshClasses()
         }
-        allStudents = try await container.studentsRepository.listStudents()
+        let currentClasses = self.classes
+        let currentSelectedClassId = selectedStudentsClassId
 
-        if selectedStudentsClassId == nil {
-            selectedStudentsClassId = classes.first?.id
-        }
-        if let selectedClassId = selectedStudentsClassId {
-            studentsInClass = try await container.classesRepository.listStudentsInClass(classId: selectedClassId)
+        let all = try await container.studentsRepository.listStudents()
+        let resolvedClassId = currentSelectedClassId ?? currentClasses.first?.id
+        
+        let inClass: [Student]
+        if let classId = resolvedClassId {
+            inClass = try await container.classesRepository.listStudentsInClass(classId: classId)
         } else {
-            studentsInClass = []
+            inClass = []
         }
+
+        self.allStudents = all
+        if selectedStudentsClassId == nil {
+            selectedStudentsClassId = resolvedClassId
+        }
+        self.studentsInClass = inClass
     }
 
     func selectStudentsClass(classId: Int64?) async {
@@ -1094,8 +1301,137 @@ final class KmpBridge: ObservableObject {
         try await container.classesRepository.listStudentsInClass(classId: classId)
     }
 
+    func previewStudentImport(tsv: String) async throws -> AppleStudentImportPreview {
+        let preview = appleImportFacade.previewStudentsFromTsv(text: tsv)
+        let existingStudents = try await container.studentsRepository.listStudents()
+        let existingByFullName = Dictionary(
+            existingStudents.map { (normalizedStudentName(firstName: $0.firstName, lastName: $0.lastName), $0.fullName) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let existingLastNames = Set(existingStudents.map { normalizedNamePart($0.lastName) }.filter { !$0.isEmpty })
+        let students = preview.students.map { student in
+            let normalizedFullName = normalizedStudentName(firstName: student.firstName, lastName: student.lastName)
+            let normalizedLastName = normalizedNamePart(student.lastName)
+            let duplicateStatus: AppleStudentDuplicateStatus
+            let duplicateDetail: String?
+            if let existingName = existingByFullName[normalizedFullName] {
+                duplicateStatus = .alreadyExists
+                duplicateDetail = existingName
+            } else if !normalizedLastName.isEmpty && existingLastNames.contains(normalizedLastName) {
+                duplicateStatus = .possibleDuplicate
+                duplicateDetail = "Coinciden apellidos"
+            } else {
+                duplicateStatus = .new
+                duplicateDetail = nil
+            }
+            return AppleParsedStudent(
+                id: Int(student.rowNumber),
+                rowNumber: Int(student.rowNumber),
+                fullName: student.fullName,
+                firstName: student.firstName,
+                lastName: student.lastName,
+                duplicateStatus: duplicateStatus,
+                duplicateDetail: duplicateDetail
+            )
+        }
+
+        guard !students.isEmpty else {
+            throw NSError(domain: "KmpBridge", code: -60, userInfo: [NSLocalizedDescriptionKey: "No se encontraron alumnos en el archivo."])
+        }
+
+        let applePreview = AppleStudentImportPreview(
+            className: preview.className,
+            course: preview.course,
+            students: students
+        )
+        studentImportPreview = applePreview
+        return applePreview
+    }
+
+    func confirmStudentImport(selectedRows: [Int], targetClassId: Int64?, omitDuplicates: Bool = true) async throws {
+        guard let preview = studentImportPreview else {
+            throw NSError(domain: "KmpBridge", code: -61, userInfo: [NSLocalizedDescriptionKey: "No hay una previsualización de importación activa."])
+        }
+
+        let selectedRowSet = Set(selectedRows)
+        let studentsToImport = preview.students.filter { student in
+            selectedRowSet.contains(student.rowNumber) && (!omitDuplicates || student.duplicateStatus == .new)
+        }
+        guard !studentsToImport.isEmpty else {
+            throw NSError(domain: "KmpBridge", code: -62, userInfo: [NSLocalizedDescriptionKey: "Selecciona al menos un alumno para importar."])
+        }
+
+        isImportingStudents = true
+        defer { isImportingStudents = false }
+
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        var importedIds: [Int64] = []
+
+        for student in studentsToImport {
+            let studentId = try await container.studentsRepository.saveStudent(
+                id: nil,
+                firstName: student.firstName,
+                lastName: student.lastName,
+                email: nil,
+                photoPath: nil,
+                isInjured: false,
+                sex: .unspecified,
+                sexSource: .imported,
+                birthDate: nil,
+                updatedAtEpochMs: nowMs,
+                deviceId: localDeviceId,
+                syncVersion: 1
+            ).int64Value
+            importedIds.append(studentId)
+
+            enqueueLocalChange(
+                entity: "student",
+                id: "\(studentId)",
+                updatedAtEpochMs: nowMs,
+                payload: [
+                    "id": studentId,
+                    "firstName": student.firstName,
+                    "lastName": student.lastName,
+                    "email": NSNull(),
+                    "photoPath": NSNull(),
+                    "isInjured": false,
+                    "sex": StudentSex.unspecified.name,
+                    "sexSource": StudentSexSource.imported.name,
+                    "birthDate": NSNull()
+                ]
+            )
+        }
+
+        if let targetClassId {
+            for studentId in importedIds {
+                try await container.classesRepository.addStudentToClass(classId: targetClassId, studentId: studentId)
+            }
+            enqueueRosterSnapshot(forClassId: targetClassId, updatedAtEpochMs: nowMs)
+            selectedStudentsClassId = targetClassId
+            await selectStudentsClass(classId: targetClassId)
+        }
+
+        studentImportPreview = nil
+        try await refreshStudentsDirectory()
+        try await refreshDashboard()
+    }
+
+    private func normalizedStudentName(firstName: String, lastName: String) -> String {
+        normalizedNamePart([firstName, lastName].joined(separator: " "))
+    }
+
+    private func normalizedNamePart(_ value: String) -> String {
+        value
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
+
     func refreshRubrics() async throws {
-        rubrics = try await container.rubricsRepository.listRubrics()
+        let rubrics = try await container.rubricsRepository.listRubrics()
+        self.rubrics = rubrics
     }
 
     func refreshRubricClassLinks() async throws {
@@ -1103,8 +1439,9 @@ final class KmpBridge: ObservableObject {
             try await refreshClasses()
         }
 
+        let currentClasses = self.classes
         var links: [Int64: Set<Int64>] = [:]
-        for schoolClass in classes {
+        for schoolClass in currentClasses {
             let evaluations = try await container.evaluationsRepository.listClassEvaluations(classId: schoolClass.id)
             for evaluation in evaluations {
                 if let rubricId = evaluation.rubricId?.int64Value {
@@ -1114,7 +1451,7 @@ final class KmpBridge: ObservableObject {
                 }
             }
         }
-        rubricClassLinks = links
+        self.rubricClassLinks = links
     }
 
     private func refreshRubricBuilderTeachingUnits(for classId: Int64?) async throws {
@@ -1160,6 +1497,14 @@ final class KmpBridge: ObservableObject {
         return sessions.filter { $0.groupId == classId }
     }
 
+    func plannerGetSession(id: Int64) async throws -> PlanningSession {
+        let sessions = try await container.plannerRepository.listAllSessions()
+        guard let session = sessions.first(where: { $0.id == id }) else {
+            throw NSError(domain: "KmpBridge", code: 404, userInfo: [NSLocalizedDescriptionKey: "Session not found"])
+        }
+        return session
+    }
+
     func plannerWeeklySlots(classId: Int64?) -> [WeeklySlotTemplate] {
         if let classId {
             return container.weeklyTemplateRepository.getSlotsForClass(schoolClassId: classId)
@@ -1169,6 +1514,59 @@ final class KmpBridge: ObservableObject {
 
     private func plannerTeachingUnitName(for teachingUnitId: Int64, cachedUnits: [TeachingUnit]) -> String? {
         cachedUnits.first(where: { $0.id == teachingUnitId })?.name
+    }
+
+    private func cleanPlannerInstrumentText(_ raw: String?, fallback: String) -> String {
+        let trimmed = raw?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\n", with: " ")
+            .split(separator: " ")
+            .joined(separator: " ") ?? ""
+        guard !trimmed.isEmpty else { return fallback }
+
+        let upper = trimmed.uppercased()
+        let looksLikeObjectDump =
+            upper.contains("EVALUATION(") ||
+            upper.contains("CLASSID=") ||
+            upper.contains("RUBRICID=") ||
+            upper.contains("TRACE=") ||
+            upper.contains("AUDITTRACE") ||
+            upper.contains("UPDATEDAT=") ||
+            upper.contains("CREATEDAT=")
+
+        if looksLikeObjectDump {
+            return fallback
+        }
+        return String(trimmed.prefix(90))
+    }
+
+    private func plannerInstrumentGroupTitle(
+        teachingUnitId: Int64?,
+        evaluationDescription: String?,
+        cachedUnits: [TeachingUnit]
+    ) -> String {
+        if let teachingUnitId,
+           let unitName = plannerTeachingUnitName(for: teachingUnitId, cachedUnits: cachedUnits) {
+            return cleanPlannerInstrumentText(unitName, fallback: "Sin situación asignada")
+        }
+        let cleanDescription = cleanPlannerInstrumentText(evaluationDescription, fallback: "")
+        if !cleanDescription.isEmpty {
+            return cleanDescription
+        }
+        return "Sin situación asignada"
+    }
+
+    private func plannerInstrumentMatchesCurrentSA(
+        teachingUnitId: Int64?,
+        groupTitle: String,
+        currentTeachingUnitId: Int64?,
+        currentTeachingUnitName: String?
+    ) -> Bool {
+        if let teachingUnitId, let currentTeachingUnitId, teachingUnitId == currentTeachingUnitId {
+            return true
+        }
+        guard let currentTeachingUnitName, !currentTeachingUnitName.isEmpty else { return false }
+        return groupTitle.localizedCaseInsensitiveCompare(currentTeachingUnitName) == .orderedSame
     }
 
     private func resolvePlannerTeachingUnit(
@@ -1345,6 +1743,7 @@ final class KmpBridge: ObservableObject {
             visibility: .visible,
             isLocked: false,
             isTemplate: false,
+            emptyCellPolicy: .excludeFromAverage,
             trace: AuditTrace(
                 authorUserId: nil,
                 createdAt: nowInstant,
@@ -1404,6 +1803,46 @@ final class KmpBridge: ObservableObject {
         return events
             .filter { isNonTeachingCalendarEvent(title: $0.title, description: $0.description_) }
             .sorted { $0.startAt.toEpochMilliseconds() < $1.startAt.toEpochMilliseconds() }
+    }
+
+    func plannerSaveCalendarEvent(
+        id: Int64?,
+        classId: Int64?,
+        title: String,
+        description: String?,
+        startEpochMs: Int64,
+        endEpochMs: Int64
+    ) async throws -> Int64 {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let savedId = try await container.calendarRepository.saveEvent(
+            id: kotlinLong(id),
+            classId: kotlinLong(classId),
+            title: title,
+            description: description,
+            startEpochMs: startEpochMs,
+            endEpochMs: endEpochMs,
+            externalProvider: nil,
+            externalId: nil,
+            authorUserId: nil,
+            updatedAtEpochMs: nowMs,
+            deviceId: localDeviceId,
+            syncVersion: 1
+        ).int64Value
+        
+        enqueueLocalChange(
+            entity: "calendar_event",
+            id: "\(savedId)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "id": savedId,
+                "classId": classId ?? 0,
+                "title": title,
+                "description": description ?? "",
+                "startEpochMs": startEpochMs,
+                "endEpochMs": endEpochMs
+            ]
+        )
+        return savedId
     }
 
     func plannerSaveTeacherSchedule(
@@ -1474,19 +1913,19 @@ final class KmpBridge: ObservableObject {
             throw NSError(domain: "Planner", code: -320, userInfo: [NSLocalizedDescriptionKey: "La franja docente se solapa con otra del mismo grupo"])
         }
 
-        let weeklyTemplateId = try await {
-            _ = try await plannerSaveWeeklySlot(
-                classId: classId,
-                dayOfWeek: dayOfWeek,
-                startTime: normalizedStart,
-                endTime: normalizedEnd,
-                editingSlotId: existingWeeklyTemplateId
+        if let existingWeeklyTemplateId {
+            try? await container.weeklyTemplateRepository.delete(slotId: existingWeeklyTemplateId)
+            enqueueLocalChange(
+                entity: "weekly_slot",
+                id: "\(existingWeeklyTemplateId)",
+                updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+                payload: [
+                    "id": existingWeeklyTemplateId,
+                    "schoolClassId": classId
+                ],
+                op: "delete"
             )
-            let refreshed = container.weeklyTemplateRepository.getSlotsForClass(schoolClassId: classId)
-            return refreshed.first {
-                $0.dayOfWeek == Int32(dayOfWeek) && $0.startTime == normalizedStart && $0.endTime == normalizedEnd
-            }?.id ?? existingWeeklyTemplateId ?? 0
-        }()
+        }
 
         let savedId = try await container.teacherScheduleRepository.saveScheduleSlot(
             slot: TeacherScheduleSlot(
@@ -1498,7 +1937,7 @@ final class KmpBridge: ObservableObject {
                 dayOfWeek: Int32(dayOfWeek),
                 startTime: normalizedStart,
                 endTime: normalizedEnd,
-                weeklyTemplateId: weeklyTemplateId == 0 ? nil : KotlinLong(value: weeklyTemplateId)
+                weeklyTemplateId: nil
             )
         ).int64Value
         enqueueLocalChange(
@@ -1514,7 +1953,7 @@ final class KmpBridge: ObservableObject {
                 "dayOfWeek": dayOfWeek,
                 "startTime": normalizedStart,
                 "endTime": normalizedEnd,
-                "weeklyTemplateId": weeklyTemplateId
+                "weeklyTemplateId": 0
             ]
         )
         return savedId
@@ -1683,6 +2122,10 @@ final class KmpBridge: ObservableObject {
         activities: String,
         evaluation: String,
         linkedAssessmentIdsCsv: String = "",
+        teacherScheduleSlotId: Int64? = nil,
+        startTime: String? = nil,
+        endTime: String? = nil,
+        learningSituationSessionPlanId: Int64? = nil,
         status: SessionStatus
     ) async throws -> Int64 {
         let session = PlanningSession(
@@ -1700,31 +2143,48 @@ final class KmpBridge: ObservableObject {
             activities: activities,
             evaluation: evaluation,
             linkedAssessmentIdsCsv: linkedAssessmentIdsCsv,
+            teacherScheduleSlotId: teacherScheduleSlotId.map { KotlinLong(value: $0) },
+            startTime: startTime,
+            endTime: endTime,
+            learningSituationSessionPlanId: learningSituationSessionPlanId.map { KotlinLong(value: $0) },
             status: status
         )
         let sessionId = try await container.plannerRepository.upsertSession(session: session).int64Value
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        var payload: [String: Any] = [
+            "id": sessionId,
+            "teachingUnitId": teachingUnitId,
+            "teachingUnitName": teachingUnitName,
+            "teachingUnitColor": teachingUnitColor,
+            "groupId": groupId,
+            "groupName": groupName,
+            "dayOfWeek": dayOfWeek,
+            "period": period,
+            "weekNumber": weekNumber,
+            "year": year,
+            "objectives": objectives,
+            "activities": activities,
+            "evaluation": evaluation,
+            "linkedAssessmentIdsCsv": linkedAssessmentIdsCsv,
+            "status": status.name
+        ]
+        if let teacherScheduleSlotId {
+            payload["teacherScheduleSlotId"] = teacherScheduleSlotId
+        }
+        if let startTime {
+            payload["startTime"] = startTime
+        }
+        if let endTime {
+            payload["endTime"] = endTime
+        }
+        if let learningSituationSessionPlanId {
+            payload["learningSituationSessionPlanId"] = learningSituationSessionPlanId
+        }
         enqueueLocalChange(
             entity: "planning_session",
             id: "\(sessionId)",
             updatedAtEpochMs: nowMs,
-            payload: [
-                "id": sessionId,
-                "teachingUnitId": teachingUnitId,
-                "teachingUnitName": teachingUnitName,
-                "teachingUnitColor": teachingUnitColor,
-                "groupId": groupId,
-                "groupName": groupName,
-                "dayOfWeek": dayOfWeek,
-                "period": period,
-                "weekNumber": weekNumber,
-                "year": year,
-                "objectives": objectives,
-                "activities": activities,
-                "evaluation": evaluation,
-                "linkedAssessmentIdsCsv": linkedAssessmentIdsCsv,
-                "status": status.name
-            ]
+            payload: payload
         )
         return sessionId
     }
@@ -1840,6 +2300,44 @@ final class KmpBridge: ObservableObject {
         return try await container.plannerRepository.shiftSelectedSessions(request: request, resolution: resolution)
     }
 
+    func plannerPreviewCascadeMove(
+        sourceSessionId: Int64,
+        targetWeekNumber: Int,
+        targetYear: Int,
+        targetDayOfWeek: Int,
+        targetPeriod: Int
+    ) async throws -> SessionCascadeMovePreview {
+        let request = SessionCascadeMoveRequest(
+            sourceSessionId: sourceSessionId,
+            targetWeekNumber: Int32(targetWeekNumber),
+            targetYear: Int32(targetYear),
+            targetDayOfWeek: Int32(targetDayOfWeek),
+            targetPeriod: Int32(targetPeriod)
+        )
+        return try await container.plannerRepository.previewCascadeMove(request: request)
+    }
+
+    func plannerCommitCascadeMove(
+        sourceSessionId: Int64,
+        targetWeekNumber: Int,
+        targetYear: Int,
+        targetDayOfWeek: Int,
+        targetPeriod: Int
+    ) async throws -> SessionCascadeMoveResult {
+        let request = SessionCascadeMoveRequest(
+            sourceSessionId: sourceSessionId,
+            targetWeekNumber: Int32(targetWeekNumber),
+            targetYear: Int32(targetYear),
+            targetDayOfWeek: Int32(targetDayOfWeek),
+            targetPeriod: Int32(targetPeriod)
+        )
+        return try await container.plannerRepository.commitCascadeMove(request: request)
+    }
+
+    func plannerRestoreCascadeMove(_ previousPlacements: [SessionPlacement]) async throws -> SessionCascadeMoveResult {
+        try await container.plannerRepository.restoreCascadeMove(previousPlacements: previousPlacements)
+    }
+
     private func rangesOverlap(startA: String, endA: String, startB: String, endB: String) -> Bool {
         guard let a0 = plannerMinutes(startA), let a1 = plannerMinutes(endA), let b0 = plannerMinutes(startB), let b1 = plannerMinutes(endB) else {
             return false
@@ -1900,12 +2398,16 @@ final class KmpBridge: ObservableObject {
 
     func createStudentAndAssignToClass(firstName: String, lastName: String, classId: Int64) async throws {
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let sexResolution: (sex: StudentSex, source: StudentSexSource) = (.unspecified, .unknown)
         let studentId = try await container.saveStudent.invoke(
             id: nil,
             firstName: firstName,
             lastName: lastName,
             email: nil,
             photoPath: nil,
+            sex: sexResolution.sex,
+            sexSource: sexResolution.source,
+            birthDate: nil,
             updatedAtEpochMs: nowMs,
             deviceId: localDeviceId,
             syncVersion: 1
@@ -1923,17 +2425,28 @@ final class KmpBridge: ObservableObject {
                 "lastName": lastName,
                 "email": NSNull(),
                 "photoPath": NSNull(),
-                "isInjured": false
+                "isInjured": false,
+                "sex": sexResolution.sex.name,
+                "sexSource": sexResolution.source.name,
+                "birthDate": NSNull()
             ]
         )
         enqueueRosterSnapshot(forClassId: classId, updatedAtEpochMs: nowMs)
     }
 
-    func createStudentInSelectedClass(firstName: String, lastName: String, isInjured: Bool = false) async throws {
+    func createStudentInSelectedClass(
+        firstName: String,
+        lastName: String,
+        isInjured: Bool = false,
+        sex: StudentSex? = nil,
+        sexSource: StudentSexSource? = nil,
+        birthDate: LocalDate? = nil
+    ) async throws {
         guard let classId = selectedStudentsClassId else {
             throw NSError(domain: "KMP", code: -20, userInfo: [NSLocalizedDescriptionKey: "Selecciona una clase primero"])
         }
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let sexResolution = await resolvedStudentSex(firstName: firstName, lastName: lastName, sex: sex, sexSource: sexSource)
         let studentId = try await container.studentsRepository.saveStudent(
             id: nil,
             firstName: firstName,
@@ -1941,6 +2454,9 @@ final class KmpBridge: ObservableObject {
             email: nil,
             photoPath: nil,
             isInjured: isInjured,
+            sex: sexResolution.sex,
+            sexSource: sexResolution.source,
+            birthDate: birthDate,
             updatedAtEpochMs: nowMs,
             deviceId: localDeviceId,
             syncVersion: 1
@@ -1959,10 +2475,198 @@ final class KmpBridge: ObservableObject {
                 "lastName": lastName,
                 "email": NSNull(),
                 "photoPath": NSNull(),
-                "isInjured": isInjured
+                "isInjured": isInjured,
+                "sex": sexResolution.sex.name,
+                "sexSource": sexResolution.source.name,
+                "birthDate": birthDate == nil ? NSNull() : birthDate!.description()
             ]
         )
         enqueueRosterSnapshot(forClassId: classId, updatedAtEpochMs: nowMs)
+    }
+
+    func createMacStudent(
+        firstName: String,
+        lastName: String,
+        email: String?,
+        isInjured: Bool,
+        classId: Int64
+    ) async throws -> Int64 {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let sexResolution = await resolvedStudentSex(firstName: firstName, lastName: lastName, sex: nil, sexSource: nil)
+        let normalizedEmail = email?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        let studentId = try await container.studentsRepository.saveStudent(
+            id: nil,
+            firstName: firstName,
+            lastName: lastName,
+            email: normalizedEmail,
+            photoPath: nil,
+            isInjured: isInjured,
+            sex: sexResolution.sex,
+            sexSource: sexResolution.source,
+            birthDate: nil,
+            updatedAtEpochMs: nowMs,
+            deviceId: localDeviceId,
+            syncVersion: 1
+        ).int64Value
+        try await container.classesRepository.addStudentToClass(classId: classId, studentId: studentId)
+        try await refreshStudentsDirectory()
+        try await refreshDashboard()
+        enqueueLocalChange(
+            entity: "student",
+            id: "\(studentId)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "id": studentId,
+                "firstName": firstName,
+                "lastName": lastName,
+                "email": normalizedEmail ?? NSNull(),
+                "photoPath": NSNull(),
+                "isInjured": isInjured,
+                "sex": sexResolution.sex.name,
+                "sexSource": sexResolution.source.name,
+                "birthDate": NSNull()
+            ]
+        )
+        enqueueRosterSnapshot(forClassId: classId, updatedAtEpochMs: nowMs)
+        return studentId
+    }
+
+    func updateMacStudent(
+        student: Student,
+        firstName: String,
+        lastName: String,
+        email: String?,
+        isInjured: Bool
+    ) async throws {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let normalizedEmail = email?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        _ = try await container.studentsRepository.saveStudent(
+            id: KotlinLong(value: student.id),
+            firstName: firstName,
+            lastName: lastName,
+            email: normalizedEmail,
+            photoPath: student.photoPath,
+            isInjured: isInjured,
+            sex: student.sex,
+            sexSource: student.sexSource,
+            birthDate: student.birthDate,
+            updatedAtEpochMs: nowMs,
+            deviceId: localDeviceId,
+            syncVersion: student.trace.syncVersion + 1
+        )
+        try await refreshStudentsDirectory()
+        try await refreshDashboard()
+        enqueueLocalChange(
+            entity: "student",
+            id: "\(student.id)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "id": student.id,
+                "firstName": firstName,
+                "lastName": lastName,
+                "email": normalizedEmail ?? NSNull(),
+                "photoPath": student.photoPath ?? NSNull(),
+                "isInjured": isInjured,
+                "sex": student.sex.name,
+                "sexSource": student.sexSource.name,
+                "birthDate": student.birthDate == nil ? NSNull() : student.birthDate!.description()
+            ]
+        )
+    }
+
+    func updateStudentInjuryStatus(
+        studentId: Int64,
+        isInjured: Bool,
+        classId: Int64?
+    ) async throws {
+        guard let student = try await container.studentsRepository.listStudents().first(where: { $0.id == studentId }) else {
+            throw NSError(domain: "KmpBridge", code: 404, userInfo: [NSLocalizedDescriptionKey: "No se encontró el alumno \(studentId)."])
+        }
+
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        _ = try await container.studentsRepository.saveStudent(
+            id: KotlinLong(value: student.id),
+            firstName: student.firstName,
+            lastName: student.lastName,
+            email: student.email,
+            photoPath: student.photoPath,
+            isInjured: isInjured,
+            sex: student.sex,
+            sexSource: student.sexSource,
+            birthDate: student.birthDate,
+            updatedAtEpochMs: nowMs,
+            deviceId: localDeviceId,
+            syncVersion: student.trace.syncVersion + 1
+        )
+        try await refreshStudentsDirectory()
+        try await refreshDashboard()
+        enqueueLocalChange(
+            entity: "student",
+            id: "\(student.id)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "id": student.id,
+                "firstName": student.firstName,
+                "lastName": student.lastName,
+                "email": student.email ?? NSNull(),
+                "photoPath": student.photoPath ?? NSNull(),
+                "isInjured": isInjured,
+                "sex": student.sex.name,
+                "sexSource": student.sexSource.name,
+                "birthDate": student.birthDate == nil ? NSNull() : student.birthDate!.description()
+            ]
+        )
+
+        if let classId {
+            enqueueRosterSnapshot(forClassId: classId, updatedAtEpochMs: nowMs)
+        }
+    }
+
+    private func resolvedStudentSex(
+        firstName: String,
+        lastName: String,
+        sex: StudentSex?,
+        sexSource: StudentSexSource?
+    ) async -> (sex: StudentSex, source: StudentSexSource) {
+        if let sex, sex != .unspecified {
+            return (sex, sexSource ?? .manual)
+        }
+        return (.unspecified, .unknown)
+    }
+
+    func updateStudentSex(_ student: Student, sex: StudentSex) async throws {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        _ = try await container.studentsRepository.saveStudent(
+            id: KotlinLong(value: student.id),
+            firstName: student.firstName,
+            lastName: student.lastName,
+            email: student.email,
+            photoPath: student.photoPath,
+            isInjured: student.isInjured,
+            sex: sex,
+            sexSource: sex == .unspecified ? .unknown : .manual,
+            birthDate: student.birthDate,
+            updatedAtEpochMs: nowMs,
+            deviceId: localDeviceId,
+            syncVersion: student.trace.syncVersion + 1
+        )
+        try await refreshStudentsDirectory()
+        enqueueLocalChange(
+            entity: "student",
+            id: "\(student.id)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "id": student.id,
+                "firstName": student.firstName,
+                "lastName": student.lastName,
+                "email": student.email ?? NSNull(),
+                "photoPath": student.photoPath ?? NSNull(),
+                "isInjured": student.isInjured,
+                "sex": sex.name,
+                "sexSource": sex == .unspecified ? StudentSexSource.unknown.name : StudentSexSource.manual.name,
+                "birthDate": student.birthDate == nil ? NSNull() : student.birthDate!.description()
+            ]
+        )
     }
 
     func evaluations(for classId: Int64) async throws -> [Evaluation] {
@@ -2092,12 +2796,17 @@ final class KmpBridge: ObservableObject {
         status: String,
         note: String = "",
         hasIncident: Bool = false,
-        followUpRequired: Bool? = nil
+        followUpRequired: Bool? = nil,
+        sessionId: Int64? = nil
     ) async throws {
         let dateEpochMs = startOfDayEpochMs(for: date)
-        let existing = try await container.attendanceRepository.listAttendanceByDate(classId: classId, dateEpochMs: dateEpochMs)
-            .first(where: { $0.studentId == studentId })
-        let linkedSessionId = try await attendanceSessions(for: classId, on: date).first?.session.id
+        let existingRecords = try await container.attendanceRepository.listAttendanceByDate(classId: classId, dateEpochMs: dateEpochMs)
+        let linkedSessionId = sessionId
+        let existing = existingRecords.first { record in
+            record.studentId == studentId && record.sessionId?.int64Value == linkedSessionId
+        } ?? existingRecords.first { record in
+            record.studentId == studentId
+        }
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
         _ = try await container.attendanceRepository.saveAttendance(
             id: kotlinLong(existing?.id),
@@ -2128,6 +2837,66 @@ final class KmpBridge: ObservableObject {
                 "sessionId": linkedSessionId ?? NSNull()
             ]
         )
+    }
+
+    func saveAttendanceBatch(records drafts: [AttendanceDraft]) async throws {
+        guard !drafts.isEmpty else { return }
+
+        var existingByKey: [String: Attendance_] = [:]
+        let groupedDrafts = Dictionary(grouping: drafts) { draft in
+            "\(draft.classId)-\(startOfDayEpochMs(for: draft.date))"
+        }
+
+        for (_, grouped) in groupedDrafts {
+            guard let sample = grouped.first else { continue }
+            let dateEpochMs = startOfDayEpochMs(for: sample.date)
+            let existingRecords = try await container.attendanceRepository.listAttendanceByDate(
+                classId: sample.classId,
+                dateEpochMs: dateEpochMs
+            )
+            for record in existingRecords {
+                let sessionKey = record.sessionId.map { String($0.int64Value) } ?? "none"
+                existingByKey["\(record.classId)-\(record.studentId)-\(dateEpochMs)-\(sessionKey)"] = record
+                existingByKey["\(record.classId)-\(record.studentId)-\(dateEpochMs)-any"] = record
+            }
+        }
+
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        for draft in drafts {
+            let dateEpochMs = startOfDayEpochMs(for: draft.date)
+            let sessionKey = draft.sessionId.map(String.init) ?? "none"
+            let existing = existingByKey["\(draft.classId)-\(draft.studentId)-\(dateEpochMs)-\(sessionKey)"]
+                ?? existingByKey["\(draft.classId)-\(draft.studentId)-\(dateEpochMs)-any"]
+            _ = try await container.attendanceRepository.saveAttendance(
+                id: kotlinLong(existing?.id),
+                studentId: draft.studentId,
+                classId: draft.classId,
+                dateEpochMs: dateEpochMs,
+                status: draft.status,
+                note: draft.note,
+                hasIncident: draft.hasIncident,
+                followUpRequired: draft.followUpRequired ?? draft.hasIncident,
+                sessionId: kotlinLong(draft.sessionId),
+                updatedAtEpochMs: nowMs,
+                deviceId: localDeviceId,
+                syncVersion: (existing?.trace.syncVersion ?? 0) + 1
+            )
+            enqueueLocalChange(
+                entity: "attendance",
+                id: "\(draft.classId)-\(draft.studentId)-\(dateEpochMs)",
+                updatedAtEpochMs: nowMs,
+                payload: [
+                    "studentId": draft.studentId,
+                    "classId": draft.classId,
+                    "dateEpochMs": dateEpochMs,
+                    "status": draft.status,
+                    "note": draft.note,
+                    "hasIncident": draft.hasIncident,
+                    "followUpRequired": draft.followUpRequired ?? draft.hasIncident,
+                    "sessionId": draft.sessionId ?? NSNull()
+                ]
+            )
+        }
     }
 
     func repeatLatestAttendancePattern(classId: Int64, targetDate: Date) async throws -> Int {
@@ -2387,47 +3156,83 @@ final class KmpBridge: ObservableObject {
     // until an equivalent KMP use case can own the query and row-shaping logic.
     func loadMacStudentRows(classId: Int64?) async throws -> [MacStudentRowSnapshot] {
         let allClasses = try await container.classesRepository.listClasses()
-        let students: [Student]
-        if let classId {
-            students = try await container.classesRepository.listStudentsInClass(classId: classId)
-        } else {
-            students = try await container.studentsRepository.listStudents()
-        }
+        let classesToScan = classId.map { selectedClassId in
+            allClasses.filter { $0.id == selectedClassId }
+        } ?? allClasses
+        let allStudents = try await container.studentsRepository.listStudents()
+        let allStudentsById = Dictionary(allStudents.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
 
-        var classNameByStudentId: [Int64: String] = [:]
-        if let classId, let schoolClass = allClasses.first(where: { $0.id == classId }) {
-            students.forEach { classNameByStudentId[$0.id] = schoolClass.name }
-        } else {
-            for schoolClass in allClasses {
-                let roster = try await container.classesRepository.listStudentsInClass(classId: schoolClass.id)
-                for student in roster where classNameByStudentId[student.id] == nil {
-                    classNameByStudentId[student.id] = schoolClass.name
+        var studentsById: [Int64: Student] = [:]
+        var membershipsByStudentId: [Int64: [MacStudentClassMembership]] = [:]
+        var attendanceByStudentId: [Int64: [AttendanceRecordSnapshot]] = [:]
+        var incidentsByStudentId: [Int64: [Incident]] = [:]
+        var averageValuesByStudentId: [Int64: [Double]] = [:]
+        var workGroupByStudentClassKey: [String: String] = [:]
+
+        for schoolClass in classesToScan {
+            let roster = try await container.classesRepository.listStudentsInClass(classId: schoolClass.id)
+            roster.forEach { student in
+                studentsById[student.id] = student
+                membershipsByStudentId[student.id, default: []].append(
+                    MacStudentClassMembership(id: schoolClass.id, className: schoolClass.name)
+                )
+            }
+
+            let attendance = try await container.attendanceRepository.listAttendance(classId: schoolClass.id)
+                .map(attendanceSnapshot(from:))
+            for record in attendance {
+                attendanceByStudentId[record.studentId, default: []].append(record)
+            }
+
+            let incidents = try await container.incidentsRepository.listIncidents(classId: schoolClass.id)
+            for incident in incidents {
+                guard let studentId = incident.studentId?.int64Value else { continue }
+                incidentsByStudentId[studentId, default: []].append(incident)
+            }
+
+            if let notebookSheet = try? await container.notebookRepository.loadNotebookSnapshot(classId: schoolClass.id) {
+                for row in notebookSheet.rows {
+                    if let average = row.weightedAverage?.doubleValue {
+                        averageValuesByStudentId[row.student.id, default: []].append(average)
+                    }
                 }
             }
-        }
 
-        var workGroupByStudentId: [Int64: String] = [:]
-        if let classId {
-            let groups = try await container.notebookRepository.listWorkGroups(classId: classId, tabId: nil)
+            let groups = try await container.notebookRepository.listWorkGroups(classId: schoolClass.id, tabId: nil)
             let groupNames = Dictionary(
                 groups.map { ($0.id, $0.name) },
                 uniquingKeysWith: { first, _ in first }
             )
-            let members = try await container.notebookRepository.listWorkGroupMembers(classId: classId, tabId: nil)
-            for member in members where workGroupByStudentId[member.studentId] == nil {
-                workGroupByStudentId[member.studentId] = groupNames[member.groupId]
+            let members = try await container.notebookRepository.listWorkGroupMembers(classId: schoolClass.id, tabId: nil)
+            for member in members {
+                let key = macStudentClassKey(studentId: member.studentId, classId: schoolClass.id)
+                if workGroupByStudentClassKey[key] == nil {
+                    workGroupByStudentClassKey[key] = groupNames[member.groupId]
+                }
+            }
+        }
+
+        if classId == nil {
+            for student in allStudents where studentsById[student.id] == nil {
+                studentsById[student.id] = student
             }
         }
 
         var rows: [MacStudentRowSnapshot] = []
-        for student in students.sorted(by: { lhs, rhs in
+        for student in studentsById.values.sorted(by: { lhs, rhs in
             let lhsName = "\(lhs.lastName) \(lhs.firstName)"
             let rhsName = "\(rhs.lastName) \(rhs.firstName)"
             return lhsName.localizedCaseInsensitiveCompare(rhsName) == .orderedAscending
         }) {
-            let profile = try? await loadStudentProfile(studentId: student.id, classId: classId)
-            let followUpCount = profile?.followUpCount ?? 0
-            let incidentCount = profile?.incidentCount ?? 0
+            let memberships = (membershipsByStudentId[student.id] ?? [])
+                .sorted { $0.className.localizedCaseInsensitiveCompare($1.className) == .orderedAscending }
+            let primaryMembership = classId.flatMap { selectedClassId in
+                memberships.first(where: { $0.id == selectedClassId })
+            } ?? memberships.first
+            let attendance = attendanceByStudentId[student.id, default: []]
+            let incidents = incidentsByStudentId[student.id, default: []]
+            let followUpCount = attendance.filter(\.followUpRequired).count
+            let incidentCount = incidents.count
             let isFollowUp = student.isInjured || followUpCount > 0 || incidentCount > 0
             let followUpLabel: String
             if student.isInjured {
@@ -2440,24 +3245,35 @@ final class KmpBridge: ObservableObject {
                 followUpLabel = "Normal"
             }
 
-            let latestObservation = latestObservationText(from: profile)
+            let latestAttendance = attendance.sorted { $0.date > $1.date }.first
+            let averageValues = averageValuesByStudentId[student.id, default: []]
+            // TODO(KMP): expose an official cross-class student average when "Todas" spans memberships.
+            let averageScore = averageValues.isEmpty ? nil : averageValues.reduce(0, +) / Double(averageValues.count)
+            let latestObservation = latestObservationText(attendance: attendance, incidents: incidents)
+            let workGroupKey = primaryMembership.map { macStudentClassKey(studentId: student.id, classId: $0.id) }
             rows.append(
                 MacStudentRowSnapshot(
                     id: student.id,
-                    student: student,
-                    className: classNameByStudentId[student.id] ?? "Sin clase",
+                    student: allStudentsById[student.id] ?? student,
+                    classId: primaryMembership?.id,
+                    className: primaryMembership?.className ?? "Sin clase",
+                    allClassMemberships: memberships,
                     followUpLabel: followUpLabel,
-                    recentAttendanceLabel: profile?.latestAttendanceStatus ?? "Sin registro",
-                    averageText: (profile?.averageScore ?? 0) > 0 ? IosFormatting.decimal(profile?.averageScore) : "--",
+                    recentAttendanceLabel: latestAttendance?.status ?? "Sin registro",
+                    averageText: averageScore.map { IosFormatting.decimal($0) } ?? "--",
                     incidentCount: incidentCount,
                     lastObservationText: latestObservation,
                     isInjured: student.isInjured,
                     isFollowUp: isFollowUp,
-                    workGroupName: workGroupByStudentId[student.id] ?? "Sin grupo"
+                    workGroupName: workGroupKey.flatMap { workGroupByStudentClassKey[$0] } ?? "Sin grupo"
                 )
             )
         }
         return rows
+    }
+
+    private func macStudentClassKey(studentId: Int64, classId: Int64) -> String {
+        "\(studentId)|\(classId)"
     }
 
     // Audit debt: quick-note persistence belongs in shared domain logic once a KMP use case exists.
@@ -2470,11 +3286,12 @@ final class KmpBridge: ObservableObject {
         guard let student = try await container.studentsRepository.listStudents().first(where: { $0.id == studentId }) else {
             throw NSError(domain: "KmpBridge", code: 404, userInfo: [NSLocalizedDescriptionKey: "No se encontró el alumno \(studentId)."])
         }
+        let now = Date()
         let sessions = try await container.plannerRepository.listAllSessions()
             .filter { $0.groupId == classId }
             .sorted { date(from: $0) > date(from: $1) }
-        guard let session = sessions.first else {
-            throw NSError(domain: "KmpBridge", code: -4102, userInfo: [NSLocalizedDescriptionKey: "No hay sesiones del grupo donde guardar la nota rápida."])
+        guard let session = sessions.first(where: { date(from: $0) <= now }) else {
+            throw NSError(domain: "KmpBridge", code: -4102, userInfo: [NSLocalizedDescriptionKey: "No hay sesiones pasadas o de hoy donde guardar la nota rápida."])
         }
 
         let aggregate = try await container.sessionJournalRepository.getOrCreateJournal(session: session)
@@ -2495,6 +3312,19 @@ final class KmpBridge: ObservableObject {
             links: aggregate.links
         )
         _ = try await container.sessionJournalRepository.saveJournalAggregate(aggregate: updatedAggregate)
+        enqueueLocalChange(
+            entity: "session_journal",
+            id: "\(journalId)",
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+            payload: [
+                "id": journalId,
+                "planningSessionId": aggregate.journal.planningSessionId,
+                "classId": classId,
+                "studentId": studentId,
+                "note": trimmed,
+                "tag": "nota rápida"
+            ]
+        )
         status = "Nota rápida guardada para \(student.fullName)"
     }
 
@@ -2511,6 +3341,19 @@ final class KmpBridge: ObservableObject {
         }
         if let timelineEntry = profile.timeline.first, timelineEntry.subtitle != "Registro diario" {
             return timelineEntry.subtitle
+        }
+        return "Sin observaciones"
+    }
+
+    private func latestObservationText(attendance: [AttendanceRecordSnapshot], incidents: [Incident]) -> String {
+        let recentAttendance = attendance.sorted { $0.date > $1.date }
+        if let attendanceNote = recentAttendance.first(where: { !$0.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })?.note {
+            return attendanceNote
+        }
+        if let incident = incidents.sorted(by: { $0.date.epochSeconds > $1.date.epochSeconds }).first {
+            return incident.detail?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+                ? incident.detail ?? incident.title
+                : incident.title
         }
         return "Sin observaciones"
     }
@@ -2961,6 +3804,498 @@ final class KmpBridge: ObservableObject {
         try await container.configurationTemplateRepository.listTemplateVersions(templateId: templateId)
     }
 
+    func learningSituations() async throws -> [LearningSituation] {
+        try await container.learningSituationsRepository.listSituations()
+    }
+
+    func deleteLearningSituation(id: Int64) async throws {
+        try await container.learningSituationsRepository.deleteSituation(id: id)
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        enqueueLocalChange(
+            entity: "learning_situation",
+            id: "\(id)",
+            updatedAtEpochMs: nowMs,
+            payload: ["id": id],
+            op: "delete"
+        )
+    }
+
+    func learningSituationVersions(id: Int64) async throws -> [LearningSituationVersion] {
+
+        try await container.learningSituationsRepository.listVersions(learningSituationId: id)
+    }
+
+    func learningSituationClassLinks(id: Int64) async throws -> [LearningSituationClassLink] {
+        try await container.learningSituationsRepository.listClassLinks(learningSituationId: id)
+    }
+
+    func addLearningSituationClassLink(situationId: Int64, classId: Int64) async throws {
+        let current = try await container.learningSituationsRepository.listClassLinks(learningSituationId: situationId)
+        var classIds = Set(current.map { $0.classId })
+        if !classIds.contains(classId) {
+            classIds.insert(classId)
+            try await container.learningSituationsRepository.replaceClassLinks(
+                learningSituationId: situationId,
+                classIds: Array(classIds).sorted().map { KotlinLong(value: $0) }
+            )
+            let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+            enqueueLocalChange(
+                entity: "learning_situation_class_link",
+                id: "\(situationId)-\(classId)",
+                updatedAtEpochMs: nowMs,
+                payload: ["learningSituationId": situationId, "classId": classId]
+            )
+        }
+    }
+
+    func learningSituationResources(id: Int64) async throws -> [LearningSituationLinkedResource] {
+        try await container.learningSituationsRepository.listLinkedResources(learningSituationId: id)
+    }
+
+    func learningSituationSessionPlan(id: Int64) async throws -> LearningSituationSessionPlan? {
+        try await container.learningSituationsRepository.getSessionPlan(id: id)
+    }
+
+    func confirmLearningSituationImport(
+        draft: LearningSituationImportDraft,
+        existingSituationId: Int64? = nil
+    ) async throws -> Int64 {
+        guard !draft.selectedClassIds.isEmpty else {
+            throw NSError(domain: "LearningSituations", code: 1, userInfo: [NSLocalizedDescriptionKey: "Selecciona al menos un grupo antes de guardar."])
+        }
+        let storedURL = try LearningSituationDocumentStore().persistSourceDocument(from: draft.sourceURL, sha256: draft.sha256)
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let trace = AuditTrace(
+            authorUserId: nil,
+            createdAt: Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMs),
+            updatedAt: Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMs),
+            associatedGroupId: nil,
+            deviceId: localDeviceId,
+            syncVersion: 1
+        )
+        let situationId = try await container.learningSituationsRepository.saveSituation(
+            situation: LearningSituation(
+                id: existingSituationId ?? 0,
+                title: draft.title,
+                stageLabel: draft.stageLabel,
+                courseLabel: draft.courseLabel,
+                subjectLabel: draft.subjectLabel,
+                termLabel: draft.termLabel,
+                centerLabel: draft.centerLabel,
+                sessionCount: Int32(draft.sessionCount),
+                challenge: draft.challenge,
+                finalProduct: draft.finalProduct,
+                payloadJson: draft.payloadJSON,
+                status: .active,
+                trace: trace
+            )
+        ).int64Value
+        let warningJSON = (try? JSONEncoder().encode(draft.warnings))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+        _ = try await container.learningSituationsRepository.saveVersion(
+            version: LearningSituationVersion(
+                id: 0,
+                learningSituationId: situationId,
+                versionNumber: 0,
+                originalFileName: draft.sourceFileName,
+                sha256: draft.sha256,
+                localPath: storedURL.path,
+                sizeBytes: draft.sizeBytes,
+                payloadJson: draft.payloadJSON,
+                warningsJson: warningJSON,
+                trace: trace
+            )
+        )
+        let acceptedVersionNumber = try await container.learningSituationsRepository
+            .listVersions(learningSituationId: situationId)
+            .first?.versionNumber ?? 1
+        try await container.learningSituationsRepository.replaceClassLinks(
+            learningSituationId: situationId,
+            classIds: draft.selectedClassIds.sorted().map { KotlinLong(value: $0) }
+        )
+        enqueueLocalChange(
+            entity: "learning_situation",
+            id: "\(situationId)",
+            updatedAtEpochMs: nowMs,
+            payload: learningSituationSyncPayload(id: situationId, draft: draft)
+        )
+        enqueueLocalChange(
+            entity: "learning_situation_version",
+            id: "\(situationId)-\(draft.sha256)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "learningSituationId": situationId,
+                "versionNumber": acceptedVersionNumber,
+                "originalFileName": draft.sourceFileName,
+                "sha256": draft.sha256,
+                "sizeBytes": draft.sizeBytes,
+                "payloadJson": draft.payloadJSON,
+                "warningsJson": warningJSON
+            ]
+        )
+        for classId in draft.selectedClassIds {
+            enqueueLocalChange(
+                entity: "learning_situation_class_link",
+                id: "\(situationId)-\(classId)",
+                updatedAtEpochMs: nowMs,
+                payload: ["learningSituationId": situationId, "classId": classId]
+            )
+        }
+        try await uploadLearningSituationDocumentIfPaired(at: storedURL, sha256: draft.sha256)
+        return situationId
+    }
+
+    func duplicateLearningSituation(_ source: LearningSituation, classIds: [Int64]) async throws -> Int64 {
+        let versions = try await learningSituationVersions(id: source.id)
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let trace = AuditTrace(
+            authorUserId: nil,
+            createdAt: Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMs),
+            updatedAt: Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMs),
+            associatedGroupId: nil,
+            deviceId: localDeviceId,
+            syncVersion: 1
+        )
+        let newId = try await container.learningSituationsRepository.saveSituation(
+            situation: LearningSituation(
+                id: 0,
+                title: "\(source.title) (copia)",
+                stageLabel: source.stageLabel,
+                courseLabel: source.courseLabel,
+                subjectLabel: source.subjectLabel,
+                termLabel: source.termLabel,
+                centerLabel: source.centerLabel,
+                sessionCount: source.sessionCount,
+                challenge: source.challenge,
+                finalProduct: source.finalProduct,
+                payloadJson: source.payloadJson,
+                status: .draft,
+                trace: trace
+            )
+        ).int64Value
+        if let latest = versions.first {
+            _ = try await container.learningSituationsRepository.saveVersion(
+                version: LearningSituationVersion(
+                    id: 0,
+                    learningSituationId: newId,
+                    versionNumber: 0,
+                    originalFileName: latest.originalFileName,
+                    sha256: latest.sha256,
+                    localPath: latest.localPath,
+                    sizeBytes: latest.sizeBytes,
+                    payloadJson: latest.payloadJson,
+                    warningsJson: latest.warningsJson,
+                    trace: trace
+                )
+            )
+            enqueueLocalChange(
+                entity: "learning_situation_version",
+                id: "\(newId)-\(latest.sha256)",
+                updatedAtEpochMs: nowMs,
+                payload: [
+                    "learningSituationId": newId,
+                    "versionNumber": 1,
+                    "originalFileName": latest.originalFileName,
+                    "sha256": latest.sha256,
+                    "sizeBytes": latest.sizeBytes,
+                    "payloadJson": latest.payloadJson,
+                    "warningsJson": latest.warningsJson
+                ]
+            )
+        }
+        try await container.learningSituationsRepository.replaceClassLinks(
+            learningSituationId: newId,
+            classIds: classIds.map { KotlinLong(value: $0) }
+        )
+        enqueueLocalChange(
+            entity: "learning_situation",
+            id: "\(newId)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "id": newId, "title": "\(source.title) (copia)", "stageLabel": source.stageLabel,
+                "courseLabel": source.courseLabel, "subjectLabel": source.subjectLabel,
+                "termLabel": source.termLabel, "centerLabel": source.centerLabel,
+                "sessionCount": source.sessionCount, "challenge": source.challenge,
+                "finalProduct": source.finalProduct, "payloadJson": source.payloadJson,
+                "status": "DRAFT"
+            ]
+        )
+        for classId in classIds {
+            enqueueLocalChange(
+                entity: "learning_situation_class_link",
+                id: "\(newId)-\(classId)",
+                updatedAtEpochMs: nowMs,
+                payload: ["learningSituationId": newId, "classId": classId]
+            )
+        }
+        return newId
+    }
+
+    func programLearningSituationSessions(
+        situation: LearningSituation,
+        classId: Int64,
+        groupName: String,
+        scheduledSlots: [LearningSituationScheduledSlot],
+        sequenceDraft: LearningSituationSessionSequenceImportDraft? = nil
+    ) async throws {
+        guard !scheduledSlots.isEmpty else { return }
+        let detailedPlanIds: [Int: Int64]
+        if let sequenceDraft {
+            detailedPlanIds = try await persistSessionSequence(situation: situation, draft: sequenceDraft)
+        } else {
+            detailedPlanIds = [:]
+        }
+        let orderedDraftPlans = sequenceDraft?.plans.sorted { $0.sessionNumber < $1.sessionNumber } ?? []
+        let unit = TeachingUnit(
+            id: 0,
+            name: situation.title,
+            description: "Situación de aprendizaje: \(situation.challenge)",
+            colorHex: plannerCourseColor(for: classId),
+            groupId: KotlinLong(value: classId),
+            schoolClassId: KotlinLong(value: classId),
+            startDate: nil,
+            endDate: nil
+        )
+        let unitId = try await container.plannerRepository.upsertTeachingUnit(unit: unit).int64Value
+        try await saveLearningSituationLinkedResource(
+            situationId: situation.id,
+            kind: .teachingUnit,
+            resourceId: "\(unitId)",
+            classId: classId,
+            label: situation.title,
+            trace: situation.trace
+        )
+        let calendar = Calendar(identifier: .iso8601)
+        for (index, slot) in scheduledSlots.enumerated() {
+            let detailedDraft = index < orderedDraftPlans.count ? orderedDraftPlans[index] : nil
+            let components = calendar.dateComponents([.weekOfYear, .yearForWeekOfYear, .weekday], from: slot.date)
+            let weekday = ((components.weekday ?? 2) + 5) % 7 + 1
+            let weekNumber = components.weekOfYear ?? 1
+            let year = components.yearForWeekOfYear ?? Calendar.current.component(.year, from: slot.date)
+            let occupiedSession = try await plannerListSessions(weekNumber: weekNumber, year: year, classId: classId)
+                .first {
+                    Int($0.dayOfWeek) == weekday && Int($0.period) == slot.period
+                }
+            let sessionId = try await plannerUpsertSession(
+                id: occupiedSession?.id ?? 0,
+                teachingUnitId: unitId,
+                teachingUnitName: situation.title,
+                teachingUnitColor: plannerCourseColor(for: classId),
+                groupId: classId,
+                groupName: groupName,
+                dayOfWeek: weekday,
+                period: slot.period,
+                weekNumber: weekNumber,
+                year: year,
+                objectives: detailedDraft?.objective ?? situation.challenge,
+                activities: detailedDraft?.developmentSummary ?? "Sesión vinculada a \(situation.title)",
+                evaluation: detailedDraft?.criteria.joined(separator: ", ") ?? "",
+                teacherScheduleSlotId: slot.teacherScheduleSlotId,
+                startTime: slot.startTime,
+                endTime: slot.endTime,
+                learningSituationSessionPlanId: detailedDraft.flatMap { detailedPlanIds[$0.sessionNumber] },
+                status: .planned
+            )
+            try await saveLearningSituationLinkedResource(
+                situationId: situation.id,
+                kind: .planningSession,
+                resourceId: "\(sessionId)",
+                classId: classId,
+                label: slot.label,
+                trace: situation.trace
+            )
+        }
+    }
+
+    private func persistSessionSequence(
+        situation: LearningSituation,
+        draft: LearningSituationSessionSequenceImportDraft
+    ) async throws -> [Int: Int64] {
+        let storedURL = try LearningSituationDocumentStore().persistSourceDocument(from: draft.sourceURL, sha256: draft.sha256)
+        let warningsJSON = String(data: try JSONEncoder().encode(draft.warnings), encoding: .utf8) ?? "[]"
+        let existingVersions = try await container.learningSituationsRepository.listSessionSequenceVersions(learningSituationId: situation.id)
+        let versionNumber = Int32((existingVersions.first?.versionNumber ?? 0) + 1)
+        let versionId = try await container.learningSituationsRepository.saveSessionSequenceVersion(
+            version: LearningSituationSessionSequenceVersion(
+                id: 0,
+                learningSituationId: situation.id,
+                versionNumber: versionNumber,
+                originalFileName: draft.sourceFileName,
+                sha256: draft.sha256,
+                localPath: storedURL.path,
+                sizeBytes: draft.sizeBytes,
+                payloadJson: draft.payloadJSON,
+                warningsJson: warningsJSON,
+                trace: situation.trace
+            )
+        ).int64Value
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        enqueueLocalChange(
+            entity: "learning_situation_sequence_version",
+            id: "\(situation.id)-\(versionNumber)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "id": versionId, "learningSituationId": situation.id, "versionNumber": versionNumber,
+                "originalFileName": draft.sourceFileName, "sha256": draft.sha256,
+                "sizeBytes": draft.sizeBytes, "payloadJson": draft.payloadJSON,
+                "warningsJson": warningsJSON
+            ]
+        )
+        var planIds: [Int: Int64] = [:]
+        for plan in draft.plans {
+            let criteriaJSON = String(data: try JSONEncoder().encode(plan.criteria), encoding: .utf8) ?? "[]"
+            let developmentJSON = String(data: try JSONEncoder().encode(plan.development), encoding: .utf8) ?? "[]"
+            let adaptationsJSON = String(data: try JSONEncoder().encode(plan.adaptations), encoding: .utf8) ?? "[]"
+            let planId = try await container.learningSituationsRepository.saveSessionPlan(
+                plan: LearningSituationSessionPlan(
+                    id: 0,
+                    learningSituationId: situation.id,
+                    sequenceVersionId: versionId,
+                    sessionNumber: Int32(plan.sessionNumber),
+                    sourceLabel: plan.sourceLabel,
+                    title: plan.title,
+                    sessionType: plan.sessionType,
+                    effectiveMinutes: Int32(plan.effectiveMinutes),
+                    objective: plan.objective,
+                    criteriaJson: criteriaJSON,
+                    material: plan.material,
+                    developmentJson: developmentJSON,
+                    adaptationsJson: adaptationsJSON,
+                    trace: situation.trace
+                )
+            ).int64Value
+            planIds[plan.sessionNumber] = planId
+            enqueueLocalChange(
+                entity: "learning_situation_session_plan",
+                id: "\(situation.id)-\(versionId)-\(plan.sessionNumber)",
+                updatedAtEpochMs: nowMs,
+                payload: [
+                    "id": planId, "learningSituationId": situation.id, "sequenceVersionId": versionId,
+                    "sessionNumber": plan.sessionNumber, "sourceLabel": plan.sourceLabel,
+                    "title": plan.title, "sessionType": plan.sessionType,
+                    "effectiveMinutes": plan.effectiveMinutes, "objective": plan.objective,
+                    "criteriaJson": criteriaJSON, "material": plan.material,
+                    "developmentJson": developmentJSON, "adaptationsJson": adaptationsJSON
+                ]
+            )
+        }
+        try await uploadLearningSituationDocumentIfPaired(at: storedURL, sha256: draft.sha256)
+        return planIds
+    }
+
+    func materializeLearningSituationEvaluations(
+        situation: LearningSituation,
+        classId: Int64,
+        proposals: [LearningSituationEvaluationDraft]
+    ) async throws {
+        for (index, proposal) in proposals.filter(\.isSelected).enumerated() {
+            let code = "SA\(situation.id)-E\(index + 1)"
+            let evaluationId = try await container.evaluationsRepository.saveEvaluation(
+                id: nil,
+                classId: classId,
+                code: code,
+                name: proposal.title,
+                type: "Situación de aprendizaje",
+                weight: (proposal.weightPercent ?? 0) / 100.0,
+                formula: nil,
+                rubricId: proposal.rubricId.map { KotlinLong(value: $0) },
+                description: situation.title,
+                authorUserId: nil,
+                createdAtEpochMs: 0,
+                updatedAtEpochMs: 0,
+                associatedGroupId: KotlinLong(value: classId),
+                deviceId: localDeviceId,
+                syncVersion: 1
+            ).int64Value
+            try await ensureNotebookColumnForEvaluation(classId: classId, evaluationId: evaluationId, title: proposal.title, rubricId: proposal.rubricId)
+            try await saveLearningSituationLinkedResource(
+                situationId: situation.id,
+                kind: .evaluation,
+                resourceId: "\(evaluationId)",
+                classId: classId,
+                label: proposal.title,
+                trace: situation.trace
+            )
+        }
+    }
+
+    private func saveLearningSituationLinkedResource(
+        situationId: Int64,
+        kind: LearningSituationResourceKind,
+        resourceId: String,
+        classId: Int64?,
+        label: String,
+        trace: AuditTrace
+    ) async throws {
+        _ = try await container.learningSituationsRepository.saveLinkedResource(
+            resource: LearningSituationLinkedResource(
+                id: 0,
+                learningSituationId: situationId,
+                kind: kind,
+                resourceId: resourceId,
+                classId: classId.map { KotlinLong(value: $0) },
+                label: label,
+                trace: trace
+            )
+        )
+        enqueueLocalChange(
+            entity: "learning_situation_link",
+            id: "\(situationId)-\(kind.name)-\(resourceId)",
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+            payload: [
+                "learningSituationId": situationId,
+                "kind": kind.name,
+                "resourceId": resourceId,
+                "classId": classId ?? NSNull(),
+                "label": label
+            ]
+        )
+    }
+
+    private func learningSituationSyncPayload(id: Int64, draft: LearningSituationImportDraft) -> [String: Any] {
+        [
+            "id": id, "title": draft.title, "stageLabel": draft.stageLabel,
+            "courseLabel": draft.courseLabel, "subjectLabel": draft.subjectLabel,
+            "termLabel": draft.termLabel, "centerLabel": draft.centerLabel,
+            "sessionCount": draft.sessionCount, "challenge": draft.challenge,
+            "finalProduct": draft.finalProduct, "payloadJson": draft.payloadJSON,
+            "status": "ACTIVE"
+        ]
+    }
+
+    private func uploadLearningSituationDocumentIfPaired(at url: URL, sha256: String) async throws {
+        guard let host = pairedSyncHost, let token = syncToken else { return }
+        try await lanSyncClient.uploadDocument(
+            host: host,
+            token: token,
+            sha256: sha256,
+            fileURL: url,
+            pinnedFingerprint: pairedServerFingerprint
+        )
+    }
+
+    private func downloadLearningSituationDocumentIfNeeded(sha256: String) async -> String? {
+        let store = LearningSituationDocumentStore()
+        let destination = store.directoryURL.appendingPathComponent("\(sha256).docx")
+        if FileManager.default.fileExists(atPath: destination.path) { return destination.path }
+        guard let host = pairedSyncHost, let token = syncToken else { return nil }
+        do {
+            try FileManager.default.createDirectory(at: store.directoryURL, withIntermediateDirectories: true)
+            let data = try await lanSyncClient.downloadDocument(
+                host: host,
+                token: token,
+                sha256: sha256,
+                pinnedFingerprint: pairedServerFingerprint
+            )
+            let actualHash = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+            guard actualHash == sha256 else { return nil }
+            try data.write(to: destination, options: .atomic)
+            return destination.path
+        } catch {
+            return nil
+        }
+    }
+
     func loadRubricUsage(rubricId: Int64) async throws -> RubricUsageSnapshot {
         if classes.isEmpty {
             try await refreshClasses()
@@ -3039,6 +4374,164 @@ final class KmpBridge: ObservableObject {
         .sorted { lhs, rhs in
             lhs.evaluation.name.localizedCaseInsensitiveCompare(rhs.evaluation.name) == .orderedAscending
         }
+    }
+
+    func listPhysicalDefinitions() async throws -> [PhysicalTestDefinition] {
+        try await container.physicalTestsRepository.listDefinitions()
+    }
+
+    func savePhysicalDefinition(_ definition: PhysicalTestDefinition) async throws {
+        try await container.physicalTestsRepository.saveDefinition(definition: definition)
+    }
+
+    func listPhysicalBatteries() async throws -> [PhysicalTestBattery] {
+        try await container.physicalTestsRepository.listBatteries()
+    }
+
+    func savePhysicalBattery(_ battery: PhysicalTestBattery) async throws {
+        try await container.physicalTestsRepository.saveBattery(battery: battery)
+    }
+
+    func assignPhysicalBatteryToClass(_ assignment: PhysicalTestAssignment) async throws {
+        try await container.physicalTestsRepository.assignBatteryToClass(assignment: assignment)
+    }
+
+    func listPhysicalAssignmentsForClass(classId: Int64) async throws -> [PhysicalTestAssignment] {
+        try await container.physicalTestsRepository.listAssignmentsForClass(classId: classId)
+    }
+
+    func listPhysicalScalesForTest(testId: String) async throws -> [PhysicalTestScale] {
+        try await container.physicalTestsRepository.listScalesForTest(testId: testId)
+    }
+
+    func savePhysicalScale(_ scale: PhysicalTestScale) async throws {
+        try await container.physicalTestsRepository.saveScale(scale: scale)
+    }
+
+    func resolvePhysicalScale(
+        testId: String,
+        course: Int?,
+        age: Int?,
+        sex: String?,
+        batteryId: String?
+    ) async throws -> PhysicalTestScale? {
+        try await container.physicalTestsRepository.resolveScale(
+            testId: testId,
+            course: course.map { KotlinInt(value: Int32($0)) },
+            age: age.map { KotlinInt(value: Int32($0)) },
+            sex: sex,
+            batteryId: batteryId
+        )
+    }
+
+    func savePhysicalNotebookLink(_ link: PhysicalTestNotebookLink) async throws {
+        try await container.physicalTestsRepository.saveNotebookLink(link: link)
+    }
+
+    func listPhysicalNotebookLinksForAssignment(assignmentId: String) async throws -> [PhysicalTestNotebookLink] {
+        try await container.physicalTestsRepository.listNotebookLinksForAssignment(assignmentId: assignmentId)
+    }
+
+    func savePhysicalResult(_ result: PhysicalTestResult, attempts: [PhysicalTestAttempt]) async throws {
+        try await container.physicalTestsRepository.saveResult(result: result, attempts: attempts)
+    }
+
+    func listPhysicalResultsForAssignment(assignmentId: String) async throws -> [PhysicalTestResult] {
+        try await container.physicalTestsRepository.listResultsForAssignment(assignmentId: assignmentId)
+    }
+
+    func listPhysicalResultsForStudent(studentId: Int64, testId: String) async throws -> [PhysicalTestResult] {
+        try await container.physicalTestsRepository.listResultsForStudent(studentId: studentId, testId: testId)
+    }
+
+    func createNotebookPhysicalColumnForClass(
+        classId: Int64,
+        name: String,
+        categoryId: String?,
+        inputKind: NotebookCellInputKind,
+        unitOrSituation: String?,
+        scaleKind: NotebookScaleKind,
+        iconName: String,
+        weight: Double,
+        countsTowardAverage: Bool,
+        dateEpochMs: Int64
+    ) async throws -> String {
+        let normalized = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else {
+            throw NSError(domain: "KmpBridge", code: 422, userInfo: [NSLocalizedDescriptionKey: "El nombre de la columna no puede estar vacío."])
+        }
+        let nowMillis = Int64(Date().timeIntervalSince1970 * 1000)
+        let columnId = "COL_PE_\(nowMillis)_\(abs(normalized.hashValue))"
+        let nowInstant = Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMillis)
+        let trace = AuditTrace(
+            authorUserId: nil,
+            createdAt: nowInstant,
+            updatedAt: nowInstant,
+            associatedGroupId: KotlinLong(value: classId),
+            deviceId: localDeviceId,
+            syncVersion: 0
+        )
+        let tabs = try await container.notebookConfigRepository.listTabs(classId: classId)
+        let tabIds = selectedNotebookTabId.map { [$0] } ?? tabs.first.map { [$0.id] } ?? []
+        let column = NotebookColumnDefinition(
+            id: columnId,
+            title: normalized,
+            type: .numeric,
+            categoryKind: .physicalEducation,
+            instrumentKind: .physicalTest,
+            inputKind: inputKind,
+            evaluationId: nil,
+            rubricId: nil,
+            formula: nil,
+            weight: weight,
+            dateEpochMs: KotlinLong(value: dateEpochMs),
+            unitOrSituation: unitOrSituation,
+            competencyCriteriaIds: [],
+            scaleKind: scaleKind,
+            tabIds: tabIds,
+            sessions: [],
+            sharedAcrossTabs: false,
+            colorHex: "F97316",
+            iconName: iconName,
+            order: -1,
+            widthDp: 120,
+            categoryId: categoryId,
+            ordinalLevels: [],
+            availableIcons: [],
+            countsTowardAverage: countsTowardAverage,
+            isPinned: false,
+            isHidden: false,
+            visibility: .visible,
+            isLocked: false,
+            isTemplate: false,
+            emptyCellPolicy: .excludeFromAverage,
+            trace: trace
+        )
+        try await container.notebookRepository.saveColumn(classId: classId, column: column)
+        scheduleNotebookSnapshotSync(forClassId: classId)
+        return columnId
+    }
+
+    func saveNotebookPhysicalValue(
+        classId: Int64,
+        studentId: Int64,
+        columnId: String,
+        value: Double
+    ) async throws {
+        try await container.notebookRepository.upsertGrade(
+            classId: classId,
+            studentId: studentId,
+            columnId: columnId,
+            evaluationId: nil,
+            numericValue: value,
+            rubricSelections: nil,
+            evidence: nil,
+            createdAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+            deviceId: localDeviceId,
+            syncVersion: 1
+        )
+        scheduleGradeSnapshotSync(forClassId: classId)
     }
 
     func loadPESessions(weekNumber: Int, year: Int, classId: Int64?) async throws -> [PESessionSnapshot] {
@@ -3406,24 +4899,32 @@ final class KmpBridge: ObservableObject {
 
         guard refreshAfterApply else { return }
 
-        try await refreshDashboard()
-        try await refreshClasses()
-        try await refreshStudentsDirectory()
-        try await refreshRubrics()
-        try await refreshRubricClassLinks()
-        try await refreshPlanning()
+        // Ejecutamos los refreshes en una Task de utilidad para no bloquear el
+        // MainActor run loop durante las queries encadenadas. Esto evita que la UI
+        // se congele cuando el servidor LAN tarda o no está disponible.
+        let capturedChanges = changes
+        let capturedLocalDeviceId = localDeviceId
+        Task(priority: .utility) { [weak self] in
+            guard let self else { return }
+            try await self.refreshDashboard()
+            try await self.refreshClasses()
+            try await self.refreshStudentsDirectory()
+            try await self.refreshRubrics()
+            try await self.refreshRubricClassLinks()
+            try await self.refreshPlanning()
 
-        // Solo refrescar el cuaderno si alguno de los cambios sincronizados
-        // afecta a entidades del cuaderno (grades, columnas, celdas, rúbricas).
-        // Esto evita recargas innecesarias cuando solo cambian clases o alumnos.
-        let notebookEntityTypes: Set<String> = [
-            "grade", "notebook_tab", "notebook_column", "notebook_column_category", "notebook_cell", "rubric_assessment", "student", "class_roster", "evaluation", "notebook_group", "notebook_group_member"
-        ]
-        let hasNotebookChangesFromRemote = changes.contains {
-            notebookEntityTypes.contains($0.entity) && $0.deviceId != localDeviceId
-        }
-        if hasNotebookChangesFromRemote {
-            refreshCurrentNotebook()
+            // Solo refrescar el cuaderno si alguno de los cambios sincronizados
+            // afecta a entidades del cuaderno (grades, columnas, celdas, rúbricas).
+            // Esto evita recargas innecesarias cuando solo cambian clases o alumnos.
+            let notebookEntityTypes: Set<String> = [
+                "grade", "notebook_tab", "notebook_column", "notebook_column_category", "notebook_cell", "rubric_assessment", "student", "class_roster", "evaluation", "notebook_group", "notebook_group_member"
+            ]
+            let hasNotebookChangesFromRemote = capturedChanges.contains {
+                notebookEntityTypes.contains($0.entity) && $0.deviceId != capturedLocalDeviceId
+            }
+            if hasNotebookChangesFromRemote {
+                self.refreshCurrentNotebook()
+            }
         }
     }
 
@@ -3731,6 +5232,10 @@ final class KmpBridge: ObservableObject {
         notebookViewModel.selectClass(classId: id, force: true)
     }
 
+    var currentNotebookClassId: Int64? {
+        notebookViewModel.currentClassId?.int64Value
+    }
+
     func setSelectedNotebookTab(id: String?) {
         let normalized = id?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         selectedNotebookTabId = normalized
@@ -3829,6 +5334,13 @@ final class KmpBridge: ObservableObject {
         }
     }
 
+    func saveAverageConfiguration(updates: [NotebookAverageColumnConfig]) {
+        notebookViewModel.saveAverageConfiguration(updates: updates)
+        if let classId = notebookViewModel.currentClassId?.int64Value {
+            scheduleNotebookSnapshotSync(forClassId: classId)
+        }
+    }
+
     func reorderNotebookColumn(columnId: String, targetColumnId: String) {
         notebookViewModel.reorderColumns(columnId: columnId, targetColumnId: targetColumnId)
         if let classId = notebookViewModel.currentClassId?.int64Value {
@@ -3844,22 +5356,34 @@ final class KmpBridge: ObservableObject {
         }
     }
 
-    func saveNotebookWorkGroup(name: String) {
-        notebookViewModel.saveWorkGroup(name: name, groupId: nil, studentIds: [])
+    func saveTabFixedWidth(tabId: String, widthDp: Double) {
+        notebookViewModel.saveTabFixedWidth(tabId: tabId, widthDp: widthDp)
         if let classId = notebookViewModel.currentClassId?.int64Value {
             scheduleNotebookSnapshotSync(forClassId: classId)
         }
     }
 
-    func updateNotebookWorkGroup(groupId: Int64, name: String) {
-        notebookViewModel.saveWorkGroup(name: name, groupId: KotlinLong(value: groupId), studentIds: [])
+    func saveNotebookWorkGroup(name: String, learningSituationId: Int64? = nil) {
+        let situationKotlin = KotlinLong(value: learningSituationId ?? -1)
+        notebookViewModel.saveWorkGroup(name: name, groupId: nil, studentIds: [], learningSituationId: situationKotlin)
+        if let classId = notebookViewModel.currentClassId?.int64Value {
+            scheduleNotebookSnapshotSync(forClassId: classId)
+        }
+    }
+
+    func updateNotebookWorkGroup(groupId: Int64, name: String, learningSituationId: Int64? = nil) {
+        let situationKotlin = KotlinLong(value: learningSituationId ?? -1)
+        notebookViewModel.saveWorkGroup(name: name, groupId: KotlinLong(value: groupId), studentIds: [], learningSituationId: situationKotlin)
         if let classId = notebookViewModel.currentClassId?.int64Value {
             scheduleNotebookSnapshotSync(forClassId: classId)
         }
     }
 
     func renameNotebookWorkGroup(groupId: Int64, name: String) {
-        updateNotebookWorkGroup(groupId: groupId, name: name)
+        notebookViewModel.saveWorkGroup(name: name, groupId: KotlinLong(value: groupId), studentIds: [], learningSituationId: nil)
+        if let classId = notebookViewModel.currentClassId?.int64Value {
+            scheduleNotebookSnapshotSync(forClassId: classId)
+        }
     }
 
     func deleteNotebookWorkGroup(groupId: Int64) {
@@ -3904,7 +5428,7 @@ final class KmpBridge: ObservableObject {
         let tabs = (notebookState as? NotebookUiStateData)?.sheet.tabs ?? []
         let siblingCount = tabs.filter { $0.parentTabId == parentTabId }.count
         let order = Int32(siblingCount)
-        let newTab = NotebookTab(id: tabId, title: normalizedTitle, description: nil, order: order, parentTabId: parentTabId, trace: trace)
+        let newTab = NotebookTab(id: tabId, title: normalizedTitle, description: nil, order: order, parentTabId: parentTabId, fixedColumnWidth: nil, trace: trace)
         notebookViewModel.saveTab(tab: newTab)
         notebookViewModel.selectClass(classId: classId, force: true)
         scheduleNotebookSnapshotSync(forClassId: classId)
@@ -3985,6 +5509,136 @@ final class KmpBridge: ObservableObject {
         if let classId {
             scheduleNotebookSnapshotSync(forClassId: classId)
         }
+    }
+
+    func addColumnWithOptionalCategory(
+        name: String,
+        type: String,
+        weight: Double,
+        formula: String?,
+        rubricId: Int64?,
+        categoryId: String? = nil,
+        newCategoryName: String? = nil,
+        categoryKind: NotebookColumnCategoryKind = .custom,
+        instrumentKind: NotebookInstrumentKind = .custom,
+        inputKind: NotebookCellInputKind = .text,
+        dateEpochMs: Int64? = nil,
+        unitOrSituation: String? = nil,
+        competencyCriteriaIds: [Int64] = [],
+        scaleKind: NotebookScaleKind = .custom,
+        iconName: String? = nil,
+        countsTowardAverage: Bool = true,
+        isPinned: Bool = false,
+        isHidden: Bool = false,
+        visibility: NotebookColumnVisibility = .visible,
+        isLocked: Bool = false,
+        isTemplate: Bool = false
+    ) async throws -> NotebookCreatedColumnResult {
+        guard let classId = notebookViewModel.currentClassId?.int64Value else {
+            throw NSError(domain: "KmpBridge", code: 404, userInfo: [NSLocalizedDescriptionKey: "No hay clase activa."])
+        }
+
+        let currentData = notebookState as? NotebookUiStateData
+        let tabs = currentData?.sheet.tabs ?? []
+        let selectedTab = selectedNotebookTabId ?? tabs.first?.id
+        let resolvedTabIds = selectedTab.map { [$0] } ?? tabs.map { $0.id }
+        let existingCategories = currentData?.sheet.columnCategories ?? []
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let nowInstant = Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMs)
+        let trace = AuditTrace(
+            authorUserId: nil,
+            createdAt: nowInstant,
+            updatedAt: nowInstant,
+            associatedGroupId: KotlinLong(value: classId),
+            deviceId: localDeviceId,
+            syncVersion: 0
+        )
+        let finalCategory: NotebookColumnCategory?
+        if let rawName = newCategoryName?.trimmingCharacters(in: .whitespacesAndNewlines), !rawName.isEmpty {
+            let tabId = selectedTab ?? tabs.first?.id ?? "TAB_\(classId)"
+            let nextOrder = (existingCategories.filter { $0.tabId == tabId }.map(\.order).max() ?? -1) + 1
+            let category = NotebookColumnCategory(
+                id: "cat_\(nowMs)",
+                classId: classId,
+                tabId: tabId,
+                name: rawName,
+                order: nextOrder,
+                isCollapsed: false,
+                trace: trace
+            )
+            try await container.notebookRepository.saveColumnCategory(classId: classId, category: category)
+            finalCategory = category
+        } else if let categoryId {
+            finalCategory = existingCategories.first(where: { $0.id == categoryId })
+        } else {
+            finalCategory = nil
+        }
+
+        let columnType = notebookColumnType(from: type)
+        let needsEvaluation = columnType == .numeric || columnType == .rubric
+        let evaluationId: Int64?
+        if needsEvaluation {
+            let savedEvaluationId = try await container.evaluationsRepository.saveEvaluation(
+                id: nil,
+                classId: classId,
+                code: "COL_\(nowMs)",
+                name: name,
+                type: columnType == .rubric ? "Rúbrica" : "Evaluación",
+                weight: weight,
+                formula: nil,
+                rubricId: rubricId.map { KotlinLong(value: $0) },
+                description: nil,
+                authorUserId: nil,
+                createdAtEpochMs: 0,
+                updatedAtEpochMs: 0,
+                associatedGroupId: nil,
+                deviceId: nil,
+                syncVersion: 0
+            )
+            evaluationId = savedEvaluationId.int64Value
+        } else {
+            evaluationId = nil
+        }
+        let columnId = evaluationId.map { "eval_\($0)" } ?? "COL_\(nowMs)"
+        let nextOrder = (currentData?.sheet.columns.map(\.order).max() ?? -1) + 1
+        let column = NotebookColumnDefinition(
+            id: columnId,
+            title: name,
+            type: columnType,
+            categoryKind: categoryKind,
+            instrumentKind: instrumentKind,
+            inputKind: inputKind,
+            evaluationId: evaluationId.map { KotlinLong(value: $0) },
+            rubricId: rubricId.map { KotlinLong(value: $0) },
+            formula: columnType == .calculated ? formula?.nilIfEmpty : nil,
+            weight: weight,
+            dateEpochMs: dateEpochMs.map { KotlinLong(value: $0) },
+            unitOrSituation: unitOrSituation?.nilIfEmpty,
+            competencyCriteriaIds: competencyCriteriaIds.map { KotlinLong(value: $0) },
+            scaleKind: scaleKind,
+            tabIds: resolvedTabIds,
+            sessions: [],
+            sharedAcrossTabs: !tabs.isEmpty && resolvedTabIds.count == tabs.count,
+            colorHex: nil,
+            iconName: iconName,
+            order: nextOrder,
+            widthDp: 132,
+            categoryId: finalCategory?.id ?? categoryId,
+            ordinalLevels: [],
+            availableIcons: [],
+            countsTowardAverage: countsTowardAverage,
+            isPinned: isPinned,
+            isHidden: isHidden,
+            visibility: visibility,
+            isLocked: isLocked,
+            isTemplate: isTemplate,
+            emptyCellPolicy: .excludeFromAverage,
+            trace: trace
+        )
+        try await container.notebookRepository.saveColumn(classId: classId, column: column)
+        refreshCurrentNotebook()
+        scheduleNotebookSnapshotSync(forClassId: classId)
+        return NotebookCreatedColumnResult(column: column, category: finalCategory)
     }
 
     func saveNotebookCellAnnotation(
@@ -4088,6 +5742,36 @@ final class KmpBridge: ObservableObject {
         }
     }
 
+    func deleteColumns(idsAndEvalIds: [(id: String, evaluationId: Int64?)]) {
+        let classId = notebookViewModel.currentClassId?.int64Value
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        
+        for item in idsAndEvalIds {
+            enqueueLocalChange(
+                entity: "notebook_column",
+                id: item.id,
+                updatedAtEpochMs: nowMs,
+                payload: ["id": item.id],
+                op: "delete"
+            )
+            
+            if let evalId = item.evaluationId {
+                notebookViewModel.deleteColumnByEvaluationId(columnId: evalId)
+            } else {
+                notebookViewModel.deleteColumnById(columnId: item.id)
+            }
+        }
+
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 120_000_000)
+            self.refreshCurrentNotebook()
+        }
+        
+        if let classId {
+            scheduleNotebookSnapshotSync(forClassId: classId)
+        }
+    }
+
     func updateColumnWeight(columnId: Int64, newWeight: Double) {
         notebookViewModel.updateColumnWeight(columnId: columnId, newWeight: newWeight)
         if let classId = notebookViewModel.currentClassId?.int64Value {
@@ -4097,6 +5781,71 @@ final class KmpBridge: ObservableObject {
     
     func loadForNotebookCell(studentId: Int64, columnId: String, rubricId: Int64, evaluationId: Int64) {
         rubricEvaluationViewModel.loadForNotebookCell(studentId: studentId, columnId: columnId, rubricId: rubricId, evaluationId: evaluationId)
+    }
+
+    @MainActor
+    func startRubricEvaluationCoordinator(
+        columnId: String,
+        rubricId: Int64,
+        classId: Int64,
+        evaluationId: Int64,
+        studentIds: [Int64],
+        currentStudentId: Int64
+    ) {
+        rubricEvaluationCoordinator.start(
+            columnId: columnId,
+            rubricId: rubricId,
+            classId: classId,
+            evaluationId: evaluationId,
+            studentIds: studentIds,
+            currentStudentId: currentStudentId
+        )
+        isNotebookRubricAutoAdvanceActive = true
+    }
+
+    @MainActor
+    func openRubricEvaluationFromNotebook(studentId: Int64, columnId: String, rubricId: Int64, evaluationId: Int64) {
+        closeBulkRubricEvaluation()
+        isNotebookRubricAutoAdvanceActive = true
+        rubricEvaluationViewModel.loadForNotebookCell(studentId: studentId, columnId: columnId, rubricId: rubricId, evaluationId: evaluationId)
+    }
+
+    @MainActor
+    func advanceRubricEvaluationToNextStudent(visibleStudentIds: [Int64]? = nil) -> RubricEvaluationAdvanceResult {
+        guard let context = rubricEvaluationCoordinator.context else {
+            closeRubricEvaluation()
+            return .closed
+        }
+
+        refreshCurrentNotebook()
+        if context.classId > 0 {
+            scheduleNotebookSnapshotSync(forClassId: context.classId)
+        }
+
+        if let nextStudentId = rubricEvaluationCoordinator.advance(visibleStudentIds: visibleStudentIds),
+           let nextContext = rubricEvaluationCoordinator.context {
+            rubricEvaluationState = RubricEvaluationUiState.companion.default()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+                guard let self else { return }
+                self.openRubricEvaluationFromNotebook(
+                    studentId: nextStudentId,
+                    columnId: nextContext.columnId,
+                    rubricId: nextContext.rubricId,
+                    evaluationId: nextContext.evaluationId
+                )
+            }
+            return .openedNext(
+                studentId: nextStudentId,
+                remainingCount: rubricEvaluationCoordinator.lastSummary?.remainingCount ?? 0
+            )
+        }
+
+        let summary = rubricEvaluationCoordinator.lastSummary ?? RubricEvaluationAdvanceSummary(
+            evaluatedCount: context.studentIds.count,
+            remainingCount: 0
+        )
+        closeRubricEvaluation()
+        return .completed(summary)
     }
 
     func openAgendaNavigationTarget(_ target: AgendaNavigationTarget) {
@@ -4124,13 +5873,19 @@ final class KmpBridge: ObservableObject {
         )
     }
 
-    func saveRubricEvaluation(manual: Bool = true, onSuccess: @escaping () -> Void = {}) {
-        rubricEvaluationViewModel.save(manual: manual) { [weak self] in
+    func saveRubricEvaluation(
+        manual: Bool = true,
+        emitNotebookRefresh: Bool = true,
+        onSuccess: @escaping () -> Void = {}
+    ) {
+        rubricEvaluationViewModel.save(manual: manual, emitNotebookRefresh: emitNotebookRefresh) { [weak self] in
             Task { @MainActor in
                 guard let self else { return }
-                self.refreshCurrentNotebook()
-                if let classId = self.notebookViewModel.currentClassId?.int64Value {
-                    self.scheduleNotebookSnapshotSync(forClassId: classId)
+                if emitNotebookRefresh {
+                    self.refreshCurrentNotebook()
+                    if let classId = self.notebookViewModel.currentClassId?.int64Value {
+                        self.scheduleNotebookSnapshotSync(forClassId: classId)
+                    }
                 }
                 onSuccess()
             }
@@ -4245,6 +6000,8 @@ final class KmpBridge: ObservableObject {
 
     func closeRubricEvaluation() {
         rubricEvaluationState = RubricEvaluationUiState.companion.default()
+        isNotebookRubricAutoAdvanceActive = false
+        rubricEvaluationCoordinator.reset()
     }
 
     func refreshCurrentNotebook() {
@@ -4275,15 +6032,53 @@ final class KmpBridge: ObservableObject {
     }
     
     func bulkSelectedLevelId(studentId: Int64, criterionId: Int64) -> Int64? {
-        guard let state = bulkRubricEvaluationState,
-              let studentMap = state.assessments[KotlinLong(value: studentId)] else {
-            return nil
-        }
-        return studentMap[KotlinLong(value: criterionId)]?.int64Value
+        bulkAssessmentSnapshot()[studentId]?[criterionId]
     }
     
     func bulkScore(studentId: Int64) -> Double? {
-        bulkRubricEvaluationState?.scores[KotlinLong(value: studentId)]?.doubleValue
+        bulkScoreSnapshot()[studentId]
+    }
+
+    func bulkAssessmentSnapshot() -> [Int64: [Int64: Int64]] {
+        guard let rawAssessments = bulkRubricEvaluationState?.assessments as NSDictionary? else {
+            return [:]
+        }
+
+        var snapshot: [Int64: [Int64: Int64]] = [:]
+        for (rawStudentId, rawStudentAssessments) in rawAssessments {
+            guard let studentId = int64Value(rawStudentId),
+                  let rawStudentAssessments = rawStudentAssessments as? NSDictionary else {
+                continue
+            }
+
+            var selections: [Int64: Int64] = [:]
+            for (rawCriterionId, rawLevelId) in rawStudentAssessments {
+                guard let criterionId = int64Value(rawCriterionId),
+                      let levelId = int64Value(rawLevelId) else {
+                    continue
+                }
+                selections[criterionId] = levelId
+            }
+            snapshot[studentId] = selections
+        }
+
+        return snapshot
+    }
+
+    func bulkScoreSnapshot() -> [Int64: Double] {
+        guard let rawScores = bulkRubricEvaluationState?.scores as NSDictionary? else {
+            return [:]
+        }
+
+        var snapshot: [Int64: Double] = [:]
+        for (rawStudentId, rawScore) in rawScores {
+            guard let studentId = int64Value(rawStudentId),
+                  let score = doubleValue(rawScore) else {
+                continue
+            }
+            snapshot[studentId] = score
+        }
+        return snapshot
     }
     
     func bulkSaveAllAndClose() {
@@ -4356,6 +6151,17 @@ final class KmpBridge: ObservableObject {
         selectedRubricTeachingUnitId = nil
         rubricBuilderTeachingUnits = []
         rubricsViewModel.resetBuilder()
+    }
+
+    func importRubricDraft(tsv: String) async throws {
+        guard let imported = appleImportFacade.previewRubricFromTsv(text: tsv) else {
+            throw NSError(domain: "KmpBridge", code: -63, userInfo: [NSLocalizedDescriptionKey: "El archivo no tiene un formato de rúbrica válido."])
+        }
+        editingRubricBuilderId = nil
+        selectedRubricTeachingUnitId = nil
+        rubricBuilderTeachingUnits = []
+        rubricsViewModel.loadImportedRubric(importedState: imported)
+        rubricsUiState = rubricsViewModel.uiState.value as? RubricUiState
     }
 
     func loadRubricForEditing(_ rubric: RubricDetail) {
@@ -4490,114 +6296,119 @@ final class KmpBridge: ObservableObject {
 
     // Audit debt: this mirrors RubricsViewModel save/edit logic in Swift. Keep changes minimal
     // here and move persistence orchestration back to KMP with dedicated tests in a later pass.
-    func saveRubricFromBuilder(onComplete: @escaping (Bool) -> Void) {
+    @MainActor
+    func saveRubricFromBuilderReturningId() async throws -> Int64 {
         guard let state = rubricsUiState else {
-            onComplete(false)
-            return
+            throw NSError(domain: "KmpBridge", code: -71, userInfo: [NSLocalizedDescriptionKey: "No hay una rúbrica preparada para guardar."])
         }
 
-        Task { @MainActor in
-            let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
-            do {
-                let editingRubricId = editingRubricBuilderId
-                let rubricId = try await container.rubricsRepository.saveRubric(
-                    id: editingRubricId.map { KotlinLong(value: $0) },
-                    name: state.rubricName,
-                    description: state.instructions.nilIfBlank,
-                    classId: state.selectedClassId,
-                    teachingUnitId: selectedRubricTeachingUnitId.map { KotlinLong(value: $0) },
-                    createdAtEpochMs: nowMs,
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let editingRubricId = editingRubricBuilderId
+        let rubricId = try await container.rubricsRepository.saveRubric(
+            id: editingRubricId.map { KotlinLong(value: $0) },
+            name: state.rubricName,
+            description: state.instructions.nilIfBlank,
+            classId: state.selectedClassId,
+            teachingUnitId: selectedRubricTeachingUnitId.map { KotlinLong(value: $0) },
+            createdAtEpochMs: nowMs,
+            updatedAtEpochMs: nowMs,
+            deviceId: localDeviceId,
+            syncVersion: editingRubricId == nil ? 1 : 2
+        ).int64Value
+
+        if let editingRubricId {
+            let retainedCriterionIds = Set(state.criteria.compactMap { $0.id?.int64Value })
+            let existingCriteria = try await container.rubricsRepository.listCriteriaByRubric(rubricId: editingRubricId)
+            for existingCriterion in existingCriteria where !retainedCriterionIds.contains(existingCriterion.id) {
+                try await container.rubricsRepository.deleteCriterion(criterionId: existingCriterion.id)
+            }
+        }
+
+        let retainedLevelOrders = Set(state.levels.map { Int32($0.order) })
+        for criterion in state.criteria {
+            let existingLevelsByOrder: [Int32: RubricLevel]
+            if let existingCriterionId = criterion.id?.int64Value {
+                let existingLevels = try await container.rubricsRepository.listLevelsByCriterion(criterionId: existingCriterionId)
+                for existingLevel in existingLevels where !retainedLevelOrders.contains(Int32(existingLevel.order)) {
+                    try await container.rubricsRepository.deleteLevel(levelId: existingLevel.id)
+                }
+                existingLevelsByOrder = Dictionary(
+                    existingLevels.map { (Int32($0.order), $0) },
+                    uniquingKeysWith: { first, _ in first }
+                )
+            } else {
+                existingLevelsByOrder = [:]
+            }
+
+            let criterionId = try await container.rubricsRepository.saveCriterion(
+                id: criterion.id,
+                rubricId: rubricId,
+                description: criterion.description_,
+                weight: criterion.weight,
+                order: Int32(criterion.order),
+                updatedAtEpochMs: nowMs,
+                deviceId: localDeviceId,
+                syncVersion: criterion.id == nil ? 1 : 2
+            ).int64Value
+
+            for level in state.levels {
+                let reusableLevelId = existingLevelsByOrder[Int32(level.order)]?.id
+                _ = try await container.rubricsRepository.saveLevel(
+                    id: reusableLevelId.map { KotlinLong(value: $0) },
+                    criterionId: criterionId,
+                    name: level.name,
+                    points: Int32(level.points),
+                    description: criterion.levelDescriptions[level.uid],
+                    order: Int32(level.order),
                     updatedAtEpochMs: nowMs,
                     deviceId: localDeviceId,
-                    syncVersion: editingRubricId == nil ? 1 : 2
-                ).int64Value
+                    syncVersion: reusableLevelId == nil ? 1 : 2
+                )
+            }
+        }
 
-                if let editingRubricId {
-                    let retainedCriterionIds = Set(state.criteria.compactMap { $0.id?.int64Value })
-                    let existingCriteria = try await container.rubricsRepository.listCriteriaByRubric(rubricId: editingRubricId)
-                    for existingCriterion in existingCriteria where !retainedCriterionIds.contains(existingCriterion.id) {
-                        try await container.rubricsRepository.deleteCriterion(criterionId: existingCriterion.id)
-                    }
-                }
-
-                let retainedLevelOrders = Set(state.levels.map { Int32($0.order) })
-                for criterion in state.criteria {
-                    let existingLevelsByOrder: [Int32: RubricLevel]
-                    if let existingCriterionId = criterion.id?.int64Value {
-                        let existingLevels = try await container.rubricsRepository.listLevelsByCriterion(criterionId: existingCriterionId)
-                        for existingLevel in existingLevels where !retainedLevelOrders.contains(Int32(existingLevel.order)) {
-                            try await container.rubricsRepository.deleteLevel(levelId: existingLevel.id)
-                        }
-                        existingLevelsByOrder = Dictionary(
-                            existingLevels.map { (Int32($0.order), $0) },
-                            uniquingKeysWith: { first, _ in first }
-                        )
-                    } else {
-                        existingLevelsByOrder = [:]
-                    }
-
-                    let criterionId = try await container.rubricsRepository.saveCriterion(
-                        id: criterion.id,
-                        rubricId: rubricId,
-                        description: criterion.description_,
-                        weight: criterion.weight,
-                        order: Int32(criterion.order),
-                        updatedAtEpochMs: nowMs,
-                        deviceId: localDeviceId,
-                        syncVersion: criterion.id == nil ? 1 : 2
-                    ).int64Value
-
-                    for level in state.levels {
-                        let reusableLevelId = existingLevelsByOrder[Int32(level.order)]?.id
-                        _ = try await container.rubricsRepository.saveLevel(
-                            id: reusableLevelId.map { KotlinLong(value: $0) },
-                            criterionId: criterionId,
-                            name: level.name,
-                            points: Int32(level.points),
-                            description: criterion.levelDescriptions[level.uid],
-                            order: Int32(level.order),
-                            updatedAtEpochMs: nowMs,
-                            deviceId: localDeviceId,
-                            syncVersion: reusableLevelId == nil ? 1 : 2
-                        )
-                    }
-                }
-
-                enqueueLocalChange(
-                    entity: "rubric_bundle",
-                    id: "\(rubricId)",
-                    updatedAtEpochMs: nowMs,
-                    payload: [
-                        "rubricId": rubricId,
-                        "editingRubricId": editingRubricId ?? NSNull(),
-                        "name": state.rubricName,
-                        "description": state.instructions.nilIfBlank ?? NSNull(),
-                        "classId": state.selectedClassId?.int64Value ?? NSNull(),
-                        "teachingUnitId": selectedRubricTeachingUnitId ?? NSNull(),
-                        "criteria": state.criteria.map { criterion in
+        enqueueLocalChange(
+            entity: "rubric_bundle",
+            id: "\(rubricId)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "rubricId": rubricId,
+                "editingRubricId": editingRubricId ?? NSNull(),
+                "name": state.rubricName,
+                "description": state.instructions.nilIfBlank ?? NSNull(),
+                "classId": state.selectedClassId?.int64Value ?? NSNull(),
+                "teachingUnitId": selectedRubricTeachingUnitId ?? NSNull(),
+                "criteria": state.criteria.map { criterion in
+                    [
+                        "description": criterion.description_,
+                        "weight": criterion.weight,
+                        "order": Int(criterion.order),
+                        "levels": state.levels.map { level in
                             [
-                                "description": criterion.description_,
-                                "weight": criterion.weight,
-                                "order": Int(criterion.order),
-                                "levels": state.levels.map { level in
-                                    [
-                                        "name": level.name,
-                                        "points": Int(level.points),
-                                        "description": criterion.levelDescriptions[level.uid] ?? "",
-                                        "order": Int(level.order)
-                                    ]
-                                }
+                                "name": level.name,
+                                "points": Int(level.points),
+                                "description": criterion.levelDescriptions[level.uid] ?? "",
+                                "order": Int(level.order)
                             ]
                         }
                     ]
-                )
-
-                try? await refreshRubrics()
-                try? await refreshRubricClassLinks()
-                if let classId = state.selectedClassId?.int64Value {
-                    try? await refreshRubricBuilderTeachingUnits(for: classId)
                 }
-                editingRubricBuilderId = rubricId
+            ]
+        )
+
+        try? await refreshRubrics()
+        try? await refreshRubricClassLinks()
+        if let classId = state.selectedClassId?.int64Value {
+            try? await refreshRubricBuilderTeachingUnits(for: classId)
+        }
+        editingRubricBuilderId = rubricId
+        return rubricId
+    }
+
+    func saveRubricFromBuilder(onComplete: @escaping (Bool) -> Void) {
+        Task { @MainActor in
+            do {
+                _ = try await saveRubricFromBuilderReturningId()
                 onComplete(true)
             } catch {
                 onComplete(false)
@@ -4619,39 +6430,81 @@ final class KmpBridge: ObservableObject {
         let evaluations = try await container.evaluationsRepository.listClassEvaluations(classId: classId)
         let rubricDetails = try await container.rubricsRepository.listRubrics()
         let classUnits = try await plannerTeachingUnits(for: classId)
+        let currentTeachingUnitName = teachingUnitId.flatMap { plannerTeachingUnitName(for: $0, cachedUnits: classUnits) }
+        let evaluationsByRubricId = Dictionary(grouping: evaluations.compactMap { evaluation -> (Int64, Evaluation)? in
+            guard let rubricId = evaluation.rubricId?.int64Value else { return nil }
+            return (rubricId, evaluation)
+        }, by: { $0.0 }).mapValues { pairs in
+            pairs.map(\.1)
+        }
+        let rubricIdsFromEvaluations = Set(evaluationsByRubricId.keys)
 
         let evaluationInstruments = evaluations.map { evaluation in
-            PlannerAssessmentInstrument(
+            let groupTitle = plannerInstrumentGroupTitle(
+                teachingUnitId: nil,
+                evaluationDescription: evaluation.description_,
+                cachedUnits: classUnits
+            )
+            let cleanTitle = cleanPlannerInstrumentText(evaluation.name, fallback: "Evaluación")
+            let cleanType = cleanPlannerInstrumentText(evaluation.type, fallback: "Evaluación")
+            let cleanDescription = cleanPlannerInstrumentText(evaluation.description_, fallback: "")
+            return PlannerAssessmentInstrument(
                 kind: .evaluation,
                 rawId: evaluation.id,
-                title: evaluation.name,
-                subtitle: evaluation.type,
+                title: cleanTitle,
+                subtitle: cleanDescription.isEmpty ? cleanType : "\(cleanType) · \(cleanDescription)",
                 classId: classId,
                 teachingUnitId: nil,
                 evaluationId: evaluation.id,
                 rubricId: evaluation.rubricId?.int64Value,
-                resolvedEvaluationId: evaluation.id
+                resolvedEvaluationId: evaluation.id,
+                groupTitle: groupTitle,
+                isRecommendedForCurrentSA: plannerInstrumentMatchesCurrentSA(
+                    teachingUnitId: nil,
+                    groupTitle: groupTitle,
+                    currentTeachingUnitId: teachingUnitId,
+                    currentTeachingUnitName: currentTeachingUnitName
+                )
             )
         }
 
         let rubricInstruments = rubricDetails.compactMap { detail -> PlannerAssessmentInstrument? in
             let rubric = detail.rubric
             let rubricClassId = rubric.classId?.int64Value
-            if let rubricClassId, rubricClassId != classId {
+            let linkedEvaluations = evaluationsByRubricId[rubric.id] ?? []
+            let isDirectlyForClass = rubricClassId == classId
+            let isLinkedToClassEvaluation = rubricIdsFromEvaluations.contains(rubric.id)
+            guard isDirectlyForClass || isLinkedToClassEvaluation else {
                 return nil
             }
+            let rubricTeachingUnitId = rubric.teachingUnitId?.int64Value
+            let linkedEvaluationDescription = linkedEvaluations
+                .compactMap { $0.description_?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .first { !$0.isEmpty }
+            let groupTitle = plannerInstrumentGroupTitle(
+                teachingUnitId: rubricTeachingUnitId,
+                evaluationDescription: linkedEvaluationDescription,
+                cachedUnits: classUnits
+            )
+            let resolvedEvaluationId = linkedEvaluations.first?.id
+            let cleanTitle = cleanPlannerInstrumentText(rubric.name, fallback: "Rúbrica")
             return PlannerAssessmentInstrument(
                 kind: .rubric,
                 rawId: rubric.id,
-                title: rubric.name,
-                subtitle: rubric.teachingUnitId.flatMap { kotlinLongVal -> String? in
-                    plannerTeachingUnitName(for: kotlinLongVal.int64Value, cachedUnits: classUnits)
-                } ?? "Rúbrica",
+                title: cleanTitle,
+                subtitle: groupTitle == "Sin situación asignada" ? "Rúbrica" : cleanPlannerInstrumentText(groupTitle, fallback: "Rúbrica"),
                 classId: classId,
-                teachingUnitId: rubric.teachingUnitId?.int64Value,
-                evaluationId: nil,
+                teachingUnitId: rubricTeachingUnitId,
+                evaluationId: resolvedEvaluationId,
                 rubricId: rubric.id,
-                resolvedEvaluationId: nil
+                resolvedEvaluationId: resolvedEvaluationId,
+                groupTitle: groupTitle,
+                isRecommendedForCurrentSA: plannerInstrumentMatchesCurrentSA(
+                    teachingUnitId: rubricTeachingUnitId,
+                    groupTitle: groupTitle,
+                    currentTeachingUnitId: teachingUnitId,
+                    currentTeachingUnitName: currentTeachingUnitName
+                )
             )
         }
 
@@ -4662,7 +6515,15 @@ final class KmpBridge: ObservableObject {
             return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
         }
 
-        return (evaluationInstruments + prioritized).sorted {
+        var seenInstrumentIds = Set<String>()
+        let uniqueInstruments = (evaluationInstruments + prioritized).filter { instrument in
+            seenInstrumentIds.insert(instrument.id).inserted
+        }
+
+        return uniqueInstruments.sorted {
+            if $0.groupTitle != $1.groupTitle {
+                return $0.groupTitle.localizedCaseInsensitiveCompare($1.groupTitle) == .orderedAscending
+            }
             if $0.kind != $1.kind { return $0.kind == .rubric }
             return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
         }
@@ -4680,6 +6541,9 @@ final class KmpBridge: ObservableObject {
         newTeachingUnitName: String?,
         objectives: String,
         activities: String,
+        teacherScheduleSlotId: Int64? = nil,
+        startTime: String? = nil,
+        endTime: String? = nil,
         selectedInstruments: [PlannerAssessmentInstrument]
     ) async throws -> PlannerSessionSaveResult {
         let resolvedTeachingUnit = try await resolvePlannerTeachingUnit(
@@ -4709,6 +6573,9 @@ final class KmpBridge: ObservableObject {
             activities: activities,
             evaluation: evaluationSummary,
             linkedAssessmentIdsCsv: linkedIds,
+            teacherScheduleSlotId: teacherScheduleSlotId,
+            startTime: startTime,
+            endTime: endTime,
             status: .planned
         )
 
@@ -4754,6 +6621,10 @@ final class KmpBridge: ObservableObject {
             activities: sessionDescription,
             evaluation: "",
             linkedAssessmentIdsCsv: "",
+            teacherScheduleSlotId: nil,
+            startTime: nil,
+            endTime: nil,
+            learningSituationSessionPlanId: nil,
             status: SessionStatus.planned
         )
         
@@ -4908,7 +6779,10 @@ final class KmpBridge: ObservableObject {
                     "lastName": student.lastName,
                     "email": student.email ?? NSNull(),
                     "photoPath": student.photoPath ?? NSNull(),
-                    "isInjured": student.isInjured
+                    "isInjured": student.isInjured,
+                    "sex": student.sex.name,
+                    "sexSource": student.sexSource.name,
+                    "birthDate": student.birthDate == nil ? NSNull() : student.birthDate!.description()
                 ],
                 shouldPersist: false,
                 shouldScheduleAutoSync: false
@@ -5070,7 +6944,10 @@ final class KmpBridge: ObservableObject {
                     "studentId": grade.studentId,
                     "columnId": grade.columnId,
                     "evaluationId": grade.evaluationId ?? 0,
-                    "value": grade.value ?? NSNull()
+                    "value": grade.value ?? NSNull(),
+                    "evidence": grade.evidence ?? NSNull(),
+                    "evidencePath": grade.evidencePath ?? NSNull(),
+                    "rubricSelections": grade.rubricSelections ?? NSNull()
                 ],
                 shouldPersist: false,
                 shouldScheduleAutoSync: false
@@ -5281,6 +7158,9 @@ final class KmpBridge: ObservableObject {
                     email: payloadObject["email"] as? String,
                     photoPath: payloadObject["photoPath"] as? String,
                     isInjured: payloadObject["isInjured"] as? Bool ?? false,
+                    sex: studentSex(from: payloadObject["sex"]),
+                    sexSource: studentSexSource(from: payloadObject["sexSource"]),
+                    birthDate: localDate(from: payloadObject["birthDate"]),
                     updatedAtEpochMs: change.updatedAtEpochMs,
                     deviceId: change.deviceId,
                     syncVersion: 1
@@ -5356,9 +7236,9 @@ final class KmpBridge: ObservableObject {
                         columnId: columnId,
                         evaluationId: kotlinLong(evaluationIdValue),
                         value: doubleValue(payloadObject["value"]).map { KotlinDouble(value: $0) },
-                        evidence: nil,
-                        evidencePath: nil,
-                        rubricSelections: nil,
+                        evidence: payloadObject["evidence"] as? String,
+                        evidencePath: payloadObject["evidencePath"] as? String,
+                        rubricSelections: payloadObject["rubricSelections"] as? String,
                         updatedAtEpochMs: change.updatedAtEpochMs,
                         deviceId: change.deviceId,
                         syncVersion: 1
@@ -5412,6 +7292,7 @@ final class KmpBridge: ObservableObject {
                         description: description,
                         order: Int32(order),
                         parentTabId: parentTabId,
+                        fixedColumnWidth: nil,
                         trace: trace
                     )
                 )
@@ -5441,6 +7322,7 @@ final class KmpBridge: ObservableObject {
                         tabId: tabId,
                         name: name,
                         order: Int32(order),
+                        learningSituationId: nil,
                         trace: trace
                     )
                 )
@@ -5604,6 +7486,7 @@ final class KmpBridge: ObservableObject {
                         visibility: notebookColumnVisibility(payloadObject["visibility"] as? String),
                         isLocked: boolValue(payloadObject["isLocked"] ?? payloadObject["is_locked"]) ?? false,
                         isTemplate: boolValue(payloadObject["isTemplate"] ?? payloadObject["is_template"]) ?? false,
+                        emptyCellPolicy: .excludeFromAverage,
                         trace: trace
                     )
                 )
@@ -5652,6 +7535,140 @@ final class KmpBridge: ObservableObject {
                 )
                 _ = try await container.plannerRepository.upsertTeachingUnit(unit: unit)
 
+            case "learning_situation":
+                let updatedAt = Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs)
+                _ = try await container.learningSituationsRepository.saveSituation(
+                    situation: LearningSituation(
+                        id: int64Value(payloadObject["id"]) ?? 0,
+                        title: payloadObject["title"] as? String ?? "Situación",
+                        stageLabel: payloadObject["stageLabel"] as? String ?? "",
+                        courseLabel: payloadObject["courseLabel"] as? String ?? "",
+                        subjectLabel: payloadObject["subjectLabel"] as? String ?? "",
+                        termLabel: payloadObject["termLabel"] as? String ?? "",
+                        centerLabel: payloadObject["centerLabel"] as? String ?? "",
+                        sessionCount: Int32(int64Value(payloadObject["sessionCount"]) ?? 0),
+                        challenge: payloadObject["challenge"] as? String ?? "",
+                        finalProduct: payloadObject["finalProduct"] as? String ?? "",
+                        payloadJson: payloadObject["payloadJson"] as? String ?? "{}",
+                        status: (payloadObject["status"] as? String == "DRAFT") ? .draft : .active,
+                        trace: AuditTrace(
+                            authorUserId: nil, createdAt: updatedAt, updatedAt: updatedAt,
+                            associatedGroupId: nil, deviceId: change.deviceId, syncVersion: 1
+                        )
+                    )
+                )
+
+            case "learning_situation_version":
+                guard let situationId = int64Value(payloadObject["learningSituationId"]),
+                      let hash = payloadObject["sha256"] as? String else { continue }
+                let localPath = await downloadLearningSituationDocumentIfNeeded(sha256: hash)
+                let updatedAt = Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs)
+                _ = try await container.learningSituationsRepository.saveVersion(
+                    version: LearningSituationVersion(
+                        id: 0,
+                        learningSituationId: situationId,
+                        versionNumber: Int32(int64Value(payloadObject["versionNumber"]) ?? 0),
+                        originalFileName: payloadObject["originalFileName"] as? String ?? "\(hash).docx",
+                        sha256: hash,
+                        localPath: localPath,
+                        sizeBytes: int64Value(payloadObject["sizeBytes"]) ?? 0,
+                        payloadJson: payloadObject["payloadJson"] as? String ?? "{}",
+                        warningsJson: payloadObject["warningsJson"] as? String ?? "[]",
+                        trace: AuditTrace(
+                            authorUserId: nil, createdAt: updatedAt, updatedAt: updatedAt,
+                            associatedGroupId: nil, deviceId: change.deviceId, syncVersion: 1
+                        )
+                    )
+                )
+
+            case "learning_situation_sequence_version":
+                guard let situationId = int64Value(payloadObject["learningSituationId"]),
+                      let hash = payloadObject["sha256"] as? String else { continue }
+                let localPath = await downloadLearningSituationDocumentIfNeeded(sha256: hash)
+                let updatedAt = Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs)
+                _ = try await container.learningSituationsRepository.saveSessionSequenceVersion(
+                    version: LearningSituationSessionSequenceVersion(
+                        id: int64Value(payloadObject["id"]) ?? 0,
+                        learningSituationId: situationId,
+                        versionNumber: Int32(int64Value(payloadObject["versionNumber"]) ?? 0),
+                        originalFileName: payloadObject["originalFileName"] as? String ?? "\(hash).docx",
+                        sha256: hash,
+                        localPath: localPath,
+                        sizeBytes: int64Value(payloadObject["sizeBytes"]) ?? 0,
+                        payloadJson: payloadObject["payloadJson"] as? String ?? "{}",
+                        warningsJson: payloadObject["warningsJson"] as? String ?? "[]",
+                        trace: AuditTrace(
+                            authorUserId: nil, createdAt: updatedAt, updatedAt: updatedAt,
+                            associatedGroupId: nil, deviceId: change.deviceId, syncVersion: 1
+                        )
+                    )
+                )
+
+            case "learning_situation_session_plan":
+                guard let situationId = int64Value(payloadObject["learningSituationId"]),
+                      let sequenceVersionId = int64Value(payloadObject["sequenceVersionId"]),
+                      let title = payloadObject["title"] as? String else { continue }
+                let updatedAt = Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs)
+                _ = try await container.learningSituationsRepository.saveSessionPlan(
+                    plan: LearningSituationSessionPlan(
+                        id: int64Value(payloadObject["id"]) ?? 0,
+                        learningSituationId: situationId,
+                        sequenceVersionId: sequenceVersionId,
+                        sessionNumber: Int32(int64Value(payloadObject["sessionNumber"]) ?? 0),
+                        sourceLabel: payloadObject["sourceLabel"] as? String ?? "",
+                        title: title,
+                        sessionType: payloadObject["sessionType"] as? String ?? "",
+                        effectiveMinutes: Int32(int64Value(payloadObject["effectiveMinutes"]) ?? 0),
+                        objective: payloadObject["objective"] as? String ?? "",
+                        criteriaJson: payloadObject["criteriaJson"] as? String ?? "[]",
+                        material: payloadObject["material"] as? String ?? "",
+                        developmentJson: payloadObject["developmentJson"] as? String ?? "[]",
+                        adaptationsJson: payloadObject["adaptationsJson"] as? String ?? "[]",
+                        trace: AuditTrace(
+                            authorUserId: nil, createdAt: updatedAt, updatedAt: updatedAt,
+                            associatedGroupId: nil, deviceId: change.deviceId, syncVersion: 1
+                        )
+                    )
+                )
+
+            case "learning_situation_class_link":
+                guard let situationId = int64Value(payloadObject["learningSituationId"]),
+                      let classId = int64Value(payloadObject["classId"]) else { continue }
+                let current = try await container.learningSituationsRepository.listClassLinks(learningSituationId: situationId)
+                let classIds = Set(current.map(\.classId) + [classId])
+                try await container.learningSituationsRepository.replaceClassLinks(
+                    learningSituationId: situationId,
+                    classIds: Array(classIds).map { KotlinLong(value: $0) }
+                )
+
+            case "learning_situation_link":
+                guard let situationId = int64Value(payloadObject["learningSituationId"]),
+                      let kindName = payloadObject["kind"] as? String,
+                      let resourceId = payloadObject["resourceId"] as? String else { continue }
+                let kind: LearningSituationResourceKind
+                switch kindName {
+                case "TEACHING_UNIT": kind = .teachingUnit
+                case "PLANNING_SESSION": kind = .planningSession
+                case "EVALUATION": kind = .evaluation
+                case "RUBRIC": kind = .rubric
+                default: kind = .notebookColumn
+                }
+                let updatedAt = Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs)
+                _ = try await container.learningSituationsRepository.saveLinkedResource(
+                    resource: LearningSituationLinkedResource(
+                        id: 0,
+                        learningSituationId: situationId,
+                        kind: kind,
+                        resourceId: resourceId,
+                        classId: int64Value(payloadObject["classId"]).map { KotlinLong(value: $0) },
+                        label: payloadObject["label"] as? String ?? "",
+                        trace: AuditTrace(
+                            authorUserId: nil, createdAt: updatedAt, updatedAt: updatedAt,
+                            associatedGroupId: nil, deviceId: change.deviceId, syncVersion: 1
+                        )
+                    )
+                )
+
             case "planning_session":
                 let sessionId = int64Value(payloadObject["id"]) ?? 0
                 let teachingUnitId = int64Value(payloadObject["teachingUnitId"]) ?? 0
@@ -5686,6 +7703,10 @@ final class KmpBridge: ObservableObject {
                     activities: payloadObject["activities"] as? String ?? "",
                     evaluation: payloadObject["evaluation"] as? String ?? "",
                     linkedAssessmentIdsCsv: payloadObject["linkedAssessmentIdsCsv"] as? String ?? "",
+                    teacherScheduleSlotId: int64Value(payloadObject["teacherScheduleSlotId"]).map { KotlinLong(value: $0) },
+                    startTime: payloadObject["startTime"] as? String,
+                    endTime: payloadObject["endTime"] as? String,
+                    learningSituationSessionPlanId: int64Value(payloadObject["learningSituationSessionPlanId"]).map { KotlinLong(value: $0) },
                     status: status
                 )
                 do {
@@ -5894,6 +7915,7 @@ final class KmpBridge: ObservableObject {
                         classId: classId,
                         studentId: studentId,
                         columnId: columnId,
+                        evaluationId: kotlinLong(evaluationId),
                         numericValue: resolvedScore?.doubleValue ?? 0.0,
                         rubricSelections: selections.isEmpty ? nil : selections,
                         evidence: nil,
@@ -6067,9 +8089,9 @@ final class KmpBridge: ObservableObject {
 
     private func syncApplyPriority(for entity: String) -> Int {
         switch entity {
-        case "class", "student", "rubric_bundle", "teaching_unit", "calendar_event", "teacher_schedule":
+        case "class", "student", "rubric_bundle", "teaching_unit", "calendar_event", "teacher_schedule", "learning_situation":
             return 0
-        case "evaluation", "weekly_slot", "teacher_schedule_slot", "planner_evaluation_period", "notebook_tab", "notebook_column", "notebook_column_category", "notebook_group", "notebook_group_member":
+        case "evaluation", "weekly_slot", "teacher_schedule_slot", "planner_evaluation_period", "notebook_tab", "notebook_column", "notebook_column_category", "notebook_group", "notebook_group_member", "learning_situation_version", "learning_situation_class_link", "learning_situation_link":
             return 1
         case "class_roster", "attendance", "incident":
             return 2
@@ -6151,19 +8173,22 @@ final class KmpBridge: ObservableObject {
     func cellText(studentId: Int64, columnId: String) -> String {
         guard let index = notebookCellValueIndex() else { return "" }
         let key = cellKey(studentId: studentId, columnId: columnId)
-        return index.textByKey[key] ?? index.textDraftByKey[key] ?? ""
+        return index.textDraftByKey[key] ?? index.textByKey[key] ?? ""
     }
     
     func numericGradeText(studentId: Int64, columnId: String) -> String {
         guard let index = notebookCellValueIndex() else { return "" }
         let key = cellKey(studentId: studentId, columnId: columnId)
+        if let draft = index.numericDraftByKey[key] {
+            return draft
+        }
         if let persisted = index.numericByKey[key] {
             return persisted
         }
         if let persistedEval = index.numericByEvalKey[key] {
             return persistedEval
         }
-        return index.numericDraftByKey[key] ?? ""
+        return ""
     }
 
     func numericGradeOnTenText(studentId: Int64, columnId: String) -> String {
@@ -6202,11 +8227,11 @@ final class KmpBridge: ObservableObject {
     func cellCheck(studentId: Int64, columnId: String) -> Bool {
         guard let index = notebookCellValueIndex() else { return false }
         let key = cellKey(studentId: studentId, columnId: columnId)
-        if let persisted = index.checkByKey[key] {
-            return persisted
-        }
         if let draft = index.checkDraftByKey[key] {
             return draft
+        }
+        if let persisted = index.checkByKey[key] {
+            return persisted
         }
         return false
     }
@@ -6268,6 +8293,39 @@ final class KmpBridge: ObservableObject {
             }
         }
         return nil
+    }
+
+    private func studentSex(from raw: Any?) -> StudentSex {
+        let value = (raw as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        switch value {
+        case "MALE", "M", "H", "HOMBRE", "MASCULINO":
+            return .male
+        case "FEMALE", "F", "MUJER", "FEMENINO":
+            return .female
+        default:
+            return .unspecified
+        }
+    }
+
+    private func studentSexSource(from raw: Any?) -> StudentSexSource {
+        let value = (raw as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        switch value {
+        case "MANUAL":
+            return .manual
+        case "AI_INFERRED", "AIINFERRED", "IA":
+            return .aiInferred
+        case "IMPORTED":
+            return .imported
+        default:
+            return .unknown
+        }
+    }
+
+    private func localDate(from raw: Any?) -> LocalDate? {
+        guard let value = raw as? String else { return nil }
+        let parts = value.split(separator: "-").compactMap { Int32($0) }
+        guard parts.count == 3 else { return nil }
+        return LocalDate(year: parts[0], monthNumber: parts[1], dayOfMonth: parts[2])
     }
 
     private func longList(_ raw: Any?) -> [KotlinLong] {
@@ -6544,6 +8602,9 @@ final class KmpBridge: ObservableObject {
                 do {
                     try await Task.sleep(nanoseconds: self.nextAutoSyncIntervalNanoseconds())
                     guard self.pairedSyncHost != nil, self.syncToken != nil else { continue }
+                    #if os(macOS)
+                    await self.checkLocalDbFileModification()
+                    #endif
                     await self.syncNow(reason: "periodic", forceFullPull: false, silent: true)
                 } catch {
                     // Evitamos romper el bucle por errores transitorios de red.
@@ -6579,6 +8640,56 @@ final class KmpBridge: ObservableObject {
                 return
             }
             await self.applySyncEvent(event)
+        }
+    }
+
+    private func getDatabaseURL() -> URL? {
+        let fileManager = FileManager.default
+        guard let appSupportURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            return nil
+        }
+        #if os(macOS)
+        let dbName = "desktop_mi_gestor_kmp.db"
+        #else
+        let dbName = "mi_gestor_kmp.db"
+        #endif
+        return appSupportURL
+            .appendingPathComponent("MiGestor", isDirectory: true)
+            .appendingPathComponent(dbName, isDirectory: false)
+    }
+
+    private func checkLocalDbFileModification() async {
+        guard let dbURL = getDatabaseURL() else { return }
+        do {
+            let attributes = try FileManager.default.attributesOfItem(atPath: dbURL.path)
+            guard let modificationDate = attributes[.modificationDate] as? Date else { return }
+            
+            let isFirstCheck = lastCheckedDbModificationDate == .distantPast
+            if isFirstCheck {
+                lastCheckedDbModificationDate = modificationDate
+                return
+            }
+            
+            if modificationDate > lastCheckedDbModificationDate {
+                let timeSinceLocalMutation = Date().timeIntervalSince(lastLocalMutationAt)
+                if timeSinceLocalMutation > 1.5 {
+                    await MainActor.run {
+                        self.refreshCurrentNotebook()
+                        Task(priority: .utility) { [weak self] in
+                            guard let self else { return }
+                            try? await self.refreshDashboard()
+                            try? await self.refreshClasses()
+                            try? await self.refreshStudentsDirectory()
+                            try? await self.refreshRubrics()
+                            try? await self.refreshRubricClassLinks()
+                            try? await self.refreshPlanning()
+                        }
+                    }
+                }
+                lastCheckedDbModificationDate = modificationDate
+            }
+        } catch {
+            // El archivo no existe o no se puede leer
         }
     }
 
@@ -7033,6 +9144,33 @@ final class LanSyncClient {
         )
         guard let http = response as? HTTPURLResponse else { return false }
         return (200..<300).contains(http.statusCode)
+    }
+
+    func uploadDocument(host: String, token: String, sha256: String, fileURL: URL, pinnedFingerprint: String?) async throws {
+        let url = try buildURL(host: Self.normalizeHost(host), path: "/sync/documents/\(sha256)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/vnd.openxmlformats-officedocument.wordprocessingml.document", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try Data(contentsOf: fileURL)
+        request.timeoutInterval = 45
+        let (_, response) = try await executeDataTask(request: request, pinnedFingerprint: pinnedFingerprint, operation: "document-upload", host: host)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw NSError(domain: "Sync", code: -211, userInfo: [NSLocalizedDescriptionKey: "No se pudo sincronizar el documento de la situación."])
+        }
+    }
+
+    func downloadDocument(host: String, token: String, sha256: String, pinnedFingerprint: String?) async throws -> Data {
+        let url = try buildURL(host: Self.normalizeHost(host), path: "/sync/documents/\(sha256)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 45
+        let (data, response) = try await executeDataTask(request: request, pinnedFingerprint: pinnedFingerprint, operation: "document-download", host: host)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw NSError(domain: "Sync", code: -212, userInfo: [NSLocalizedDescriptionKey: "Documento no disponible en el dispositivo emparejado."])
+        }
+        return data
     }
 
     private func makeSession(pinnedFingerprint: String?) -> URLSession {
@@ -7616,6 +9754,7 @@ extension KmpBridge {
             visibility: .visible,
             isLocked: false,
             isTemplate: false,
+            emptyCellPolicy: .excludeFromAverage,
             trace: trace
         )
         saveColumn(column: column)
@@ -7682,6 +9821,7 @@ extension KmpBridge {
             visibility: .visible,
             isLocked: false,
             isTemplate: false,
+            emptyCellPolicy: .excludeFromAverage,
             trace: trace
         )
         try await container.notebookRepository.saveColumn(classId: classId, column: column)
@@ -8502,7 +10642,8 @@ final class PinnedTLSDelegate: NSObject, URLSessionDelegate, URLSessionTaskDeleg
     ) {
         guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
               let trust = challenge.protectionSpace.serverTrust,
-              let certificate = SecTrustGetCertificateAtIndex(trust, 0) else {
+              let certificateChain = SecTrustCopyCertificateChain(trust) as? [SecCertificate],
+              let certificate = certificateChain.first else {
             completionHandler(.performDefaultHandling, nil)
             return
         }

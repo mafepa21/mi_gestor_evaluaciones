@@ -2,14 +2,14 @@ import SwiftUI
 import AppKit
 
 enum MacAppStyle {
-    static let pagePadding: CGFloat = 24
-    static let sectionSpacing: CGFloat = 20
-    static let cardSpacing: CGFloat = 12
-    static let innerPadding: CGFloat = 16
+    static let pagePadding: CGFloat = AppleDesignSystem.pagePadding
+    static let sectionSpacing: CGFloat = AppleDesignSystem.sectionSpacing
+    static let cardSpacing: CGFloat = AppleDesignSystem.cardSpacing
+    static let innerPadding: CGFloat = AppleDesignSystem.cardSpacing
 
-    static let pageTitle: Font = .title2.weight(.semibold)
+    static let pageTitle: Font = .title3.weight(.semibold)
     static let sectionTitle: Font = .headline
-    static let metricValue: Font = .system(size: 28, weight: .medium, design: .rounded)
+    static let metricValue: Font = .system(size: 22, weight: .medium, design: .rounded)
     static let metricLabel: Font = .caption.weight(.medium)
     static let bodyText: Font = .callout
 
@@ -20,13 +20,16 @@ enum MacAppStyle {
     static let cardBorder = Color(nsColor: .separatorColor).opacity(0.6)
     static let divider = Color(nsColor: .separatorColor)
 
-    static let successTint = Color.green
-    static let warningTint = Color.orange
-    static let dangerTint = Color.red
-    static let infoTint = Color.accentColor
+    static let successTint = AppleDesignSystem.success
+    static let warningTint = AppleDesignSystem.warning
+    static let dangerTint = AppleDesignSystem.danger
+    static let infoTint = AppleDesignSystem.accent
 
-    static let cardRadius: CGFloat = 10
-    static let chipRadius: CGFloat = 6
+    static let cardRadius: CGFloat = AppleDesignSystem.cardRadius
+    static let chipRadius: CGFloat = AppleDesignSystem.controlRadius
+
+    static let smallStateAnimation: Animation = .spring(response: 0.35, dampingFraction: 0.75)
+    static let smallStateTransition: AnyTransition = .opacity.combined(with: .scale(scale: 0.98))
 }
 
 struct MacMetricCard: View {

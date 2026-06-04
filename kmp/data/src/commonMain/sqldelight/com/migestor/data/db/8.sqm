@@ -1,9 +1,9 @@
 -- Migration from version 7 to 8
 -- Add tab hierarchy and persisted column width.
 
-PRAGMA foreign_keys = OFF;
+PRAGMA foreign_keys = 0;
 
 ALTER TABLE notebook_tabs ADD COLUMN parent_tab_id TEXT;
 ALTER TABLE notebook_columns ADD COLUMN width_dp REAL NOT NULL DEFAULT 132.0;
 
-PRAGMA foreign_keys = ON;
+PRAGMA foreign_keys = 1;

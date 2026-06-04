@@ -2,1005 +2,7 @@ import SwiftUI
 import AppKit
 import MiGestorKit
 
-struct MacStudentsView: View {
-    @ObservedObject var bridge: KmpBridge
-    @Binding var selectedClassId: Int64?
-    @Binding var selectedStudentId: Int64?
-    let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
-
-    @State private var rows: [KmpBridge.MacStudentRowSnapshot] = []
-    @State private var profile: KmpBridge.StudentProfileSnapshot?
-    @State private var searchText = ""
-    @State private var trackingFilter = "todos"
-    @State private var workGroupFilter = "Todos"
-    @State private var quickNoteText = ""
-    @State private var isLoadingRows = false
-    @State private var isSavingNote = false
-    @State private var errorMessage: String?
-    @State private var riskPack: TeachingEvidencePack?
-    @FocusState private var isSearchFocused: Bool
-
-    private var filteredRows: [KmpBridge.MacStudentRowSnapshot] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        return rows.filter { row in
-            let matchesQuery = query.isEmpty ||
-                row.student.fullName.localizedCaseInsensitiveContains(query) ||
-                row.className.localizedCaseInsensitiveContains(query)
-            let matchesTracking: Bool = {
-                switch trackingFilter {
-                case "seguimiento":
-                    return row.isFollowUp
-                case "lesionados":
-                    return row.isInjured
-                default:
-                    return true
-                }
-            }()
-            let matchesGroup = workGroupFilter == "Todos" || row.workGroupName == workGroupFilter
-            return matchesQuery && matchesTracking && matchesGroup
-        }
-    }
-
-    private var selectedRow: KmpBridge.MacStudentRowSnapshot? {
-        guard let selectedStudentId else { return filteredRows.first }
-        return rows.first(where: { $0.id == selectedStudentId }) ?? filteredRows.first
-    }
-
-    private var workGroupOptions: [String] {
-        ["Todos"] + Array(Set(rows.map(\.workGroupName))).sorted()
-    }
-
-    var body: some View {
-        HSplitView {
-            studentsSidebar
-                .frame(minWidth: 250, idealWidth: 270, maxWidth: 310)
-
-            VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
-                studentsHeader
-                studentsTable
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .padding(MacAppStyle.pagePadding)
-            .frame(minWidth: 640)
-
-            studentInspector
-                .frame(minWidth: 330, idealWidth: 370, maxWidth: 430)
-        }
-        .background(MacAppStyle.pageBackground)
-        .task {
-            if selectedClassId == nil {
-                selectedClassId = bridge.selectedStudentsClassId
-            }
-            await reloadRows()
-        }
-        .task(id: selectedClassId) {
-            await bridge.selectStudentsClass(classId: selectedClassId)
-            await reloadRows()
-        }
-        .onChange(of: selectedStudentId) { _, _ in
-            Task { await reloadProfile() }
-        }
-        .onChange(of: filteredRows.map(\.id)) { _, visibleIds in
-            guard !visibleIds.isEmpty else {
-                selectedStudentId = nil
-                return
-            }
-            if selectedStudentId == nil || !visibleIds.contains(selectedStudentId ?? -1) {
-                selectedStudentId = visibleIds.first
-            }
-        }
-        .onExitCommand {
-            if !searchText.isEmpty {
-                searchText = ""
-            }
-        }
-        .background {
-            Button("") {
-                isSearchFocused = true
-            }
-            .keyboardShortcut("f", modifiers: .command)
-            .opacity(0)
-
-            Button("") {
-                openSelectedInNotebook()
-            }
-            .keyboardShortcut(.return, modifiers: [])
-            .opacity(0)
-        }
-    }
-
-    private var studentsSidebar: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Filtros")
-                    .font(.title3.weight(.semibold))
-                Text("\(filteredRows.count) de \(rows.count) alumnos")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Clase")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Picker("Clase", selection: $selectedClassId) {
-                    Text("Todas").tag(Optional<Int64>.none)
-                    ForEach(bridge.classes, id: \.id) { schoolClass in
-                        Text(schoolClass.name).tag(Optional(schoolClass.id))
-                    }
-                }
-                .labelsHidden()
-                .frame(maxWidth: .infinity)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Busqueda")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                TextField("Nombre o clase", text: $searchText)
-                    .textFieldStyle(.roundedBorder)
-                    .focused($isSearchFocused)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Seguimiento")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Picker("Seguimiento", selection: $trackingFilter) {
-                    Text("Todos").tag("todos")
-                    Text("Seguimiento").tag("seguimiento")
-                    Text("Lesionados").tag("lesionados")
-                }
-                .pickerStyle(.segmented)
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Grupo de trabajo")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Picker("Grupo de trabajo", selection: $workGroupFilter) {
-                    ForEach(workGroupOptions, id: \.self) { option in
-                        Text(option).tag(option)
-                    }
-                }
-                .labelsHidden()
-                .frame(maxWidth: .infinity)
-            }
-
-            Spacer()
-
-            if let errorMessage {
-                Text(errorMessage)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
-        }
-        .padding(MacAppStyle.pagePadding)
-        .background(MacAppStyle.cardBackground)
-    }
-
-    private var studentsHeader: some View {
-        HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Alumnado")
-                    .font(MacAppStyle.pageTitle)
-                Text("Tabla densa con seguimiento, asistencia, media e incidencias.")
-                    .font(MacAppStyle.bodyText)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            if isLoadingRows {
-                ProgressView()
-                    .controlSize(.small)
-            }
-            Button {
-                Task { await reloadRows() }
-            } label: {
-                Label("Recargar", systemImage: "arrow.clockwise")
-            }
-            .buttonStyle(.bordered)
-        }
-    }
-
-    @ViewBuilder
-    private var studentsTable: some View {
-        if rows.isEmpty && !isLoadingRows {
-            ContentUnavailableView(
-                "Sin alumnado",
-                systemImage: "person.3",
-                description: Text("No hay alumnos disponibles para la clase seleccionada.")
-            )
-        } else if filteredRows.isEmpty {
-            ContentUnavailableView(
-                "Sin coincidencias",
-                systemImage: "line.3.horizontal.decrease.circle",
-                description: Text("Ajusta la busqueda o los filtros de seguimiento.")
-            )
-        } else {
-            Table(filteredRows, selection: $selectedStudentId) {
-                TableColumn("Nombre") { row in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(row.student.fullName)
-                            .font(.system(size: 13, weight: .semibold))
-                        if row.student.email?.isEmpty == false {
-                            Text(row.student.email ?? "")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                TableColumn("Clase") { row in
-                    Text(row.className)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                }
-                TableColumn("Seguimiento") { row in
-                    MacStatusPill(
-                        label: row.followUpLabel,
-                        isActive: row.isFollowUp,
-                        tint: row.isInjured ? MacAppStyle.warningTint : (row.isFollowUp ? MacAppStyle.infoTint : MacAppStyle.successTint)
-                    )
-                }
-                .width(min: 112, ideal: 130)
-                TableColumn("Asistencia reciente") { row in
-                    Text(row.recentAttendanceLabel)
-                        .font(.system(size: 12, weight: .medium))
-                }
-                .width(min: 130, ideal: 150)
-                TableColumn("Media") { row in
-                    Text(row.averageText)
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .monospacedDigit()
-                }
-                .width(min: 70, ideal: 82)
-                TableColumn("Incidencias") { row in
-                    Text("\(row.incidentCount)")
-                        .font(.system(size: 12, weight: row.incidentCount > 0 ? .bold : .regular))
-                        .foregroundStyle(row.incidentCount > 0 ? .red : .secondary)
-                        .monospacedDigit()
-                }
-                .width(min: 82, ideal: 96)
-                TableColumn("Última observación") { row in
-                    Text(row.lastObservationText)
-                        .font(.system(size: 12))
-                        .foregroundStyle(row.lastObservationText == "Sin observaciones" ? .secondary : .primary)
-                        .lineLimit(1)
-                }
-            }
-            .tableStyle(.inset(alternatesRowBackgrounds: true))
-        }
-    }
-
-    @ViewBuilder
-    private var studentInspector: some View {
-        if let selectedRow {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Ficha del alumno")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                        Text(selectedRow.student.fullName)
-                            .font(.title2.weight(.semibold))
-                        Text(selectedRow.className)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    HStack(spacing: 8) {
-                        MacStatusPill(
-                            label: selectedRow.followUpLabel,
-                            isActive: selectedRow.isFollowUp,
-                            tint: selectedRow.isInjured ? MacAppStyle.warningTint : MacAppStyle.infoTint
-                        )
-                        MacStatusPill(
-                            label: selectedRow.workGroupName,
-                            isActive: selectedRow.workGroupName != "Sin grupo",
-                            tint: MacAppStyle.successTint
-                        )
-                    }
-
-                    if let profile {
-                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                            MacMetricCard(label: "Asistencia", value: "\(profile.attendanceRate)%", systemImage: "checklist.checked")
-                            MacMetricCard(label: "Media", value: IosFormatting.decimal(profile.averageScore), systemImage: "sum")
-                            MacMetricCard(label: "Incidencias", value: "\(profile.incidentCount)", systemImage: "exclamationmark.bubble")
-                            MacMetricCard(label: "Evidencias", value: "\(profile.evidenceCount)", systemImage: "paperclip")
-                        }
-
-                        if let riskPack, let level = riskPack.riskLevel {
-                            inspectorSection("Radar de riesgo") {
-                                VStack(alignment: .leading, spacing: 10) {
-                                    MacStatusPill(
-                                        label: level.title,
-                                        isActive: level != .seguimientoNormal,
-                                        tint: level == .atencionPrioritaria ? MacAppStyle.dangerTint : (level == .atencionPuntual ? MacAppStyle.warningTint : MacAppStyle.successTint)
-                                    )
-                                    Text(riskPack.summary)
-                                        .font(.system(size: 13, weight: .medium))
-                                    ForEach(Array(riskPack.warningTexts.prefix(3)), id: \.self) { warning in
-                                        Label(warning, systemImage: "exclamationmark.triangle.fill")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    ForEach(Array(riskPack.recommendedActionTexts.prefix(2)), id: \.self) { action in
-                                        Label(action, systemImage: "arrowshape.right.circle")
-                                            .font(.caption)
-                                    }
-                                }
-                            }
-                        }
-
-                        inspectorSection("Notas rápidas") {
-                            TextEditor(text: $quickNoteText)
-                                .frame(minHeight: 86)
-                                .font(.system(size: 13))
-                                .scrollContentBackground(.hidden)
-                                .padding(8)
-                                .background(MacAppStyle.subtleFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            HStack {
-                                Button {
-                                    Task { await saveQuickNote() }
-                                } label: {
-                                    Label(isSavingNote ? "Guardando…" : "Guardar nota", systemImage: "square.and.arrow.down")
-                                }
-                                .buttonStyle(.borderedProminent)
-                                .disabled(quickNoteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSavingNote)
-                                Spacer()
-                            }
-                        }
-
-                        inspectorSection("Historial de incidencias") {
-                            if profile.incidents.isEmpty {
-                                Text("Sin incidencias registradas.")
-                                    .foregroundStyle(.secondary)
-                            } else {
-                                ForEach(profile.incidents.prefix(5), id: \.id) { incident in
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        HStack {
-                                            Text(incident.title)
-                                                .font(.subheadline.weight(.semibold))
-                                            Spacer()
-                                            Text(incident.severity.capitalized)
-                                                .font(.caption.weight(.bold))
-                                                .foregroundStyle(.secondary)
-                                        }
-                                        Text(incident.detail ?? "Sin detalle")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    .padding(10)
-                                    .background(MacAppStyle.subtleFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                }
-                            }
-                        }
-
-                        inspectorSection("Accesos") {
-                            VStack(spacing: 8) {
-                                Button {
-                                    openSelectedInNotebook()
-                                } label: {
-                                    Label("Abrir en cuaderno", systemImage: "tablecells")
-                                }
-                                .buttonStyle(.borderedProminent)
-
-                                Button {
-                                    onOpenModule(.attendance, selectedClassId, selectedRow.id)
-                                } label: {
-                                    Label("Abrir asistencia", systemImage: "checklist.checked")
-                                }
-                                .buttonStyle(.bordered)
-
-                                Button {
-                                    onOpenModule(.reports, selectedClassId, selectedRow.id)
-                                } label: {
-                                    Label("Abrir informes", systemImage: "doc.text")
-                                }
-                                .buttonStyle(.bordered)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                    } else {
-                        ProgressView("Cargando ficha…")
-                    }
-                }
-                .padding(MacAppStyle.pagePadding)
-            }
-            .background(MacAppStyle.cardBackground)
-        } else {
-            VStack {
-                ContentUnavailableView(
-                    "Selecciona un alumno",
-                    systemImage: "person.3",
-                    description: Text("La ficha reunira notas, incidencias y accesos cruzados.")
-                )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .background(MacAppStyle.cardBackground)
-        }
-    }
-
-    private func inspectorSection<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(MacAppStyle.sectionTitle)
-            content()
-        }
-    }
-
-    @MainActor
-    private func reloadRows() async {
-        isLoadingRows = true
-        errorMessage = nil
-        defer { isLoadingRows = false }
-        do {
-            rows = try await bridge.loadMacStudentRows(classId: selectedClassId)
-            if let selectedStudentId, rows.contains(where: { $0.id == selectedStudentId }) {
-                await reloadProfile()
-            } else {
-                selectedStudentId = filteredRows.first?.id
-                await reloadProfile()
-            }
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    @MainActor
-    private func reloadProfile() async {
-        guard let selectedStudentId else {
-            profile = nil
-            riskPack = nil
-            return
-        }
-        profile = try? await bridge.loadStudentProfile(studentId: selectedStudentId, classId: selectedClassId)
-        riskPack = try? await StudentRiskEvidenceBuilder.build(bridge: bridge, classId: selectedClassId, studentId: selectedStudentId)
-    }
-
-    @MainActor
-    private func saveQuickNote() async {
-        guard let selectedStudentId else { return }
-        isSavingNote = true
-        defer { isSavingNote = false }
-        do {
-            try await bridge.saveQuickStudentNote(studentId: selectedStudentId, classId: selectedClassId, note: quickNoteText)
-            quickNoteText = ""
-            await reloadRows()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    private func openSelectedInNotebook() {
-        guard let selectedStudentId else { return }
-        onOpenModule(.notebook, selectedClassId, selectedStudentId)
-    }
-}
-
-struct MacRubricsView: View {
-    @ObservedObject var bridge: KmpBridge
-    @State private var selectedRubricId: Int64?
-    @State private var selectedFilterClassId: Int64?
-    @State private var usageSummary: KmpBridge.RubricUsageSnapshot?
-    @State private var usageLoading = false
-    @State private var bulkOptions: [KmpBridge.RubricUsageSnapshot.EvaluationUsage] = []
-    @State private var bulkLaunchInFlight = false
-    @State private var showingBuilder = false
-
-    private var filteredRubrics: [RubricDetail] {
-        bridge.rubrics.filter { rubric in
-            guard let selectedFilterClassId else { return true }
-            return rubric.rubric.classId?.int64Value == selectedFilterClassId
-        }
-    }
-
-    private var selectedRubric: RubricDetail? {
-        filteredRubrics.first(where: { $0.rubric.id == selectedRubricId }) ?? filteredRubrics.first
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
-            HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Rúbricas")
-                        .font(MacAppStyle.pageTitle)
-                    Text("Workspace Mac con banco, detalle e impacto evaluativo.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                if !bridge.classes.isEmpty {
-                    Picker("Clase", selection: $selectedFilterClassId) {
-                        Text("Todas").tag(Optional<Int64>.none)
-                        ForEach(bridge.classes, id: \.id) { schoolClass in
-                            Text(schoolClass.name).tag(Optional(schoolClass.id))
-                        }
-                    }
-                    .frame(width: 220)
-                }
-                Button {
-                    bridge.resetRubricBuilder()
-                    showingBuilder = true
-                } label: {
-                    Label("Nueva rúbrica", systemImage: "plus")
-                }
-                .buttonStyle(.borderedProminent)
-            }
-
-            if bridge.rubrics.isEmpty {
-                ContentUnavailableView(
-                    "Sin rúbricas",
-                    systemImage: "checklist",
-                    description: Text("Aún no hay rúbricas cargadas en el bridge.")
-                )
-            } else {
-                HStack(alignment: .top, spacing: MacAppStyle.sectionSpacing) {
-                    rubricsTable
-                        .frame(minWidth: 430, idealWidth: 520, maxWidth: 620)
-                    rubricDetailPanel
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                }
-            }
-        }
-        .padding(MacAppStyle.pagePadding)
-        .task {
-            if selectedRubricId == nil {
-                selectedRubricId = filteredRubrics.first?.rubric.id
-            }
-            await reloadUsageSummary()
-        }
-        .onChange(of: selectedFilterClassId) { newValue in
-            bridge.setRubricFilterClass(newValue)
-            if selectedRubric == nil {
-                selectedRubricId = filteredRubrics.first?.rubric.id
-            }
-            Task { await reloadUsageSummary() }
-        }
-        .onChange(of: bridge.rubrics.count) { _ in
-            if selectedRubric == nil {
-                selectedRubricId = filteredRubrics.first?.rubric.id
-            }
-            Task { await reloadUsageSummary() }
-        }
-        .onChange(of: selectedRubricId) { _ in
-            Task { await reloadUsageSummary() }
-        }
-        .confirmationDialog(
-            "Elegir evaluación masiva",
-            isPresented: Binding(
-                get: { !bulkOptions.isEmpty },
-                set: { if !$0 { bulkOptions = [] } }
-            ),
-            titleVisibility: .visible
-        ) {
-            ForEach(bulkOptions, id: \.evaluationId) { usage in
-                Button("\(usage.className) · \(usage.evaluationName)") {
-                    openBulkEvaluation(for: usage)
-                }
-            }
-            Button("Cancelar", role: .cancel) {
-                bulkOptions = []
-            }
-        } message: {
-            Text("Selecciona la clase y evaluación que quieres abrir.")
-        }
-        .sheet(isPresented: $showingBuilder) {
-            RubricsBuilderScreen()
-                .environmentObject(bridge)
-                .frame(minWidth: 1200, minHeight: 820)
-        }
-        .sheet(
-            isPresented: Binding(
-                get: { bridge.rubricsUiState?.assignDialogState != nil },
-                set: { visible in
-                    if !visible {
-                        bridge.dismissAssignRubricDialog()
-                    }
-                }
-            )
-        ) {
-            AssignRubricToTabView()
-                .environmentObject(bridge)
-                .frame(minWidth: 640, minHeight: 520)
-        }
-        .sheet(
-            isPresented: Binding(
-                get: { bridge.showingBulkRubricEvaluation },
-                set: { visible in
-                    if !visible {
-                        bridge.closeBulkRubricEvaluation()
-                    }
-                }
-            )
-        ) {
-            RubricBulkEvaluationSheet(bridge: bridge)
-                .environmentObject(bridge)
-                .frame(minWidth: 1320, minHeight: 860)
-        }
-    }
-
-    private var rubricsTable: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("Nombre")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Text("Criterios")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 60, alignment: .trailing)
-                Text("Uso")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 90, alignment: .trailing)
-            }
-            .padding(.horizontal, MacAppStyle.innerPadding)
-            .padding(.vertical, 10)
-            .background(MacAppStyle.subtleFill)
-
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(filteredRubrics, id: \.rubric.id) { rubric in
-                        Button {
-                            selectedRubricId = rubric.rubric.id
-                        } label: {
-                            HStack(spacing: 12) {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(rubric.rubric.name)
-                                        .font(.body.weight(.medium))
-                                        .foregroundStyle(.primary)
-                                        .lineLimit(1)
-                                    Text(className(for: rubric))
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                                Spacer()
-                                Text("\(rubric.criteria.count)")
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 60, alignment: .trailing)
-                                MacStatusPill(
-                                    label: usageLabel(for: rubric),
-                                    isActive: usageCount(for: rubric) > 0,
-                                    tint: usageCount(for: rubric) > 0 ? MacAppStyle.infoTint : .secondary
-                                )
-                                .frame(width: 90, alignment: .trailing)
-                            }
-                            .padding(.horizontal, MacAppStyle.innerPadding)
-                            .padding(.vertical, 12)
-                            .background(
-                                selectedRubricId == rubric.rubric.id
-                                    ? Color.accentColor.opacity(0.12)
-                                    : Color.clear
-                            )
-                        }
-                        .buttonStyle(.plain)
-
-                        Divider()
-                    }
-                }
-            }
-        }
-        .background(MacAppStyle.cardBackground)
-        .overlay {
-            RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous)
-                .stroke(MacAppStyle.cardBorder, lineWidth: 0.5)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
-    }
-
-    @ViewBuilder
-    private var rubricDetailPanel: some View {
-        if let rubric = selectedRubric {
-            ScrollView {
-                VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(rubric.rubric.name)
-                            .font(.title2.weight(.semibold))
-                        Text("\(className(for: rubric)) · \(formattedDate(for: rubric))")
-                            .foregroundStyle(.secondary)
-                        if let description = rubric.rubric.description_, !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            Text(description)
-                                .font(MacAppStyle.bodyText)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    HStack(spacing: MacAppStyle.cardSpacing) {
-                        MacMetricCard(label: "Criterios", value: "\(rubric.criteria.count)", systemImage: "list.bullet.rectangle")
-                        MacMetricCard(label: "Clases", value: "\(usageSummary?.classCount ?? 0)", systemImage: "rectangle.3.group")
-                        MacMetricCard(label: "Evaluaciones", value: "\(usageSummary?.evaluationCount ?? 0)", systemImage: "chart.bar.doc.horizontal")
-                        MacMetricCard(label: "Uso", value: usageLabel(for: rubric), systemImage: "checklist")
-                    }
-
-                    HStack(spacing: 12) {
-                        Button {
-                            Task { await openBulkEvaluationFlow(for: rubric) }
-                        } label: {
-                            if bulkLaunchInFlight {
-                                Label("Abriendo…", systemImage: "hourglass")
-                            } else {
-                                Label("Evaluación masiva", systemImage: "square.grid.3x3")
-                            }
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled((usageSummary?.evaluationCount ?? 0) == 0 || bulkLaunchInFlight)
-
-                        Button {
-                            bridge.loadRubricForEditing(rubric)
-                            showingBuilder = true
-                        } label: {
-                            Label("Abrir vista de edición", systemImage: "square.and.pencil")
-                        }
-                        .buttonStyle(.bordered)
-
-                        Button {
-                            bridge.startAssignRubric(rubric.rubric)
-                        } label: {
-                            Label("Asignar a clase", systemImage: "rectangle.portrait.and.arrow.right")
-                        }
-                        .buttonStyle(.bordered)
-
-                        Button(role: .destructive) {
-                            bridge.deleteRubric(id: rubric.rubric.id)
-                        } label: {
-                            Image(systemName: "trash")
-                        }
-                        .buttonStyle(.borderless)
-                    }
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Impacto evaluativo")
-                            .font(MacAppStyle.sectionTitle)
-                        if usageLoading {
-                            ProgressView()
-                        } else if let usageSummary, !usageSummary.evaluationUsages.isEmpty {
-                            Text("Esta rúbrica está vinculada a \(usageSummary.evaluationCount) evaluación(es) en \(usageSummary.classCount) clase(s).")
-                                .font(MacAppStyle.bodyText)
-                                .foregroundStyle(.secondary)
-
-                            MacFlowLayout(spacing: 8) {
-                                ForEach(usageSummary.linkedClassNames, id: \.self) { className in
-                                    MacStatusPill(label: className, isActive: true, tint: MacAppStyle.infoTint)
-                                }
-                            }
-
-                            VStack(spacing: 8) {
-                                ForEach(usageSummary.evaluationUsages.prefix(6), id: \.evaluationId) { usage in
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(usage.evaluationName)
-                                            .font(.subheadline.weight(.semibold))
-                                        Text("\(usage.className) · \(usage.evaluationType) · Peso \(String(format: "%.1f", usage.weight))")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(12)
-                                    .background(MacAppStyle.cardBackground)
-                                    .overlay {
-                                        RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous)
-                                            .stroke(MacAppStyle.cardBorder, lineWidth: 0.5)
-                                    }
-                                    .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
-                                }
-                            }
-                        } else {
-                            Text("Todavía no hay evaluaciones activas enlazadas a esta rúbrica.")
-                                .font(MacAppStyle.bodyText)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Criterios y niveles")
-                            .font(MacAppStyle.sectionTitle)
-                        ForEach(rubric.criteria, id: \.criterion.id) { item in
-                            MacRubricCriterionCard(item: item)
-                        }
-                    }
-                }
-            }
-        } else {
-            ContentUnavailableView(
-                "Selecciona una rúbrica",
-                systemImage: "checklist",
-                description: Text("El detalle mostrará criterios, niveles y acceso a evaluación masiva.")
-            )
-        }
-    }
-
-    @MainActor
-    private func reloadUsageSummary() async {
-        guard let rubricId = selectedRubric?.rubric.id else {
-            usageSummary = nil
-            return
-        }
-        usageLoading = true
-        defer { usageLoading = false }
-        usageSummary = try? await bridge.loadRubricUsage(rubricId: rubricId)
-    }
-
-    @MainActor
-    private func openBulkEvaluationFlow(for rubric: RubricDetail) async {
-        guard let usageSummary else { return }
-        if usageSummary.evaluationUsages.count == 1 {
-            bulkLaunchInFlight = true
-            defer { bulkLaunchInFlight = false }
-            _ = await bridge.launchBulkRubricEvaluationFromRubric(
-                rubricId: rubric.rubric.id,
-                preferredClassId: rubric.rubric.classId?.int64Value
-            )
-        } else {
-            bulkOptions = usageSummary.evaluationUsages
-        }
-    }
-
-    private func openBulkEvaluation(for usage: KmpBridge.RubricUsageSnapshot.EvaluationUsage) {
-        bulkOptions = []
-        Task { @MainActor in
-            bulkLaunchInFlight = true
-            defer { bulkLaunchInFlight = false }
-            _ = await bridge.launchBulkRubricEvaluationFromUsage(
-                rubricId: selectedRubric?.rubric.id ?? usageSummary?.rubricId ?? 0,
-                classId: usage.classId,
-                evaluationId: usage.evaluationId
-            )
-        }
-    }
-
-    private func usageCount(for rubric: RubricDetail) -> Int {
-        if usageSummary?.rubricId == rubric.rubric.id {
-            return usageSummary?.evaluationCount ?? 0
-        }
-        return (bridge.rubricClassLinks[rubric.rubric.id] ?? []).isEmpty ? 0 : 1
-    }
-
-    private func usageLabel(for rubric: RubricDetail) -> String {
-        let count = usageCount(for: rubric)
-        switch count {
-        case 0: return "Sin uso"
-        case 1: return "1 eval."
-        default: return "\(count) evals."
-        }
-    }
-
-    private func className(for rubric: RubricDetail) -> String {
-        if let classId = rubric.rubric.classId?.int64Value,
-           let schoolClass = bridge.classes.first(where: { $0.id == classId }) {
-            return schoolClass.name
-        }
-        return "Sin clase asociada"
-    }
-
-    private func formattedDate(for rubric: RubricDetail) -> String {
-        let date = Date(timeIntervalSince1970: TimeInterval(rubric.rubric.trace.updatedAt.epochSeconds))
-        return date.formatted(.dateTime.day().month(.abbreviated).year())
-    }
-}
-
-private struct MacRubricCriterionCard: View {
-    let item: RubricCriterionWithLevels
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
-                Text(item.criterion.description_)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Spacer()
-
-                MacStatusPill(
-                    label: "Peso \(Int((item.criterion.weight * 100).rounded()))%",
-                    isActive: true,
-                    tint: MacAppStyle.infoTint
-                )
-            }
-
-            VStack(spacing: 10) {
-                ForEach(item.levels.sorted(by: { $0.order < $1.order }), id: \.id) { level in
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text(level.name)
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundStyle(.primary)
-                            Spacer()
-                            Text("\(Int(level.points)) pts")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundStyle(MacAppStyle.infoTint)
-                        }
-
-                        if let description = level.description_?.trimmingCharacters(in: .whitespacesAndNewlines),
-                           !description.isEmpty {
-                            Text(description)
-                                .font(.system(size: 12))
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(MacAppStyle.subtleFill)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .stroke(MacAppStyle.cardBorder, lineWidth: 0.5)
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                }
-            }
-        }
-        .padding(MacAppStyle.innerPadding)
-        .background(MacAppStyle.cardBackground)
-        .overlay {
-            RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous)
-                .stroke(MacAppStyle.cardBorder, lineWidth: 0.5)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
-    }
-}
-
-private struct MacFlowLayout: Layout {
-    var spacing: CGFloat = 8
-
-    func sizeThatFits(
-        proposal: ProposedViewSize,
-        subviews: Subviews,
-        cache: inout ()
-    ) -> CGSize {
-        let maxWidth = proposal.width ?? 800
-        var currentX: CGFloat = 0
-        var currentY: CGFloat = 0
-        var lineHeight: CGFloat = 0
-
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if currentX > 0, currentX + size.width > maxWidth {
-                currentX = 0
-                currentY += lineHeight + spacing
-                lineHeight = 0
-            }
-            lineHeight = max(lineHeight, size.height)
-            currentX += size.width + spacing
-        }
-
-        return CGSize(
-            width: maxWidth,
-            height: currentY + lineHeight
-        )
-    }
-
-    func placeSubviews(
-        in bounds: CGRect,
-        proposal: ProposedViewSize,
-        subviews: Subviews,
-        cache: inout ()
-    ) {
-        var currentX = bounds.minX
-        var currentY = bounds.minY
-        var lineHeight: CGFloat = 0
-
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if currentX > bounds.minX, currentX + size.width > bounds.maxX {
-                currentX = bounds.minX
-                currentY += lineHeight + spacing
-                lineHeight = 0
-            }
-
-            subview.place(
-                at: CGPoint(x: currentX, y: currentY),
-                proposal: ProposedViewSize(width: size.width, height: size.height)
-            )
-
-            currentX += size.width + spacing
-            lineHeight = max(lineHeight, size.height)
-        }
-    }
-}
+// StudentSelectionStore moved to AppleViewCompatibility.swift (shared by iOS and macOS).
 
 struct MacReportsView: View {
     private enum ReportTerm: String, CaseIterable, Identifiable {
@@ -1033,13 +35,14 @@ struct MacReportsView: View {
     @State private var aiAudience: AIReportAudience = .docente
     @State private var aiTone: AIReportTone = .claro
     @State private var aiDraft: AIReportDraft?
+    @State private var aiMetadata: AppleAIGenerationMetadata?
     @State private var editableDraftText = ""
     @State private var feedbackMessage: String?
     @State private var isLoadingContext = false
     @State private var isGeneratingDraft = false
     @State private var isExporting = false
 
-    private let aiReportService = AppleFoundationReportService()
+    private let reportService = AppleFoundationReportService()
     private let draftStore = MacReportDraftStore()
 
     private var selectedClass: SchoolClass? {
@@ -1071,7 +74,7 @@ struct MacReportsView: View {
     }
 
     private var canGenerateAIDraft: Bool {
-        guard !isGeneratingDraft, aiAvailability.isAvailable else { return false }
+        guard !isGeneratingDraft else { return false }
         guard let reportContext, reportContext.hasEnoughData else { return false }
         return !requiresStudent || selectedStudentId != nil
     }
@@ -1117,29 +120,34 @@ struct MacReportsView: View {
     }
 
     var body: some View {
-        HSplitView {
+        HStack(spacing: 0) {
             reportsSidebar
                 .frame(minWidth: 280, idealWidth: 310, maxWidth: 360)
+
+            Divider()
 
             reportsCenter
                 .frame(minWidth: 560, maxWidth: .infinity, maxHeight: .infinity)
 
+            Divider()
+
             reportsExportPanel
                 .frame(minWidth: 280, idealWidth: 320, maxWidth: 380)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(MacAppStyle.pageBackground)
         .task {
-            aiAvailability = aiReportService.currentAvailability()
+            refreshAIAvailability()
             if selectedClassId == nil {
                 selectedClassId = bridge.selectedStudentsClassId ?? bridge.classes.first?.id
             }
             await refreshWorkspace()
         }
-        .onChange(of: selectedClassId) { _, _ in
+        .appOnChange(of: selectedClassId) { _, _ in
             selectedStudentId = nil
             Task { await refreshWorkspace() }
         }
-        .onChange(of: selectedReportKind) { _, newValue in
+        .appOnChange(of: selectedReportKind) { _, newValue in
             if newValue == .lomloeEvaluationComment {
                 aiAudience = .familia
                 aiTone = .formal
@@ -1149,10 +157,10 @@ struct MacReportsView: View {
             }
             Task { await reloadReport() }
         }
-        .onChange(of: selectedTerm) { _, _ in
+        .appOnChange(of: selectedTerm) { _, _ in
             Task { await reloadReport() }
         }
-        .onChange(of: selectedStudentId) { _, _ in
+        .appOnChange(of: selectedStudentId) { _, _ in
             Task { await reloadReport() }
         }
     }
@@ -1554,22 +562,32 @@ struct MacReportsView: View {
     @MainActor
     private func generateAIDraft() async {
         guard let reportContext else { return }
+
         isGeneratingDraft = true
         feedbackMessage = nil
         defer { isGeneratingDraft = false }
 
         do {
-            let draft = try await aiReportService.generateDraft(
+            let draft = try await reportService.generateDraft(
                 from: reportContext,
                 audience: aiAudience,
                 tone: aiTone
             )
+
             aiDraft = draft
+            aiMetadata = nil
             editableDraftText = draft.editableText(for: reportContext)
-            feedbackMessage = "Borrador generado. Revísalo antes de exportar o compartir."
+
+            feedbackMessage = aiAvailability.isAvailable
+                ? "Borrador generado. Revísalo antes de exportar o compartir."
+                : "Borrador por reglas preparado. Apple Intelligence no está disponible ahora mismo."
         } catch {
-            feedbackMessage = error.localizedDescription
+            feedbackMessage = "No se pudo preparar el borrador: \(error.localizedDescription)"
         }
+    }
+
+    private func refreshAIAvailability() {
+        aiAvailability = reportService.currentAvailability()
     }
 
     private func loadSavedDraftForCurrentSelection() {
@@ -1946,14 +964,22 @@ private extension Data {
 
 struct MacPlannerView: View {
     @ObservedObject var bridge: KmpBridge
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
+    @Binding var selectedSessionIdFromRoot: Int64?
     @StateObject private var vm = PlannerWorkspaceViewModel()
     @State private var activeSection: MacPlannerSection = .week
     @State private var selectedTableSessionId: Int64?
     @State private var showingScheduleSettings = false
     @State private var showingExportConfirmation = false
+    @State private var showingMoveFilteredConfirmation = false
+    @State private var showingClearSchedulelessWeekConfirmation = false
     @State private var transientMessage: String?
     @State private var isInspectorVisible = true
     @State private var inspectorWidth: CGFloat = 380
+    @State private var sessionFilter: MacPlannerSessionFilter = .all
+    @State private var groupFilterId: Int64?
+    @State private var selectedDetailSession: PlanningSession? = nil
+    @State private var pendingCascadeDrop: MacPlannerPendingDrop?
 
     var body: some View {
         GeometryReader { proxy in
@@ -1965,8 +991,10 @@ struct MacPlannerView: View {
                     plannerHeader
                     if let transientMessage, !transientMessage.isEmpty {
                         MacPlannerBanner(message: transientMessage)
+                            .transition(uiFeatureFlags.bannerTransition)
                     } else if !vm.bulkSummary.isEmpty {
                         MacPlannerBanner(message: vm.bulkSummary)
+                            .transition(uiFeatureFlags.bannerTransition)
                     }
                     plannerCenterContent
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -1981,11 +1009,21 @@ struct MacPlannerView: View {
             }
         }
         .background(MacAppStyle.pageBackground)
+        .animation(uiFeatureFlags.interactionAnimation, value: transientMessage)
         .task {
             await vm.bind(bridge: bridge)
             await syncInspectorStudents(for: vm.selectedSession)
+            if let sessionId = selectedSessionIdFromRoot {
+                await applySessionIdFromRoot(sessionId)
+            }
         }
-        .onChange(of: selectedTableSessionId) { newValue in
+        .appOnChange(of: selectedSessionIdFromRoot) { newValue in
+            guard let newValue else { return }
+            Task {
+                await applySessionIdFromRoot(newValue)
+            }
+        }
+        .appOnChange(of: selectedTableSessionId) { newValue in
             guard let newValue,
                   let session = vm.filteredSessions.first(where: { $0.id == newValue }) ?? vm.sessions.first(where: { $0.id == newValue }) else { return }
             Task {
@@ -1994,11 +1032,17 @@ struct MacPlannerView: View {
                 isInspectorVisible = true
             }
         }
-        .onChange(of: vm.selectedSession?.id) { newValue in
+        .appOnChange(of: vm.selectedSession?.id) { newValue in
             selectedTableSessionId = newValue
             Task {
                 await syncInspectorStudents(for: vm.selectedSession)
             }
+        }
+        .appOnChange(of: sessionFilter) { _ in
+            Task { await normalizeSelectionForDisplayedSessions() }
+        }
+        .appOnChange(of: groupFilterId) { _ in
+            Task { await normalizeSelectionForDisplayedSessions() }
         }
         .sheet(isPresented: $vm.showingComposer) {
             PlannerSessionComposerSheet(vm: vm)
@@ -2007,19 +1051,159 @@ struct MacPlannerView: View {
         .sheet(isPresented: $showingScheduleSettings, onDismiss: {
             Task { await vm.reloadAll() }
         }) {
-            TeacherScheduleSettingsPanel(
+            MacPlannerScheduleSettingsSheet(
+                bridge: bridge,
                 selectedClassId: Binding(
-                    get: { vm.groupFilterId },
-                    set: { vm.groupFilterId = $0 }
-                )
+                    get: { groupFilterId },
+                    set: { groupFilterId = $0 }
+                ),
+                onClose: {
+                    showingScheduleSettings = false
+                }
             )
-            .environmentObject(bridge)
             .frame(minWidth: 980, minHeight: 760)
         }
         .alert("Exportación copiada", isPresented: $showingExportConfirmation) {
             Button("OK", role: .cancel) {}
         } message: {
             Text("El resumen actual de planificación se ha copiado al portapapeles.")
+        }
+        .alert("Mover sesiones filtradas", isPresented: $showingMoveFilteredConfirmation) {
+            Button("Cancelar", role: .cancel) {}
+            Button("Mover \(displayedSessions.count) sesiones", role: .destructive) {
+                Task { await moveFilteredSessions() }
+            }
+        } message: {
+            Text("Se moverán todas las sesiones visibles con los filtros actuales un día hacia delante.")
+        }
+        .alert("Limpiar semana sin franjas", isPresented: $showingClearSchedulelessWeekConfirmation) {
+            Button("Cancelar", role: .cancel) {}
+            Button("Eliminar sesiones planificadas", role: .destructive) {
+                Task { await vm.clearCurrentWeekSessionsWithoutSchedule(groupId: groupFilterId) }
+            }
+        } message: {
+            Text("No hay franjas en la agenda. Se eliminarán las sesiones planificadas de la semana actual y se conservarán las completadas.")
+        }
+        .alert(
+            "Mover sesiones impartidas",
+            isPresented: Binding(
+                get: { pendingCascadeDrop != nil },
+                set: { if !$0 { pendingCascadeDrop = nil } }
+            )
+        ) {
+            Button("Cancelar", role: .cancel) {
+                pendingCascadeDrop = nil
+                AppleInteractionFeedback.play(.warning)
+            }
+            Button("Mover") {
+                guard let pendingCascadeDrop else { return }
+                self.pendingCascadeDrop = nil
+                Task {
+                    await commitCascadeDrop(
+                        sessionId: pendingCascadeDrop.sessionId,
+                        day: pendingCascadeDrop.day,
+                        period: pendingCascadeDrop.period
+                    )
+                }
+            }
+        } message: {
+            Text("La cascada incluye una o más sesiones ya impartidas. Se conservarán sus diarios y referencias.")
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { selectedDetailSession != nil },
+                set: { if !$0 { selectedDetailSession = nil } }
+            )
+        ) {
+            if let session = selectedDetailSession {
+                PlannerSessionDetailSheet(
+                    session: session,
+                    onOpenDiary: {
+                        selectedDetailSession = nil
+                        Task {
+                            await vm.select(session: session)
+                            isInspectorVisible = true
+                        }
+                    },
+                    onEdit: {
+                        selectedDetailSession = nil
+                        vm.openComposer(for: session)
+                    }
+                )
+                .environmentObject(bridge)
+                .frame(minWidth: 550, minHeight: 650)
+            }
+        }
+    }
+
+    private func openMacSession(_ session: PlanningSession) {
+        if hasSessionPassed(session) {
+            Task {
+                await vm.select(session: session)
+                isInspectorVisible = true
+            }
+        } else {
+            selectedDetailSession = session
+        }
+    }
+
+    private func applySessionIdFromRoot(_ sessionId: Int64) async {
+        do {
+            let session = try await bridge.plannerGetSession(id: sessionId)
+            await vm.applyExternalContext(
+                week: Int(session.weekNumber),
+                year: Int(session.year),
+                groupId: session.groupId,
+                sessionId: session.id
+            )
+            selectedSessionIdFromRoot = nil
+            
+            if hasSessionPassed(session) {
+                await vm.select(session: session)
+                isInspectorVisible = true
+            } else {
+                selectedDetailSession = session
+            }
+        } catch {
+            print("Error getting session from root: \(error)")
+        }
+    }
+
+    private func hasSessionPassed(_ session: PlanningSession) -> Bool {
+        if session.status == .completed {
+            return true
+        }
+        
+        var components = DateComponents()
+        components.calendar = Calendar(identifier: .iso8601)
+        components.yearForWeekOfYear = Int(session.year)
+        components.weekOfYear = Int(session.weekNumber)
+        components.weekday = Int(session.dayOfWeek) + 1
+        
+        guard let sessionDate = components.date else { return true }
+        
+        let now = Date()
+        let calendar = Calendar.current
+        
+        if calendar.compare(sessionDate, to: now, toGranularity: .day) == .orderedAscending {
+            return true
+        } else if calendar.compare(sessionDate, to: now, toGranularity: .day) == .orderedDescending {
+            return false
+        } else {
+            // Es hoy. Comparamos la hora de fin.
+            if let endTimeStr = session.endTime?.trimmingCharacters(in: .whitespacesAndNewlines), !endTimeStr.isEmpty {
+                let parts = endTimeStr.split(separator: ":")
+                if parts.count == 2, let hours = Int(parts[0]), let minutes = Int(parts[1]) {
+                    var timeComponents = calendar.dateComponents([.year, .month, .day], from: now)
+                    timeComponents.hour = hours
+                    timeComponents.minute = minutes
+                    timeComponents.second = 0
+                    if let sessionEndDateTime = calendar.date(from: timeComponents) {
+                        return now > sessionEndDateTime
+                    }
+                }
+            }
+            return false
         }
     }
 
@@ -2069,8 +1253,10 @@ struct MacPlannerView: View {
                     .font(MacAppStyle.sectionTitle)
 
                 Picker("Grupo", selection: Binding(
-                    get: { vm.groupFilterId },
-                    set: { vm.groupFilterId = $0 }
+                    get: { groupFilterId },
+                    set: { newValue in
+                        groupFilterId = newValue
+                    }
                 )) {
                     Text("Todos los grupos").tag(Optional<Int64>.none)
                     ForEach(vm.groups, id: \.id) { group in
@@ -2080,12 +1266,13 @@ struct MacPlannerView: View {
 
                 TextField("Buscar sesión, unidad u objetivo", text: $vm.searchText)
                     .textFieldStyle(.roundedBorder)
-                    .onChange(of: vm.searchText) { _ in
+                    .appOnChange(of: vm.searchText) { _ in
                         vm.applySearch()
+                        Task { await normalizeSelectionForDisplayedSessions() }
                     }
 
-                Picker("Estado", selection: $vm.sessionFilter) {
-                    ForEach(PlannerSessionFilter.allCases) { filter in
+                Picker("Estado", selection: $sessionFilter) {
+                    ForEach(MacPlannerSessionFilter.allCases) { filter in
                         Text(filter.rawValue).tag(filter)
                     }
                 }
@@ -2103,7 +1290,7 @@ struct MacPlannerView: View {
                     .font(MacAppStyle.sectionTitle)
 
                 Button("Nueva sesión") {
-                    vm.openComposer()
+                    openComposerForCurrentFilter()
                 }
                 .buttonStyle(.borderedProminent)
 
@@ -2113,11 +1300,17 @@ struct MacPlannerView: View {
                 .buttonStyle(.bordered)
                 .disabled(displayedSessions.isEmpty)
 
-                Button("Mover selección") {
-                    Task { await moveFilteredSelection() }
+                Button("Mover sesiones filtradas") {
+                    showingMoveFilteredConfirmation = true
                 }
                 .buttonStyle(.bordered)
                 .disabled(displayedSessions.isEmpty)
+
+                Button("Limpiar semana sin franjas") {
+                    showingClearSchedulelessWeekConfirmation = true
+                }
+                .buttonStyle(.bordered)
+                .disabled(vm.schedulelessWeekSessionsToClearCount(groupId: groupFilterId) == 0)
 
                 Button("Exportar") {
                     exportCurrentContext()
@@ -2173,13 +1366,20 @@ struct MacPlannerView: View {
                 }
                 .buttonStyle(.bordered)
 
+                if vm.lastCascadeMove != nil {
+                    Button("Deshacer movimiento") {
+                        Task { await undoCascadeMove() }
+                    }
+                    .buttonStyle(.bordered)
+                }
+
                 Button("Agenda") {
                     showingScheduleSettings = true
                 }
                 .buttonStyle(.bordered)
 
                 Button("Nueva sesión") {
-                    vm.openComposer()
+                    openComposerForCurrentFilter()
                 }
                 .buttonStyle(.borderedProminent)
             }
@@ -2192,6 +1392,8 @@ struct MacPlannerView: View {
         case .week:
             MacPlannerWeekBoard(
                 vm: vm,
+                defaultGroupId: groupFilterId,
+                entriesProvider: weekEntries(for:period:),
                 onSelectSession: { session in
                     Task {
                         await vm.select(session: session)
@@ -2199,21 +1401,24 @@ struct MacPlannerView: View {
                     }
                 },
                 onDoubleOpenSession: { session in
-                    Task {
-                        await vm.select(session: session)
-                        isInspectorVisible = true
-                    }
+                    openMacSession(session)
+                },
+                onDropSession: { sessionId, day, period in
+                    Task { await receiveCascadeDrop(sessionId: sessionId, day: day, period: period) }
                 }
             )
         case .sessions:
             MacPlannerSessionsTable(
                 rows: displayedRows,
-                selectedSessionId: $selectedTableSessionId
+                selectedSessionId: $selectedTableSessionId,
+                onOpenSession: { session in
+                    openMacSession(session)
+                }
             )
         case .agenda:
             MacPlannerAgendaView(
                 vm: vm,
-                groupFilterId: vm.groupFilterId,
+                groupFilterId: groupFilterId,
                 onOpenSettings: { showingScheduleSettings = true }
             )
         }
@@ -2241,6 +1446,43 @@ struct MacPlannerView: View {
 
             Divider()
 
+            if let session = vm.selectedSession, !hasSessionPassed(session) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "calendar.badge.clock")
+                            .foregroundStyle(Color(hex: session.teachingUnitColor))
+                            .font(.title3)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Sesión Programada")
+                                .font(.headline)
+                            Text("Esta sesión aún no ha transcurrido.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    
+                    Button {
+                        selectedDetailSession = session
+                    } label: {
+                        Label("Ver detalles de sesión", systemImage: "info.circle")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Color(hex: session.teachingUnitColor))
+                }
+                .padding(MacAppStyle.innerPadding)
+                .background(Color(hex: session.teachingUnitColor).opacity(0.06))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color(hex: session.teachingUnitColor).opacity(0.2), lineWidth: 1)
+                )
+                .padding(.horizontal, MacAppStyle.innerPadding)
+                .padding(.top, 8)
+                
+                Divider()
+                    .padding(.top, 8)
+            }
+
             PlannerJournalDetailPane(vm: vm)
                 .environmentObject(bridge)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -2254,7 +1496,37 @@ struct MacPlannerView: View {
     }
 
     private var displayedSessions: [PlanningSession] {
-        vm.filteredSessions
+        vm.filteredSessions.filter { session in
+            let matchesGroup = groupFilterId.map { session.groupId == $0 } ?? true
+            let matchesStatus: Bool
+            switch sessionFilter {
+            case .all:
+                matchesStatus = true
+            case .planned:
+                matchesStatus = session.status != .completed
+            case .completed:
+                matchesStatus = session.status == .completed
+            }
+            return matchesGroup && matchesStatus
+        }
+    }
+
+    private func weekEntries(for day: Int, period: Int) -> [PlannerWeekCellEntry] {
+        let displayedSessionIds = Set(displayedSessions.map(\.id))
+        let query = vm.searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+
+        return vm.entries(for: day, period: period).filter { entry in
+            switch entry.kind {
+            case .session:
+                guard let sessionId = entry.sessionId else { return false }
+                return displayedSessionIds.contains(sessionId)
+            case .scheduledSlot:
+                let matchesGroup = groupFilterId.map { entry.classId == $0 } ?? true
+                let matchesStatus = sessionFilter != .completed
+                let matchesSearch = query.isEmpty || entry.matchesSearch(query)
+                return matchesGroup && matchesStatus && matchesSearch
+            }
+        }
     }
 
     private var displayedRows: [MacPlannerSessionRow] {
@@ -2286,16 +1558,79 @@ struct MacPlannerView: View {
         isInspectorVisible && totalWidth >= 1180
     }
 
+    private func openComposerForCurrentFilter() {
+        vm.openComposer()
+        if let groupFilterId {
+            vm.composerDraft.groupId = groupFilterId
+        }
+    }
+
     private func copyFilteredWeek() async {
         guard !displayedSessions.isEmpty else { return }
         vm.selectedSessionIds = Set(displayedSessions.map(\.id))
         await vm.bulkCopyToNextWeek()
     }
 
-    private func moveFilteredSelection() async {
+    private func moveFilteredSessions() async {
         guard !displayedSessions.isEmpty else { return }
         vm.selectedSessionIds = Set(displayedSessions.map(\.id))
         await vm.bulkMoveOneDay()
+    }
+
+    @MainActor
+    private func receiveCascadeDrop(sessionId: Int64, day: Int, period: Int) async {
+        do {
+            let preview = try await vm.previewCascadeMove(sessionId: sessionId, day: day, period: period)
+            guard !preview.isNoOp else { return }
+            if !preview.completedSessionIds.isEmpty {
+                pendingCascadeDrop = MacPlannerPendingDrop(sessionId: sessionId, day: day, period: period)
+            } else {
+                await commitCascadeDrop(sessionId: sessionId, day: day, period: period)
+            }
+        } catch {
+            transientMessage = "No se puede mover la sesión: \(error.localizedDescription)"
+            AppleInteractionFeedback.play(.error)
+        }
+    }
+
+    @MainActor
+    private func commitCascadeDrop(sessionId: Int64, day: Int, period: Int) async {
+        do {
+            let result = try await vm.commitCascadeMove(sessionId: sessionId, day: day, period: period)
+            let suffix = result.crossesWeekBoundary ? " Se ha continuado en la semana siguiente." : ""
+            transientMessage = "Sesión movida; \(result.movedCount) sesión(es) recolocadas.\(suffix)"
+            AppleInteractionFeedback.play(.success)
+        } catch {
+            transientMessage = "No se pudo completar el movimiento: \(error.localizedDescription)"
+            AppleInteractionFeedback.play(.error)
+        }
+    }
+
+    @MainActor
+    private func undoCascadeMove() async {
+        do {
+            try await vm.restoreLastCascadeMove()
+            transientMessage = "Movimiento deshecho."
+            AppleInteractionFeedback.play(.success)
+        } catch {
+            transientMessage = "No se pudo deshacer: \(error.localizedDescription)"
+            AppleInteractionFeedback.play(.error)
+        }
+    }
+
+    private func normalizeSelectionForDisplayedSessions() async {
+        let visible = displayedSessions
+        if let selectedSession = vm.selectedSession,
+           visible.contains(where: { $0.id == selectedSession.id }) {
+            return
+        }
+        if let first = visible.first {
+            await vm.select(session: first)
+            selectedTableSessionId = first.id
+        } else {
+            vm.clearSelection()
+            selectedTableSessionId = nil
+        }
     }
 
     private func exportCurrentContext() {
@@ -2314,6 +1649,12 @@ struct MacPlannerView: View {
         transientMessage = "Resumen exportado al portapapeles."
         showingExportConfirmation = true
     }
+}
+
+private struct MacPlannerPendingDrop {
+    let sessionId: Int64
+    let day: Int
+    let period: Int
 }
 
 private enum MacPlannerSection: String, CaseIterable, Identifiable {
@@ -2337,6 +1678,23 @@ private enum MacPlannerSection: String, CaseIterable, Identifiable {
         case .sessions: return "tablecells"
         case .agenda: return "clock.badge.checkmark"
         }
+    }
+}
+
+private enum MacPlannerSessionFilter: String, CaseIterable, Identifiable {
+    case all = "Todas"
+    case planned = "Planificadas"
+    case completed = "Impartidas"
+
+    var id: String { rawValue }
+}
+
+private extension PlannerWeekCellEntry {
+    func matchesSearch(_ query: String) -> Bool {
+        let searchableText = ([className, title, preview] + sectionPreviews.map(\.value))
+            .joined(separator: " ")
+            .lowercased()
+        return searchableText.contains(query)
     }
 }
 
@@ -2377,6 +1735,7 @@ private struct MacPlannerBanner: View {
 private struct MacPlannerSessionsTable: View {
     let rows: [MacPlannerSessionRow]
     @Binding var selectedSessionId: Int64?
+    let onOpenSession: (PlanningSession) -> Void
 
     var body: some View {
         if rows.isEmpty {
@@ -2390,31 +1749,55 @@ private struct MacPlannerSessionsTable: View {
                 TableColumn("Unidad") { row in
                     Text(row.unit)
                         .lineLimit(2)
+                        .contentShape(Rectangle())
+                        .onTapGesture(count: 2) {
+                            onOpenSession(row.session)
+                        }
                 }
                 .width(min: 180, ideal: 240)
 
                 TableColumn("Grupo") { row in
                     Text(row.group)
+                        .contentShape(Rectangle())
+                        .onTapGesture(count: 2) {
+                            onOpenSession(row.session)
+                        }
                 }
                 .width(min: 120, ideal: 160)
 
                 TableColumn("Día") { row in
                     Text(row.day)
+                        .contentShape(Rectangle())
+                        .onTapGesture(count: 2) {
+                            onOpenSession(row.session)
+                        }
                 }
                 .width(min: 70, ideal: 80)
 
                 TableColumn("Franja") { row in
                     Text(row.time)
+                        .contentShape(Rectangle())
+                        .onTapGesture(count: 2) {
+                            onOpenSession(row.session)
+                        }
                 }
                 .width(min: 110, ideal: 120)
 
                 TableColumn("Estado") { row in
                     Text(row.sessionStatus)
+                        .contentShape(Rectangle())
+                        .onTapGesture(count: 2) {
+                            onOpenSession(row.session)
+                        }
                 }
                 .width(min: 100, ideal: 110)
 
                 TableColumn("Diario") { row in
                     Text(row.diaryStatus)
+                        .contentShape(Rectangle())
+                        .onTapGesture(count: 2) {
+                            onOpenSession(row.session)
+                        }
                 }
                 .width(min: 90, ideal: 100)
             }
@@ -2424,16 +1807,31 @@ private struct MacPlannerSessionsTable: View {
 
 private struct MacPlannerWeekBoard: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
+    let defaultGroupId: Int64?
+    let entriesProvider: (Int, Int) -> [PlannerWeekCellEntry]
     let onSelectSession: (PlanningSession) -> Void
     let onDoubleOpenSession: (PlanningSession) -> Void
+    let onDropSession: (Int64, Int, Int) -> Void
 
     var body: some View {
         ScrollView([.horizontal, .vertical]) {
             VStack(spacing: 0) {
                 HStack(spacing: 0) {
-                    headerCell("Franja", width: 120)
+                    headerCell("Franja", width: 112)
                     ForEach(vm.visibleWeekdays, id: \.self) { day in
-                        headerCell(vm.dayLabel(for: day), width: 250)
+                        let isHoliday = vm.holidayDays.contains(day)
+                        headerCell(vm.dayHeaderLabel(for: day) + (isHoliday ? " 🌴" : ""), width: 214)
+                            .foregroundStyle(isHoliday ? EvaluationDesign.danger : Color.primary)
+                            .contextMenu {
+                                Button {
+                                    Task { await vm.toggleHoliday(for: day) }
+                                } label: {
+                                    Label(
+                                        isHoliday ? "Marcar como lectivo" : "Marcar como festivo",
+                                        systemImage: isHoliday ? "calendar.badge.plus" : "calendar.badge.minus"
+                                    )
+                                }
+                            }
                     }
                 }
 
@@ -2446,17 +1844,20 @@ private struct MacPlannerWeekBoard: View {
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
-                        .frame(width: 120, height: 176)
+                        .frame(width: 112, height: 122)
                         .background(MacAppStyle.subtleFill)
 
                         ForEach(vm.visibleWeekdays, id: \.self) { day in
                             MacPlannerWeekCell(
-                                entries: vm.entries(for: day, period: Int(slot.period)),
+                                entries: entriesProvider(day, Int(slot.period)),
+                                isHoliday: vm.holidayDays.contains(day),
                                 day: day,
                                 period: Int(slot.period),
                                 vm: vm,
+                                defaultGroupId: defaultGroupId,
                                 onSelectSession: onSelectSession,
-                                onDoubleOpenSession: onDoubleOpenSession
+                                onDoubleOpenSession: onDoubleOpenSession,
+                                onDropSession: onDropSession
                             )
                         }
                     }
@@ -2476,26 +1877,57 @@ private struct MacPlannerWeekBoard: View {
 
 private struct MacPlannerWeekCell: View {
     let entries: [PlannerWeekCellEntry]
+    let isHoliday: Bool
     let day: Int
     let period: Int
     @ObservedObject var vm: PlannerWorkspaceViewModel
+    let defaultGroupId: Int64?
     let onSelectSession: (PlanningSession) -> Void
     let onDoubleOpenSession: (PlanningSession) -> Void
+    let onDropSession: (Int64, Int, Int) -> Void
     @State private var isHovering = false
+    @State private var isDropTargeted = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if entries.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    Image(systemName: "plus.circle")
-                        .foregroundStyle(.secondary)
-                    Text("Libre")
-                        .font(.caption.weight(.bold))
-                    Text("Doble clic para añadir sesión")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+            if isHoliday {
+                ZStack {
+                    if !entries.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(entries.prefix(3)) { entry in
+                                MacPlannerWeekEntryRow(
+                                    entry: entry,
+                                    vm: vm,
+                                    onSelectSession: onSelectSession,
+                                    onDoubleOpenSession: onDoubleOpenSession
+                                )
+                            }
+                        }
+                        .opacity(0.2)
+                        .disabled(true)
+                    }
+                    VStack(spacing: 4) {
+                        Image(systemName: "umbrella.fill")
+                            .font(.title2)
+                            .foregroundStyle(EvaluationDesign.danger.opacity(0.7))
+                        Text("No lectivo")
+                            .font(.caption.bold())
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            } else if entries.isEmpty {
+                VStack(spacing: 6) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(isHovering ? MacAppStyle.infoTint : .secondary)
+                    if isHovering {
+                        Text("Añadir sesión")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             } else {
                 ForEach(entries.prefix(3)) { entry in
                     MacPlannerWeekEntryRow(
@@ -2513,24 +1945,50 @@ private struct MacPlannerWeekCell: View {
                 }
             }
         }
-        .padding(12)
-        .frame(width: 250, height: 176, alignment: .topLeading)
+        .padding(8)
+        .frame(width: 214, height: 122, alignment: .topLeading)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(isHovering ? MacAppStyle.infoTint.opacity(0.08) : MacAppStyle.cardBackground)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(isHoliday ? MacAppStyle.subtleFill.opacity(0.5) : (isDropTargeted ? MacAppStyle.infoTint.opacity(0.14) : (isHovering ? MacAppStyle.infoTint.opacity(0.08) : MacAppStyle.cardBackground)))
         )
         .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(isHovering ? MacAppStyle.infoTint.opacity(0.45) : MacAppStyle.cardBorder, lineWidth: 1)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(isHoliday ? EvaluationDesign.danger.opacity(0.15) : (isDropTargeted ? MacAppStyle.infoTint : (isHovering ? MacAppStyle.infoTint.opacity(0.45) : MacAppStyle.cardBorder)), lineWidth: isDropTargeted ? 2 : 1)
         }
         .contentShape(Rectangle())
         .onHover { hovering in
+            guard !isHoliday else { return }
             isHovering = hovering
         }
         .onTapGesture(count: 2) {
+            guard !isHoliday else { return }
             if entries.isEmpty {
-                vm.openComposer(day: day, period: period)
+                openComposer()
             }
+        }
+        .onTapGesture {
+            guard !isHoliday else { return }
+            if entries.isEmpty, isHovering {
+                openComposer()
+            }
+        }
+        .dropDestination(for: String.self) { values, _ in
+            guard !isHoliday else { return false }
+            guard let value = values.first,
+                  value.hasPrefix("planner-session:"),
+                  let sessionId = Int64(value.dropFirst("planner-session:".count)) else { return false }
+            onDropSession(sessionId, day, period)
+            return true
+        } isTargeted: { targeted in
+            guard !isHoliday else { return }
+            isDropTargeted = targeted
+        }
+    }
+
+    private func openComposer() {
+        vm.openComposer(day: day, period: period)
+        if let defaultGroupId {
+            vm.composerDraft.groupId = defaultGroupId
         }
     }
 }
@@ -2548,30 +2006,40 @@ private struct MacPlannerWeekEntryRow: View {
             HStack(spacing: 8) {
                 Capsule()
                     .fill(tint)
-                    .frame(width: 8, height: 20)
+                    .frame(width: 6, height: 18)
                 Text(entry.className)
                     .font(.caption.weight(.bold))
                     .lineLimit(1)
                 Spacer(minLength: 4)
-                if entry.isCompleted {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(MacAppStyle.successTint)
-                }
+                statusIcon
             }
 
-            Text(entry.title)
-                .font(.caption.weight(.semibold))
-                .lineLimit(2)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(entry.title)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
 
-            Text(entry.preview)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .lineLimit(3)
+                    Text(entry.kind == .scheduledSlot ? "Pendiente" : statusLabel)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(statusTint)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 4)
+                if entry.kind == .scheduledSlot {
+                    Button("Planificar") {
+                        vm.openComposer(day: entry.dayOfWeek, period: entry.period)
+                        vm.composerDraft.groupId = entry.classId
+                    }
+                    .buttonStyle(.borderless)
+                    .font(.caption.weight(.semibold))
+                }
+            }
         }
-        .padding(10)
+        .padding(8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(tint.opacity(entry.kind == .session ? 0.12 : 0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         .contentShape(Rectangle())
         .contextMenu {
             if let session = resolvedSession {
@@ -2594,11 +2062,6 @@ private struct MacPlannerWeekEntryRow: View {
                 }
             }
         }
-        .onTapGesture {
-            if let session = resolvedSession {
-                onSelectSession(session)
-            }
-        }
         .onTapGesture(count: 2) {
             if let session = resolvedSession {
                 onDoubleOpenSession(session)
@@ -2607,11 +2070,63 @@ private struct MacPlannerWeekEntryRow: View {
                 vm.composerDraft.groupId = entry.classId
             }
         }
+        .onTapGesture {
+            if let session = resolvedSession {
+                onSelectSession(session)
+            }
+        }
+        .modifier(MacPlannerSessionDragModifier(sessionId: resolvedSession?.id))
     }
 
     private var resolvedSession: PlanningSession? {
         guard let sessionId = entry.sessionId else { return nil }
         return vm.sessions.first(where: { $0.id == sessionId })
+    }
+
+    @ViewBuilder
+    private var statusIcon: some View {
+        if entry.isCompleted {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(MacAppStyle.successTint)
+        } else if entry.kind == .session {
+            Image(systemName: entry.journalStatus == .draft ? "doc.badge.clock" : "circle")
+                .foregroundStyle(statusTint)
+        } else {
+            Image(systemName: "calendar.badge.plus")
+                .foregroundStyle(statusTint)
+        }
+    }
+
+    private var statusLabel: String {
+        if entry.isCompleted { return "Impartida" }
+        switch entry.journalStatus {
+        case .completed:
+            return "Diario cerrado"
+        case .draft:
+            return "Diario pendiente"
+        default:
+            return "Planificada"
+        }
+    }
+
+    private var statusTint: Color {
+        if entry.isCompleted || entry.journalStatus == .completed { return MacAppStyle.successTint }
+        if entry.kind == .scheduledSlot { return MacAppStyle.warningTint }
+        if entry.journalStatus == .draft { return MacAppStyle.warningTint }
+        return .secondary
+    }
+}
+
+private struct MacPlannerSessionDragModifier: ViewModifier {
+    let sessionId: Int64?
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let sessionId {
+            content.draggable("planner-session:\(sessionId)")
+        } else {
+            content
+        }
     }
 }
 
@@ -2619,6 +2134,7 @@ private struct MacPlannerAgendaView: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
     let groupFilterId: Int64?
     let onOpenSettings: () -> Void
+    @State private var showingGenerationPreview = false
 
     private var filteredScheduleSlots: [TeacherScheduleSlot] {
         vm.effectiveScheduleSlots.filter { slot in
@@ -2649,6 +2165,12 @@ private struct MacPlannerAgendaView: View {
                         Text("Días lectivos")
                             .font(MacAppStyle.sectionTitle)
                         Spacer()
+                        Button("Generar sesiones desde horario") {
+                            vm.buildScheduleGenerationPreview(groupId: groupFilterId)
+                            showingGenerationPreview = true
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(filteredScheduleSlots.isEmpty || vm.isGeneratingScheduleSessions)
                         Button("Abrir configuración", action: onOpenSettings)
                             .buttonStyle(.borderedProminent)
                     }
@@ -2656,6 +2178,11 @@ private struct MacPlannerAgendaView: View {
                     Text(vm.activeWeekdaySummary)
                         .font(MacAppStyle.bodyText)
                         .foregroundStyle(.secondary)
+                    if !vm.scheduleGenerationSummary.isEmpty {
+                        Text(vm.scheduleGenerationSummary)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 .padding(MacAppStyle.innerPadding)
                 .background(MacAppStyle.cardBackground)
@@ -2737,6 +2264,112 @@ private struct MacPlannerAgendaView: View {
             }
             .padding(.bottom, 12)
         }
+        .sheet(isPresented: $showingGenerationPreview) {
+            MacPlannerScheduleGenerationPreviewSheet(
+                vm: vm,
+                groupFilterId: groupFilterId,
+                onClose: { showingGenerationPreview = false },
+                onGenerate: {
+                    Task {
+                        await vm.generateSessionsFromSchedule(groupId: groupFilterId)
+                        showingGenerationPreview = false
+                    }
+                }
+            )
+            .frame(minWidth: 640, minHeight: 460)
+        }
+    }
+}
+
+private struct MacPlannerScheduleGenerationPreviewSheet: View {
+    @ObservedObject var vm: PlannerWorkspaceViewModel
+    let groupFilterId: Int64?
+    let onClose: () -> Void
+    let onGenerate: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            MacPopupActionBar(
+                title: "Generar sesiones",
+                subtitle: "Preview antes de crear planificación vacía",
+                saveTitle: vm.isGeneratingScheduleSessions ? "Generando..." : "Crear sesiones",
+                canSave: !vm.scheduleGenerationPreview.isEmpty && !vm.isGeneratingScheduleSessions,
+                onClose: onClose,
+                onSave: onGenerate
+            )
+
+            VStack(alignment: .leading, spacing: 16) {
+                let totals = vm.generationPreviewTotals
+                HStack(spacing: 12) {
+                    MacMetricCard(label: "Detectadas", value: "\(totals.detected)", tint: MacAppStyle.infoTint, systemImage: "calendar.badge.plus")
+                    MacMetricCard(label: "Omitidas", value: "\(totals.omitted)", tint: MacAppStyle.warningTint, systemImage: "minus.circle")
+                }
+
+                if vm.scheduleGenerationPreview.isEmpty {
+                    ContentUnavailableView(
+                        "Sin franjas",
+                        systemImage: "calendar.badge.exclamationmark",
+                        description: Text("No hay franjas docentes para el filtro actual.")
+                    )
+                } else {
+                    VStack(spacing: 0) {
+                        ForEach(vm.scheduleGenerationPreview) { row in
+                            HStack {
+                                Text(row.className)
+                                    .font(.callout.weight(.semibold))
+                                Spacer()
+                                Text("\(row.detectedSessions) sesiones detectadas")
+                                    .foregroundStyle(.secondary)
+                                Text("\(row.existingSessions) existentes omitidas")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.vertical, 9)
+                            Divider()
+                        }
+                    }
+                }
+
+                Text(vm.scheduleGenerationSummary.isEmpty ? "Se crearán sesiones planificadas vacías para la semana visible." : vm.scheduleGenerationSummary)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(MacAppStyle.pagePadding)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(MacAppStyle.pageBackground)
+        }
+        .background(MacAppStyle.pageBackground)
+        .onAppear {
+            vm.buildScheduleGenerationPreview(groupId: groupFilterId)
+        }
+    }
+}
+
+private struct MacPlannerScheduleSettingsSheet: View {
+    @ObservedObject var bridge: KmpBridge
+    @Binding var selectedClassId: Int64?
+    let onClose: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            MacPopupActionBar(
+                title: "Configurar agenda",
+                subtitle: "Horario docente, curso y previsión lectiva",
+                onClose: onClose
+            )
+            .frame(maxWidth: .infinity)
+            .zIndex(2)
+
+            ScrollView(.vertical, showsIndicators: true) {
+                MacTeacherScheduleSettingsPanel(
+                    bridge: bridge,
+                    selectedClassId: $selectedClassId
+                )
+                .padding(MacAppStyle.pagePadding)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+            .background(MacAppStyle.pageBackground)
+        }
+        .background(MacAppStyle.pageBackground)
     }
 }
 

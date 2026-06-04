@@ -18,6 +18,9 @@ import com.migestor.shared.domain.EvaluationCompetencyLink
 import com.migestor.shared.domain.Grade
 import com.migestor.shared.domain.Incident
 import com.migestor.shared.domain.Period
+import com.migestor.shared.domain.NotebookAverageExplanation
+import com.migestor.shared.domain.NotebookCellAuditAction
+import com.migestor.shared.domain.NotebookCellAuditEvent
 import com.migestor.shared.domain.PersistedNotebookCell
 import com.migestor.shared.domain.PlanningSession
 import com.migestor.shared.domain.Rubric
@@ -29,6 +32,8 @@ import com.migestor.shared.domain.RubricLevel
 import com.migestor.shared.domain.SchoolClass
 import com.migestor.shared.domain.SessionStatus
 import com.migestor.shared.domain.Student
+import com.migestor.shared.domain.StudentSex
+import com.migestor.shared.domain.StudentSexSource
 import com.migestor.shared.domain.TeachingUnit
 import com.migestor.shared.util.IsoWeekHelper
 import com.migestor.shared.repository.AttendanceRepository
@@ -46,11 +51,25 @@ import com.migestor.shared.repository.PlannerRepository
 import com.migestor.shared.repository.RubricsRepository
 import com.migestor.shared.repository.StudentsRepository
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
+import kotlinx.datetime.LocalDate
+
+private fun studentSexOrDefault(value: String): StudentSex {
+    return runCatching { StudentSex.valueOf(value) }.getOrDefault(StudentSex.UNSPECIFIED)
+}
+
+private fun studentSexSourceOrDefault(value: String): StudentSexSource {
+    return runCatching { StudentSexSource.valueOf(value) }.getOrDefault(StudentSexSource.UNKNOWN)
+}
+
+private fun localDateOrNull(value: String?): LocalDate? {
+    return value?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+}
 
 class StudentsRepositorySqlDelight(
     private val db: AppDatabase,
@@ -69,6 +88,9 @@ class StudentsRepositorySqlDelight(
                         email = it.email,
                         photoPath = it.photo_path,
                         isInjured = it.is_injured != 0L,
+                        sex = studentSexOrDefault(it.sex),
+                        sexSource = studentSexSourceOrDefault(it.sex_source),
+                        birthDate = localDateOrNull(it.birth_date_iso),
                         trace = AuditTrace(
                             updatedAt = Instant.fromEpochMilliseconds(it.updated_at_epoch_ms),
                             deviceId = it.device_id,
@@ -79,8 +101,8 @@ class StudentsRepositorySqlDelight(
             }
     }
 
-    override suspend fun listStudents(): List<Student> {
-        return db.appDatabaseQueries.selectAllStudents().executeAsList().map {
+    override suspend fun listStudents(): List<Student> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectAllStudents().executeAsList().map {
             Student(
                 id = it.id,
                 firstName = it.first_name,
@@ -88,6 +110,30 @@ class StudentsRepositorySqlDelight(
                 email = it.email,
                 photoPath = it.photo_path,
                 isInjured = it.is_injured != 0L,
+                sex = studentSexOrDefault(it.sex),
+                sexSource = studentSexSourceOrDefault(it.sex_source),
+                birthDate = localDateOrNull(it.birth_date_iso),
+                trace = AuditTrace(
+                    updatedAt = Instant.fromEpochMilliseconds(it.updated_at_epoch_ms),
+                    deviceId = it.device_id,
+                    syncVersion = it.sync_version,
+                )
+            )
+        }
+    }
+
+    override suspend fun getStudent(studentId: Long): Student? = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectStudentById(studentId).executeAsOneOrNull()?.let {
+            Student(
+                id = it.id,
+                firstName = it.first_name,
+                lastName = it.last_name,
+                email = it.email,
+                photoPath = it.photo_path,
+                isInjured = it.is_injured != 0L,
+                sex = studentSexOrDefault(it.sex),
+                sexSource = studentSexSourceOrDefault(it.sex_source),
+                birthDate = localDateOrNull(it.birth_date_iso),
                 trace = AuditTrace(
                     updatedAt = Instant.fromEpochMilliseconds(it.updated_at_epoch_ms),
                     deviceId = it.device_id,
@@ -104,19 +150,22 @@ class StudentsRepositorySqlDelight(
         email: String?,
         photoPath: String?,
         isInjured: Boolean,
+        sex: StudentSex,
+        sexSource: StudentSexSource,
+        birthDate: LocalDate?,
         updatedAtEpochMs: Long,
         deviceId: String?,
         syncVersion: Long,
-    ): Long {
+    ): Long = withContext(Dispatchers.Default) {
         val now = if (updatedAtEpochMs > 0) updatedAtEpochMs else Clock.System.now().toEpochMilliseconds()
         val injured = if (isInjured) 1L else 0L
-        return db.transactionWithResult {
-            db.appDatabaseQueries.upsertStudent(id, firstName, lastName, email, photoPath, injured, now, deviceId, syncVersion)
+        db.transactionWithResult {
+            db.appDatabaseQueries.upsertStudent(id, firstName, lastName, email, photoPath, injured, sex.name, sexSource.name, birthDate?.toString(), now, deviceId, syncVersion)
             id ?: db.appDatabaseQueries.lastInsertedId().executeAsOne()
         }
     }
 
-    override suspend fun deleteStudent(studentId: Long) {
+    override suspend fun deleteStudent(studentId: Long) = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.deleteStudent(studentId)
     }
 }
@@ -146,8 +195,8 @@ class ClassesRepositorySqlDelight(
             }
     }
 
-    override suspend fun listClasses(): List<SchoolClass> {
-        return db.appDatabaseQueries.selectAllClasses().executeAsList().map {
+    override suspend fun listClasses(): List<SchoolClass> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectAllClasses().executeAsList().map {
             SchoolClass(
                 id = it.id,
                 name = it.name,
@@ -170,28 +219,28 @@ class ClassesRepositorySqlDelight(
         updatedAtEpochMs: Long,
         deviceId: String?,
         syncVersion: Long,
-    ): Long {
+    ): Long = withContext(Dispatchers.Default) {
         val now = if (updatedAtEpochMs > 0) updatedAtEpochMs else Clock.System.now().toEpochMilliseconds()
-        return db.transactionWithResult {
+        db.transactionWithResult {
             db.appDatabaseQueries.upsertClass(id, name, course.toLong(), description, now, deviceId, syncVersion)
             id ?: db.appDatabaseQueries.lastInsertedId().executeAsOne()
         }
     }
 
-    override suspend fun deleteClass(classId: Long) {
+    override suspend fun deleteClass(classId: Long) = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.deleteClass(classId)
     }
 
-    override suspend fun addStudentToClass(classId: Long, studentId: Long) {
+    override suspend fun addStudentToClass(classId: Long, studentId: Long) = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.insertClassStudent(classId, studentId)
     }
 
-    override suspend fun removeStudentFromClass(classId: Long, studentId: Long) {
+    override suspend fun removeStudentFromClass(classId: Long, studentId: Long) = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.removeClassStudent(classId, studentId)
     }
 
-    override suspend fun listStudentsInClass(classId: Long): List<Student> {
-        return db.appDatabaseQueries.selectStudentsByClass(classId).executeAsList().map {
+    override suspend fun listStudentsInClass(classId: Long): List<Student> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectStudentsByClass(classId).executeAsList().map {
             Student(
                 id = it.id,
                 firstName = it.first_name,
@@ -199,6 +248,9 @@ class ClassesRepositorySqlDelight(
                 email = it.email,
                 photoPath = it.photo_path,
                 isInjured = it.is_injured != 0L,
+                sex = studentSexOrDefault(it.sex),
+                sexSource = studentSexSourceOrDefault(it.sex_source),
+                birthDate = localDateOrNull(it.birth_date_iso),
                 trace = AuditTrace(
                     updatedAt = Instant.fromEpochMilliseconds(it.updated_at_epoch_ms),
                     deviceId = it.device_id,
@@ -222,6 +274,9 @@ class ClassesRepositorySqlDelight(
                         email = it.email,
                         photoPath = it.photo_path,
                         isInjured = it.is_injured != 0L,
+                        sex = studentSexOrDefault(it.sex),
+                        sexSource = studentSexSourceOrDefault(it.sex_source),
+                        birthDate = localDateOrNull(it.birth_date_iso),
                         trace = AuditTrace(
                             updatedAt = Instant.fromEpochMilliseconds(it.updated_at_epoch_ms),
                             deviceId = it.device_id,
@@ -266,8 +321,8 @@ class EvaluationsRepositorySqlDelight(
             }
     }
 
-    override suspend fun listClassEvaluations(classId: Long): List<Evaluation> {
-        return db.appDatabaseQueries.selectEvaluationsByClass(classId).executeAsList().map {
+    override suspend fun listClassEvaluations(classId: Long): List<Evaluation> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectEvaluationsByClass(classId).executeAsList().map {
             Evaluation(
                 id = it.id,
                 classId = it.class_id,
@@ -290,8 +345,8 @@ class EvaluationsRepositorySqlDelight(
         }
     }
 
-    override suspend fun getEvaluation(evaluationId: Long): Evaluation? {
-        return db.appDatabaseQueries.selectEvaluationById(evaluationId).executeAsOneOrNull()?.let {
+    override suspend fun getEvaluation(evaluationId: Long): Evaluation? = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectEvaluationById(evaluationId).executeAsOneOrNull()?.let {
             Evaluation(
                 id = it.id,
                 classId = it.class_id,
@@ -330,10 +385,10 @@ class EvaluationsRepositorySqlDelight(
         associatedGroupId: Long?,
         deviceId: String?,
         syncVersion: Long,
-    ): Long {
+    ): Long = withContext(Dispatchers.Default) {
         val now = if (updatedAtEpochMs > 0) updatedAtEpochMs else Clock.System.now().toEpochMilliseconds()
         val created = if (createdAtEpochMs > 0) createdAtEpochMs else now
-        return db.transactionWithResult {
+        db.transactionWithResult {
             db.appDatabaseQueries.upsertEvaluation(
                 id, classId, code, name, type, weight, formula, rubricId, description, 
                 authorUserId, created, now, associatedGroupId, deviceId, syncVersion
@@ -342,7 +397,7 @@ class EvaluationsRepositorySqlDelight(
         }
     }
 
-    override suspend fun deleteEvaluation(evaluationId: Long) {
+    override suspend fun deleteEvaluation(evaluationId: Long) = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.deleteEvaluation(evaluationId)
     }
 
@@ -352,9 +407,9 @@ class EvaluationsRepositorySqlDelight(
         competencyId: Long,
         weight: Double,
         authorUserId: Long?,
-    ): Long {
+    ): Long = withContext(Dispatchers.Default) {
         val now = Clock.System.now().toEpochMilliseconds()
-        return db.transactionWithResult {
+        db.transactionWithResult {
             db.appDatabaseQueries.upsertEvaluationCompetencyLink(
                 id,
                 evaluationId,
@@ -371,8 +426,8 @@ class EvaluationsRepositorySqlDelight(
         }
     }
 
-    override suspend fun listEvaluationCompetencyLinks(evaluationId: Long): List<EvaluationCompetencyLink> {
-        return db.appDatabaseQueries.selectEvaluationCompetencyLinks(evaluationId).executeAsList().map {
+    override suspend fun listEvaluationCompetencyLinks(evaluationId: Long): List<EvaluationCompetencyLink> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectEvaluationCompetencyLinks(evaluationId).executeAsList().map {
             EvaluationCompetencyLink(
                 id = it.id,
                 evaluationId = it.evaluation_id,
@@ -422,21 +477,23 @@ class GradesRepositorySqlDelight(
         updatedAtEpochMs: Long,
         deviceId: String?,
         syncVersion: Long,
-    ): Long {
+    ): Long = withContext(Dispatchers.Default) {
         val now = if (updatedAtEpochMs > 0) updatedAtEpochMs else Clock.System.now().toEpochMilliseconds()
         val created = if (createdAtEpochMs > 0) createdAtEpochMs else now
-        val existing = db.appDatabaseQueries.selectGradeByStudentAndColumn(studentId, columnId).executeAsOneOrNull()
+        val existingRecord = db.appDatabaseQueries.selectGradesByStudentAndClass(studentId, classId).executeAsList().find { it.column_id == columnId }
+        val existingValue = existingRecord?.value_
+        
         val canApply = shouldApplyIncomingChange(
-            existingUpdatedAtEpochMs = existing?.updated_at_epoch_ms,
-            existingDeviceId = existing?.device_id,
+            existingUpdatedAtEpochMs = existingRecord?.updated_at_epoch_ms,
+            existingDeviceId = existingRecord?.device_id,
             incomingUpdatedAtEpochMs = now,
             incomingDeviceId = deviceId
         )
         if (!canApply) {
-            return id ?: 0L
+            return@withContext id ?: 0L
         }
 
-        return db.transactionWithResult {
+        db.transactionWithResult {
             db.appDatabaseQueries.upsertGrade(
                 class_id = classId,
                 student_id = studentId,
@@ -451,6 +508,24 @@ class GradesRepositorySqlDelight(
                 device_id = deviceId,
                 sync_version = syncVersion
             )
+            
+            if (existingValue != value) {
+                db.appDatabaseQueries.insertNotebookCellAudit(
+                    class_id = classId,
+                    student_id = studentId,
+                    column_id = columnId,
+                    previous_numeric_value = existingValue,
+                    new_numeric_value = value,
+                    previous_text_value = null,
+                    new_text_value = null,
+                    action = if (existingValue == null) NotebookCellAuditAction.CREATED.name else NotebookCellAuditAction.UPDATED.name,
+                    changed_at_epoch_ms = now,
+                    author_user_id = null,
+                    device_id = deviceId,
+                    sync_version = syncVersion
+                )
+            }
+            
             id ?: db.appDatabaseQueries.lastInsertedId().executeAsOne()
         }
     }
@@ -489,16 +564,16 @@ class GradesRepositorySqlDelight(
         updatedAtEpochMs: Long,
         deviceId: String?,
         syncVersion: Long,
-    ) {
+    ) = withContext(Dispatchers.Default) {
         val now = if (updatedAtEpochMs > 0) updatedAtEpochMs else Clock.System.now().toEpochMilliseconds()
-        val existing = db.appDatabaseQueries.selectGradeByStudentAndColumn(studentId, columnId).executeAsOneOrNull()
+        val existing = db.appDatabaseQueries.selectGradeByStudentClassAndColumn(classId, studentId, columnId).executeAsOneOrNull()
         val canApply = shouldApplyIncomingChange(
             existingUpdatedAtEpochMs = existing?.updated_at_epoch_ms,
             existingDeviceId = existing?.device_id,
             incomingUpdatedAtEpochMs = now,
             incomingDeviceId = deviceId
         )
-        if (!canApply) return
+        if (!canApply) return@withContext
 
         db.appDatabaseQueries.upsertGrade(
             class_id = classId,
@@ -516,8 +591,8 @@ class GradesRepositorySqlDelight(
         )
     }
 
-    override suspend fun listGradesForClass(classId: Long): List<Grade> {
-        return db.appDatabaseQueries.selectGradesByClass(classId) { id, classIdDb, studentId, columnId, evaluationId, value, evidence, evidencePath, rubric_selections, createdAt, updatedAt, device_id, sync_version ->
+    override suspend fun listGradesForClass(classId: Long): List<Grade> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectGradesByClass(classId) { id, classIdDb, studentId, columnId, evaluationId, value, evidence, evidencePath, rubric_selections, createdAt, updatedAt, device_id, sync_version ->
             Grade(
                 id = id,
                 classId = classIdDb,
@@ -538,8 +613,8 @@ class GradesRepositorySqlDelight(
         }.executeAsList()
     }
 
-    override suspend fun listGradesForStudentInClass(studentId: Long, classId: Long): List<Grade> {
-        return db.appDatabaseQueries.selectGradesByStudentAndClass(studentId, classId) { id, classIdDb, studentIdDb, columnId, evaluationId, value, evidence, evidencePath, rubric_selections, createdAt, updatedAt, device_id, sync_version ->
+    override suspend fun listGradesForStudentInClass(studentId: Long, classId: Long): List<Grade> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectGradesByStudentAndClass(studentId, classId) { id, classIdDb, studentIdDb, columnId, evaluationId, value, evidence, evidencePath, rubric_selections, createdAt, updatedAt, device_id, sync_version ->
             Grade(
                 id = id,
                 classId = classIdDb,
@@ -599,8 +674,8 @@ class NotebookCellsRepositorySqlDelight(
             .mapToList(Dispatchers.Default)
     }
 
-    override suspend fun listClassCells(classId: Long): List<PersistedNotebookCell> {
-        return db.appDatabaseQueries.selectNotebookCellsByClass(classId) { classIdDb, studentId, columnId, valueText, valueBool, valueIcon, valueOrdinal, displayValue, observedAtEpochMs, competencyCriteriaIdsCsv, effectiveWeight, countsTowardAverage, note, colorHex, attachmentUrisCsv, authorUserId, createdAt, updatedAt, associatedGroupId, device_id, sync_version ->
+    override suspend fun listClassCells(classId: Long): List<PersistedNotebookCell> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectNotebookCellsByClass(classId) { classIdDb, studentId, columnId, valueText, valueBool, valueIcon, valueOrdinal, displayValue, observedAtEpochMs, competencyCriteriaIdsCsv, effectiveWeight, countsTowardAverage, note, colorHex, attachmentUrisCsv, authorUserId, createdAt, updatedAt, associatedGroupId, device_id, sync_version ->
             PersistedNotebookCell(
                 classId = classIdDb,
                 studentId = studentId,
@@ -647,9 +722,16 @@ class NotebookCellsRepositorySqlDelight(
         updatedAtEpochMs: Long,
         deviceId: String?,
         syncVersion: Long,
-    ) {
+    ) = withContext(Dispatchers.Default) {
         val now = if (updatedAtEpochMs > 0) updatedAtEpochMs else Clock.System.now().toEpochMilliseconds()
         val existing = db.appDatabaseQueries.selectNotebookCellEntry(classId, studentId, columnId).executeAsOneOrNull()
+        
+        // Detect changes for audit
+        val textChanged = textValue != null && textValue != existing?.value_text
+        val boolChanged = boolValue != null && (boolValue != (existing?.value_bool == 1L))
+        val iconChanged = iconValue != null && iconValue != existing?.value_icon
+        val ordinalChanged = ordinalValue != null && ordinalValue != existing?.value_ordinal
+        
         db.appDatabaseQueries.upsertNotebookCellEntry(
             class_id = classId,
             student_id = studentId,
@@ -673,6 +755,50 @@ class NotebookCellsRepositorySqlDelight(
             device_id = deviceId,
             sync_version = syncVersion,
         )
+
+        if (textChanged || boolChanged || iconChanged || ordinalChanged) {
+            val prevText = listOfNotNull(existing?.value_text, existing?.value_icon, existing?.value_ordinal).joinToString(" | ")
+            val nextText = listOfNotNull(textValue, iconValue, ordinalValue).joinToString(" | ")
+            
+            db.appDatabaseQueries.insertNotebookCellAudit(
+                class_id = classId,
+                student_id = studentId,
+                column_id = columnId,
+                previous_numeric_value = null,
+                new_numeric_value = null,
+                previous_text_value = prevText.takeIf { it.isNotBlank() },
+                new_text_value = nextText.takeIf { it.isNotBlank() },
+                action = if (existing == null) NotebookCellAuditAction.CREATED.name else NotebookCellAuditAction.UPDATED.name,
+                changed_at_epoch_ms = now,
+                author_user_id = authorUserId,
+                device_id = deviceId,
+                sync_version = syncVersion
+            )
+        }
+    }
+
+    override fun observeCellAudit(
+        classId: Long,
+        studentId: Long,
+        columnId: String
+    ): Flow<List<NotebookCellAuditEvent>> {
+        return db.appDatabaseQueries.selectNotebookCellAudit(classId, studentId, columnId) { id, classIdDb, studentIdDb, columnIdDb, prevNum, nextNum, prevText, nextText, action, changedAt, authorId, deviceId, syncVersion ->
+            NotebookCellAuditEvent(
+                id = id,
+                classId = classIdDb,
+                studentId = studentIdDb,
+                columnId = columnIdDb,
+                previousNumericValue = prevNum,
+                newNumericValue = nextNum,
+                previousTextValue = prevText,
+                newTextValue = nextText,
+                action = runCatching { NotebookCellAuditAction.valueOf(action) }.getOrDefault(NotebookCellAuditAction.UPDATED),
+                changedAtEpochMs = changedAt,
+                authorUserId = authorId,
+                deviceId = deviceId,
+                syncVersion = syncVersion
+            )
+        }.asFlow().mapToList(Dispatchers.Default)
     }
 }
 
@@ -746,7 +872,7 @@ class RubricsRepositorySqlDelight(
         }
     }
 
-    override suspend fun listRubrics(): List<RubricDetail> {
+    override suspend fun listRubrics(): List<RubricDetail> = withContext(Dispatchers.Default) {
         val rubrics = db.appDatabaseQueries.selectAllRubrics().executeAsList().map { 
             Rubric(
                 id = it.id, 
@@ -790,7 +916,32 @@ class RubricsRepositorySqlDelight(
                 )
             )
         }
-        return buildRubrics(rubrics, criteria, levels)
+        buildRubrics(rubrics, criteria, levels)
+    }
+
+    override suspend fun getRubricDetail(rubricId: Long): RubricDetail? = withContext(Dispatchers.Default) {
+        val rubric = db.appDatabaseQueries.selectRubricById(rubricId).executeAsOneOrNull()?.let {
+            Rubric(
+                id = it.id,
+                name = it.name,
+                description = it.description,
+                classId = it.class_id,
+                teachingUnitId = it.teaching_unit_id,
+                trace = AuditTrace(
+                    updatedAt = Instant.fromEpochMilliseconds(it.updated_at_epoch_ms),
+                    deviceId = it.device_id,
+                    syncVersion = it.sync_version,
+                )
+            )
+        } ?: return@withContext null
+
+        val criteria = listCriteriaByRubric(rubricId).map { criterion ->
+            RubricCriterionWithLevels(
+                criterion = criterion,
+                levels = listLevelsByCriterion(criterion.id)
+            )
+        }
+        RubricDetail(rubric = rubric, criteria = criteria)
     }
 
     override suspend fun saveRubric(
@@ -803,12 +954,12 @@ class RubricsRepositorySqlDelight(
         updatedAtEpochMs: Long,
         deviceId: String?,
         syncVersion: Long,
-    ): Long {
+    ): Long = withContext(Dispatchers.Default) {
         val now = Clock.System.now().toEpochMilliseconds()
         val created = if (createdAtEpochMs == 0L) now else createdAtEpochMs
         val updated = if (updatedAtEpochMs == 0L) now else updatedAtEpochMs
         
-        return db.transactionWithResult {
+        db.transactionWithResult {
             db.appDatabaseQueries.upsertRubric(
                 id, 
                 name, 
@@ -824,7 +975,7 @@ class RubricsRepositorySqlDelight(
         }
     }
 
-    override suspend fun deleteRubric(rubricId: Long) {
+    override suspend fun deleteRubric(rubricId: Long) = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.deleteRubric(rubricId)
     }
 
@@ -837,15 +988,15 @@ class RubricsRepositorySqlDelight(
         updatedAtEpochMs: Long,
         deviceId: String?,
         syncVersion: Long,
-    ): Long {
+    ): Long = withContext(Dispatchers.Default) {
         val now = if (updatedAtEpochMs > 0) updatedAtEpochMs else Clock.System.now().toEpochMilliseconds()
-        return db.transactionWithResult {
+        db.transactionWithResult {
             db.appDatabaseQueries.upsertCriterion(id, rubricId, description, weight, order.toLong(), now, deviceId, syncVersion)
             id ?: db.appDatabaseQueries.lastInsertedId().executeAsOne()
         }
     }
 
-    override suspend fun deleteCriterion(criterionId: Long) {
+    override suspend fun deleteCriterion(criterionId: Long) = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.deleteCriterion(criterionId)
     }
 
@@ -859,15 +1010,15 @@ class RubricsRepositorySqlDelight(
         updatedAtEpochMs: Long,
         deviceId: String?,
         syncVersion: Long,
-    ): Long {
+    ): Long = withContext(Dispatchers.Default) {
         val now = if (updatedAtEpochMs > 0) updatedAtEpochMs else Clock.System.now().toEpochMilliseconds()
-        return db.transactionWithResult {
+        db.transactionWithResult {
             db.appDatabaseQueries.upsertLevel(id, criterionId, name, points.toLong(), description, order.toLong(), now, deviceId, syncVersion)
             id ?: db.appDatabaseQueries.lastInsertedId().executeAsOne()
         }
     }
 
-    override suspend fun deleteLevel(levelId: Long) {
+    override suspend fun deleteLevel(levelId: Long) = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.deleteLevel(levelId)
     }
 
@@ -879,7 +1030,7 @@ class RubricsRepositorySqlDelight(
         updatedAtEpochMs: Long,
         deviceId: String?,
         syncVersion: Long,
-    ): Double? {
+    ): Double? = withContext(Dispatchers.Default) {
         val now = if (updatedAtEpochMs > 0) updatedAtEpochMs else Clock.System.now().toEpochMilliseconds()
         val existing = db.appDatabaseQueries
             .selectRubricAssessmentByKey(studentId, evaluationId, criterionId)
@@ -891,7 +1042,7 @@ class RubricsRepositorySqlDelight(
             incomingDeviceId = deviceId
         )
         if (!canApply) {
-            return db.appDatabaseQueries.selectWeightedRubricScore(studentId, evaluationId).executeAsOneOrNull()?.score
+            return@withContext db.appDatabaseQueries.selectWeightedRubricScore(studentId, evaluationId).executeAsOneOrNull()?.score
         }
 
         db.appDatabaseQueries.upsertRubricAssessment(
@@ -904,11 +1055,11 @@ class RubricsRepositorySqlDelight(
             deviceId,
             syncVersion,
         )
-        return db.appDatabaseQueries.selectWeightedRubricScore(studentId, evaluationId).executeAsOneOrNull()?.score
+        db.appDatabaseQueries.selectWeightedRubricScore(studentId, evaluationId).executeAsOneOrNull()?.score
     }
 
-    override suspend fun listRubricAssessments(studentId: Long, evaluationId: Long): List<RubricAssessment> {
-        return db.appDatabaseQueries.selectRubricAssessments(studentId, evaluationId).executeAsList().map {
+    override suspend fun listRubricAssessments(studentId: Long, evaluationId: Long): List<RubricAssessment> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectRubricAssessments(studentId, evaluationId).executeAsList().map {
             RubricAssessment(
                 studentId = it.student_id,
                 evaluationId = it.evaluation_id,
@@ -924,13 +1075,13 @@ class RubricsRepositorySqlDelight(
         }
     }
 
-    override suspend fun getStudentEvaluation(studentId: Long, rubricId: Long, evaluationId: Long): Map<Long, Long> {
-        return db.appDatabaseQueries.selectStudentEvaluation(studentId, rubricId, evaluationId).executeAsList()
+    override suspend fun getStudentEvaluation(studentId: Long, rubricId: Long, evaluationId: Long): Map<Long, Long> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectStudentEvaluation(studentId, rubricId, evaluationId).executeAsList()
             .associate { it.criterion_id to it.level_id }
     }
 
-    override suspend fun listCriteriaByRubric(rubricId: Long): List<RubricCriterion> {
-        return db.appDatabaseQueries.selectCriteriaByRubric(rubricId).executeAsList().map {
+    override suspend fun listCriteriaByRubric(rubricId: Long): List<RubricCriterion> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectCriteriaByRubric(rubricId).executeAsList().map {
             RubricCriterion(
                 id = it.id,
                 rubricId = it.rubric_id,
@@ -946,8 +1097,8 @@ class RubricsRepositorySqlDelight(
         }
     }
 
-    override suspend fun listLevelsByCriterion(criterionId: Long): List<RubricLevel> {
-        return db.appDatabaseQueries.selectLevelsByCriterion(criterionId).executeAsList().map {
+    override suspend fun listLevelsByCriterion(criterionId: Long): List<RubricLevel> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectLevelsByCriterion(criterionId).executeAsList().map {
             RubricLevel(
                 id = it.id,
                 criterionId = it.criterion_id,
@@ -1022,8 +1173,8 @@ class AttendanceRepositorySqlDelight(
             }
     }
 
-    override suspend fun listAttendance(classId: Long): List<Attendance> {
-        return db.appDatabaseQueries.selectAttendanceByClass(classId).executeAsList().map {
+    override suspend fun listAttendance(classId: Long): List<Attendance> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectAttendanceByClass(classId).executeAsList().map {
             Attendance(
                 id = it.id,
                 studentId = it.student_id,
@@ -1043,8 +1194,8 @@ class AttendanceRepositorySqlDelight(
         }
     }
 
-    override suspend fun listAttendanceByDate(classId: Long, dateEpochMs: Long): List<Attendance> {
-        return db.appDatabaseQueries.selectAttendanceByClassAndDate(classId, dateEpochMs).executeAsList().map {
+    override suspend fun listAttendanceByDate(classId: Long, dateEpochMs: Long): List<Attendance> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectAttendanceByClassAndDate(classId, dateEpochMs).executeAsList().map {
             Attendance(
                 id = it.id,
                 studentId = it.student_id,
@@ -1073,8 +1224,8 @@ class AttendanceRepositorySqlDelight(
         updatedAtEpochMs: Long,
         deviceId: String?,
         syncVersion: Long,
-    ): Long {
-        return db.transactionWithResult {
+    ): Long = withContext(Dispatchers.Default) {
+        db.transactionWithResult {
             db.appDatabaseQueries.upsertAttendance(
                 id,
                 studentId,
@@ -1093,8 +1244,8 @@ class AttendanceRepositorySqlDelight(
         }
     }
 
-    override suspend fun getAttendanceForClassBetweenDates(classId: Long, startDateMs: Long, endDateMs: Long): List<Attendance> {
-        return db.appDatabaseQueries.selectAttendanceForClassBetweenDates(classId, startDateMs, endDateMs).executeAsList().map {
+    override suspend fun getAttendanceForClassBetweenDates(classId: Long, startDateMs: Long, endDateMs: Long): List<Attendance> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectAttendanceForClassBetweenDates(classId, startDateMs, endDateMs).executeAsList().map {
             Attendance(
                 id = it.id,
                 studentId = it.student_id,
@@ -1144,8 +1295,8 @@ class CompetenciesRepositorySqlDelight(
             }
     }
 
-    override suspend fun listCompetencies(): List<CompetencyCriterion> {
-        return db.appDatabaseQueries.selectAllCompetencies().executeAsList().map {
+    override suspend fun listCompetencies(): List<CompetencyCriterion> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectAllCompetencies().executeAsList().map {
             CompetencyCriterion(
                 id = it.id,
                 code = it.code,
@@ -1175,9 +1326,9 @@ class CompetenciesRepositorySqlDelight(
         updatedAtEpochMs: Long,
         deviceId: String?,
         syncVersion: Long,
-    ): Long {
+    ): Long = withContext(Dispatchers.Default) {
         val now = if (updatedAtEpochMs > 0) updatedAtEpochMs else Clock.System.now().toEpochMilliseconds()
-        return db.transactionWithResult {
+        db.transactionWithResult {
             db.appDatabaseQueries.upsertCompetency(
                 id,
                 code,
@@ -1227,8 +1378,8 @@ class IncidentsRepositorySqlDelight(
             }
     }
 
-    override suspend fun listIncidents(classId: Long): List<Incident> {
-        return db.appDatabaseQueries.selectIncidentsByClass(classId).executeAsList().map {
+    override suspend fun listIncidents(classId: Long): List<Incident> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectIncidentsByClass(classId).executeAsList().map {
             Incident(
                 id = it.id,
                 classId = it.class_id,
@@ -1261,9 +1412,9 @@ class IncidentsRepositorySqlDelight(
         updatedAtEpochMs: Long,
         deviceId: String?,
         syncVersion: Long,
-    ): Long {
+    ): Long = withContext(Dispatchers.Default) {
         val now = if (updatedAtEpochMs > 0) updatedAtEpochMs else Clock.System.now().toEpochMilliseconds()
-        return db.transactionWithResult {
+        db.transactionWithResult {
             db.appDatabaseQueries.upsertIncident(
                 id,
                 classId,
@@ -1335,8 +1486,8 @@ class CalendarRepositorySqlDelight(
         }
     }
 
-    override suspend fun listEvents(classId: Long?): List<CalendarEvent> {
-        return if (classId == null) {
+    override suspend fun listEvents(classId: Long?): List<CalendarEvent> = withContext(Dispatchers.Default) {
+        if (classId == null) {
             db.appDatabaseQueries.selectAllEvents().executeAsList().map {
                 CalendarEvent(
                     id = it.id,
@@ -1394,9 +1545,9 @@ class CalendarRepositorySqlDelight(
         updatedAtEpochMs: Long,
         deviceId: String?,
         syncVersion: Long,
-    ): Long {
+    ): Long = withContext(Dispatchers.Default) {
         val now = if (updatedAtEpochMs > 0) updatedAtEpochMs else Clock.System.now().toEpochMilliseconds()
-        return db.transactionWithResult {
+        db.transactionWithResult {
             db.appDatabaseQueries.upsertEvent(
                 id,
                 classId,
@@ -1446,13 +1597,13 @@ class ConfigurationTemplateRepositorySqlDelight(
             }
     }
 
-    override suspend fun listTemplates(kind: ConfigTemplateKind?): List<ConfigTemplate> {
+    override suspend fun listTemplates(kind: ConfigTemplateKind?): List<ConfigTemplate> = withContext(Dispatchers.Default) {
         val rows = if (kind == null) {
             db.appDatabaseQueries.selectAllConfigTemplates().executeAsList()
         } else {
             db.appDatabaseQueries.selectTemplatesByKind(kind.name).executeAsList()
         }
-        return rows.map {
+        rows.map {
             ConfigTemplate(
                 id = it.id,
                 centerId = it.center_id,
@@ -1482,9 +1633,9 @@ class ConfigurationTemplateRepositorySqlDelight(
         updatedAtEpochMs: Long,
         deviceId: String?,
         syncVersion: Long,
-    ): Long {
+    ): Long = withContext(Dispatchers.Default) {
         val now = if (updatedAtEpochMs > 0) updatedAtEpochMs else Clock.System.now().toEpochMilliseconds()
-        return db.transactionWithResult {
+        db.transactionWithResult {
             db.appDatabaseQueries.upsertConfigTemplate(
                 id,
                 centerId,
@@ -1513,10 +1664,10 @@ class ConfigurationTemplateRepositorySqlDelight(
         updatedAtEpochMs: Long,
         deviceId: String?,
         syncVersion: Long,
-    ): Long {
+    ): Long = withContext(Dispatchers.Default) {
         val now = if (updatedAtEpochMs > 0) updatedAtEpochMs else Clock.System.now().toEpochMilliseconds()
         val nextVersion = db.appDatabaseQueries.nextConfigTemplateVersion(templateId).executeAsOne().toInt()
-        return db.transactionWithResult {
+        db.transactionWithResult {
             db.appDatabaseQueries.upsertConfigTemplateVersion(
                 id,
                 templateId,
@@ -1535,8 +1686,8 @@ class ConfigurationTemplateRepositorySqlDelight(
         }
     }
 
-    override suspend fun listTemplateVersions(templateId: Long): List<ConfigTemplateVersion> {
-        return db.appDatabaseQueries.selectConfigTemplateVersions(templateId).executeAsList().map { row ->
+    override suspend fun listTemplateVersions(templateId: Long): List<ConfigTemplateVersion> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectConfigTemplateVersions(templateId).executeAsList().map { row ->
             ConfigTemplateVersion(
                 id = row.id,
                 templateId = row.template_id,
@@ -1561,9 +1712,9 @@ class ConfigurationTemplateRepositorySqlDelight(
         targetTemplateId: Long,
         sourceAcademicYearId: Long?,
         authorUserId: Long?,
-    ): Long {
+    ): Long = withContext(Dispatchers.Default) {
         val latest = db.appDatabaseQueries.selectLatestConfigTemplateVersion(sourceTemplateId).executeAsOne()
-        return saveTemplateVersion(
+        saveTemplateVersion(
             templateId = targetTemplateId,
             payloadJson = latest.payload_json,
             basedOnVersionId = latest.id,
@@ -1593,9 +1744,9 @@ class DashboardRepositorySqlDelight(
             }
     }
 
-    override suspend fun getStats(): DashboardStats {
+    override suspend fun getStats(): DashboardStats = withContext(Dispatchers.Default) {
         val row = db.appDatabaseQueries.selectDashboardStats().executeAsOne()
-        return DashboardStats(
+        DashboardStats(
             totalStudents = row.total_students.toInt(),
             totalClasses = row.total_classes.toInt(),
             totalEvaluations = row.total_evaluations.toInt(),
@@ -1626,8 +1777,8 @@ class BackupMetadataRepositorySqlDelight(
             }
     }
 
-    override suspend fun listBackups(): List<BackupEntry> {
-        return db.appDatabaseQueries.selectBackupEntries().executeAsList().map {
+    override suspend fun listBackups(): List<BackupEntry> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectBackupEntries().executeAsList().map {
             BackupEntry(
                 id = it.id,
                 path = it.path,
@@ -1638,14 +1789,14 @@ class BackupMetadataRepositorySqlDelight(
         }
     }
 
-    override suspend fun saveBackup(path: String, createdAtEpochMs: Long, platform: String, sizeBytes: Long): Long {
-        return db.transactionWithResult {
+    override suspend fun saveBackup(path: String, createdAtEpochMs: Long, platform: String, sizeBytes: Long): Long = withContext(Dispatchers.Default) {
+        db.transactionWithResult {
             db.appDatabaseQueries.insertBackupEntry(path, createdAtEpochMs, platform, sizeBytes)
             db.appDatabaseQueries.lastInsertedId().executeAsOne()
         }
     }
 
-    override suspend fun deleteBackup(id: Long) {
+    override suspend fun deleteBackup(id: Long) = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.deleteBackupEntry(id)
     }
 }

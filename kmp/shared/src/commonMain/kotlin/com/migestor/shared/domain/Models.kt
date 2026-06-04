@@ -69,9 +69,50 @@ data class Student(
     val email: String? = null,
     val photoPath: String? = null,
     val isInjured: Boolean = false,
+    val sex: StudentSex = StudentSex.UNSPECIFIED,
+    val sexSource: StudentSexSource = StudentSexSource.UNKNOWN,
+    val birthDate: LocalDate? = null,
     val trace: AuditTrace = AuditTrace(),
 ) {
     val fullName: String get() = listOf(firstName, lastName).joinToString(" ").trim()
+
+    fun ageOn(date: LocalDate): Int? {
+        val born = birthDate ?: return null
+        var age = date.year - born.year
+        if (date.monthNumber < born.monthNumber ||
+            (date.monthNumber == born.monthNumber && date.dayOfMonth < born.dayOfMonth)
+        ) {
+            age -= 1
+        }
+        return age.takeIf { it >= 0 }
+    }
+}
+
+enum class StudentSex {
+    MALE,
+    FEMALE,
+    UNSPECIFIED,
+}
+
+enum class StudentSexSource {
+    MANUAL,
+    AI_INFERRED,
+    IMPORTED,
+    UNKNOWN,
+}
+
+fun normalizedStudentSex(value: String?): StudentSex {
+    val normalized = value
+        ?.trim()
+        ?.lowercase()
+        ?.replace("é", "e")
+        ?.replace("á", "a")
+        ?: return StudentSex.UNSPECIFIED
+    return when (normalized) {
+        "male", "m", "h", "hombre", "masculino", "chico", "boy" -> StudentSex.MALE
+        "female", "f", "mujer", "femenino", "chica", "girl" -> StudentSex.FEMALE
+        else -> StudentSex.UNSPECIFIED
+    }
 }
 
 data class SchoolClass(
@@ -162,15 +203,14 @@ data class RubricDetail(
 ) {
     /**
      * Calculates the total score (0-10) based on selected level IDs for each criterion.
-     * Each criterion is weighted equally (1/N).
-     * If a criterion is not evaluated, it contributes 0.0 to the total.
-     * The final score is always scaled to a 10.0 maximum.
+     * Only evaluated criteria contribute to the denominator, so partial in-progress
+     * rubric evaluations can still reach 10.0 over the criteria already assessed.
      */
     fun calculateScore(selectedLevelIds: Map<Long, Long>): Double {
         if (criteria.isEmpty()) return 0.0
 
-        val weightPerCriterion = 1.0 / criteria.size
-        var totalPercentage = 0.0
+        var totalWeightedPercentage = 0.0
+        var totalWeightUsed = 0.0
 
         for (criterionWithLevels in criteria) {
             val selectedLevelId = selectedLevelIds[criterionWithLevels.criterion.id]
@@ -185,13 +225,18 @@ data class RubricDetail(
                     if (it.points > 0) it.points.toDouble() else it.order.toDouble() 
                 }.coerceAtLeast(1.0)
                 
+                val criterionWeight = criterionWithLevels.criterion.weight
+                    .takeIf { it > 0.0 } ?: 1.0
                 val criterionPercentage = (points / maxPossiblePoints).coerceIn(0.0, 1.0)
-                totalPercentage += criterionPercentage * weightPerCriterion
+                totalWeightedPercentage += criterionPercentage * criterionWeight
+                totalWeightUsed += criterionWeight
             }
         }
 
+        if (totalWeightUsed == 0.0) return 0.0
+
         // Return score scaled to 10.0, rounded to 2 decimal places for storage safety
-        val rawScore = totalPercentage * 10.0
+        val rawScore = (totalWeightedPercentage / totalWeightUsed) * 10.0
         return kotlin.math.round(rawScore * 100.0) / 100.0
     }
 }
@@ -230,6 +275,159 @@ data class Grade(
     val rubricSelections: String? = null,
     val trace: AuditTrace = AuditTrace(),
 )
+
+data class PhysicalTestDefinition(
+    val id: String,
+    val name: String,
+    val capacity: PhysicalCapacity,
+    val measurementKind: PhysicalMeasurementKind,
+    val unit: String,
+    val higherIsBetter: Boolean,
+    val protocol: String = "",
+    val material: String = "",
+    val attempts: Int = 1,
+    val resultMode: PhysicalResultMode = PhysicalResultMode.BEST,
+    val trace: AuditTrace = AuditTrace(),
+)
+
+enum class PhysicalCapacity {
+    RESISTANCE,
+    STRENGTH,
+    SPEED,
+    FLEXIBILITY,
+    COORDINATION,
+    AGILITY,
+    CUSTOM,
+}
+
+enum class PhysicalMeasurementKind {
+    TIME,
+    DISTANCE,
+    REPETITIONS,
+    LEVEL,
+    SCORE,
+}
+
+enum class PhysicalResultMode {
+    BEST,
+    AVERAGE,
+    LAST,
+}
+
+data class PhysicalTestBattery(
+    val id: String,
+    val name: String,
+    val description: String = "",
+    val defaultCourse: Int? = null,
+    val defaultAgeFrom: Int? = null,
+    val defaultAgeTo: Int? = null,
+    val testIds: List<String>,
+    val trace: AuditTrace = AuditTrace(),
+)
+
+data class PhysicalTestAssignment(
+    val id: String,
+    val batteryId: String,
+    val classId: Long,
+    val course: Int?,
+    val ageFrom: Int?,
+    val ageTo: Int?,
+    val termLabel: String?,
+    val dateEpochMs: Long,
+    val rawColumnMode: Boolean = true,
+    val scoreColumnMode: Boolean = true,
+    val trace: AuditTrace = AuditTrace(),
+)
+
+data class PhysicalTestScale(
+    val id: String,
+    val testId: String,
+    val name: String,
+    val course: Int? = null,
+    val ageFrom: Int? = null,
+    val ageTo: Int? = null,
+    val sex: String? = null,
+    val batteryId: String? = null,
+    val direction: PhysicalScaleDirection,
+    val ranges: List<PhysicalTestScaleRange>,
+    val trace: AuditTrace = AuditTrace(),
+)
+
+enum class PhysicalScaleDirection {
+    HIGHER_IS_BETTER,
+    LOWER_IS_BETTER,
+}
+
+data class PhysicalTestScaleRange(
+    val id: String,
+    val scaleId: String,
+    val minValue: Double?,
+    val maxValue: Double?,
+    val score: Double,
+    val label: String? = null,
+    val sortOrder: Int = 0,
+)
+
+data class PhysicalTestResult(
+    val id: String,
+    val assignmentId: String,
+    val testId: String,
+    val classId: Long,
+    val studentId: Long,
+    val rawValue: Double?,
+    val rawText: String,
+    val score: Double?,
+    val scaleId: String?,
+    val observedAtEpochMs: Long,
+    val rawColumnId: String?,
+    val scoreColumnId: String?,
+    val trace: AuditTrace = AuditTrace(),
+)
+
+data class PhysicalTestAttempt(
+    val id: String,
+    val resultId: String,
+    val attemptNumber: Int,
+    val rawValue: Double?,
+    val rawText: String,
+)
+
+data class PhysicalTestNotebookLink(
+    val assignmentId: String,
+    val testId: String,
+    val rawColumnId: String?,
+    val scoreColumnId: String?,
+    val trace: AuditTrace = AuditTrace(),
+)
+
+fun PhysicalTestScale.scoreFor(rawValue: Double): Double? {
+    if (!rawValue.isFinite()) return null
+    val range = ranges
+        .sortedBy { it.sortOrder }
+        .firstOrNull { range ->
+            val minOk = range.minValue?.let { rawValue >= it } ?: true
+            val maxOk = range.maxValue?.let { rawValue <= it } ?: true
+            minOk && maxOk
+        } ?: return null
+    return range.score.coerceIn(0.0, 10.0)
+}
+
+fun resolvedPhysicalResult(
+    attempts: List<Double>,
+    direction: PhysicalScaleDirection,
+    resultMode: PhysicalResultMode,
+): Double? {
+    val validAttempts = attempts.filter { it.isFinite() }
+    if (validAttempts.isEmpty()) return null
+    return when (resultMode) {
+        PhysicalResultMode.BEST -> when (direction) {
+            PhysicalScaleDirection.HIGHER_IS_BETTER -> validAttempts.maxOrNull()
+            PhysicalScaleDirection.LOWER_IS_BETTER -> validAttempts.minOrNull()
+        }
+        PhysicalResultMode.AVERAGE -> validAttempts.average()
+        PhysicalResultMode.LAST -> validAttempts.last()
+    }
+}
 
 data class CompetencyCriterion(
     val id: Long,
@@ -357,6 +555,103 @@ data class ConfigTemplateVersion(
     val payloadJson: String,
     val basedOnVersionId: Long? = null,
     val sourceAcademicYearId: Long? = null,
+    val trace: AuditTrace = AuditTrace(),
+)
+
+enum class LearningSituationStatus {
+    DRAFT,
+    ACTIVE,
+    ARCHIVED,
+}
+
+enum class LearningSituationResourceKind {
+    TEACHING_UNIT,
+    PLANNING_SESSION,
+    EVALUATION,
+    RUBRIC,
+    NOTEBOOK_COLUMN,
+}
+
+data class LearningSituation(
+    val id: Long = 0,
+    val title: String,
+    val stageLabel: String = "",
+    val courseLabel: String = "",
+    val subjectLabel: String = "",
+    val termLabel: String = "",
+    val centerLabel: String = "",
+    val sessionCount: Int = 0,
+    val challenge: String = "",
+    val finalProduct: String = "",
+    val payloadJson: String = "{}",
+    val status: LearningSituationStatus = LearningSituationStatus.DRAFT,
+    val trace: AuditTrace = AuditTrace(),
+)
+
+data class LearningSituationVersion(
+    val id: Long = 0,
+    val learningSituationId: Long,
+    val versionNumber: Int = 1,
+    val originalFileName: String,
+    val sha256: String,
+    val localPath: String? = null,
+    val sizeBytes: Long = 0,
+    val payloadJson: String = "{}",
+    val warningsJson: String = "[]",
+    val trace: AuditTrace = AuditTrace(),
+)
+
+data class LearningSituationSessionSequenceVersion(
+    val id: Long = 0,
+    val learningSituationId: Long,
+    val versionNumber: Int = 1,
+    val originalFileName: String,
+    val sha256: String,
+    val localPath: String? = null,
+    val sizeBytes: Long = 0,
+    val payloadJson: String = "{}",
+    val warningsJson: String = "[]",
+    val trace: AuditTrace = AuditTrace(),
+)
+
+data class LearningSituationSessionPlan(
+    val id: Long = 0,
+    val learningSituationId: Long,
+    val sequenceVersionId: Long,
+    val sessionNumber: Int,
+    val sourceLabel: String = "",
+    val title: String,
+    val sessionType: String = "",
+    val effectiveMinutes: Int = 0,
+    val objective: String = "",
+    val criteriaJson: String = "[]",
+    val material: String = "",
+    val developmentJson: String = "[]",
+    val adaptationsJson: String = "[]",
+    val trace: AuditTrace = AuditTrace(),
+)
+
+data class LearningSituationClassLink(
+    val learningSituationId: Long,
+    val classId: Long,
+    val trace: AuditTrace = AuditTrace(),
+)
+
+data class LearningSituationEvaluationProposal(
+    val id: String,
+    val title: String,
+    val criterion: String,
+    val evidence: String,
+    val weight: Double? = null,
+)
+
+data class LearningSituationLinkedResource(
+    val id: Long = 0,
+    val learningSituationId: Long,
+    val kind: LearningSituationResourceKind,
+    val resourceId: String,
+    val classId: Long? = null,
+    val label: String = "",
     val trace: AuditTrace = AuditTrace(),
 )
 
@@ -590,12 +885,43 @@ enum class NotebookColumnVisibility {
     ARCHIVED,
 }
 
+enum class NotebookEmptyCellPolicy {
+    EXCLUDE_FROM_AVERAGE, // vacío no cuenta
+    COUNT_AS_ZERO,        // vacío cuenta como 0
+    COUNT_AS_PENDING      // vacío no baja la nota, pero aparece como pendiente
+}
+
+data class NotebookAverageColumnConfig(
+    val columnId: String,
+    val countsTowardAverage: Boolean,
+    val weight: Double,
+    val emptyCellPolicy: NotebookEmptyCellPolicy? = null,
+)
+
+enum class NotebookDeletionTargetKind {
+    COLUMN,
+    CATEGORY,
+    TAB,
+}
+
+data class NotebookDeletionImpact(
+    val targetId: String,
+    val targetName: String,
+    val targetKind: NotebookDeletionTargetKind,
+    val affectedColumnCount: Int,
+    val affectedGradeCount: Int,
+    val affectedFormulaColumnCount: Int,
+    val affectedAverageColumnCount: Int,
+    val hasLockedColumns: Boolean,
+)
+
 data class NotebookTab(
     val id: String,
     val title: String,
     val description: String? = null,
     val order: Int = -1,
     val parentTabId: String? = null,
+    val fixedColumnWidth: Double? = null,
     val trace: AuditTrace = AuditTrace(),
 )
 
@@ -605,6 +931,7 @@ data class NotebookWorkGroup(
     val tabId: String,
     val name: String,
     val order: Int = 0,
+    val learningSituationId: Long? = null,
     val trace: AuditTrace = AuditTrace(),
 )
 
@@ -657,6 +984,7 @@ data class NotebookColumnDefinition(
     val visibility: NotebookColumnVisibility = NotebookColumnVisibility.VISIBLE,
     val isLocked: Boolean = false,
     val isTemplate: Boolean = false,
+    val emptyCellPolicy: NotebookEmptyCellPolicy = NotebookEmptyCellPolicy.EXCLUDE_FROM_AVERAGE,
     val trace: AuditTrace = AuditTrace(),
 )
 
@@ -676,6 +1004,35 @@ data class NotebookStudentInsight(
     val evidenceCount: Int = 0,
     val linkedCompetencyIds: List<Long> = emptyList(),
     val linkedCompetencyLabels: List<String> = emptyList(),
+)
+
+enum class RadarPriority {
+    HIGH,
+    MEDIUM,
+    LOW,
+    POSITIVE,
+}
+
+enum class RadarCategory {
+    STUDENT_RISK,
+    EVIDENCE_GAP,
+    RUBRIC_COMPLETION,
+    ATTENDANCE,
+    PENDING_TASK,
+    POSITIVE_PROGRESS,
+    GROUP_SUMMARY,
+}
+
+data class TeacherRadarInsight(
+    val id: String,
+    val classId: Long,
+    val studentId: Long?,
+    val priority: RadarPriority,
+    val category: RadarCategory,
+    val title: String,
+    val explanation: String,
+    val suggestedAction: String,
+    val evidence: List<String>,
 )
 
 data class NotebookSeatAssignment(
@@ -710,6 +1067,31 @@ data class NotebookTypedCell(
     val ordinalValue: String? = null,
     val iconValue: String? = null,
     val annotation: NotebookCellAnnotation? = null,
+)
+
+enum class NotebookCellAuditAction {
+    CREATED,
+    UPDATED,
+    CLEARED,
+    RESTORED,
+    IMPORTED,
+    SYNC_MERGED,
+}
+
+data class NotebookCellAuditEvent(
+    val id: Long,
+    val classId: Long,
+    val studentId: Long,
+    val columnId: String,
+    val previousNumericValue: Double?,
+    val newNumericValue: Double?,
+    val previousTextValue: String?,
+    val newTextValue: String?,
+    val action: NotebookCellAuditAction,
+    val changedAtEpochMs: Long,
+    val authorUserId: Long?,
+    val deviceId: String?,
+    val syncVersion: Long,
 )
 
 data class PersistedNotebookCell(
@@ -774,9 +1156,41 @@ data class NotebookRow(
     val student: Student,
     val cells: List<NotebookCell>,
     val weightedAverage: Double?,
+    val averageExplanation: NotebookAverageExplanation? = null,
     val persistedCells: List<PersistedNotebookCell> = emptyList(),
     val persistedGrades: List<Grade> = emptyList(),
 )
+
+data class NotebookAverageExplanation(
+    val studentId: Long,
+    val average: Double?,
+    val included: List<NotebookAverageContribution>,
+    val excluded: List<NotebookAverageExclusion>,
+    val totalIncludedWeight: Double,
+    val policy: NotebookEmptyCellPolicy,
+)
+
+data class NotebookAverageContribution(
+    val columnId: String,
+    val title: String,
+    val value: Double,
+    val weight: Double,
+    val weightedValue: Double,
+)
+
+data class NotebookAverageExclusion(
+    val columnId: String,
+    val title: String,
+    val reason: NotebookAverageExclusionReason,
+)
+
+enum class NotebookAverageExclusionReason {
+    EMPTY,
+    COLUMN_DOES_NOT_COUNT,
+    RAW_VALUE_ONLY,
+    LOCKED_OR_ARCHIVED,
+    NON_NUMERIC,
+}
 
 fun List<Grade>.gradeValueFor(evaluationId: Long): Double? {
     return firstOrNull { it.evaluationId == evaluationId }?.value
@@ -835,7 +1249,7 @@ fun NotebookSheet.tabChildrenMap(): Map<String?, List<NotebookTab>> {
 fun NotebookSheet.visibleColumnsForTab(tabId: String?): List<NotebookColumnDefinition> {
     if (tabId == null) return emptyList()
     return columns.filter { column ->
-        !column.isHidden && (
+        column.visibility == NotebookColumnVisibility.VISIBLE && (
             column.tabIds.contains(tabId) || (column.sharedAcrossTabs && column.tabIds.isEmpty())
         )
     }.sortedWith(compareBy<NotebookColumnDefinition> { it.order }.thenBy { it.id })
@@ -931,6 +1345,10 @@ data class PlanningSession(
     val activities: String = "",
     val evaluation: String = "",
     val linkedAssessmentIdsCsv: String = "",
+    val teacherScheduleSlotId: Long? = null,
+    val startTime: String? = null,
+    val endTime: String? = null,
+    val learningSituationSessionPlanId: Long? = null,
     val status: SessionStatus = SessionStatus.PLANNED
 )
 
@@ -964,6 +1382,40 @@ data class SessionBulkResult(
     val overwritten: Int = 0,
     val skipped: Int = 0,
     val failed: Int = 0
+)
+
+data class SessionPlacement(
+    val sessionId: Long,
+    val weekNumber: Int,
+    val year: Int,
+    val dayOfWeek: Int,
+    val period: Int,
+    val teacherScheduleSlotId: Long? = null,
+    val startTime: String? = null,
+    val endTime: String? = null,
+)
+
+data class SessionCascadeMoveRequest(
+    val sourceSessionId: Long,
+    val targetWeekNumber: Int,
+    val targetYear: Int,
+    val targetDayOfWeek: Int,
+    val targetPeriod: Int,
+)
+
+data class SessionCascadeMovePreview(
+    val previousPlacements: List<SessionPlacement> = emptyList(),
+    val nextPlacements: List<SessionPlacement> = emptyList(),
+    val completedSessionIds: List<Long> = emptyList(),
+    val crossesWeekBoundary: Boolean = false,
+    val isNoOp: Boolean = false,
+)
+
+data class SessionCascadeMoveResult(
+    val previousPlacements: List<SessionPlacement> = emptyList(),
+    val nextPlacements: List<SessionPlacement> = emptyList(),
+    val movedCount: Int = 0,
+    val crossesWeekBoundary: Boolean = false,
 )
 
 // ─── Configuración de franjas horarias ─────────────────────────────────────

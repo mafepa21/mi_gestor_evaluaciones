@@ -4,6 +4,13 @@ options:
   deploymentTarget:
     iOS: "16.0"
     macOS: "26.0"
+packages:
+  CoreXLSX:
+    url: https://github.com/CoreOffice/CoreXLSX.git
+    from: 0.14.2
+  ZIPFoundation:
+    url: https://github.com/weichsel/ZIPFoundation.git
+    from: 0.9.19
 targets:
   MiGestorKMPiOS:
     type: application
@@ -15,12 +22,16 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.migestor.ios
         PRODUCT_NAME: MiGestorKMPiOS
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: "1.0"
         SWIFT_VERSION: "5.0"
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: C8JCMT4298
         ENABLE_USER_SCRIPT_SANDBOXING: NO
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: MiGestorKMPiOS
+        INFOPLIST_KEY_CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        INFOPLIST_KEY_CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
@@ -38,19 +49,21 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         FRAMEWORK_SEARCH_PATHS:
           - "$(inherited)"
-          - "$(SRCROOT)/Frameworks"
+          - "$(SRCROOT)/Frameworks/ios"
         LD_RUNPATH_SEARCH_PATHS:
           - "$(inherited)"
           - "@executable_path/Frameworks"
         OTHER_LDFLAGS:
           - "$(inherited)"
           - "-lsqlite3"
-          - "-Wl,-undefined,dynamic_lookup"
         EXCLUDED_ARCHS[sdk=iphonesimulator*]: x86_64
     dependencies:
-      - framework: Frameworks/MiGestorKit.framework
+      - framework: Frameworks/ios/MiGestorKit.framework
+      - package: CoreXLSX
+      - package: ZIPFoundation
     preBuildScripts:
       - name: Build KMP Framework
+        basedOnDependencyAnalysis: false
         script: |
           set -euo pipefail
           cd "${SRCROOT}/.."
@@ -58,7 +71,7 @@ targets:
           mkdir -p "${GRADLE_USER_HOME}"
           ./scripts/build_apple_framework.sh
         outputFiles:
-          - "$(SRCROOT)/Frameworks/MiGestorKit.framework/MiGestorKit"
+          - "$(SRCROOT)/Frameworks/ios/MiGestorKit.framework/MiGestorKit"
   MiGestorKMPMac:
     type: application
     platform: macOS
@@ -72,15 +85,19 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.migestor.mac
         PRODUCT_NAME: MiGestorKMPMac
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: "1.0"
         SWIFT_VERSION: "5.0"
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: C8JCMT4298
         ENABLE_USER_SCRIPT_SANDBOXING: NO
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: MiGestorKMPMac
+        INFOPLIST_KEY_CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        INFOPLIST_KEY_CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         FRAMEWORK_SEARCH_PATHS:
           - "$(inherited)"
-          - "$(SRCROOT)/Frameworks"
+          - "$(SRCROOT)/Frameworks/macos"
         LD_RUNPATH_SEARCH_PATHS:
           - "$(inherited)"
           - "@executable_path/../Frameworks"
@@ -88,9 +105,12 @@ targets:
           - "$(inherited)"
           - "-lsqlite3"
     dependencies:
-      - framework: Frameworks/MiGestorKit.framework
+      - framework: Frameworks/macos/MiGestorKit.framework
+      - package: CoreXLSX
+      - package: ZIPFoundation
     preBuildScripts:
       - name: Build KMP Framework
+        basedOnDependencyAnalysis: false
         script: |
           set -euo pipefail
           cd "${SRCROOT}/.."
@@ -98,7 +118,7 @@ targets:
           mkdir -p "${GRADLE_USER_HOME}"
           ./scripts/build_apple_framework.sh
         outputFiles:
-          - "$(SRCROOT)/Frameworks/MiGestorKit.framework/MiGestorKit"
+          - "$(SRCROOT)/Frameworks/macos/MiGestorKit.framework/MiGestorKit"
       - name: Build Command Center Helper
         script: |
           set -euo pipefail
@@ -108,3 +128,18 @@ targets:
           ./scripts/build_command_center_helper.sh
         outputFiles:
           - "$(SRCROOT)/../commandCenterHelper/build/compose/binaries/main/app/MiGestorCommandCenter.app/Contents/MacOS/MiGestorCommandCenter"
+    postBuildScripts:
+      - name: Embed Command Center Helper
+        basedOnDependencyAnalysis: false
+        script: |
+          set -euo pipefail
+          HELPER_APP="${SRCROOT}/../commandCenterHelper/build/compose/binaries/main/app/MiGestorCommandCenter.app"
+          DESTINATION="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/MiGestorCommandCenter.app"
+          if [ ! -d "${HELPER_APP}" ]; then
+            echo "error: Command Center helper app not found at ${HELPER_APP}"
+            exit 1
+          fi
+          mkdir -p "$(dirname "${DESTINATION}")"
+          /usr/bin/ditto "${HELPER_APP}" "${DESTINATION}"
+        outputFiles:
+          - "$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/MiGestorCommandCenter.app/Contents/MacOS/MiGestorCommandCenter"

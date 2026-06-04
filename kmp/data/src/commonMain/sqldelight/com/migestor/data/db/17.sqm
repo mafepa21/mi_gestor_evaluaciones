@@ -1,0 +1,160 @@
+CREATE TABLE IF NOT EXISTS physical_test_definitions (
+    id TEXT NOT NULL PRIMARY KEY,
+    name TEXT NOT NULL,
+    capacity TEXT NOT NULL,
+    measurement_kind TEXT NOT NULL,
+    unit TEXT NOT NULL,
+    higher_is_better INTEGER NOT NULL,
+    protocol TEXT NOT NULL DEFAULT '',
+    material TEXT NOT NULL DEFAULT '',
+    attempts INTEGER NOT NULL DEFAULT 1,
+    result_mode TEXT NOT NULL DEFAULT 'BEST',
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS physical_test_batteries (
+    id TEXT NOT NULL PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    default_course INTEGER,
+    default_age_from INTEGER,
+    default_age_to INTEGER,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS physical_test_battery_items (
+    battery_id TEXT NOT NULL,
+    test_id TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (battery_id, test_id),
+    FOREIGN KEY (battery_id) REFERENCES physical_test_batteries(id) ON DELETE CASCADE,
+    FOREIGN KEY (test_id) REFERENCES physical_test_definitions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_physical_battery_items_battery ON physical_test_battery_items(battery_id);
+CREATE INDEX IF NOT EXISTS idx_physical_battery_items_test ON physical_test_battery_items(test_id);
+
+CREATE TABLE IF NOT EXISTS physical_test_assignments (
+    id TEXT NOT NULL PRIMARY KEY,
+    battery_id TEXT NOT NULL,
+    class_id INTEGER NOT NULL,
+    course INTEGER,
+    age_from INTEGER,
+    age_to INTEGER,
+    term_label TEXT,
+    date_epoch_ms INTEGER NOT NULL,
+    raw_column_mode INTEGER NOT NULL DEFAULT 1,
+    score_column_mode INTEGER NOT NULL DEFAULT 1,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (battery_id) REFERENCES physical_test_batteries(id) ON DELETE CASCADE,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_physical_assignments_class ON physical_test_assignments(class_id);
+CREATE INDEX IF NOT EXISTS idx_physical_assignments_battery ON physical_test_assignments(battery_id);
+CREATE INDEX IF NOT EXISTS idx_physical_assignments_date ON physical_test_assignments(date_epoch_ms);
+
+CREATE TABLE IF NOT EXISTS physical_test_scales (
+    id TEXT NOT NULL PRIMARY KEY,
+    test_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    course INTEGER,
+    age_from INTEGER,
+    age_to INTEGER,
+    sex TEXT,
+    battery_id TEXT,
+    direction TEXT NOT NULL,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (test_id) REFERENCES physical_test_definitions(id) ON DELETE CASCADE,
+    FOREIGN KEY (battery_id) REFERENCES physical_test_batteries(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_physical_scales_test ON physical_test_scales(test_id);
+CREATE INDEX IF NOT EXISTS idx_physical_scales_battery ON physical_test_scales(battery_id);
+
+CREATE TABLE IF NOT EXISTS physical_test_scale_ranges (
+    id TEXT NOT NULL PRIMARY KEY,
+    scale_id TEXT NOT NULL,
+    min_value REAL,
+    max_value REAL,
+    score REAL NOT NULL,
+    label TEXT,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (scale_id) REFERENCES physical_test_scales(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_physical_scale_ranges_scale ON physical_test_scale_ranges(scale_id);
+
+CREATE TABLE IF NOT EXISTS physical_test_results (
+    id TEXT NOT NULL PRIMARY KEY,
+    assignment_id TEXT NOT NULL,
+    test_id TEXT NOT NULL,
+    class_id INTEGER NOT NULL,
+    student_id INTEGER NOT NULL,
+    raw_value REAL,
+    raw_text TEXT NOT NULL DEFAULT '',
+    score REAL,
+    scale_id TEXT,
+    observed_at_epoch_ms INTEGER NOT NULL,
+    raw_column_id TEXT,
+    score_column_id TEXT,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(assignment_id, test_id, student_id),
+    FOREIGN KEY (assignment_id) REFERENCES physical_test_assignments(id) ON DELETE CASCADE,
+    FOREIGN KEY (test_id) REFERENCES physical_test_definitions(id) ON DELETE CASCADE,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    FOREIGN KEY (scale_id) REFERENCES physical_test_scales(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_physical_results_assignment ON physical_test_results(assignment_id);
+CREATE INDEX IF NOT EXISTS idx_physical_results_student ON physical_test_results(student_id);
+CREATE INDEX IF NOT EXISTS idx_physical_results_test ON physical_test_results(test_id);
+CREATE INDEX IF NOT EXISTS idx_physical_results_class ON physical_test_results(class_id);
+CREATE INDEX IF NOT EXISTS idx_physical_results_scale ON physical_test_results(scale_id);
+CREATE INDEX IF NOT EXISTS idx_physical_results_observed ON physical_test_results(observed_at_epoch_ms);
+
+CREATE TABLE IF NOT EXISTS physical_test_attempts (
+    id TEXT NOT NULL PRIMARY KEY,
+    result_id TEXT NOT NULL,
+    attempt_number INTEGER NOT NULL,
+    raw_value REAL,
+    raw_text TEXT NOT NULL DEFAULT '',
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(result_id, attempt_number),
+    FOREIGN KEY (result_id) REFERENCES physical_test_results(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_physical_attempts_result ON physical_test_attempts(result_id);
+
+CREATE TABLE IF NOT EXISTS physical_test_notebook_links (
+    assignment_id TEXT NOT NULL,
+    test_id TEXT NOT NULL,
+    raw_column_id TEXT,
+    score_column_id TEXT,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (assignment_id, test_id),
+    FOREIGN KEY (assignment_id) REFERENCES physical_test_assignments(id) ON DELETE CASCADE,
+    FOREIGN KEY (test_id) REFERENCES physical_test_definitions(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_physical_links_assignment ON physical_test_notebook_links(assignment_id);
+CREATE INDEX IF NOT EXISTS idx_physical_links_test ON physical_test_notebook_links(test_id);

@@ -1,0 +1,1 @@
+ALTER TABLE notebook_work_groups ADD COLUMN learning_situation_id INTEGER REFERENCES learning_situations(id) ON DELETE SET NULL;

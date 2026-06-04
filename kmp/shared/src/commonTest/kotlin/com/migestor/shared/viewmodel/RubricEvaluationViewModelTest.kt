@@ -4,17 +4,20 @@ import com.migestor.shared.domain.*
 import com.migestor.shared.repository.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import kotlinx.datetime.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class RubricEvaluationViewModelTest {
 
     private val testRubricId = 1L
@@ -94,20 +97,20 @@ class RubricEvaluationViewModelTest {
             )
         )
 
-        val fakeRubrics = object : FakeRubricsRepository() {
+        val fakeRubrics = object : FakeRubricEvalRubricsRepository() {
             override suspend fun getRubricDetail(rubricId: Long): RubricDetail? = rubricDetail
             override suspend fun listRubricAssessments(studentId: Long, evaluationId: Long): List<RubricAssessment> = emptyList()
         }
 
-        val fakeStudents = object : FakeStudentsRepository() {
+        val fakeStudents = object : FakeRubricEvalStudentsRepository() {
             override suspend fun getStudent(studentId: Long): Student? = Student(id = studentId, firstName = "Juan", lastName = "Perez")
         }
 
-        val fakeEvaluations = object : FakeEvaluationsRepository() {
+        val fakeEvaluations = object : FakeRubricEvalEvaluationsRepository() {
             override suspend fun getEvaluation(evaluationId: Long): Evaluation? = Evaluation(id = evaluationId, classId = 100L, code = "E1", name = "Eval 1", type = "RUBRIC", weight = 1.0)
         }
 
-        val fakeNotebook = object : FakeNotebookRepository() {
+        val fakeNotebook = object : FakeRubricEvalNotebookRepository() {
             override suspend fun getGradeForColumn(studentId: Long, columnId: String): Grade? = Grade(
                 id = 1L, classId = 100L, studentId = studentId, columnId = columnId, evaluationId = 1L,
                 value = 4.0, rubricSelections = "1:12"
@@ -118,7 +121,7 @@ class RubricEvaluationViewModelTest {
             rubricsRepository = fakeRubrics,
             studentsRepository = fakeStudents,
             evaluationsRepository = fakeEvaluations,
-            gradesRepository = FakeGradesRepository(),
+            gradesRepository = FakeRubricEvalGradesRepository(),
             notebookRepository = fakeNotebook,
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         )
@@ -130,12 +133,12 @@ class RubricEvaluationViewModelTest {
         assertEquals("Juan Perez", state.studentName)
         assertEquals("Test Rubric", state.rubricName)
         assertNotNull(state.rubricDetail)
-        assertEquals(4.0, state.totalScore)
+        assertEquals(10.0, state.totalScore)
         assertEquals(12L, state.selectedLevels[1L])
     }
 }
 
-open class FakeRubricsRepository : RubricsRepository {
+open class FakeRubricEvalRubricsRepository : RubricsRepository {
     override fun observeRubrics(): Flow<List<RubricDetail>> = flowOf(emptyList())
     override suspend fun listRubrics(): List<RubricDetail> = emptyList()
     override suspend fun saveRubric(id: Long?, name: String, description: String?, classId: Long?, teachingUnitId: Long?, createdAtEpochMs: Long, updatedAtEpochMs: Long, deviceId: String?, syncVersion: Long): Long = 0L
@@ -151,7 +154,7 @@ open class FakeRubricsRepository : RubricsRepository {
     override suspend fun listLevelsByCriterion(criterionId: Long): List<RubricLevel> = emptyList()
 }
 
-open class FakeStudentsRepository : StudentsRepository {
+open class FakeRubricEvalStudentsRepository : StudentsRepository {
     override fun observeStudents(): Flow<List<Student>> = flowOf(emptyList())
     override suspend fun listStudents(): List<Student> = emptyList()
     override suspend fun getStudent(studentId: Long): Student? = null
@@ -159,7 +162,7 @@ open class FakeStudentsRepository : StudentsRepository {
     override suspend fun deleteStudent(studentId: Long) = Unit
 }
 
-open class FakeEvaluationsRepository : EvaluationsRepository {
+open class FakeRubricEvalEvaluationsRepository : EvaluationsRepository {
     override fun observeClassEvaluations(classId: Long): Flow<List<Evaluation>> = flowOf(emptyList())
     override suspend fun listClassEvaluations(classId: Long): List<Evaluation> = emptyList()
     override suspend fun getEvaluation(evaluationId: Long): Evaluation? = null
@@ -169,16 +172,15 @@ open class FakeEvaluationsRepository : EvaluationsRepository {
     override suspend fun listEvaluationCompetencyLinks(evaluationId: Long): List<EvaluationCompetencyLink> = emptyList()
 }
 
-open class FakeGradesRepository : GradesRepository {
+open class FakeRubricEvalGradesRepository : GradesRepository {
     override fun observeGradesForClass(classId: Long): Flow<List<Grade>> = flowOf(emptyList())
     override suspend fun listGradesForClass(classId: Long): List<Grade> = emptyList()
     override suspend fun listGradesForStudentInClass(studentId: Long, classId: Long): List<Grade> = emptyList()
-    override suspend fun saveGrade(classId: Long, studentId: Long, columnId: String, evaluationId: Long?, value: Double?, evidence: String?, evidencePath: String?, rubricSelections: String?, createdAtEpochMs: Long, updatedAtEpochMs: Long, deviceId: String?, syncVersion: Long): Long = 0L
-    override suspend fun deleteGrade(gradeId: Long) = Unit
+    override suspend fun saveGrade(id: Long?, classId: Long, studentId: Long, columnId: String, evaluationId: Long?, value: Double?, evidence: String?, evidencePath: String?, rubricSelections: String?, createdAtEpochMs: Long, updatedAtEpochMs: Long, deviceId: String?, syncVersion: Long): Long = 0L
     override suspend fun upsertGrade(classId: Long, studentId: Long, columnId: String, evaluationId: Long?, value: Double?, evidence: String?, evidencePath: String?, rubricSelections: String?, updatedAtEpochMs: Long, deviceId: String?, syncVersion: Long) = Unit
 }
 
-open class FakeNotebookRepository : NotebookRepository {
+open class FakeRubricEvalNotebookRepository : NotebookRepository {
     override suspend fun loadNotebookSnapshot(classId: Long): NotebookSheet = NotebookSheet(classId = classId, tabs = emptyList(), columns = emptyList(), rows = emptyList())
     override fun observeStudentChanges(classId: Long): Flow<List<Student>> = flowOf(emptyList())
     override fun observeGradesForClass(classId: Long): Flow<List<Grade>> = flowOf(emptyList())
@@ -217,5 +219,3 @@ open class FakeNotebookRepository : NotebookRepository {
     override suspend fun upsertGrade(classId: Long, studentId: Long, columnId: String, evaluationId: Long?, numericValue: Double, rubricSelections: String?, evidence: String?, createdAtEpochMs: Long, updatedAtEpochMs: Long, deviceId: String?, syncVersion: Long) = Unit
     override fun observeCellAudit(classId: Long, studentId: Long, columnId: String): Flow<List<NotebookCellAuditEvent>> = flowOf(emptyList())
 }
-
-

@@ -27,6 +27,9 @@ enum MacAppStyle {
 
     static let cardRadius: CGFloat = AppleDesignSystem.cardRadius
     static let chipRadius: CGFloat = AppleDesignSystem.controlRadius
+
+    static let smallStateAnimation: Animation = .spring(response: 0.35, dampingFraction: 0.75)
+    static let smallStateTransition: AnyTransition = .opacity.combined(with: .scale(scale: 0.98))
 }
 
 struct MacMetricCard: View {

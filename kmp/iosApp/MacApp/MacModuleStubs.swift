@@ -1819,7 +1819,19 @@ private struct MacPlannerWeekBoard: View {
                 HStack(spacing: 0) {
                     headerCell("Franja", width: 112)
                     ForEach(vm.visibleWeekdays, id: \.self) { day in
-                        headerCell(vm.dayLabel(for: day), width: 214)
+                        let isHoliday = vm.holidayDays.contains(day)
+                        headerCell(vm.dayHeaderLabel(for: day) + (isHoliday ? " 🌴" : ""), width: 214)
+                            .foregroundStyle(isHoliday ? EvaluationDesign.danger : Color.primary)
+                            .contextMenu {
+                                Button {
+                                    Task { await vm.toggleHoliday(for: day) }
+                                } label: {
+                                    Label(
+                                        isHoliday ? "Marcar como lectivo" : "Marcar como festivo",
+                                        systemImage: isHoliday ? "calendar.badge.plus" : "calendar.badge.minus"
+                                    )
+                                }
+                            }
                     }
                 }
 
@@ -1838,6 +1850,7 @@ private struct MacPlannerWeekBoard: View {
                         ForEach(vm.visibleWeekdays, id: \.self) { day in
                             MacPlannerWeekCell(
                                 entries: entriesProvider(day, Int(slot.period)),
+                                isHoliday: vm.holidayDays.contains(day),
                                 day: day,
                                 period: Int(slot.period),
                                 vm: vm,
@@ -1864,6 +1877,7 @@ private struct MacPlannerWeekBoard: View {
 
 private struct MacPlannerWeekCell: View {
     let entries: [PlannerWeekCellEntry]
+    let isHoliday: Bool
     let day: Int
     let period: Int
     @ObservedObject var vm: PlannerWorkspaceViewModel
@@ -1876,7 +1890,33 @@ private struct MacPlannerWeekCell: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if entries.isEmpty {
+            if isHoliday {
+                ZStack {
+                    if !entries.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            ForEach(entries.prefix(3)) { entry in
+                                MacPlannerWeekEntryRow(
+                                    entry: entry,
+                                    vm: vm,
+                                    onSelectSession: onSelectSession,
+                                    onDoubleOpenSession: onDoubleOpenSession
+                                )
+                            }
+                        }
+                        .opacity(0.2)
+                        .disabled(true)
+                    }
+                    VStack(spacing: 4) {
+                        Image(systemName: "umbrella.fill")
+                            .font(.title2)
+                            .foregroundStyle(EvaluationDesign.danger.opacity(0.7))
+                        Text("No lectivo")
+                            .font(.caption.bold())
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            } else if entries.isEmpty {
                 VStack(spacing: 6) {
                     Image(systemName: "plus")
                         .font(.system(size: 15, weight: .semibold))
@@ -1909,33 +1949,38 @@ private struct MacPlannerWeekCell: View {
         .frame(width: 214, height: 122, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(isDropTargeted ? MacAppStyle.infoTint.opacity(0.14) : (isHovering ? MacAppStyle.infoTint.opacity(0.08) : MacAppStyle.cardBackground))
+                .fill(isHoliday ? MacAppStyle.subtleFill.opacity(0.5) : (isDropTargeted ? MacAppStyle.infoTint.opacity(0.14) : (isHovering ? MacAppStyle.infoTint.opacity(0.08) : MacAppStyle.cardBackground)))
         )
         .overlay {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(isDropTargeted ? MacAppStyle.infoTint : (isHovering ? MacAppStyle.infoTint.opacity(0.45) : MacAppStyle.cardBorder), lineWidth: isDropTargeted ? 2 : 1)
+                .stroke(isHoliday ? EvaluationDesign.danger.opacity(0.15) : (isDropTargeted ? MacAppStyle.infoTint : (isHovering ? MacAppStyle.infoTint.opacity(0.45) : MacAppStyle.cardBorder)), lineWidth: isDropTargeted ? 2 : 1)
         }
         .contentShape(Rectangle())
         .onHover { hovering in
+            guard !isHoliday else { return }
             isHovering = hovering
         }
         .onTapGesture(count: 2) {
+            guard !isHoliday else { return }
             if entries.isEmpty {
                 openComposer()
             }
         }
         .onTapGesture {
+            guard !isHoliday else { return }
             if entries.isEmpty, isHovering {
                 openComposer()
             }
         }
         .dropDestination(for: String.self) { values, _ in
+            guard !isHoliday else { return false }
             guard let value = values.first,
                   value.hasPrefix("planner-session:"),
                   let sessionId = Int64(value.dropFirst("planner-session:".count)) else { return false }
             onDropSession(sessionId, day, period)
             return true
         } isTargeted: { targeted in
+            guard !isHoliday else { return }
             isDropTargeted = targeted
         }
     }

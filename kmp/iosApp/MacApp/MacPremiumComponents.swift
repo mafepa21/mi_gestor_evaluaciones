@@ -32,6 +32,7 @@ struct MacPremiumOperationState: View {
                 .padding(.vertical, 4)
                 .background(tint.opacity(0.12), in: Capsule(style: .continuous))
                 .help(label)
+                .transition(MacAppStyle.smallStateTransition)
         }
     }
 
@@ -99,6 +100,7 @@ struct MacPremiumModuleHeader<Trailing: View>: View {
                         MacPremiumOperationState(kind: state)
                     }
                 }
+                .animation(MacAppStyle.smallStateAnimation, value: state)
 
                 Text(subtitle)
                     .font(MacAppStyle.bodyText)
@@ -187,6 +189,24 @@ struct MacPremiumFilterBar<Content: View>: View {
     }
 }
 
+struct MacPremiumControlStrip<Content: View>: View {
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 16) {
+            content()
+        }
+        .padding(.horizontal, MacAppStyle.innerPadding)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(MacAppStyle.subtleFill, in: RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous)
+                .stroke(MacAppStyle.cardBorder.opacity(0.55), lineWidth: 0.5)
+        }
+    }
+}
+
 struct MacPremiumTableContainer<Content: View>: View {
     let title: String
     var subtitle: String? = nil
@@ -232,8 +252,10 @@ struct MacPremiumTableContainer<Content: View>: View {
                                 .stroke(MacAppStyle.cardBorder, lineWidth: 0.5)
                         }
                         .padding(12)
+                        .transition(MacAppStyle.smallStateTransition)
                 }
             }
+            .animation(MacAppStyle.smallStateAnimation, value: isLoading)
         }
         .padding(MacAppStyle.innerPadding)
         .background(MacAppStyle.cardBackground)

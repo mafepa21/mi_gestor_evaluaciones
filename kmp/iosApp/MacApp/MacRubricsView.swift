@@ -174,24 +174,67 @@ struct MacRubricsView: View {
         .appOnChange(of: selectedRubricId) { _ in
             Task { await reloadUsageSummary() }
         }
-        .confirmationDialog(
-            "Elegir evaluación masiva",
+        .sheet(
             isPresented: Binding(
                 get: { !bulkOptions.isEmpty },
                 set: { if !$0 { bulkOptions = [] } }
-            ),
-            titleVisibility: .visible
+            )
         ) {
-            ForEach(bulkOptions, id: \.evaluationId) { usage in
-                Button("\(usage.className) · \(usage.evaluationName)") {
-                    openBulkEvaluation(for: usage)
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Elegir evaluación masiva")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(.primary)
+
+                Text("Selecciona la clase y evaluación que deseas abrir para evaluar a este grupo:")
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                ScrollView {
+                    VStack(spacing: 8) {
+                        ForEach(bulkOptions, id: \.evaluationId) { usage in
+                            Button {
+                                openBulkEvaluation(for: usage)
+                            } label: {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(usage.className)
+                                            .font(.system(size: 13, weight: .bold))
+                                            .foregroundStyle(.primary)
+                                        Text(usage.evaluationName)
+                                            .font(.system(size: 11, weight: .medium))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundStyle(.secondary)
+                                }
+                                .padding(.vertical, 8)
+                                .padding(.horizontal, 12)
+                                .contentShape(Rectangle())
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .fill(Color(nsColor: .controlBackgroundColor).opacity(0.6))
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                .frame(maxHeight: 220)
+
+                HStack {
+                    Spacer()
+                    Button("Cancelar") {
+                        bulkOptions = []
+                    }
+                    .keyboardShortcut(.cancelAction)
                 }
             }
-            Button("Cancelar", role: .cancel) {
-                bulkOptions = []
-            }
-        } message: {
-            Text("Selecciona la clase y evaluación que quieres abrir.")
+            .padding(20)
+            .frame(width: 400)
         }
         .sheet(isPresented: $showingBuilder) {
             RubricsBuilderScreen()
@@ -330,14 +373,14 @@ struct MacRubricsView: View {
                                 }
                             )
                         ) {
-                            VStack(spacing: 0) {
+                            VStack(spacing: 4) {
                                 ForEach(group.rubrics, id: \.rubric.id) { rubric in
                                     rubricRow(rubric)
-                                    Divider()
-                                        .padding(.leading, MacAppStyle.innerPadding)
+                                        .padding(.horizontal, 8)
                                 }
                             }
                             .padding(.top, 4)
+                            .padding(.bottom, 8)
                         } label: {
                             HStack {
                                 Text(group.title)
@@ -875,7 +918,7 @@ private struct MacRubricCriterionSummary: View {
                     .padding(8)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(MacAppStyle.subtleFill)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
                 }
             }
             .padding(.top, 8)
@@ -893,13 +936,13 @@ private struct MacRubricCriterionSummary: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(12)
+        .padding(16)
         .background(MacAppStyle.cardBackground)
         .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous)
                 .stroke(MacAppStyle.cardBorder, lineWidth: 0.5)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
     }
 }
 

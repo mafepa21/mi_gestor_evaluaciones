@@ -179,10 +179,10 @@ struct MacAttendanceView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .padding(MacAppStyle.pagePadding)
-            .frame(minWidth: 760)
+            .frame(minWidth: 640, idealWidth: 760)
 
             inspector
-                .frame(minWidth: 330, idealWidth: 360, maxWidth: 430)
+                .frame(minWidth: 320, idealWidth: 360, maxWidth: 430)
         }
         .background(MacAppStyle.pageBackground)
         .task {
@@ -245,7 +245,7 @@ struct MacAttendanceView: View {
                 ]
             )
 
-            MacPremiumFilterBar {
+            MacPremiumControlStrip {
                 attendanceControls
             }
         }
@@ -457,6 +457,9 @@ struct MacAttendanceView: View {
                                 },
                                 onPickStatus: { status in
                                     Task { await updateAttendance(for: row.student, status: status.id) }
+                                },
+                                onMarkInjury: {
+                                    Task { await markInjuryStatus(for: row.student) }
                                 }
                             )
                             .contextMenu {
@@ -850,6 +853,16 @@ struct MacAttendanceView: View {
             localInjuryStatuses[student.id] = previousValue
             bridge.status = "No se pudo actualizar la lesión: \(error.localizedDescription)"
         }
+    }
+
+    @MainActor
+    private func markInjuryStatus(for student: Student) async {
+        guard !isStudentInjured(student) else {
+            selectedStudentId = student.id
+            bridge.status = "La lesión de \(student.fullName) ya está activa."
+            return
+        }
+        await toggleInjuryStatus(for: student)
     }
 
     @MainActor

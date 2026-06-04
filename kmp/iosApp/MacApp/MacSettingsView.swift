@@ -12,39 +12,24 @@ struct MacSettingsView: View {
     @State private var selectedRoute: SettingsRoute = .general
 
     var body: some View {
-        NavigationSplitView {
+        HStack(spacing: 0) {
             List(selection: $selectedRoute) {
                 Section("Ajustes") {
-                    NavigationLink(value: SettingsRoute.general) {
-                        Label("General", systemImage: "slider.horizontal.3")
-                    }
-                    NavigationLink(value: SettingsRoute.evaluation) {
-                        Label("Evaluación", systemImage: "chart.bar.doc.horizontal")
-                    }
-                    NavigationLink(value: SettingsRoute.notebook) {
-                        Label("Cuaderno", systemImage: "text.book.closed")
-                    }
-                    NavigationLink(value: SettingsRoute.dataSecurity) {
-                        Label("Datos y Seguridad", systemImage: "lock.shield")
-                    }
-                    NavigationLink(value: SettingsRoute.sync) {
-                        Label("Sincronización", systemImage: "arrow.triangle.2.circlepath")
-                    }
-                    NavigationLink(value: SettingsRoute.appleAI) {
-                        Label("IA Apple", systemImage: "sparkles")
-                    }
-                    NavigationLink(value: SettingsRoute.appearance) {
-                        Label("Apariencia", systemImage: "paintpalette")
-                    }
-                    NavigationLink(value: SettingsRoute.diagnostics) {
-                        Label("Diagnóstico Avanzado", systemImage: "waveform.path.ecg")
-                    }
+                    settingsRow("General", systemImage: "slider.horizontal.3", route: .general)
+                    settingsRow("Evaluación", systemImage: "chart.bar.doc.horizontal", route: .evaluation)
+                    settingsRow("Cuaderno", systemImage: "text.book.closed", route: .notebook)
+                    settingsRow("Datos y Seguridad", systemImage: "lock.shield", route: .dataSecurity)
+                    settingsRow("Sincronización", systemImage: "arrow.triangle.2.circlepath", route: .sync)
+                    settingsRow("IA Apple", systemImage: "sparkles", route: .appleAI)
+                    settingsRow("Apariencia", systemImage: "paintpalette", route: .appearance)
+                    settingsRow("Diagnóstico Avanzado", systemImage: "waveform.path.ecg", route: .diagnostics)
                 }
             }
             .listStyle(.sidebar)
-            .navigationTitle("Ajustes")
-            .frame(minWidth: 200, idealWidth: 220)
-        } detail: {
+            .frame(width: 224)
+
+            Divider()
+
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     detailViewForRoute(selectedRoute)
@@ -54,7 +39,16 @@ struct MacSettingsView: View {
             }
             .background(Color(NSColor.windowBackgroundColor))
         }
-        .navigationSplitViewStyle(.balanced)
+    }
+
+    @ViewBuilder
+    private func settingsRow(
+        _ title: String,
+        systemImage: String,
+        route: SettingsRoute
+    ) -> some View {
+        Label(title, systemImage: systemImage)
+            .tag(route)
     }
 
     @ViewBuilder

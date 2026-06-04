@@ -1,5 +1,6 @@
 import SwiftUI
 import MiGestorKit
+import UniformTypeIdentifiers
 
 struct MacDashboardToolbarActions {
     let canRunActions: Bool
@@ -68,7 +69,7 @@ struct MacDashboardView: View {
                     activeSheet = nil
                     onNavigate(.notebook(classId: classId))
                 }
-                .frame(minWidth: 560, minHeight: 520)
+                .frame(minWidth: 760, minHeight: 680)
             case .observation(let classId):
                 ObservationComposerSheet(bridge: bridge, initialClassId: classId) {
                     activeSheet = nil
@@ -1138,59 +1139,296 @@ private struct QuickEvaluationSheet: View {
     let onOpenNotebook: (Int64?) -> Void
 
     @State private var selectedClassId: Int64?
-    @State private var selectedStudentId: Int64?
-    @State private var selectedEvaluationId: Int64?
-    @State private var scoreText = ""
-    @State private var note = ""
+    @State private var instruments: [PreparedEvaluationInstrument] = PreparedEvaluationInstrument.defaults
+    @State private var activeInstrumentId: UUID?
+    @State private var showingRubricImporter = false
+    @State private var showingRubricBuilder = false
+    @State private var importPreview: AppleRubricImportPreview?
+    @State private var errorMessage: String?
+    @State private var isCreatingColumns = false
+
+    private var selectedInstruments: [PreparedEvaluationInstrument] {
+        instruments.filter(\.isSelected)
+    }
+
+    private var canCreateColumns: Bool {
+        selectedClassId != nil &&
+        !selectedInstruments.isEmpty &&
+        selectedInstruments.allSatisfy { $0.rubricId != nil && parsedWeight(for: $0) != nil } &&
+        !isCreatingColumns
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            Text("Preparar evaluación")
-                .font(.title2.weight(.semibold))
-            Form {
-                Picker("Clase", selection: $selectedClassId) {
-                    Text("Seleccionar").tag(Int64?.none)
-                    ForEach(bridge.classes, id: \.id) { schoolClass in
-                        Text("\(schoolClass.name) · \(schoolClass.course)º").tag(Optional(schoolClass.id))
-                    }
+        VStack(spacing: 0) {
+            header
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    classSelector
+                    instrumentsSection
+                    statusBlock
                 }
-                Picker("Alumno", selection: $selectedStudentId) {
-                    Text("Seleccionar").tag(Int64?.none)
-                    ForEach(Array(bridge.studentsInClass), id: \.id) { student in
-                        Text(student.fullName).tag(Optional(student.id))
-                    }
-                }
-                Picker("Columna / evaluación", selection: $selectedEvaluationId) {
-                    Text("Seleccionar").tag(Int64?.none)
-                    ForEach(bridge.evaluationsInClass, id: \.id) { evaluation in
-                        Text(evaluation.name).tag(Optional(evaluation.id))
-                    }
-                }
-                TextField("Nota", text: $scoreText)
-                TextField("Observación opcional", text: $note, axis: .vertical)
+                .padding(MacAppStyle.pagePadding)
             }
-            Text("No se guarda ninguna nota desde el dashboard. Completa los datos y abre el cuaderno para confirmar allí el registro.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Spacer()
-            HStack {
-                Button("Cancelar", action: onCancel)
-                Spacer()
-                Button("Abrir cuaderno") {
-                    onOpenNotebook(selectedClassId)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(selectedClassId == nil)
-            }
+
+            Divider()
+            footer
         }
-        .padding(24)
+        .background(MacAppStyle.pageBackground)
         .onAppear {
-            selectedClassId = initialClassId
+            selectedClassId = initialClassId ?? bridge.classes.first?.id
             loadSelection()
         }
         .appOnChange(of: selectedClassId) { _ in
             loadSelection()
         }
+        .fileImporter(
+            isPresented: $showingRubricImporter,
+            allowedContentTypes: [.xlsx, .commaSeparatedText],
+            allowsMultipleSelection: false
+        ) { result in
+            Task { await handleRubricImportFile(result) }
+        }
+        .sheet(item: $importPreview) { preview in
+            DashboardRubricImportPreviewSheet(preview: preview) {
+                importPreview = nil
+            } confirm: {
+                Task { await confirmRubricImport(preview) }
+            }
+        }
+        .sheet(isPresented: $showingRubricBuilder) {
+            RubricsBuilderScreen(onSaved: { rubricId in
+                attachRubric(rubricId)
+                showingRubricBuilder = false
+            })
+            .environmentObject(bridge)
+            .frame(minWidth: 1200, minHeight: 820)
+        }
+        .alert("No se pudo preparar la evaluación", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("Aceptar", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
+        }
+    }
+
+    private var header: some View {
+        HStack(alignment: .top, spacing: 16) {
+            Image(systemName: "checklist.checked")
+                .font(.system(size: 22, weight: .bold))
+                .foregroundStyle(MacAppStyle.infoTint)
+                .frame(width: 48, height: 48)
+                .background(MacAppStyle.infoTint.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Preparar evaluación")
+                    .font(.title2.weight(.semibold))
+                Text("Crea columnas de rúbrica vinculadas al cuaderno de la clase.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, MacAppStyle.pagePadding)
+        .padding(.vertical, 20)
+    }
+
+    private var classSelector: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Grupo")
+                .font(MacAppStyle.sectionTitle)
+
+            Picker("Grupo", selection: $selectedClassId) {
+                Text("Seleccionar").tag(Int64?.none)
+                ForEach(bridge.classes, id: \.id) { schoolClass in
+                    Text("\(schoolClass.name) · \(schoolClass.course)º").tag(Optional(schoolClass.id))
+                }
+            }
+            .labelsHidden()
+            .frame(maxWidth: 320, alignment: .leading)
+        }
+        .padding(MacAppStyle.innerPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(MacAppStyle.cardBackground)
+        .overlay {
+            RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous)
+                .stroke(MacAppStyle.cardBorder, lineWidth: 0.5)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
+    }
+
+    private var instrumentsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Instrumentos")
+                    .font(MacAppStyle.sectionTitle)
+                Spacer()
+                Button {
+                    instruments.append(PreparedEvaluationInstrument(title: "Nueva rúbrica", weightText: "10"))
+                } label: {
+                    Label("Añadir", systemImage: "plus")
+                }
+                .buttonStyle(.bordered)
+            }
+
+            VStack(spacing: 12) {
+                ForEach($instruments) { $instrument in
+                    instrumentRow($instrument)
+                }
+            }
+        }
+    }
+
+    private func instrumentRow(_ instrument: Binding<PreparedEvaluationInstrument>) -> some View {
+        let value = instrument.wrappedValue
+        let selectedRubric = bridge.rubrics.first { $0.rubric.id == value.rubricId }
+
+        return VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 12) {
+                Toggle("", isOn: instrument.isSelected)
+                    .labelsHidden()
+
+                VStack(alignment: .leading, spacing: 8) {
+                    TextField("Nombre del instrumento", text: instrument.title)
+                        .font(.headline)
+                        .textFieldStyle(.plain)
+
+                    HStack(spacing: 12) {
+                        TextField("Peso", text: instrument.weightText)
+                            .frame(width: 72)
+                            .textFieldStyle(.roundedBorder)
+                        Text("%")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        MacStatusPill(
+                            label: selectedRubric == nil ? "Sin rúbrica" : "Rúbrica vinculada",
+                            isActive: selectedRubric != nil,
+                            tint: selectedRubric == nil ? MacAppStyle.warningTint : MacAppStyle.successTint
+                        )
+                    }
+                }
+
+                Spacer(minLength: 16)
+
+                Menu {
+                    if availableRubrics.isEmpty {
+                        Text("No hay rúbricas disponibles")
+                    } else {
+                        ForEach(availableRubrics, id: \.rubric.id) { rubric in
+                            Button {
+                                instrument.wrappedValue.rubricId = rubric.rubric.id
+                                instrument.wrappedValue.rubricName = rubric.rubric.name
+                            } label: {
+                                Label(rubric.rubric.name, systemImage: "checklist")
+                            }
+                        }
+                    }
+
+                    Divider()
+
+                    Button {
+                        startRubricBuilder(for: value.id)
+                    } label: {
+                        Label("Crear rúbrica", systemImage: "plus.square")
+                    }
+
+                    Button {
+                        activeInstrumentId = value.id
+                        showingRubricImporter = true
+                    } label: {
+                        Label("Importar desde Excel", systemImage: "square.and.arrow.down")
+                    }
+                } label: {
+                    Label("Rúbrica", systemImage: "ellipsis.circle")
+                }
+                .menuStyle(.button)
+            }
+
+            if let selectedRubric {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(selectedRubric.rubric.name)
+                        .font(.subheadline.weight(.semibold))
+                    HStack(spacing: 8) {
+                        Label("\(selectedRubric.criteria.count) criterios", systemImage: "list.bullet.rectangle")
+                        if isCurrentClassRubric(selectedRubric) {
+                            Label("Grupo actual", systemImage: "person.2.fill")
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(MacAppStyle.subtleFill, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+        }
+        .padding(MacAppStyle.innerPadding)
+        .background(MacAppStyle.cardBackground)
+        .overlay {
+            RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous)
+                .stroke(MacAppStyle.cardBorder, lineWidth: 0.5)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var statusBlock: some View {
+        if selectedInstruments.isEmpty {
+            Label("Selecciona al menos un instrumento.", systemImage: "info.circle")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        } else if !canCreateColumns {
+            Label("Cada instrumento seleccionado necesita peso válido y rúbrica.", systemImage: "exclamationmark.triangle")
+                .font(.callout)
+                .foregroundStyle(MacAppStyle.warningTint)
+        } else {
+            Label("Se crearán \(selectedInstruments.count) columna(s) de rúbrica en el cuaderno.", systemImage: "checkmark.circle.fill")
+                .font(.callout)
+                .foregroundStyle(MacAppStyle.successTint)
+        }
+    }
+
+    private var footer: some View {
+        HStack(spacing: 16) {
+            Button("Cancelar", action: onCancel)
+                .keyboardShortcut(.cancelAction)
+
+            Button {
+                onOpenNotebook(selectedClassId)
+            } label: {
+                Label("Abrir cuaderno", systemImage: "tablecells")
+            }
+            .disabled(selectedClassId == nil)
+
+            Spacer()
+
+            Button {
+                Task { await createColumns() }
+            } label: {
+                Label(isCreatingColumns ? "Creando..." : "Crear columnas", systemImage: "plus.rectangle.on.rectangle")
+            }
+            .buttonStyle(.borderedProminent)
+            .keyboardShortcut(.defaultAction)
+            .disabled(!canCreateColumns)
+        }
+        .padding(.horizontal, MacAppStyle.pagePadding)
+        .padding(.vertical, 16)
+        .background(.ultraThinMaterial)
+    }
+
+    private var availableRubrics: [RubricDetail] {
+        bridge.rubrics
+            .filter { rubric in
+                guard let selectedClassId else { return true }
+                let directClassId = rubric.rubric.classId?.int64Value
+                return directClassId == nil || directClassId == selectedClassId || bridge.rubricClassLinks[rubric.rubric.id]?.contains(selectedClassId) == true
+            }
+            .sorted { $0.rubric.name.localizedCaseInsensitiveCompare($1.rubric.name) == .orderedAscending }
     }
 
     private func loadSelection() {
@@ -1198,7 +1436,262 @@ private struct QuickEvaluationSheet: View {
             guard let selectedClassId else { return }
             bridge.selectClass(id: selectedClassId)
             await bridge.selectStudentsClass(classId: selectedClassId)
+            try? await bridge.refreshRubrics()
+            try? await bridge.refreshRubricClassLinks()
         }
+    }
+
+    private func startRubricBuilder(for instrumentId: UUID) {
+        activeInstrumentId = instrumentId
+        bridge.resetRubricBuilder()
+        if let selectedClassId {
+            bridge.selectRubricClass(selectedClassId)
+        }
+        if let instrument = instruments.first(where: { $0.id == instrumentId }) {
+            bridge.updateRubricName(instrument.title)
+        }
+        showingRubricBuilder = true
+    }
+
+    @MainActor
+    private func handleRubricImportFile(_ result: Result<[URL], Error>) async {
+        do {
+            guard let url = try result.get().first else { return }
+            let rows = try AppleSpreadsheetReader.readRows(from: url)
+            importPreview = makeRubricImportPreview(from: rows)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func confirmRubricImport(_ preview: AppleRubricImportPreview) async {
+        do {
+            try await bridge.importRubricDraft(tsv: preview.tsv)
+            if let selectedClassId {
+                bridge.selectRubricClass(selectedClassId)
+            }
+            importPreview = nil
+            showingRubricBuilder = true
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func attachRubric(_ rubricId: Int64) {
+        guard let activeInstrumentId,
+              let index = instruments.firstIndex(where: { $0.id == activeInstrumentId }) else { return }
+        instruments[index].rubricId = rubricId
+        instruments[index].rubricName = bridge.rubrics.first(where: { $0.rubric.id == rubricId })?.rubric.name ?? instruments[index].title
+    }
+
+    @MainActor
+    private func createColumns() async {
+        guard let selectedClassId else { return }
+        isCreatingColumns = true
+        defer { isCreatingColumns = false }
+        bridge.selectClass(id: selectedClassId)
+
+        do {
+            for instrument in selectedInstruments {
+                guard let rubricId = instrument.rubricId,
+                      let weight = parsedWeight(for: instrument) else { continue }
+                _ = try await bridge.addColumnWithOptionalCategory(
+                    name: instrument.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Rúbrica" : instrument.title,
+                    type: NotebookColumnType.rubric.name,
+                    weight: weight,
+                    formula: nil,
+                    rubricId: rubricId,
+                    categoryKind: .evaluation,
+                    instrumentKind: .rubric,
+                    inputKind: .rubric,
+                    scaleKind: .tenPoint,
+                    iconName: "checklist",
+                    countsTowardAverage: true
+                )
+            }
+            onOpenNotebook(selectedClassId)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func parsedWeight(for instrument: PreparedEvaluationInstrument) -> Double? {
+        let normalized = instrument.weightText
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: ",", with: ".")
+        guard let value = Double(normalized), value >= 0 else { return nil }
+        return value
+    }
+
+    private func isCurrentClassRubric(_ rubric: RubricDetail) -> Bool {
+        guard let selectedClassId else { return false }
+        return rubric.rubric.classId?.int64Value == selectedClassId ||
+            bridge.rubricClassLinks[rubric.rubric.id]?.contains(selectedClassId) == true
+    }
+
+    private func makeRubricImportPreview(from rows: [[String]]) -> AppleRubricImportPreview {
+        let tsv = rows.tsvText
+        let nonEmptyRows = rows.filter { row in
+            row.contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        }
+        let header = nonEmptyRows.first ?? []
+        let levels = header.dropFirst().filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let criteriaRows = nonEmptyRows.dropFirst().filter { row in
+            row.first?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        }
+        var warnings: [String] = []
+        if levels.isEmpty {
+            warnings.append("No se han detectado niveles en la primera fila.")
+        }
+        if criteriaRows.isEmpty {
+            warnings.append("No se han detectado criterios con descripción.")
+        }
+        for (index, row) in criteriaRows.enumerated() {
+            let filledDescriptions = row.dropFirst().filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.count
+            let missingDescriptions = max(0, levels.count - filledDescriptions)
+            if missingDescriptions > 0 {
+                warnings.append("Criterio \(index + 1) tiene \(missingDescriptions) nivel(es) sin descripción.")
+            }
+        }
+        let numericLevelCount = levels.filter { Double($0.trimmingCharacters(in: .whitespacesAndNewlines)) != nil }.count
+        if numericLevelCount > 0 {
+            warnings.append("\(numericLevelCount) nivel(es) parecen numéricos; revisa la escala antes de guardar.")
+        }
+        return AppleRubricImportPreview(
+            title: "Rúbrica importada",
+            levelCount: levels.count,
+            criterionCount: criteriaRows.count,
+            warnings: warnings,
+            tsv: tsv
+        )
+    }
+}
+
+private struct PreparedEvaluationInstrument: Identifiable {
+    let id = UUID()
+    var title: String
+    var weightText: String
+    var isSelected = true
+    var rubricId: Int64?
+    var rubricName: String?
+
+    static let defaults: [PreparedEvaluationInstrument] = [
+        PreparedEvaluationInstrument(title: "Diseño del Plan de Entrenamiento", weightText: "40"),
+        PreparedEvaluationInstrument(title: "Ejecución y Autorregulación", weightText: "40"),
+        PreparedEvaluationInstrument(title: "Desempeño del Rol de Coach y Cooperación", weightText: "20")
+    ]
+}
+
+private struct DashboardRubricImportPreviewSheet: View {
+    let preview: AppleRubricImportPreview
+    let cancel: () -> Void
+    let confirm: () -> Void
+
+    private var canConfirm: Bool {
+        preview.levelCount > 0 && preview.criterionCount > 0
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .top, spacing: 16) {
+                Image(systemName: "checklist")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(MacAppStyle.infoTint)
+                    .frame(width: 48, height: 48)
+                    .background(MacAppStyle.infoTint.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Importar rúbrica")
+                        .font(.title2.weight(.semibold))
+                    Text(preview.title)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, MacAppStyle.pagePadding)
+            .padding(.vertical, 20)
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    HStack(spacing: 12) {
+                        previewMetric(title: "Niveles", value: "\(preview.levelCount)", icon: "slider.horizontal.below.square")
+                        previewMetric(title: "Criterios", value: "\(preview.criterionCount)", icon: "list.bullet.rectangle")
+                        previewMetric(title: "Advertencias", value: "\(preview.warnings.count)", icon: "exclamationmark.triangle")
+                    }
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Validación")
+                            .font(.headline)
+                        if preview.warnings.isEmpty {
+                            Label("Estructura lista para revisar en el editor.", systemImage: "checkmark.circle.fill")
+                                .foregroundStyle(MacAppStyle.successTint)
+                        } else {
+                            ForEach(preview.warnings, id: \.self) { warning in
+                                Label(warning, systemImage: "exclamationmark.triangle.fill")
+                                    .font(.callout)
+                                    .foregroundStyle(MacAppStyle.warningTint)
+                            }
+                        }
+                    }
+                    .padding(MacAppStyle.innerPadding)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(MacAppStyle.subtleFill)
+                    .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
+                }
+                .padding(MacAppStyle.pagePadding)
+            }
+
+            Divider()
+
+            HStack(spacing: 16) {
+                Text(canConfirm ? "Se abrirá en el editor para revisión final." : "La rúbrica necesita niveles y criterios.")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                Button("Cancelar", action: cancel)
+                    .buttonStyle(.bordered)
+                    .keyboardShortcut(.cancelAction)
+
+                Button {
+                    confirm()
+                } label: {
+                    Label("Abrir en editor", systemImage: "square.and.pencil")
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(!canConfirm)
+            }
+            .padding(.horizontal, MacAppStyle.pagePadding)
+            .padding(.vertical, 16)
+            .background(.ultraThinMaterial)
+        }
+        .frame(width: 600, height: 430)
+        .background(MacAppStyle.pageBackground)
+    }
+
+    private func previewMetric(title: String, value: String, icon: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(title, systemImage: icon)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.title2.weight(.bold))
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(MacAppStyle.cardBackground)
+        .overlay {
+            RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous)
+                .stroke(MacAppStyle.cardBorder, lineWidth: 0.5)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
     }
 }
 

@@ -63,6 +63,11 @@ struct MiGestorKMPMacApp: App {
                 }
                 .keyboardShortcut("i", modifiers: [.command, .option])
 
+                Button("Mostrar u ocultar barra lateral") {
+                    NotificationCenter.default.post(name: .macRootToggleSidebarRequested, object: nil)
+                }
+                .keyboardShortcut("s", modifiers: [.command, .option])
+
                 Button("Refrescar dashboard") {
                     NotificationCenter.default.post(name: .macRootRefreshRequested, object: nil)
                 }
@@ -71,7 +76,7 @@ struct MiGestorKMPMacApp: App {
         }
 
         Settings {
-            EmptyView()
+            MacSettingsScene(session: session)
         }
     }
 
@@ -88,6 +93,24 @@ struct MiGestorKMPMacApp: App {
         @unknown default:
             break
         }
+    }
+}
+
+private struct MacSettingsScene: View {
+    @ObservedObject var session: MacAppSessionController
+    @StateObject private var commandCenter = MacCommandCenterCoordinator()
+    @StateObject private var backupStore: MacBackupStore
+
+    init(session: MacAppSessionController) {
+        self.session = session
+        _backupStore = StateObject(wrappedValue: MacBackupStore(bridge: session.bridge))
+    }
+
+    var body: some View {
+        MacSettingsView(session: session, commandCenter: commandCenter, backupStore: backupStore) {
+            session.selectedFeature = .sync
+        }
+        .frame(minWidth: 760, minHeight: 520)
     }
 }
 
@@ -121,7 +144,9 @@ private enum MacWritingToolsMenuSanitizer {
             object: nil,
             queue: .main
         ) { _ in
-            sanitizeMainMenu()
+            DispatchQueue.main.async {
+                sanitizeMainMenu()
+            }
         })
     }
 

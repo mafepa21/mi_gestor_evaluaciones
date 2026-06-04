@@ -61,6 +61,7 @@ struct MacRootView: View {
             await startCommandCenterAfterInitialLayout()
         }
         .appOnChange(of: columnVisibility.macRootStoredValue) { newValue in
+            guard session.bootstrapState == .ready else { return }
             storedColumnVisibility = newValue
         }
         .appOnChange(of: isInspectorVisible) { newValue in
@@ -81,22 +82,15 @@ struct MacRootView: View {
     private var navigationSplit: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             macSidebar
-        } content: {
+        } detail: {
             featureContent(for: selectedFeature)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(MacAppStyle.pageBackground)
-        } detail: {
-            Group {
-                if isInspectorVisible {
+                .inspector(isPresented: $isInspectorVisible) {
                     featureInspector(for: selectedFeature)
                         .frame(minWidth: 320, idealWidth: 360, maxWidth: 440)
-                        .transition(uiFeatureFlags.inspectorTransition)
-                } else {
-                    EmptyView()
-                        .frame(width: 0)
+                        .background(MacAppStyle.pageBackground)
                 }
-            }
-            .background(MacAppStyle.pageBackground)
         }
         .navigationSplitViewStyle(.balanced)
         .overlay(alignment: .topTrailing) {
@@ -108,7 +102,6 @@ struct MacRootView: View {
             }
         }
         .animation(uiFeatureFlags.interactionAnimation, value: banner?.id)
-        .animation(uiFeatureFlags.interactionAnimation, value: isInspectorVisible)
         .toolbar {
             macToolbar
         }
@@ -120,6 +113,9 @@ struct MacRootView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .macRootRefreshRequested)) { _ in
             refreshCurrentFeature()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .macRootToggleSidebarRequested)) { _ in
+            toggleSidebar()
         }
         .onReceive(NotificationCenter.default.publisher(for: .macRootToggleInspectorRequested)) { _ in
             toggleInspector()
@@ -217,7 +213,7 @@ struct MacRootView: View {
                 selectedClassId: studentSelection.selectedClassBinding,
                 selectedStudentId: studentSelection.selectedStudentBinding,
                 onOpenModule: open(module:classId:studentId:),
-                presentation: .content,
+                presentation: .full,
                 onToggleInspectorColumn: toggleInspector
             )
         case .attendance:
@@ -257,6 +253,12 @@ struct MacRootView: View {
             )
         case .planner:
             PlannerMacLayout(bridge: session.bridge, selectedSessionId: $selectedPlannerSessionId)
+        case .situations:
+            LearningSituationsWorkspaceView(
+                selectedClassId: studentSelection.selectedClassBinding,
+                onOpenModule: open(module:classId:studentId:)
+            )
+            .environmentObject(session.bridge)
         case .sync:
             MacSyncView(bridge: session.bridge, commandCenter: commandCenter)
         case .backups:
@@ -309,6 +311,15 @@ struct MacRootView: View {
 
     @ToolbarContentBuilder
     private var macToolbar: some ToolbarContent {
+        ToolbarItem(placement: .navigation) {
+            Button {
+                toggleSidebar()
+            } label: {
+                Label("Barra lateral", systemImage: "sidebar.leading")
+            }
+            .help("Mostrar/Ocultar barra lateral (⌘⌥S)")
+        }
+
         if selectedFeature == .notebook {
             macNotebookToolbar
         } else {
@@ -321,42 +332,41 @@ struct MacRootView: View {
         ToolbarItemGroup {
             Menu {
                 ForEach(groupedNotebookClasses, id: \.course) { group in
-                    Section("\(group.course)º") {
+                    Menu("\(group.course)º") {
                         ForEach(group.classes, id: \.id) { schoolClass in
                             Button {
                                 selectNotebookClass(schoolClass.id)
                             } label: {
                                 HStack {
-                                    Text(notebookClassLabel(for: schoolClass))
-                                    if activeNotebookClass?.id == schoolClass.id {
+                                    if schoolClass.id == activeNotebookClass?.id {
                                         Image(systemName: "checkmark")
                                     }
+                                    Text(schoolClass.name)
                                 }
                             }
                         }
                     }
                 }
-
-                if session.bridge.classes.isEmpty {
-                    Text("Sin clases disponibles")
-                }
             } label: {
-                Label(activeNotebookClassLabel, systemImage: "rectangle.3.group")
-                    .lineLimit(1)
-                    .frame(minWidth: 132, maxWidth: 180, alignment: .leading)
+                HStack(spacing: 6) {
+                    Image(systemName: "books.vertical.fill")
+                        .foregroundStyle(Color.accentColor)
+                    Text(activeNotebookClassLabel)
+                        .fontWeight(.medium)
+                }
             }
-            .disabled(session.bridge.classes.isEmpty)
-            .help("Cambiar clase del cuaderno")
+            .menuStyle(.button)
+            .help("Seleccionar clase activa")
 
             Picker("Vista", selection: Binding(
                 get: { layoutState.notebookSurfaceMode },
                 set: { layoutState.setNotebookSurfaceMode($0) }
             )) {
-                Text("Grid").tag("grid")
-                Text("Plano").tag("seatingPlan")
+                Image(systemName: "tablecells").tag("grid")
+                Image(systemName: "rectangle.3.group").tag("seatingPlan")
             }
             .pickerStyle(.segmented)
-            .frame(width: 112)
+            .frame(width: 80)
 
             if session.bridge.syncPendingChanges > 0 {
                 MacStatusPill(
@@ -382,6 +392,14 @@ struct MacRootView: View {
             }
             .disabled(!notebookToolbarActions.organizationMenuAvailable)
             .help("Organizar columnas")
+
+            Button {
+                notebookToolbarActions.openGroupManagement()
+            } label: {
+                Label("Gestionar grupos", systemImage: "person.2")
+            }
+            .disabled(!notebookToolbarActions.groupManagementAvailable)
+            .help("Gestionar grupos de trabajo")
 
             Button {
                 toggleInspector()
@@ -460,7 +478,9 @@ struct MacRootView: View {
     }
 
     private var groupedNotebookClasses: [(course: Int32, classes: [SchoolClass])] {
-        Dictionary(grouping: session.bridge.classes, by: \.course)
+        let uniqueClasses = Dictionary(grouping: session.bridge.classes, by: \.id)
+            .compactMap { $0.value.first }
+        return Dictionary(grouping: uniqueClasses, by: \.course)
             .map { course, classes in
                 (
                     course: course,
@@ -599,6 +619,7 @@ struct MacRootView: View {
         case .notebook: return .purple
         case .attendance: return .green
         case .planner: return .orange
+        case .situations: return .indigo
         case .students: return .blue
         case .rubrics: return .teal
         case .physicalTests: return .orange
@@ -639,6 +660,14 @@ struct MacRootView: View {
                 notebookInspectorState.isPresented = true
                 notebookToolbarActions.isInspectorPresented = true
             }
+        }
+    }
+
+    private func toggleSidebar() {
+        let nextValue: NavigationSplitViewVisibility = columnVisibility == .detailOnly ? .all : .detailOnly
+        Task { @MainActor in
+            await Task.yield()
+            columnVisibility = nextValue
         }
     }
 
@@ -803,6 +832,8 @@ struct MacRootView: View {
             selectFeature(.attendance)
         case .peTests:
             selectFeature(.physicalTests)
+        case .situations:
+            selectFeature(.situations)
         default:
             session.bridge.status = "El módulo \(module.title) todavía no está disponible en la shell Mac."
         }
@@ -840,6 +871,7 @@ extension Notification.Name {
     static let macRootSaveRequested = Notification.Name("macRootSaveRequested")
     static let macRootRefreshRequested = Notification.Name("macRootRefreshRequested")
     static let macRootToggleInspectorRequested = Notification.Name("macRootToggleInspectorRequested")
+    static let macRootToggleSidebarRequested = Notification.Name("macRootToggleSidebarRequested")
     static let macRootBackupRequested = Notification.Name("macRootBackupRequested")
     static let macRootExportRequested = Notification.Name("macRootExportRequested")
 }

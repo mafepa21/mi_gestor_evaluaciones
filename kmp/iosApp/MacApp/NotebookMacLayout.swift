@@ -44,25 +44,22 @@ struct NotebookMacLayout: View {
 
     @ViewBuilder
     var body: some View {
-        Group {
-            switch presentation {
-            case .full:
-                HSplitView {
-                    classSidebar
-                        .frame(minWidth: 208, idealWidth: 232, maxWidth: 280)
-
-                    notebookContent
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        notebookContent
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(MacAppStyle.pageBackground)
+            .onAppear {
+                searchText = layoutState.notebookSearchText
+                
+                // Auto-select the first class on load if none is selected
+                let activeId = selectedClassId ?? bridge.notebookViewModel.currentClassId?.int64Value
+                if activeId == nil {
+                    if let firstClass = sortedClasses.first {
+                        selectedClassId = firstClass.id
+                        selectedStudentId = nil
+                        bridge.selectClass(id: firstClass.id)
+                    }
                 }
-            case .content, .inspector:
-                notebookContent
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-        }
-        .background(MacAppStyle.pageBackground)
-        .onAppear {
-            searchText = layoutState.notebookSearchText
-        }
     }
 
     private var notebookContent: some View {
@@ -77,52 +74,16 @@ struct NotebookMacLayout: View {
             macToolbarActions: showsNotebookToolbar ? toolbarActions : nil
         )
         .environmentObject(layoutState)
+        .navigationTitle(selectedClassId.flatMap { id in bridge.classes.first(where: { $0.id == id })?.name } ?? "Cuaderno")
     }
 
-    private var classSidebar: some View {
-        List(selection: classSelection) {
-            ForEach(groupedClasses, id: \.course) { group in
-                Section("\(group.course)º") {
-                    ForEach(group.classes, id: \.id) { schoolClass in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(schoolClass.name)
-                                .font(.callout.weight(.medium))
-                            Text("Cuaderno de clase")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                        .tag(Optional(schoolClass.id))
-                    }
-                }
-            }
+    private var sortedClasses: [SchoolClass] {
+        let uniqueClasses = Dictionary(grouping: bridge.classes, by: \.id)
+            .compactMap { $0.value.first }
+        return uniqueClasses.sorted {
+            if $0.course != $1.course { return $0.course < $1.course }
+            return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
         }
-        .listStyle(.sidebar)
-        .navigationTitle("Clases")
-    }
-
-    private var classSelection: Binding<Int64?> {
-        Binding(
-            get: { selectedClassId ?? bridge.notebookViewModel.currentClassId?.int64Value },
-            set: { newValue in
-                guard let newValue else { return }
-                selectedClassId = newValue
-                selectedStudentId = nil
-                bridge.selectClass(id: newValue)
-            }
-        )
-    }
-
-    private var groupedClasses: [(course: Int32, classes: [SchoolClass])] {
-        Dictionary(grouping: bridge.classes, by: \.course)
-            .map { course, classes in
-                (
-                    course: course,
-                    classes: classes.sorted {
-                        $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-                    }
-                )
-            }
-            .sorted { $0.course < $1.course }
     }
 
 }

@@ -40,16 +40,18 @@ struct NotebookTabStrip: View {
                 } label: {
                     Image(systemName: "plus")
                         .font(.system(size: 12, weight: .bold))
-                        .frame(width: 26, height: 26)
+                        .frame(width: 28, height: 28)
+                        .background(Color.secondary.opacity(0.08), in: Circle())
+                        .foregroundStyle(.secondary)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(NotebookScaleButtonStyle())
                 .help("Nueva pestaña")
                 .accessibilityLabel("Nueva pestaña")
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        .background(.bar)
+        .background(.ultraThinMaterial)
     }
 
     private func tabButton(tab: NotebookTab, isSelected: Bool) -> some View {
@@ -69,17 +71,18 @@ struct NotebookTabStrip: View {
             .padding(.vertical, 7)
             .background(
                 Capsule(style: .continuous)
-                    .fill(isSelected ? Color.accentColor.opacity(0.13) : Color.clear)
-                    .overlay(
-                        Capsule(style: .continuous)
-                            .stroke(
-                                isSelected ? Color.accentColor.opacity(0.28) : NotebookStyle.softBorder.opacity(0.9),
-                                lineWidth: 1
-                            )
+                    .fill(isSelected ? Color.accentColor.opacity(0.11) : Color.secondary.opacity(0.04))
+                    .shadow(color: isSelected ? Color.accentColor.opacity(0.10) : Color.clear, radius: 4, x: 0, y: 2)
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(
+                        isSelected ? Color.accentColor.opacity(0.28) : NotebookStyle.softBorder,
+                        lineWidth: 1
                     )
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(NotebookScaleButtonStyle())
         .contextMenu {
             Button("Renombrar") {
                 onRenameTab(tab)
@@ -90,5 +93,14 @@ struct NotebookTabStrip: View {
             }
         }
         .help("Abrir \(tab.title)")
+    }
+}
+
+// MARK: - NotebookScaleButtonStyle
+private struct NotebookScaleButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
+            .animation(.spring(response: 0.2, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }

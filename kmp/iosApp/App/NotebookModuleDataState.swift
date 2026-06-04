@@ -39,9 +39,69 @@ extension NotebookModuleView {
     }
 
     func filteredRows(data: NotebookUiStateData) -> [NotebookTableRow] {
-        let rows = data.sheet.groupedRowsFor(tabId: activeNotebookTabId(data: data)).flatMap { section in
-            let groupName = section.group?.name ?? "Sin grupo"
-            return section.rows.map { NotebookTableRow(student: $0.student, row: $0, groupName: groupName) }
+        let rows: [NotebookTableRow]
+        if groupByWorkGroupMode != "none" {
+            let activeGroups: [NotebookWorkGroup]
+            let tabId = activeNotebookTabId(data: data)
+            
+            if groupByWorkGroupMode == "general" {
+                activeGroups = data.sheet.workGroups.filter { 
+                    ($0.tabId == tabId || tabId == nil) && $0.learningSituationId == nil 
+                }
+            } else if groupByWorkGroupMode.hasPrefix("situation_"),
+                      let sitId = Int64(groupByWorkGroupMode.dropFirst(10)) {
+                activeGroups = data.sheet.workGroups.filter { 
+                    ($0.tabId == tabId || tabId == nil) && $0.learningSituationId?.int64Value == sitId 
+                }
+            } else {
+                activeGroups = data.sheet.workGroups.filter { $0.tabId == tabId || tabId == nil }
+            }
+            
+            let sortedActiveGroups = activeGroups.sorted {
+                if $0.order != $1.order { return $0.order < $1.order }
+                return $0.id < $1.id
+            }
+            
+            var resultRows: [NotebookTableRow] = []
+            var groupedStudentIds = Set<Int64>()
+            
+            for group in sortedActiveGroups {
+                let memberIds = Set(data.sheet.workGroupMembers
+                    .filter { $0.groupId == group.id && ($0.tabId == tabId || tabId == nil) }
+                    .map(\.studentId))
+                
+                let groupRows = data.sheet.rows.filter { memberIds.contains($0.student.id) }
+                for r in groupRows {
+                    groupedStudentIds.insert(r.student.id)
+                    resultRows.append(NotebookTableRow(student: r.student, row: r, groupName: group.name))
+                }
+            }
+            
+            let ungroupedRows = data.sheet.rows.filter { !groupedStudentIds.contains($0.student.id) }
+            let sortedUngrouped = ungroupedRows.sorted {
+                let name1 = "\($0.student.lastName) \($0.student.firstName)"
+                let name2 = "\($1.student.lastName) \($1.student.firstName)"
+                return name1.localizedStandardCompare(name2) == .orderedAscending
+            }
+            for r in sortedUngrouped {
+                resultRows.append(NotebookTableRow(student: r.student, row: r, groupName: "Sin grupo"))
+            }
+            
+            rows = resultRows
+        } else {
+            let unsortedRows = data.sheet.rows.map { row in
+                let tabId = activeNotebookTabId(data: data)
+                let memberGroupId = data.sheet.workGroupMembers.first(where: {
+                    $0.studentId == row.student.id && ($0.tabId == tabId || tabId == nil)
+                })?.groupId
+                let groupName = memberGroupId.flatMap { gId in data.sheet.workGroups.first(where: { $0.id == gId })?.name } ?? "Sin grupo"
+                return NotebookTableRow(student: row.student, row: row, groupName: groupName)
+            }
+            rows = unsortedRows.sorted {
+                let name1 = "\($0.student.lastName) \($0.student.firstName)"
+                let name2 = "\($1.student.lastName) \($1.student.firstName)"
+                return name1.localizedStandardCompare(name2) == .orderedAscending
+            }
         }
 
         return rows.filter { item in

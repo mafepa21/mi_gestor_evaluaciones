@@ -42,6 +42,7 @@ extension NotebookModuleView {
                             lineWidth: isHighlighted ? 1.4 : 0.6
                         )
                 )
+                .shadow(color: isHighlighted ? tint.opacity(0.12) : Color.black.opacity(0.03), radius: isHighlighted ? 8 : 4, x: 0, y: 2)
         )
         .overlay(alignment: .topLeading) {
             if !isSystemColumn {
@@ -72,6 +73,90 @@ extension NotebookModuleView {
     func headerChip(for segment: NotebookDisplaySegment, data: NotebookUiStateData) -> some View {
         switch segment {
         case .fixed(let fixed):
+            if fixed == .name {
+                let chip = HStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(fixed.title)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+
+                        Text(fixed.subtitle)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+                    
+                    Spacer(minLength: 4)
+                    
+                    Menu {
+                        Button {
+                            groupByWorkGroupMode = "none"
+                        } label: {
+                            HStack {
+                                Text("No agrupar")
+                                if groupByWorkGroupMode == "none" {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+
+                        Button {
+                            groupByWorkGroupMode = "general"
+                        } label: {
+                            HStack {
+                                Text("Grupos generales")
+                                if groupByWorkGroupMode == "general" {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+
+                        if !classSituations.isEmpty {
+                            Divider()
+                            ForEach(classSituations, id: \.id) { situation in
+                                Button {
+                                    groupByWorkGroupMode = "situation_\(situation.id)"
+                                } label: {
+                                    HStack {
+                                        Text("Grupos: \(situation.title)")
+                                        if groupByWorkGroupMode == "situation_\(situation.id)" {
+                                            Image(systemName: "checkmark")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
+                        Image(systemName: groupByWorkGroup ? "person.2.fill" : "person.2")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(groupByWorkGroup ? NotebookStyle.primaryTint : .secondary)
+                            .padding(6)
+                            .background(Color.secondary.opacity(groupByWorkGroup ? 0.15 : 0.08), in: RoundedRectangle(cornerRadius: 6))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Seleccionar modo de agrupación")
+                }
+                .padding(.leading, 8)
+                .padding(.trailing, 6)
+                .padding(.vertical, 8)
+                .frame(width: resolvedFixedWidth(for: fixed), alignment: .leading)
+                .frame(minHeight: 52, alignment: .topLeading)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(NotebookStyle.surfaceSoft.opacity(0.50))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(NotebookStyle.softBorder.opacity(0.55), lineWidth: 0.6)
+                        )
+                        .shadow(color: Color.black.opacity(0.03), radius: 4, x: 0, y: 2)
+                )
+                
+                return AnyView(chip)
+            }
+            
             let chip = headerChip(
                 title: fixed.title,
                 subtitle: fixed.subtitle,
@@ -184,11 +269,12 @@ extension NotebookModuleView {
         .contentShape(Rectangle())
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(NotebookStyle.surfaceSoft.opacity(isEmpty ? 0.22 : 0.34))
+                .fill(isEmpty ? NotebookStyle.surfaceSoft.opacity(0.22) : categoryTint.opacity(0.04))
+                .shadow(color: isEmpty ? Color.clear : categoryTint.opacity(0.08), radius: 6, x: 0, y: 2)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(isEmpty ? NotebookStyle.softBorder.opacity(0.55) : categoryTint.opacity(0.24), lineWidth: 1)
+                .stroke(isEmpty ? NotebookStyle.softBorder.opacity(0.55) : categoryTint.opacity(0.20), lineWidth: 1)
         )
         .help("\(categoryAccessibilityState(isCollapsed: true, columns: columns)). Haz clic para abrir.")
         .accessibilityLabel("\(category.name). \(categoryAccessibilityState(isCollapsed: true, columns: columns)). Haz clic para abrir.")
@@ -503,11 +589,12 @@ extension NotebookModuleView {
             .contentShape(Rectangle())
             .background(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(NotebookStyle.surfaceSoft.opacity(0.30))
+                    .fill(categoryTint.opacity(0.04))
+                    .shadow(color: categoryTint.opacity(0.06), radius: 4, x: 0, y: 1)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(categoryTint.opacity(0.20), lineWidth: 1)
+                    .stroke(categoryTint.opacity(0.16), lineWidth: 1)
             )
         }
         .buttonStyle(NotebookCategoryHeaderButtonStyle())

@@ -150,6 +150,12 @@ extension NotebookModuleView {
                                 presentDeleteColumnImpact(column)
                             }
                         },
+                        onDeleteMultiple: { columns in
+                            isOrganizationMenuPresented = false
+                            DispatchQueue.main.async {
+                                presentDeleteColumnsImpact(columns)
+                            }
+                        },
                         onAddColumn: {
                             isOrganizationMenuPresented = false
                             DispatchQueue.main.async {
@@ -192,6 +198,12 @@ extension NotebookModuleView {
                         },
                         onReorder: { reorderedColumns in
                             reorderManagedColumns(reorderedColumns)
+                        },
+                        onOpenGroupManagement: {
+                            isOrganizationMenuPresented = false
+                            DispatchQueue.main.async {
+                                isGroupManagementPresented = true
+                            }
                         }
                     )
                     .frame(minWidth: 520, minHeight: 620)

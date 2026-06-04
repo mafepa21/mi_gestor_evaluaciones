@@ -19,6 +19,7 @@ struct NotebookCompactCommandBar<SecondaryActions: View>: View {
     let onToggleInspector: () -> Void
     let onUndo: () -> Void
     let onToggleAttendanceQuickMode: () -> Void
+    let onOpenGroupManagement: () -> Void
     let secondaryActions: () -> SecondaryActions
     @State private var isClassPickerPresented = false
 
@@ -47,7 +48,12 @@ struct NotebookCompactCommandBar<SecondaryActions: View>: View {
         }
         .padding(.horizontal, IOSAppStyle.pagePadding)
         .padding(.vertical, 8)
-        .background(.bar)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(NotebookStyle.softBorder)
+                .frame(height: 1)
+        }
         #endif
     }
 
@@ -84,6 +90,7 @@ struct NotebookCompactCommandBar<SecondaryActions: View>: View {
             iconButton(systemImage: "plus", label: "Nueva columna", action: onAddColumn, isProminent: true)
 
             if showsAdvancedActions {
+                iconButton(systemImage: "person.2", label: "Gestionar grupos", action: onOpenGroupManagement)
                 iconButton(systemImage: "rectangle.3.group", label: "Organizar columnas", action: onOpenOrganization)
                 iconButton(
                     systemImage: isInspectorPresented ? "sidebar.right" : "sidebar.squares.right",
@@ -122,13 +129,13 @@ struct NotebookCompactCommandBar<SecondaryActions: View>: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(NotebookStyle.surfaceSoft, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: NotebookStyle.innerRadius, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: NotebookStyle.innerRadius, style: .continuous)
                     .stroke(NotebookStyle.softBorder, lineWidth: 1)
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(NotebookScaleButtonStyle())
         .accessibilityLabel("Seleccionar clase")
         .popover(isPresented: $isClassPickerPresented, arrowEdge: .top) {
             NotebookClassPickerPopover(
@@ -148,6 +155,9 @@ struct NotebookCompactCommandBar<SecondaryActions: View>: View {
             .disabled(!canUndo)
 
             if showsAdvancedActions {
+                Button(action: onOpenGroupManagement) {
+                    Label("Gestionar grupos", systemImage: "person.2")
+                }
                 Button(action: onToggleAttendanceQuickMode) {
                     Label(
                         isAttendanceQuickMode ? "Salir de asistencia rápida" : "Asistencia rápida",
@@ -176,7 +186,7 @@ struct NotebookCompactCommandBar<SecondaryActions: View>: View {
                 .background(Color.secondary.opacity(0.08), in: Circle())
                 .foregroundStyle(.secondary)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(NotebookScaleButtonStyle())
         .accessibilityLabel("Más acciones del cuaderno")
     }
 
@@ -197,8 +207,17 @@ struct NotebookCompactCommandBar<SecondaryActions: View>: View {
                 )
                 .foregroundStyle(isProminent ? .white : (isActive ? NotebookStyle.primaryTint : .secondary))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(NotebookScaleButtonStyle())
         .help(label)
         .accessibilityLabel(label)
+    }
+}
+
+// MARK: - NotebookScaleButtonStyle
+private struct NotebookScaleButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
+            .animation(.spring(response: 0.2, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }

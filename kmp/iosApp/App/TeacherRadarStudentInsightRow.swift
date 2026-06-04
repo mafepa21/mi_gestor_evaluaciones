@@ -29,13 +29,16 @@ struct TeacherRadarStudentInsightRow: View {
                     .foregroundStyle(.primary)
                     .lineLimit(2)
             }
-            Spacer(minLength: 0)
         }
-        .padding(10)
-        .background(insight.priority.tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(insight.priority.tint.opacity(0.14), lineWidth: 1)
-        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(
+            insight.priority.tint.opacity(0.04)
+                .overlay(
+                    RoundedRectangle(cornerRadius: EvaluationDesign.pillRadius, style: .continuous)
+                        .stroke(insight.priority.tint.opacity(0.12), lineWidth: 1)
+                )
+        )
+        .cornerRadius(EvaluationDesign.pillRadius)
     }
 }

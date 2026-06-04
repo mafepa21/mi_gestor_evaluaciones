@@ -2,6 +2,7 @@ import SwiftUI
 import MiGestorKit
 
 struct TeacherRadarDetailView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @ObservedObject var bridge: KmpBridge
     @Binding var selectedClassId: Int64?
     @Binding var selectedStudentId: Int64?
@@ -93,7 +94,7 @@ struct TeacherRadarDetailView: View {
                         } label: {
                             TeacherRadarStudentInsightRow(insight: insight)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(ScaleButtonStyle())
                     }
                 }
 
@@ -136,47 +137,62 @@ struct TeacherRadarDetailView: View {
             selectedStudentId = student.id
             onOpenModule(.students, selectedClassId, student.id)
         } label: {
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .top, spacing: 14) {
                 Image(systemName: student.risk.systemImage)
+                    .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(student.risk.tint)
-                    .frame(width: 24, height: 24)
-                VStack(alignment: .leading, spacing: 7) {
+                    .frame(width: 32, height: 32)
+                    .background(student.risk.tint.opacity(0.08), in: Circle())
+                    .overlay(Circle().stroke(student.risk.tint.opacity(0.12), lineWidth: 1))
+                
+                VStack(alignment: .leading, spacing: 10) {
                     HStack {
                         Text(student.name)
-                            .font(.headline)
+                            .font(.system(size: 16, weight: .bold, design: .rounded))
                         Spacer()
                         Text(student.risk.title)
-                            .font(.caption.weight(.bold))
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(student.risk.tint.opacity(0.12), in: Capsule())
                             .foregroundStyle(student.risk.tint)
                     }
+                    
                     HStack(spacing: 12) {
                         followUpMetric("Media", averageTrendText(student))
                         followUpMetric("Asistencia", student.attendanceRate.map { "\($0)%" } ?? "Sin dato")
                         followUpMetric("Evidencias", "\(student.evidenceCount)")
                         followUpMetric("Riesgo", student.risk.title)
                     }
+                    .padding(8)
+                    .background(Color.primary.opacity(0.02), in: RoundedRectangle(cornerRadius: EvaluationDesign.pillRadius, style: .continuous))
+                    
                     Text(student.suggestedAction)
-                        .font(.subheadline.weight(.semibold))
+                        .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(.secondary)
                 }
             }
-            .padding(14)
-            .background(NotebookStyle.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(student.risk.tint.opacity(0.16), lineWidth: 1)
-            }
+            .padding(16)
+            .background(
+                appCardBackground(for: colorScheme)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
+                            .stroke(student.risk.tint.opacity(0.16), lineWidth: 1)
+                    )
+            )
+            .cornerRadius(EvaluationDesign.innerRadius)
+            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.16 : 0.03), radius: 8, x: 0, y: 4)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ScaleButtonStyle())
     }
 
     private func followUpMetric(_ title: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
-                .font(.caption2.weight(.bold))
+                .font(.system(size: 9, weight: .bold, design: .rounded))
                 .foregroundStyle(.secondary)
             Text(value)
-                .font(.caption.weight(.bold))
+                .font(.system(size: 12, weight: .bold, design: .rounded))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

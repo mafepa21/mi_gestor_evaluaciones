@@ -9,6 +9,7 @@ final class NotebookMacToolbarActions: ObservableObject {
     @Published var isInspectorPresented = false
     @Published var addColumnAvailable = false
     @Published var organizationMenuAvailable = false
+    @Published var groupManagementAvailable = false
     @Published var exportText: String?
 
     private var markAllPresentAction: (() -> Void)?
@@ -17,6 +18,7 @@ final class NotebookMacToolbarActions: ObservableObject {
     private var toggleInspectorAction: (() -> Void)?
     private var addColumnAction: (() -> Void)?
     private var organizationMenuAction: (() -> Void)?
+    private var groupManagementAction: (() -> Void)?
     private var advancedMenuAction: (() -> Void)?
     private var summaryAction: (() -> Void)?
     private var refreshAction: (() -> Void)?
@@ -36,6 +38,7 @@ final class NotebookMacToolbarActions: ObservableObject {
         isInspectorPresented: Bool,
         addColumnAvailable: Bool,
         organizationMenuAvailable: Bool,
+        groupManagementAvailable: Bool,
         exportText: String?,
         onMarkAllPresent: @escaping () -> Void,
         onToggleAttendanceQuickMode: @escaping () -> Void,
@@ -43,6 +46,7 @@ final class NotebookMacToolbarActions: ObservableObject {
         onToggleInspector: @escaping () -> Void,
         onAddColumn: @escaping () -> Void,
         onOpenOrganizationMenu: @escaping () -> Void,
+        onOpenGroupManagement: @escaping () -> Void,
         onOpenAdvancedMenu: @escaping () -> Void,
         onGenerateSummary: @escaping () -> Void,
         onRefresh: @escaping () -> Void
@@ -55,6 +59,7 @@ final class NotebookMacToolbarActions: ObservableObject {
             self.isInspectorPresented = isInspectorPresented
             self.addColumnAvailable = addColumnAvailable
             self.organizationMenuAvailable = organizationMenuAvailable
+            self.groupManagementAvailable = groupManagementAvailable
             self.exportText = exportText
             self.markAllPresentAction = onMarkAllPresent
             self.attendanceQuickModeAction = onToggleAttendanceQuickMode
@@ -62,6 +67,7 @@ final class NotebookMacToolbarActions: ObservableObject {
             self.toggleInspectorAction = onToggleInspector
             self.addColumnAction = onAddColumn
             self.organizationMenuAction = onOpenOrganizationMenu
+            self.groupManagementAction = onOpenGroupManagement
             self.advancedMenuAction = onOpenAdvancedMenu
             self.summaryAction = onGenerateSummary
             self.refreshAction = onRefresh
@@ -77,6 +83,7 @@ final class NotebookMacToolbarActions: ObservableObject {
             self.isInspectorPresented = false
             self.addColumnAvailable = false
             self.organizationMenuAvailable = false
+            self.groupManagementAvailable = false
             self.exportText = nil
             self.markAllPresentAction = nil
             self.attendanceQuickModeAction = nil
@@ -84,6 +91,7 @@ final class NotebookMacToolbarActions: ObservableObject {
             self.toggleInspectorAction = nil
             self.addColumnAction = nil
             self.organizationMenuAction = nil
+            self.groupManagementAction = nil
             self.advancedMenuAction = nil
             self.summaryAction = nil
             self.refreshAction = nil
@@ -96,6 +104,7 @@ final class NotebookMacToolbarActions: ObservableObject {
     func toggleInspector() { toggleInspectorAction?() }
     func addColumn() { addColumnAction?() }
     func openOrganizationMenu() { organizationMenuAction?() }
+    func openGroupManagement() { groupManagementAction?() }
     func openAdvancedMenu() { advancedMenuAction?() }
     func generateSummary() { summaryAction?() }
     func refresh() { refreshAction?() }

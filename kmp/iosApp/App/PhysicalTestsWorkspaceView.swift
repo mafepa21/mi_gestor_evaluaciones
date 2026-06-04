@@ -790,6 +790,16 @@ struct PhysicalTestsWorkspaceView: View {
                     .font(.headline.monospacedDigit())
             }
             .tag(Optional(result.student.id))
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                Button("Alumno") { onOpenModule(.students, selectedClassId, result.student.id) }
+                    .tint(.indigo)
+                Button("Cuaderno") { onOpenModule(.notebook, selectedClassId, result.student.id) }
+                    .tint(.blue)
+            }
+            .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                Button("Evaluación") { onOpenModule(.evaluationHub, selectedClassId, result.student.id) }
+                    .tint(.purple)
+            }
             .contextMenu {
                 Button("Abrir alumno") { onOpenModule(.students, selectedClassId, result.student.id) }
                 Button("Abrir cuaderno") { onOpenModule(.notebook, selectedClassId, result.student.id) }

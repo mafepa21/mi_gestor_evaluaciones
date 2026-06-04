@@ -338,14 +338,22 @@ struct TeacherRadarCard: View {
     private func radarMetric(_ title: String, _ value: String, _ tint: Color) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
-                .font(.caption.weight(.bold))
+                .font(.system(size: 11, weight: .bold, design: .rounded))
                 .foregroundStyle(.secondary)
             Text(value)
-                .font(.system(size: 24, weight: .black, design: .rounded))
+                .font(.system(size: 26, weight: .black, design: .rounded))
                 .foregroundStyle(tint)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(
+            tint.opacity(0.05)
+                .overlay(
+                    RoundedRectangle(cornerRadius: EvaluationDesign.pillRadius, style: .continuous)
+                        .stroke(tint.opacity(0.18), lineWidth: 1)
+                )
+        )
+        .cornerRadius(EvaluationDesign.pillRadius)
     }
 }

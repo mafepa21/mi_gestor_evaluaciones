@@ -182,6 +182,7 @@ extension NotebookModuleView {
             isInspectorPresented: isInspectorPresented,
             addColumnAvailable: true,
             organizationMenuAvailable: true,
+            groupManagementAvailable: true,
             exportText: exportText(data: data),
             onMarkAllPresent: {
                 requestMarkAllVisibleStudentsPresent(data: data)
@@ -210,6 +211,9 @@ extension NotebookModuleView {
             },
             onOpenOrganizationMenu: {
                 isOrganizationMenuPresented = true
+            },
+            onOpenGroupManagement: {
+                isGroupManagementPresented = true
             },
             onOpenAdvancedMenu: {
                 isOrganizationMenuPresented = true

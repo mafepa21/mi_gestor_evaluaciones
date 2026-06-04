@@ -101,6 +101,12 @@ struct DiaryWorkspaceView: View {
                                 onTap: {
                                     AppleInteractionFeedback.play(.selection)
                                     Task { await vm.select(session: session) }
+                                },
+                                onOpenAttendance: {
+                                    onOpenModule(.attendance, session.groupId, nil)
+                                },
+                                onOpenNotebook: {
+                                    onOpenModule(.notebook, session.groupId, nil)
                                 }
                             )
                         }
@@ -362,56 +368,134 @@ struct DiarySessionRailCard: View {
     let isSelected: Bool
     let timeLabel: String
     let onTap: () -> Void
+    let onOpenAttendance: () -> Void
+    let onOpenNotebook: () -> Void
+
+    @State private var revealsActions = false
+    @State private var trackpadTranslation: CGFloat = 0
+    @GestureState private var translation: CGFloat = 0
+
+    private let actionWidth: CGFloat = 150
 
     var body: some View {
-        Button(action: onTap) {
-            NotebookSurface(
-                cornerRadius: 18,
-                fill: isSelected ? NotebookStyle.surface : NotebookStyle.surfaceSoft,
-                padding: 14
-            ) {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(alignment: .top, spacing: 10) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(session.teachingUnitName)
-                                .font(.headline)
-                                .foregroundStyle(.primary)
-                                .lineLimit(2)
-                            Text("\(weekdayLabel(session.dayOfWeek)) · \(timeLabel)")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
+        ZStack(alignment: .trailing) {
+            HStack(spacing: 6) {
+                diarySwipeButton("Asistencia", systemImage: "checklist.checked", tint: EvaluationDesign.success, action: onOpenAttendance)
+                diarySwipeButton("Cuaderno", systemImage: "book.closed", tint: EvaluationDesign.accent, action: onOpenNotebook)
+            }
+            .padding(.trailing, 8)
+
+            Button(action: onTap) {
+                NotebookSurface(
+                    cornerRadius: 18,
+                    fill: isSelected ? NotebookStyle.surface : NotebookStyle.surfaceSoft,
+                    padding: 14
+                ) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(alignment: .top, spacing: 10) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(session.teachingUnitName)
+                                    .font(.headline)
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(2)
+                                Text("\(weekdayLabel(session.dayOfWeek)) · \(timeLabel)")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer()
+
+                            NotebookPill(
+                                label: diaryStatusText(summary),
+                                systemImage: "doc.text",
+                                active: isSelected,
+                                tint: badgeTint
+                            )
                         }
 
-                        Spacer()
+                        Text(session.groupName)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.secondary)
 
-                        NotebookPill(
-                            label: diaryStatusText(summary),
-                            systemImage: "doc.text",
-                            active: isSelected,
-                            tint: badgeTint
-                        )
+                        if !(summary?.incidentTags.isEmpty ?? true) {
+                            Text(summary?.incidentTags.prefix(2).joined(separator: " · ") ?? "")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.pink)
+                                .lineLimit(2)
+                        }
                     }
-
-                    Text(session.groupName)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
-
-                    if !(summary?.incidentTags.isEmpty ?? true) {
-                        Text(summary?.incidentTags.prefix(2).joined(separator: " · ") ?? "")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.pink)
-                            .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(isSelected ? EvaluationDesign.accent.opacity(0.28) : .clear, lineWidth: 2)
+                )
+            }
+            .buttonStyle(.plain)
+            .offset(x: cardOffset)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 12)
+                .updating($translation) { value, state, _ in
+                    guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                    state = revealsActions ? value.translation.width : min(0, value.translation.width)
+                }
+                .onEnded { value in
+                    guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                    withAnimation(uiFeatureFlags.interactionAnimation) {
+                        if revealsActions {
+                            revealsActions = value.translation.width < 36
+                        } else {
+                            revealsActions = value.translation.width < -36
+                        }
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+        )
+        .macTrackpadSwipe { delta in
+            trackpadTranslation = delta
+        } onEnded: { delta in
+            withAnimation(uiFeatureFlags.interactionAnimation) {
+                if revealsActions {
+                    revealsActions = delta < 36
+                } else {
+                    revealsActions = delta < -36
+                }
             }
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(isSelected ? EvaluationDesign.accent.opacity(0.28) : .clear, lineWidth: 2)
-            )
+            trackpadTranslation = 0
+        }
+        .animation(uiFeatureFlags.interactionAnimation, value: isSelected)
+    }
+
+    private var cardOffset: CGFloat {
+        let activeTranslation = trackpadTranslation != 0 ? trackpadTranslation : translation
+        return max(-actionWidth, min(0, (revealsActions ? -actionWidth : 0) + activeTranslation))
+    }
+
+    private func diarySwipeButton(
+        _ title: String,
+        systemImage: String,
+        tint: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button {
+            action()
+            withAnimation(.easeOut(duration: 0.15)) {
+                revealsActions = false
+            }
+        } label: {
+            VStack(spacing: 4) {
+                Image(systemName: systemImage)
+                Text(title)
+                    .font(.caption2.weight(.semibold))
+            }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(tint)
+            .frame(width: 66, height: 48)
+            .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
         }
         .buttonStyle(.plain)
-        .animation(uiFeatureFlags.interactionAnimation, value: isSelected)
     }
 
     var badgeTint: Color {

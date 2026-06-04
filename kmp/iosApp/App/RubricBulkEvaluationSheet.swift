@@ -9,12 +9,12 @@ struct RubricBulkEvaluationSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
     @State private var horizontalScrollOffset: CGFloat = 0
-    @State private var hoveredLevelKey: BulkHoveredLevelKey?
     @State private var levelHoverTask: Task<Void, Never>?
     @State private var focusedBulkStudentId: Int64?
     @State private var focusedBulkCriterionId: Int64?
     @State private var localInjuryStatuses: [Int64: Bool] = [:]
     @State private var savingInjuryStudentIds: Set<Int64> = []
+    @State private var activePopoverLevel: RubricLevel?
 
     private var state: BulkRubricEvaluationUiState? {
         bridge.bulkRubricEvaluationState
@@ -25,13 +25,13 @@ struct RubricBulkEvaluationSheet: View {
             ZStack {
                 EvaluationBackdrop()
 
-                if let state, state.isLoading {
+                if state == nil || state!.isLoading {
                     ProgressView("Cargando evaluación masiva...")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(.secondary)
                 } else if let state, let rubric = state.rubricDetail {
                     GeometryReader { proxy in
-                        let isWide = proxy.size.width >= 980
+                        let isWide = proxy.size.width >= 720
                         let className = className(for: state)
                         let cache = BulkRubricEvaluationCache(
                             state: state,
@@ -92,14 +92,32 @@ struct RubricBulkEvaluationSheet: View {
                         #endif
                     }
                 } else {
-                    VStack(spacing: 12) {
-                        Image(systemName: "exclamationmark.triangle")
-                            .font(.system(size: 30, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                        Text("No se pudo cargar la evaluación.")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(.secondary)
+                    VStack(spacing: 16) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 28, weight: .bold))
+                            .foregroundStyle(EvaluationDesign.danger)
+                        Text("No se pudo abrir la evaluación")
+                            .font(.system(size: 18, weight: .black, design: .rounded))
+                        if let error = state?.error {
+                            Text(error)
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 24)
+                        } else {
+                            Text("La evaluación seleccionada no existe o no se pudo cargar.")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 24)
+                        }
+                        EvaluationPrimaryButton(label: "Cerrar", systemImage: "xmark") {
+                            bridge.closeBulkRubricEvaluation()
+                            dismiss()
+                        }
+                        .frame(width: 160)
                     }
+                    .padding()
                 }
             }
             .appNavigationBarHidden(true)
@@ -109,7 +127,15 @@ struct RubricBulkEvaluationSheet: View {
             }
             .onDisappear {
                 levelHoverTask?.cancel()
-                hoveredLevelKey = nil
+                activePopoverLevel = nil
+            }
+            .popover(item: $activePopoverLevel, arrowEdge: .bottom) { level in
+                RubricLevelDescriptionPopover(level: level)
+                    .padding(4)
+                    #if os(iOS)
+                    .presentationDetents([.fraction(0.32), .medium])
+                    .presentationDragIndicator(.visible)
+                    #endif
             }
         }
     }
@@ -210,10 +236,10 @@ struct RubricBulkEvaluationSheet: View {
         rubric: RubricDetail,
         cache: BulkRubricEvaluationCache
     ) -> some View {
-        let criterionWidth: CGFloat = 180
+        let criterionWidth: CGFloat = 240
         let scoreWidth: CGFloat = 88
-        let actionsWidth: CGFloat = 92
-        let studentWidth: CGFloat = 220
+        let actionsWidth: CGFloat = 96
+        let studentWidth: CGFloat = 224
 
         return EvaluationGlassCard(cornerRadius: EvaluationDesign.cardRadius, fillOpacity: 0.92) {
             VStack(alignment: .leading, spacing: 24) {
@@ -318,8 +344,10 @@ struct RubricBulkEvaluationSheet: View {
                     Text(criterion.criterion.description_)
                         .font(.system(size: 11, weight: .bold, design: .rounded))
                         .foregroundStyle(.primary)
-                        .lineLimit(1)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
                         .frame(width: criterionWidth, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
                         .help(criterion.criterion.description_)
                 }
 
@@ -466,15 +494,11 @@ struct RubricBulkEvaluationSheet: View {
         let isFocused = focusedBulkStudentId == studentId && focusedBulkCriterionId == criterion.criterion.id
 
         return VStack(spacing: 8) {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 ForEach(criterion.levels, id: \.id) { level in
-                    let levelKey = BulkHoveredLevelKey(
-                        studentId: studentId,
-                        criterionId: criterion.criterion.id,
-                        levelId: level.id
-                    )
                     let isSelected = selectedLevelId == level.id
                     let tint = levelColor(for: level, in: criterion)
+                    
                     Button {
                         focusedBulkStudentId = studentId
                         focusedBulkCriterionId = criterion.criterion.id
@@ -484,58 +508,51 @@ struct RubricBulkEvaluationSheet: View {
                             levelId: level.id
                         )
                     } label: {
-                        Circle()
-                            .fill(isSelected ? tint : appMutedCardBackground(for: colorScheme).opacity(0.92))
-                            .frame(width: 32, height: 32)
-                            .overlay {
-                                if isSelected {
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 12, weight: .black))
-                                        .foregroundStyle(.white)
-                                } else {
-                                    Text(levelButtonTitle(level))
-                                        .font(.system(size: 10, weight: .black, design: .rounded))
-                                        .foregroundStyle(.primary.opacity(0.62))
-                                }
+                        HStack(spacing: 4) {
+                            if isSelected {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 10, weight: .black))
+                                    .foregroundStyle(.white)
                             }
-                            .overlay(
-                                Circle()
-                                    .stroke(isSelected ? tint.opacity(0.35) : EvaluationDesign.border.opacity(0.75), lineWidth: 1)
-                            )
+                            
+                            Text(levelButtonTitle(level))
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                                .foregroundStyle(isSelected ? .white : .primary.opacity(0.72))
+                        }
+                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(isSelected ? tint : appMutedCardBackground(for: colorScheme).opacity(0.85))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .stroke(isSelected ? tint.opacity(0.3) : EvaluationDesign.border, lineWidth: 1)
+                        )
+                        .scaleEffect(isSelected ? 1.05 : 1.0)
+                        .animation(.spring(response: 0.25, dampingFraction: 0.6), value: isSelected)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("\(criterion.criterion.description_), \(level.name)")
                     .help(levelHelpText(level))
                     .onHover { isHovering in
                         if isHovering {
-                            scheduleLevelPopover(for: levelKey)
+                            scheduleLevelPopover(for: level)
                         } else {
-                            cancelLevelPopover(for: levelKey)
+                            cancelLevelPopover(for: level)
                         }
                     }
                     .simultaneousGesture(
                         LongPressGesture(minimumDuration: 0.5)
                             .onEnded { _ in
-                                presentLevelPopover(for: levelKey)
+                                activePopoverLevel = level
                                 #if canImport(UIKit)
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                 #endif
                             }
                     )
-                    .popover(
-                        isPresented: Binding(
-                            get: { hoveredLevelKey == levelKey },
-                            set: { if !$0 { cancelLevelPopover(for: levelKey) } }
-                        ),
-                        arrowEdge: .bottom
-                    ) {
-                        RubricLevelDescriptionPopover(level: level)
-                            .padding(4)
-                            #if os(iOS)
-                            .presentationDetents([.height(168)])
-                            .presentationDragIndicator(.visible)
-                            #endif
-                    }
                 }
             }
 
@@ -566,10 +583,10 @@ struct RubricBulkEvaluationSheet: View {
 
     private func levelButtonTitle(_ level: RubricLevel) -> String {
         let trimmed = level.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.count <= 7 {
+        if trimmed.count <= 10 {
             return trimmed
         }
-        return String(trimmed.prefix(7))
+        return String(trimmed.prefix(9)) + "…"
     }
 
     private func levelHelpText(_ level: RubricLevel) -> String {
@@ -578,32 +595,25 @@ struct RubricBulkEvaluationSheet: View {
         return "\(level.name): \(description)"
     }
 
-    private func scheduleLevelPopover(for levelKey: BulkHoveredLevelKey) {
+    private func scheduleLevelPopover(for level: RubricLevel) {
         levelHoverTask?.cancel()
         levelHoverTask = Task {
             do {
                 try await Task.sleep(nanoseconds: 600_000_000)
                 await MainActor.run {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                        hoveredLevelKey = levelKey
+                        activePopoverLevel = level
                     }
                 }
             } catch {}
         }
     }
 
-    private func presentLevelPopover(for levelKey: BulkHoveredLevelKey) {
+    private func cancelLevelPopover(for level: RubricLevel) {
         levelHoverTask?.cancel()
+        guard activePopoverLevel?.id == level.id else { return }
         withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-            hoveredLevelKey = levelKey
-        }
-    }
-
-    private func cancelLevelPopover(for levelKey: BulkHoveredLevelKey) {
-        levelHoverTask?.cancel()
-        guard hoveredLevelKey == levelKey else { return }
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-            hoveredLevelKey = nil
+            activePopoverLevel = nil
         }
     }
 
@@ -953,41 +963,47 @@ struct RubricLevelDescriptionPopover: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 10) {
+                Image(systemName: "info.circle.fill")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(EvaluationDesign.accent)
+
                 Text(level.name)
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .font(.system(size: 15, weight: .black, design: .rounded))
                     .foregroundStyle(.primary)
                     .lineLimit(2)
 
-                Spacer(minLength: 8)
+                Spacer(minLength: 12)
 
                 Text("\(Int(level.points)) pts")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundStyle(EvaluationDesign.accent)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .font(.system(size: 12, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
                     .background(
                         Capsule(style: .continuous)
-                            .fill(EvaluationDesign.accent.opacity(0.12))
+                            .fill(EvaluationDesign.accent)
                     )
             }
 
-            EvaluationDivider()
+            Rectangle()
+                .fill(Color.primary.opacity(0.08))
+                .frame(height: 1)
 
             if trimmedDescription.isEmpty {
                 Text("Sin descripción adicional para este nivel.")
-                    .font(.system(size: 12, weight: .regular))
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
                     .foregroundStyle(.secondary)
             } else {
                 Text(trimmedDescription)
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundStyle(.secondary)
-                    .lineSpacing(2)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.primary.opacity(0.8))
+                    .lineSpacing(4)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(16)
-        .frame(minWidth: 240, maxWidth: 320)
+        .padding(20)
+        .frame(minWidth: 280, maxWidth: 360)
     }
 }

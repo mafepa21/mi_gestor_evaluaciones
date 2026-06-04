@@ -4,7 +4,7 @@ import MiGestorKit
 extension AppWorkspaceShell {
     var shouldShowGlobalContextualAIButton: Bool {
         switch activeModule {
-        case .notebook, .teacherRadar, .planner, .rubrics, .library, .settings:
+        case .notebook, .teacherRadar, .planner, .situations, .rubrics, .library, .settings:
             return false
         default:
             return true
@@ -38,7 +38,7 @@ extension AppWorkspaceShell {
     var shouldShowClassroomCaptureBar: Bool {
         guard selectedClassId != nil else { return false }
         switch activeModule {
-        case .notebook, .teacherRadar, .attendance, .planner, .students, .diary, .evaluationHub, .rubrics, .peSessions:
+        case .notebook, .teacherRadar, .attendance, .planner, .situations, .students, .diary, .evaluationHub, .rubrics, .peSessions:
             return true
         default:
             return false
@@ -165,7 +165,7 @@ extension AppWorkspaceShell {
             return try await bridge.buildPEAIContext(classId: classId)
         case .notebook:
             return bridge.buildNotebookAIContext(classId: classId)
-        case .rubrics, .library, .settings, .backups:
+        case .situations, .rubrics, .library, .settings, .backups:
             return fallbackContext(for: module, classId: classId, studentId: studentId, message: "Esta pantalla todavía no ofrece acciones IA contextuales.")
         }
     }
@@ -199,6 +199,7 @@ extension AppWorkspaceShell {
         case .courses: return "Nueva clase"
         case .students: return "Nuevo alumno"
         case .planner: return "Nueva sesión"
+        case .situations: return "Importar DOCX"
         case .diary: return "Ver planner"
         case .evaluationHub: return "Nueva evaluación"
         case .rubrics, .peRubrics: return "Nueva rúbrica"
@@ -231,6 +232,8 @@ extension AppWorkspaceShell {
             return "Marca asistencia, crea incidencias y revisa el pulso del grupo sin salir del módulo."
         case .planner:
             return "Planifica la semana, ajusta sesiones y salta al diario cuando necesites cerrar una sesión."
+        case .situations:
+            return "Importa situaciones, revisa sus datos y crea solo las sesiones e instrumentos que necesites."
         case .diary:
             return "Cierra una sesión, deja trazabilidad docente y usa el inspector solo cuando necesites contexto secundario."
         case .evaluationHub:
@@ -269,7 +272,8 @@ extension AppWorkspaceShell {
 
     func syncRootSplitVisibility() {
         let visibility: NavigationSplitViewVisibility = (layoutState.isSidebarVisible && !layoutState.isFocusModeEnabled) ? .all : .detailOnly
-        DispatchQueue.main.async {
+        Task { @MainActor in
+            guard rootSplitVisibility != visibility else { return }
             rootSplitVisibility = visibility
         }
     }

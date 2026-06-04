@@ -62,6 +62,12 @@ extension AppWorkspaceShell {
                 }
             )
             .environmentObject(bridge)
+        case .situations:
+            LearningSituationsWorkspaceView(
+                selectedClassId: $selectedClassId,
+                onOpenModule: open(module:classId:studentId:)
+            )
+            .environmentObject(bridge)
         case .diary:
             DiaryWorkspaceView(
                 selectedClassId: $selectedClassId,

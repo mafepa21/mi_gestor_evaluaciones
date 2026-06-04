@@ -88,7 +88,7 @@ struct IOSRootView: View {
                 )
             }
         }
-        .navigationSplitViewStyle(.balanced)
+        .navigationSplitViewStyle(.prominentDetail)
         .overlay(alignment: .top) {
             IOSBannerHost(banner: banner)
                 .padding(.top, 8)
@@ -101,11 +101,16 @@ struct IOSRootView: View {
                 .environmentObject(bridge)
         }
         .task {
+            // Restore UI layout state immediately to show the sidebar/left menu right away
+            restorePersistedUIState()
+            
             await bridge.ensureClassesLoaded()
             try? await bridge.refreshStudentsDirectory()
             try? await bridge.refreshRubrics()
             try? await bridge.refreshRubricClassLinks()
-            restorePersistedState()
+            
+            // Restore class and student selection after KMP data is loaded
+            restorePersistedDataState()
         }
         .appOnChange(of: activeModule) { newValue in
             persistedModule = newValue.rawValue
@@ -138,21 +143,32 @@ struct IOSRootView: View {
             persistedStudentId = Int(newId ?? 0)
         }
         .appOnChange(of: layoutState.isSidebarVisible) { visible in
-            columnVisibility = visible ? .all : .detailOnly
+            let target: NavigationSplitViewVisibility = visible ? .all : .detailOnly
+            if columnVisibility != target {
+                columnVisibility = target
+            }
         }
         .appOnChange(of: columnVisibility) { newVisibility in
-            // Persist sidebar visibility back into layoutState for toolbar sync
+            // Sync user-driven sidebar gesture back to layoutState.
+            // Only update when it differs to avoid feedback cycles.
             let isVisible = newVisibility != .detailOnly
             if layoutState.isSidebarVisible != isVisible {
                 layoutState.isSidebarVisible = isVisible
+            }
+            if sidebarVisible != isVisible {
+                sidebarVisible = isVisible
             }
         }
         .appWritingToolsDisabled()
     }
 
     // MARK: Persistence helpers
-    private func restorePersistedState() {
+    private func restorePersistedUIState() {
         activeModule = AppWorkspaceModule(rawValue: persistedModule) ?? .dashboard
+        columnVisibility = sidebarVisible ? .all : .detailOnly
+    }
+
+    private func restorePersistedDataState() {
         if persistedClassId > 0,
            bridge.classes.contains(where: { $0.id == Int64(persistedClassId) }) {
             selectionStore.selectedClassId = Int64(persistedClassId)
@@ -162,7 +178,6 @@ struct IOSRootView: View {
         if persistedStudentId > 0 {
             selectionStore.selectedStudentId = Int64(persistedStudentId)
         }
-        columnVisibility = sidebarVisible ? .all : .detailOnly
     }
 
     // MARK: Navigation
@@ -692,7 +707,7 @@ struct IOSWorkspaceContent: View {
     private var moduleContent: some View {
         switch activeModule {
         case .dashboard, .courses, .students, .teacherRadar, .notebook,
-             .attendance, .planner, .diary, .evaluationHub:
+             .attendance, .planner, .situations, .diary, .evaluationHub:
             academicContent
         default:
             evaluationAndPEContent
@@ -749,6 +764,12 @@ struct IOSWorkspaceContent: View {
                 onOpenDiary: { ctx in onOpenModule(.diary, ctx.groupId, nil); onUpdatePlannerContext(ctx) },
                 onOpenSettings: { onOpenModule(.settings, selectionStore.selectedClassId, nil) },
                 onNavigationContextChange: onUpdatePlannerContext
+            )
+            .environmentObject(bridge)
+        case .situations:
+            LearningSituationsWorkspaceView(
+                selectedClassId: $selectionStore.selectedClassId,
+                onOpenModule: onOpenModule
             )
             .environmentObject(bridge)
         case .diary:

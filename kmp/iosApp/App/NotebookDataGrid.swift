@@ -280,6 +280,7 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, TrailingFi
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(width: fixedColumnWidth, alignment: .topLeading)
+        .clipped()
         .background(fixedColumnBackground)
         .overlay(alignment: .trailing) {
             fixedColumnSeparator
@@ -329,6 +330,7 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, TrailingFi
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(width: trailingFixedColumnWidth, alignment: .topLeading)
+        .clipped()
         .background(fixedColumnBackground)
         .overlay(alignment: .leading) {
             fixedColumnSeparator

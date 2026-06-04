@@ -13,6 +13,13 @@ extension NotebookModuleView {
                         Label("Nueva categoría", systemImage: "folder.badge.plus")
                     }
 
+                    Button {
+                        isOrganizationMenuPresented = false
+                        isGroupManagementPresented = true
+                    } label: {
+                        Label("Gestionar grupos de trabajo", systemImage: "person.2.badge.gearshape")
+                    }
+
                     if let data {
                         TextField("Buscar columna", text: $organizationColumnSearchText)
                             .textFieldStyle(.roundedBorder)
@@ -41,6 +48,15 @@ extension NotebookModuleView {
                 }
 
                 Section("Vista") {
+                    Picker("Agrupar por", selection: $groupByWorkGroupMode) {
+                        Text("No agrupar").tag("none")
+                        Text("Grupos generales").tag("general")
+                        ForEach(classSituations, id: \.id) { situation in
+                            Text("Situación: \(situation.title)").tag("situation_\(situation.id)")
+                        }
+                    }
+                    .pickerStyle(.menu)
+
                     ForEach(NotebookViewPreset.allCases) { preset in
                         Button {
                             viewPreset = preset
@@ -294,6 +310,43 @@ extension NotebookModuleView {
         )
     }
 
+    func presentDeleteColumnsImpact(_ columns: [NotebookColumnDefinition]) {
+        guard let data = bridge.notebookState as? NotebookUiStateData else {
+            return
+        }
+        pendingDeleteColumn = nil
+        pendingDeleteCategory = nil
+        deletionConfirmationText = ""
+        
+        let columnIds = Set(columns.map(\.id))
+        let gradeCount = data.sheet.rows.reduce(0) { total, row in
+            total + row.persistedGrades.filter { grade in
+                columnIds.contains(grade.columnId) && grade.value != nil
+            }.count
+        }
+        let formulaCount = data.sheet.columns
+            .filter { $0.type == .calculated && !columnIds.contains($0.id) }
+            .filter { column in
+                let formula = column.formula ?? ""
+                return columnIds.contains(where: { id in
+                    formula.contains("[\(id)]")
+                })
+            }
+            .count
+        let averageCount = columns.filter(\.countsTowardAverage).count
+
+        pendingDeletionImpact = NotebookDeletionImpactDraft(
+            kind: .columns,
+            targetId: "bulk_delete",
+            targetName: "\(columns.count) columnas",
+            affectedColumns: columns,
+            affectedGradeCount: gradeCount,
+            affectedFormulaColumnCount: formulaCount,
+            affectedAverageColumnCount: averageCount,
+            hasLockedColumns: columns.contains { $0.isLocked }
+        )
+    }
+
     func presentDeleteCategoryImpact(_ category: NotebookColumnCategory) {
         guard let data = bridge.notebookState as? NotebookUiStateData else {
             pendingDeleteCategory = category
@@ -339,6 +392,10 @@ extension NotebookModuleView {
             bridge.deleteColumnCategory(id: impact.targetId, preserveColumns: false)
             showToast("Categoría y columnas eliminadas", style: .warning)
             pendingDeleteCategory = nil
+        case .columns:
+            let idsAndEvalIds = impact.affectedColumns.map { ($0.id, $0.evaluationId?.int64Value) }
+            bridge.deleteColumns(idsAndEvalIds: idsAndEvalIds)
+            showToast("\(impact.affectedColumns.count) columnas eliminadas", style: .warning)
         }
 
         pendingDeletionImpact = nil
@@ -463,51 +520,60 @@ extension NotebookModuleView {
                 studentAvatar(for: item.student)
                     .frame(width: resolvedFixedWidth(for: fixed), alignment: .center)
             case .name:
-                Button {
-                    openInspectorForStudent(item.student.id, data: data)
-                } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 6) {
-                            Text("\(item.student.firstName) \(item.student.lastName)")
-                                .font(.system(size: 14, weight: .semibold, design: .rounded))
-                                .foregroundStyle(.primary)
-                                .lineLimit(2)
-                                .minimumScaleFactor(0.6)
-                                .layoutPriority(1)
-                            riskBadge(for: item.student.id)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                NotebookAttendanceSwipeCell(
+                    onPresent: { Task { await markAttendance(for: item.student.id, status: NotebookAttendanceStatus.present) } },
+                    onAbsent: { Task { await markAttendance(for: item.student.id, status: NotebookAttendanceStatus.absent) } },
+                    onLate: { Task { await markAttendance(for: item.student.id, status: NotebookAttendanceStatus.late) } },
+                    onMissingMaterial: { Task { await markAttendance(for: item.student.id, status: "SIN_MATERIAL") } },
+                    onJustified: { Task { await markAttendance(for: item.student.id, status: "JUSTIFICADO") } },
+                    onInjury: { Task { await toggleStudentInjuryStatus(item.student) } }
+                ) {
+                    Button {
+                        openInspectorForStudent(item.student.id, data: data)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 6) {
+                                Text("\(item.student.firstName) \(item.student.lastName)")
+                                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(2)
+                                    .minimumScaleFactor(0.6)
+                                    .layoutPriority(1)
+                                riskBadge(for: item.student.id)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
 
-                        let isInjured = isStudentInjured(item.student)
-                        if isInjured {
-                            Text("Seguimiento físico")
-                                .font(.system(size: 11, weight: .medium, design: .rounded))
-                                .foregroundStyle(.orange)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.8)
+                            let isInjured = isStudentInjured(item.student)
+                            if isInjured {
+                                Text("Seguimiento físico")
+                                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                                    .foregroundStyle(.orange)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.8)
+                            }
+                        }
+                        .padding(.horizontal, 6)
+                        .frame(width: resolvedFixedWidth(for: fixed), alignment: .leading)
+                        .contentShape(Rectangle())
+                        .contextMenu {
+                            Button {
+                                Task { await toggleStudentInjuryStatus(item.student) }
+                            } label: {
+                                Label(
+                                    isStudentInjured(item.student) ? "Quitar lesión" : "Marcar lesión",
+                                    systemImage: isStudentInjured(item.student) ? "heart.slash" : "bandage"
+                                )
+                            }
+
+                            Button {
+                                openInspectorForStudent(item.student.id, data: data)
+                            } label: {
+                                Label("Abrir ficha", systemImage: "person.text.rectangle")
+                            }
                         }
                     }
-                    .padding(.horizontal, 6)
-                    .frame(width: resolvedFixedWidth(for: fixed), alignment: .leading)
-                    .contentShape(Rectangle())
-                    .contextMenu {
-                        Button {
-                            Task { await toggleStudentInjuryStatus(item.student) }
-                        } label: {
-                            Label(
-                                isStudentInjured(item.student) ? "Quitar lesión" : "Marcar lesión",
-                                systemImage: isStudentInjured(item.student) ? "heart.slash" : "bandage"
-                            )
-                        }
-
-                        Button {
-                            openInspectorForStudent(item.student.id, data: data)
-                        } label: {
-                            Label("Abrir ficha", systemImage: "person.text.rectangle")
-                        }
-                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             case .group:
                 Text(item.groupName)
                     .font(.system(size: 13, weight: .medium, design: .rounded))
@@ -554,4 +620,153 @@ extension NotebookModuleView {
         }
     }
 
+}
+
+private struct NotebookAttendanceSwipeCell<Content: View>: View {
+    private enum Side {
+        case primary
+        case secondary
+    }
+
+    let onPresent: () -> Void
+    let onAbsent: () -> Void
+    let onLate: () -> Void
+    let onMissingMaterial: () -> Void
+    let onJustified: () -> Void
+    let onInjury: () -> Void
+    let content: Content
+
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
+    @State private var revealedSide: Side?
+    @GestureState private var translation: CGFloat = 0
+    @State private var trackpadTranslation: CGFloat = 0
+
+    private let revealWidth: CGFloat = 128
+    private let commitThreshold: CGFloat = 164
+
+    init(
+        onPresent: @escaping () -> Void,
+        onAbsent: @escaping () -> Void,
+        onLate: @escaping () -> Void,
+        onMissingMaterial: @escaping () -> Void,
+        onJustified: @escaping () -> Void,
+        onInjury: @escaping () -> Void,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.onPresent = onPresent
+        self.onAbsent = onAbsent
+        self.onLate = onLate
+        self.onMissingMaterial = onMissingMaterial
+        self.onJustified = onJustified
+        self.onInjury = onInjury
+        self.content = content()
+    }
+
+    var body: some View {
+        ZStack {
+            actionLayer
+            content.offset(x: offset)
+        }
+        .clipped()
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 14)
+                .updating($translation) { value, state, _ in
+                    guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                    state = value.translation.width
+                }
+                .onEnded { value in
+                    guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                    finishSwipe(translationWidth: value.translation.width)
+                }
+        )
+        .macTrackpadSwipe { delta in
+            trackpadTranslation = delta
+        } onEnded: { delta in
+            finishSwipe(translationWidth: delta)
+            trackpadTranslation = 0
+        }
+    }
+
+    private var settledOffset: CGFloat {
+        switch revealedSide {
+        case .primary: return revealWidth
+        case .secondary: return -revealWidth
+        case nil: return 0
+        }
+    }
+
+    private var offset: CGFloat {
+        let activeTranslation = trackpadTranslation != 0 ? trackpadTranslation : translation
+        return min(max(settledOffset + activeTranslation, -commitThreshold - 8), commitThreshold + 8)
+    }
+
+    @ViewBuilder
+    private var actionLayer: some View {
+        HStack(spacing: 3) {
+            if offset > 0 {
+                compactAction("P", tint: .green, action: onPresent)
+                compactAction("A", tint: .red, action: onAbsent)
+                compactAction("R", tint: .orange, action: onLate)
+            }
+            Spacer(minLength: 0)
+            if offset < 0 {
+                compactAction("M", tint: .brown, action: onMissingMaterial)
+                compactAction("J", tint: .gray, action: onJustified)
+                compactAction("L", tint: .orange, action: onInjury)
+            }
+        }
+        .padding(.horizontal, 4)
+    }
+
+    private func compactAction(_ label: String, tint: Color, action: @escaping () -> Void) -> some View {
+        Button {
+            action()
+            close()
+        } label: {
+            Text(label)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(tint)
+                .frame(width: 36, height: 32)
+                .background(tint.opacity(0.15), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func finishSwipe(translationWidth: CGFloat) {
+        let finalOffset = settledOffset + translationWidth
+        if finalOffset >= commitThreshold {
+            onPresent()
+            close()
+        } else if finalOffset <= -commitThreshold {
+            onMissingMaterial()
+            close()
+        } else {
+            withAnimation(uiFeatureFlags.interactionAnimation) {
+                if let side = revealedSide {
+                    if side == .primary && translationWidth < -34 {
+                        revealedSide = nil
+                    } else if side == .secondary && translationWidth > 34 {
+                        revealedSide = nil
+                    } else {
+                        revealedSide = side
+                    }
+                } else {
+                    if translationWidth > 34 {
+                        revealedSide = .primary
+                    } else if translationWidth < -34 {
+                        revealedSide = .secondary
+                    } else {
+                        revealedSide = nil
+                    }
+                }
+            }
+        }
+    }
+
+    private func close() {
+        withAnimation(uiFeatureFlags.interactionAnimation) {
+            revealedSide = nil
+        }
+    }
 }

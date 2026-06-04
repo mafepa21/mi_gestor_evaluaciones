@@ -22,6 +22,7 @@ struct StudentProfilesWorkspaceView: View {
     @State private var isLoadingProfile = false
     @State private var showFollowUpConfirm = false
     @State private var showIncidentsSheet = false
+    @State private var updatingStudentIds: Set<Int64> = []
 
     // MARK: - Computed
 
@@ -130,6 +131,18 @@ struct StudentProfilesWorkspaceView: View {
                         }
                         AppleInteractionFeedback.play(.selection)
                     }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button(student.isInjured ? "Quitar lesión" : "Lesión") {
+                            Task { await toggleInjuryStatus(for: student) }
+                        }
+                        .tint(.orange)
+
+                        Button("Incidencia") {
+                            Task { await registerIncident(for: student) }
+                        }
+                        .tint(IOSAppStyle.danger)
+                    }
+                    .disabled(updatingStudentIds.contains(student.id))
                     .listRowInsets(EdgeInsets(top: 4, leading: 10, bottom: 4, trailing: 10))
                     .listRowBackground(
                         RoundedRectangle(cornerRadius: IOSAppStyle.innerRadius, style: .continuous)
@@ -495,6 +508,52 @@ struct StudentProfilesWorkspaceView: View {
         isLoadingProfile = true
         profile = try? await bridge.loadStudentProfile(studentId: studentId, classId: selectedClassId)
         isLoadingProfile = false
+    }
+
+    @MainActor
+    private func toggleInjuryStatus(for student: Student) async {
+        guard !updatingStudentIds.contains(student.id) else { return }
+        updatingStudentIds.insert(student.id)
+        defer { updatingStudentIds.remove(student.id) }
+
+        do {
+            try await bridge.updateStudentInjuryStatus(
+                studentId: student.id,
+                isInjured: !student.isInjured,
+                classId: selectedClassId
+            )
+            await bridge.selectStudentsClass(classId: selectedClassId)
+            selectedStudentId = student.id
+            await reloadProfile()
+            bridge.status = student.isInjured ? "Lesión retirada." : "Alumno marcado con lesión."
+            AppleInteractionFeedback.play(.success)
+        } catch {
+            bridge.status = "No se pudo actualizar la lesión: \(error.localizedDescription)"
+            AppleInteractionFeedback.play(.error)
+        }
+    }
+
+    @MainActor
+    private func registerIncident(for student: Student) async {
+        guard let selectedClassId, !updatingStudentIds.contains(student.id) else { return }
+        updatingStudentIds.insert(student.id)
+        defer { updatingStudentIds.remove(student.id) }
+
+        do {
+            _ = try await bridge.createIncident(
+                classId: selectedClassId,
+                studentId: student.id,
+                title: "Incidencia desde alumnado",
+                detail: "Registrada mediante acción rápida en la ficha del alumno."
+            )
+            selectedStudentId = student.id
+            await reloadProfile()
+            bridge.status = "Incidencia registrada."
+            AppleInteractionFeedback.play(.success)
+        } catch {
+            bridge.status = "No se pudo registrar la incidencia: \(error.localizedDescription)"
+            AppleInteractionFeedback.play(.error)
+        }
     }
 }
 

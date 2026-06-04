@@ -125,8 +125,10 @@ struct DashboardView: View {
 
             if isInspectorPresented && !isCompactWidth {
                 inspectorPane
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
+        .animation(.spring(response: 0.35, dampingFraction: 0.82), value: isInspectorPresented)
         .background(appPageBackground(for: colorScheme).ignoresSafeArea())
         .sheet(isPresented: $isQuickEvaluationPresented) {
             DashboardQuickEvaluationSheet(
@@ -227,7 +229,7 @@ struct DashboardView: View {
     private var dashboardContent: some View {
         ScrollView {
             if let snapshot = bridge.dashboardSnapshot {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: EvaluationDesign.sectionSpacing) {
                     dashboardWorkCenter(snapshot: snapshot)
 
                     let blocks: [DashboardBlock] = mode == .classroom
@@ -257,7 +259,7 @@ struct DashboardView: View {
                         }
                     }
                 }
-                .padding(16)
+                .padding(EvaluationDesign.screenPadding)
             } else {
                 ProgressView("Cargando dashboard operativo...")
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -372,12 +374,28 @@ struct DashboardView: View {
 
     @ViewBuilder
     private func dashboardWorkCenter(snapshot: DashboardSnapshot) -> some View {
-        let columns = [GridItem(.adaptive(minimum: isCompactWidth ? 260 : 320), spacing: 16)]
-        LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
-            dashboardTodayBlock(snapshot: snapshot)
-            dashboardPendingBlock(snapshot: snapshot)
-            dashboardRiskBlock(snapshot: snapshot)
-            dashboardSystemBlock()
+        if isCompactWidth {
+            VStack(spacing: EvaluationDesign.cardSpacing) {
+                dashboardTodayBlock(snapshot: snapshot)
+                dashboardPendingBlock(snapshot: snapshot)
+                dashboardRiskBlock(snapshot: snapshot)
+                dashboardSystemBlock()
+            }
+        } else {
+            VStack(spacing: EvaluationDesign.cardSpacing) {
+                dashboardTodayBlock(snapshot: snapshot)
+                
+                let columns = [
+                    GridItem(.flexible(), spacing: EvaluationDesign.cardSpacing, alignment: .top),
+                    GridItem(.flexible(), spacing: EvaluationDesign.cardSpacing, alignment: .top),
+                    GridItem(.flexible(), spacing: EvaluationDesign.cardSpacing, alignment: .top)
+                ]
+                LazyVGrid(columns: columns, alignment: .center, spacing: EvaluationDesign.cardSpacing) {
+                    dashboardPendingBlock(snapshot: snapshot)
+                    dashboardRiskBlock(snapshot: snapshot)
+                    dashboardSystemBlock()
+                }
+            }
         }
     }
 
@@ -404,13 +422,13 @@ struct DashboardView: View {
 
     @ViewBuilder
     private func dashboardTodayBlock(snapshot: DashboardSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Label("Hoy", systemImage: "calendar.badge.clock")
-                    .font(.headline)
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
                 Spacer()
                 Text("\(snapshot.todaySessions.count)")
-                    .font(.caption.bold())
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
                     .foregroundStyle(.secondary)
             }
             ForEach(snapshot.todaySessions, id: \.id) { item in
@@ -419,37 +437,58 @@ struct DashboardView: View {
                     isInspectorPresented = true
                 } label: {
                     HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("\(item.groupName) · \(item.timeLabel)").font(.subheadline.bold())
-                            Text(item.didacticUnit).font(.caption)
-                            Text("Espacio: \(item.space) · \(dashboardSessionStatusLabel(item.sessionStatus))").font(.caption2).foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("\(item.groupName) · \(item.timeLabel)")
+                                .font(.system(size: 14, weight: .bold, design: .rounded))
+                            Text(item.didacticUnit)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.secondary)
+                            Text("Espacio: \(item.space) · \(dashboardSessionStatusLabel(item.sessionStatus))")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(.tertiary)
                         }
                         Spacer()
                     }
-                    .padding(10)
-                    .background(appMutedCardBackground(for: colorScheme))
-                    .cornerRadius(10)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(
+                        appMutedCardBackground(for: colorScheme)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: EvaluationDesign.pillRadius, style: .continuous)
+                                    .stroke(Color.primary.opacity(0.04), lineWidth: 1)
+                            )
+                    )
+                    .cornerRadius(EvaluationDesign.pillRadius)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ScaleButtonStyle())
             }
-            if snapshot.todaySessions.isEmpty { Text("Sin sesiones hoy").foregroundStyle(.secondary) }
+            if snapshot.todaySessions.isEmpty {
+                Text("Sin sesiones hoy")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
         }
-        .padding(12)
-        .background(appCardBackground(for: colorScheme))
-        .cornerRadius(12)
+        .padding(EvaluationDesign.cardSpacing)
+        .background(.regularMaterial)
+        .cornerRadius(EvaluationDesign.innerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
+                .stroke(Color.primary.opacity(colorScheme == .dark ? 0.15 : 0.06), lineWidth: 1)
+        )
+        .shadow(color: EvaluationDesign.accent.opacity(colorScheme == .dark ? 0.22 : 0.05), radius: 14, x: 0, y: 8)
     }
 
     @ViewBuilder
     private func dashboardPendingBlock(snapshot: DashboardSnapshot) -> some View {
         let pendingAlerts = snapshot.alerts.filter { isPendingAlert($0) }
         let pendingAgenda = snapshot.agendaItems.filter { !isClosedAgendaStatus($0.status) }
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Label("Pendiente", systemImage: "tray.full")
-                    .font(.headline)
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
                 Spacer()
                 Text("\(snapshot.pendingCount)")
-                    .font(.caption.bold())
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
                     .foregroundStyle(.secondary)
             }
 
@@ -476,25 +515,30 @@ struct DashboardView: View {
 
             if pendingAlerts.isEmpty && pendingAgenda.isEmpty && snapshot.pendingCount == 0 {
                 Text("Sin pendientes críticos con los datos disponibles.")
-                    .font(.caption)
+                    .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(12)
-        .background(appCardBackground(for: colorScheme))
-        .cornerRadius(12)
+        .padding(EvaluationDesign.cardSpacing)
+        .background(.regularMaterial)
+        .cornerRadius(EvaluationDesign.innerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
+                .stroke(Color.primary.opacity(colorScheme == .dark ? 0.15 : 0.06), lineWidth: 1)
+        )
+        .shadow(color: Color.orange.opacity(colorScheme == .dark ? 0.22 : 0.05), radius: 14, x: 0, y: 8)
     }
 
     @ViewBuilder
     private func dashboardRiskBlock(snapshot: DashboardSnapshot) -> some View {
         let riskAlerts = snapshot.alerts.filter { !isPendingAlert($0) }
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Label("Riesgo", systemImage: "exclamationmark.triangle")
-                    .font(.headline)
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
                 Spacer()
                 Text("\(riskAlerts.count + snapshot.peItems.count)")
-                    .font(.caption.bold())
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
                     .foregroundStyle(.secondary)
             }
 
@@ -524,21 +568,26 @@ struct DashboardView: View {
 
             if riskAlerts.isEmpty && snapshot.peItems.isEmpty {
                 Text("Sin alumnado en riesgo detectado por las reglas actuales.")
-                    .font(.caption)
+                    .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(12)
-        .background(appCardBackground(for: colorScheme))
-        .cornerRadius(12)
+        .padding(EvaluationDesign.cardSpacing)
+        .background(.regularMaterial)
+        .cornerRadius(EvaluationDesign.innerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
+                .stroke(Color.primary.opacity(colorScheme == .dark ? 0.15 : 0.06), lineWidth: 1)
+        )
+        .shadow(color: Color.red.opacity(colorScheme == .dark ? 0.22 : 0.05), radius: 14, x: 0, y: 8)
     }
 
     @ViewBuilder
     private func dashboardSystemBlock() -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Label("Sistema", systemImage: "checkmark.shield")
-                    .font(.headline)
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
                 Spacer()
             }
             dashboardStaticRow(
@@ -560,16 +609,22 @@ struct DashboardView: View {
                 tint: .secondary
             )
         }
-        .padding(12)
-        .background(appCardBackground(for: colorScheme))
-        .cornerRadius(12)
+        .padding(EvaluationDesign.cardSpacing)
+        .background(.regularMaterial)
+        .cornerRadius(EvaluationDesign.innerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
+                .stroke(Color.primary.opacity(colorScheme == .dark ? 0.15 : 0.06), lineWidth: 1)
+        )
+        .shadow(color: Color.green.opacity(colorScheme == .dark ? 0.22 : 0.05), radius: 14, x: 0, y: 8)
     }
 
     @ViewBuilder
     private func dashboardAlertsBlock(snapshot: DashboardSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Alertas").font(.headline)
+                Text("Alertas")
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
                 Spacer()
             }
             ForEach(snapshot.alerts.prefix(8), id: \.id) { alert in
@@ -578,54 +633,96 @@ struct DashboardView: View {
                     isInspectorPresented = true
                 } label: {
                     HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(alert.title).font(.subheadline.bold())
-                            Text(alert.detail).font(.caption).foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(alert.title)
+                                .font(.system(size: 14, weight: .bold, design: .rounded))
+                            Text(alert.detail)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.secondary)
                         }
                         Spacer()
-                        Text(dashboardFilterLabel(alert.severity)).font(.caption2.bold())
+                        Text(dashboardFilterLabel(alert.severity))
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(riskTint(alert.severity).opacity(0.12), in: Capsule())
+                            .foregroundStyle(riskTint(alert.severity))
                     }
-                    .padding(10)
-                    .background(appMutedCardBackground(for: colorScheme))
-                    .cornerRadius(10)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(
+                        appMutedCardBackground(for: colorScheme)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: EvaluationDesign.pillRadius, style: .continuous)
+                                    .stroke(Color.primary.opacity(0.04), lineWidth: 1)
+                            )
+                    )
+                    .cornerRadius(EvaluationDesign.pillRadius)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ScaleButtonStyle())
             }
-            if snapshot.alerts.isEmpty { Text("Sin alertas").foregroundStyle(.secondary) }
+            if snapshot.alerts.isEmpty {
+                Text("Sin alertas")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
         }
-        .padding(12)
-        .background(appCardBackground(for: colorScheme))
-        .cornerRadius(12)
+        .padding(EvaluationDesign.cardSpacing)
+        .background(.regularMaterial)
+        .cornerRadius(EvaluationDesign.innerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
+                .stroke(Color.primary.opacity(colorScheme == .dark ? 0.15 : 0.06), lineWidth: 1)
+        )
+        .shadow(color: Color.red.opacity(colorScheme == .dark ? 0.22 : 0.05), radius: 14, x: 0, y: 8)
     }
 
     @ViewBuilder
     private func dashboardQuickEvalBlock(snapshot: DashboardSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Evaluación rápida").font(.headline)
+                Text("Evaluación rápida")
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
                 Spacer()
             }
             if !snapshot.quickColumns.isEmpty {
-                Text("Columnas disponibles: \(snapshot.quickColumns.joined(separator: ", "))").font(.caption)
+                Text("Columnas disponibles: \(snapshot.quickColumns.joined(separator: ", "))")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
             }
             if !snapshot.quickRubrics.isEmpty {
-                Text("Rúbricas disponibles: \(snapshot.quickRubrics.joined(separator: ", "))").font(.caption)
+                Text("Rúbricas disponibles: \(snapshot.quickRubrics.joined(separator: ", "))")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
             }
-            HStack {
+            HStack(spacing: 12) {
                 Button("Pasar lista") {
                     Task { await performPassList() }
                 }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+                
                 Button("Nueva observación") {
                     Task { await performObservation() }
                 }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+                
                 Button("Evaluar") {
                     isQuickEvaluationPresented = true
                 }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
             }
         }
-        .padding(12)
-        .background(appCardBackground(for: colorScheme))
-        .cornerRadius(12)
+        .padding(EvaluationDesign.cardSpacing)
+        .background(.regularMaterial)
+        .cornerRadius(EvaluationDesign.innerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
+                .stroke(Color.primary.opacity(colorScheme == .dark ? 0.15 : 0.06), lineWidth: 1)
+        )
+        .shadow(color: EvaluationDesign.accent.opacity(colorScheme == .dark ? 0.22 : 0.05), radius: 14, x: 0, y: 8)
     }
 
     @ViewBuilder
@@ -640,9 +737,10 @@ struct DashboardView: View {
                 studentsInFollowUp: Int($0.studentsInFollowUp)
             )
         }
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Resumen por grupo").font(.headline)
+                Text("Resumen por grupo")
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
                 Spacer()
             }
             if showsWideSummary {
@@ -661,48 +759,80 @@ struct DashboardView: View {
                         Spacer()
                         Text("As \(summary.attendancePct)% · Ev \(summary.evaluationCompletedPct)%")
                     }
-                    .font(.caption)
+                    .font(.system(size: 13, weight: .medium))
                 }
             }
-            if snapshot.groupSummaries.isEmpty { Text("Sin datos de grupos").foregroundStyle(.secondary) }
+            if snapshot.groupSummaries.isEmpty {
+                Text("Sin datos de grupos")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
         }
-        .padding(12)
-        .background(appCardBackground(for: colorScheme))
-        .cornerRadius(12)
+        .padding(EvaluationDesign.cardSpacing)
+        .background(.regularMaterial)
+        .cornerRadius(EvaluationDesign.innerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
+                .stroke(Color.primary.opacity(colorScheme == .dark ? 0.15 : 0.06), lineWidth: 1)
+        )
+        .shadow(color: EvaluationDesign.accent.opacity(colorScheme == .dark ? 0.22 : 0.05), radius: 14, x: 0, y: 8)
     }
 
     @ViewBuilder
     private func dashboardAgendaBlock(snapshot: DashboardSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Agenda docente").font(.headline)
+                Text("Agenda docente")
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
                 Spacer()
             }
             ForEach(snapshot.agendaItems, id: \.id) { item in
                 HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(item.title).font(.subheadline.bold())
-                        Text(item.subtitle).font(.caption).foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(item.title)
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                        Text(item.subtitle)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Text(item.timeLabel).font(.caption2)
+                    Text(item.timeLabel)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.tertiary)
                 }
-                .padding(8)
-                .background(appMutedCardBackground(for: colorScheme))
-                .cornerRadius(8)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(
+                    appMutedCardBackground(for: colorScheme)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: EvaluationDesign.pillRadius, style: .continuous)
+                                .stroke(Color.primary.opacity(0.04), lineWidth: 1)
+                        )
+                )
+                .cornerRadius(EvaluationDesign.pillRadius)
             }
-            if snapshot.agendaItems.isEmpty { Text("Sin agenda para hoy").foregroundStyle(.secondary) }
+            if snapshot.agendaItems.isEmpty {
+                Text("Sin agenda para hoy")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
         }
-        .padding(12)
-        .background(appCardBackground(for: colorScheme))
-        .cornerRadius(12)
+        .padding(EvaluationDesign.cardSpacing)
+        .background(.regularMaterial)
+        .cornerRadius(EvaluationDesign.innerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
+                .stroke(Color.primary.opacity(colorScheme == .dark ? 0.15 : 0.06), lineWidth: 1)
+        )
+        .shadow(color: Color.purple.opacity(colorScheme == .dark ? 0.22 : 0.05), radius: 14, x: 0, y: 8)
     }
 
     @ViewBuilder
     private func dashboardPEBlock(snapshot: DashboardSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Educación Física").font(.headline)
+                Text("Educación Física")
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
                 Spacer()
             }
             ForEach(snapshot.peItems, id: \.id) { item in
@@ -711,24 +841,48 @@ struct DashboardView: View {
                     isInspectorPresented = true
                 } label: {
                     HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(item.title).font(.subheadline.bold())
-                            Text(item.detail).font(.caption).foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(item.title)
+                                .font(.system(size: 14, weight: .bold, design: .rounded))
+                            Text(item.detail)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.secondary)
                         }
                         Spacer()
-                        Text(dashboardFilterLabel(item.severity)).font(.caption2)
+                        Text(dashboardFilterLabel(item.severity))
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(riskTint(item.severity).opacity(0.12), in: Capsule())
+                            .foregroundStyle(riskTint(item.severity))
                     }
-                    .padding(8)
-                    .background(appMutedCardBackground(for: colorScheme))
-                    .cornerRadius(8)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(
+                        appMutedCardBackground(for: colorScheme)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: EvaluationDesign.pillRadius, style: .continuous)
+                                    .stroke(Color.primary.opacity(0.04), lineWidth: 1)
+                            )
+                    )
+                    .cornerRadius(EvaluationDesign.pillRadius)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ScaleButtonStyle())
             }
-            if snapshot.peItems.isEmpty { Text("Sin incidencias EF hoy").foregroundStyle(.secondary) }
+            if snapshot.peItems.isEmpty {
+                Text("Sin incidencias EF hoy")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
         }
-        .padding(12)
-        .background(appCardBackground(for: colorScheme))
-        .cornerRadius(12)
+        .padding(EvaluationDesign.cardSpacing)
+        .background(.regularMaterial)
+        .cornerRadius(EvaluationDesign.innerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
+                .stroke(Color.primary.opacity(colorScheme == .dark ? 0.15 : 0.06), lineWidth: 1)
+        )
+        .shadow(color: Color.green.opacity(colorScheme == .dark ? 0.22 : 0.05), radius: 14, x: 0, y: 8)
     }
 
     private func dashboardFilterPicker(
@@ -738,14 +892,41 @@ struct DashboardView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
-                .font(.caption.weight(.bold))
+                .font(.system(size: 11, weight: .bold, design: .rounded))
                 .foregroundStyle(.secondary)
-            Picker(title, selection: selection) {
+            HStack(spacing: 8) {
                 ForEach(options) { option in
-                    Text(option.title).tag(option)
+                    Button {
+                        selection.wrappedValue = option
+                    } label: {
+                        Text(option.title)
+                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(
+                                selection.wrappedValue == option
+                                    ? EvaluationDesign.accent
+                                    : Color.primary.opacity(0.04)
+                            )
+                            .foregroundStyle(
+                                selection.wrappedValue == option
+                                    ? .white
+                                    : .primary
+                            )
+                            .cornerRadius(8)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(
+                                        selection.wrappedValue == option
+                                            ? EvaluationDesign.accent
+                                            : Color.primary.opacity(0.06),
+                                        lineWidth: 1
+                                    )
+                            )
+                    }
+                    .buttonStyle(ScaleButtonStyle())
                 }
             }
-            .pickerStyle(.segmented)
         }
     }
 
@@ -756,14 +937,41 @@ struct DashboardView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
-                .font(.caption.weight(.bold))
+                .font(.system(size: 11, weight: .bold, design: .rounded))
                 .foregroundStyle(.secondary)
-            Picker(title, selection: selection) {
+            HStack(spacing: 8) {
                 ForEach(options) { option in
-                    Text(option.title).tag(option)
+                    Button {
+                        selection.wrappedValue = option
+                    } label: {
+                        Text(option.title)
+                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(
+                                selection.wrappedValue == option
+                                    ? EvaluationDesign.accent
+                                    : Color.primary.opacity(0.04)
+                            )
+                            .foregroundStyle(
+                                selection.wrappedValue == option
+                                    ? .white
+                                    : .primary
+                            )
+                            .cornerRadius(8)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(
+                                        selection.wrappedValue == option
+                                            ? EvaluationDesign.accent
+                                            : Color.primary.opacity(0.06),
+                                        lineWidth: 1
+                                    )
+                            )
+                    }
+                    .buttonStyle(ScaleButtonStyle())
                 }
             }
-            .pickerStyle(.segmented)
         }
     }
 
@@ -777,7 +985,7 @@ struct DashboardView: View {
         Button(action: action) {
             dashboardRowContent(title: title, subtitle: subtitle, systemImage: systemImage, tint: tint)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(ScaleButtonStyle())
     }
 
     private func dashboardStaticRow(
@@ -797,27 +1005,34 @@ struct DashboardView: View {
     ) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: systemImage)
-                .font(.caption.weight(.semibold))
+                .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(tint)
                 .frame(width: 18, height: 18)
                 .padding(.top, 2)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
                     .lineLimit(2)
                 if !subtitle.isEmpty {
                     Text(subtitle)
-                        .font(.caption)
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }
             }
             Spacer(minLength: 0)
         }
-        .padding(10)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(appMutedCardBackground(for: colorScheme))
-        .cornerRadius(10)
+        .background(
+            appMutedCardBackground(for: colorScheme)
+                .overlay(
+                    RoundedRectangle(cornerRadius: EvaluationDesign.pillRadius, style: .continuous)
+                        .stroke(Color.primary.opacity(0.04), lineWidth: 1)
+                )
+        )
+        .cornerRadius(EvaluationDesign.pillRadius)
     }
 
     private func isPendingAlert(_ alert: AlertItem) -> Bool {
@@ -1168,3 +1383,14 @@ private struct DashboardQuickEvaluationSheet: View {
         dismiss()
     }
 }
+
+// MARK: - Premium Button Style
+struct ScaleButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
+            .opacity(configuration.isPressed ? 0.92 : 1.0)
+            .animation(.spring(response: 0.2, dampingFraction: 0.7), value: configuration.isPressed)
+    }
+}
+

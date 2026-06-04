@@ -6,6 +6,7 @@ struct NotebookColumnOrganizerSheet: View {
     let onSetVisibility: (NotebookColumnDefinition, NotebookColumnVisibility) -> Void
     let onRename: (NotebookColumnDefinition) -> Void
     let onDelete: (NotebookColumnDefinition) -> Void
+    let onDeleteMultiple: ([NotebookColumnDefinition]) -> Void
     let onAddColumn: () -> Void
     let onCreateCategory: () -> Void
     let onCreateSummary: () -> Void
@@ -13,11 +14,15 @@ struct NotebookColumnOrganizerSheet: View {
     let onOpenHiddenColumns: () -> Void
     let onShowAll: () -> Void
     let onReorder: ([NotebookColumnDefinition]) -> Void
+    let onOpenGroupManagement: () -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("notebook.groupByWorkGroupMode") var groupByWorkGroupMode = "none"
     @State private var orderedColumnIds: [String] = []
     @State private var searchText = ""
     @State private var sectionFilter: SectionFilter = .all
+    @State private var isSelectionMode = false
+    @State private var selectedColumnIds = Set<String>()
 
     private enum SectionFilter: String, CaseIterable, Identifiable {
         case all = "Todas"
@@ -77,23 +82,29 @@ struct NotebookColumnOrganizerSheet: View {
 
             Divider()
 
-            controls
+            if !isSelectionMode {
+                controls
 
-            Divider()
+                Divider()
 
-            aiActions
+                aiActions
 
-            Divider()
+                Divider()
+
+                groupActions
+
+                Divider()
+            }
 
             if visibleColumns.isEmpty && hiddenColumns.isEmpty && archivedColumns.isEmpty {
                 emptyState
             } else {
                 List {
                     if sectionFilter == .all || sectionFilter == .visible {
-                        columnSection("Visibles", columns: visibleColumns, emptyText: "No hay columnas visibles.", allowsMove: true)
+                        columnSection("Visibles", columns: visibleColumns, emptyText: "No hay columnas visibles.", allowsMove: !isSelectionMode)
                     }
                     if sectionFilter == .all || sectionFilter == .hidden {
-                        columnSection("Ocultas", columns: hiddenColumns, emptyText: "No hay columnas ocultas.", allowsMove: true)
+                        columnSection("Ocultas", columns: hiddenColumns, emptyText: "No hay columnas ocultas.", allowsMove: !isSelectionMode)
                     }
                     if sectionFilter == .all || sectionFilter == .archived {
                         columnSection("Archivadas", columns: archivedColumns, emptyText: "No hay columnas archivadas.", allowsMove: false)
@@ -105,7 +116,11 @@ struct NotebookColumnOrganizerSheet: View {
 
             Divider()
 
-            footer
+            if isSelectionMode {
+                selectionActionBar
+            } else {
+                footer
+            }
         }
         .background(.regularMaterial)
         .onAppear {
@@ -123,7 +138,7 @@ struct NotebookColumnOrganizerSheet: View {
                 .foregroundStyle(Color.accentColor)
 
             VStack(alignment: .leading, spacing: 1) {
-                Text("Organizar columnas")
+                Text(isSelectionMode ? "Seleccionar columnas" : "Organizar columnas")
                     .font(.title3.weight(.semibold))
 
                 Text("\(visibleCount) visibles · \(hiddenCount) ocultas · \(archivedCount) archivadas")
@@ -133,13 +148,75 @@ struct NotebookColumnOrganizerSheet: View {
 
             Spacer()
 
-            Button("Cerrar") {
-                dismiss()
+            if isSelectionMode {
+                Button(selectedColumnIds.count == columns.count ? "Deseleccionar todo" : "Seleccionar todo") {
+                    if selectedColumnIds.count == columns.count {
+                        selectedColumnIds.removeAll()
+                    } else {
+                        selectedColumnIds = Set(columns.map(\.id))
+                    }
+                }
+                .buttonStyle(.bordered)
+                
+                Button("Listo") {
+                    isSelectionMode = false
+                    selectedColumnIds.removeAll()
+                }
+                .buttonStyle(.borderedProminent)
+            } else {
+                Button("Seleccionar") {
+                    isSelectionMode = true
+                }
+                .buttonStyle(.bordered)
+
+                Button("Cerrar") {
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
             }
-            .keyboardShortcut(.cancelAction)
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 12)
+    }
+
+    private var selectionActionBar: some View {
+        let selectedColumns = columns.filter { selectedColumnIds.contains($0.id) }
+        let hasLocked = selectedColumns.contains { $0.isLocked }
+        
+        return VStack(spacing: 8) {
+            if hasLocked {
+                HStack(spacing: 6) {
+                    Image(systemName: "lock.fill")
+                        .foregroundStyle(.orange)
+                    Text("La selección contiene columnas bloqueadas. Se mostrará una advertencia al continuar.")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.orange)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+            }
+            
+            HStack {
+                Text("\(selectedColumnIds.count) seleccionadas")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                
+                Spacer()
+                
+                Button(role: .destructive) {
+                    onDeleteMultiple(selectedColumns)
+                } label: {
+                    Label("Eliminar seleccionadas", systemImage: "trash")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.red)
+                .disabled(selectedColumnIds.isEmpty)
+            }
+            .padding(.horizontal, 18)
+            .padding(.bottom, 12)
+            .padding(.top, hasLocked ? 4 : 12)
+        }
+        .background(.thinMaterial)
     }
 
     private var controls: some View {
@@ -226,6 +303,35 @@ struct NotebookColumnOrganizerSheet: View {
         .padding(.vertical, 10)
     }
 
+    private var groupActions: some View {
+        HStack(spacing: 12) {
+            Label("Grupos de trabajo", systemImage: "person.2")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            Spacer(minLength: 0)
+
+            Toggle("Agrupar por grupos", isOn: Binding(
+                get: { groupByWorkGroupMode != "none" },
+                set: { newValue in
+                    groupByWorkGroupMode = newValue ? "general" : "none"
+                }
+            ))
+            .tint(NotebookStyle.primaryTint)
+            .fixedSize()
+
+            Button {
+                onOpenGroupManagement()
+            } label: {
+                Label("Gestionar grupos", systemImage: "person.2.badge.gearshape")
+            }
+            .buttonStyle(.bordered)
+            .fixedSize()
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 10)
+    }
+
     private var emptyState: some View {
         VStack(spacing: 12) {
             Image(systemName: "rectangle.3.group")
@@ -268,14 +374,29 @@ struct NotebookColumnOrganizerSheet: View {
 
     private func columnRow(_ column: NotebookColumnDefinition) -> some View {
         HStack(spacing: 10) {
+            if isSelectionMode {
+                Image(systemName: selectedColumnIds.contains(column.id) ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(selectedColumnIds.contains(column.id) ? Color.accentColor : .secondary)
+                    .padding(.trailing, 4)
+            }
+
             Image(systemName: columnIcon(for: column))
                 .frame(width: 24)
                 .foregroundStyle(column.isVisibleInGrid ? Color.accentColor : .secondary)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(column.title)
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(column.isArchived ? .secondary : .primary)
+                HStack(spacing: 6) {
+                    Text(column.title)
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(column.isArchived ? .secondary : .primary)
+                    
+                    if column.isLocked {
+                        Image(systemName: "lock.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
 
                 HStack(spacing: 6) {
                     Text(columnTypeLabel(for: column))
@@ -292,39 +413,51 @@ struct NotebookColumnOrganizerSheet: View {
 
             Spacer()
 
-            Menu {
-                if column.isVisibleInGrid {
-                    Button("Ocultar") {
-                        onSetVisibility(column, .hidden)
+            if !isSelectionMode {
+                Menu {
+                    if column.isVisibleInGrid {
+                        Button("Ocultar") {
+                            onSetVisibility(column, .hidden)
+                        }
+                        Button("Archivar") {
+                            onSetVisibility(column, .archived)
+                        }
+                        Button("Renombrar") {
+                            onRename(column)
+                        }
+                        deleteButton(for: column, title: "Eliminar")
+                    } else if column.isTemporarilyHidden {
+                        Button("Mostrar") {
+                            onSetVisibility(column, .visible)
+                        }
+                        Button("Archivar") {
+                            onSetVisibility(column, .archived)
+                        }
+                        Button("Renombrar") {
+                            onRename(column)
+                        }
+                        deleteButton(for: column, title: "Eliminar")
+                    } else {
+                        Button("Restaurar") {
+                            onSetVisibility(column, .visible)
+                        }
+                        deleteButton(for: column, title: "Eliminar definitivamente")
                     }
-                    Button("Archivar") {
-                        onSetVisibility(column, .archived)
-                    }
-                    Button("Renombrar") {
-                        onRename(column)
-                    }
-                    deleteButton(for: column, title: "Eliminar")
-                } else if column.isTemporarilyHidden {
-                    Button("Mostrar") {
-                        onSetVisibility(column, .visible)
-                    }
-                    Button("Archivar") {
-                        onSetVisibility(column, .archived)
-                    }
-                    Button("Renombrar") {
-                        onRename(column)
-                    }
-                    deleteButton(for: column, title: "Eliminar")
-                } else {
-                    Button("Restaurar") {
-                        onSetVisibility(column, .visible)
-                    }
-                    deleteButton(for: column, title: "Eliminar definitivamente")
+                } label: {
+                    Image(systemName: "ellipsis.circle")
                 }
-            } label: {
-                Image(systemName: "ellipsis.circle")
+                .menuStyle(.borderlessButton)
             }
-            .menuStyle(.borderlessButton)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if isSelectionMode {
+                if selectedColumnIds.contains(column.id) {
+                    selectedColumnIds.remove(column.id)
+                } else {
+                    selectedColumnIds.insert(column.id)
+                }
+            }
         }
         .padding(.vertical, 3)
     }

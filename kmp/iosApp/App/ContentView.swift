@@ -12,15 +12,11 @@ struct ContentView: View {
     var body: some View {
         AppWorkspaceShell()
             .tint(.accentColor)
-            .sheet(isPresented: rubricEvaluationPresentation) {
+            .appFullScreenCover(isPresented: rubricEvaluationPresentation) {
                 RubricEvaluationView()
                     .environmentObject(bridge)
                     #if os(macOS)
                     .frame(minWidth: 980, minHeight: 700)
-                    #else
-                    .presentationDetents([.large])
-                    .presentationDragIndicator(.visible)
-                    .interactiveDismissDisabled(bridge.rubricEvaluationState.isLoading)
                     #endif
             }
             .animation(

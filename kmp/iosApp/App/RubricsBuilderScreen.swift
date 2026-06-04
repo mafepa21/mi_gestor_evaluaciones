@@ -5,6 +5,7 @@ struct RubricsBuilderScreen: View {
     @EnvironmentObject var bridge: KmpBridge
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    var onSaved: ((Int64) -> Void)? = nil
     @State private var saveFeedback: String? = nil
 
     private var state: RubricUiState? {
@@ -26,11 +27,11 @@ struct RubricsBuilderScreen: View {
 
                         TextEditor(text: instructionsBinding)
                             .frame(height: 88)
-                            .padding(10)
+                            .padding(8)
                             .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .stroke(.gray.opacity(0.12), lineWidth: 1)
+                                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
                             )
 
                         RubricBuilderGridView(state: state)
@@ -44,7 +45,7 @@ struct RubricsBuilderScreen: View {
                                 .font(.system(size: 14, weight: .bold))
                                 .foregroundStyle(Color.accentColor)
                                 .padding(.horizontal, 16)
-                                .padding(.vertical, 12)
+                                .padding(.vertical, 16)
                                 .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                         }
                         .buttonStyle(.plain)
@@ -66,25 +67,29 @@ struct RubricsBuilderScreen: View {
                             }
                             Spacer()
                             Button {
-                                bridge.saveRubricFromBuilder { success in
-                                    saveFeedback = success ? "Rúbrica guardada correctamente" : "Error al guardar"
-                                    if success {
+                                Task { @MainActor in
+                                    do {
+                                        let rubricId = try await bridge.saveRubricFromBuilderReturningId()
+                                        saveFeedback = "Rúbrica guardada correctamente"
+                                        onSaved?(rubricId)
                                         dismiss()
+                                    } catch {
+                                        saveFeedback = "Error al guardar"
                                     }
                                 }
                             } label: {
                             Label("Guardar Rúbrica", systemImage: "square.and.arrow.down")
                                 .font(.system(size: 15, weight: .bold))
                                 .foregroundStyle(contrastingTextColor(for: Color.accentColor))
-                                .padding(.horizontal, 18)
-                                .padding(.vertical, 12)
+                                .padding(.horizontal, 24)
+                                .padding(.vertical, 16)
                                 .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                             }
                             .buttonStyle(.plain)
                             .disabled(state.rubricName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || state.isSaving)
                         }
                     }
-                    .padding(20)
+                    .padding(24)
                 } else {
                     ProgressView("Cargando editor...")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -138,12 +143,12 @@ private struct RubricBuilderHeader: View {
     let selectedTeachingUnitId: Binding<Int64?>
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
             TextField("¿Cómo se llama esta rúbrica?", text: rubricName)
                 .font(.system(size: 30, weight: .black, design: .rounded))
                 .textFieldStyle(.plain)
 
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 Menu {
                     Button("Ninguna") { selectedClassId.wrappedValue = nil }
                     ForEach(state.allClasses, id: \.id) { schoolClass in
@@ -155,7 +160,7 @@ private struct RubricBuilderHeader: View {
                         systemImage: "person.3.fill"
                     )
                     .font(.system(size: 12, weight: .semibold))
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, 16)
                     .padding(.vertical, 8)
                     .background(appCardBackground(for: colorScheme), in: Capsule())
                 }
@@ -173,7 +178,7 @@ private struct RubricBuilderHeader: View {
                             systemImage: "square.stack.3d.up.fill"
                         )
                         .font(.system(size: 12, weight: .semibold))
-                        .padding(.horizontal, 12)
+                        .padding(.horizontal, 16)
                         .padding(.vertical, 8)
                         .background(appCardBackground(for: colorScheme), in: Capsule())
                     }
@@ -186,8 +191,8 @@ private struct RubricBuilderHeader: View {
                 ForEach(["Estándar", "Binario", "Numérico"], id: \.self) { preset in
                     Button(preset) { bridge.applyRubricPreset(preset) }
                         .font(.system(size: 11, weight: .semibold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
                         .background(appCardBackground(for: colorScheme).opacity(0.95), in: Capsule())
                         .buttonStyle(.plain)
                 }
@@ -229,7 +234,7 @@ private struct RubricBuilderGridView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .padding(4)
+            .padding(8)
         }
     }
 
@@ -243,17 +248,25 @@ private struct RubricBuilderGridView: View {
 
             ForEach(Array(state.levels.enumerated()), id: \.element.uid) { index, level in
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 8) {
                         TextField("Nivel", text: Binding(
                             get: { level.name },
                             set: { bridge.updateRubricLevelName(at: index, name: $0) }
                         ))
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .textFieldStyle(.plain)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(appMutedCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                        )
 
                         Button(role: .destructive) {
                             bridge.removeRubricLevel(at: index)
                         } label: {
                             Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.secondary)
                         }
                         .buttonStyle(.plain)
                     }
@@ -262,8 +275,8 @@ private struct RubricBuilderGridView: View {
                         get: { Int(level.points) },
                         set: { bridge.updateRubricLevelPoints(at: index, points: $0) }
                     ), in: 0...20) {
-                        Text("Puntos: \(level.points)")
-                            .font(.caption)
+                        Text("Pts: \(level.points)")
+                            .font(.caption.weight(.semibold))
                     }
                 }
                 .frame(width: layout.levelWidth, alignment: .leading)
@@ -273,7 +286,7 @@ private struct RubricBuilderGridView: View {
                 bridge.addRubricLevel()
             } label: {
                 Image(systemName: "plus.circle.fill")
-                    .font(.system(size: 22))
+                    .font(.system(size: 24))
                     .foregroundStyle(Color.accentColor)
             }
             .buttonStyle(.plain)
@@ -289,12 +302,21 @@ private struct RubricBuilderGridView: View {
                     set: { bridge.updateRubricCriterionDescription(at: index, description: $0) }
                 ), axis: .vertical)
                 .lineLimit(2...3)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
+                .textFieldStyle(.plain)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(appMutedCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                )
 
                 Slider(value: Binding(
                     get: { criterion.weight },
                     set: { bridge.updateRubricCriterionWeight(at: index, weight: $0) }
                 ), in: 0...1)
+                .tint(Color.accentColor)
+
                 Text("\(Int((criterion.weight * 100).rounded()))%")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(Color.accentColor)
@@ -308,10 +330,10 @@ private struct RubricBuilderGridView: View {
                 ))
                 .frame(width: layout.levelWidth, height: layout.editorHeight)
                 .padding(8)
-                .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(.gray.opacity(0.15), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
                 )
             }
 
@@ -331,24 +353,24 @@ private struct RubricBuilderGridView: View {
         let horizontalPadding: CGFloat = 24
         let spacing: CGFloat = 8
         let availableWidth = max(size.width - horizontalPadding, 320)
-        let controlsWidth: CGFloat = 42
-        let criterionWidth = min(max(availableWidth * 0.26, 170), 260)
+        let controlsWidth: CGFloat = 48
+        let criterionWidth = min(max(availableWidth * 0.26, 176), 256)
         let levelCount = max(state.levels.count, 1)
         let levelsArea = availableWidth - criterionWidth - controlsWidth - (spacing * CGFloat(levelCount + 1))
-        let levelWidth = min(max(levelsArea / CGFloat(levelCount), 88), 220)
+        let levelWidth = min(max(levelsArea / CGFloat(levelCount), 96), 224)
 
         let availableHeight = max(size.height - 24, 240)
         let criteriaCount = max(state.criteria.count, 1)
         let headerHeight: CGFloat = 88
         let rowsHeight = max(availableHeight - headerHeight, 120)
-        let editorHeight = min(max((rowsHeight / CGFloat(criteriaCount)) - 24, 56), 130)
+        let editorHeight = min(max((rowsHeight / CGFloat(criteriaCount)) - 24, 56), 128)
         let rowPadding = max(min((rowsHeight / CGFloat(criteriaCount) - editorHeight) / 2, 8), 2)
 
         return RubricGridLayout(
             criterionWidth: criterionWidth,
             levelWidth: levelWidth,
             editorHeight: editorHeight,
-            rowSpacing: 6,
+            rowSpacing: 8,
             rowPadding: rowPadding
         )
     }

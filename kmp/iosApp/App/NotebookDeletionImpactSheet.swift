@@ -86,6 +86,8 @@ struct NotebookDeletionImpactSheet: View {
             return "Eliminar columna \"\(impact.targetName)\""
         case .category:
             return "Eliminar categoría \"\(impact.targetName)\""
+        case .columns:
+            return "Eliminar \(impact.affectedColumnCount) columnas"
         }
     }
 
@@ -95,6 +97,8 @@ struct NotebookDeletionImpactSheet: View {
             return "Esta acción eliminará la columna y sus notas de esta clase."
         case .category:
             return "La opción recomendada conserva las columnas y solo elimina la categoría."
+        case .columns:
+            return "Esta acción eliminará de forma permanente las columnas seleccionadas y sus notas de esta clase."
         }
     }
 
@@ -104,6 +108,8 @@ struct NotebookDeletionImpactSheet: View {
             return "Eliminar columna"
         case .category:
             return "Eliminar categoría y columnas"
+        case .columns:
+            return "Eliminar columnas"
         }
     }
 

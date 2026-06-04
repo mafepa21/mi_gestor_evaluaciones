@@ -59,6 +59,8 @@ struct AttendanceWorkspaceView: View {
     @State var recordsByStudentId: [Int64: KmpBridge.AttendanceRecordSnapshot] = [:]
     @State var classOverviews: [KmpBridge.AttendanceClassOverview] = []
     @State var savingStudentIds: Set<Int64> = []
+    @State var savingInjuryStudentIds: Set<Int64> = []
+    @State var localInjuryStatuses: [Int64: Bool] = [:]
     @State var saveRevisionByStudentId: [Int64: Int] = [:]
     @State var history: [KmpBridge.AttendanceRecordSnapshot] = []
     @State var incidents: [Incident] = []
@@ -297,6 +299,7 @@ struct AttendanceWorkspaceView: View {
                 List(filteredRows) { row in
                     AttendanceRowCard(
                         row: row,
+                        isInjured: localInjuryStatuses[row.student.id] ?? row.student.isInjured,
                         onPickStatus: { status in
                             Task { await updateAttendance(for: row.student, status: status.id) }
                         },
@@ -306,9 +309,10 @@ struct AttendanceWorkspaceView: View {
                             AppleInteractionFeedback.play(.selection)
                         },
                         isSaving: savingStudentIds.contains(row.student.id)
+                            || savingInjuryStudentIds.contains(row.student.id)
                     )
                     #if os(iOS)
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    .swipeActions(edge: .leading, allowsFullSwipe: true) {
                         Button("Presente") {
                             Task { await updateAttendance(for: row.student, status: "PRESENTE") }
                         }
@@ -321,6 +325,20 @@ struct AttendanceWorkspaceView: View {
                             Task { await updateAttendance(for: row.student, status: "TARDE") }
                         }
                         .tint(AppleDesignSystem.warning)
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button("Sin material") {
+                            Task { await updateAttendance(for: row.student, status: "SIN_MATERIAL") }
+                        }
+                        .tint(.brown)
+                        Button("Justificada") {
+                            Task { await updateAttendance(for: row.student, status: "JUSTIFICADO") }
+                        }
+                        .tint(.gray)
+                        Button("Lesión") {
+                            Task { await markStudentInjured(row.student) }
+                        }
+                        .tint(.orange)
                     }
                     #endif
                 }
@@ -713,6 +731,35 @@ struct AttendanceWorkspaceView: View {
                 savingStudentIds.remove(student.id)
             }
             bridge.status = "No se pudo guardar la asistencia: \(error.localizedDescription)"
+            AppleInteractionFeedback.play(.error)
+        }
+    }
+
+    @MainActor
+    func markStudentInjured(_ student: Student) async {
+        guard let selectedClassId else { return }
+        guard !(localInjuryStatuses[student.id] ?? student.isInjured) else {
+            selectedStudentId = student.id
+            bridge.status = "La lesión de \(student.fullName) ya está activa."
+            return
+        }
+
+        localInjuryStatuses[student.id] = true
+        savingInjuryStudentIds.insert(student.id)
+        selectedStudentId = student.id
+        defer { savingInjuryStudentIds.remove(student.id) }
+
+        do {
+            try await bridge.updateStudentInjuryStatus(
+                studentId: student.id,
+                isInjured: true,
+                classId: selectedClassId
+            )
+            bridge.status = "Lesión activa para \(student.fullName)."
+            AppleInteractionFeedback.play(.success)
+        } catch {
+            localInjuryStatuses[student.id] = student.isInjured
+            bridge.status = "No se pudo marcar la lesión: \(error.localizedDescription)"
             AppleInteractionFeedback.play(.error)
         }
     }

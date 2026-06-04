@@ -3,6 +3,7 @@ import MiGestorKit
 
 struct RubricEvaluationView: View {
     @EnvironmentObject var bridge: KmpBridge
+    @State private var activePopoverLevel: RubricLevel?
 
     private var state: RubricEvaluationUiState {
         bridge.rubricEvaluationState
@@ -15,7 +16,7 @@ struct RubricEvaluationView: View {
 
                 if let rubric = state.rubricDetail {
                     GeometryReader { proxy in
-                        let isWide = proxy.size.width >= 960
+                        let isWide = proxy.size.width >= 720
                         let selectedScore = state.totalScore
 
                         ScrollView {
@@ -65,11 +66,36 @@ struct RubricEvaluationView: View {
                         .frame(width: 160)
                     }
                     .padding()
-                } else {
+                } else if state.studentId == 0 || state.isLoading {
                     ProgressView("Cargando rúbrica...")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(.secondary)
+                } else {
+                    VStack(spacing: 14) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 28, weight: .bold))
+                            .foregroundStyle(EvaluationDesign.danger)
+                        Text("No se pudo abrir la rúbrica")
+                            .font(.system(size: 18, weight: .black, design: .rounded))
+                        Text("La rúbrica seleccionada no existe o no se pudo cargar.")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 24)
+                        EvaluationPrimaryButton(label: "Cerrar", systemImage: "xmark") {
+                            closeRubric()
+                        }
+                        .frame(width: 160)
+                    }
+                    .padding()
                 }
+            }
+            .popover(item: $activePopoverLevel, arrowEdge: .bottom) { level in
+                RubricLevelDescriptionPopover(level: level)
+                    .padding(4)
+            }
+            .onDisappear {
+                activePopoverLevel = nil
             }
         }
     }
@@ -144,6 +170,7 @@ struct RubricEvaluationView: View {
                         RubricCriterionRow(
                             item: criterion,
                             selectedLevelId: state.selectedLevels[KotlinLong(value: criterion.criterion.id)]?.int64Value,
+                            activePopoverLevel: $activePopoverLevel,
                             onSelectLevel: { levelId in
                                 bridge.rubricEvaluationViewModel.selectLevel(
                                     criterionId: criterion.criterion.id,
@@ -208,10 +235,11 @@ struct RubricEvaluationView: View {
 
 struct RubricCriterionRow: View {
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
+    @Environment(\.colorScheme) private var colorScheme
     let item: RubricCriterionWithLevels
     let selectedLevelId: Int64?
+    @Binding var activePopoverLevel: RubricLevel?
     let onSelectLevel: (Int64) -> Void
-    @State private var hoveredLevelId: Int64?
     @State private var hoverTask: Task<Void, Never>?
 
     private var selectedLevel: RubricLevel? {
@@ -249,7 +277,7 @@ struct RubricCriterionRow: View {
                                 AppleInteractionFeedback.play(.selection)
                                 onSelectLevel(level.id)
                             }
-                            .frame(width: 160)
+                            .frame(width: 170, height: 110)
                             .overlay(alignment: .bottomTrailing) {
                                 Text("\(Int(level.points)) pts")
                                     .font(.system(size: 11, weight: .black, design: .rounded))
@@ -260,23 +288,15 @@ struct RubricCriterionRow: View {
                             .help(levelHelpText(level))
                             .onHover { isHovering in
                                 if isHovering {
-                                    schedulePopover(for: level.id)
+                                    schedulePopover(for: level)
                                 } else {
-                                    cancelPopover(for: level.id)
+                                    cancelPopover(for: level)
                                 }
-                            }
-                            .popover(
-                                isPresented: Binding(
-                                    get: { hoveredLevelId == level.id },
-                                    set: { if !$0 { cancelPopover(for: level.id) } }
-                                ),
-                                arrowEdge: .bottom
-                            ) {
-                                RubricLevelDescriptionPopover(level: level)
-                                    .padding(4)
                             }
                         }
                     }
+                    .padding(.horizontal, 2)
+                    .padding(.vertical, 4)
                 }
 
                 if !selectedLevelDescription.isEmpty {
@@ -294,6 +314,7 @@ struct RubricCriterionRow: View {
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .background(
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .fill(EvaluationDesign.accent.opacity(0.08))
@@ -310,7 +331,6 @@ struct RubricCriterionRow: View {
         .animation(uiFeatureFlags.interactionAnimation, value: selectedLevelId)
         .onDisappear {
             hoverTask?.cancel()
-            hoveredLevelId = nil
         }
     }
 
@@ -320,25 +340,25 @@ struct RubricCriterionRow: View {
         return "\(level.name): \(description)"
     }
 
-    private func schedulePopover(for levelId: Int64) {
+    private func schedulePopover(for level: RubricLevel) {
         hoverTask?.cancel()
         hoverTask = Task {
             do {
                 try await Task.sleep(nanoseconds: 500_000_000)
                 await MainActor.run {
                     withAnimation(uiFeatureFlags.interactionAnimation) {
-                        hoveredLevelId = levelId
+                        activePopoverLevel = level
                     }
                 }
             } catch {}
         }
     }
 
-    private func cancelPopover(for levelId: Int64) {
+    private func cancelPopover(for level: RubricLevel) {
         hoverTask?.cancel()
-        guard hoveredLevelId == levelId else { return }
+        guard activePopoverLevel?.id == level.id else { return }
         withAnimation(uiFeatureFlags.interactionAnimation) {
-            hoveredLevelId = nil
+            activePopoverLevel = nil
         }
     }
 }

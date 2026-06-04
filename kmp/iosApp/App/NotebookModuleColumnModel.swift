@@ -208,11 +208,19 @@ final class NotebookGridLayoutModel: ObservableObject {
     }
 
     func fixedSegmentsForCurrentView() -> [NotebookFixedColumn] {
-        [.name, .average]
+        let mode = UserDefaults.standard.string(forKey: "notebook.groupByWorkGroupMode") ?? "none"
+        if mode != "none" {
+            return [.name, .group, .average]
+        }
+        return [.name, .average]
     }
 
     var visibleFixedColumns: [NotebookFixedColumn] {
-        [.name]
+        let mode = UserDefaults.standard.string(forKey: "notebook.groupByWorkGroupMode") ?? "none"
+        if mode != "none" {
+            return [.name, .group]
+        }
+        return [.name]
     }
 
     func isFixedSegment(_ segment: NotebookDisplaySegment) -> Bool {

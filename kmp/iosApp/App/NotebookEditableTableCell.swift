@@ -377,12 +377,21 @@ struct NotebookEditableTableCell: View {
                 }
             default:
                 HStack(spacing: 6) {
-                    TextField(isEmptySummaryCell ? "Síntesis pendiente" : "", text: $textDraft)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .focused(focusedCellId, equals: cellId)
-                        .foregroundStyle(.primary)
-                        .submitLabel(.next)
-                        .onSubmit { saveTextAndNavigate() }
+                    if isNotebookIndividualSummaryColumn(column) {
+                        Text(textDraft.isEmpty ? "Síntesis pendiente" : textDraft)
+                            .font(.system(size: 13))
+                            .foregroundStyle(textDraft.isEmpty ? .tertiary : .primary)
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                    } else {
+                        TextField("", text: $textDraft)
+                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .focused(focusedCellId, equals: cellId)
+                            .foregroundStyle(.primary)
+                            .submitLabel(.next)
+                            .onSubmit { saveTextAndNavigate() }
+                    }
 
                     if isEmptySummaryCell {
                         Button {

@@ -116,18 +116,18 @@ struct RubricsWorkspaceView: View {
     var body: some View {
         HStack(spacing: 0) {
             VStack(spacing: 0) {
-                VStack(spacing: 12) {
-                    HStack(spacing: 10) {
+                VStack(spacing: 16) {
+                    HStack(spacing: 8) {
                         Image(systemName: "magnifyingglass")
                             .foregroundStyle(.secondary)
                         TextField("Buscar rúbrica, criterio o descripción…", text: $searchText)
                             .textFieldStyle(.plain)
                     }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 16)
+                    .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-                    HStack(spacing: 10) {
+                    HStack(spacing: 16) {
                         Picker("Curso", selection: $selectedClassId) {
                             Text("Todas").tag(Optional<Int64>.none)
                             ForEach(bridge.classes, id: \.id) { schoolClass in
@@ -162,7 +162,7 @@ struct RubricsWorkspaceView: View {
                         .buttonStyle(.borderedProminent)
                     }
                 }
-                .padding(16)
+                .padding(24)
 
                 List {
                     ForEach(groupedRubrics, id: \.key) { group in
@@ -198,19 +198,19 @@ struct RubricsWorkspaceView: View {
             }
             .frame(minWidth: 320, maxWidth: 380)
 
-            Divider().opacity(0.2)
+            Color.clear.frame(width: 8)
 
             Group {
                 if let rubric = selectedRubric {
                     let presentation = rubricPresentation(rubric)
                     ScrollView {
-                        VStack(alignment: .leading, spacing: 18) {
+                        VStack(alignment: .leading, spacing: 24) {
                             WorkspaceInspectorHero(
                                 title: presentation.title,
                                 subtitle: "\(className(for: rubric)) · \(teachingUnitName(for: rubric))"
                             )
 
-                            HStack(spacing: 12) {
+                            HStack(spacing: 16) {
                                 primaryActionButton(for: rubric)
                                 Menu {
                                     Button("Editar", systemImage: "square.and.pencil") {
@@ -235,7 +235,7 @@ struct RubricsWorkspaceView: View {
 
                             notebookUsageBlock(for: rubric)
 
-                            VStack(alignment: .leading, spacing: 10) {
+                            VStack(alignment: .leading, spacing: 16) {
                                 Text("Criterios")
                                     .font(.headline)
                                 ForEach(presentation.criteria) { item in
@@ -244,7 +244,7 @@ struct RubricsWorkspaceView: View {
                             }
 
                             if let usageSummary, !usageSummary.evaluationUsages.isEmpty {
-                                VStack(alignment: .leading, spacing: 10) {
+                                VStack(alignment: .leading, spacing: 16) {
                                     Text("Impacto evaluativo")
                                         .font(.headline)
                                     WorkspaceDetailBlock(
@@ -259,8 +259,8 @@ struct RubricsWorkspaceView: View {
                                                 .font(.caption.weight(.semibold))
                                                 .foregroundStyle(.secondary)
                                         }
-                                        .padding(12)
-                                        .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                        .padding(16)
+                                        .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                                     }
                                 }
                             } else {
@@ -273,14 +273,14 @@ struct RubricsWorkspaceView: View {
                         .padding(24)
                     }
                 } else {
-                    VStack(spacing: 18) {
+                    VStack(spacing: 24) {
                         WorkspaceEmptyState(
                             title: peMode ? "Selecciona una rúbrica EF" : "Selecciona una rúbrica",
                             subtitle: peMode
                                 ? "Crea o reutiliza rúbricas EF para seguridad, ejecución, cooperación y fair play."
                                 : "El banco de rúbricas centraliza criterios, clases vinculadas y acceso directo a evaluación."
                         )
-                        HStack(spacing: 12) {
+                        HStack(spacing: 16) {
                             Button(peMode ? "Nueva rúbrica EF" : "Nueva rúbrica") {
                                 onOpenBuilder()
                             }
@@ -395,7 +395,7 @@ struct RubricsWorkspaceView: View {
     }
 
     func compactUsageLine(for rubric: RubricDetail) -> some View {
-        WorkspaceFlowLayout(spacing: 10) {
+        WorkspaceFlowLayout(spacing: 8) {
             WorkspaceTag(text: "\(rubric.criteria.count) criterios", systemImage: "list.bullet.rectangle")
             WorkspaceTag(text: "\(levelCount(for: rubric)) niveles", systemImage: "chart.bar.xaxis")
             WorkspaceTag(text: "\(usageSummary?.classCount ?? linkedClassIds(for: rubric).count) clases", systemImage: "rectangle.3.group")
@@ -404,7 +404,7 @@ struct RubricsWorkspaceView: View {
     }
 
     func notebookUsageBlock(for rubric: RubricDetail) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Text("Uso en Cuaderno")
                     .font(.headline)
@@ -427,8 +427,8 @@ struct RubricsWorkspaceView: View {
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                     }
-                    .padding(12)
-                    .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .padding(16)
+                    .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
             } else {
                 WorkspaceDetailBlock(
@@ -468,8 +468,8 @@ struct RubricsWorkspaceView: View {
                 WorkspaceTag(text: "Peso \(item.weightText)", systemImage: "scalemass")
             }
         }
-        .padding(12)
-        .background(background, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(16)
+        .background(background, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     func fallback(_ value: String, empty placeholder: String) -> String {

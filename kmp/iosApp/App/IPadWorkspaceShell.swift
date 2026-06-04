@@ -469,6 +469,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
     case notebook
     case attendance
     case planner
+    case situations
     case diary
     case evaluationHub
     case rubrics
@@ -494,6 +495,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .notebook: return "Cuaderno"
         case .attendance: return "Asistencia"
         case .planner: return "Planner"
+        case .situations: return "Situaciones"
         case .diary: return "Diario de aula"
         case .evaluationHub: return "Evaluación"
         case .rubrics: return "Rúbricas"
@@ -519,6 +521,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .notebook: return "Registro evaluativo"
         case .attendance: return "Control diario y semanal"
         case .planner: return "Preparación lectiva"
+        case .situations: return "Programación curricular"
         case .diary: return "Trazabilidad de sesión"
         case .evaluationHub: return "Instrumentos y calendario"
         case .rubrics: return "Banco de rúbricas"
@@ -544,6 +547,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .notebook: return "book.closed.fill"
         case .attendance: return "checklist.checked"
         case .planner: return "calendar.badge.clock"
+        case .situations: return "doc.text.magnifyingglass"
         case .diary: return "doc.text.fill"
         case .evaluationHub: return "chart.bar.doc.horizontal"
         case .rubrics: return "checklist"
@@ -564,7 +568,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         switch self {
         case .dashboard, .courses, .students, .teacherRadar, .notebook:
             return .academic
-        case .attendance, .planner, .diary:
+        case .attendance, .planner, .situations, .diary:
             return .operations
         case .evaluationHub, .rubrics, .reports, .library:
             return .evaluation
@@ -754,7 +758,11 @@ struct AppWorkspaceShell: View {
                 }
             }
         }
+        #if os(macOS)
+        .navigationSplitViewStyle(.automatic)
+        #else
         .navigationSplitViewStyle(.balanced)
+        #endif
         #if os(macOS)
         .ignoresSafeArea(.all, edges: .leading)
         #endif
@@ -806,11 +814,13 @@ struct AppWorkspaceShell: View {
                 .environmentObject(bridge)
         }
         .task {
+            activeModule = AppWorkspaceModule(rawValue: persistedActiveModule) ?? .dashboard
+            
             await bridge.ensureClassesLoaded()
             try? await bridge.refreshStudentsDirectory()
             try? await bridge.refreshRubrics()
             try? await bridge.refreshRubricClassLinks()
-            activeModule = AppWorkspaceModule(rawValue: persistedActiveModule) ?? .dashboard
+            
             if persistedSelectedClassId > 0,
                bridge.classes.contains(where: { $0.id == Int64(persistedSelectedClassId) }) {
                 selectedClassId = Int64(persistedSelectedClassId)
@@ -844,6 +854,14 @@ struct AppWorkspaceShell: View {
         .onAppear(perform: syncRootSplitVisibility)
         .appOnChange(of: layoutState.isSidebarVisible) { _ in syncRootSplitVisibility() }
         .appOnChange(of: layoutState.isFocusModeEnabled) { _ in syncRootSplitVisibility() }
+        .appOnChange(of: rootSplitVisibility) { newVisibility in
+            // El sistema puede escribir directamente en rootSplitVisibility (swipe, auto-collapse).
+            // Sincronizamos de vuelta a layoutState para que el estado sea coherente.
+            let isVisible = (newVisibility != .detailOnly)
+            if layoutState.isSidebarVisible != isVisible && !layoutState.isFocusModeEnabled {
+                layoutState.isSidebarVisible = isVisible
+            }
+        }
     }
 
     var notebookToolbarMode: NotebookToolbarMode {
@@ -1814,6 +1832,7 @@ struct EFPlaceholderModuleView: View {
 struct AttendanceRowCard: View {
     @Environment(\.colorScheme) var colorScheme
     let row: AttendanceEntryRow
+    let isInjured: Bool
     let onPickStatus: (AttendanceStatusOption) -> Void
     let onSelect: () -> Void
     let isSaving: Bool
@@ -1843,6 +1862,14 @@ struct AttendanceRowCard: View {
                         if isSaving {
                             ProgressView()
                                 .controlSize(.mini)
+                        }
+                        if isInjured {
+                            Label("LESIÓN", systemImage: "cross.case.fill")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(.orange)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(.orange.opacity(0.14), in: Capsule())
                         }
                     }
                 }

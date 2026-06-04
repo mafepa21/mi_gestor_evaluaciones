@@ -48,6 +48,12 @@ struct NotebookModuleView: View {
     @State var highlightedRandomStudentId: Int64? = nil
     @State var selectedAttachmentPhoto: PhotosPickerItem?
     @State var isCreateCategoryAlertPresented = false
+    @State var isGroupManagementPresented = false
+    @State var classSituations: [LearningSituation] = []
+    @AppStorage("notebook.groupByWorkGroupMode") var groupByWorkGroupMode = "none"
+    var groupByWorkGroup: Bool {
+        groupByWorkGroupMode != "none"
+    }
     @State var categoryDraft = ""
     @State var editingCategoryId: String? = nil
     @State var isNotebookTabAlertPresented = false
@@ -350,6 +356,9 @@ struct NotebookModuleView: View {
                                 focusedCellId = nil
                             }
                         },
+                        onOpenGroupManagement: {
+                            isGroupManagementPresented = true
+                        },
                         secondaryActions: {
                             notebookCommandMenuContent(data: data, tabs: tabs, rows: rows)
                         }
@@ -372,7 +381,6 @@ struct NotebookModuleView: View {
                             pendingDeleteNotebookTab = tab
                         }
                     )
-                    Divider()
                 }
                 spreadsheetContent(data: data, rows: rows)
             }
@@ -382,18 +390,22 @@ struct NotebookModuleView: View {
                 Divider().opacity(0.16)
                 inspectorPanel(data: data, rows: rows)
                     .frame(width: 360)
-                    .background(NotebookStyle.surfaceMuted)
+                    .background(.ultraThinMaterial)
             }
         }
         .background(EvaluationBackdrop())
         .onAppear {
             gridLayoutModel.configure(classId: data.sheet.classId)
+            loadClassLearningSituations(classId: data.sheet.classId)
             if !isMacInspectorOnly {
                 scheduleToolbarStateSync(data: data)
             }
         }
-        .appOnChange(of: "\(data.sheet.classId)") { _ in
+        .appOnChange(of: "\(data.sheet.classId)") { newValue in
             gridLayoutModel.configure(classId: data.sheet.classId)
+            if let classId = Int64(newValue) {
+                loadClassLearningSituations(classId: classId)
+            }
         }
         .appOnChange(of: toolbarStateKey(data: data)) { _ in
             if !isMacInspectorOnly {
@@ -536,14 +548,12 @@ struct NotebookModuleView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .frame(height: notebookGridHeaderHeight, alignment: .topLeading)
-        .background(
-            NotebookStyle.surfaceSoft.opacity(0.9)
-                .overlay(alignment: .bottom) {
-                    Rectangle()
-                        .fill(NotebookStyle.softBorder)
-                        .frame(height: 1)
-                }
-        )
+        .background(.thinMaterial)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(NotebookStyle.softBorder)
+                .frame(height: 1)
+        }
     }
 
     var activeTabFixedWidth: CGFloat? {
@@ -561,8 +571,39 @@ struct NotebookModuleView: View {
         return min(maxFixedZoneWidth, max(minFixedZoneWidth, fixedZoneLiveWidth ?? stored))
     }
 
-    var minFixedZoneWidth: CGFloat { 220 }
+    var minFixedZoneWidth: CGFloat {
+        let visible = gridLayoutModel.visibleFixedColumns
+        let photoWidth: CGFloat = visible.contains(.photo) ? 52 : 0
+        let nameWidth: CGFloat = 156
+        let trailingWidth = visible.filter { $0 != .photo && $0 != .name }.reduce(CGFloat.zero) { partial, col in
+            partial + gridLayoutModel.defaultFixedWidth(for: col)
+        }
+        let spacing = CGFloat(max(visible.count - 1, 0)) * NotebookStyle.controlSpacing
+        let calculated = nameWidth + photoWidth + trailingWidth + spacing + 32 // Padding horizontal (16 * 2)
+        return max(220, calculated)
+    }
     var maxFixedZoneWidth: CGFloat { 700 }
+ 
+    func loadClassLearningSituations(classId: Int64) {
+        Task {
+            do {
+                let situations = try await bridge.learningSituations()
+                var filtered: [LearningSituation] = []
+                for sit in situations {
+                    let links = try await bridge.learningSituationClassLinks(id: sit.id)
+                    if links.contains(where: { $0.classId == classId }) {
+                        filtered.append(sit)
+                    }
+                }
+                let finalFiltered = filtered
+                await MainActor.run {
+                    self.classSituations = finalFiltered
+                }
+            } catch {
+                // ignore
+            }
+        }
+    }
 
     var showsNotebookInlineActions: Bool {
         false
@@ -737,7 +778,7 @@ struct NotebookModuleView: View {
             case .inspector:
                 inspectorPanel(data: data, rows: filteredRows(data: data))
                     .frame(minWidth: 330, idealWidth: 370, maxWidth: 430, maxHeight: .infinity)
-                    .background(NotebookStyle.surfaceMuted)
+                    .background(.ultraThinMaterial)
             }
         }
 
@@ -776,7 +817,15 @@ struct NotebookModuleView: View {
                 .sheet(item: $formulaEditRequest) { request in
                     formulaEditorSheet(request: request, data: data)
                 }
-                .sheet(isPresented: Binding(
+                .sheet(isPresented: $isGroupManagementPresented) {
+                    NotebookGroupManagementSheet(bridge: bridge) { message, style in
+                        showToast(message, style: style)
+                    }
+                    #if os(macOS)
+                    .frame(minWidth: 550, minHeight: 480)
+                    #endif
+                }
+                .appFullScreenCover(isPresented: Binding(
                     get: { bridge.showingBulkRubricEvaluation },
                     set: { isPresented in
                         if !isPresented {
@@ -787,11 +836,9 @@ struct NotebookModuleView: View {
                     RubricBulkEvaluationSheet(bridge: bridge)
                         #if os(macOS)
                         .frame(width: 1180, height: 760)
-                        #else
-                        .presentationDetents([.large])
                         #endif
                 }
-                .sheet(isPresented: Binding(
+                .appFullScreenCover(isPresented: Binding(
                     get: { isRubricEvaluationPresented },
                     set: { isPresented in
                         if !isPresented {
@@ -804,8 +851,6 @@ struct NotebookModuleView: View {
                         .environmentObject(bridge)
                         #if os(macOS)
                         .frame(minWidth: 980, minHeight: 700)
-                        #else
-                        .presentationDetents([.large])
                         #endif
                 }
                 .sheet(isPresented: Binding(
@@ -822,7 +867,7 @@ struct NotebookModuleView: View {
                         .presentationDragIndicator(.visible)
                     #endif
                 }
-                .navigationTitle("Cuaderno")
+                .navigationTitle(macPresentation == .full ? (currentClass?.name ?? "Cuaderno") : "Cuaderno")
                 .notebookNavigationSubtitle(notebookNavigationSubtitle(data: data))
                 .notebookKeyboardNavigation {
                     navigateFromFocused(direction: navigationDirection, data: data)
@@ -956,6 +1001,16 @@ struct NotebookModuleView: View {
     }
 
     func notebookNavigationSubtitle(data: NotebookUiStateData) -> String {
+        if macPresentation == .full {
+            let groupText = selectedGroupId.flatMap { groupName(for: $0, in: data) } ?? "Grupo completo"
+            let tabText = activeNotebookTab(data: data)?.title
+            let studentCount = filteredRows(data: data).count
+            let studentSuffix = studentCount == 1 ? "alumno" : "alumnos"
+            return [tabText, groupText, "\(studentCount) \(studentSuffix)"]
+                .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .joined(separator: " · ")
+        }
         let context = headerContextLine(in: data)
         let studentCount = filteredRows(data: data).count
         return "\(context) · \(studentCount) alumnos"

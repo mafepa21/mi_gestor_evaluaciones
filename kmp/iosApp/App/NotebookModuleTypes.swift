@@ -67,6 +67,7 @@ struct NotebookTableRow: Identifiable {
 enum NotebookDeletionKind {
     case column
     case category
+    case columns
 }
 
 struct NotebookDeletionImpactDraft: Identifiable {

@@ -1,33 +1,41 @@
-# iOS App (SwiftUI) - Integración con Shared KMP
+# Apple App (SwiftUI) - Integracion con Shared KMP
 
-Objetivo: ejecutar la capa compartida KMP desde una app SwiftUI en macOS (simulador iOS).
+Objetivo: ejecutar la capa compartida KMP desde targets SwiftUI nativos para iOS/iPadOS y macOS.
 
-## 1) Generar framework KMP
+## Estado actual
+
+- Version interna: `0.3.0-dev`.
+- Targets activos en XcodeGen: `MiGestorKMPiOS` y `MiGestorKMPMac`.
+- Fuentes iOS/iPadOS: `App/`.
+- Fuentes macOS especificas: `MacApp/`.
+- Servicios y componentes compartidos Apple: `AppleShared/`.
+
+## Generar framework KMP
 
 Desde `kmp/`:
 
-- `./scripts/build_ios_framework.sh` (actualmente deja un mensaje porque este milestone está en modo desktop-first)
+- `./scripts/build_apple_framework.sh`
 
-Cuando se reactiven targets iOS, la salida esperada será:
+Salidas esperadas:
 
-- `shared/build/bin/iosSimulatorArm64/debugFramework/shared.framework`
+- `iosApp/Frameworks/ios/MiGestorKit.framework`
+- `iosApp/Frameworks/macos/MiGestorKit.framework`
 
-## 2) Crear app en Xcode
+## Proyecto Xcode
 
-1. Crear proyecto iOS (`MiGestorKMPiOS`) con SwiftUI.
-2. Añadir `shared.framework` en "Frameworks, Libraries, and Embedded Content".
-3. En Build Settings, habilitar búsqueda del framework si no lo detecta automáticamente.
+El proyecto versionado se genera desde `project.yml` con XcodeGen. Si se cambia la lista de fuentes, paquetes o settings compartidos, actualizar primero `project.yml` y regenerar el proyecto.
 
-## 3) Conectar capa shared
+## Conexion con shared
 
 - Inicializar `KmpContainer` usando el `createIosDriver()` del módulo `data`.
-- Exponer adaptadores `ObservableObject` para consumir estados/flows de shared en SwiftUI.
+- Exponer adaptadores `ObservableObject` desde `KmpBridge.swift` para consumir estados/flows de shared en SwiftUI.
+- Mantener `KmpBridge.swift` como archivo sensible: tocarlo solo cuando el binding Swift-KMP lo requiera.
 
-## 4) Ejecución
+## Verificacion
 
-- Ejecutar en simulador iPhone (Apple Silicon: arm64 simulator).
-- Validar flujo mínimo: crear clase/alumno/evaluación/nota y leer cuaderno.
+- Desde la raiz: `scripts/verify_apple_builds.sh`.
+- El script regenera el proyecto si existe `xcodegen` y compila `MiGestorKMPMac` y `MiGestorKMPiOS`.
 
 ## Nota
 
-El bootstrap visual inicial está en `SwiftUiBootstrap.swift` y sirve como punto de arranque para conectar ViewModels compartidos.
+Flutter queda como legado o referencia pendiente de decision formal; el desarrollo Apple nuevo debe trabajar por defecto en `App/`, `AppleShared/` y `MacApp/`.

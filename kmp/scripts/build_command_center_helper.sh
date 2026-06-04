@@ -12,6 +12,10 @@ cd "$ROOT_DIR"
 
 export GRADLE_USER_HOME="${GRADLE_USER_HOME:-$ROOT_DIR/.gradle}"
 mkdir -p "$GRADLE_USER_HOME"
+GRADLE_JAVA_HOME_ARG=""
+if [ "${CI:-}" = "true" ] && [ -n "${JAVA_HOME:-}" ]; then
+    GRADLE_JAVA_HOME_ARG="-Dorg.gradle.java.home=$JAVA_HOME"
+fi
 
 HELPER_APP="$ROOT_DIR/commandCenterHelper/build/compose/binaries/main/app/MiGestorCommandCenter.app"
 HELPER_BIN="$ROOT_DIR/commandCenterHelper/build/compose/binaries/main/app/MiGestorCommandCenter.app/Contents/MacOS/MiGestorCommandCenter"
@@ -25,11 +29,11 @@ if [ -d "$HELPER_APP" ] && [ ! -x "$HELPER_BIN" ]; then
     mv "$HELPER_APP" "$STALE_APP"
 fi
 if [ -x "$LOCAL_GRADLE_BIN" ]; then
-    if ! "$LOCAL_GRADLE_BIN" --no-daemon ":commandCenterHelper:createDistributable"; then
+    if ! "$LOCAL_GRADLE_BIN" ${GRADLE_JAVA_HOME_ARG:+"$GRADLE_JAVA_HOME_ARG"} --no-daemon ":commandCenterHelper:createDistributable"; then
         BUILD_FAILED=1
     fi
 else
-    if ! ./gradlew --no-daemon ":commandCenterHelper:createDistributable"; then
+    if ! ./gradlew ${GRADLE_JAVA_HOME_ARG:+"$GRADLE_JAVA_HOME_ARG"} --no-daemon ":commandCenterHelper:createDistributable"; then
         BUILD_FAILED=1
     fi
 fi

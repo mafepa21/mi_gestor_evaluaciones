@@ -8,13 +8,14 @@ Mi Gestor Evaluaciones debe ser una app docente fiable para uso diario, con una 
 
 ## Fase 0 - Orden y trazabilidad
 
-Estado: en curso.
+Estado: casi cerrada.
 
 - Crear gobierno documental del repo.
 - Mantener changelog desde el estado actual.
 - Usar PRs pequenos con plantilla.
 - Separar documentacion canonica de auditorias temporales.
 - Agrupar el trabajo historico pendiente en paquetes revisables.
+- Mantener CI minimo para KMP/data y builds Apple antes de avanzar hacia releases.
 
 ## Fase 1 - Estabilizacion funcional critica
 
@@ -59,7 +60,9 @@ Prioridad: futura.
 ## Backlog de documentacion pendiente
 
 - Crear matriz de modulos: estado, fuente de verdad, riesgos, pruebas y proxima accion.
-- Crear guia de release interna.
+- Consolidar guia de release interna con evidencias reales de CI verde.
 - Crear guia de arquitectura KMP + Apple actualizada.
 - Crear checklist de due diligence tecnica.
 - Revisar si la app Flutter original queda como legado, referencia o target activo.
+- Definir politica formal de fixtures anonimizados y privacidad para datos de alumnado.
+- Revisar limpieza de ramas remotas historicas cuando no haya PRs abiertos dependientes.

@@ -49,6 +49,7 @@ No tocar salvo peticion explicita:
 
 | Intencion | Skill |
 |---|---|
+| Registrar avance, PR y documentacion | `registrar-avance-app` |
 | UI/UX SwiftUI | `swiftui-polish` |
 | Bug SwiftUI | `swiftui-bugfix` |
 | Funcion nativa Apple | `swiftui-native-feature` |
@@ -59,6 +60,16 @@ No tocar salvo peticion explicita:
 | Servicios Apple | `apple-service-patch` |
 
 Usar una sola skill principal por tarea, salvo que el usuario pida una intervencion transversal.
+
+### Skill de registro obligatoria
+
+Usar `registrar-avance-app` al cerrar cualquier cambio que modifique producto, UI, KMP, SQLDelight, build, tests, documentacion relevante o decisiones tecnicas.
+
+La skill no sustituye a la skill tecnica principal. Se usa como capa final de trazabilidad:
+- primero aplicar la skill tecnica que corresponda,
+- despues usar `registrar-avance-app` para actualizar changelog, roadmap, ADRs, evidencias, commits y nota de PR.
+
+Referencia completa: `docs/AGENT_WORKFLOW.md`.
 
 ## Reduccion de alcance
 
@@ -179,6 +190,17 @@ Posibles comprobaciones:
 - Verificacion SQLDelight si se toca `kmp/data/`.
 
 No inventar comandos si no estan claros en el repo.
+
+## Flujo Git y PR
+
+Por defecto:
+- Revisar `git status --short --branch` antes de tocar archivos.
+- Agrupar commits por intencion: `docs`, `feat`, `fix`, `ui`, `data`, `kmp`, `build`, `test`, `refactor`.
+- No mezclar cambios de UI, KMP, SQLDelight y documentacion en un mismo commit salvo dependencia real.
+- Abrir o actualizar PR con la plantilla de `.github/pull_request_template.md`.
+- Registrar pruebas ejecutadas y pruebas no ejecutadas con motivo concreto.
+
+Para el proceso completo, seguir `docs/AGENT_WORKFLOW.md` y `docs/REPO_GOVERNANCE.md`.
 
 ## Entregable
 

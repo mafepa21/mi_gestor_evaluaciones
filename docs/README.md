@@ -5,6 +5,7 @@ Este directorio es la fuente principal para entender que existe, que se ha decid
 ## Documentos canonicos
 
 - [REPO_GOVERNANCE.md](REPO_GOVERNANCE.md): reglas para ramas, commits, PRs, changelog, decisiones y versionado.
+- [AGENT_WORKFLOW.md](AGENT_WORKFLOW.md): instrucciones operativas para que cualquier agente use las skills y registre avances.
 - [ROADMAP.md](ROADMAP.md): mapa vivo de producto y prioridades.
 - [CHANGELOG.md](CHANGELOG.md): cambios relevantes por version o tanda de trabajo.
 - [PROJECT_BASELINE_2026-06-04.md](PROJECT_BASELINE_2026-06-04.md): fotografia inicial creada con la app ya empezada.

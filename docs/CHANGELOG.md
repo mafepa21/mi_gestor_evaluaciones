@@ -16,6 +16,7 @@ El formato sigue una variante practica de Keep a Changelog:
 ### Docs
 
 - Se crea la estructura documental base del repositorio: indice, gobierno, roadmap, baseline inicial y plantilla de PR.
+- Se documenta el workflow para agentes y el uso obligatorio de `registrar-avance-app` como capa final de trazabilidad.
 
 ## Baseline historico - 2026-06-04
 

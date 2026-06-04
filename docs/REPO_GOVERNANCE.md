@@ -12,6 +12,19 @@ Mantener la app preparada para escalar, colaborar, auditar cambios y, si llega e
 - La documentacion vive cerca de la decision: producto en `docs/`, arquitectura en `kmp/docs/architecture/`, UI/UX en `kmp/docs/uiux/`.
 - No mezclar refactors globales con features.
 - No tocar KMP, SQLDelight o `KmpBridge.swift` sin justificarlo expresamente.
+- Cualquier agente debe seguir `AGENTS.md`, `docs/AGENT_WORKFLOW.md` y la skill `registrar-avance-app` al cerrar cambios.
+
+## Workflow para agentes
+
+La guia operativa para agentes vive en `docs/AGENT_WORKFLOW.md`.
+
+Regla corta:
+
+1. Elegir una skill tecnica principal para implementar o revisar.
+2. Hacer cambios pequenos y verificables.
+3. Usar `registrar-avance-app` como capa final de documentacion y trazabilidad.
+4. Agrupar commits por intencion.
+5. Abrir o actualizar PR con pruebas, riesgos y alcance.
 
 ## Ramas
 

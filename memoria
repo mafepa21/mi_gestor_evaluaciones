@@ -405,6 +405,24 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-06-04 - Análisis agregados de tendencias y cobertura curricular LOMLOE mediante Apple Intelligence
+
+Resumen:
+- Se implementaron agregaciones eficientes a nivel de base de datos SQLDelight (KMP) para analizar trayectorias de notas (últimos 90 días), incidencias de comportamiento, ausencias y cobertura curricular LOMLOE sin saturar el contexto de la IA local.
+- Se expuso la estructura agregada `AITrendsSnapshot` y la función del bridge en Swift, enriqueciendo los generadores de evidencias de tutoría y riesgo académico en `AppleFoundationContextualAIService` y `AppleFoundationReportService`.
+- Se añadieron componentes de UI premium en SwiftUI de 8pt: panel de tendencias del alumno (`NotebookStudentInspector`), widget de auditoría LOMLOE del grupo (`DashboardView`) con barra de progreso y bloque de parámetros históricos en `RubricsReportsWorkspaceViews`.
+- Cambios ubicados en:
+  - SQLDelight y Usecase: [AppDatabase.sq](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/data/src/commonMain/sqldelight/com/migestor/data/db/AppDatabase.sq), [GetAITrendsAndMetricsUseCase.kt](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/shared/src/commonMain/kotlin/com/migestor/shared/usecase/GetAITrendsAndMetricsUseCase.kt)
+  - Bridge & Services: [KmpBridge.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/KmpBridge.swift), [AppleFoundationContextualAIService.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/AppleFoundationContextualAIService.swift)
+  - SwiftUI: [NotebookStudentInspector.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/NotebookStudentInspector.swift), [DashboardView.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/DashboardView.swift)
+
+Validación:
+- Verificación automática y exitosa de las compilaciones nativas de macOS (`MiGestorKMPMac`) y iOS Simulator (`MiGestorKMPiOS`) mediante `./scripts/verify_apple_builds.sh` (BUILD SUCCESSFUL).
+
+Notas para futuras conversaciones:
+- Las consultas en SQLDelight requieren conversiones explícitas a `Long` (`0L`) y coerciones seguras de `Double` para evitar desajustes de tipado en Kotlin Native.
+- Los colores de SwiftUI en condiciones ternarias de foregroundStyle deben ser tipados explícitamente (`Color.primary` y `Color.orange`) para evitar ambigüedades en Xcode 16.
+
 ### 2026-06-03 - Corrección de escala de notas por rúbricas en iOS/macOS y mapeo completo de sync
 
 Resumen:

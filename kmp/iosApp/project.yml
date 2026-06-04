@@ -8,6 +8,9 @@ packages:
   CoreXLSX:
     url: https://github.com/CoreOffice/CoreXLSX.git
     from: 0.14.2
+  ZIPFoundation:
+    url: https://github.com/weichsel/ZIPFoundation.git
+    from: 0.9.19
 targets:
   MiGestorKMPiOS:
     type: application
@@ -57,8 +60,10 @@ targets:
     dependencies:
       - framework: Frameworks/ios/MiGestorKit.framework
       - package: CoreXLSX
+      - package: ZIPFoundation
     preBuildScripts:
       - name: Build KMP Framework
+        basedOnDependencyAnalysis: false
         script: |
           set -euo pipefail
           cd "${SRCROOT}/.."
@@ -102,8 +107,10 @@ targets:
     dependencies:
       - framework: Frameworks/macos/MiGestorKit.framework
       - package: CoreXLSX
+      - package: ZIPFoundation
     preBuildScripts:
       - name: Build KMP Framework
+        basedOnDependencyAnalysis: false
         script: |
           set -euo pipefail
           cd "${SRCROOT}/.."
@@ -121,3 +128,18 @@ targets:
           ./scripts/build_command_center_helper.sh
         outputFiles:
           - "$(SRCROOT)/../commandCenterHelper/build/compose/binaries/main/app/MiGestorCommandCenter.app/Contents/MacOS/MiGestorCommandCenter"
+    postBuildScripts:
+      - name: Embed Command Center Helper
+        basedOnDependencyAnalysis: false
+        script: |
+          set -euo pipefail
+          HELPER_APP="${SRCROOT}/../commandCenterHelper/build/compose/binaries/main/app/MiGestorCommandCenter.app"
+          DESTINATION="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/MiGestorCommandCenter.app"
+          if [ ! -d "${HELPER_APP}" ]; then
+            echo "error: Command Center helper app not found at ${HELPER_APP}"
+            exit 1
+          fi
+          mkdir -p "$(dirname "${DESTINATION}")"
+          /usr/bin/ditto "${HELPER_APP}" "${DESTINATION}"
+        outputFiles:
+          - "$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/MiGestorCommandCenter.app/Contents/MacOS/MiGestorCommandCenter"

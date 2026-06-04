@@ -62,4 +62,16 @@ rm -rf "$OUT_DIR/MiGestorKit.framework"
 mkdir -p "$OUT_DIR"
 cp -R "$FRAMEWORK_SRC" "$OUT_DIR/"
 
+if [ "$APPLE_PLATFORM" = "macosx" ]; then
+    echo "Reemplazando enlaces simbólicos de Headers y Modules en el framework de macOS para compatibilidad con Swift Explicit Modules..."
+    FW_DIR="$OUT_DIR/MiGestorKit.framework"
+    if [ -d "$FW_DIR/Versions/A" ]; then
+        # Reemplazamos Headers y Modules en la raíz por directorios físicos reales copiados de Versions/A
+        rm -f "$FW_DIR/Headers" "$FW_DIR/Modules"
+        cp -R "$FW_DIR/Versions/A/Headers" "$FW_DIR/Headers"
+        cp -R "$FW_DIR/Versions/A/Modules" "$FW_DIR/Modules"
+    fi
+fi
+
 echo "SUCCESS: Framework actualizado en $OUT_DIR"
+

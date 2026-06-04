@@ -67,6 +67,19 @@ extension View {
     }
 
     @ViewBuilder
+    func appFullScreenCover<Item: Identifiable, Content: View>(
+        item: Binding<Item?>,
+        onDismiss: (() -> Void)? = nil,
+        @ViewBuilder content: @escaping (Item) -> Content
+    ) -> some View {
+#if os(macOS)
+        self.sheet(item: item, onDismiss: onDismiss, content: content)
+#else
+        self.fullScreenCover(item: item, onDismiss: onDismiss, content: content)
+#endif
+    }
+
+    @ViewBuilder
     func appNavigationBarHidden(_ hidden: Bool) -> some View {
 #if os(macOS)
         self

@@ -17,6 +17,7 @@ public final class AppleBackupService: ObservableObject {
     public let backupsDirectoryURL: URL
     public let databaseURL: URL
     public let attachmentsURL: URL
+    public let learningSituationsURL: URL
     private let retentionLimit = 10
 
     public static let shared = AppleBackupService()
@@ -32,6 +33,7 @@ public final class AppleBackupService: ObservableObject {
         // Attachments directory matches standard location used by NotebookEvidence
         let docDir = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first ?? appDataURL
         self.attachmentsURL = docDir.appendingPathComponent("NotebookEvidence", isDirectory: true)
+        self.learningSituationsURL = docDir.appendingPathComponent("LearningSituations", isDirectory: true)
 
         try? ensureDirectoriesExist()
     }
@@ -108,6 +110,12 @@ public final class AppleBackupService: ObservableObject {
             if fileManager.fileExists(atPath: attachmentsURL.path) {
                 try copyDirectoryContents(from: attachmentsURL, to: destinationAttachmentsURL)
             }
+
+            let destinationLearningSituationsURL = packageURL.appendingPathComponent("learning-situations", isDirectory: true)
+            try fileManager.createDirectory(at: destinationLearningSituationsURL, withIntermediateDirectories: true)
+            if fileManager.fileExists(atPath: learningSituationsURL.path) {
+                try copyDirectoryContents(from: learningSituationsURL, to: destinationLearningSituationsURL)
+            }
             
             // 3. Compute stats
             let classCount = countRows(in: databaseURL.path, table: "classes")
@@ -178,6 +186,11 @@ public final class AppleBackupService: ObservableObject {
             for relativePath in attachmentFiles {
                 let fileURL = destinationAttachmentsURL.appendingPathComponent(relativePath)
                 checksumMap["attachments/\(relativePath)"] = try calculateSHA256(for: fileURL)
+            }
+            let situationFiles = try getRelativeFiles(in: destinationLearningSituationsURL)
+            for relativePath in situationFiles {
+                let fileURL = destinationLearningSituationsURL.appendingPathComponent(relativePath)
+                checksumMap["learning-situations/\(relativePath)"] = try calculateSHA256(for: fileURL)
             }
             
             let checksumsData = try encoder.encode(checksumMap)
@@ -300,6 +313,15 @@ public final class AppleBackupService: ObservableObject {
             let packageAttachments = packageURL.appendingPathComponent("attachments", isDirectory: true)
             if fileManager.fileExists(atPath: packageAttachments.path) {
                 try copyDirectoryContents(from: packageAttachments, to: attachmentsURL)
+            }
+
+            if fileManager.fileExists(atPath: learningSituationsURL.path) {
+                try fileManager.removeItem(at: learningSituationsURL)
+            }
+            try fileManager.createDirectory(at: learningSituationsURL, withIntermediateDirectories: true)
+            let packageLearningSituations = packageURL.appendingPathComponent("learning-situations", isDirectory: true)
+            if fileManager.fileExists(atPath: packageLearningSituations.path) {
+                try copyDirectoryContents(from: packageLearningSituations, to: learningSituationsURL)
             }
             
             // 5. Trigger restart requirements flag

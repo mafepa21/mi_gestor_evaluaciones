@@ -253,9 +253,7 @@ final class AppleFoundationReportService {
             #endif
             return fallbackDraft(from: context)
         } catch {
-            AppleFoundationModelSupport.recordRuntimeFailure(error)
-            AIReportTelemetry.recordRuntimeFailure(kind: context.kind, error: error)
-            AIReportTelemetry.recordFailure(kind: context.kind, message: error.localizedDescription)
+            recordGenerationFailure(error, kind: context.kind)
             return fallbackDraft(from: context)
         }
     }
@@ -318,8 +316,7 @@ final class AppleFoundationReportService {
             do {
                 return try await refineActiveDraftLocally(with: cleaned, context: context)
             } catch {
-                AppleFoundationModelSupport.recordRuntimeFailure(error)
-                AIReportTelemetry.recordRuntimeFailure(kind: context.kind, error: error)
+                recordGenerationFailure(error, kind: context.kind)
                 return fallbackDraft(from: context)
             }
         }
@@ -336,13 +333,14 @@ final class AppleFoundationReportService {
         guard let session = activeReportSessionStorage as? LanguageModelSession else {
             throw AIReportServiceError.insufficientContext("No hay un borrador activo para refinar.")
         }
+        let boundedInstruction = promptFragment(cleaned, limit: 480)
         let response = try await session.respond(
             to: """
             Refina el último borrador manteniendo estrictamente los mismos hechos verificables.
-            Instrucción del docente: \(cleaned)
+            Instrucción del docente: \(boundedInstruction)
 
-            Tipo de informe: \(context.kind.title)
-            Destino específico: \(context.studentName ?? context.className)
+            Tipo de informe: \(promptFragment(context.kind.title, limit: 80))
+            Destino específico: \(promptFragment(context.studentName ?? context.className, limit: 120))
             No añadas notas, causas, diagnósticos, sanciones ni etiquetas sensibles.
             Si es Comentario LOMLOE, conserva la estructura competencial y no menciones la nota numérica.
             """,
@@ -394,14 +392,16 @@ final class AppleFoundationReportService {
         audience: AIReportAudience,
         tone: AIReportTone
     ) -> String {
-        let metrics = context.metrics.prefix(4).map { "- \($0.title): \($0.value)" }.joined(separator: "\n")
-        let facts = context.factLines.prefix(6).map { "- \($0)" }.joined(separator: "\n")
-        let strengths = context.strengths.isEmpty ? "- Sin fortalezas concluyentes." : context.strengths.prefix(4).map { "- \($0)" }.joined(separator: "\n")
-        let needsAttention = context.needsAttention.isEmpty ? "- Sin alertas concluyentes." : context.needsAttention.prefix(4).map { "- \($0)" }.joined(separator: "\n")
-        let actions = context.recommendedActions.isEmpty ? "- Mantener recogida de evidencias." : context.recommendedActions.prefix(4).map { "- \($0)" }.joined(separator: "\n")
-        let notes = context.supportNotes.isEmpty ? "- Sin notas de apoyo adicionales." : context.supportNotes.prefix(3).map { "- \($0)" }.joined(separator: "\n")
-        let curriculumReferences = context.curriculumReferences.isEmpty ? "- Sin referencias curriculares preseleccionadas." : context.curriculumReferences.prefix(3).map { "- \($0)" }.joined(separator: "\n")
-        let promptDirectives = context.promptDirectives.isEmpty ? "- Redacción general prudente." : context.promptDirectives.prefix(3).map { "- \($0)" }.joined(separator: "\n")
+        let metrics = context.metrics.prefix(4).map {
+            "- \(promptFragment($0.title, limit: 60)): \(promptFragment($0.value, limit: 60))"
+        }.joined(separator: "\n")
+        let facts = promptLines(context.factLines, maxItems: 6, itemLimit: 120, fallback: "Sin hechos adicionales.")
+        let strengths = promptLines(context.strengths, maxItems: 4, itemLimit: 100, fallback: "Sin fortalezas concluyentes.")
+        let needsAttention = promptLines(context.needsAttention, maxItems: 4, itemLimit: 100, fallback: "Sin alertas concluyentes.")
+        let actions = promptLines(context.recommendedActions, maxItems: 4, itemLimit: 100, fallback: "Mantener recogida de evidencias.")
+        let notes = promptLines(context.supportNotes, maxItems: 3, itemLimit: 100, fallback: "Sin notas de apoyo adicionales.")
+        let curriculumReferences = promptLines(context.curriculumReferences, maxItems: 3, itemLimit: 100, fallback: "Sin referencias curriculares preseleccionadas.")
+        let promptDirectives = promptLines(context.promptDirectives, maxItems: 3, itemLimit: 100, fallback: "Redacción general prudente.")
         let audienceDirectives: String = {
             switch audience {
             case .docente:
@@ -426,15 +426,15 @@ final class AppleFoundationReportService {
         return """
         Genera un borrador estructurado para un informe escolar.
 
-        Tipo de informe: \(context.kind.title)
-        Clase: \(context.className)
-        Curso: \(context.courseLabel ?? "No especificado")
-        Trimestre: \(context.termLabel ?? "No especificado")
+        Tipo de informe: \(promptFragment(context.kind.title, limit: 80))
+        Clase: \(promptFragment(context.className, limit: 100))
+        Curso: \(promptFragment(context.courseLabel ?? "No especificado", limit: 80))
+        Trimestre: \(promptFragment(context.termLabel ?? "No especificado", limit: 80))
         Destinatario principal: \(audience.promptLabel)
         Tono: \(tone.rawValue)
-        Destino específico: \(context.studentName ?? context.className)
-        Resumen base: \(context.summary)
-        Nota de calidad de datos: \(context.dataQualityNote ?? "Sin incidencias de calidad reseñables.")
+        Destino específico: \(promptFragment(context.studentName ?? context.className, limit: 120))
+        Resumen base: \(promptFragment(context.summary, limit: 320))
+        Nota de calidad de datos: \(promptFragment(context.dataQualityNote ?? "Sin incidencias de calidad reseñables.", limit: 180))
         Nota interna orientativa: \(context.numericScore.map { IosFormatting.decimal(from: $0) } ?? "Sin nota consolidada")
 
         Métricas verificables
@@ -482,7 +482,35 @@ final class AppleFoundationReportService {
         """
     }
 
+    private func promptLines(
+        _ lines: [String],
+        maxItems: Int,
+        itemLimit: Int,
+        fallback: String
+    ) -> String {
+        guard !lines.isEmpty else { return "- \(fallback)" }
+        return lines.prefix(maxItems)
+            .map { "- \(promptFragment($0, limit: itemLimit))" }
+            .joined(separator: "\n")
+    }
+
+    private func promptFragment(_ text: String, limit: Int) -> String {
+        let normalized = text
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+        guard normalized.count > limit else { return normalized }
+        return "\(normalized.prefix(limit))..."
+    }
+
     #endif
+
+    private func recordGenerationFailure(_ error: Error, kind: KmpBridge.ReportKind) {
+        let failureKind = AppleFoundationModelSupport.runtimeFailureKind(for: error)
+        if failureKind != "exceededContextWindowSize" {
+            AppleFoundationModelSupport.recordRuntimeFailure(error)
+        }
+        AIReportTelemetry.recordFailure(kind: kind, message: failureKind)
+    }
 
     private func fallbackDraft(from context: KmpBridge.ReportGenerationContext) -> AIReportDraft {
         let strengths = Array((context.strengths.isEmpty ? context.factLines : context.strengths).prefix(4))

@@ -31,12 +31,8 @@ struct PendingEvaluationPickerSheet: View {
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         #endif
-        .sheet(item: $selectedTarget) { target in
+        .appFullScreenCover(item: $selectedTarget) { target in
             AgendaRubricEvaluationSheet(bridge: bridge, target: target)
-                #if !os(macOS)
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
-                #endif
                 .onDisappear {
                     dismiss()
                 }

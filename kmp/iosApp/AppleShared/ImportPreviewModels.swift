@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 
 extension UTType {
     static let xlsx = UTType(filenameExtension: "xlsx", conformingTo: .data)!
+    static let docx = UTType(filenameExtension: "docx", conformingTo: .data)!
 }
 
 struct AppleStudentImportPreview: Identifiable {

@@ -810,6 +810,7 @@ final class KmpBridge: ObservableObject {
     private var syncNeedsAnotherPass = false
     private var isAppInForeground = true
     private var lastLocalMutationAt: Date = .distantPast
+    private var lastCheckedDbModificationDate: Date = .distantPast
     private var lastSuccessfulSyncAt: Date = .distantPast
     private var lastFullPullAt: Date = .distantPast
     private var lastSilentSyncAttemptAt: Date = .distantPast
@@ -909,6 +910,12 @@ final class KmpBridge: ObservableObject {
         self.pairedSyncHost = syncSecureStore.loadString(key: "sync.host")
         self.pairedServerId = syncSecureStore.loadString(key: "sync.server.id")
         self.pairedServerFingerprint = syncSecureStore.loadString(key: "sync.server.fingerprint")
+        
+        #if os(macOS)
+        self.pairedSyncHost = "127.0.0.1"
+        self.syncToken = "loopback-token"
+        self.pairedServerFingerprint = nil
+        #endif
 
         self.lanSyncDiscovery.onPeersChanged = { [weak self] peers in
             Task { @MainActor in
@@ -1798,6 +1805,46 @@ final class KmpBridge: ObservableObject {
             .sorted { $0.startAt.toEpochMilliseconds() < $1.startAt.toEpochMilliseconds() }
     }
 
+    func plannerSaveCalendarEvent(
+        id: Int64?,
+        classId: Int64?,
+        title: String,
+        description: String?,
+        startEpochMs: Int64,
+        endEpochMs: Int64
+    ) async throws -> Int64 {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let savedId = try await container.calendarRepository.saveEvent(
+            id: kotlinLong(id),
+            classId: kotlinLong(classId),
+            title: title,
+            description: description,
+            startEpochMs: startEpochMs,
+            endEpochMs: endEpochMs,
+            externalProvider: nil,
+            externalId: nil,
+            authorUserId: nil,
+            updatedAtEpochMs: nowMs,
+            deviceId: localDeviceId,
+            syncVersion: 1
+        ).int64Value
+        
+        enqueueLocalChange(
+            entity: "calendar_event",
+            id: "\(savedId)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "id": savedId,
+                "classId": classId ?? 0,
+                "title": title,
+                "description": description ?? "",
+                "startEpochMs": startEpochMs,
+                "endEpochMs": endEpochMs
+            ]
+        )
+        return savedId
+    }
+
     func plannerSaveTeacherSchedule(
         scheduleId: Int64,
         ownerUserId: Int64,
@@ -2078,6 +2125,7 @@ final class KmpBridge: ObservableObject {
         teacherScheduleSlotId: Int64? = nil,
         startTime: String? = nil,
         endTime: String? = nil,
+        learningSituationSessionPlanId: Int64? = nil,
         status: SessionStatus
     ) async throws -> Int64 {
         let session = PlanningSession(
@@ -2098,6 +2146,7 @@ final class KmpBridge: ObservableObject {
             teacherScheduleSlotId: teacherScheduleSlotId.map { KotlinLong(value: $0) },
             startTime: startTime,
             endTime: endTime,
+            learningSituationSessionPlanId: learningSituationSessionPlanId.map { KotlinLong(value: $0) },
             status: status
         )
         let sessionId = try await container.plannerRepository.upsertSession(session: session).int64Value
@@ -2127,6 +2176,9 @@ final class KmpBridge: ObservableObject {
         }
         if let endTime {
             payload["endTime"] = endTime
+        }
+        if let learningSituationSessionPlanId {
+            payload["learningSituationSessionPlanId"] = learningSituationSessionPlanId
         }
         enqueueLocalChange(
             entity: "planning_session",
@@ -3752,6 +3804,498 @@ final class KmpBridge: ObservableObject {
         try await container.configurationTemplateRepository.listTemplateVersions(templateId: templateId)
     }
 
+    func learningSituations() async throws -> [LearningSituation] {
+        try await container.learningSituationsRepository.listSituations()
+    }
+
+    func deleteLearningSituation(id: Int64) async throws {
+        try await container.learningSituationsRepository.deleteSituation(id: id)
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        enqueueLocalChange(
+            entity: "learning_situation",
+            id: "\(id)",
+            updatedAtEpochMs: nowMs,
+            payload: ["id": id],
+            op: "delete"
+        )
+    }
+
+    func learningSituationVersions(id: Int64) async throws -> [LearningSituationVersion] {
+
+        try await container.learningSituationsRepository.listVersions(learningSituationId: id)
+    }
+
+    func learningSituationClassLinks(id: Int64) async throws -> [LearningSituationClassLink] {
+        try await container.learningSituationsRepository.listClassLinks(learningSituationId: id)
+    }
+
+    func addLearningSituationClassLink(situationId: Int64, classId: Int64) async throws {
+        let current = try await container.learningSituationsRepository.listClassLinks(learningSituationId: situationId)
+        var classIds = Set(current.map { $0.classId })
+        if !classIds.contains(classId) {
+            classIds.insert(classId)
+            try await container.learningSituationsRepository.replaceClassLinks(
+                learningSituationId: situationId,
+                classIds: Array(classIds).sorted().map { KotlinLong(value: $0) }
+            )
+            let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+            enqueueLocalChange(
+                entity: "learning_situation_class_link",
+                id: "\(situationId)-\(classId)",
+                updatedAtEpochMs: nowMs,
+                payload: ["learningSituationId": situationId, "classId": classId]
+            )
+        }
+    }
+
+    func learningSituationResources(id: Int64) async throws -> [LearningSituationLinkedResource] {
+        try await container.learningSituationsRepository.listLinkedResources(learningSituationId: id)
+    }
+
+    func learningSituationSessionPlan(id: Int64) async throws -> LearningSituationSessionPlan? {
+        try await container.learningSituationsRepository.getSessionPlan(id: id)
+    }
+
+    func confirmLearningSituationImport(
+        draft: LearningSituationImportDraft,
+        existingSituationId: Int64? = nil
+    ) async throws -> Int64 {
+        guard !draft.selectedClassIds.isEmpty else {
+            throw NSError(domain: "LearningSituations", code: 1, userInfo: [NSLocalizedDescriptionKey: "Selecciona al menos un grupo antes de guardar."])
+        }
+        let storedURL = try LearningSituationDocumentStore().persistSourceDocument(from: draft.sourceURL, sha256: draft.sha256)
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let trace = AuditTrace(
+            authorUserId: nil,
+            createdAt: Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMs),
+            updatedAt: Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMs),
+            associatedGroupId: nil,
+            deviceId: localDeviceId,
+            syncVersion: 1
+        )
+        let situationId = try await container.learningSituationsRepository.saveSituation(
+            situation: LearningSituation(
+                id: existingSituationId ?? 0,
+                title: draft.title,
+                stageLabel: draft.stageLabel,
+                courseLabel: draft.courseLabel,
+                subjectLabel: draft.subjectLabel,
+                termLabel: draft.termLabel,
+                centerLabel: draft.centerLabel,
+                sessionCount: Int32(draft.sessionCount),
+                challenge: draft.challenge,
+                finalProduct: draft.finalProduct,
+                payloadJson: draft.payloadJSON,
+                status: .active,
+                trace: trace
+            )
+        ).int64Value
+        let warningJSON = (try? JSONEncoder().encode(draft.warnings))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+        _ = try await container.learningSituationsRepository.saveVersion(
+            version: LearningSituationVersion(
+                id: 0,
+                learningSituationId: situationId,
+                versionNumber: 0,
+                originalFileName: draft.sourceFileName,
+                sha256: draft.sha256,
+                localPath: storedURL.path,
+                sizeBytes: draft.sizeBytes,
+                payloadJson: draft.payloadJSON,
+                warningsJson: warningJSON,
+                trace: trace
+            )
+        )
+        let acceptedVersionNumber = try await container.learningSituationsRepository
+            .listVersions(learningSituationId: situationId)
+            .first?.versionNumber ?? 1
+        try await container.learningSituationsRepository.replaceClassLinks(
+            learningSituationId: situationId,
+            classIds: draft.selectedClassIds.sorted().map { KotlinLong(value: $0) }
+        )
+        enqueueLocalChange(
+            entity: "learning_situation",
+            id: "\(situationId)",
+            updatedAtEpochMs: nowMs,
+            payload: learningSituationSyncPayload(id: situationId, draft: draft)
+        )
+        enqueueLocalChange(
+            entity: "learning_situation_version",
+            id: "\(situationId)-\(draft.sha256)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "learningSituationId": situationId,
+                "versionNumber": acceptedVersionNumber,
+                "originalFileName": draft.sourceFileName,
+                "sha256": draft.sha256,
+                "sizeBytes": draft.sizeBytes,
+                "payloadJson": draft.payloadJSON,
+                "warningsJson": warningJSON
+            ]
+        )
+        for classId in draft.selectedClassIds {
+            enqueueLocalChange(
+                entity: "learning_situation_class_link",
+                id: "\(situationId)-\(classId)",
+                updatedAtEpochMs: nowMs,
+                payload: ["learningSituationId": situationId, "classId": classId]
+            )
+        }
+        try await uploadLearningSituationDocumentIfPaired(at: storedURL, sha256: draft.sha256)
+        return situationId
+    }
+
+    func duplicateLearningSituation(_ source: LearningSituation, classIds: [Int64]) async throws -> Int64 {
+        let versions = try await learningSituationVersions(id: source.id)
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let trace = AuditTrace(
+            authorUserId: nil,
+            createdAt: Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMs),
+            updatedAt: Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMs),
+            associatedGroupId: nil,
+            deviceId: localDeviceId,
+            syncVersion: 1
+        )
+        let newId = try await container.learningSituationsRepository.saveSituation(
+            situation: LearningSituation(
+                id: 0,
+                title: "\(source.title) (copia)",
+                stageLabel: source.stageLabel,
+                courseLabel: source.courseLabel,
+                subjectLabel: source.subjectLabel,
+                termLabel: source.termLabel,
+                centerLabel: source.centerLabel,
+                sessionCount: source.sessionCount,
+                challenge: source.challenge,
+                finalProduct: source.finalProduct,
+                payloadJson: source.payloadJson,
+                status: .draft,
+                trace: trace
+            )
+        ).int64Value
+        if let latest = versions.first {
+            _ = try await container.learningSituationsRepository.saveVersion(
+                version: LearningSituationVersion(
+                    id: 0,
+                    learningSituationId: newId,
+                    versionNumber: 0,
+                    originalFileName: latest.originalFileName,
+                    sha256: latest.sha256,
+                    localPath: latest.localPath,
+                    sizeBytes: latest.sizeBytes,
+                    payloadJson: latest.payloadJson,
+                    warningsJson: latest.warningsJson,
+                    trace: trace
+                )
+            )
+            enqueueLocalChange(
+                entity: "learning_situation_version",
+                id: "\(newId)-\(latest.sha256)",
+                updatedAtEpochMs: nowMs,
+                payload: [
+                    "learningSituationId": newId,
+                    "versionNumber": 1,
+                    "originalFileName": latest.originalFileName,
+                    "sha256": latest.sha256,
+                    "sizeBytes": latest.sizeBytes,
+                    "payloadJson": latest.payloadJson,
+                    "warningsJson": latest.warningsJson
+                ]
+            )
+        }
+        try await container.learningSituationsRepository.replaceClassLinks(
+            learningSituationId: newId,
+            classIds: classIds.map { KotlinLong(value: $0) }
+        )
+        enqueueLocalChange(
+            entity: "learning_situation",
+            id: "\(newId)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "id": newId, "title": "\(source.title) (copia)", "stageLabel": source.stageLabel,
+                "courseLabel": source.courseLabel, "subjectLabel": source.subjectLabel,
+                "termLabel": source.termLabel, "centerLabel": source.centerLabel,
+                "sessionCount": source.sessionCount, "challenge": source.challenge,
+                "finalProduct": source.finalProduct, "payloadJson": source.payloadJson,
+                "status": "DRAFT"
+            ]
+        )
+        for classId in classIds {
+            enqueueLocalChange(
+                entity: "learning_situation_class_link",
+                id: "\(newId)-\(classId)",
+                updatedAtEpochMs: nowMs,
+                payload: ["learningSituationId": newId, "classId": classId]
+            )
+        }
+        return newId
+    }
+
+    func programLearningSituationSessions(
+        situation: LearningSituation,
+        classId: Int64,
+        groupName: String,
+        scheduledSlots: [LearningSituationScheduledSlot],
+        sequenceDraft: LearningSituationSessionSequenceImportDraft? = nil
+    ) async throws {
+        guard !scheduledSlots.isEmpty else { return }
+        let detailedPlanIds: [Int: Int64]
+        if let sequenceDraft {
+            detailedPlanIds = try await persistSessionSequence(situation: situation, draft: sequenceDraft)
+        } else {
+            detailedPlanIds = [:]
+        }
+        let orderedDraftPlans = sequenceDraft?.plans.sorted { $0.sessionNumber < $1.sessionNumber } ?? []
+        let unit = TeachingUnit(
+            id: 0,
+            name: situation.title,
+            description: "Situación de aprendizaje: \(situation.challenge)",
+            colorHex: plannerCourseColor(for: classId),
+            groupId: KotlinLong(value: classId),
+            schoolClassId: KotlinLong(value: classId),
+            startDate: nil,
+            endDate: nil
+        )
+        let unitId = try await container.plannerRepository.upsertTeachingUnit(unit: unit).int64Value
+        try await saveLearningSituationLinkedResource(
+            situationId: situation.id,
+            kind: .teachingUnit,
+            resourceId: "\(unitId)",
+            classId: classId,
+            label: situation.title,
+            trace: situation.trace
+        )
+        let calendar = Calendar(identifier: .iso8601)
+        for (index, slot) in scheduledSlots.enumerated() {
+            let detailedDraft = index < orderedDraftPlans.count ? orderedDraftPlans[index] : nil
+            let components = calendar.dateComponents([.weekOfYear, .yearForWeekOfYear, .weekday], from: slot.date)
+            let weekday = ((components.weekday ?? 2) + 5) % 7 + 1
+            let weekNumber = components.weekOfYear ?? 1
+            let year = components.yearForWeekOfYear ?? Calendar.current.component(.year, from: slot.date)
+            let occupiedSession = try await plannerListSessions(weekNumber: weekNumber, year: year, classId: classId)
+                .first {
+                    Int($0.dayOfWeek) == weekday && Int($0.period) == slot.period
+                }
+            let sessionId = try await plannerUpsertSession(
+                id: occupiedSession?.id ?? 0,
+                teachingUnitId: unitId,
+                teachingUnitName: situation.title,
+                teachingUnitColor: plannerCourseColor(for: classId),
+                groupId: classId,
+                groupName: groupName,
+                dayOfWeek: weekday,
+                period: slot.period,
+                weekNumber: weekNumber,
+                year: year,
+                objectives: detailedDraft?.objective ?? situation.challenge,
+                activities: detailedDraft?.developmentSummary ?? "Sesión vinculada a \(situation.title)",
+                evaluation: detailedDraft?.criteria.joined(separator: ", ") ?? "",
+                teacherScheduleSlotId: slot.teacherScheduleSlotId,
+                startTime: slot.startTime,
+                endTime: slot.endTime,
+                learningSituationSessionPlanId: detailedDraft.flatMap { detailedPlanIds[$0.sessionNumber] },
+                status: .planned
+            )
+            try await saveLearningSituationLinkedResource(
+                situationId: situation.id,
+                kind: .planningSession,
+                resourceId: "\(sessionId)",
+                classId: classId,
+                label: slot.label,
+                trace: situation.trace
+            )
+        }
+    }
+
+    private func persistSessionSequence(
+        situation: LearningSituation,
+        draft: LearningSituationSessionSequenceImportDraft
+    ) async throws -> [Int: Int64] {
+        let storedURL = try LearningSituationDocumentStore().persistSourceDocument(from: draft.sourceURL, sha256: draft.sha256)
+        let warningsJSON = String(data: try JSONEncoder().encode(draft.warnings), encoding: .utf8) ?? "[]"
+        let existingVersions = try await container.learningSituationsRepository.listSessionSequenceVersions(learningSituationId: situation.id)
+        let versionNumber = Int32((existingVersions.first?.versionNumber ?? 0) + 1)
+        let versionId = try await container.learningSituationsRepository.saveSessionSequenceVersion(
+            version: LearningSituationSessionSequenceVersion(
+                id: 0,
+                learningSituationId: situation.id,
+                versionNumber: versionNumber,
+                originalFileName: draft.sourceFileName,
+                sha256: draft.sha256,
+                localPath: storedURL.path,
+                sizeBytes: draft.sizeBytes,
+                payloadJson: draft.payloadJSON,
+                warningsJson: warningsJSON,
+                trace: situation.trace
+            )
+        ).int64Value
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        enqueueLocalChange(
+            entity: "learning_situation_sequence_version",
+            id: "\(situation.id)-\(versionNumber)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "id": versionId, "learningSituationId": situation.id, "versionNumber": versionNumber,
+                "originalFileName": draft.sourceFileName, "sha256": draft.sha256,
+                "sizeBytes": draft.sizeBytes, "payloadJson": draft.payloadJSON,
+                "warningsJson": warningsJSON
+            ]
+        )
+        var planIds: [Int: Int64] = [:]
+        for plan in draft.plans {
+            let criteriaJSON = String(data: try JSONEncoder().encode(plan.criteria), encoding: .utf8) ?? "[]"
+            let developmentJSON = String(data: try JSONEncoder().encode(plan.development), encoding: .utf8) ?? "[]"
+            let adaptationsJSON = String(data: try JSONEncoder().encode(plan.adaptations), encoding: .utf8) ?? "[]"
+            let planId = try await container.learningSituationsRepository.saveSessionPlan(
+                plan: LearningSituationSessionPlan(
+                    id: 0,
+                    learningSituationId: situation.id,
+                    sequenceVersionId: versionId,
+                    sessionNumber: Int32(plan.sessionNumber),
+                    sourceLabel: plan.sourceLabel,
+                    title: plan.title,
+                    sessionType: plan.sessionType,
+                    effectiveMinutes: Int32(plan.effectiveMinutes),
+                    objective: plan.objective,
+                    criteriaJson: criteriaJSON,
+                    material: plan.material,
+                    developmentJson: developmentJSON,
+                    adaptationsJson: adaptationsJSON,
+                    trace: situation.trace
+                )
+            ).int64Value
+            planIds[plan.sessionNumber] = planId
+            enqueueLocalChange(
+                entity: "learning_situation_session_plan",
+                id: "\(situation.id)-\(versionId)-\(plan.sessionNumber)",
+                updatedAtEpochMs: nowMs,
+                payload: [
+                    "id": planId, "learningSituationId": situation.id, "sequenceVersionId": versionId,
+                    "sessionNumber": plan.sessionNumber, "sourceLabel": plan.sourceLabel,
+                    "title": plan.title, "sessionType": plan.sessionType,
+                    "effectiveMinutes": plan.effectiveMinutes, "objective": plan.objective,
+                    "criteriaJson": criteriaJSON, "material": plan.material,
+                    "developmentJson": developmentJSON, "adaptationsJson": adaptationsJSON
+                ]
+            )
+        }
+        try await uploadLearningSituationDocumentIfPaired(at: storedURL, sha256: draft.sha256)
+        return planIds
+    }
+
+    func materializeLearningSituationEvaluations(
+        situation: LearningSituation,
+        classId: Int64,
+        proposals: [LearningSituationEvaluationDraft]
+    ) async throws {
+        for (index, proposal) in proposals.filter(\.isSelected).enumerated() {
+            let code = "SA\(situation.id)-E\(index + 1)"
+            let evaluationId = try await container.evaluationsRepository.saveEvaluation(
+                id: nil,
+                classId: classId,
+                code: code,
+                name: proposal.title,
+                type: "Situación de aprendizaje",
+                weight: (proposal.weightPercent ?? 0) / 100.0,
+                formula: nil,
+                rubricId: proposal.rubricId.map { KotlinLong(value: $0) },
+                description: situation.title,
+                authorUserId: nil,
+                createdAtEpochMs: 0,
+                updatedAtEpochMs: 0,
+                associatedGroupId: KotlinLong(value: classId),
+                deviceId: localDeviceId,
+                syncVersion: 1
+            ).int64Value
+            try await ensureNotebookColumnForEvaluation(classId: classId, evaluationId: evaluationId, title: proposal.title, rubricId: proposal.rubricId)
+            try await saveLearningSituationLinkedResource(
+                situationId: situation.id,
+                kind: .evaluation,
+                resourceId: "\(evaluationId)",
+                classId: classId,
+                label: proposal.title,
+                trace: situation.trace
+            )
+        }
+    }
+
+    private func saveLearningSituationLinkedResource(
+        situationId: Int64,
+        kind: LearningSituationResourceKind,
+        resourceId: String,
+        classId: Int64?,
+        label: String,
+        trace: AuditTrace
+    ) async throws {
+        _ = try await container.learningSituationsRepository.saveLinkedResource(
+            resource: LearningSituationLinkedResource(
+                id: 0,
+                learningSituationId: situationId,
+                kind: kind,
+                resourceId: resourceId,
+                classId: classId.map { KotlinLong(value: $0) },
+                label: label,
+                trace: trace
+            )
+        )
+        enqueueLocalChange(
+            entity: "learning_situation_link",
+            id: "\(situationId)-\(kind.name)-\(resourceId)",
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+            payload: [
+                "learningSituationId": situationId,
+                "kind": kind.name,
+                "resourceId": resourceId,
+                "classId": classId ?? NSNull(),
+                "label": label
+            ]
+        )
+    }
+
+    private func learningSituationSyncPayload(id: Int64, draft: LearningSituationImportDraft) -> [String: Any] {
+        [
+            "id": id, "title": draft.title, "stageLabel": draft.stageLabel,
+            "courseLabel": draft.courseLabel, "subjectLabel": draft.subjectLabel,
+            "termLabel": draft.termLabel, "centerLabel": draft.centerLabel,
+            "sessionCount": draft.sessionCount, "challenge": draft.challenge,
+            "finalProduct": draft.finalProduct, "payloadJson": draft.payloadJSON,
+            "status": "ACTIVE"
+        ]
+    }
+
+    private func uploadLearningSituationDocumentIfPaired(at url: URL, sha256: String) async throws {
+        guard let host = pairedSyncHost, let token = syncToken else { return }
+        try await lanSyncClient.uploadDocument(
+            host: host,
+            token: token,
+            sha256: sha256,
+            fileURL: url,
+            pinnedFingerprint: pairedServerFingerprint
+        )
+    }
+
+    private func downloadLearningSituationDocumentIfNeeded(sha256: String) async -> String? {
+        let store = LearningSituationDocumentStore()
+        let destination = store.directoryURL.appendingPathComponent("\(sha256).docx")
+        if FileManager.default.fileExists(atPath: destination.path) { return destination.path }
+        guard let host = pairedSyncHost, let token = syncToken else { return nil }
+        do {
+            try FileManager.default.createDirectory(at: store.directoryURL, withIntermediateDirectories: true)
+            let data = try await lanSyncClient.downloadDocument(
+                host: host,
+                token: token,
+                sha256: sha256,
+                pinnedFingerprint: pairedServerFingerprint
+            )
+            let actualHash = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+            guard actualHash == sha256 else { return nil }
+            try data.write(to: destination, options: .atomic)
+            return destination.path
+        } catch {
+            return nil
+        }
+    }
+
     func loadRubricUsage(rubricId: Int64) async throws -> RubricUsageSnapshot {
         if classes.isEmpty {
             try await refreshClasses()
@@ -4819,22 +5363,27 @@ final class KmpBridge: ObservableObject {
         }
     }
 
-    func saveNotebookWorkGroup(name: String) {
-        notebookViewModel.saveWorkGroup(name: name, groupId: nil, studentIds: [])
+    func saveNotebookWorkGroup(name: String, learningSituationId: Int64? = nil) {
+        let situationKotlin = KotlinLong(value: learningSituationId ?? -1)
+        notebookViewModel.saveWorkGroup(name: name, groupId: nil, studentIds: [], learningSituationId: situationKotlin)
         if let classId = notebookViewModel.currentClassId?.int64Value {
             scheduleNotebookSnapshotSync(forClassId: classId)
         }
     }
 
-    func updateNotebookWorkGroup(groupId: Int64, name: String) {
-        notebookViewModel.saveWorkGroup(name: name, groupId: KotlinLong(value: groupId), studentIds: [])
+    func updateNotebookWorkGroup(groupId: Int64, name: String, learningSituationId: Int64? = nil) {
+        let situationKotlin = KotlinLong(value: learningSituationId ?? -1)
+        notebookViewModel.saveWorkGroup(name: name, groupId: KotlinLong(value: groupId), studentIds: [], learningSituationId: situationKotlin)
         if let classId = notebookViewModel.currentClassId?.int64Value {
             scheduleNotebookSnapshotSync(forClassId: classId)
         }
     }
 
     func renameNotebookWorkGroup(groupId: Int64, name: String) {
-        updateNotebookWorkGroup(groupId: groupId, name: name)
+        notebookViewModel.saveWorkGroup(name: name, groupId: KotlinLong(value: groupId), studentIds: [], learningSituationId: nil)
+        if let classId = notebookViewModel.currentClassId?.int64Value {
+            scheduleNotebookSnapshotSync(forClassId: classId)
+        }
     }
 
     func deleteNotebookWorkGroup(groupId: Int64) {
@@ -5181,6 +5730,36 @@ final class KmpBridge: ObservableObject {
             notebookViewModel.deleteColumnByEvaluationId(columnId: evalId)
         } else {
             notebookViewModel.deleteColumnById(columnId: id)
+        }
+
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 120_000_000)
+            self.refreshCurrentNotebook()
+        }
+        
+        if let classId {
+            scheduleNotebookSnapshotSync(forClassId: classId)
+        }
+    }
+
+    func deleteColumns(idsAndEvalIds: [(id: String, evaluationId: Int64?)]) {
+        let classId = notebookViewModel.currentClassId?.int64Value
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        
+        for item in idsAndEvalIds {
+            enqueueLocalChange(
+                entity: "notebook_column",
+                id: item.id,
+                updatedAtEpochMs: nowMs,
+                payload: ["id": item.id],
+                op: "delete"
+            )
+            
+            if let evalId = item.evaluationId {
+                notebookViewModel.deleteColumnByEvaluationId(columnId: evalId)
+            } else {
+                notebookViewModel.deleteColumnById(columnId: item.id)
+            }
         }
 
         Task { @MainActor in
@@ -5717,114 +6296,119 @@ final class KmpBridge: ObservableObject {
 
     // Audit debt: this mirrors RubricsViewModel save/edit logic in Swift. Keep changes minimal
     // here and move persistence orchestration back to KMP with dedicated tests in a later pass.
-    func saveRubricFromBuilder(onComplete: @escaping (Bool) -> Void) {
+    @MainActor
+    func saveRubricFromBuilderReturningId() async throws -> Int64 {
         guard let state = rubricsUiState else {
-            onComplete(false)
-            return
+            throw NSError(domain: "KmpBridge", code: -71, userInfo: [NSLocalizedDescriptionKey: "No hay una rúbrica preparada para guardar."])
         }
 
-        Task { @MainActor in
-            let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
-            do {
-                let editingRubricId = editingRubricBuilderId
-                let rubricId = try await container.rubricsRepository.saveRubric(
-                    id: editingRubricId.map { KotlinLong(value: $0) },
-                    name: state.rubricName,
-                    description: state.instructions.nilIfBlank,
-                    classId: state.selectedClassId,
-                    teachingUnitId: selectedRubricTeachingUnitId.map { KotlinLong(value: $0) },
-                    createdAtEpochMs: nowMs,
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let editingRubricId = editingRubricBuilderId
+        let rubricId = try await container.rubricsRepository.saveRubric(
+            id: editingRubricId.map { KotlinLong(value: $0) },
+            name: state.rubricName,
+            description: state.instructions.nilIfBlank,
+            classId: state.selectedClassId,
+            teachingUnitId: selectedRubricTeachingUnitId.map { KotlinLong(value: $0) },
+            createdAtEpochMs: nowMs,
+            updatedAtEpochMs: nowMs,
+            deviceId: localDeviceId,
+            syncVersion: editingRubricId == nil ? 1 : 2
+        ).int64Value
+
+        if let editingRubricId {
+            let retainedCriterionIds = Set(state.criteria.compactMap { $0.id?.int64Value })
+            let existingCriteria = try await container.rubricsRepository.listCriteriaByRubric(rubricId: editingRubricId)
+            for existingCriterion in existingCriteria where !retainedCriterionIds.contains(existingCriterion.id) {
+                try await container.rubricsRepository.deleteCriterion(criterionId: existingCriterion.id)
+            }
+        }
+
+        let retainedLevelOrders = Set(state.levels.map { Int32($0.order) })
+        for criterion in state.criteria {
+            let existingLevelsByOrder: [Int32: RubricLevel]
+            if let existingCriterionId = criterion.id?.int64Value {
+                let existingLevels = try await container.rubricsRepository.listLevelsByCriterion(criterionId: existingCriterionId)
+                for existingLevel in existingLevels where !retainedLevelOrders.contains(Int32(existingLevel.order)) {
+                    try await container.rubricsRepository.deleteLevel(levelId: existingLevel.id)
+                }
+                existingLevelsByOrder = Dictionary(
+                    existingLevels.map { (Int32($0.order), $0) },
+                    uniquingKeysWith: { first, _ in first }
+                )
+            } else {
+                existingLevelsByOrder = [:]
+            }
+
+            let criterionId = try await container.rubricsRepository.saveCriterion(
+                id: criterion.id,
+                rubricId: rubricId,
+                description: criterion.description_,
+                weight: criterion.weight,
+                order: Int32(criterion.order),
+                updatedAtEpochMs: nowMs,
+                deviceId: localDeviceId,
+                syncVersion: criterion.id == nil ? 1 : 2
+            ).int64Value
+
+            for level in state.levels {
+                let reusableLevelId = existingLevelsByOrder[Int32(level.order)]?.id
+                _ = try await container.rubricsRepository.saveLevel(
+                    id: reusableLevelId.map { KotlinLong(value: $0) },
+                    criterionId: criterionId,
+                    name: level.name,
+                    points: Int32(level.points),
+                    description: criterion.levelDescriptions[level.uid],
+                    order: Int32(level.order),
                     updatedAtEpochMs: nowMs,
                     deviceId: localDeviceId,
-                    syncVersion: editingRubricId == nil ? 1 : 2
-                ).int64Value
+                    syncVersion: reusableLevelId == nil ? 1 : 2
+                )
+            }
+        }
 
-                if let editingRubricId {
-                    let retainedCriterionIds = Set(state.criteria.compactMap { $0.id?.int64Value })
-                    let existingCriteria = try await container.rubricsRepository.listCriteriaByRubric(rubricId: editingRubricId)
-                    for existingCriterion in existingCriteria where !retainedCriterionIds.contains(existingCriterion.id) {
-                        try await container.rubricsRepository.deleteCriterion(criterionId: existingCriterion.id)
-                    }
-                }
-
-                let retainedLevelOrders = Set(state.levels.map { Int32($0.order) })
-                for criterion in state.criteria {
-                    let existingLevelsByOrder: [Int32: RubricLevel]
-                    if let existingCriterionId = criterion.id?.int64Value {
-                        let existingLevels = try await container.rubricsRepository.listLevelsByCriterion(criterionId: existingCriterionId)
-                        for existingLevel in existingLevels where !retainedLevelOrders.contains(Int32(existingLevel.order)) {
-                            try await container.rubricsRepository.deleteLevel(levelId: existingLevel.id)
-                        }
-                        existingLevelsByOrder = Dictionary(
-                            existingLevels.map { (Int32($0.order), $0) },
-                            uniquingKeysWith: { first, _ in first }
-                        )
-                    } else {
-                        existingLevelsByOrder = [:]
-                    }
-
-                    let criterionId = try await container.rubricsRepository.saveCriterion(
-                        id: criterion.id,
-                        rubricId: rubricId,
-                        description: criterion.description_,
-                        weight: criterion.weight,
-                        order: Int32(criterion.order),
-                        updatedAtEpochMs: nowMs,
-                        deviceId: localDeviceId,
-                        syncVersion: criterion.id == nil ? 1 : 2
-                    ).int64Value
-
-                    for level in state.levels {
-                        let reusableLevelId = existingLevelsByOrder[Int32(level.order)]?.id
-                        _ = try await container.rubricsRepository.saveLevel(
-                            id: reusableLevelId.map { KotlinLong(value: $0) },
-                            criterionId: criterionId,
-                            name: level.name,
-                            points: Int32(level.points),
-                            description: criterion.levelDescriptions[level.uid],
-                            order: Int32(level.order),
-                            updatedAtEpochMs: nowMs,
-                            deviceId: localDeviceId,
-                            syncVersion: reusableLevelId == nil ? 1 : 2
-                        )
-                    }
-                }
-
-                enqueueLocalChange(
-                    entity: "rubric_bundle",
-                    id: "\(rubricId)",
-                    updatedAtEpochMs: nowMs,
-                    payload: [
-                        "rubricId": rubricId,
-                        "editingRubricId": editingRubricId ?? NSNull(),
-                        "name": state.rubricName,
-                        "description": state.instructions.nilIfBlank ?? NSNull(),
-                        "classId": state.selectedClassId?.int64Value ?? NSNull(),
-                        "teachingUnitId": selectedRubricTeachingUnitId ?? NSNull(),
-                        "criteria": state.criteria.map { criterion in
+        enqueueLocalChange(
+            entity: "rubric_bundle",
+            id: "\(rubricId)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "rubricId": rubricId,
+                "editingRubricId": editingRubricId ?? NSNull(),
+                "name": state.rubricName,
+                "description": state.instructions.nilIfBlank ?? NSNull(),
+                "classId": state.selectedClassId?.int64Value ?? NSNull(),
+                "teachingUnitId": selectedRubricTeachingUnitId ?? NSNull(),
+                "criteria": state.criteria.map { criterion in
+                    [
+                        "description": criterion.description_,
+                        "weight": criterion.weight,
+                        "order": Int(criterion.order),
+                        "levels": state.levels.map { level in
                             [
-                                "description": criterion.description_,
-                                "weight": criterion.weight,
-                                "order": Int(criterion.order),
-                                "levels": state.levels.map { level in
-                                    [
-                                        "name": level.name,
-                                        "points": Int(level.points),
-                                        "description": criterion.levelDescriptions[level.uid] ?? "",
-                                        "order": Int(level.order)
-                                    ]
-                                }
+                                "name": level.name,
+                                "points": Int(level.points),
+                                "description": criterion.levelDescriptions[level.uid] ?? "",
+                                "order": Int(level.order)
                             ]
                         }
                     ]
-                )
-
-                try? await refreshRubrics()
-                try? await refreshRubricClassLinks()
-                if let classId = state.selectedClassId?.int64Value {
-                    try? await refreshRubricBuilderTeachingUnits(for: classId)
                 }
-                editingRubricBuilderId = rubricId
+            ]
+        )
+
+        try? await refreshRubrics()
+        try? await refreshRubricClassLinks()
+        if let classId = state.selectedClassId?.int64Value {
+            try? await refreshRubricBuilderTeachingUnits(for: classId)
+        }
+        editingRubricBuilderId = rubricId
+        return rubricId
+    }
+
+    func saveRubricFromBuilder(onComplete: @escaping (Bool) -> Void) {
+        Task { @MainActor in
+            do {
+                _ = try await saveRubricFromBuilderReturningId()
                 onComplete(true)
             } catch {
                 onComplete(false)
@@ -6040,6 +6624,7 @@ final class KmpBridge: ObservableObject {
             teacherScheduleSlotId: nil,
             startTime: nil,
             endTime: nil,
+            learningSituationSessionPlanId: nil,
             status: SessionStatus.planned
         )
         
@@ -6359,7 +6944,10 @@ final class KmpBridge: ObservableObject {
                     "studentId": grade.studentId,
                     "columnId": grade.columnId,
                     "evaluationId": grade.evaluationId ?? 0,
-                    "value": grade.value ?? NSNull()
+                    "value": grade.value ?? NSNull(),
+                    "evidence": grade.evidence ?? NSNull(),
+                    "evidencePath": grade.evidencePath ?? NSNull(),
+                    "rubricSelections": grade.rubricSelections ?? NSNull()
                 ],
                 shouldPersist: false,
                 shouldScheduleAutoSync: false
@@ -6648,9 +7236,9 @@ final class KmpBridge: ObservableObject {
                         columnId: columnId,
                         evaluationId: kotlinLong(evaluationIdValue),
                         value: doubleValue(payloadObject["value"]).map { KotlinDouble(value: $0) },
-                        evidence: nil,
-                        evidencePath: nil,
-                        rubricSelections: nil,
+                        evidence: payloadObject["evidence"] as? String,
+                        evidencePath: payloadObject["evidencePath"] as? String,
+                        rubricSelections: payloadObject["rubricSelections"] as? String,
                         updatedAtEpochMs: change.updatedAtEpochMs,
                         deviceId: change.deviceId,
                         syncVersion: 1
@@ -6734,6 +7322,7 @@ final class KmpBridge: ObservableObject {
                         tabId: tabId,
                         name: name,
                         order: Int32(order),
+                        learningSituationId: nil,
                         trace: trace
                     )
                 )
@@ -6946,6 +7535,140 @@ final class KmpBridge: ObservableObject {
                 )
                 _ = try await container.plannerRepository.upsertTeachingUnit(unit: unit)
 
+            case "learning_situation":
+                let updatedAt = Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs)
+                _ = try await container.learningSituationsRepository.saveSituation(
+                    situation: LearningSituation(
+                        id: int64Value(payloadObject["id"]) ?? 0,
+                        title: payloadObject["title"] as? String ?? "Situación",
+                        stageLabel: payloadObject["stageLabel"] as? String ?? "",
+                        courseLabel: payloadObject["courseLabel"] as? String ?? "",
+                        subjectLabel: payloadObject["subjectLabel"] as? String ?? "",
+                        termLabel: payloadObject["termLabel"] as? String ?? "",
+                        centerLabel: payloadObject["centerLabel"] as? String ?? "",
+                        sessionCount: Int32(int64Value(payloadObject["sessionCount"]) ?? 0),
+                        challenge: payloadObject["challenge"] as? String ?? "",
+                        finalProduct: payloadObject["finalProduct"] as? String ?? "",
+                        payloadJson: payloadObject["payloadJson"] as? String ?? "{}",
+                        status: (payloadObject["status"] as? String == "DRAFT") ? .draft : .active,
+                        trace: AuditTrace(
+                            authorUserId: nil, createdAt: updatedAt, updatedAt: updatedAt,
+                            associatedGroupId: nil, deviceId: change.deviceId, syncVersion: 1
+                        )
+                    )
+                )
+
+            case "learning_situation_version":
+                guard let situationId = int64Value(payloadObject["learningSituationId"]),
+                      let hash = payloadObject["sha256"] as? String else { continue }
+                let localPath = await downloadLearningSituationDocumentIfNeeded(sha256: hash)
+                let updatedAt = Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs)
+                _ = try await container.learningSituationsRepository.saveVersion(
+                    version: LearningSituationVersion(
+                        id: 0,
+                        learningSituationId: situationId,
+                        versionNumber: Int32(int64Value(payloadObject["versionNumber"]) ?? 0),
+                        originalFileName: payloadObject["originalFileName"] as? String ?? "\(hash).docx",
+                        sha256: hash,
+                        localPath: localPath,
+                        sizeBytes: int64Value(payloadObject["sizeBytes"]) ?? 0,
+                        payloadJson: payloadObject["payloadJson"] as? String ?? "{}",
+                        warningsJson: payloadObject["warningsJson"] as? String ?? "[]",
+                        trace: AuditTrace(
+                            authorUserId: nil, createdAt: updatedAt, updatedAt: updatedAt,
+                            associatedGroupId: nil, deviceId: change.deviceId, syncVersion: 1
+                        )
+                    )
+                )
+
+            case "learning_situation_sequence_version":
+                guard let situationId = int64Value(payloadObject["learningSituationId"]),
+                      let hash = payloadObject["sha256"] as? String else { continue }
+                let localPath = await downloadLearningSituationDocumentIfNeeded(sha256: hash)
+                let updatedAt = Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs)
+                _ = try await container.learningSituationsRepository.saveSessionSequenceVersion(
+                    version: LearningSituationSessionSequenceVersion(
+                        id: int64Value(payloadObject["id"]) ?? 0,
+                        learningSituationId: situationId,
+                        versionNumber: Int32(int64Value(payloadObject["versionNumber"]) ?? 0),
+                        originalFileName: payloadObject["originalFileName"] as? String ?? "\(hash).docx",
+                        sha256: hash,
+                        localPath: localPath,
+                        sizeBytes: int64Value(payloadObject["sizeBytes"]) ?? 0,
+                        payloadJson: payloadObject["payloadJson"] as? String ?? "{}",
+                        warningsJson: payloadObject["warningsJson"] as? String ?? "[]",
+                        trace: AuditTrace(
+                            authorUserId: nil, createdAt: updatedAt, updatedAt: updatedAt,
+                            associatedGroupId: nil, deviceId: change.deviceId, syncVersion: 1
+                        )
+                    )
+                )
+
+            case "learning_situation_session_plan":
+                guard let situationId = int64Value(payloadObject["learningSituationId"]),
+                      let sequenceVersionId = int64Value(payloadObject["sequenceVersionId"]),
+                      let title = payloadObject["title"] as? String else { continue }
+                let updatedAt = Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs)
+                _ = try await container.learningSituationsRepository.saveSessionPlan(
+                    plan: LearningSituationSessionPlan(
+                        id: int64Value(payloadObject["id"]) ?? 0,
+                        learningSituationId: situationId,
+                        sequenceVersionId: sequenceVersionId,
+                        sessionNumber: Int32(int64Value(payloadObject["sessionNumber"]) ?? 0),
+                        sourceLabel: payloadObject["sourceLabel"] as? String ?? "",
+                        title: title,
+                        sessionType: payloadObject["sessionType"] as? String ?? "",
+                        effectiveMinutes: Int32(int64Value(payloadObject["effectiveMinutes"]) ?? 0),
+                        objective: payloadObject["objective"] as? String ?? "",
+                        criteriaJson: payloadObject["criteriaJson"] as? String ?? "[]",
+                        material: payloadObject["material"] as? String ?? "",
+                        developmentJson: payloadObject["developmentJson"] as? String ?? "[]",
+                        adaptationsJson: payloadObject["adaptationsJson"] as? String ?? "[]",
+                        trace: AuditTrace(
+                            authorUserId: nil, createdAt: updatedAt, updatedAt: updatedAt,
+                            associatedGroupId: nil, deviceId: change.deviceId, syncVersion: 1
+                        )
+                    )
+                )
+
+            case "learning_situation_class_link":
+                guard let situationId = int64Value(payloadObject["learningSituationId"]),
+                      let classId = int64Value(payloadObject["classId"]) else { continue }
+                let current = try await container.learningSituationsRepository.listClassLinks(learningSituationId: situationId)
+                let classIds = Set(current.map(\.classId) + [classId])
+                try await container.learningSituationsRepository.replaceClassLinks(
+                    learningSituationId: situationId,
+                    classIds: Array(classIds).map { KotlinLong(value: $0) }
+                )
+
+            case "learning_situation_link":
+                guard let situationId = int64Value(payloadObject["learningSituationId"]),
+                      let kindName = payloadObject["kind"] as? String,
+                      let resourceId = payloadObject["resourceId"] as? String else { continue }
+                let kind: LearningSituationResourceKind
+                switch kindName {
+                case "TEACHING_UNIT": kind = .teachingUnit
+                case "PLANNING_SESSION": kind = .planningSession
+                case "EVALUATION": kind = .evaluation
+                case "RUBRIC": kind = .rubric
+                default: kind = .notebookColumn
+                }
+                let updatedAt = Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs)
+                _ = try await container.learningSituationsRepository.saveLinkedResource(
+                    resource: LearningSituationLinkedResource(
+                        id: 0,
+                        learningSituationId: situationId,
+                        kind: kind,
+                        resourceId: resourceId,
+                        classId: int64Value(payloadObject["classId"]).map { KotlinLong(value: $0) },
+                        label: payloadObject["label"] as? String ?? "",
+                        trace: AuditTrace(
+                            authorUserId: nil, createdAt: updatedAt, updatedAt: updatedAt,
+                            associatedGroupId: nil, deviceId: change.deviceId, syncVersion: 1
+                        )
+                    )
+                )
+
             case "planning_session":
                 let sessionId = int64Value(payloadObject["id"]) ?? 0
                 let teachingUnitId = int64Value(payloadObject["teachingUnitId"]) ?? 0
@@ -6983,6 +7706,7 @@ final class KmpBridge: ObservableObject {
                     teacherScheduleSlotId: int64Value(payloadObject["teacherScheduleSlotId"]).map { KotlinLong(value: $0) },
                     startTime: payloadObject["startTime"] as? String,
                     endTime: payloadObject["endTime"] as? String,
+                    learningSituationSessionPlanId: int64Value(payloadObject["learningSituationSessionPlanId"]).map { KotlinLong(value: $0) },
                     status: status
                 )
                 do {
@@ -7365,9 +8089,9 @@ final class KmpBridge: ObservableObject {
 
     private func syncApplyPriority(for entity: String) -> Int {
         switch entity {
-        case "class", "student", "rubric_bundle", "teaching_unit", "calendar_event", "teacher_schedule":
+        case "class", "student", "rubric_bundle", "teaching_unit", "calendar_event", "teacher_schedule", "learning_situation":
             return 0
-        case "evaluation", "weekly_slot", "teacher_schedule_slot", "planner_evaluation_period", "notebook_tab", "notebook_column", "notebook_column_category", "notebook_group", "notebook_group_member":
+        case "evaluation", "weekly_slot", "teacher_schedule_slot", "planner_evaluation_period", "notebook_tab", "notebook_column", "notebook_column_category", "notebook_group", "notebook_group_member", "learning_situation_version", "learning_situation_class_link", "learning_situation_link":
             return 1
         case "class_roster", "attendance", "incident":
             return 2
@@ -7878,6 +8602,9 @@ final class KmpBridge: ObservableObject {
                 do {
                     try await Task.sleep(nanoseconds: self.nextAutoSyncIntervalNanoseconds())
                     guard self.pairedSyncHost != nil, self.syncToken != nil else { continue }
+                    #if os(macOS)
+                    await self.checkLocalDbFileModification()
+                    #endif
                     await self.syncNow(reason: "periodic", forceFullPull: false, silent: true)
                 } catch {
                     // Evitamos romper el bucle por errores transitorios de red.
@@ -7913,6 +8640,56 @@ final class KmpBridge: ObservableObject {
                 return
             }
             await self.applySyncEvent(event)
+        }
+    }
+
+    private func getDatabaseURL() -> URL? {
+        let fileManager = FileManager.default
+        guard let appSupportURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            return nil
+        }
+        #if os(macOS)
+        let dbName = "desktop_mi_gestor_kmp.db"
+        #else
+        let dbName = "mi_gestor_kmp.db"
+        #endif
+        return appSupportURL
+            .appendingPathComponent("MiGestor", isDirectory: true)
+            .appendingPathComponent(dbName, isDirectory: false)
+    }
+
+    private func checkLocalDbFileModification() async {
+        guard let dbURL = getDatabaseURL() else { return }
+        do {
+            let attributes = try FileManager.default.attributesOfItem(atPath: dbURL.path)
+            guard let modificationDate = attributes[.modificationDate] as? Date else { return }
+            
+            let isFirstCheck = lastCheckedDbModificationDate == .distantPast
+            if isFirstCheck {
+                lastCheckedDbModificationDate = modificationDate
+                return
+            }
+            
+            if modificationDate > lastCheckedDbModificationDate {
+                let timeSinceLocalMutation = Date().timeIntervalSince(lastLocalMutationAt)
+                if timeSinceLocalMutation > 1.5 {
+                    await MainActor.run {
+                        self.refreshCurrentNotebook()
+                        Task(priority: .utility) { [weak self] in
+                            guard let self else { return }
+                            try? await self.refreshDashboard()
+                            try? await self.refreshClasses()
+                            try? await self.refreshStudentsDirectory()
+                            try? await self.refreshRubrics()
+                            try? await self.refreshRubricClassLinks()
+                            try? await self.refreshPlanning()
+                        }
+                    }
+                }
+                lastCheckedDbModificationDate = modificationDate
+            }
+        } catch {
+            // El archivo no existe o no se puede leer
         }
     }
 
@@ -8367,6 +9144,33 @@ final class LanSyncClient {
         )
         guard let http = response as? HTTPURLResponse else { return false }
         return (200..<300).contains(http.statusCode)
+    }
+
+    func uploadDocument(host: String, token: String, sha256: String, fileURL: URL, pinnedFingerprint: String?) async throws {
+        let url = try buildURL(host: Self.normalizeHost(host), path: "/sync/documents/\(sha256)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/vnd.openxmlformats-officedocument.wordprocessingml.document", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try Data(contentsOf: fileURL)
+        request.timeoutInterval = 45
+        let (_, response) = try await executeDataTask(request: request, pinnedFingerprint: pinnedFingerprint, operation: "document-upload", host: host)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw NSError(domain: "Sync", code: -211, userInfo: [NSLocalizedDescriptionKey: "No se pudo sincronizar el documento de la situación."])
+        }
+    }
+
+    func downloadDocument(host: String, token: String, sha256: String, pinnedFingerprint: String?) async throws -> Data {
+        let url = try buildURL(host: Self.normalizeHost(host), path: "/sync/documents/\(sha256)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 45
+        let (data, response) = try await executeDataTask(request: request, pinnedFingerprint: pinnedFingerprint, operation: "document-download", host: host)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw NSError(domain: "Sync", code: -212, userInfo: [NSLocalizedDescriptionKey: "Documento no disponible en el dispositivo emparejado."])
+        }
+        return data
     }
 
     private func makeSession(pinnedFingerprint: String?) -> URLSession {

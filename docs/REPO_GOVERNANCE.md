@@ -80,6 +80,16 @@ Cada PR debe incluir:
 
 La plantilla oficial vive en `.github/pull_request_template.md`.
 
+## CI y verificaciones
+
+Los PRs deben apoyarse en checks automaticos siempre que el entorno lo permita:
+
+- KMP/shared: `./gradlew :shared:test`.
+- SQLDelight/data: `./gradlew :data:desktopTest`.
+- Apple iOS/macOS: `scripts/verify_apple_builds.sh`.
+
+Flutter queda fuera del CI obligatorio mientras se decide si es legado, referencia o target activo.
+
 ## Changelog
 
 `docs/CHANGELOG.md` registra cambios relevantes con este criterio:
@@ -128,6 +138,8 @@ Hasta que haya releases publicas, usar fases internas:
 - `0.4.x`: preparacion comercial: onboarding, seguridad, exportaciones, soporte y documentacion.
 - `1.0.0`: version lista para uso real estable y evaluable externamente.
 
+Version interna actual: `0.3.0-dev`. No etiquetar `v0.3.0` hasta tener una build reproducible con checks verdes y evidencia registrada.
+
 Cuando una version se cierre:
 
 1. Crear entrada en `docs/CHANGELOG.md`.
@@ -144,3 +156,9 @@ Como la app ya estaba empezada, no conviene inventar un historial perfecto. El e
 3. Convertir cada grupo en PR pequeno cuando sea posible.
 4. Crear ADRs solo para decisiones tecnicas que sigan condicionando el futuro.
 5. Usar `.workflow/` como evidencia auxiliar de auditorias y planes, no como fuente canonica.
+
+## Artefactos locales y privacidad
+
+No versionar bases SQLite locales, `.db`, `.sqlite`, `.sqlite3`, bundles generados, apps, DMG ni datos reales de alumnado. Si hace falta un fixture de datos, debe ser anonimo, minimo y vivir en una ruta de tests documentada.
+
+`.workflow/` puede mantenerse como evidencia auxiliar cuando ayude a auditar decisiones o planes, pero la fuente canonica sigue siendo `docs/`, ADRs, changelog, PRs y tests.

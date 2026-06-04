@@ -1,0 +1,30 @@
+name: Apple Builds
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  apple-builds:
+    name: iOS and macOS build verification
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install XcodeGen
+        run: |
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
+
+      - name: Verify Apple builds
+        run: scripts/verify_apple_builds.sh

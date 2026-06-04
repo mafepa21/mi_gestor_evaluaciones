@@ -18,6 +18,7 @@ El proyecto empezo como app Flutter y esta evolucionando hacia una arquitectura 
 - [Gobierno del repositorio](docs/REPO_GOVERNANCE.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Changelog](docs/CHANGELOG.md)
+- [Proceso de release](docs/RELEASE_PROCESS.md)
 - [Baseline inicial](docs/PROJECT_BASELINE_2026-06-04.md)
 - [KMP README](kmp/README.md)
 

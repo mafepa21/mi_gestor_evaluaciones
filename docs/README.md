@@ -9,6 +9,7 @@ Este directorio es la fuente principal para entender que existe, que se ha decid
 - [ROADMAP.md](ROADMAP.md): mapa vivo de producto y prioridades.
 - [CHANGELOG.md](CHANGELOG.md): cambios relevantes por version o tanda de trabajo.
 - [PROJECT_BASELINE_2026-06-04.md](PROJECT_BASELINE_2026-06-04.md): fotografia inicial creada con la app ya empezada.
+- [RELEASE_PROCESS.md](RELEASE_PROCESS.md): proceso interno de versionado, checks, evidencias y etiquetado.
 
 ## Documentos existentes
 

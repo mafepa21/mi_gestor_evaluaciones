@@ -69,3 +69,11 @@ Crear un primer PR solo documental con:
 - `.github/pull_request_template.md`
 
 Despues, revisar el working tree actual y separar los cambios tecnicos en paquetes revisables.
+
+## Actualizacion operativa - 2026-06-04
+
+- `origin/main` incluye el PR #7: `Document governance and expand Apple/KMP learning workflows`.
+- La rama `codex/fix-addcolumnsheet-onchange` no mantiene diff pendiente contra `origin/main`.
+- El PR #6 quedo redundante y conflictivo porque sus commits ya estaban integrados en `main`; se cerro con comentario explicativo.
+- El working tree usado para preparar la rama de gobernanza estaba limpio antes de crear `codex/docs-operational-readiness`.
+- La siguiente disciplina operativa queda centrada en CI minimo, versionado interno `0.3.0-dev`, release process y exclusion de artefactos locales.

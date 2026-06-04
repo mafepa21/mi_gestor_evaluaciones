@@ -95,12 +95,16 @@ class LocalSyncServer(
     private val syncCoordinator: SyncCoordinator = SyncCoordinator(InMemorySyncAdapter()),
     private val stateListener: ((CommandCenterSnapshot) -> Unit)? = null,
 ) {
+    private val learningSituationDocumentsDirectory = File(getAppDataPath("learning-situations")).apply { mkdirs() }
     private val json = Json { ignoreUnknownKeys = true }
     private val sseConnections = java.util.concurrent.CopyOnWriteArrayList<HttpExchange>()
     private var server: HttpsServer? = null
     private var jmDns: JmDNS? = null
     private var serviceInfo: ServiceInfo? = null
     private var networkMonitor: ScheduledExecutorService? = null
+    private var dbMonitor: ScheduledExecutorService? = null
+    @Volatile
+    private var lastCheckedDbTimestamp: Long = System.currentTimeMillis()
     @Volatile
     private var advertisedLanAddress: InetAddress? = null
 
@@ -310,6 +314,41 @@ class LocalSyncServer(
             }
         }
 
+        https.createContext("/sync/documents") { ex ->
+            if (!isAuthorized(ex)) return@createContext
+            val hash = ex.requestURI.path.substringAfterLast('/').lowercase()
+            if (!hash.matches(Regex("[a-f0-9]{64}"))) {
+                ex.respond(400, """{"error":"invalid_hash"}""")
+                return@createContext
+            }
+            val target = File(learningSituationDocumentsDirectory, "$hash.docx")
+            when (ex.requestMethod) {
+                "HEAD" -> {
+                    if (target.exists()) ex.respondEmpty(200) else ex.respondEmpty(404)
+                }
+                "GET" -> {
+                    if (!target.exists()) {
+                        ex.respond(404, """{"error":"not_found"}""")
+                    } else {
+                        ex.respondBinary(200, target.readBytes(), "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+                    }
+                }
+                "PUT" -> {
+                    val bytes = ex.requestBody.use { it.readBytes() }
+                    val actualHash = MessageDigest.getInstance("SHA-256")
+                        .digest(bytes)
+                        .joinToString("") { "%02x".format(it) }
+                    if (actualHash != hash) {
+                        ex.respond(409, """{"error":"hash_mismatch"}""")
+                    } else {
+                        target.writeBytes(bytes)
+                        ex.respond(200, """{"ok":true}""")
+                    }
+                }
+                else -> ex.respond(405, """{"error":"method_not_allowed"}""")
+            }
+        }
+
         https.createContext("/sync/unpair") { ex ->
             if (ex.requestMethod != "POST") {
                 ex.respond(405, """{"error":"method_not_allowed"}""")
@@ -324,6 +363,7 @@ class LocalSyncServer(
         server = https
         publishBonjour()
         startNetworkMonitor()
+        startDbMonitor()
         notifyStatusChanged()
     }
 
@@ -333,6 +373,7 @@ class LocalSyncServer(
 
     fun stop() {
         stopNetworkMonitor()
+        stopDbMonitor()
         server?.stop(0)
         server = null
 
@@ -406,6 +447,39 @@ class LocalSyncServer(
     private fun stopNetworkMonitor() {
         networkMonitor?.shutdownNow()
         networkMonitor = null
+    }
+
+    private fun startDbMonitor() {
+        if (dbMonitor != null) return
+        lastCheckedDbTimestamp = System.currentTimeMillis()
+        dbMonitor = Executors.newSingleThreadScheduledExecutor().also { scheduler ->
+            scheduler.scheduleAtFixedRate(
+                {
+                    runCatching {
+                        kotlinx.coroutines.runBlocking {
+                            val now = System.currentTimeMillis()
+                            val response = syncCoordinator.pullChanges(sinceEpochMs = lastCheckedDbTimestamp, serverNowEpochMs = now)
+                            val changes = response.changes
+                            if (changes.isNotEmpty()) {
+                                println("📡 DB Monitor: Encontrados ${changes.size} cambios locales. Retransmitiendo...")
+                                broadcastSseEvent(changes, now)
+                            }
+                            lastCheckedDbTimestamp = now
+                        }
+                    }.onFailure { e ->
+                        println("❌ Error en DB Monitor: ${e.message}")
+                    }
+                },
+                3L,
+                3L,
+                TimeUnit.SECONDS
+            )
+        }
+    }
+
+    private fun stopDbMonitor() {
+        dbMonitor?.shutdownNow()
+        dbMonitor = null
     }
 
     private fun refreshNetworkBindingIfNeeded() {
@@ -508,6 +582,9 @@ class LocalSyncServer(
     }
 
     private fun isAuthorized(ex: HttpExchange): Boolean {
+        if (ex.remoteAddress.address.isLoopbackAddress) {
+            return true
+        }
         val auth = ex.requestHeaders.getFirst("Authorization")
         val token = auth?.removePrefix("Bearer ")?.trim()
         val authorized = token != null && token == activeToken
@@ -575,6 +652,17 @@ class LocalSyncServer(
     private fun HttpExchange.respond(status: Int, body: String) {
         responseHeaders.add("Content-Type", "application/json; charset=utf-8")
         val bytes = body.toByteArray()
+        sendResponseHeaders(status, bytes.size.toLong())
+        responseBody.use { it.write(bytes) }
+    }
+
+    private fun HttpExchange.respondEmpty(status: Int) {
+        sendResponseHeaders(status, -1)
+        close()
+    }
+
+    private fun HttpExchange.respondBinary(status: Int, bytes: ByteArray, contentType: String) {
+        responseHeaders.add("Content-Type", contentType)
         sendResponseHeaders(status, bytes.size.toLong())
         responseBody.use { it.write(bytes) }
     }

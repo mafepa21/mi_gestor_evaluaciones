@@ -2,6 +2,13 @@ package com.migestor.desktop.sync
 
 import com.migestor.data.di.KmpContainer
 import com.migestor.shared.domain.AuditTrace
+import com.migestor.shared.domain.LearningSituation
+import com.migestor.shared.domain.LearningSituationLinkedResource
+import com.migestor.shared.domain.LearningSituationResourceKind
+import com.migestor.shared.domain.LearningSituationSessionPlan
+import com.migestor.shared.domain.LearningSituationSessionSequenceVersion
+import com.migestor.shared.domain.LearningSituationStatus
+import com.migestor.shared.domain.LearningSituationVersion
 import com.migestor.shared.domain.NotebookColumnDefinition
 import com.migestor.shared.domain.NotebookColumnType
 import com.migestor.shared.domain.NotebookTab
@@ -174,6 +181,9 @@ class SqlDelightSyncAdapter(
                             put("columnId", JsonPrimitive(grade.columnId))
                             put("evaluationId", JsonPrimitive(grade.evaluationId ?: 0L))
                             put("value", grade.value?.let(::JsonPrimitive) ?: JsonPrimitive(0.0))
+                            put("evidence", grade.evidence?.let(::JsonPrimitive) ?: JsonPrimitive(""))
+                            put("evidencePath", grade.evidencePath?.let(::JsonPrimitive) ?: JsonPrimitive(""))
+                            put("rubricSelections", grade.rubricSelections?.let(::JsonPrimitive) ?: JsonPrimitive(""))
                         }.toString(),
                     )
                 }
@@ -230,6 +240,7 @@ class SqlDelightSyncAdapter(
                             put("tabId", JsonPrimitive(group.tabId))
                             put("name", JsonPrimitive(group.name))
                             put("order", JsonPrimitive(group.order))
+                            group.learningSituationId?.let { put("learningSituationId", JsonPrimitive(it)) }
                         }.toString(),
                     )
                 }
@@ -601,9 +612,138 @@ class SqlDelightSyncAdapter(
                         put("objectives", JsonPrimitive(session.objectives))
                         put("activities", JsonPrimitive(session.activities))
                         put("evaluation", JsonPrimitive(session.evaluation))
+                        session.learningSituationSessionPlanId?.let { put("learningSituationSessionPlanId", JsonPrimitive(it)) }
                         put("status", JsonPrimitive(session.status.name))
                     }.toString(),
                 )
+            }
+        }
+
+        // ── Situaciones: metadatos; el DOCX se transfiere por hash fuera de JSON ──
+        container.learningSituationsRepository.listSituations().forEach { situation ->
+            val updatedAt = situation.trace.updatedAt.toEpochMilliseconds()
+            if (sinceEpochMs == 0L || updatedAt > sinceEpochMs) {
+                changes += SyncChange(
+                    entity = "learning_situation",
+                    id = situation.id.toString(),
+                    updatedAtEpochMs = updatedAt,
+                    deviceId = situation.trace.deviceId ?: localDeviceId,
+                    payload = buildJsonObject {
+                        put("id", JsonPrimitive(situation.id))
+                        put("title", JsonPrimitive(situation.title))
+                        put("stageLabel", JsonPrimitive(situation.stageLabel))
+                        put("courseLabel", JsonPrimitive(situation.courseLabel))
+                        put("subjectLabel", JsonPrimitive(situation.subjectLabel))
+                        put("termLabel", JsonPrimitive(situation.termLabel))
+                        put("centerLabel", JsonPrimitive(situation.centerLabel))
+                        put("sessionCount", JsonPrimitive(situation.sessionCount))
+                        put("challenge", JsonPrimitive(situation.challenge))
+                        put("finalProduct", JsonPrimitive(situation.finalProduct))
+                        put("payloadJson", JsonPrimitive(situation.payloadJson))
+                        put("status", JsonPrimitive(situation.status.name))
+                    }.toString(),
+                )
+            }
+            container.learningSituationsRepository.listVersions(situation.id).forEach { version ->
+                val versionUpdatedAt = version.trace.updatedAt.toEpochMilliseconds()
+                if (sinceEpochMs == 0L || versionUpdatedAt > sinceEpochMs) {
+                    changes += SyncChange(
+                        entity = "learning_situation_version",
+                        id = "${situation.id}-${version.versionNumber}",
+                        updatedAtEpochMs = versionUpdatedAt,
+                        deviceId = version.trace.deviceId ?: localDeviceId,
+                        payload = buildJsonObject {
+                            put("id", JsonPrimitive(version.id))
+                            put("learningSituationId", JsonPrimitive(situation.id))
+                            put("versionNumber", JsonPrimitive(version.versionNumber))
+                            put("originalFileName", JsonPrimitive(version.originalFileName))
+                            put("sha256", JsonPrimitive(version.sha256))
+                            put("sizeBytes", JsonPrimitive(version.sizeBytes))
+                            put("payloadJson", JsonPrimitive(version.payloadJson))
+                            put("warningsJson", JsonPrimitive(version.warningsJson))
+                        }.toString(),
+                    )
+                }
+            }
+            container.learningSituationsRepository.listSessionSequenceVersions(situation.id).forEach { version ->
+                val versionUpdatedAt = version.trace.updatedAt.toEpochMilliseconds()
+                if (sinceEpochMs == 0L || versionUpdatedAt > sinceEpochMs) {
+                    changes += SyncChange(
+                        entity = "learning_situation_sequence_version",
+                        id = "${situation.id}-${version.versionNumber}",
+                        updatedAtEpochMs = versionUpdatedAt,
+                        deviceId = version.trace.deviceId ?: localDeviceId,
+                        payload = buildJsonObject {
+                            put("id", JsonPrimitive(version.id))
+                            put("learningSituationId", JsonPrimitive(situation.id))
+                            put("versionNumber", JsonPrimitive(version.versionNumber))
+                            put("originalFileName", JsonPrimitive(version.originalFileName))
+                            put("sha256", JsonPrimitive(version.sha256))
+                            put("sizeBytes", JsonPrimitive(version.sizeBytes))
+                            put("payloadJson", JsonPrimitive(version.payloadJson))
+                            put("warningsJson", JsonPrimitive(version.warningsJson))
+                        }.toString(),
+                    )
+                }
+                container.learningSituationsRepository.listSessionPlans(version.id).forEach { plan ->
+                    val planUpdatedAt = plan.trace.updatedAt.toEpochMilliseconds()
+                    if (sinceEpochMs == 0L || planUpdatedAt > sinceEpochMs) {
+                        changes += SyncChange(
+                            entity = "learning_situation_session_plan",
+                            id = plan.id.toString(),
+                            updatedAtEpochMs = planUpdatedAt,
+                            deviceId = plan.trace.deviceId ?: localDeviceId,
+                            payload = buildJsonObject {
+                                put("id", JsonPrimitive(plan.id))
+                                put("learningSituationId", JsonPrimitive(plan.learningSituationId))
+                                put("sequenceVersionId", JsonPrimitive(plan.sequenceVersionId))
+                                put("sessionNumber", JsonPrimitive(plan.sessionNumber))
+                                put("sourceLabel", JsonPrimitive(plan.sourceLabel))
+                                put("title", JsonPrimitive(plan.title))
+                                put("sessionType", JsonPrimitive(plan.sessionType))
+                                put("effectiveMinutes", JsonPrimitive(plan.effectiveMinutes))
+                                put("objective", JsonPrimitive(plan.objective))
+                                put("criteriaJson", JsonPrimitive(plan.criteriaJson))
+                                put("material", JsonPrimitive(plan.material))
+                                put("developmentJson", JsonPrimitive(plan.developmentJson))
+                                put("adaptationsJson", JsonPrimitive(plan.adaptationsJson))
+                            }.toString(),
+                        )
+                    }
+                }
+            }
+            container.learningSituationsRepository.listClassLinks(situation.id).forEach { link ->
+                val linkUpdatedAt = link.trace.updatedAt.toEpochMilliseconds()
+                if (sinceEpochMs == 0L || linkUpdatedAt > sinceEpochMs) {
+                    changes += SyncChange(
+                        entity = "learning_situation_class_link",
+                        id = "${situation.id}-${link.classId}",
+                        updatedAtEpochMs = linkUpdatedAt,
+                        deviceId = link.trace.deviceId ?: localDeviceId,
+                        payload = buildJsonObject {
+                            put("learningSituationId", JsonPrimitive(situation.id))
+                            put("classId", JsonPrimitive(link.classId))
+                        }.toString(),
+                    )
+                }
+            }
+            container.learningSituationsRepository.listLinkedResources(situation.id).forEach { link ->
+                val linkUpdatedAt = link.trace.updatedAt.toEpochMilliseconds()
+                if (sinceEpochMs == 0L || linkUpdatedAt > sinceEpochMs) {
+                    changes += SyncChange(
+                        entity = "learning_situation_link",
+                        id = "${situation.id}-${link.kind.name}-${link.resourceId}",
+                        updatedAtEpochMs = linkUpdatedAt,
+                        deviceId = link.trace.deviceId ?: localDeviceId,
+                        payload = buildJsonObject {
+                            put("learningSituationId", JsonPrimitive(situation.id))
+                            put("kind", JsonPrimitive(link.kind.name))
+                            put("resourceId", JsonPrimitive(link.resourceId))
+                            link.classId?.let { put("classId", JsonPrimitive(it)) }
+                            put("label", JsonPrimitive(link.label))
+                        }.toString(),
+                    )
+                }
             }
         }
 
@@ -749,6 +889,9 @@ class SqlDelightSyncAdapter(
                             columnId = columnId,
                             evaluationId = evaluationId,
                             value = payload.double("value"),
+                            evidence = payload.string("evidence"),
+                            evidencePath = payload.string("evidencePath"),
+                            rubricSelections = payload.string("rubricSelections"),
                             updatedAtEpochMs = change.updatedAtEpochMs,
                             deviceId = change.deviceId,
                             syncVersion = 1,
@@ -811,6 +954,7 @@ class SqlDelightSyncAdapter(
                                 tabId = tabId,
                                 name = name,
                                 order = payload.int("order") ?: 0,
+                                learningSituationId = payload.long("learningSituationId"),
                                 trace = com.migestor.shared.domain.AuditTrace(
                                     updatedAt = Instant.fromEpochMilliseconds(change.updatedAtEpochMs),
                                     deviceId = change.deviceId,
@@ -995,6 +1139,140 @@ class SqlDelightSyncAdapter(
                         applied++
                     }
 
+                    "learning_situation" -> {
+                        val title = payload.string("title") ?: return@forEach
+                        val updatedAt = Instant.fromEpochMilliseconds(change.updatedAtEpochMs)
+                        container.learningSituationsRepository.saveSituation(
+                            LearningSituation(
+                                id = payload.long("id") ?: 0L,
+                                title = title,
+                                stageLabel = payload.string("stageLabel") ?: "",
+                                courseLabel = payload.string("courseLabel") ?: "",
+                                subjectLabel = payload.string("subjectLabel") ?: "",
+                                termLabel = payload.string("termLabel") ?: "",
+                                centerLabel = payload.string("centerLabel") ?: "",
+                                sessionCount = payload.int("sessionCount") ?: 0,
+                                challenge = payload.string("challenge") ?: "",
+                                finalProduct = payload.string("finalProduct") ?: "",
+                                payloadJson = payload.string("payloadJson") ?: "{}",
+                                status = runCatching {
+                                    LearningSituationStatus.valueOf(payload.string("status") ?: "ACTIVE")
+                                }.getOrDefault(LearningSituationStatus.ACTIVE),
+                                trace = AuditTrace(
+                                    createdAt = updatedAt,
+                                    updatedAt = updatedAt,
+                                    deviceId = change.deviceId,
+                                    syncVersion = 1,
+                                ),
+                            ),
+                        )
+                        applied++
+                    }
+
+                    "learning_situation_version" -> {
+                        val situationId = payload.long("learningSituationId") ?: return@forEach
+                        val sha256 = payload.string("sha256") ?: return@forEach
+                        val updatedAt = Instant.fromEpochMilliseconds(change.updatedAtEpochMs)
+                        container.learningSituationsRepository.saveVersion(
+                            LearningSituationVersion(
+                                learningSituationId = situationId,
+                                versionNumber = payload.int("versionNumber") ?: 1,
+                                originalFileName = payload.string("originalFileName") ?: "$sha256.docx",
+                                sha256 = sha256,
+                                localPath = null,
+                                sizeBytes = payload.long("sizeBytes") ?: 0L,
+                                payloadJson = payload.string("payloadJson") ?: "{}",
+                                warningsJson = payload.string("warningsJson") ?: "[]",
+                                trace = AuditTrace(
+                                    createdAt = updatedAt,
+                                    updatedAt = updatedAt,
+                                    deviceId = change.deviceId,
+                                    syncVersion = 1,
+                                ),
+                            ),
+                        )
+                        applied++
+                    }
+
+                    "learning_situation_sequence_version" -> {
+                        val situationId = payload.long("learningSituationId") ?: return@forEach
+                        val sha256 = payload.string("sha256") ?: return@forEach
+                        val updatedAt = Instant.fromEpochMilliseconds(change.updatedAtEpochMs)
+                        container.learningSituationsRepository.saveSessionSequenceVersion(
+                            LearningSituationSessionSequenceVersion(
+                                id = payload.long("id") ?: 0L,
+                                learningSituationId = situationId,
+                                versionNumber = payload.int("versionNumber") ?: 1,
+                                originalFileName = payload.string("originalFileName") ?: "$sha256.docx",
+                                sha256 = sha256,
+                                sizeBytes = payload.long("sizeBytes") ?: 0L,
+                                payloadJson = payload.string("payloadJson") ?: "{}",
+                                warningsJson = payload.string("warningsJson") ?: "[]",
+                                trace = AuditTrace(createdAt = updatedAt, updatedAt = updatedAt, deviceId = change.deviceId, syncVersion = 1),
+                            ),
+                        )
+                        applied++
+                    }
+
+                    "learning_situation_session_plan" -> {
+                        val situationId = payload.long("learningSituationId") ?: return@forEach
+                        val versionId = payload.long("sequenceVersionId") ?: return@forEach
+                        val title = payload.string("title") ?: return@forEach
+                        val updatedAt = Instant.fromEpochMilliseconds(change.updatedAtEpochMs)
+                        container.learningSituationsRepository.saveSessionPlan(
+                            LearningSituationSessionPlan(
+                                id = payload.long("id") ?: 0L,
+                                learningSituationId = situationId,
+                                sequenceVersionId = versionId,
+                                sessionNumber = payload.int("sessionNumber") ?: 0,
+                                sourceLabel = payload.string("sourceLabel") ?: "",
+                                title = title,
+                                sessionType = payload.string("sessionType") ?: "",
+                                effectiveMinutes = payload.int("effectiveMinutes") ?: 0,
+                                objective = payload.string("objective") ?: "",
+                                criteriaJson = payload.string("criteriaJson") ?: "[]",
+                                material = payload.string("material") ?: "",
+                                developmentJson = payload.string("developmentJson") ?: "[]",
+                                adaptationsJson = payload.string("adaptationsJson") ?: "[]",
+                                trace = AuditTrace(createdAt = updatedAt, updatedAt = updatedAt, deviceId = change.deviceId, syncVersion = 1),
+                            ),
+                        )
+                        applied++
+                    }
+
+                    "learning_situation_class_link" -> {
+                        val situationId = payload.long("learningSituationId") ?: return@forEach
+                        val classId = payload.long("classId") ?: return@forEach
+                        val existing = container.learningSituationsRepository.listClassLinks(situationId)
+                            .map { it.classId }
+                        container.learningSituationsRepository.replaceClassLinks(situationId, (existing + classId).distinct())
+                        applied++
+                    }
+
+                    "learning_situation_link" -> {
+                        val situationId = payload.long("learningSituationId") ?: return@forEach
+                        val resourceId = payload.string("resourceId") ?: return@forEach
+                        val updatedAt = Instant.fromEpochMilliseconds(change.updatedAtEpochMs)
+                        container.learningSituationsRepository.saveLinkedResource(
+                            LearningSituationLinkedResource(
+                                learningSituationId = situationId,
+                                kind = runCatching {
+                                    LearningSituationResourceKind.valueOf(payload.string("kind") ?: "TEACHING_UNIT")
+                                }.getOrDefault(LearningSituationResourceKind.TEACHING_UNIT),
+                                resourceId = resourceId,
+                                classId = payload.long("classId"),
+                                label = payload.string("label") ?: "",
+                                trace = AuditTrace(
+                                    createdAt = updatedAt,
+                                    updatedAt = updatedAt,
+                                    deviceId = change.deviceId,
+                                    syncVersion = 1,
+                                ),
+                            ),
+                        )
+                        applied++
+                    }
+
                     "planning_session" -> {
                         val session = PlanningSession(
                             id = payload.long("id") ?: 0L,
@@ -1014,6 +1292,7 @@ class SqlDelightSyncAdapter(
                             teacherScheduleSlotId = payload.long("teacherScheduleSlotId"),
                             startTime = payload.string("startTime"),
                             endTime = payload.string("endTime"),
+                            learningSituationSessionPlanId = payload.long("learningSituationSessionPlanId"),
                             status = SessionStatus.entries.firstOrNull {
                                 it.name == payload.string("status")
                             } ?: SessionStatus.PLANNED,

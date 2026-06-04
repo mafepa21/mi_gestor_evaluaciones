@@ -536,6 +536,7 @@ class NotebookConfigRepositorySqlDelight(
                     tabId = row.tab_id,
                     name = row.name,
                     order = row.sort_order.toInt(),
+                    learningSituationId = row.learning_situation_id,
                     trace = AuditTrace(
                         updatedAt = Instant.fromEpochMilliseconds(row.updated_at_epoch_ms),
                         deviceId = row.device_id,
@@ -559,6 +560,7 @@ class NotebookConfigRepositorySqlDelight(
                 tabId = row.tab_id,
                 name = row.name,
                 order = row.sort_order.toInt(),
+                learningSituationId = row.learning_situation_id,
                 trace = AuditTrace(
                     updatedAt = Instant.fromEpochMilliseconds(row.updated_at_epoch_ms),
                     deviceId = row.device_id,
@@ -583,6 +585,7 @@ class NotebookConfigRepositorySqlDelight(
                     tab_id = workGroup.tabId,
                     name = uniqueName,
                     sort_order = workGroup.order.toLong(),
+                    learning_situation_id = workGroup.learningSituationId,
                     updated_at_epoch_ms = now,
                     device_id = workGroup.trace.deviceId,
                     sync_version = workGroup.trace.syncVersion,
@@ -595,6 +598,7 @@ class NotebookConfigRepositorySqlDelight(
                     tab_id = workGroup.tabId,
                     name = uniqueName,
                     sort_order = workGroup.order.toLong(),
+                    learning_situation_id = workGroup.learningSituationId,
                     updated_at_epoch_ms = now,
                     device_id = workGroup.trace.deviceId,
                     sync_version = workGroup.trace.syncVersion,

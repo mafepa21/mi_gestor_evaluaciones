@@ -523,6 +523,32 @@ class NotebookViewModelTest {
         assertEquals(1, repository.savedWorkGroups.size)
     }
 
+    @Test
+    fun `saveWorkGroup auto creates a default tab if none exists`() = runTest {
+        val classId = 1L
+        val repository = FakeNotebookRepository(
+            snapshot = NotebookSheet(
+                classId = classId,
+                tabs = emptyList(),
+                columns = emptyList(),
+                rows = emptyList(),
+            )
+        )
+        val viewModel = createViewModel(repository)
+
+        viewModel.selectClass(classId)
+        advanceUntilIdle()
+        viewModel.saveWorkGroup(name = "Grupo Auto")
+        advanceUntilIdle()
+
+        assertTrue(repository.savedTabs.isNotEmpty())
+        assertEquals("Evaluación", repository.savedTabs.first().title)
+
+        val savedGroup = repository.savedWorkGroups.single()
+        assertEquals("Grupo Auto", savedGroup.name)
+        assertEquals(repository.savedTabs.first().id, savedGroup.tabId)
+    }
+
     private fun createViewModel(repository: FakeNotebookRepository): NotebookViewModel {
         return NotebookViewModel(
             notebookRepository = repository,
@@ -543,6 +569,7 @@ private class FakeNotebookRepository(
     val savedAverageConfigurations = mutableListOf<List<NotebookAverageColumnConfig>>()
     val savedWorkGroups = mutableListOf<NotebookWorkGroup>()
     val upsertGradeCalls = mutableListOf<UpsertGradeCall>()
+    val savedTabs = mutableListOf<NotebookTab>()
 
     override suspend fun loadNotebookSnapshot(classId: Long): NotebookSheet = snapshot
     override fun observeStudentChanges(classId: Long): Flow<List<Student>> = flowOf(emptyList())
@@ -551,7 +578,9 @@ private class FakeNotebookRepository(
     override suspend fun removeStudent(classId: Long, studentId: Long) = Unit
     override suspend fun listStudentsInClass(classId: Long): List<Student> = emptyList()
     override suspend fun saveGrade(classId: Long, studentId: Long, columnId: String, evaluationId: Long?, value: Double?): Long = 1
-    override suspend fun saveTab(classId: Long, tab: NotebookTab) = Unit
+    override suspend fun saveTab(classId: Long, tab: NotebookTab) {
+        savedTabs += tab
+    }
     override suspend fun deleteTab(tabId: String) = Unit
     override suspend fun saveColumn(classId: Long, column: NotebookColumnDefinition) {
         savedColumns += column

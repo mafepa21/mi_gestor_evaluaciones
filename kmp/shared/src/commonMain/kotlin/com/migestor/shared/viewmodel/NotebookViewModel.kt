@@ -1475,11 +1475,19 @@ class NotebookViewModel(
         return firstChild?.id ?: firstRoot?.id ?: tabs.firstOrNull()?.id
     }
 
-    fun saveWorkGroup(name: String, groupId: Long? = null, studentIds: List<Long> = emptyList()) {
+    fun saveWorkGroup(name: String, groupId: Long? = null, studentIds: List<Long> = emptyList(), learningSituationId: Long? = null) {
         val classId = activeClassId ?: return
         val currentState = _state.value as? NotebookUiState.Data ?: return
-        val tabId = _selectedTabId.value ?: currentState.sheet.tabs.firstOrNull()?.id ?: return
         scope.launch {
+            val tabId = _selectedTabId.value
+                ?: currentState.sheet.tabs.firstOrNull()?.id
+                ?: run {
+                    val tabName = "Evaluación"
+                    val newTabId = "TAB_${Clock.System.now().toEpochMilliseconds()}"
+                    val newTab = NotebookTab(id = newTabId, title = tabName)
+                    notebookRepository.saveTab(classId, newTab)
+                    newTabId
+                }
             val existing = currentState.sheet.workGroups.firstOrNull { it.id == groupId }
             val nextOrder = currentState.sheet.workGroups.filter { it.tabId == tabId }.maxOfOrNull { it.order }?.plus(1) ?: 0
             val baseName = name.trim().ifBlank { existing?.name ?: "Grupo ${nextOrder + 1}" }
@@ -1497,6 +1505,11 @@ class NotebookViewModel(
                     tabId = tabId,
                     name = uniqueName,
                     order = existing?.order ?: nextOrder,
+                    learningSituationId = when (learningSituationId) {
+                        -1L -> null
+                        null -> existing?.learningSituationId
+                        else -> learningSituationId
+                    },
                     trace = existing?.trace ?: AuditTrace()
                 )
             )

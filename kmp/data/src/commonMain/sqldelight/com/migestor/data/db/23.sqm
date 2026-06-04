@@ -1,0 +1,64 @@
+CREATE TABLE IF NOT EXISTS learning_situations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    stage_label TEXT NOT NULL DEFAULT '',
+    course_label TEXT NOT NULL DEFAULT '',
+    subject_label TEXT NOT NULL DEFAULT '',
+    term_label TEXT NOT NULL DEFAULT '',
+    center_label TEXT NOT NULL DEFAULT '',
+    session_count INTEGER NOT NULL DEFAULT 0,
+    challenge TEXT NOT NULL DEFAULT '',
+    final_product TEXT NOT NULL DEFAULT '',
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'DRAFT',
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS learning_situation_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    learning_situation_id INTEGER NOT NULL,
+    version_number INTEGER NOT NULL,
+    original_file_name TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    local_path TEXT,
+    size_bytes INTEGER NOT NULL DEFAULT 0,
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    warnings_json TEXT NOT NULL DEFAULT '[]',
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(learning_situation_id, version_number),
+    FOREIGN KEY (learning_situation_id) REFERENCES learning_situations(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS learning_situation_classes (
+    learning_situation_id INTEGER NOT NULL,
+    class_id INTEGER NOT NULL,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (learning_situation_id, class_id),
+    FOREIGN KEY (learning_situation_id) REFERENCES learning_situations(id) ON DELETE CASCADE,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS learning_situation_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    learning_situation_id INTEGER NOT NULL,
+    resource_kind TEXT NOT NULL,
+    resource_id TEXT NOT NULL,
+    class_id INTEGER,
+    label TEXT NOT NULL DEFAULT '',
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(learning_situation_id, resource_kind, resource_id, class_id),
+    FOREIGN KEY (learning_situation_id) REFERENCES learning_situations(id) ON DELETE CASCADE,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE SET NULL
+);

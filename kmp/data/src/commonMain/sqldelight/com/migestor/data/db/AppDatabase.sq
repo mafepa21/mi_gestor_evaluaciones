@@ -428,6 +428,112 @@ CREATE TABLE IF NOT EXISTS configuration_template_versions (
     FOREIGN KEY (source_academic_year_id) REFERENCES academic_years(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS learning_situations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    stage_label TEXT NOT NULL DEFAULT '',
+    course_label TEXT NOT NULL DEFAULT '',
+    subject_label TEXT NOT NULL DEFAULT '',
+    term_label TEXT NOT NULL DEFAULT '',
+    center_label TEXT NOT NULL DEFAULT '',
+    session_count INTEGER NOT NULL DEFAULT 0,
+    challenge TEXT NOT NULL DEFAULT '',
+    final_product TEXT NOT NULL DEFAULT '',
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'DRAFT',
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS learning_situation_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    learning_situation_id INTEGER NOT NULL,
+    version_number INTEGER NOT NULL,
+    original_file_name TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    local_path TEXT,
+    size_bytes INTEGER NOT NULL DEFAULT 0,
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    warnings_json TEXT NOT NULL DEFAULT '[]',
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(learning_situation_id, version_number),
+    FOREIGN KEY (learning_situation_id) REFERENCES learning_situations(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS learning_situation_classes (
+    learning_situation_id INTEGER NOT NULL,
+    class_id INTEGER NOT NULL,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (learning_situation_id, class_id),
+    FOREIGN KEY (learning_situation_id) REFERENCES learning_situations(id) ON DELETE CASCADE,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS learning_situation_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    learning_situation_id INTEGER NOT NULL,
+    resource_kind TEXT NOT NULL,
+    resource_id TEXT NOT NULL,
+    class_id INTEGER,
+    label TEXT NOT NULL DEFAULT '',
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(learning_situation_id, resource_kind, resource_id, class_id),
+    FOREIGN KEY (learning_situation_id) REFERENCES learning_situations(id) ON DELETE CASCADE,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS learning_situation_sequence_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    learning_situation_id INTEGER NOT NULL,
+    version_number INTEGER NOT NULL,
+    original_file_name TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    local_path TEXT,
+    size_bytes INTEGER NOT NULL DEFAULT 0,
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    warnings_json TEXT NOT NULL DEFAULT '[]',
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(learning_situation_id, version_number),
+    FOREIGN KEY (learning_situation_id) REFERENCES learning_situations(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS learning_situation_session_plans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    learning_situation_id INTEGER NOT NULL,
+    sequence_version_id INTEGER NOT NULL,
+    session_number INTEGER NOT NULL,
+    source_label TEXT NOT NULL DEFAULT '',
+    title TEXT NOT NULL,
+    session_type TEXT NOT NULL DEFAULT '',
+    effective_minutes INTEGER NOT NULL DEFAULT 0,
+    objective TEXT NOT NULL DEFAULT '',
+    criteria_json TEXT NOT NULL DEFAULT '[]',
+    material TEXT NOT NULL DEFAULT '',
+    development_json TEXT NOT NULL DEFAULT '[]',
+    adaptations_json TEXT NOT NULL DEFAULT '[]',
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(sequence_version_id, session_number),
+    FOREIGN KEY (learning_situation_id) REFERENCES learning_situations(id) ON DELETE CASCADE,
+    FOREIGN KEY (sequence_version_id) REFERENCES learning_situation_sequence_versions(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS notebook_cell_entries (
     class_id INTEGER NOT NULL,
     student_id INTEGER NOT NULL,
@@ -677,7 +783,14 @@ WHERE student_id = ? AND evaluation_id = ? AND criterion_id = ?
 LIMIT 1;
 
 selectWeightedRubricScore:
-SELECT SUM(rl.points * rc.weight) / SUM(rc.weight) AS score
+SELECT ROUND(
+  SUM(
+    (
+      (CASE WHEN rl.points > 0 THEN rl.points ELSE rl.sort_order END * 1.0) /
+      (SELECT CASE WHEN MAX(CASE WHEN rl2.points > 0 THEN rl2.points ELSE rl2.sort_order END) > 1 THEN CAST(MAX(CASE WHEN rl2.points > 0 THEN rl2.points ELSE rl2.sort_order END) AS REAL) ELSE 1.0 END FROM rubric_levels rl2 WHERE rl2.criterion_id = rc.id)
+    ) * (CASE WHEN rc.weight > 0.0 THEN rc.weight ELSE 1.0 END)
+  ) / SUM(CASE WHEN rc.weight > 0.0 THEN rc.weight ELSE 1.0 END) * 10.0
+, 2) AS score
 FROM rubric_assessments ra
 INNER JOIN rubric_criteria rc ON rc.id = ra.criterion_id
 INNER JOIN rubric_levels rl ON rl.id = ra.level_id
@@ -902,6 +1015,104 @@ WHERE template_id = ?
 ORDER BY version_number DESC
 LIMIT 1;
 
+selectAllLearningSituations:
+SELECT id, title, stage_label, course_label, subject_label, term_label, center_label, session_count, challenge, final_product, payload_json, status, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM learning_situations
+ORDER BY updated_at_epoch_ms DESC, title;
+
+selectLearningSituationById:
+SELECT id, title, stage_label, course_label, subject_label, term_label, center_label, session_count, challenge, final_product, payload_json, status, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM learning_situations
+WHERE id = ?;
+
+upsertLearningSituation:
+INSERT OR REPLACE INTO learning_situations(
+    id, title, stage_label, course_label, subject_label, term_label, center_label, session_count, challenge, final_product, payload_json, status, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteLearningSituation:
+DELETE FROM learning_situations WHERE id = ?;
+
+
+nextLearningSituationVersion:
+SELECT COALESCE(MAX(version_number), 0) + 1 AS next_version
+FROM learning_situation_versions
+WHERE learning_situation_id = ?;
+
+upsertLearningSituationVersion:
+INSERT OR REPLACE INTO learning_situation_versions(
+    id, learning_situation_id, version_number, original_file_name, sha256, local_path, size_bytes, payload_json, warnings_json, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectLearningSituationVersions:
+SELECT id, learning_situation_id, version_number, original_file_name, sha256, local_path, size_bytes, payload_json, warnings_json, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM learning_situation_versions
+WHERE learning_situation_id = ?
+ORDER BY version_number DESC;
+
+nextLearningSituationSequenceVersion:
+SELECT COALESCE(MAX(version_number), 0) + 1 AS next_version
+FROM learning_situation_sequence_versions
+WHERE learning_situation_id = ?;
+
+upsertLearningSituationSequenceVersion:
+INSERT OR REPLACE INTO learning_situation_sequence_versions(
+    id, learning_situation_id, version_number, original_file_name, sha256, local_path, size_bytes, payload_json, warnings_json, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectLearningSituationSequenceVersions:
+SELECT id, learning_situation_id, version_number, original_file_name, sha256, local_path, size_bytes, payload_json, warnings_json, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM learning_situation_sequence_versions
+WHERE learning_situation_id = ?
+ORDER BY version_number DESC;
+
+upsertLearningSituationSessionPlan:
+INSERT OR REPLACE INTO learning_situation_session_plans(
+    id, learning_situation_id, sequence_version_id, session_number, source_label, title, session_type, effective_minutes, objective, criteria_json, material, development_json, adaptations_json, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectLearningSituationSessionPlans:
+SELECT id, learning_situation_id, sequence_version_id, session_number, source_label, title, session_type, effective_minutes, objective, criteria_json, material, development_json, adaptations_json, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM learning_situation_session_plans
+WHERE sequence_version_id = ?
+ORDER BY session_number;
+
+selectLearningSituationSessionPlanById:
+SELECT id, learning_situation_id, sequence_version_id, session_number, source_label, title, session_type, effective_minutes, objective, criteria_json, material, development_json, adaptations_json, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM learning_situation_session_plans
+WHERE id = ?;
+
+deleteLearningSituationClassLinks:
+DELETE FROM learning_situation_classes WHERE learning_situation_id = ?;
+
+upsertLearningSituationClassLink:
+INSERT OR REPLACE INTO learning_situation_classes(
+    learning_situation_id, class_id, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?);
+
+selectLearningSituationClassLinks:
+SELECT learning_situation_id, class_id, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM learning_situation_classes
+WHERE learning_situation_id = ?
+ORDER BY class_id;
+
+upsertLearningSituationLink:
+INSERT OR REPLACE INTO learning_situation_links(
+    id, learning_situation_id, resource_kind, resource_id, class_id, label, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectLearningSituationLinks:
+SELECT id, learning_situation_id, resource_kind, resource_id, class_id, label, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM learning_situation_links
+WHERE learning_situation_id = ?
+ORDER BY resource_kind, label;
+
 selectNotebookCellsByClass:
 SELECT class_id, student_id, column_id, value_text, value_bool, value_icon, value_ordinal, display_value, observed_at_epoch_ms, competency_criteria_ids_csv, effective_weight, counts_toward_average, note, color_hex, attachment_uris_csv, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
 FROM notebook_cell_entries
@@ -1000,6 +1211,7 @@ CREATE TABLE IF NOT EXISTS notebook_work_groups (
     tab_id          TEXT NOT NULL,
     name            TEXT NOT NULL,
     sort_order      INTEGER NOT NULL DEFAULT 0,
+    learning_situation_id INTEGER REFERENCES learning_situations(id) ON DELETE SET NULL,
     updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
     device_id       TEXT,
     sync_version    INTEGER NOT NULL DEFAULT 0,
@@ -1267,22 +1479,22 @@ DELETE FROM notebook_column_categories
 WHERE class_id = ? AND id = ?;
 
 selectWorkGroupsByClass:
-SELECT id, class_id, tab_id, name, sort_order, updated_at_epoch_ms, device_id, sync_version
+SELECT id, class_id, tab_id, name, sort_order, learning_situation_id, updated_at_epoch_ms, device_id, sync_version
 FROM notebook_work_groups
 WHERE class_id = ?
 ORDER BY tab_id, sort_order, id;
 
 selectWorkGroupsByClassAndTab:
-SELECT id, class_id, tab_id, name, sort_order, updated_at_epoch_ms, device_id, sync_version
+SELECT id, class_id, tab_id, name, sort_order, learning_situation_id, updated_at_epoch_ms, device_id, sync_version
 FROM notebook_work_groups
 WHERE class_id = ? AND tab_id = ?
 ORDER BY sort_order, id;
 
 insertWorkGroup:
 INSERT INTO notebook_work_groups(
-    class_id, tab_id, name, sort_order, updated_at_epoch_ms, device_id, sync_version
+    class_id, tab_id, name, sort_order, learning_situation_id, updated_at_epoch_ms, device_id, sync_version
 )
-VALUES (?, ?, ?, ?, ?, ?, ?);
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 
 updateWorkGroup:
 UPDATE notebook_work_groups
@@ -1290,6 +1502,7 @@ SET class_id = ?,
     tab_id = ?,
     name = ?,
     sort_order = ?,
+    learning_situation_id = ?,
     updated_at_epoch_ms = ?,
     device_id = ?,
     sync_version = ?

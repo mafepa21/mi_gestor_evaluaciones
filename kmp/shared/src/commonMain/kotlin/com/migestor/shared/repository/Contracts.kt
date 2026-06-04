@@ -456,6 +456,26 @@ interface ConfigurationTemplateRepository {
     ): Long
 }
 
+interface LearningSituationsRepository {
+    fun observeSituations(): Flow<List<LearningSituation>>
+    suspend fun listSituations(): List<LearningSituation>
+    suspend fun getSituation(id: Long): LearningSituation?
+    suspend fun saveSituation(situation: LearningSituation): Long
+    suspend fun saveVersion(version: LearningSituationVersion): Long
+    suspend fun listVersions(learningSituationId: Long): List<LearningSituationVersion>
+    suspend fun saveSessionSequenceVersion(version: LearningSituationSessionSequenceVersion): Long
+    suspend fun listSessionSequenceVersions(learningSituationId: Long): List<LearningSituationSessionSequenceVersion>
+    suspend fun saveSessionPlan(plan: LearningSituationSessionPlan): Long
+    suspend fun listSessionPlans(sequenceVersionId: Long): List<LearningSituationSessionPlan>
+    suspend fun getSessionPlan(id: Long): LearningSituationSessionPlan?
+    suspend fun replaceClassLinks(learningSituationId: Long, classIds: List<Long>)
+    suspend fun listClassLinks(learningSituationId: Long): List<LearningSituationClassLink>
+    suspend fun saveLinkedResource(resource: LearningSituationLinkedResource): Long
+    suspend fun listLinkedResources(learningSituationId: Long): List<LearningSituationLinkedResource>
+    suspend fun deleteSituation(id: Long)
+}
+
+
 interface DashboardRepository {
     fun observeStats(): Flow<DashboardStats>
     suspend fun getStats(): DashboardStats

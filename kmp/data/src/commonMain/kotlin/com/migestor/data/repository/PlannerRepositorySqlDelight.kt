@@ -117,6 +117,7 @@ class PlannerRepositorySqlDelight(
                 start_time = session.startTime,
                 end_time = session.endTime,
                 status = session.status.name,
+                learning_situation_session_plan_id = session.learningSituationSessionPlanId,
                 updated_at_epoch_ms = now,
                 device_id = null,
                 sync_version = 0L
@@ -145,6 +146,7 @@ class PlannerRepositorySqlDelight(
                     start_time = session.startTime,
                     end_time = session.endTime,
                     status = session.status.name,
+                    learning_situation_session_plan_id = session.learningSituationSessionPlanId,
                     updated_at_epoch_ms = now,
                     device_id = null,
                     sync_version = 0L
@@ -563,6 +565,7 @@ class PlannerRepositorySqlDelight(
             start_time = session.startTime,
             end_time = session.endTime,
             status = session.status.name,
+            learning_situation_session_plan_id = session.learningSituationSessionPlanId,
             updated_at_epoch_ms = now,
             device_id = null,
             sync_version = 0L
@@ -590,6 +593,7 @@ class PlannerRepositorySqlDelight(
             teacherScheduleSlotId = row.teacher_schedule_slot_id,
             startTime = row.start_time,
             endTime = row.end_time,
+            learningSituationSessionPlanId = row.learning_situation_session_plan_id,
             status = try { SessionStatus.valueOf(row.status ?: "PLANNED") } catch (e: Exception) { SessionStatus.PLANNED }
         )
     }
@@ -614,6 +618,7 @@ class PlannerRepositorySqlDelight(
             teacherScheduleSlotId = row.teacher_schedule_slot_id,
             startTime = row.start_time,
             endTime = row.end_time,
+            learningSituationSessionPlanId = row.learning_situation_session_plan_id,
             status = try { SessionStatus.valueOf(row.status ?: "PLANNED") } catch (e: Exception) { SessionStatus.PLANNED }
         )
     }

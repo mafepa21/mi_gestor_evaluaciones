@@ -558,6 +558,103 @@ data class ConfigTemplateVersion(
     val trace: AuditTrace = AuditTrace(),
 )
 
+enum class LearningSituationStatus {
+    DRAFT,
+    ACTIVE,
+    ARCHIVED,
+}
+
+enum class LearningSituationResourceKind {
+    TEACHING_UNIT,
+    PLANNING_SESSION,
+    EVALUATION,
+    RUBRIC,
+    NOTEBOOK_COLUMN,
+}
+
+data class LearningSituation(
+    val id: Long = 0,
+    val title: String,
+    val stageLabel: String = "",
+    val courseLabel: String = "",
+    val subjectLabel: String = "",
+    val termLabel: String = "",
+    val centerLabel: String = "",
+    val sessionCount: Int = 0,
+    val challenge: String = "",
+    val finalProduct: String = "",
+    val payloadJson: String = "{}",
+    val status: LearningSituationStatus = LearningSituationStatus.DRAFT,
+    val trace: AuditTrace = AuditTrace(),
+)
+
+data class LearningSituationVersion(
+    val id: Long = 0,
+    val learningSituationId: Long,
+    val versionNumber: Int = 1,
+    val originalFileName: String,
+    val sha256: String,
+    val localPath: String? = null,
+    val sizeBytes: Long = 0,
+    val payloadJson: String = "{}",
+    val warningsJson: String = "[]",
+    val trace: AuditTrace = AuditTrace(),
+)
+
+data class LearningSituationSessionSequenceVersion(
+    val id: Long = 0,
+    val learningSituationId: Long,
+    val versionNumber: Int = 1,
+    val originalFileName: String,
+    val sha256: String,
+    val localPath: String? = null,
+    val sizeBytes: Long = 0,
+    val payloadJson: String = "{}",
+    val warningsJson: String = "[]",
+    val trace: AuditTrace = AuditTrace(),
+)
+
+data class LearningSituationSessionPlan(
+    val id: Long = 0,
+    val learningSituationId: Long,
+    val sequenceVersionId: Long,
+    val sessionNumber: Int,
+    val sourceLabel: String = "",
+    val title: String,
+    val sessionType: String = "",
+    val effectiveMinutes: Int = 0,
+    val objective: String = "",
+    val criteriaJson: String = "[]",
+    val material: String = "",
+    val developmentJson: String = "[]",
+    val adaptationsJson: String = "[]",
+    val trace: AuditTrace = AuditTrace(),
+)
+
+data class LearningSituationClassLink(
+    val learningSituationId: Long,
+    val classId: Long,
+    val trace: AuditTrace = AuditTrace(),
+)
+
+data class LearningSituationEvaluationProposal(
+    val id: String,
+    val title: String,
+    val criterion: String,
+    val evidence: String,
+    val weight: Double? = null,
+)
+
+data class LearningSituationLinkedResource(
+    val id: Long = 0,
+    val learningSituationId: Long,
+    val kind: LearningSituationResourceKind,
+    val resourceId: String,
+    val classId: Long? = null,
+    val label: String = "",
+    val trace: AuditTrace = AuditTrace(),
+)
+
 data class BackupEntry(
     val id: Long,
     val path: String,
@@ -834,6 +931,7 @@ data class NotebookWorkGroup(
     val tabId: String,
     val name: String,
     val order: Int = 0,
+    val learningSituationId: Long? = null,
     val trace: AuditTrace = AuditTrace(),
 )
 
@@ -1250,6 +1348,7 @@ data class PlanningSession(
     val teacherScheduleSlotId: Long? = null,
     val startTime: String? = null,
     val endTime: String? = null,
+    val learningSituationSessionPlanId: Long? = null,
     val status: SessionStatus = SessionStatus.PLANNED
 )
 

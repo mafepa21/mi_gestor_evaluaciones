@@ -405,6 +405,38 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-06-05 - Solución al bug de columnas huérfanas en el cálculo de media tras borrado
+
+Resumen:
+- Se solucionó el problema por el cual columnas borradas del cuaderno seguían apareciendo en la configuración de la media debido a que quedaban huérfanas en la tabla `notebook_columns`.
+- Causa raíz: Al eliminar una evaluación, la base de datos ponía en cascada a NULL el `evaluation_id` de la columna asociada en `notebook_columns`. Al intentar borrar la columna por `evaluationId` después de borrar la evaluación, la búsqueda fallaba y la columna no se borraba del cuaderno (y continuaba listándose en los cálculos de la media).
+- Solución: Se modificó `NotebookViewModel.kt` para que resuelva la columna por su `evaluationId` en la configuración activa antes de borrar la evaluación, y proceda a eliminarla por su ID real.
+- Cambios ubicados en:
+  - View model: [NotebookViewModel.kt](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/shared/src/commonMain/kotlin/com/migestor/shared/viewmodel/NotebookViewModel.kt) [MODIFY]
+  - Pruebas unitarias: [NotebookViewModelTest.kt](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/shared/src/commonTest/kotlin/com/migestor/shared/viewmodel/NotebookViewModelTest.kt) [MODIFY]
+
+Validación:
+- Ejecución y paso exitoso de todas las pruebas unitarias asíncronas en Kotlin compartidas (`./gradlew :shared:desktopTest`), incluyendo dos nuevas pruebas (`deleteColumn by evaluation id deletes custom column id when found` y `deleteColumn by evaluation id falls back to eval prefix when no custom column matches`).
+
+Notas para futuras conversaciones:
+- Al implementar flujos que involucren borrado en cascada en SQLDelight, siempre resolver los elementos asociados en el view model o capa de datos antes de disparar la consulta de eliminación que altere las claves foráneas.
+
+### 2026-06-05 - Panel de desglose y visualización del cálculo de la Media en el Cuaderno (iOS/macOS)
+
+Resumen:
+- Se implementó un panel explicativo detallado (`CustomAverageExplanationPopoverView`) para la media de notas del alumno en el cuaderno.
+- Muestra el listado de columnas incluidas ("Incluye") con sus pesos, las columnas pendientes de calificación ("Pendientes") con su peso estimado, y las excluidas por configuración o formato ("No incluye").
+- Se añadió diferenciación visual mediante colores e iconos temáticos: verde (consolidada), ámbar/naranja (provisional con pendientes), gris (insuficiente).
+- La presentación se centralizó a nivel raíz en `NotebookModuleView.swift` (`.sheet` en iPhone compacto y `.popover` en iPad/macOS) desactivando la vieja lógica de presentación a nivel de celda para evitar conflictos de gestos de scroll y visualización en el grid.
+- Cambios ubicados en:
+  - Vistas y popover: [NotebookModuleView.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/NotebookModuleView.swift) [MODIFY]
+
+Validación:
+- Verificación automática y exitosa de las builds nativas de macOS y simulador de iOS mediante `./scripts/verify_apple_builds.sh` (BUILD SUCCEEDED).
+
+Notas para futuras conversaciones:
+- El modificador `.notebookAverageExplanation` antiguo asociado a la celda del grid se ha desactivado devolviendo `nil` en su binding para que no interfiera con la nueva presentación centralizada en la raíz.
+
 ### 2026-06-05 - Corrección y unificación del cálculo de la Media y control de celdas vacías en fórmulas
 
 Resumen:

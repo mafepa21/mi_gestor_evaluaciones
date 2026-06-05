@@ -14,7 +14,9 @@ El formato sigue una variante practica de Keep a Changelog:
 ## Unreleased
 
 ### Added
-
+ 
+- Detalle de cálculo de media personalizado `CustomAverageExplanationPopoverView` que muestra "Incluye", "No incluye", "Pendientes", pesos e indicador de estado de cálculo.
+- Integración de presentación de popover/sheet a nivel raíz en `NotebookModuleView.swift` para evitar conflictos de gestos e instanciación de popovers duplicados en celdas del grid.
 - Exposición del snapshot de tendencias académicas `AITrendsSnapshot` y la función `getAITrendsAndMetrics` en `KmpBridge.swift`.
 - Sección nativa y visual de "Análisis de Tendencias IA" en la ficha del alumno dentro de `NotebookStudentInspector.swift`.
 - Widget contextual premium de "Auditoría LOMLOE y Alertas de Grupo" en `DashboardView.swift` con barras de progreso y diagnóstico de cobertura.
@@ -35,7 +37,8 @@ El formato sigue una variante practica de Keep a Changelog:
 - Solución de ambigüedad de tipo en `DashboardView.swift` al utilizar estilos y colores de manera explícita (`Color.primary` y `Color.orange`).
 
 ### Verification
-
+ 
+- Verificación de compilación multiplataforma (iOS Simulator y macOS Native/Catalyst) completada con éxito tras la integración del popover de desglose de media.
 - Paso de todas las pruebas unitarias asíncronas en Kotlin compartidas (`./gradlew :shared:test`), incorporando cobertura específica para celdas vacías en fórmulas calculadas en `BuildNotebookSheetUseCaseTest.kt`.
 -  Validación de compilación multiplataforma (iOS Simulator y macOS Native/Catalyst) completada con éxito vía `./scripts/verify_apple_builds.sh`.
 

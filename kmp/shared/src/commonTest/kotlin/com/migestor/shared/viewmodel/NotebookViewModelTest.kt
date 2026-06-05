@@ -549,6 +549,60 @@ class NotebookViewModelTest {
         assertEquals(repository.savedTabs.first().id, savedGroup.tabId)
     }
 
+    @Test
+    fun `deleteColumn by evaluation id deletes custom column id when found`() = runTest {
+        val classId = 1L
+        val evaluationId = 123L
+        val customColumnId = "examen_1_1720000000000_2"
+        val repository = FakeNotebookRepository(
+            snapshot = NotebookSheet(
+                classId = classId,
+                tabs = emptyList(),
+                columns = listOf(
+                    NotebookColumnDefinition(
+                        id = customColumnId,
+                        title = "Examen",
+                        type = NotebookColumnType.NUMERIC,
+                        evaluationId = evaluationId,
+                    )
+                ),
+                rows = emptyList(),
+            )
+        )
+        val viewModel = createViewModel(repository)
+        viewModel.selectClass(classId)
+        advanceUntilIdle()
+
+        viewModel.deleteColumn(evaluationId)
+        advanceUntilIdle()
+
+        assertEquals(listOf(customColumnId), repository.deletedColumnIds)
+        assertEquals(emptyList(), repository.deletedEvaluationIds)
+    }
+
+    @Test
+    fun `deleteColumn by evaluation id falls back to eval prefix when no custom column matches`() = runTest {
+        val classId = 1L
+        val evaluationId = 123L
+        val repository = FakeNotebookRepository(
+            snapshot = NotebookSheet(
+                classId = classId,
+                tabs = emptyList(),
+                columns = emptyList(),
+                rows = emptyList(),
+            )
+        )
+        val viewModel = createViewModel(repository)
+        viewModel.selectClass(classId)
+        advanceUntilIdle()
+
+        viewModel.deleteColumn(evaluationId)
+        advanceUntilIdle()
+
+        assertEquals(listOf("eval_123"), repository.deletedColumnIds)
+        assertEquals(listOf(123L), repository.deletedEvaluationIds)
+    }
+
     private fun createViewModel(repository: FakeNotebookRepository): NotebookViewModel {
         return NotebookViewModel(
             notebookRepository = repository,
@@ -570,6 +624,9 @@ private class FakeNotebookRepository(
     val savedWorkGroups = mutableListOf<NotebookWorkGroup>()
     val upsertGradeCalls = mutableListOf<UpsertGradeCall>()
     val savedTabs = mutableListOf<NotebookTab>()
+
+    val deletedColumnIds = mutableListOf<String>()
+    val deletedEvaluationIds = mutableListOf<Long>()
 
     override suspend fun loadNotebookSnapshot(classId: Long): NotebookSheet = snapshot
     override fun observeStudentChanges(classId: Long): Flow<List<Student>> = flowOf(emptyList())
@@ -599,7 +656,9 @@ private class FakeNotebookRepository(
             affectedAverageColumnCount = 0,
             hasLockedColumns = false,
         )
-    override suspend fun deleteColumn(columnId: String) = Unit
+    override suspend fun deleteColumn(columnId: String) {
+        deletedColumnIds += columnId
+    }
     override suspend fun listColumnCategories(classId: Long, tabId: String?) = emptyList<NotebookColumnCategory>()
     override suspend fun saveColumnCategory(classId: Long, category: NotebookColumnCategory) = Unit
     override suspend fun previewDeleteColumnCategory(classId: Long, categoryId: String): com.migestor.shared.domain.NotebookDeletionImpact =
@@ -617,7 +676,9 @@ private class FakeNotebookRepository(
     override suspend fun toggleCategoryCollapsed(classId: Long, categoryId: String, isCollapsed: Boolean) = Unit
     override suspend fun reorderCategory(classId: Long, tabId: String, categoryId: String, targetCategoryId: String) = Unit
     override suspend fun assignColumnToCategory(classId: Long, columnId: String, categoryId: String?) = Unit
-    override suspend fun deleteEvaluation(evaluationId: Long) = Unit
+    override suspend fun deleteEvaluation(evaluationId: Long) {
+        deletedEvaluationIds += evaluationId
+    }
     override suspend fun duplicateConfigToClass(sourceClassId: Long, targetClassId: Long) = Unit
     override suspend fun listWorkGroups(classId: Long, tabId: String?): List<com.migestor.shared.domain.NotebookWorkGroup> = emptyList()
     override suspend fun saveWorkGroup(classId: Long, workGroup: com.migestor.shared.domain.NotebookWorkGroup): Long {
@@ -645,7 +706,11 @@ private class FakeNotebookRepository(
     override suspend fun getTabNamesForClass(classId: Long): List<String> = emptyList()
     override suspend fun createTab(classId: Long, tabName: String): String = ""
     override suspend fun addColumnToTab(classId: Long, tabName: String, columnName: String, columnType: NotebookColumnType, rubricId: Long?): String = ""
-    override suspend fun getNotebookConfig(classId: Long) = com.migestor.shared.domain.NotebookConfig(classId, emptyList(), emptyList())
+    override suspend fun getNotebookConfig(classId: Long) = com.migestor.shared.domain.NotebookConfig(
+        classId = classId,
+        tabs = snapshot.tabs,
+        columns = snapshot.columns
+    )
     override suspend fun getGradeForColumn(studentId: Long, columnId: String): com.migestor.shared.domain.Grade? = null
     override suspend fun getColumnIdForEvaluation(evaluationId: Long): String? = null
     override suspend fun upsertGrade(

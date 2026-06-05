@@ -1258,15 +1258,19 @@ class NotebookViewModel(
 
     @ObjCName("deleteColumnByEvaluationId")
     fun deleteColumn(columnId: Long) {
+        val classId = activeClassId ?: return
         scope.launch {
             try {
-                // Delete evaluation and the associated column definition
-                // We use the evaluationId because that's what's passed from the manual's UI logic
-                notebookRepository.deleteEvaluation(columnId)
+                val config = notebookRepository.getNotebookConfig(classId)
+                val column = config.columns.find { it.evaluationId == columnId }
                 
-                // Also find and delete the column definition if its id is based on this evalId
-                val columnIdStr = "eval_$columnId"
-                notebookRepository.deleteColumn(columnIdStr)
+                if (column != null) {
+                    notebookRepository.deleteColumn(column.id)
+                } else {
+                    notebookRepository.deleteEvaluation(columnId)
+                    val columnIdStr = "eval_$columnId"
+                    notebookRepository.deleteColumn(columnIdStr)
+                }
 
                 loadNotebookSnapshot()
             } catch (e: Exception) {

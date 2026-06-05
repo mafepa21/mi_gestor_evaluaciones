@@ -29,6 +29,13 @@ struct MacDashboardView: View {
     @State private var loadState: MacDashboardLoadState = .loading
     @State private var reloadTask: Task<Void, Never>?
     @State private var activeSheet: DashboardSheet?
+    @State private var proactiveInsights: [DashboardProactiveInsight] = []
+    @State private var aiBriefing: TeachingAssistantDraft? = nil
+    @State private var isLoadingAIBriefing = false
+    @State private var aiBriefingCache: [String: TeachingAssistantDraft] = [:]
+    @State private var activeAIBriefingKey: String?
+
+    private let teachingAssistantService = AppleFoundationTeachingAssistantService()
 
     private var activeContext: CurrentClassDashboardContext? {
         guard case .ready(let snapshot) = loadState else { return nil }
@@ -128,21 +135,35 @@ struct MacDashboardView: View {
                 .frame(maxWidth: .infinity)
 
                 VStack(alignment: .leading, spacing: 24) {
+                    DashboardProactiveInsightCard(
+                        insights: proactiveInsights,
+                        aiBriefing: aiBriefing,
+                        isLoadingAIBriefing: isLoadingAIBriefing,
+                        actionAvailability: proactiveActionAvailable,
+                        onAction: handleProactiveAction
+                    )
                     DashboardPendingCard(items: snapshot.pendingItems, onNavigate: onNavigate)
-                    DashboardRiskCard(snapshot: snapshot, onNavigate: onNavigate)
+                    DashboardRiskCard(snapshot: snapshot, insights: proactiveInsights, onNavigate: onNavigate)
                     DashboardStatusCard(summary: snapshot.syncStatus, backupStore: backupStore, platformName: bootstrap.platformName)
                 }
                 .frame(width: 380)
             }
         } else {
             VStack(alignment: .leading, spacing: 24) {
+                DashboardProactiveInsightCard(
+                    insights: proactiveInsights,
+                    aiBriefing: aiBriefing,
+                    isLoadingAIBriefing: isLoadingAIBriefing,
+                    actionAvailability: proactiveActionAvailable,
+                    onAction: handleProactiveAction
+                )
                 DashboardHeroNowCard(
                     context: snapshot.currentClassContext ?? snapshot.nextClassContext,
                     onAction: handleQuickAction,
                     onOpenSheet: { activeSheet = $0 }
                 )
                 DashboardPendingCard(items: snapshot.pendingItems, onNavigate: onNavigate)
-                DashboardRiskCard(snapshot: snapshot, onNavigate: onNavigate)
+                DashboardRiskCard(snapshot: snapshot, insights: proactiveInsights, onNavigate: onNavigate)
                 DashboardStatusCard(summary: snapshot.syncStatus, backupStore: backupStore, platformName: bootstrap.platformName)
             }
         }
@@ -234,7 +255,117 @@ struct MacDashboardView: View {
         } catch {
             loadState = .error("No se pudo cargar el dashboard: \(error.localizedDescription)")
         }
+        await rebuildProactiveRadarForCurrentState()
         syncToolbarActions()
+    }
+
+    private func rebuildProactiveRadarForCurrentState() async {
+        guard case .ready(let snapshot) = loadState else {
+            proactiveInsights = []
+            aiBriefing = nil
+            return
+        }
+        let context = snapshot.currentClassContext ?? snapshot.nextClassContext
+        let trends: KmpBridge.AITrendsSnapshot?
+        if let classId = context?.classId {
+            trends = try? await bridge.getAITrendsAndMetrics(classId: classId, studentId: nil)
+        } else {
+            trends = nil
+        }
+        proactiveInsights = DashboardProactiveInsightEngine.build(
+            snapshot: snapshot.proactiveSnapshot,
+            trends: trends,
+            context: DashboardProactiveContext(
+                className: context?.className,
+                modeLabel: "macOS",
+                syncPendingChanges: snapshot.syncStatus.pendingChanges,
+                pairedSyncHost: snapshot.syncStatus.pairedHost,
+                latestBackupDate: backupStore.latestBackup?.createdAt,
+                platformName: "macOS"
+            ),
+            limit: 5
+        )
+        loadAIBriefingIfNeeded(snapshot: snapshot)
+    }
+
+    private func loadAIBriefingIfNeeded(snapshot: MacDashboardSnapshot) {
+        let key = aiBriefingKey(snapshot: snapshot)
+        activeAIBriefingKey = key
+        if let cached = aiBriefingCache[key] {
+            aiBriefing = cached
+            return
+        }
+        let context = snapshot.currentClassContext ?? snapshot.nextClassContext
+        aiBriefing = DashboardProactiveInsightEngine.fallbackBriefing(from: proactiveInsights, className: context?.className)
+        guard !isLoadingAIBriefing else { return }
+        isLoadingAIBriefing = true
+        let classId = context?.classId
+        Task { @MainActor in
+            defer { isLoadingAIBriefing = false }
+            do {
+                let screenContext = try await bridge.buildDashboardAIContext(classId: classId)
+                let draft = try await teachingAssistantService.generateDraft(
+                    for: .dailyBriefing,
+                    bridge: bridge,
+                    context: screenContext,
+                    audience: .docente,
+                    tone: .breve,
+                    customPrompt: nil
+                )
+                guard activeAIBriefingKey == key else { return }
+                aiBriefingCache[key] = draft
+                aiBriefing = draft
+            } catch {
+                guard activeAIBriefingKey == key else { return }
+                let fallback = DashboardProactiveInsightEngine.fallbackBriefing(from: proactiveInsights, className: context?.className)
+                if let fallback {
+                    aiBriefingCache[key] = fallback
+                    aiBriefing = fallback
+                }
+            }
+        }
+    }
+
+    private func aiBriefingKey(snapshot: MacDashboardSnapshot) -> String {
+        let context = snapshot.currentClassContext ?? snapshot.nextClassContext
+        let day = Calendar.current.startOfDay(for: Date()).timeIntervalSince1970
+        return "\(context?.classId ?? -1)|macOS|\(day)|\(snapshot.pendingItems.count)|\(snapshot.syncStatus.pendingChanges)"
+    }
+
+    private func proactiveActionAvailable(_ action: DashboardProactiveAction) -> Bool {
+        let classId = activeContext?.classId
+        switch action {
+        case .passList, .openNotebook, .evaluatePending, .quickEvaluation, .openReports:
+            return classId != nil
+        case .openPlanner:
+            return true
+        case .reviewPhysicalEducation:
+            return classId != nil
+        case .reviewSystem, .openInspector:
+            return false
+        }
+    }
+
+    private func handleProactiveAction(_ action: DashboardProactiveAction) {
+        let classId = activeContext?.classId
+        switch action {
+        case .passList:
+            handleQuickAction(.attendance(classId: classId))
+        case .openNotebook:
+            handleQuickAction(.notebook(classId: classId))
+        case .evaluatePending:
+            handleQuickAction(.rubrics(classId: classId))
+        case .quickEvaluation:
+            activeSheet = .quickEvaluation(classId: classId)
+        case .openPlanner:
+            handleQuickAction(.plannerAgenda)
+        case .openReports:
+            handleQuickAction(.reports(classId: classId))
+        case .reviewPhysicalEducation:
+            handleQuickAction(.notebook(classId: classId))
+        case .reviewSystem, .openInspector:
+            break
+        }
     }
 
     private func buildSnapshot(
@@ -464,6 +595,35 @@ private struct MacDashboardSnapshot {
     let pendingItems: [DashboardPendingItem]
     let syncStatus: DashboardSyncSummary
     let quickActions: [DashboardQuickAction]
+
+    var proactiveSnapshot: DashboardProactiveSnapshot {
+        DashboardProactiveSnapshot(
+            todayCount: currentClassContext == nil ? 0 : 1,
+            alertsCount: pendingItems.filter { $0.priority == .high }.count,
+            pendingCount: pendingItems.count,
+            nextSessionLabel: nextClassContext?.className ?? currentClassContext?.className ?? "Sin próxima sesión",
+            todaySessions: [currentClassContext, nextClassContext].compactMap { context in
+                guard let context else { return nil }
+                return DashboardProactiveSession(
+                    id: "\(context.scheduleSlotId ?? context.classId ?? -1)",
+                    groupName: context.className ?? "Grupo",
+                    timeLabel: [context.startTime, context.endTime].compactMap { $0 }.joined(separator: "-"),
+                    didacticUnit: context.sessionTitle ?? context.unitLabel ?? "Sin sesión planificada",
+                    sessionStatus: context.status.rawValue
+                )
+            },
+            alerts: pendingItems.map { item in
+                DashboardProactiveSignal(
+                    id: item.id.uuidString,
+                    type: "pending",
+                    title: item.title,
+                    detail: item.subtitle,
+                    severity: item.priority.proactiveSeverity,
+                    count: 1
+                )
+            }
+        )
+    }
 }
 
 private struct CurrentClassDashboardContext {
@@ -503,6 +663,14 @@ private struct DashboardPendingItem: Identifiable {
             case .low: return MacAppStyle.successTint
             case .medium: return MacAppStyle.warningTint
             case .high: return MacAppStyle.dangerTint
+            }
+        }
+
+        var proactiveSeverity: String {
+            switch self {
+            case .low: return "low"
+            case .medium: return "medium"
+            case .high: return "high"
             }
         }
     }
@@ -887,23 +1055,34 @@ private struct DashboardPendingCard: View {
 
 private struct DashboardRiskCard: View {
     let snapshot: MacDashboardSnapshot
+    let insights: [DashboardProactiveInsight]
     let onNavigate: (MacDashboardDestination) -> Void
 
     private var riskItems: [DashboardPendingItem] {
         snapshot.pendingItems.filter { $0.priority == .high }
     }
 
+    private var proactiveRiskItems: [DashboardProactiveInsight] {
+        insights.filter { $0.priority >= .high && $0.kind != .system }
+    }
+
     var body: some View {
         MacPanel(title: "Riesgo") {
             VStack(spacing: 12) {
                 if riskItems.isEmpty {
-                    Text("Sin alumnado o sesiones en riesgo inmediato con los datos cargados.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(16)
-                        .background(MacAppStyle.subtleFill)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    if proactiveRiskItems.isEmpty {
+                        Text("Sin alumnado o sesiones en riesgo inmediato con los datos cargados.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(16)
+                            .background(MacAppStyle.subtleFill)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    } else {
+                        ForEach(proactiveRiskItems.prefix(2)) { insight in
+                            proactiveRiskRow(insight)
+                        }
+                    }
                 } else {
                     ForEach(riskItems) { item in
                         Button {
@@ -933,6 +1112,25 @@ private struct DashboardRiskCard: View {
                 }
             }
         }
+    }
+
+    private func proactiveRiskRow(_ insight: DashboardProactiveInsight) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: insight.kind.systemImage)
+                .foregroundStyle(insight.priority.tint)
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(insight.title)
+                    .font(.callout.weight(.semibold))
+                Text(insight.summary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(16)
+        .background(MacAppStyle.subtleFill)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 

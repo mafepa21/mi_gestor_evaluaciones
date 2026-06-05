@@ -83,6 +83,25 @@ Cada vez que Codex cambie la app o documentacion relevante debe cerrar la tarea 
 
 Este proceso no sustituye la revision humana. Automatiza la trazabilidad: rama, commit, PR, pruebas, riesgos y changelog quedan creados o actualizados como parte normal de cada entrega.
 
+### Script de automatización de registro (`scripts/auto_commit_pr.sh`)
+
+Para automatizar este flujo localmente, disponemos del script `scripts/auto_commit_pr.sh`. Este script realiza de forma secuencial:
+1. Validación de cambios locales pendientes.
+2. Comprobación de que no se cometen commits directamente sobre `main` (bloqueado por seguridad).
+3. Ejecución del escáner de seguridad de archivos sensibles (`verify_no_sensitive_files.sh`).
+4. Selección guiada (o por argumentos) del tipo de commit y el mensaje.
+5. Stage automático de los cambios, commit con el formato correcto, push a la rama en GitHub.
+6. Creación o actualización automática del Pull Request en GitHub usando la CLI oficial (`gh`), utilizando la plantilla oficial del proyecto `.github/pull_request_template.md` y en modo borrador (draft) para protección extra.
+
+Uso:
+```bash
+# De forma interactiva (asistida)
+scripts/auto_commit_pr.sh
+
+# O pasando los parámetros directamente
+scripts/auto_commit_pr.sh feat "implement physical test metrics UI popover"
+```
+
 ## Commits
 
 Formato recomendado:

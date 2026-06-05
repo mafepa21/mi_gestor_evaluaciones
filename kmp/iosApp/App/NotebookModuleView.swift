@@ -271,19 +271,8 @@ struct NotebookModuleView: View {
 
     var mappedExplanationItemBinding: Binding<NotebookAverageExplanationItem?> {
         Binding(
-            get: {
-                guard let row = averageExplanationRow else { return nil }
-                return NotebookAverageExplanationItem(
-                    id: String(row.student.id),
-                    studentName: "\(row.student.firstName) \(row.student.lastName)",
-                    explanation: row.row.averageExplanation
-                )
-            },
-            set: { newValue in
-                if newValue == nil {
-                    averageExplanationRow = nil
-                }
-            }
+            get: { nil },
+            set: { _ in }
         )
     }
 
@@ -771,7 +760,7 @@ struct NotebookModuleView: View {
 
     @ViewBuilder
     func notebookLoadedContent(data: NotebookUiStateData) -> some View {
-        let content = Group {
+        let baseContent = Group {
             switch macPresentation {
             case .full, .content:
                 centerPanel(data: data)
@@ -780,6 +769,61 @@ struct NotebookModuleView: View {
                     .frame(minWidth: 330, idealWidth: 370, maxWidth: 430, maxHeight: .infinity)
                     .background(.ultraThinMaterial)
             }
+        }
+
+        let content = Group {
+            #if os(iOS)
+            if horizontalSizeClass == .compact {
+                baseContent
+                    .sheet(item: $averageExplanationRow) { row in
+                        NavigationStack {
+                            CustomAverageExplanationPopoverView(
+                                studentName: "\(row.student.firstName) \(row.student.lastName)",
+                                explanation: row.row.averageExplanation,
+                                columns: data.sheet.columns,
+                                onClose: {
+                                    averageExplanationRow = nil
+                                }
+                            )
+                            .toolbar {
+                                ToolbarItem(placement: .confirmationAction) {
+                                    Button("Hecho") {
+                                        averageExplanationRow = nil
+                                    }
+                                }
+                            }
+                        }
+                        .presentationDetents([.medium, .large])
+                        .presentationDragIndicator(.visible)
+                    }
+            } else {
+                baseContent
+                    .popover(item: $averageExplanationRow) { row in
+                        CustomAverageExplanationPopoverView(
+                            studentName: "\(row.student.firstName) \(row.student.lastName)",
+                            explanation: row.row.averageExplanation,
+                            columns: data.sheet.columns,
+                            onClose: {
+                                averageExplanationRow = nil
+                            }
+                        )
+                        .frame(width: 360, height: 500)
+                    }
+            }
+            #else
+            baseContent
+                .popover(item: $averageExplanationRow) { row in
+                    CustomAverageExplanationPopoverView(
+                        studentName: "\(row.student.firstName) \(row.student.lastName)",
+                        explanation: row.row.averageExplanation,
+                        columns: data.sheet.columns,
+                        onClose: {
+                            averageExplanationRow = nil
+                        }
+                    )
+                    .frame(width: 360, height: 500)
+                }
+            #endif
         }
 
         if isMacInspectorOnly {
@@ -1117,4 +1161,351 @@ struct NotebookModuleView: View {
         )
     }
 
+}
+
+struct CustomAverageExplanationPopoverView: View {
+    let studentName: String
+    let explanation: NotebookAverageExplanation?
+    let columns: [NotebookColumnDefinition]
+    let onClose: () -> Void
+
+    private func formattedDecimal(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.locale = .current
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 1
+        formatter.maximumFractionDigits = 2
+        return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.1f", value)
+    }
+
+    enum AverageState {
+        case complete
+        case pending
+        case insufficient
+    }
+
+    private var averageState: AverageState {
+        guard let explanation = explanation,
+              explanation.average != nil,
+              !explanation.included.isEmpty else {
+            return .insufficient
+        }
+        return explanation.excluded.contains { $0.reason == .empty } ? .pending : .complete
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            headerCard
+
+            if let explanation = explanation {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        summaryInfo(explanation)
+
+                        if !explanation.included.isEmpty {
+                            VStack(alignment: .leading, spacing: 8) {
+                                sectionHeader(title: "Incluye", icon: "plus.circle.fill", color: NotebookStyle.successTint)
+                                ForEach(explanation.included, id: \.columnId) { c in
+                                    contributionRow(c)
+                                }
+                            }
+                        }
+
+                        let pendingExclusions = explanation.excluded.filter { $0.reason == .empty }
+                        if !pendingExclusions.isEmpty {
+                            VStack(alignment: .leading, spacing: 8) {
+                                sectionHeader(title: "Pendientes", icon: "clock.fill", color: NotebookStyle.warningTint)
+                                ForEach(pendingExclusions, id: \.columnId) { e in
+                                    pendingRow(e)
+                                }
+                            }
+                        }
+
+                        let otherExclusions = explanation.excluded.filter { $0.reason != .empty }
+                        if !otherExclusions.isEmpty {
+                            VStack(alignment: .leading, spacing: 8) {
+                                sectionHeader(title: "No incluye", icon: "minus.circle.fill", color: .secondary)
+                                ForEach(otherExclusions, id: \.columnId) { e in
+                                    exclusionRow(e)
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+                }
+            } else {
+                VStack(spacing: 12) {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 32))
+                        .foregroundStyle(.secondary)
+                    Text("No hay datos de cálculo disponibles.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, minHeight: 150)
+                .padding()
+            }
+        }
+        .padding(.vertical, 16)
+    }
+
+    private var headerCard: some View {
+        let state = averageState
+        let themeColor: Color = {
+            switch state {
+            case .complete: return NotebookStyle.successTint
+            case .pending: return NotebookStyle.warningTint
+            case .insufficient: return .secondary
+            }
+        }()
+        let stateIcon: String = {
+            switch state {
+            case .complete: return "checkmark.seal.fill"
+            case .pending: return "clock.badge.exclamationmark.fill"
+            case .insufficient: return "exclamationmark.triangle.fill"
+            }
+        }()
+        let stateTitle: String = {
+            switch state {
+            case .complete: return "Media consolidada"
+            case .pending: return "Media provisional"
+            case .insufficient: return "Datos insuficientes"
+            }
+        }()
+        let stateDesc: String = {
+            switch state {
+            case .complete: return "Todos los instrumentos evaluables han sido calificados."
+            case .pending: return "Faltan notas en una o más columnas del promedio."
+            case .insufficient: return "No hay suficientes notas registradas para calcular."
+            }
+        }()
+
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Detalle de cálculo")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.secondary)
+                        .textCase(.uppercase)
+                    Text(studentName)
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Button {
+                    onClose()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundStyle(.secondary.opacity(0.5))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 16)
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .center) {
+                    if let average = explanation?.average {
+                        Text(formattedDecimal(average.doubleValue))
+                            .font(.system(size: 44, weight: .bold, design: .rounded))
+                            .foregroundStyle(themeColor)
+                            .monospacedDigit()
+                    } else {
+                        Text("--")
+                            .font(.system(size: 44, weight: .bold, design: .rounded))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    HStack(spacing: 6) {
+                        Image(systemName: stateIcon)
+                            .font(.system(size: 12, weight: .bold))
+                        Text(stateTitle)
+                            .font(.system(size: 11, weight: .bold))
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .foregroundStyle(themeColor)
+                    .background(themeColor.opacity(0.12))
+                    .clipShape(Capsule())
+                }
+
+                Text(stateDesc)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(themeColor.opacity(0.04))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(themeColor.opacity(0.15), lineWidth: 1)
+            )
+            .padding(.horizontal, 16)
+        }
+    }
+
+    private func summaryInfo(_ explanation: NotebookAverageExplanation) -> some View {
+        let totalWeight = explanation.included.reduce(0.0) { $0 + $1.weight }
+        return HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Resumen del cálculo")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.primary)
+                Text("Peso acumulado de las notas: \(formattedDecimal(totalWeight))%")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(12)
+        .background(Color.secondary.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func sectionHeader(title: String, icon: String, color: Color) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(color)
+            Text(title.uppercased())
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func contributionRow(_ c: NotebookAverageContribution) -> some View {
+        HStack(spacing: 12) {
+            let color: Color = {
+                if let col = columns.first(where: { $0.id == c.columnId }),
+                   let hex = col.colorHex,
+                   !hex.isEmpty {
+                    return Color(hex: hex)
+                }
+                return NotebookStyle.primaryTint
+            }()
+
+            RoundedRectangle(cornerRadius: 2)
+                .fill(color)
+                .frame(width: 4, height: 28)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(c.title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text("Peso: \(formattedDecimal(c.weight))%")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Text(formattedDecimal(c.value))
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundStyle(NotebookStyle.primaryTint)
+                .monospacedDigit()
+        }
+        .padding(10)
+        .background(NotebookStyle.surfaceSoft.opacity(0.4))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.secondary.opacity(0.08), lineWidth: 0.5)
+        )
+    }
+
+    private func pendingRow(_ e: NotebookAverageExclusion) -> some View {
+        HStack(spacing: 12) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(NotebookStyle.warningTint)
+                .frame(width: 4, height: 28)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(e.title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                
+                if let col = columns.first(where: { $0.id == e.columnId }) {
+                    Text("Peso estimado: \(formattedDecimal(col.weight))%")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("Falta nota")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer()
+
+            HStack(spacing: 4) {
+                Image(systemName: "clock.fill")
+                    .font(.system(size: 10))
+                Text("Pendiente")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .foregroundStyle(NotebookStyle.warningTint)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(NotebookStyle.warningTint.opacity(0.1))
+            .clipShape(Capsule())
+        }
+        .padding(10)
+        .background(NotebookStyle.surfaceSoft.opacity(0.4))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.secondary.opacity(0.08), lineWidth: 0.5)
+        )
+    }
+
+    private func exclusionRow(_ e: NotebookAverageExclusion) -> some View {
+        HStack(spacing: 12) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(Color.secondary)
+                .frame(width: 4, height: 28)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(e.title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Text(exclusionReasonText(e.reason))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary.opacity(0.8))
+            }
+
+            Spacer()
+
+            Image(systemName: "info.circle")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary.opacity(0.6))
+        }
+        .padding(10)
+        .background(NotebookStyle.surfaceSoft.opacity(0.2))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.secondary.opacity(0.05), lineWidth: 0.5)
+        )
+    }
+
+    private func exclusionReasonText(_ reason: NotebookAverageExclusionReason) -> String {
+        switch reason {
+        case .empty: return "Pendiente"
+        case .columnDoesNotCount: return "No cuenta para media"
+        case .rawValueOnly: return "Marca bruta"
+        case .lockedOrArchived: return "Bloqueado / Archivado"
+        case .nonNumeric: return "Dato no numérico"
+        default: return "Excluido"
+        }
+    }
 }

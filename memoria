@@ -405,6 +405,22 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-06-05 - Solución al bug de columnas huérfanas en el cálculo de media tras borrado
+
+Resumen:
+- Se solucionó el problema por el cual columnas borradas del cuaderno seguían apareciendo en la configuración de la media debido a que quedaban huérfanas en la tabla `notebook_columns`.
+- Causa raíz: Al eliminar una evaluación, la base de datos ponía en cascada a NULL el `evaluation_id` de la columna asociada en `notebook_columns`. Al intentar borrar la columna por `evaluationId` después de borrar la evaluación, la búsqueda fallaba y la columna no se borraba del cuaderno (y continuaba listándose en los cálculos de la media).
+- Solución: Se modificó `NotebookViewModel.kt` para que resuelva la columna por su `evaluationId` en la configuración activa antes de borrar la evaluación, y proceda a eliminarla por su ID real.
+- Cambios ubicados en:
+  - View model: [NotebookViewModel.kt](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/shared/src/commonMain/kotlin/com/migestor/shared/viewmodel/NotebookViewModel.kt) [MODIFY]
+  - Pruebas unitarias: [NotebookViewModelTest.kt](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/shared/src/commonTest/kotlin/com/migestor/shared/viewmodel/NotebookViewModelTest.kt) [MODIFY]
+
+Validación:
+- Ejecución y paso exitoso de todas las pruebas unitarias asíncronas en Kotlin compartidas (`./gradlew :shared:desktopTest`), incluyendo dos nuevas pruebas (`deleteColumn by evaluation id deletes custom column id when found` y `deleteColumn by evaluation id falls back to eval prefix when no custom column matches`).
+
+Notas para futuras conversaciones:
+- Al implementar flujos que involucren borrado en cascada en SQLDelight, siempre resolver los elementos asociados en el view model o capa de datos antes de disparar la consulta de eliminación que altere las claves foráneas.
+
 ### 2026-06-05 - Panel de desglose y visualización del cálculo de la Media en el Cuaderno (iOS/macOS)
 
 Resumen:

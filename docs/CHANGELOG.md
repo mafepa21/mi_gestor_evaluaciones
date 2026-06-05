@@ -31,6 +31,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- Corrección en la eliminación de columnas vinculadas a evaluaciones que usan identificadores personalizados. Al eliminar una evaluación, la base de datos de manera en cascada establecía a NULL el `evaluation_id` de la columna asociada en `notebook_columns`, impidiendo resolver la columna para eliminarla físicamente y dejándola huérfana (por lo que seguía apareciendo en el menú de cálculo de media). Ahora, se busca y elimina primero la columna usando su ID real antes de romper la relación.
 - Corrección de evaluación de fórmulas calculadas: ahora las celdas vacías no se inicializan por defecto a `0.0`, lo que evita alterar a la baja de manera errónea el promedio ponderado y devuelve un valor `null` correcto en caso de variables de fórmulas no evaluadas.
 - Corrección de tipo en `GetAITrendsAndMetricsUseCase.kt` (comparaciones numéricas contra literales `0L` para evitar mismatch con tipo `Long`).
 - Corrección de conversión de tipo de notas en `SqlDelightRepositories.kt` (conversión segura de `String` a `Double` vía `toDoubleOrNull()`).
@@ -38,8 +39,9 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
  
+- Incorporación de pruebas unitarias específicas en `NotebookViewModelTest.kt` para validar el borrado completo de columnas con IDs personalizados y el comportamiento de fallback.
+- Paso de todas las pruebas unitarias asíncronas en Kotlin compartidas (`./gradlew :shared:desktopTest`), incluyendo la cobertura para la eliminación correcta de columnas y evaluaciones.
 - Verificación de compilación multiplataforma (iOS Simulator y macOS Native/Catalyst) completada con éxito tras la integración del popover de desglose de media.
-- Paso de todas las pruebas unitarias asíncronas en Kotlin compartidas (`./gradlew :shared:test`), incorporando cobertura específica para celdas vacías en fórmulas calculadas en `BuildNotebookSheetUseCaseTest.kt`.
 -  Validación de compilación multiplataforma (iOS Simulator y macOS Native/Catalyst) completada con éxito vía `./scripts/verify_apple_builds.sh`.
 
 ### Docs

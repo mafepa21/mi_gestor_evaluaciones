@@ -21,9 +21,7 @@ fun main(args: Array<String>) {
         val adapter = SqlDelightSyncAdapter(container)
         val server = LocalSyncServer(
             syncCoordinator = SyncCoordinator(adapter),
-            sqlDriver = driver,
             stateListener = ::emitSnapshotState,
-            dataChangeListener = ::emitDataChanged,
         )
         server.start()
 

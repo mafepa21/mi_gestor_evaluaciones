@@ -37,6 +37,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- Corrección de los checks Apple en CI: `navigationSubtitle` queda limitado a macOS y el Command Center Helper usa la firma actual de `LocalSyncServer`.
 - Corrección en la eliminación de columnas vinculadas a evaluaciones que usan identificadores personalizados. Al eliminar una evaluación, la base de datos de manera en cascada establecía a NULL el `evaluation_id` de la columna asociada en `notebook_columns`, impidiendo resolver la columna para eliminarla físicamente y dejándola huérfana (por lo que seguía apareciendo en el menú de cálculo de media). Ahora, se busca y elimina primero la columna usando su ID real antes de romper la relación.
 - Corrección de evaluación de fórmulas calculadas: ahora las celdas vacías no se inicializan por defecto a `0.0`, lo que evita alterar a la baja de manera errónea el promedio ponderado y devuelve un valor `null` correcto en caso de variables de fórmulas no evaluadas.
 - Corrección de tipo en `GetAITrendsAndMetricsUseCase.kt` (comparaciones numéricas contra literales `0L` para evitar mismatch con tipo `Long`).
@@ -45,6 +46,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
  
+- Compilación de Compose Desktop completada con éxito vía `./gradlew :desktopApp:compileKotlin` tras adaptar el uso de `LocalSyncServer`.
+- Verificación de builds Apple completada con éxito vía `scripts/verify_apple_builds.sh` tras corregir los fallos de CI en macOS e iOS Simulator.
 - Verificación de builds Apple completada con éxito vía `scripts/verify_apple_builds.sh` tras añadir la señal avanzada de media y cierre evaluativo al Radar.
 - Verificación de builds Apple completada con éxito vía `scripts/verify_apple_builds.sh` tras el pulido visual del Radar docente.
 - Verificación de builds Apple completada con éxito vía `scripts/verify_apple_builds.sh` tras integrar el Radar docente proactivo en iOS/iPadOS y macOS.

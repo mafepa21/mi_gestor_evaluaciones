@@ -140,6 +140,10 @@ struct DashboardProactiveSnapshot {
     let todaySessions: [DashboardProactiveSession]
     let alerts: [DashboardProactiveSignal]
     let peItems: [DashboardProactiveSignal]
+    let groupSummaries: [DashboardProactiveGroupSummary]
+    let agendaItems: [DashboardProactiveAgendaItem]
+    let quickColumns: [String]
+    let quickRubrics: [String]
 
     init(
         todayCount: Int,
@@ -148,7 +152,11 @@ struct DashboardProactiveSnapshot {
         nextSessionLabel: String,
         todaySessions: [DashboardProactiveSession] = [],
         alerts: [DashboardProactiveSignal] = [],
-        peItems: [DashboardProactiveSignal] = []
+        peItems: [DashboardProactiveSignal] = [],
+        groupSummaries: [DashboardProactiveGroupSummary] = [],
+        agendaItems: [DashboardProactiveAgendaItem] = [],
+        quickColumns: [String] = [],
+        quickRubrics: [String] = []
     ) {
         self.todayCount = todayCount
         self.alertsCount = alertsCount
@@ -157,6 +165,10 @@ struct DashboardProactiveSnapshot {
         self.todaySessions = todaySessions
         self.alerts = alerts
         self.peItems = peItems
+        self.groupSummaries = groupSummaries
+        self.agendaItems = agendaItems
+        self.quickColumns = quickColumns
+        self.quickRubrics = quickRubrics
     }
 
     init(snapshot: DashboardSnapshot) {
@@ -193,7 +205,30 @@ struct DashboardProactiveSnapshot {
                     severity: $0.severity,
                     count: 1
                 )
-            }
+            },
+            groupSummaries: snapshot.groupSummaries.map {
+                DashboardProactiveGroupSummary(
+                    classId: Int64($0.classId),
+                    groupName: $0.groupName,
+                    attendancePct: Int($0.attendancePct),
+                    evaluationCompletedPct: Int($0.evaluationCompletedPct),
+                    averageScore: $0.averageScore,
+                    studentsInFollowUp: Int($0.studentsInFollowUp),
+                    lastNotes: $0.lastNotes
+                )
+            },
+            agendaItems: snapshot.agendaItems.map {
+                DashboardProactiveAgendaItem(
+                    id: $0.id,
+                    type: $0.type,
+                    title: $0.title,
+                    subtitle: $0.subtitle,
+                    timeLabel: $0.timeLabel,
+                    status: $0.status
+                )
+            },
+            quickColumns: snapshot.quickColumns,
+            quickRubrics: snapshot.quickRubrics
         )
     }
 }
@@ -213,6 +248,25 @@ struct DashboardProactiveSignal: Hashable {
     let detail: String
     let severity: String
     let count: Int
+}
+
+struct DashboardProactiveGroupSummary: Hashable {
+    let classId: Int64
+    let groupName: String
+    let attendancePct: Int
+    let evaluationCompletedPct: Int
+    let averageScore: Double
+    let studentsInFollowUp: Int
+    let lastNotes: String
+}
+
+struct DashboardProactiveAgendaItem: Hashable {
+    let id: String
+    let type: String
+    let title: String
+    let subtitle: String
+    let timeLabel: String
+    let status: String
 }
 
 @MainActor
@@ -291,6 +345,10 @@ enum DashboardProactiveInsightEngine {
                     confidenceNote: "Ordenado desde alertas del dashboard, sin generar datos nuevos."
                 )
             )
+        }
+
+        if let evaluationInsight = buildEvaluationClosureInsight(snapshot: snapshot, context: context) {
+            insights.append(evaluationInsight)
         }
 
         let riskAlerts = snapshot.alerts.filter { alert in
@@ -404,6 +462,93 @@ enum DashboardProactiveInsightEngine {
     private static func containsAny(_ value: String, _ needles: [String]) -> Bool {
         let lowercased = value.lowercased()
         return needles.contains { lowercased.contains($0) }
+    }
+
+    private static func buildEvaluationClosureInsight(
+        snapshot: DashboardProactiveSnapshot,
+        context: DashboardProactiveContext
+    ) -> DashboardProactiveInsight? {
+        guard !snapshot.groupSummaries.isEmpty || !snapshot.quickColumns.isEmpty || !snapshot.quickRubrics.isEmpty else {
+            return nil
+        }
+
+        let selectedGroup = context.className.flatMap { className in
+            snapshot.groupSummaries.first { summary in
+                className.localizedCaseInsensitiveContains(summary.groupName)
+                    || summary.groupName.localizedCaseInsensitiveContains(className)
+            }
+        }
+        let candidate = selectedGroup
+            ?? snapshot.groupSummaries.sorted { lhs, rhs in
+                if lhs.evaluationCompletedPct == rhs.evaluationCompletedPct {
+                    return lhs.studentsInFollowUp > rhs.studentsInFollowUp
+                }
+                return lhs.evaluationCompletedPct < rhs.evaluationCompletedPct
+            }.first
+
+        var facts: [String] = []
+        var priority: DashboardProactiveInsight.Priority = .low
+        var summary = "Revisa instrumentos y evidencias antes de cerrar la lectura evaluativa."
+
+        if let candidate {
+            facts.append("\(candidate.groupName): evaluación completada al \(candidate.evaluationCompletedPct)%.")
+            if candidate.averageScore > 0 {
+                facts.append("Media visible: \(format(candidate.averageScore)).")
+            }
+            if candidate.studentsInFollowUp > 0 {
+                facts.append("Alumnado en seguimiento: \(candidate.studentsInFollowUp).")
+            }
+            if !candidate.lastNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                facts.append("Últimas notas: \(candidate.lastNotes).")
+            }
+
+            if candidate.evaluationCompletedPct < 60 {
+                priority = .high
+                summary = "La media del grupo puede no ser fiable: faltan evidencias suficientes."
+            } else if candidate.evaluationCompletedPct < 80 || candidate.studentsInFollowUp > 0 {
+                priority = .medium
+                summary = "Conviene completar evidencias antes de usar la media como lectura cerrada."
+            }
+        }
+
+        if !snapshot.quickRubrics.isEmpty {
+            facts.append("Rúbricas disponibles para evaluación rápida: \(snapshot.quickRubrics.prefix(3).joined(separator: ", ")).")
+            priority = max(priority, .medium)
+        }
+        if !snapshot.quickColumns.isEmpty {
+            facts.append("Columnas rápidas disponibles: \(snapshot.quickColumns.prefix(3).joined(separator: ", ")).")
+        }
+
+        let openEvaluationAgenda = snapshot.agendaItems.filter { item in
+            !isClosedAgendaStatus(item.status)
+                && containsAny("\(item.type) \(item.title) \(item.subtitle)", ["evalu", "rúbrica", "rubric", "nota", "evidencia"])
+        }
+        if !openEvaluationAgenda.isEmpty {
+            facts.append("Agenda evaluativa abierta: \(openEvaluationAgenda.prefix(2).map(\.title).joined(separator: ", ")).")
+            priority = max(priority, .medium)
+        }
+
+        guard priority >= .medium, !facts.isEmpty else { return nil }
+
+        return DashboardProactiveInsight(
+            id: "evaluation-closure-\(candidate?.classId ?? -1)-\(snapshot.quickRubrics.count)-\(openEvaluationAgenda.count)",
+            kind: .evaluation,
+            priority: priority,
+            title: "Media y cierre evaluativo",
+            summary: summary,
+            facts: Array(facts.prefix(5)),
+            recommendedActions: [.openNotebook, .evaluatePending, .quickEvaluation, .openReports],
+            confidenceNote: "Basado en resumen de grupo, agenda e instrumentos rápidos ya cargados."
+        )
+    }
+
+    private static func isClosedAgendaStatus(_ raw: String) -> Bool {
+        switch raw.lowercased() {
+        case "completed", "closed", "done", "completada", "cerrada":
+            return true
+        default:
+            return false
+        }
     }
 
     private static func compact(_ values: [String?]) -> [String] {

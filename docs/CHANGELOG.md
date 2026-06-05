@@ -15,6 +15,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
  
+- Señal avanzada de "Media y cierre evaluativo" en el Radar docente, calculada desde resúmenes de grupo, agenda e instrumentos rápidos ya expuestos por el Dashboard.
 - Radar docente proactivo compartido para Dashboard iOS/iPadOS y macOS, con insights deterministas, hechos usados, acciones reales por plataforma y briefing no bloqueante con fallback local.
 - Script de automatización de Git y GitHub `scripts/auto_commit_pr.sh` para realizar análisis de seguridad local, commits formateados, push y apertura de PRs en draft de forma automática.
 - Detalle de cálculo de media personalizado `CustomAverageExplanationPopoverView` que muestra "Incluye", "No incluye", "Pendientes", pesos e indicador de estado de cálculo.
@@ -44,6 +45,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
  
+- Verificación de builds Apple completada con éxito vía `scripts/verify_apple_builds.sh` tras añadir la señal avanzada de media y cierre evaluativo al Radar.
 - Verificación de builds Apple completada con éxito vía `scripts/verify_apple_builds.sh` tras el pulido visual del Radar docente.
 - Verificación de builds Apple completada con éxito vía `scripts/verify_apple_builds.sh` tras integrar el Radar docente proactivo en iOS/iPadOS y macOS.
 - Incorporación de pruebas unitarias específicas en `NotebookViewModelTest.kt` para validar el borrado completo de columnas con IDs personalizados y el comportamiento de fallback.

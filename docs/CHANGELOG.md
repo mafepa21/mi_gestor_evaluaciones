@@ -26,6 +26,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
  
+- Pulido visual del componente `DashboardProactiveInsightCard`: espaciado en rejilla de 8pt, acciones adaptativas, loading skeleton y accesibilidad en iconos/progreso.
 - El Dashboard Apple pasa a priorizar señales accionables de "Radar docente" antes de los bloques informativos tradicionales, manteniendo filtros y exportación como herramientas secundarias.
 - Se corrige `.gitignore` con el patrón global `**/.xcode-derived/` y se remueven del repositorio Git los archivos de caché generados por Xcode que impedían pasar las validaciones de seguridad local.
 - Se unificó y encapsuló el cálculo de medias, resolución de valores de celdas (`gradeValueFor`) y desglose de explicación (`computeAverageExplanation`) en `Models.kt`, eliminando implementaciones duplicadas en `BuildNotebookSheetUseCase.kt` y `NotebookViewModel.kt`.
@@ -43,6 +44,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
  
+- Verificación de builds Apple completada con éxito vía `scripts/verify_apple_builds.sh` tras el pulido visual del Radar docente.
 - Verificación de builds Apple completada con éxito vía `scripts/verify_apple_builds.sh` tras integrar el Radar docente proactivo en iOS/iPadOS y macOS.
 - Incorporación de pruebas unitarias específicas en `NotebookViewModelTest.kt` para validar el borrado completo de columnas con IDs personalizados y el comportamiento de fallback.
 - Paso de todas las pruebas unitarias asíncronas en Kotlin compartidas (`./gradlew :shared:desktopTest`), incluyendo la cobertura para la eliminación correcta de columnas y evaluaciones.

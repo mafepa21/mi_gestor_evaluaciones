@@ -433,48 +433,53 @@ struct DashboardProactiveInsightCard: View {
             header
             if let aiBriefing {
                 briefingBlock(aiBriefing)
+            } else if isLoadingAIBriefing {
+                briefingLoadingBlock
             }
             if insights.isEmpty {
                 emptyState
             } else {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 16) {
                     ForEach(insights.prefix(3)) { insight in
                         insightRow(insight)
                     }
                 }
             }
         }
-        .padding(18)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .padding(16)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(Color.primary.opacity(0.08), lineWidth: 1)
         )
+        .shadow(color: .black.opacity(0.08), radius: 12, x: 0, y: 4)
     }
 
     private var header: some View {
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: 8) {
             Label("Radar docente", systemImage: "scope")
-                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .font(.headline)
             Spacer()
             if isLoadingAIBriefing {
                 ProgressView()
                     .controlSize(.small)
+                    .accessibilityLabel("Generando briefing docente")
             }
         }
     }
 
     private func briefingBlock(_ draft: TeachingAssistantDraft) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Image(systemName: "sparkles")
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(EvaluationDesign.accent)
+                    .accessibilityHidden(true)
                 Text(draft.title)
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .font(.subheadline.weight(.semibold))
                 Spacer()
             }
             Text(draft.summary)
-                .font(.system(size: 14, weight: .medium))
+                .font(.subheadline)
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
             if let confidence = draft.confidenceNote {
@@ -483,29 +488,48 @@ struct DashboardProactiveInsightCard: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(14)
-        .background(Color.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(16)
+        .background(EvaluationDesign.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private var briefingLoadingBlock: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(Color.primary.opacity(0.12))
+                .frame(width: 160, height: 10)
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(Color.primary.opacity(0.08))
+                .frame(maxWidth: .infinity, minHeight: 10, maxHeight: 10)
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(Color.primary.opacity(0.06))
+                .frame(width: 220, height: 10)
+        }
+        .padding(16)
+        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Generando briefing docente")
     }
 
     private func insightRow(_ insight: DashboardProactiveInsight) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 8) {
                 Image(systemName: insight.kind.systemImage)
                     .foregroundStyle(insight.priority.tint)
-                    .frame(width: 22)
-                VStack(alignment: .leading, spacing: 5) {
+                    .frame(width: 24)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
                         Text(insight.title)
-                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .font(.subheadline.weight(.semibold))
                         Text(insight.priority.label)
                             .font(.caption2.weight(.bold))
                             .foregroundStyle(insight.priority.tint)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 3)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
                             .background(insight.priority.tint.opacity(0.12), in: Capsule())
                     }
                     Text(insight.summary)
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -527,23 +551,23 @@ struct DashboardProactiveInsightCard: View {
                             Text(confidence)
                                 .font(.caption)
                                 .foregroundStyle(.tertiary)
-                                .padding(.top, 2)
+                                .padding(.top, 8)
                         }
                     }
-                    .padding(.top, 6)
+                    .padding(.top, 8)
                 }
                 .font(.caption.weight(.semibold))
             }
         }
-        .padding(14)
-        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(16)
+        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func actionRow(for insight: DashboardProactiveInsight) -> some View {
         let actions = insight.recommendedActions.filter(actionAvailability)
         return Group {
             if !actions.isEmpty {
-                HStack(spacing: 8) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 128), spacing: 8)], alignment: .leading, spacing: 8) {
                     ForEach(actions.prefix(3)) { action in
                         Button {
                             onAction(action)
@@ -553,6 +577,7 @@ struct DashboardProactiveInsightCard: View {
                                 .lineLimit(1)
                         }
                         .buttonStyle(.bordered)
+                        .controlSize(.small)
                     }
                 }
             }
@@ -564,7 +589,7 @@ struct DashboardProactiveInsightCard: View {
             .font(.callout)
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(14)
+            .padding(16)
             .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }

@@ -405,6 +405,22 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-06-05 - Panel de desglose y visualización del cálculo de la Media en el Cuaderno (iOS/macOS)
+
+Resumen:
+- Se implementó un panel explicativo detallado (`CustomAverageExplanationPopoverView`) para la media de notas del alumno en el cuaderno.
+- Muestra el listado de columnas incluidas ("Incluye") con sus pesos, las columnas pendientes de calificación ("Pendientes") con su peso estimado, y las excluidas por configuración o formato ("No incluye").
+- Se añadió diferenciación visual mediante colores e iconos temáticos: verde (consolidada), ámbar/naranja (provisional con pendientes), gris (insuficiente).
+- La presentación se centralizó a nivel raíz en `NotebookModuleView.swift` (`.sheet` en iPhone compacto y `.popover` en iPad/macOS) desactivando la vieja lógica de presentación a nivel de celda para evitar conflictos de gestos de scroll y visualización en el grid.
+- Cambios ubicados en:
+  - Vistas y popover: [NotebookModuleView.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/NotebookModuleView.swift) [MODIFY]
+
+Validación:
+- Verificación automática y exitosa de las builds nativas de macOS y simulador de iOS mediante `./scripts/verify_apple_builds.sh` (BUILD SUCCEEDED).
+
+Notas para futuras conversaciones:
+- El modificador `.notebookAverageExplanation` antiguo asociado a la celda del grid se ha desactivado devolviendo `nil` en su binding para que no interfiera con la nueva presentación centralizada en la raíz.
+
 ### 2026-06-05 - Corrección y unificación del cálculo de la Media y control de celdas vacías en fórmulas
 
 Resumen:

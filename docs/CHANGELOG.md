@@ -44,6 +44,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Docs
 
+- Se anade base de preparacion comercial: licencia propietaria, politica de seguridad, borrador de privacidad, avisos de terceros, due diligence, mapa de datos personales y matriz de modulos.
 - Se crea la estructura documental base del repositorio: indice, gobierno, roadmap, baseline inicial y plantilla de PR.
 - Se documenta el workflow para agentes y el uso obligatorio de `registrar-avance-app` como capa final de trazabilidad.
 - Se añade el proceso interno de release con checks obligatorios, version bump, evidencias minimas y criterio de etiquetado.

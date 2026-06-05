@@ -397,6 +397,55 @@ class BuildNotebookSheetUseCaseTest {
     }
 
     @Test
+    fun `empty variables in formulas fail evaluation and result in null calculated value`() = runTest {
+        val classId = 1L
+        val student = Student(id = 1, firstName = "Ana", lastName = "Lopez")
+        val evaluations = listOf(
+            Evaluation(id = 11, classId = classId, code = "EX1", name = "Examen 1", type = "EX", weight = 1.0),
+            Evaluation(id = 12, classId = classId, code = "EX2", name = "Examen 2", type = "EX", weight = 1.0),
+        )
+        val grades = listOf(
+            Grade(id = 1, classId = classId, studentId = 1, columnId = "eval_11", evaluationId = 11, value = 8.0),
+        )
+
+        val useCase = BuildNotebookSheetUseCase(
+            getNotebookUseCase = GetNotebookUseCase(
+                classesRepository = FakeClassesRepository2(student, classId),
+                evaluationsRepository = FakeEvaluationsRepository2(evaluations),
+                gradesRepository = FakeGradesRepository2(grades),
+                notebookCellsRepository = FakeNotebookCellsRepository2()
+            )
+        )
+
+        val sheet = useCase.build(
+            classId = classId,
+            evaluations = evaluations,
+            students = listOf(student),
+            tabs = listOf(NotebookTab(id = "eval", title = "Evaluación", order = 0)),
+            configuredColumns = listOf(
+                NotebookColumnDefinition(id = "eval_11", title = "Examen 1", type = NotebookColumnType.NUMERIC, evaluationId = 11L, weight = 50.0),
+                NotebookColumnDefinition(id = "eval_12", title = "Examen 2", type = NotebookColumnType.NUMERIC, evaluationId = 12L, weight = 50.0),
+                NotebookColumnDefinition(
+                    id = "calc_final",
+                    title = "Media calculada",
+                    type = NotebookColumnType.CALCULATED,
+                    formula = "ROUND((EX1 * 0.4) + (EX2 * 0.6), 2)",
+                    weight = 100.0,
+                    tabIds = listOf("eval")
+                )
+            )
+        )
+
+        val row = sheet.rows.first()
+        val explanation = row.averageExplanation
+        assertEquals(8.0, row.weightedAverage)
+        assertEquals(50.0, explanation?.totalIncludedWeight)
+        assertTrue(explanation?.excluded?.any { it.columnId == "calc_final" && it.reason == NotebookAverageExclusionReason.EMPTY } == true)
+        assertTrue(explanation?.excluded?.any { it.columnId == "eval_12" && it.reason == NotebookAverageExclusionReason.EMPTY } == true)
+        assertTrue(explanation?.included?.none { it.columnId == "calc_final" } == true)
+    }
+
+    @Test
     fun `raw physical marks are excluded and scaled physical scores count`() = runTest {
         val classId = 1L
         val student = Student(id = 1, firstName = "Ana", lastName = "Lopez")

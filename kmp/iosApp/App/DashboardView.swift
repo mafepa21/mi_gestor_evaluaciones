@@ -46,6 +46,7 @@ private enum DashboardBlock: Hashable {
     case groupSummary
     case agenda
     case physicalEducation
+    case lomloeAudit
 }
 
 private enum DashboardFilterOption: String, CaseIterable, Identifiable {
@@ -99,6 +100,8 @@ struct DashboardView: View {
     @State private var inspectorSelection: DashboardInspectorSelection? = nil
     @State private var isInspectorPresented = false
     @State private var isQuickEvaluationPresented = false
+    @State private var classTrends: KmpBridge.AITrendsSnapshot? = nil
+    @State private var isLoadingClassTrends = false
 
     private var mode: OperationalDashboardMode {
         OperationalDashboardMode(rawValue: modeRawValue) ?? .office
@@ -233,8 +236,8 @@ struct DashboardView: View {
                     dashboardWorkCenter(snapshot: snapshot)
 
                     let blocks: [DashboardBlock] = mode == .classroom
-                        ? [.quickEvaluation, .groupSummary, .agenda]
-                        : [.groupSummary, .agenda, .quickEvaluation]
+                        ? [.quickEvaluation, .groupSummary, .agenda, .lomloeAudit]
+                        : [.lomloeAudit, .groupSummary, .agenda, .quickEvaluation]
 
                     ForEach(blocks, id: \.self) { block in
                         switch block {
@@ -256,6 +259,8 @@ struct DashboardView: View {
                             dashboardAgendaBlock(snapshot: snapshot)
                         case .physicalEducation:
                             dashboardPEBlock(snapshot: snapshot)
+                        case .lomloeAudit:
+                            dashboardLomloeAuditBlock(snapshot: snapshot)
                         }
                     }
                 }
@@ -1196,6 +1201,7 @@ struct DashboardView: View {
             sessionStatus: sessionStatusFilter.rawValue
         )
         await bridge.refreshDashboard(mode: mode.kotlinMode)
+        await loadClassTrends()
     }
 
     private func csvToday(_ snapshot: DashboardSnapshot) -> String {
@@ -1235,6 +1241,150 @@ struct DashboardView: View {
 
     private func csv(_ header: String, _ rows: [String]) -> String {
         ([header] + rows).joined(separator: "\n")
+    }
+
+    @ViewBuilder
+    private func dashboardLomloeAuditBlock(snapshot: DashboardSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Auditoría LOMLOE y Alertas del Grupo", systemImage: "text.badge.checkmark")
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                Spacer()
+                if isLoadingClassTrends {
+                    ProgressView()
+                        .tint(NotebookStyle.primaryTint)
+                }
+            }
+
+            if let trends = classTrends {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 8) {
+                        let directionInfo = trendDirectionInfo(trends.trendDirection, delta: trends.averageGradeDelta)
+                        Image(systemName: directionInfo.icon)
+                            .foregroundStyle(directionInfo.color)
+                        Text("Trayectoria: \(directionInfo.label)")
+                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .foregroundStyle(directionInfo.color)
+                        
+                        Spacer()
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(trendBgColor(trends.trendDirection).opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Cobertura Curricular del Grupo")
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .foregroundStyle(.secondary)
+                            Text("\(IosFormatting.decimal(from: trends.curriculumCoveragePct))%")
+                                .font(.system(size: 24, weight: .black, design: .rounded))
+                                .foregroundStyle(NotebookStyle.primaryTint)
+                        }
+                        
+                        Spacer()
+                        
+                        VStack(alignment: .trailing, spacing: 4) {
+                            Text("Asistencia Media")
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .foregroundStyle(.secondary)
+                            Text("\(IosFormatting.decimal(from: trends.attendanceRate))%")
+                                .font(.system(size: 24, weight: .black, design: .rounded))
+                                .foregroundStyle(trends.attendanceRate >= 85 ? Color.primary : Color.orange)
+                        }
+                    }
+
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(NotebookStyle.softBorder)
+                                .frame(height: 8)
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(NotebookStyle.primaryTint)
+                                .frame(width: geo.size.width * CGFloat(trends.curriculumCoveragePct / 100.0), height: 8)
+                        }
+                    }
+                    .frame(height: 8)
+
+                    if !trends.attendanceCorrelationNote.isEmpty {
+                        Text(trends.attendanceCorrelationNote)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if !trends.behaviorIncidentSummary.isEmpty {
+                        Text(trends.behaviorIncidentSummary)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if !trends.missingCompetencyLabels.isEmpty {
+                        Divider()
+                            .background(NotebookStyle.softBorder)
+                        
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Competencias clave sin evidencias en el grupo:")
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .foregroundStyle(.secondary)
+                            
+                            FlexibleTagRow(
+                                items: trends.missingCompetencyLabels,
+                                selected: ""
+                            ) { _ in }
+                            .disabled(true)
+                        }
+                    }
+                }
+            } else if !isLoadingClassTrends {
+                Text("No hay datos suficientes para generar la auditoría de cobertura curricular y tendencias de este grupo.")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(EvaluationDesign.cardSpacing)
+        .background(.regularMaterial)
+        .cornerRadius(EvaluationDesign.innerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
+                .stroke(Color.primary.opacity(colorScheme == .dark ? 0.15 : 0.06), lineWidth: 1)
+        )
+        .shadow(color: EvaluationDesign.accent.opacity(colorScheme == .dark ? 0.22 : 0.05), radius: 14, x: 0, y: 8)
+    }
+
+    private func trendDirectionInfo(_ direction: String, delta: Double) -> (icon: String, label: String, color: Color) {
+        switch direction {
+        case "UPWARD":
+            return ("arrow.up.right", "Al alza (+ \(IosFormatting.decimal(from: delta)))", .green)
+        case "DOWNWARD":
+            return ("arrow.down.right", "A la baja (- \(IosFormatting.decimal(from: abs(delta))))", .red)
+        case "STABLE":
+            return ("arrow.right", "Estable", .blue)
+        default:
+            return ("questionmark.circle", "Datos insuficientes", .gray)
+        }
+    }
+    
+    private func trendBgColor(_ direction: String) -> Color {
+        switch direction {
+        case "UPWARD": return .green
+        case "DOWNWARD": return .red
+        case "STABLE": return .blue
+        default: return .gray
+        }
+    }
+
+    private func loadClassTrends() async {
+        guard let classId = selectedClassId else {
+            classTrends = nil
+            return
+        }
+        isLoadingClassTrends = true
+        do {
+            classTrends = try await bridge.getAITrendsAndMetrics(classId: classId, studentId: nil)
+        } catch {
+            print("Error loading class trends: \(error)")
+        }
+        isLoadingClassTrends = false
     }
 }
 

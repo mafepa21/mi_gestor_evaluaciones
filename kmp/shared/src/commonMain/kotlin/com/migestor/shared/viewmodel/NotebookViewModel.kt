@@ -917,8 +917,7 @@ class NotebookViewModel(
         val tabId = activeAverageTabId(sheet.tabs)
         val averageColumns = sheet.columns.filter { columnIsVisibleInAverageTab(it, tabId) }
         val updatedRows = sheet.rows.map { row ->
-            val explanation = computeActiveTabAverageExplanation(
-                row = row,
+            val explanation = row.computeAverageExplanation(
                 columns = averageColumns,
                 numericDrafts = numericDrafts,
             )
@@ -942,99 +941,6 @@ class NotebookViewModel(
     ): Boolean {
         if (tabId == null) return true
         return column.tabIds.contains(tabId) || (column.sharedAcrossTabs && column.tabIds.isEmpty())
-    }
-
-    private fun computeActiveTabAverageExplanation(
-        row: NotebookRow,
-        columns: List<NotebookColumnDefinition>,
-        numericDrafts: Map<Pair<Long, String>, String>,
-    ): NotebookAverageExplanation? {
-        val evaluableColumns = columns.filter { it.visibility != NotebookColumnVisibility.ARCHIVED }
-        if (evaluableColumns.isEmpty()) return null
-
-        val included = mutableListOf<NotebookAverageContribution>()
-        val excluded = mutableListOf<NotebookAverageExclusion>()
-
-        evaluableColumns.forEach { column ->
-            if (!countsTowardWeightedAverage(column)) {
-                excluded += NotebookAverageExclusion(
-                    columnId = column.id,
-                    title = column.title,
-                    reason = activeAverageExclusionReason(column),
-                )
-                return@forEach
-            }
-
-            val value = activeAverageValueForRow(row, column, numericDrafts)
-            if (value != null) {
-                included += NotebookAverageContribution(
-                    columnId = column.id,
-                    title = column.title,
-                    value = value,
-                    weight = column.weight,
-                    weightedValue = value * column.weight,
-                )
-            } else {
-                when (column.emptyCellPolicy) {
-                    NotebookEmptyCellPolicy.COUNT_AS_ZERO -> {
-                        included += NotebookAverageContribution(
-                            columnId = column.id,
-                            title = column.title,
-                            value = 0.0,
-                            weight = column.weight,
-                            weightedValue = 0.0,
-                        )
-                    }
-                    else -> {
-                        excluded += NotebookAverageExclusion(
-                            columnId = column.id,
-                            title = column.title,
-                            reason = NotebookAverageExclusionReason.EMPTY,
-                        )
-                    }
-                }
-            }
-        }
-
-        val totalWeight = included.sumOf { it.weight }
-        val average = if (totalWeight > 0.0) {
-            included.sumOf { it.weightedValue } / totalWeight
-        } else {
-            null
-        }
-
-        return NotebookAverageExplanation(
-            studentId = row.student.id,
-            average = average,
-            included = included,
-            excluded = excluded,
-            totalIncludedWeight = totalWeight,
-            policy = NotebookEmptyCellPolicy.EXCLUDE_FROM_AVERAGE,
-        )
-    }
-
-    private fun activeAverageValueForRow(
-        row: NotebookRow,
-        column: NotebookColumnDefinition,
-        numericDrafts: Map<Pair<Long, String>, String>,
-    ): Double? {
-        return resolveColumnNumericValue(row, column, numericDrafts)
-            ?: row.persistedCells.firstOrNull { it.columnId == column.id }?.boolValue?.let { if (it) 10.0 else 0.0 }
-    }
-
-    private fun activeAverageExclusionReason(column: NotebookColumnDefinition): NotebookAverageExclusionReason {
-        if (column.visibility == NotebookColumnVisibility.ARCHIVED) return NotebookAverageExclusionReason.LOCKED_OR_ARCHIVED
-        if (column.instrumentKind == NotebookInstrumentKind.PHYSICAL_TEST && column.scaleKind in rawPhysicalScaleKinds) {
-            return NotebookAverageExclusionReason.RAW_VALUE_ONLY
-        }
-        if (column.weight <= 0.0) return NotebookAverageExclusionReason.RAW_VALUE_ONLY
-        return when (column.type) {
-            NotebookColumnType.NUMERIC,
-            NotebookColumnType.RUBRIC,
-            NotebookColumnType.CALCULATED,
-            NotebookColumnType.CHECK -> NotebookAverageExclusionReason.COLUMN_DOES_NOT_COUNT
-            else -> NotebookAverageExclusionReason.NON_NUMERIC
-        }
     }
 
     private fun isFormulaColumnValid(
@@ -1069,12 +975,12 @@ class NotebookViewModel(
     }
 
     fun countUnevaluatedStudents(sheet: NotebookSheet): Int {
-        val evaluableCols = sheet.columns.filter(::countsTowardWeightedAverage)
+        val evaluableCols = sheet.columns.filter { it.countsTowardAverage() }
         if (evaluableCols.isEmpty()) return 0
         
         return sheet.rows.count { row ->
             evaluableCols.any { col ->
-                gradeValueFor(row, col) == null
+                row.gradeValueFor(col) == null
             }
         }
     }
@@ -1094,48 +1000,15 @@ class NotebookViewModel(
         row.weightedAverage?.let { return it }
 
         val included = columns
-            .filter(::countsTowardWeightedAverage)
+            .filter { it.countsTowardAverage() }
             .mapNotNull { column ->
-                val value = gradeValueFor(row, column)
+                val value = row.gradeValueFor(column)
                     ?: if (column.emptyCellPolicy == NotebookEmptyCellPolicy.COUNT_AS_ZERO) 0.0 else null
                 value?.let { it to column.weight }
             }
         val totalWeight = included.sumOf { it.second }
         if (totalWeight <= 0.0) return null
         return included.sumOf { (value, weight) -> value * weight } / totalWeight
-    }
-
-    private fun gradeValueFor(row: NotebookRow, column: NotebookColumnDefinition): Double? {
-        val evaluationValue = column.evaluationId?.let { evaluationId ->
-            row.cells.find { it.evaluationId == evaluationId }?.value
-        }
-        if (evaluationValue != null) return evaluationValue
-        val persistedGrade = row.persistedGrades.find { it.columnId == column.id }?.value
-        if (persistedGrade != null) return persistedGrade
-        return row.persistedCells.find { it.columnId == column.id }?.boolValue?.let { if (it) 10.0 else 0.0 }
-    }
-
-    private fun countsTowardWeightedAverage(column: NotebookColumnDefinition): Boolean {
-        if (!column.countsTowardAverage || column.weight <= 0.0) return false
-        if (column.visibility == NotebookColumnVisibility.ARCHIVED) return false
-        if (column.instrumentKind == NotebookInstrumentKind.PHYSICAL_TEST && column.scaleKind in rawPhysicalScaleKinds) {
-            return false
-        }
-        return when (column.type) {
-            NotebookColumnType.NUMERIC,
-            NotebookColumnType.RUBRIC,
-            NotebookColumnType.CALCULATED,
-            NotebookColumnType.CHECK -> true
-            else -> false
-        }
-    }
-
-    private companion object {
-        val rawPhysicalScaleKinds = setOf(
-            NotebookScaleKind.TIME,
-            NotebookScaleKind.DISTANCE,
-            NotebookScaleKind.REPETITIONS,
-        )
     }
 
     // --- New Methods for iOS Column Management ---
@@ -1676,15 +1549,15 @@ class NotebookViewModel(
         }
         if (calculatedColumns.isEmpty()) return
 
-        val varsByCode = mutableMapOf<String, Double>()
-        evaluations.forEach { evaluation ->
-            val value = resolveEvaluationValue(row, evaluation.id, numericDrafts) ?: 0.0
-            varsByCode[evaluation.code] = value
-        }
+        val varsByCode = evaluations.mapNotNull { evaluation ->
+            val value = resolveEvaluationValue(row, evaluation.id, numericDrafts)
+            value?.let { evaluation.code to it }
+        }.toMap()
 
-        val varsByColumnId = snapshot.columns.associate { column ->
-            column.id to (resolveColumnNumericValue(row, column, numericDrafts) ?: 0.0)
-        }
+        val varsByColumnId = snapshot.columns.mapNotNull { column ->
+            val value = resolveColumnNumericValue(row, column, numericDrafts)
+            value?.let { column.id to it }
+        }.toMap()
         val vars = varsByCode + varsByColumnId
 
         calculatedColumns.forEach { column ->

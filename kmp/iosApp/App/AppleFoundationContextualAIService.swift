@@ -170,7 +170,9 @@ enum StudentRiskEvidenceBuilder {
     static func build(bridge: KmpBridge, classId: Int64?, studentId: Int64) async throws -> TeachingEvidencePack {
         let profile = try await bridge.loadStudentProfile(studentId: studentId, classId: classId)
         let level = classify(profile: profile)
-        let facts = compactTexts(
+        let trends = try? await bridge.getAITrendsAndMetrics(classId: classId ?? 0, studentId: studentId)
+        
+        var factTexts = compactTexts(
             [
                 "Asistencia estimada: \(profile.attendanceRate)%.",
                 profile.averageScore > 0 ? "Media registrada: \(IosFormatting.decimal(from: profile.averageScore))." : "Sin media consolidada todavía.",
@@ -181,9 +183,49 @@ enum StudentRiskEvidenceBuilder {
             ],
             profile.latestAttendanceStatus.map { ["Último estado de asistencia: \($0)."] } ?? [],
             profile.timeline.prefix(2).map { "\($0.title) · \($0.subtitle)" }
-        ).map(FactItem.init)
-        let warnings = riskSignals(profile: profile, level: level).map(WarningItem.init)
-        let actions = recommendedActions(profile: profile, level: level).map(RecommendedActionItem.init)
+        )
+        
+        if let trends {
+            if trends.trendDirection == "UPWARD" {
+                factTexts.append("Trayectoria de notas en el período: ascendente (+ \(IosFormatting.decimal(from: trends.averageGradeDelta)) pt).")
+            } else if trends.trendDirection == "DOWNWARD" {
+                factTexts.append("Trayectoria de notas en el período: descendente (- \(IosFormatting.decimal(from: abs(trends.averageGradeDelta))) pt).")
+            } else if trends.trendDirection == "STABLE" {
+                factTexts.append("Trayectoria de rendimiento: estable.")
+            }
+            factTexts.append("Cobertura curricular evaluada: \(IosFormatting.decimal(from: trends.curriculumCoveragePct))%.")
+            if !trends.missingCompetencyLabels.isEmpty {
+                factTexts.append("Competencias sin evaluar en cuaderno: \(trends.missingCompetencyLabels.joined(separator: ", ")).")
+            }
+        }
+        
+        let facts = factTexts.map(FactItem.init)
+        
+        var warningTexts = riskSignals(profile: profile, level: level)
+        if let trends {
+            if trends.trendDirection == "DOWNWARD" {
+                warningTexts.append("La tendencia del rendimiento académico muestra un descenso significativo de calificaciones.")
+            }
+            if trends.attendanceRate < 85.0 {
+                warningTexts.append("La baja asistencia acumulada puede dificultar el alcance de los resultados de aprendizaje.")
+            }
+            if !trends.missingCompetencyLabels.isEmpty {
+                warningTexts.append("Hay brechas de cobertura LOMLOE (faltan evidencias de competencias clave: \(trends.missingCompetencyLabels.joined(separator: ", "))).")
+            }
+        }
+        let warnings = warningTexts.map(WarningItem.init)
+        
+        var actionTexts = recommendedActions(profile: profile, level: level)
+        if let trends {
+            if trends.trendDirection == "DOWNWARD" {
+                actionTexts.append("Planificar una tutoría individual para revisar los factores de la bajada de rendimiento.")
+            }
+            if !trends.missingCompetencyLabels.isEmpty {
+                actionTexts.append("Programar actividades o instrumentos específicos para evaluar los criterios pendientes de \(trends.missingCompetencyLabels.prefix(3).joined(separator: ", ")).")
+            }
+        }
+        let actions = actionTexts.map(RecommendedActionItem.init)
+
         return TeachingEvidencePack(
             useCase: .studentRiskRadar,
             title: "Radar de riesgo por alumno",
@@ -195,9 +237,9 @@ enum StudentRiskEvidenceBuilder {
                 KmpBridge.ReportMetric(title: "Incidencias", value: "\(profile.incidentCount)", systemImage: "exclamationmark.bubble.fill"),
                 KmpBridge.ReportMetric(title: "Evidencias", value: "\(profile.evidenceCount)", systemImage: "paperclip")
             ],
-            factsUsed: Array(facts.prefix(6)),
-            warnings: Array(warnings.prefix(4)),
-            recommendedActions: Array(actions.prefix(4)),
+            factsUsed: Array(facts.prefix(7)),
+            warnings: Array(warnings.prefix(5)),
+            recommendedActions: Array(actions.prefix(5)),
             confidenceNote: profile.instrumentsCount == 0 ? "La lectura es prudente porque todavía hay poca evidencia evaluativa." : nil,
             riskLevel: level,
             sourceDigest: compactTexts([level.summarySentence], warnings.map(\.text), actions.map(\.text)).joined(separator: " "),
@@ -242,7 +284,7 @@ enum StudentRiskEvidenceBuilder {
 
 enum NotebookCommentEvidenceBuilder {
     static func build(from context: KmpBridge.NotebookAICommentContext) -> TeachingEvidencePack {
-        let facts = compactTexts(
+        var factTexts = compactTexts(
             [
                 context.averageScore.map { "Media registrada: \(IosFormatting.decimal(from: $0))." },
                 context.attendanceStatus.map { "Último estado de asistencia: \($0)." },
@@ -252,17 +294,51 @@ enum NotebookCommentEvidenceBuilder {
             ].compactMap { $0 },
             context.relevantValues.prefix(4).map { "\($0.title) [\($0.categoryLabel)]: \($0.value)." },
             context.competencyLabels.prefix(3).map { "Competencia relacionada: \($0)." }
-        ).map(FactItem.init)
-        let warnings = compactTexts([
+        )
+        
+        if let trends = context.trends {
+            if trends.trendDirection == "UPWARD" {
+                factTexts.append("Rendimiento académico con progresión ascendente (+ \(IosFormatting.decimal(from: trends.averageGradeDelta)) pt).")
+            } else if trends.trendDirection == "DOWNWARD" {
+                factTexts.append("Rendimiento académico con progresión descendente (- \(IosFormatting.decimal(from: abs(trends.averageGradeDelta))) pt).")
+            } else if trends.trendDirection == "STABLE" {
+                factTexts.append("Rendimiento académico estable.")
+            }
+            factTexts.append("Cobertura curricular: \(IosFormatting.decimal(from: trends.curriculumCoveragePct))%.")
+        }
+        let facts = factTexts.map(FactItem.init)
+        
+        var warningTexts = compactTexts([
             context.dataQualityNote,
             context.relevantValues.isEmpty ? "Hay pocas columnas visibles con dato para este alumno." : nil,
             context.evidenceCount == 0 ? "No constan evidencias adjuntas en el periodo visible." : nil
-        ].compactMap { $0 }).map(WarningItem.init)
-        let actions = compactTexts([
+        ].compactMap { $0 })
+        
+        if let trends = context.trends {
+            if trends.trendDirection == "DOWNWARD" {
+                warningTexts.append("Alerta: La tendencia de rendimiento académico del alumno en el trimestre es descendente.")
+            }
+            if !trends.missingCompetencyLabels.isEmpty {
+                warningTexts.append("Brechas LOMLOE: Quedan competencias clave sin evidencias en el cuaderno (\(trends.missingCompetencyLabels.joined(separator: ", "))).")
+            }
+        }
+        let warnings = warningTexts.map(WarningItem.init)
+        
+        var actionTexts = compactTexts([
             context.followUpCount > 0 ? "Mantener continuidad en el seguimiento individual." : nil,
             context.incidentCount > 0 ? "Conectar el comentario con observaciones verificables, no con causas supuestas." : nil,
             context.evidenceCount <= 1 ? "Añadir nuevas evidencias antes de cerrar una valoración más firme." : nil
-        ].compactMap { $0 }).map(RecommendedActionItem.init)
+        ].compactMap { $0 })
+        
+        if let trends = context.trends {
+            if trends.trendDirection == "DOWNWARD" {
+                actionTexts.append("Reforzar el apoyo individual y repasar tareas pendientes.")
+            }
+            if !trends.missingCompetencyLabels.isEmpty {
+                actionTexts.append("Añadir nuevos instrumentos de evaluación para cubrir competencias pendientes.")
+            }
+        }
+        let actions = actionTexts.map(RecommendedActionItem.init)
         return TeachingEvidencePack(
             useCase: .notebookComment,
             title: "Comentario inteligente de cuaderno",

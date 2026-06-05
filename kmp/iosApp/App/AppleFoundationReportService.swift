@@ -402,6 +402,31 @@ final class AppleFoundationReportService {
         let notes = promptLines(context.supportNotes, maxItems: 3, itemLimit: 100, fallback: "Sin notas de apoyo adicionales.")
         let curriculumReferences = promptLines(context.curriculumReferences, maxItems: 3, itemLimit: 100, fallback: "Sin referencias curriculares preseleccionadas.")
         let promptDirectives = promptLines(context.promptDirectives, maxItems: 3, itemLimit: 100, fallback: "Redacción general prudente.")
+        
+        let trendsInfo: String = {
+            guard let trends = context.trends else { return "Sin análisis de tendencias disponible." }
+            let directionText: String = {
+                switch trends.trendDirection {
+                case "UPWARD": return "Ascendente (+ \(IosFormatting.decimal(from: trends.averageGradeDelta)) pt)"
+                case "DOWNWARD": return "Descendente (- \(IosFormatting.decimal(from: abs(trends.averageGradeDelta))) pt)"
+                case "STABLE": return "Estable"
+                default: return "Datos insuficientes"
+                }
+            }()
+            
+            let missingComp = trends.missingCompetencyLabels.isEmpty
+                ? "Ninguna (cobertura completa)"
+                : trends.missingCompetencyLabels.joined(separator: ", ")
+                
+            return """
+            - Dirección de la trayectoria académica: \(directionText)
+            - Tasa de asistencia media registrada: \(IosFormatting.decimal(from: trends.attendanceRate))% (\(trends.attendanceCorrelationNote))
+            - Incidencias y clima de aula acumulados: \(trends.behaviorIncidentSummary)
+            - Cobertura de rúbricas curriculares LOMLOE: \(IosFormatting.decimal(from: trends.curriculumCoveragePct))%
+            - Competencias pendientes de evaluar en cuaderno: \(missingComp)
+            """
+        }()
+
         let audienceDirectives: String = {
             switch audience {
             case .docente:
@@ -436,6 +461,9 @@ final class AppleFoundationReportService {
         Resumen base: \(promptFragment(context.summary, limit: 320))
         Nota de calidad de datos: \(promptFragment(context.dataQualityNote ?? "Sin incidencias de calidad reseñables.", limit: 180))
         Nota interna orientativa: \(context.numericScore.map { IosFormatting.decimal(from: $0) } ?? "Sin nota consolidada")
+
+        Análisis consolidado de tendencias de IA
+        \(trendsInfo)
 
         Métricas verificables
         \(metrics)

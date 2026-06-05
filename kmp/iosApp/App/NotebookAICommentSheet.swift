@@ -225,7 +225,7 @@ struct NotebookAICommentSheet: View {
         aiAvailability = currentAvailability
 
         Task {
-            let contexts = bridge.generateNotebookAICommentContexts(
+            let contexts = await bridge.generateNotebookAICommentContexts(
                 includedColumnIds: includedColumnIds,
                 studentIds: effectiveStudentIds
             )

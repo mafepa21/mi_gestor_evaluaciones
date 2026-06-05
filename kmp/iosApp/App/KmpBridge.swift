@@ -470,6 +470,7 @@ final class KmpBridge: ObservableObject {
         let classicReportText: String
         let hasEnoughData: Bool
         let dataQualityNote: String?
+        let trends: AITrendsSnapshot?
     }
 
     enum AnalyticsTimeRange: String, CaseIterable, Identifiable {
@@ -735,6 +736,18 @@ final class KmpBridge: ObservableObject {
         let summary: String
         let hasEnoughData: Bool
         let dataQualityNote: String?
+        let trends: AITrendsSnapshot?
+    }
+
+    struct AITrendsSnapshot: Codable, Equatable {
+        let trendDirection: String
+        let averageGradeDelta: Double
+        let attendanceCorrelationNote: String
+        let behaviorIncidentSummary: String
+        let curriculumCoveragePct: Double
+        let missingCompetencyLabels: [String]
+        let recentGrades: [Double]
+        let attendanceRate: Double
     }
 
     struct RubricUsageSnapshot {
@@ -3383,6 +3396,8 @@ final class KmpBridge: ObservableObject {
             throw NSError(domain: "KmpBridge", code: 404, userInfo: [NSLocalizedDescriptionKey: "No se encontró la clase \(classId)."])
         }
 
+        let trends = try? await getAITrendsAndMetrics(classId: classId, studentId: studentId)
+
         let resolvedCourseLabel = courseLabel(for: schoolClass)
 
         let students = try await container.classesRepository.listStudentsInClass(classId: classId)
@@ -3455,7 +3470,8 @@ final class KmpBridge: ObservableObject {
                 supportNotes: summary.rosterPreview.isEmpty ? [] : ["Muestra de roster: \(summary.rosterPreview.map(\.fullName).joined(separator: ", "))."],
                 classicReportText: classicText,
                 hasEnoughData: summary.studentCount > 0,
-                dataQualityNote: summary.evaluationCount == 0 ? "No hay evaluaciones registradas todavía; el relato debe ser prudente." : nil
+                dataQualityNote: summary.evaluationCount == 0 ? "No hay evaluaciones registradas todavía; el relato debe ser prudente." : nil,
+                trends: trends
             )
 
         case .studentSummary:
@@ -3482,7 +3498,8 @@ final class KmpBridge: ObservableObject {
                     supportNotes: [],
                     classicReportText: classicText,
                     hasEnoughData: false,
-                    dataQualityNote: "El informe individual requiere selección de alumno."
+                    dataQualityNote: "El informe individual requiere selección de alumno.",
+                    trends: nil
                 )
             }
             let profile = try await loadStudentProfile(studentId: studentId, classId: classId)
@@ -3545,7 +3562,8 @@ final class KmpBridge: ObservableObject {
                 ),
                 classicReportText: classicText,
                 hasEnoughData: profile.instrumentsCount > 0 || profile.journalNoteCount > 0 || profile.incidentCount > 0,
-                dataQualityNote: profile.instrumentsCount == 0 ? "Hay poca evidencia evaluativa registrada; conviene evitar conclusiones fuertes." : nil
+                dataQualityNote: profile.instrumentsCount == 0 ? "Hay poca evidencia evaluativa registrada; conviene evitar conclusiones fuertes." : nil,
+                trends: trends
             )
 
         case .evaluationDigest:
@@ -3600,7 +3618,8 @@ final class KmpBridge: ObservableObject {
                 supportNotes: evaluations.prefix(4).map { "\($0.name) · peso \(IosFormatting.decimal(from: $0.weight)) · tipo \($0.type)" },
                 classicReportText: classicText,
                 hasEnoughData: !evaluations.isEmpty,
-                dataQualityNote: values.isEmpty ? "Hay estructura evaluativa, pero faltan calificaciones para una síntesis más sólida." : nil
+                dataQualityNote: values.isEmpty ? "Hay estructura evaluativa, pero faltan calificaciones para una síntesis más sólida." : nil,
+                trends: trends
             )
 
         case .operationsSnapshot:
@@ -3678,7 +3697,8 @@ final class KmpBridge: ObservableObject {
                 supportNotes: supportNotes,
                 classicReportText: classicText,
                 hasEnoughData: !attendance.isEmpty || !incidents.isEmpty || !journalSummaries.isEmpty,
-                dataQualityNote: journalSummaries.isEmpty ? "El resumen operativo se apoya más en asistencia e incidencias que en diarios completos." : nil
+                dataQualityNote: journalSummaries.isEmpty ? "El resumen operativo se apoya más en asistencia e incidencias que en diarios completos." : nil,
+                trends: trends
             )
 
         case .lomloeEvaluationComment:
@@ -3705,7 +3725,8 @@ final class KmpBridge: ObservableObject {
                     supportNotes: [],
                     classicReportText: "Selecciona un alumno para generar el comentario LOMLOE.",
                     hasEnoughData: false,
-                    dataQualityNote: "El comentario LOMLOE es individual y requiere selección de alumno."
+                    dataQualityNote: "El comentario LOMLOE es individual y requiere selección de alumno.",
+                    trends: nil
                 )
             }
             let profile = try await loadStudentProfile(studentId: studentId, classId: classId)
@@ -3791,7 +3812,8 @@ final class KmpBridge: ObservableObject {
                 supportNotes: supportNotes,
                 classicReportText: classicCommentShell,
                 hasEnoughData: numericScore != nil || !profile.evaluationTitles.isEmpty || !profile.timeline.isEmpty,
-                dataQualityNote: numericScore == nil ? "Si hay poca nota numérica, el comentario debe apoyarse en evidencias, actitud y progreso observado." : nil
+                dataQualityNote: numericScore == nil ? "Si hay poca nota numérica, el comentario debe apoyarse en evidencias, actitud y progreso observado." : nil,
+                trends: trends
             )
         }
     }
@@ -9650,10 +9672,27 @@ extension KmpBridge {
         )
     }
 
+    func getAITrendsAndMetrics(classId: Int64, studentId: Int64?) async throws -> AITrendsSnapshot {
+        let kotlinSnapshot = try await container.getAITrendsAndMetrics.invoke(
+            classId: classId,
+            studentId: studentId.map { KotlinLong(value: $0) }
+        )
+        return AITrendsSnapshot(
+            trendDirection: kotlinSnapshot.trendDirection,
+            averageGradeDelta: kotlinSnapshot.averageGradeDelta,
+            attendanceCorrelationNote: kotlinSnapshot.attendanceCorrelationNote,
+            behaviorIncidentSummary: kotlinSnapshot.behaviorIncidentSummary,
+            curriculumCoveragePct: kotlinSnapshot.curriculumCoveragePct,
+            missingCompetencyLabels: kotlinSnapshot.missingCompetencyLabels,
+            recentGrades: kotlinSnapshot.recentGrades.map { $0.doubleValue },
+            attendanceRate: kotlinSnapshot.attendanceRate
+        )
+    }
+
     func generateNotebookAICommentContexts(
         includedColumnIds: [String],
         studentIds: [Int64]? = nil
-    ) -> [NotebookAICommentContext] {
+    ) async -> [NotebookAICommentContext] {
         guard let data = notebookState as? NotebookUiStateData,
               let classId = notebookViewModel.currentClassId?.int64Value,
               let schoolClass = classes.first(where: { $0.id == classId })
@@ -9669,7 +9708,8 @@ extension KmpBridge {
             return studentIds.contains(row.student.id)
         }
 
-        return filteredRows.map { row in
+        var contexts: [NotebookAICommentContext] = []
+        for row in filteredRows {
             let insight = data.sheet.insights.first(where: { $0.studentId == row.student.id })
             let values = selectedColumns.compactMap { column -> NotebookAIColumnValue? in
                 let value = notebookDisplayValue(for: row, column: column)
@@ -9684,24 +9724,30 @@ extension KmpBridge {
             let existingComment = existingCommentColumn.map { cellText(studentId: row.student.id, columnId: $0.id) }.flatMap { $0.nilIfBlank }
             let averageValue = row.weightedAverage?.doubleValue
             let averageText = averageValue.map { IosFormatting.decimal(from: $0) } ?? "Sin media"
-            return NotebookAICommentContext(
-                classId: classId,
-                className: schoolClass.name,
-                studentId: row.student.id,
-                studentName: row.student.fullName,
-                averageScore: averageValue,
-                attendanceStatus: insight?.latestAttendanceStatus,
-                followUpCount: Int(insight?.followUpCount ?? 0),
-                incidentCount: Int(insight?.incidentCount ?? 0),
-                evidenceCount: Int(insight?.evidenceCount ?? 0),
-                competencyLabels: insight?.linkedCompetencyLabels ?? [],
-                relevantValues: values,
-                existingComment: existingComment,
-                summary: "Alumno \(row.student.fullName) con media \(averageText), \(values.count) evidencias de cuaderno y seguimiento complementario.",
-                hasEnoughData: averageValue != nil || !values.isEmpty || Int(insight?.incidentCount ?? 0) > 0 || Int(insight?.evidenceCount ?? 0) > 0,
-                dataQualityNote: values.isEmpty ? "Hay pocas columnas con dato visible para este alumno." : nil
+            let trends = try? await getAITrendsAndMetrics(classId: classId, studentId: row.student.id)
+            
+            contexts.append(
+                NotebookAICommentContext(
+                    classId: classId,
+                    className: schoolClass.name,
+                    studentId: row.student.id,
+                    studentName: row.student.fullName,
+                    averageScore: averageValue,
+                    attendanceStatus: insight?.latestAttendanceStatus,
+                    followUpCount: Int(insight?.followUpCount ?? 0),
+                    incidentCount: Int(insight?.incidentCount ?? 0),
+                    evidenceCount: Int(insight?.evidenceCount ?? 0),
+                    competencyLabels: insight?.linkedCompetencyLabels ?? [],
+                    relevantValues: values,
+                    existingComment: existingComment,
+                    summary: "Alumno \(row.student.fullName) con media \(averageText), \(values.count) evidencias de cuaderno y seguimiento complementario.",
+                    hasEnoughData: averageValue != nil || !values.isEmpty || Int(insight?.incidentCount ?? 0) > 0 || Int(insight?.evidenceCount ?? 0) > 0,
+                    dataQualityNote: values.isEmpty ? "Hay pocas columnas con dato visible para este alumno." : nil,
+                    trends: trends
+                )
             )
         }
+        return contexts
     }
 
     func createNotebookAICommentColumn(

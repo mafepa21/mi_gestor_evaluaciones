@@ -879,6 +879,12 @@ enum class NotebookScaleKind {
     CUSTOM,
 }
 
+private val rawPhysicalScaleKinds = setOf(
+    NotebookScaleKind.TIME,
+    NotebookScaleKind.DISTANCE,
+    NotebookScaleKind.REPETITIONS,
+)
+
 enum class NotebookColumnVisibility {
     VISIBLE,
     HIDDEN,
@@ -986,7 +992,38 @@ data class NotebookColumnDefinition(
     val isTemplate: Boolean = false,
     val emptyCellPolicy: NotebookEmptyCellPolicy = NotebookEmptyCellPolicy.EXCLUDE_FROM_AVERAGE,
     val trace: AuditTrace = AuditTrace(),
-)
+) {
+    fun countsTowardAverage(): Boolean {
+        if (!countsTowardAverage || weight <= 0.0) return false
+        if (visibility == NotebookColumnVisibility.ARCHIVED) return false
+        if (instrumentKind == NotebookInstrumentKind.PHYSICAL_TEST && scaleKind in rawPhysicalScaleKinds) {
+            return false
+        }
+        return when (type) {
+            NotebookColumnType.NUMERIC,
+            NotebookColumnType.RUBRIC,
+            NotebookColumnType.CALCULATED,
+            NotebookColumnType.CHECK -> true
+            else -> false
+        }
+    }
+
+    fun averageExclusionReason(): NotebookAverageExclusionReason {
+        if (visibility == NotebookColumnVisibility.ARCHIVED) return NotebookAverageExclusionReason.LOCKED_OR_ARCHIVED
+        if (instrumentKind == NotebookInstrumentKind.PHYSICAL_TEST && scaleKind in rawPhysicalScaleKinds) {
+            return NotebookAverageExclusionReason.RAW_VALUE_ONLY
+        }
+        if (weight <= 0.0) return NotebookAverageExclusionReason.RAW_VALUE_ONLY
+        if (!countsTowardAverage) return NotebookAverageExclusionReason.COLUMN_DOES_NOT_COUNT
+        return when (type) {
+            NotebookColumnType.NUMERIC,
+            NotebookColumnType.RUBRIC,
+            NotebookColumnType.CALCULATED,
+            NotebookColumnType.CHECK -> NotebookAverageExclusionReason.COLUMN_DOES_NOT_COUNT
+            else -> NotebookAverageExclusionReason.NON_NUMERIC
+        }
+    }
+}
 
 data class NotebookCellAnnotation(
     val note: String? = null,
@@ -1190,6 +1227,108 @@ enum class NotebookAverageExclusionReason {
     RAW_VALUE_ONLY,
     LOCKED_OR_ARCHIVED,
     NON_NUMERIC,
+}
+
+fun NotebookRow.gradeValueFor(
+    column: NotebookColumnDefinition,
+    calculatedValuesByColumnId: Map<String, Double> = emptyMap(),
+    numericDrafts: Map<Pair<Long, String>, String> = emptyMap(),
+): Double? {
+    val studentId = student.id
+    // 1. Check drafts (real-time input)
+    val draftValue = numericDrafts[studentId to column.id]?.replace(",", ".")?.toDoubleOrNull()
+        ?: column.evaluationId?.let { evalId ->
+            numericDrafts[studentId to "eval_$evalId"]?.replace(",", ".")?.toDoubleOrNull()
+        }
+    if (draftValue != null) return draftValue
+
+    // 2. Check calculated formula values
+    calculatedValuesByColumnId[column.id]?.let { return it }
+
+    // 3. Check cells (evaluations)
+    val evaluationValue = column.evaluationId?.let { evaluationId ->
+        cells.firstOrNull { it.evaluationId == evaluationId }?.value
+    }
+    if (evaluationValue != null) return evaluationValue
+
+    // 4. Check persisted grades (by columnId or evaluationId)
+    val persistedGrade = persistedGrades.firstOrNull { it.columnId == column.id }?.value
+        ?: column.evaluationId?.let { evalId ->
+            persistedGrades.firstOrNull { it.evaluationId == evalId }?.value
+        }
+    if (persistedGrade != null) return persistedGrade
+
+    // 5. Check persisted cells check/bool value
+    return persistedCells.firstOrNull { it.columnId == column.id }?.boolValue?.let { if (it) 10.0 else 0.0 }
+}
+
+fun NotebookRow.computeAverageExplanation(
+    columns: List<NotebookColumnDefinition>,
+    calculatedValuesByColumnId: Map<String, Double> = emptyMap(),
+    numericDrafts: Map<Pair<Long, String>, String> = emptyMap(),
+): NotebookAverageExplanation? {
+    val evaluableColumns = columns.filter { it.visibility != NotebookColumnVisibility.ARCHIVED }
+    if (evaluableColumns.isEmpty()) return null
+
+    val included = mutableListOf<NotebookAverageContribution>()
+    val excluded = mutableListOf<NotebookAverageExclusion>()
+
+    evaluableColumns.forEach { column ->
+        if (!column.countsTowardAverage()) {
+            excluded += NotebookAverageExclusion(
+                columnId = column.id,
+                title = column.title,
+                reason = column.averageExclusionReason()
+            )
+            return@forEach
+        }
+
+        val value = gradeValueFor(column, calculatedValuesByColumnId, numericDrafts)
+        if (value != null) {
+            included += NotebookAverageContribution(
+                columnId = column.id,
+                title = column.title,
+                value = value,
+                weight = column.weight,
+                weightedValue = value * column.weight
+            )
+        } else {
+            when (column.emptyCellPolicy) {
+                NotebookEmptyCellPolicy.COUNT_AS_ZERO -> {
+                    included += NotebookAverageContribution(
+                        columnId = column.id,
+                        title = column.title,
+                        value = 0.0,
+                        weight = column.weight,
+                        weightedValue = 0.0
+                    )
+                }
+                else -> {
+                    excluded += NotebookAverageExclusion(
+                        columnId = column.id,
+                        title = column.title,
+                        reason = NotebookAverageExclusionReason.EMPTY
+                    )
+                }
+            }
+        }
+    }
+
+    val totalWeight = included.sumOf { it.weight }
+    val average = if (totalWeight > 0.0) {
+        included.sumOf { it.weightedValue } / totalWeight
+    } else {
+        null
+    }
+
+    return NotebookAverageExplanation(
+        studentId = student.id,
+        average = average,
+        included = included,
+        excluded = excluded,
+        totalIncludedWeight = totalWeight,
+        policy = NotebookEmptyCellPolicy.EXCLUDE_FROM_AVERAGE
+    )
 }
 
 fun List<Grade>.gradeValueFor(evaluationId: Long): Double? {

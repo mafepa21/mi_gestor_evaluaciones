@@ -9,3 +9,7 @@
 - Added shared test coverage for unique work-group naming in the same tab and verified the desktop Kotlin compilation.
 - Improved notebook column interactions across desktop and iOS: drag-and-drop reordering, corner resize handles, long-press color menus, and synchronized header/cell widths.
 - Verified `:shared:compileKotlinMetadata` and `:desktopApp:compileKotlin` after the notebook UI changes.
+- Integrated localized database analysis and aggregation on Kotlin side (KMP) to deliver compressed academic trends (`AITrendsSnapshot`) to the Apple Intelligence localized prompt runner.
+- Exposed trends data from KMP to Swift in `KmpBridge.swift`, updated contextual AI builders and generated report structures.
+- Integrated visual AI trends inspector cards in `NotebookStudentInspector.swift`, LOMLOE Audit Widget in `DashboardView.swift`, and parameters detail in `RubricsReportsWorkspaceViews.swift`.
+- Verified successful iOS Simulator and macOS compilation via `verify_apple_builds.sh` after fixing usecase long/int comparison and styling type mismatch.

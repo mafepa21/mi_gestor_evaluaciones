@@ -46,6 +46,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Docs
 
+- Se crea `docs/VERSIONING.md` como guia canonica de SemVer interno, ramas, commits, tags, GitHub Releases, versionado de manifests y registro automatico de cambios por PR.
 - Se anade base de preparacion comercial: licencia propietaria, politica de seguridad, borrador de privacidad, avisos de terceros, due diligence, mapa de datos personales y matriz de modulos.
 - Se crea la estructura documental base del repositorio: indice, gobierno, roadmap, baseline inicial y plantilla de PR.
 - Se documenta el workflow para agentes y el uso obligatorio de `registrar-avance-app` como capa final de trazabilidad.
@@ -54,6 +55,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Se añade workflow `release-check.yml` para ramas `codex/release-*` y `release/**`, con validacion documental y bloqueo de artefactos sensibles.
+- Se añaden scripts `verify_no_sensitive_files.sh` y `create_release_candidate.sh` para preparar candidatas de release sin crear tags reales y detectar artefactos que no deben versionarse.
 - Se añaden workflows de GitHub Actions para tests KMP/data y verificacion de builds Apple en PRs y pushes a `main`.
 - Se cierra el PR #6 como redundante/conflictivo tras verificar que no quedaban commits pendientes respecto a `origin/main`.
 

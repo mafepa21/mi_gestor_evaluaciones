@@ -13,6 +13,7 @@ venta, cesion, auditoria o distribucion publica.
 | Terceros | Inventario inicial creado. | Extraer licencias exactas y transitivas. |
 | Matriz de modulos | Creada. | Actualizarla en cada PR transversal. |
 | Release process | Existe proceso interno. | Vincular cada release a CI verde y evidencias. |
+| Versionado GitHub | Guia canonica creada. | Validar primera release `v0.3.0-alpha.1` con tag y GitHub Release. |
 | PR template | Existe. | Mantener riesgos, pruebas y docs actualizados. |
 
 ## Checklist legal y comercial
@@ -32,6 +33,8 @@ venta, cesion, auditoria o distribucion publica.
   notarizacion, App Store o canal privado.
 - Preparar evidencias de calidad: builds, tests, capturas, checklist UX y
   pruebas de restauracion/exportacion.
+- Confirmar que cada version publicable tiene rama, PR, changelog, tag anotado,
+  GitHub Release y checks asociados.
 
 ## Riesgos abiertos
 

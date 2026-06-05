@@ -1,0 +1,28 @@
+name: Release Check
+
+on:
+  pull_request:
+  push:
+    branches:
+      - "codex/release-*"
+      - "release/**"
+
+jobs:
+  release-check:
+    name: Release documentation and safety checks
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || startsWith(github.head_ref, 'codex/release-') || startsWith(github.head_ref, 'release/')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check required release files
+        run: |
+          test -f docs/VERSIONING.md
+          test -f docs/RELEASE_PROCESS.md
+          test -f docs/CHANGELOG.md
+          test -x scripts/verify_no_sensitive_files.sh
+          test -x scripts/create_release_candidate.sh
+
+      - name: Check sensitive files
+        run: scripts/verify_no_sensitive_files.sh

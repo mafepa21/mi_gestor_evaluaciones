@@ -2,6 +2,8 @@
 
 Este documento define el proceso interno para preparar versiones reproducibles de Mi Gestor Evaluaciones. Hasta que haya distribucion publica, la version actual del producto es `0.3.0-dev`.
 
+La guia completa de ramas, commits, tags, GitHub Releases y registro automatico por PR vive en `docs/VERSIONING.md`.
+
 ## Versiones internas
 
 - `0.1.x`: base tecnica y paridad funcional principal.
@@ -24,12 +26,19 @@ Este documento define el proceso interno para preparar versiones reproducibles d
 5. Abrir PR con la plantilla oficial y una intencion dominante.
 6. Etiquetar `vX.Y.Z` solo despues de mergear una version reproducible y verificada.
 
+Para preparar la rama sin crear tags reales:
+
+```bash
+scripts/create_release_candidate.sh 0.3.0-alpha.1
+```
+
 ## Checks obligatorios
 
 - KMP/shared: `./gradlew :shared:test` desde `kmp/`.
 - SQLDelight/data: `./gradlew :data:desktopTest` desde `kmp/`.
 - Apple: `scripts/verify_apple_builds.sh` desde la raiz.
 - Documentacion pura: revisar `git diff --stat`, enlaces Markdown y estado Git.
+- Release safety: `scripts/verify_no_sensitive_files.sh` desde la raiz.
 
 Si un check no puede ejecutarse por entorno, el PR debe registrar el comando, el fallo exacto y el motivo.
 

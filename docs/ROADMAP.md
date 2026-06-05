@@ -44,25 +44,25 @@ Prioridad: media-alta.
 - Backups: restauracion fiable y trazable.
 - Sync: estrategia clara para LAN/local y futuras opciones.
 - Exportaciones: informes utiles y reproducibles.
-- Privacidad: documentar tratamiento de datos de alumnado y seguridad basica.
+- Privacidad: mantener `PRIVACY.md` y `docs/04_legal_comercial/datos_personales.md` como base operativa pendiente de revision juridica.
 
 ## Fase 4 - Preparacion comercial
 
-Prioridad: futura.
+Prioridad: futura, con base documental inicial creada.
 
 - Onboarding y datos de ejemplo.
 - Guia de uso para docentes.
 - Release notes publicables.
 - Evidencias de calidad: builds, tests, capturas, auditorias.
 - Documentacion de arquitectura y mantenimiento para terceros.
-- Checklist legal y privacidad antes de distribucion o venta.
+- Checklist legal y privacidad antes de distribucion o venta en `docs/04_legal_comercial/due_diligence.md`.
 
 ## Backlog de documentacion pendiente
 
-- Crear matriz de modulos: estado, fuente de verdad, riesgos, pruebas y proxima accion.
+- Mantener la matriz de modulos viva cuando cambie el estado, fuente de verdad, riesgos, pruebas o proxima accion.
 - Consolidar guia de release interna con evidencias reales de CI verde.
 - Crear guia de arquitectura KMP + Apple actualizada.
-- Crear checklist de due diligence tecnica.
+- Completar due diligence con revision legal, licencias transitivas y evidencias de release.
 - Revisar si la app Flutter original queda como legado, referencia o target activo.
-- Definir politica formal de fixtures anonimizados y privacidad para datos de alumnado.
+- Convertir el borrador de privacidad y datos personales en documentos publicables revisados.
 - Revisar limpieza de ramas remotas historicas cuando no haya PRs abiertos dependientes.

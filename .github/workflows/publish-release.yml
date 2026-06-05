@@ -1,0 +1,65 @@
+name: Publish Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version without leading v, for example 0.3.0-alpha.1"
+        required: true
+        type: string
+      dry_run:
+        description: "Validate release inputs without publishing a GitHub Release"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  publish-release:
+    name: Manual release publication
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate tag exists
+        run: |
+          VERSION="${{ inputs.version }}"
+          case "$VERSION" in
+            v*)
+              echo "Use version without leading v."
+              exit 1
+              ;;
+          esac
+          git rev-parse "v${VERSION}^{tag}" >/dev/null
+
+      - name: Run safety checks
+        run: |
+          scripts/verify_no_sensitive_files.sh
+          scripts/check_version_consistency.sh "${{ inputs.version }}"
+          scripts/collect_release_evidence.sh "${{ inputs.version }}" > release-evidence.md
+
+      - name: Upload release evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-evidence
+          path: release-evidence.md
+
+      - name: Stop after validation
+        if: ${{ inputs.dry_run }}
+        run: |
+          echo "Dry run completed. No GitHub Release was published."
+
+      - name: Publish GitHub Release
+        if: ${{ ! inputs.dry_run }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ inputs.version }}
+          name: v${{ inputs.version }}
+          body_path: release-evidence.md
+          draft: true
+          prerelease: ${{ contains(inputs.version, '-') }}

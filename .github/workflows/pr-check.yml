@@ -1,0 +1,31 @@
+name: PR Check
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  repository-safety:
+    name: Repository safety
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check required release automation files
+        run: |
+          test -f docs/VERSIONING.md
+          test -f docs/RELEASE_PROCESS.md
+          test -f docs/CHANGELOG.md
+          test -x scripts/verify_no_sensitive_files.sh
+          test -x scripts/check_version_consistency.sh
+          test -x scripts/create_release_candidate.sh
+          test -x scripts/collect_release_evidence.sh
+
+      - name: Check sensitive files
+        run: scripts/verify_no_sensitive_files.sh
+
+      - name: Check version consistency
+        run: scripts/check_version_consistency.sh
+

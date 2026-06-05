@@ -12,7 +12,8 @@ venta, cesion, auditoria o distribucion publica.
 | Privacidad | Borrador operativo creado. | Cerrar roles, contratos y deber de informacion. |
 | Terceros | Inventario inicial creado. | Extraer licencias exactas y transitivas. |
 | Matriz de modulos | Creada. | Actualizarla en cada PR transversal. |
-| Release process | Existe proceso interno. | Vincular cada release a CI verde y evidencias. |
+| Release process | Automatizado con checks seguros y evidencia. | Validar primera release `v0.3.0-alpha.1` sin publicar tags por push. |
+| Versionado GitHub | Guia canonica creada. | Crear tag manual tras merge y publicar draft release solo con `workflow_dispatch`. |
 | PR template | Existe. | Mantener riesgos, pruebas y docs actualizados. |
 
 ## Checklist legal y comercial
@@ -32,6 +33,8 @@ venta, cesion, auditoria o distribucion publica.
   notarizacion, App Store o canal privado.
 - Preparar evidencias de calidad: builds, tests, capturas, checklist UX y
   pruebas de restauracion/exportacion.
+- Confirmar que cada version publicable tiene rama `release/*`, PR, changelog,
+  tag anotado manual, GitHub Release manual y checks asociados.
 
 ## Riesgos abiertos
 
@@ -40,6 +43,7 @@ venta, cesion, auditoria o distribucion publica.
 | Roles RGPD no cerrados | Bloquea piloto formal o venta a centros. | Revision juridica y contratos. |
 | Licencias transitivas sin auditar | Riesgo de incumplimiento en distribucion. | Automatizar reporte y revisar restricciones. |
 | Backups/exportaciones con datos reales | Riesgo alto de privacidad. | Fixtures anonimos, checklist y `.gitignore`. |
+| Publicacion accidental de releases | Confusion comercial o exposicion prematura. | `publish-release.yml` solo manual y tags nunca automaticos por push. |
 | Sync futuro sin politica | Riesgo de transferencia no documentada. | ADR antes de implementar sync externo. |
 | IA contextual sin transparencia suficiente | Riesgo de confianza y privacidad. | Limitar a local/minimo y documentar cada flujo. |
 | Versiones desktop marcadas como `1.0.0` en packaging | Confusion comercial. | Alinear packageVersion con version interna antes de release. |

@@ -16,6 +16,7 @@ Estado: casi cerrada.
 - Separar documentacion canonica de auditorias temporales.
 - Agrupar el trabajo historico pendiente en paquetes revisables.
 - Mantener CI minimo para KMP/data y builds Apple antes de avanzar hacia releases.
+- Mantener `docs/VERSIONING.md` y `release-check.yml` como base del registro automatico de ramas, commits, PRs y releases.
 
 ## Fase 1 - Estabilizacion funcional critica
 
@@ -61,6 +62,7 @@ Prioridad: futura, con base documental inicial creada.
 
 - Mantener la matriz de modulos viva cuando cambie el estado, fuente de verdad, riesgos, pruebas o proxima accion.
 - Consolidar guia de release interna con evidencias reales de CI verde.
+- Probar la primera candidata `v0.3.0-alpha.1` con PR de release, tag anotado y GitHub Release.
 - Crear guia de arquitectura KMP + Apple actualizada.
 - Completar due diligence con revision legal, licencias transitivas y evidencias de release.
 - Revisar si la app Flutter original queda como legado, referencia o target activo.

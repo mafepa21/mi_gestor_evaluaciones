@@ -1,0 +1,49 @@
+name: Release Check
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - "release/**"
+
+jobs:
+  release-check:
+    name: Release documentation and safety checks
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || startsWith(github.head_ref, 'release/')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check required release files
+        run: |
+          test -f docs/VERSIONING.md
+          test -f docs/RELEASE_PROCESS.md
+          test -f docs/CHANGELOG.md
+          test -x scripts/verify_no_sensitive_files.sh
+          test -x scripts/check_version_consistency.sh
+          test -x scripts/create_release_candidate.sh
+          test -x scripts/collect_release_evidence.sh
+
+      - name: Check sensitive files
+        run: scripts/verify_no_sensitive_files.sh
+
+      - name: Check version consistency
+        run: |
+          VERSION="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          VERSION="${VERSION#release/}"
+          scripts/check_version_consistency.sh "$VERSION"
+
+      - name: Collect release evidence
+        run: |
+          VERSION="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          VERSION="${VERSION#release/}"
+          scripts/collect_release_evidence.sh "$VERSION" > release-evidence.md
+
+      - name: Upload release evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-evidence
+          path: release-evidence.md

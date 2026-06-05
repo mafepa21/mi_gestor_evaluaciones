@@ -11,7 +11,7 @@ usage() {
 Usage:
   scripts/create_release_candidate.sh 0.3.0-alpha.1
 
-Creates or switches to codex/release-0-3-0-alpha-1 and runs release safety checks.
+Creates or switches to release/0.3.0-alpha.1 and runs release safety checks.
 It does not create tags, GitHub Releases or version bumps automatically.
 EOF
 }
@@ -23,9 +23,9 @@ fi
 
 VERSION="$1"
 
-if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9]+(\.[0-9]+)?)?$ ]]; then
+if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]]; then
   echo "Invalid version: ${VERSION}"
-  echo "Expected examples: 0.3.0, 0.3.0-alpha.1, 0.4.0-beta.1"
+  echo "Expected examples: 0.3.0, 0.3.0-alpha.1, 0.4.0-beta.1, 1.0.0-rc.1"
   exit 1
 fi
 
@@ -35,8 +35,7 @@ if [ -n "$(git status --porcelain)" ]; then
   exit 1
 fi
 
-BRANCH="codex/release-${VERSION//./-}"
-BRANCH="${BRANCH//_/-}"
+BRANCH="release/${VERSION}"
 
 CURRENT_BRANCH="$(git branch --show-current)"
 
@@ -47,6 +46,7 @@ else
 fi
 
 scripts/verify_no_sensitive_files.sh
+scripts/check_version_consistency.sh "$VERSION"
 
 cat <<EOF
 

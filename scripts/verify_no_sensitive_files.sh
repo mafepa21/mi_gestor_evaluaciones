@@ -8,10 +8,30 @@ cd "${PROJECT_ROOT}"
 
 failures=()
 
+is_allowed_fixture_exception() {
+  local path="$1"
+  local name
+  name="$(basename "$path")"
+
+  case "$path" in
+    tests/fixtures/anonymous_*|tests/fixtures/demo_*)
+      case "$name" in
+        anonymous_*|demo_*) return 0 ;;
+      esac
+      ;;
+  esac
+
+  return 1
+}
+
 is_sensitive_path() {
   local path="$1"
   local name
   name="$(basename "$path")"
+
+  if is_allowed_fixture_exception "$path"; then
+    return 1
+  fi
 
   case "$name" in
     .env|.env.*)
@@ -23,10 +43,10 @@ is_sensitive_path() {
   esac
 
   case "$path" in
-    *.db|*.sqlite|*.sqlite3|*.dmg|*.app|*.ipa|*.xcarchive|*.log|*.bak|*.backup|*.key|*.pem|*.p12|*.mobileprovision)
+    *.db|*.db-*|*.sqlite|*.sqlite-*|*.sqlite3|*.sqlite3-*|*.dmg|*.app|*.ipa|*.xcarchive|*.log|*.bak|*.backup|*.key|*.pem|*.p12|*.mobileprovision)
       return 0
       ;;
-    *"/build/"*|*"DerivedData"*|*"Backups/"*|*"backups/"*)
+    *"/build/"*|*"DerivedData"*|*"Backups/"*|*"backups/"*|*"backup/"*|*"Logs/"*|*"logs/"*)
       return 0
       ;;
   esac
@@ -45,6 +65,8 @@ if [ "${#failures[@]}" -gt 0 ]; then
   for path in "${failures[@]}"; do
     echo " - ${path}"
   done
+  echo
+  echo "Allowed future exceptions are limited to tests/fixtures/anonymous_* or tests/fixtures/demo_*."
   exit 1
 fi
 

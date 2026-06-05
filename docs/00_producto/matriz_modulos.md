@@ -31,7 +31,7 @@ verdad, que riesgo tiene y cual es la siguiente accion revisable.
 | KMP data | Persistencia. | `kmp/data/`. | Migraciones, drivers y datos existentes. | `./gradlew :data:desktopTest`. | Auditar esquema real y migraciones. |
 | Compose Desktop | Target separado. | `kmp/desktopApp/`. | Versionado y alcance distinto a Apple. | Build desktop cuando se toque. | Alinear packageVersion antes de release. |
 | Flutter legado | Referencia historica. | `lib/`, targets Flutter. | Confusion sobre fuente activa. | No aplicar salvo decision explicita. | Decidir legado, referencia o target activo. |
-| CI | Basico activo. | `.github/workflows/`. | CI verde no cubre todos los flujos manuales. | PR/push a `main`. | Adjuntar evidencias reales por release. |
+| CI | Activo con checks de PR y release. | `.github/workflows/`, `scripts/*release*.sh`. | CI verde no sustituye revision humana ni tags manuales. | PR normal, rama `release/*`, evidencia de release. | Validar primera `v0.3.0-alpha.1`. |
 
 ## Regla de mantenimiento
 

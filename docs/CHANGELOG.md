@@ -22,19 +22,22 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- Se unificó y encapsuló el cálculo de medias, resolución de valores de celdas (`gradeValueFor`) y desglose de explicación (`computeAverageExplanation`) en `Models.kt`, eliminando implementaciones duplicadas en `BuildNotebookSheetUseCase.kt` y `NotebookViewModel.kt`.
 - Se fija `0.3.0-dev` como version interna actual hasta contar con una release reproducible y verificada.
 - Los manifiestos activos bajan de `1.0` a `0.3.0` para reflejar el estado real de madurez del producto.
 - Enriquecimiento del prompt base local de Apple Intelligence en `AppleFoundationReportService.swift` y de las evidencias del radar en `AppleFoundationContextualAIService.swift`.
 
 ### Fixed
 
+- Corrección de evaluación de fórmulas calculadas: ahora las celdas vacías no se inicializan por defecto a `0.0`, lo que evita alterar a la baja de manera errónea el promedio ponderado y devuelve un valor `null` correcto en caso de variables de fórmulas no evaluadas.
 - Corrección de tipo en `GetAITrendsAndMetricsUseCase.kt` (comparaciones numéricas contra literales `0L` para evitar mismatch con tipo `Long`).
 - Corrección de conversión de tipo de notas en `SqlDelightRepositories.kt` (conversión segura de `String` a `Double` vía `toDoubleOrNull()`).
 - Solución de ambigüedad de tipo en `DashboardView.swift` al utilizar estilos y colores de manera explícita (`Color.primary` y `Color.orange`).
 
 ### Verification
 
-- Validación de compilación multiplataforma (iOS Simulator y macOS Native/Catalyst) completada con éxito vía `./scripts/verify_apple_builds.sh`.
+- Paso de todas las pruebas unitarias asíncronas en Kotlin compartidas (`./gradlew :shared:test`), incorporando cobertura específica para celdas vacías en fórmulas calculadas en `BuildNotebookSheetUseCaseTest.kt`.
+-  Validación de compilación multiplataforma (iOS Simulator y macOS Native/Catalyst) completada con éxito vía `./scripts/verify_apple_builds.sh`.
 
 ### Docs
 

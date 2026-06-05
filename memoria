@@ -405,6 +405,24 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-06-05 - Corrección y unificación del cálculo de la Media y control de celdas vacías en fórmulas
+
+Resumen:
+- Se unificó y encapsuló la lógica de elegibilidad de columnas (`countsTowardAverage()` y `averageExclusionReason()`), resolución de notas de celdas (`gradeValueFor()`), y cálculo del promedio ponderado con su desglose explicativo (`computeAverageExplanation()`) en `Models.kt` mediante métodos de extensión.
+- Se eliminaron las implementaciones duplicadas y redundantes de cálculo de media en `BuildNotebookSheetUseCase.kt` y `NotebookViewModel.kt` llamando en su lugar a las funciones compartidas de `Models.kt`.
+- Se corrigió la asignación de variables de fórmulas calculadas tanto en el caso de uso (`BuildNotebookSheetUseCase`) como en el view model (`NotebookViewModel`) para evitar inicializar celdas vacías a `0.0`. Ahora, las variables ausentes u omitidas no entran en el mapa de variables, haciendo que la evaluación falle controladamente (mediante `runCatching`) y resulte en `null` (pendiente), de forma que no baja ni altera falsamente la nota con ceros implícitos.
+- Cambios ubicados en:
+  - Definiciones y helpers unificados: [Models.kt](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/shared/src/commonMain/kotlin/com/migestor/shared/domain/Models.kt) [MODIFY]
+  - Caso de uso: [BuildNotebookSheetUseCase.kt](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/shared/src/commonMain/kotlin/com/migestor/shared/usecase/BuildNotebookSheetUseCase.kt) [MODIFY]
+  - View model: [NotebookViewModel.kt](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/shared/src/commonMain/kotlin/com/migestor/shared/viewmodel/NotebookViewModel.kt) [MODIFY]
+  - Tests unitarios: [BuildNotebookSheetUseCaseTest.kt](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/shared/src/commonTest/kotlin/com/migestor/shared/BuildNotebookSheetUseCaseTest.kt) [MODIFY]
+
+Validación:
+- Ejecución y paso exitoso de todas las pruebas unitarias asíncronas en Kotlin compartidas (`./gradlew :shared:test`), incluyendo una nueva prueba exhaustiva (`empty variables in formulas fail evaluation and result in null calculated value`) para comprobar la exclusión correcta de variables vacías en fórmulas de columnas calculadas.
+
+Notas para futuras conversaciones:
+- Al agregar nuevos tipos de columnas o políticas de celdas vacías en el futuro, actualizar centralizadamente los métodos correspondientes en [Models.kt](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/shared/src/commonMain/kotlin/com/migestor/shared/domain/Models.kt).
+
 ### 2026-06-04 - Análisis agregados de tendencias y cobertura curricular LOMLOE mediante Apple Intelligence
 
 Resumen:

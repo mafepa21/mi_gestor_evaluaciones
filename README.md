@@ -19,6 +19,10 @@ El proyecto empezo como app Flutter y esta evolucionando hacia una arquitectura 
 - [Roadmap](docs/ROADMAP.md)
 - [Changelog](docs/CHANGELOG.md)
 - [Proceso de release](docs/RELEASE_PROCESS.md)
+- [Licencia propietaria](LICENSE)
+- [Seguridad](SECURITY.md)
+- [Privacidad](PRIVACY.md)
+- [Avisos de terceros](THIRD_PARTY_NOTICES.md)
 - [Baseline inicial](docs/PROJECT_BASELINE_2026-06-04.md)
 - [KMP README](kmp/README.md)
 

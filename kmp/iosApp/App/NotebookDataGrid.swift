@@ -8,6 +8,22 @@ import UIKit
 
 let isDebugGridEnabled = false // TEMPORARY: Set to true to debug alignment
 
+private enum NotebookDataGridPerformanceDebug {
+    static var enabled = false
+    private static var renderCount = 0
+
+    static func recordBody(
+        fixedColumnWidth: CGFloat,
+        trailingFixedColumnWidth: CGFloat,
+        topAccessoryHeight: CGFloat,
+        headerHeight: CGFloat
+    ) {
+        guard enabled else { return }
+        renderCount += 1
+        print("NotebookPerf dataGrid body #\(renderCount) fixed=\(Int(fixedColumnWidth)) trailing=\(Int(trailingFixedColumnWidth)) top=\(Int(topAccessoryHeight)) header=\(Int(headerHeight))")
+    }
+}
+
 struct NotebookDividerHandle: View {
     let isDragging: Bool
     let onDragChanged: (CGFloat) -> Void
@@ -253,6 +269,12 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, TrailingFi
     }
 
     var body: some View {
+        let _ = Self.instrumentBody(
+            fixedColumnWidth: fixedColumnWidth,
+            trailingFixedColumnWidth: trailingFixedColumnWidth,
+            topAccessoryHeight: topAccessoryHeight,
+            headerHeight: headerHeight
+        )
         HStack(alignment: .top, spacing: 0) {
             fixedLeftPane
                 .border(isDebugGridEnabled ? Color.red : Color.clear, width: 1)
@@ -265,6 +287,20 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, TrailingFi
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private static func instrumentBody(
+        fixedColumnWidth: CGFloat,
+        trailingFixedColumnWidth: CGFloat,
+        topAccessoryHeight: CGFloat,
+        headerHeight: CGFloat
+    ) {
+        NotebookDataGridPerformanceDebug.recordBody(
+            fixedColumnWidth: fixedColumnWidth,
+            trailingFixedColumnWidth: trailingFixedColumnWidth,
+            topAccessoryHeight: topAccessoryHeight,
+            headerHeight: headerHeight
+        )
     }
 
     private var fixedLeftPane: some View {

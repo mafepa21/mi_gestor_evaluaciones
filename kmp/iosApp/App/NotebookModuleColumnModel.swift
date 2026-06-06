@@ -14,6 +14,8 @@ final class NotebookGridLayoutModel: ObservableObject {
     @Published private(set) var columnWidths: [String: CGFloat] = [:]
 
     private var storageClassKey = "no-class"
+    private var renderCache: NotebookGridRenderModel?
+    private var rowsCache: NotebookVisibleRowsCache?
 
     func configure(classId: Int64?) {
         let nextKey = classId.map(String.init) ?? "no-class"
@@ -36,6 +38,86 @@ final class NotebookGridLayoutModel: ObservableObject {
             collapsedCategoryIds.sorted().joined(separator: ","),
             forKey: collapsedCategoryStorageKey
         )
+        renderCache = nil
+    }
+
+    func renderModel(
+        data: NotebookUiStateData,
+        activeTabId: String?,
+        viewPreset: NotebookViewPreset,
+        isCompact: Bool
+    ) -> NotebookGridRenderModel {
+        let key = NotebookGridRenderModel.Key(
+            classId: data.sheet.classId,
+            activeTabId: activeTabId,
+            viewPreset: viewPreset.rawValue,
+            isCompact: isCompact,
+            columnsVersion: Self.version(data.sheet.columns.map { "\($0.id):\($0.order):\($0.visibility):\($0.isPinned):\($0.categoryId ?? ""):\($0.widthDp)" }),
+            categoriesVersion: Self.version(data.sheet.columnCategories.map { "\($0.id):\($0.tabId):\($0.order):\($0.isCollapsed)" }),
+            collapsedCategoriesVersion: Self.version(Array(collapsedCategoryIds)),
+            fixedMode: UserDefaults.standard.string(forKey: "notebook.groupByWorkGroupMode") ?? "none"
+        )
+        if let renderCache, renderCache.key == key {
+            NotebookGridPerformanceDebug.event("renderModel hit")
+            return renderCache
+        }
+
+        let segments = NotebookGridPerformanceDebug.measure("renderModel build") {
+            displaySegments(data: data, activeTabId: activeTabId, viewPreset: viewPreset)
+        }
+        let fixedSegments = visibleFixedSegments(in: segments)
+        let leadingFixedSegments = fixedSegments.filter { !isTrailingFixedSegment($0) }
+        let trailingFixedSegments = fixedSegments.filter(isTrailingFixedSegment)
+        let scrollableSegments = segments.filter { !isFixedSegment($0) }
+        let laneItems = headerLaneItems(data: data, activeTabId: activeTabId, segments: scrollableSegments)
+        let model = NotebookGridRenderModel(
+            key: key,
+            fixedSegments: leadingFixedSegments,
+            trailingFixedSegments: trailingFixedSegments,
+            scrollableSegments: scrollableSegments,
+            laneItems: laneItems,
+            hasGroupedHeaders: !isCompact && laneItems.contains {
+                if case .folder = $0 { return true }
+                return false
+            }
+        )
+        renderCache = model
+        return model
+    }
+
+    func visibleRows(
+        data: NotebookUiStateData,
+        activeTabId: String?,
+        groupByWorkGroupMode: String,
+        searchText: String,
+        selectedGroupId: Int64?
+    ) -> [NotebookTableRow] {
+        let key = NotebookVisibleRowsCache.Key(
+            classId: data.sheet.classId,
+            activeTabId: activeTabId,
+            groupByWorkGroupMode: groupByWorkGroupMode,
+            searchText: searchText.trimmingCharacters(in: .whitespacesAndNewlines),
+            selectedGroupId: selectedGroupId,
+            rowsVersion: Self.version(data.sheet.rows.map { "\($0.student.id):\($0.student.firstName):\($0.student.lastName):\($0.weightedAverage ?? -1)" }),
+            groupsVersion: Self.version(data.sheet.workGroups.map { "\($0.id):\($0.tabId):\($0.order):\($0.learningSituationId?.int64Value ?? -1)" }),
+            membersVersion: Self.version(data.sheet.workGroupMembers.map { "\($0.tabId):\($0.groupId):\($0.studentId)" })
+        )
+        if let rowsCache, rowsCache.key == key {
+            NotebookGridPerformanceDebug.event("visibleRows hit")
+            return rowsCache.rows
+        }
+
+        let rows = NotebookGridPerformanceDebug.measure("visibleRows build") {
+            buildVisibleRows(
+                data: data,
+                activeTabId: activeTabId,
+                groupByWorkGroupMode: groupByWorkGroupMode,
+                searchText: key.searchText,
+                selectedGroupId: selectedGroupId
+            )
+        }
+        rowsCache = NotebookVisibleRowsCache(key: key, rows: rows)
+        return rows
     }
 
     func visibleCategories(
@@ -334,6 +416,147 @@ final class NotebookGridLayoutModel: ObservableObject {
                 .map(String.init) ?? []
         )
     }
+
+    private static func version(_ parts: [String]) -> Int {
+        parts.sorted().reduce(17) { partial, part in
+            partial &* 31 &+ part.hashValue
+        }
+    }
+
+    private func buildVisibleRows(
+        data: NotebookUiStateData,
+        activeTabId: String?,
+        groupByWorkGroupMode: String,
+        searchText: String,
+        selectedGroupId: Int64?
+    ) -> [NotebookTableRow] {
+        let rows: [NotebookTableRow]
+        if groupByWorkGroupMode != "none" {
+            let activeGroups: [NotebookWorkGroup]
+
+            if groupByWorkGroupMode == "general" {
+                activeGroups = data.sheet.workGroups.filter {
+                    ($0.tabId == activeTabId || activeTabId == nil) && $0.learningSituationId == nil
+                }
+            } else if groupByWorkGroupMode.hasPrefix("situation_"),
+                      let sitId = Int64(groupByWorkGroupMode.dropFirst(10)) {
+                activeGroups = data.sheet.workGroups.filter {
+                    ($0.tabId == activeTabId || activeTabId == nil) && $0.learningSituationId?.int64Value == sitId
+                }
+            } else {
+                activeGroups = data.sheet.workGroups.filter { $0.tabId == activeTabId || activeTabId == nil }
+            }
+
+            let sortedActiveGroups = activeGroups.sorted {
+                if $0.order != $1.order { return $0.order < $1.order }
+                return $0.id < $1.id
+            }
+
+            var resultRows: [NotebookTableRow] = []
+            var groupedStudentIds = Set<Int64>()
+
+            for group in sortedActiveGroups {
+                let memberIds = Set(data.sheet.workGroupMembers
+                    .filter { $0.groupId == group.id && ($0.tabId == activeTabId || activeTabId == nil) }
+                    .map(\.studentId))
+
+                let groupRows = data.sheet.rows.filter { memberIds.contains($0.student.id) }
+                for row in groupRows {
+                    groupedStudentIds.insert(row.student.id)
+                    resultRows.append(NotebookTableRow(student: row.student, row: row, groupName: group.name))
+                }
+            }
+
+            let ungroupedRows = data.sheet.rows.filter { !groupedStudentIds.contains($0.student.id) }
+            let sortedUngrouped = ungroupedRows.sorted {
+                let name1 = "\($0.student.lastName) \($0.student.firstName)"
+                let name2 = "\($1.student.lastName) \($1.student.firstName)"
+                return name1.localizedStandardCompare(name2) == .orderedAscending
+            }
+            rows = resultRows + sortedUngrouped.map { NotebookTableRow(student: $0.student, row: $0, groupName: "Sin grupo") }
+        } else {
+            rows = data.sheet.rows.map { row in
+                let memberGroupId = data.sheet.workGroupMembers.first(where: {
+                    $0.studentId == row.student.id && ($0.tabId == activeTabId || activeTabId == nil)
+                })?.groupId
+                let groupName = memberGroupId.flatMap { groupId in
+                    data.sheet.workGroups.first(where: { $0.id == groupId })?.name
+                } ?? "Sin grupo"
+                return NotebookTableRow(student: row.student, row: row, groupName: groupName)
+            }
+            .sorted {
+                let name1 = "\($0.student.lastName) \($0.student.firstName)"
+                let name2 = "\($1.student.lastName) \($1.student.firstName)"
+                return name1.localizedStandardCompare(name2) == .orderedAscending
+            }
+        }
+
+        return rows.filter { item in
+            let matchesSearch = searchText.isEmpty || "\(item.student.firstName) \(item.student.lastName)".localizedCaseInsensitiveContains(searchText)
+            let matchesGroup = selectedGroupId == nil || groupId(for: item.student.id, activeTabId: activeTabId, data: data) == selectedGroupId
+            return matchesSearch && matchesGroup
+        }
+    }
+
+    private func groupId(for studentId: Int64, activeTabId: String?, data: NotebookUiStateData) -> Int64? {
+        data.sheet.workGroupMembers
+            .first(where: { $0.studentId == studentId && (activeTabId == nil || $0.tabId == activeTabId) })?
+            .groupId
+    }
+}
+
+enum NotebookGridPerformanceDebug {
+    static var enabled = false
+
+    static func measure<T>(_ label: String, work: () -> T) -> T {
+        guard enabled else { return work() }
+        let start = Date().timeIntervalSinceReferenceDate
+        let value = work()
+        let elapsed = (Date().timeIntervalSinceReferenceDate - start) * 1000
+        print("NotebookPerf \(label) \(String(format: "%.1f", elapsed))ms")
+        return value
+    }
+
+    static func event(_ label: String) {
+        guard enabled else { return }
+        print("NotebookPerf \(label)")
+    }
+}
+
+struct NotebookGridRenderModel {
+    struct Key: Equatable {
+        let classId: Int64
+        let activeTabId: String?
+        let viewPreset: String
+        let isCompact: Bool
+        let columnsVersion: Int
+        let categoriesVersion: Int
+        let collapsedCategoriesVersion: Int
+        let fixedMode: String
+    }
+
+    let key: Key
+    let fixedSegments: [NotebookDisplaySegment]
+    let trailingFixedSegments: [NotebookDisplaySegment]
+    let scrollableSegments: [NotebookDisplaySegment]
+    let laneItems: [NotebookHeaderLaneItem]
+    let hasGroupedHeaders: Bool
+}
+
+private struct NotebookVisibleRowsCache {
+    struct Key: Equatable {
+        let classId: Int64
+        let activeTabId: String?
+        let groupByWorkGroupMode: String
+        let searchText: String
+        let selectedGroupId: Int64?
+        let rowsVersion: Int
+        let groupsVersion: Int
+        let membersVersion: Int
+    }
+
+    let key: Key
+    let rows: [NotebookTableRow]
 }
 
 extension NotebookModuleView {

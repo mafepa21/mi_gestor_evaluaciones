@@ -21,6 +21,8 @@ import com.migestor.shared.domain.NotebookAverageExclusionReason
 import com.migestor.shared.domain.NotebookAverageExplanation
 import com.migestor.shared.domain.NotebookColumnVisibility
 import com.migestor.shared.domain.NotebookEmptyCellPolicy
+import com.migestor.shared.domain.Grade
+import com.migestor.shared.domain.PersistedNotebookCell
 import com.migestor.shared.domain.gradeValueFor
 import com.migestor.shared.domain.computeAverageExplanation
 import com.migestor.shared.formula.FormulaEvaluator
@@ -29,6 +31,7 @@ class BuildNotebookSheetUseCase(
     private val getNotebookUseCase: GetNotebookUseCase,
     private val formulaEvaluator: FormulaEvaluator = FormulaEvaluator(),
     private val buildNotebookInsightsUseCase: BuildNotebookInsightsUseCase = BuildNotebookInsightsUseCase(),
+    private val sheetCache: NotebookSheetMemoryCache = NotebookSheetMemoryCache(),
 ) {
     suspend fun build(
         classId: Long,
@@ -40,30 +43,55 @@ class BuildNotebookSheetUseCase(
         workGroups: List<NotebookWorkGroup> = emptyList(),
         workGroupMembers: List<NotebookWorkGroupMember> = emptyList(),
         insights: List<NotebookStudentInsight> = emptyList(),
+        persistedGrades: List<Grade>? = null,
+        persistedCells: List<PersistedNotebookCell>? = null,
+        cacheKey: NotebookSheetCacheKey? = null,
     ): NotebookSheet {
-        val base = getNotebookUseCase(classId, providedStudents = students, providedEvaluations = evaluations)
-        val columns = mergeColumns(evaluations, tabs, configuredColumns)
-        val rows = applyCalculatedColumns(base.rows, columns, evaluations)
-        val resolvedSheet = NotebookSheet(
-            classId = classId,
-            tabs = tabs,
-            columns = columns,
-            columnCategories = columnCategories,
-            rows = rows,
-            workGroups = workGroups,
-            workGroupMembers = workGroupMembers,
-            insights = insights,
-        )
-        return NotebookSheet(
-            classId = resolvedSheet.classId,
-            tabs = resolvedSheet.tabs,
-            columns = resolvedSheet.columns,
-            columnCategories = resolvedSheet.columnCategories,
-            rows = resolvedSheet.rows,
-            workGroups = resolvedSheet.workGroups,
-            workGroupMembers = resolvedSheet.workGroupMembers,
-            insights = if (insights.isEmpty()) buildNotebookInsightsUseCase.build(resolvedSheet) else insights,
-        )
+        cacheKey?.let { key ->
+            sheetCache.get(key)?.let { cached ->
+                NotebookPerformanceDebug.event("sheetCache hit", "classId=$classId rows=${cached.rows.size} columns=${cached.columns.size}")
+                return cached
+            }
+            NotebookPerformanceDebug.event("sheetCache miss", "classId=$classId")
+        }
+
+        return NotebookPerformanceDebug.measure("buildSheet classId=$classId") {
+            val base = getNotebookUseCase(
+                classId,
+                providedStudents = students,
+                providedEvaluations = evaluations,
+                providedGrades = persistedGrades,
+                providedCells = persistedCells,
+            )
+            val columns = NotebookPerformanceDebug.measure("mergeColumns") {
+                mergeColumns(evaluations, tabs, configuredColumns)
+            }
+            val rows = NotebookPerformanceDebug.measure("recalculateAverages rows=${base.rows.size}") {
+                applyCalculatedColumns(base.rows, columns, evaluations)
+            }
+            val resolvedSheet = NotebookSheet(
+                classId = classId,
+                tabs = tabs,
+                columns = columns,
+                columnCategories = columnCategories,
+                rows = rows,
+                workGroups = workGroups,
+                workGroupMembers = workGroupMembers,
+                insights = insights,
+            )
+            NotebookSheet(
+                classId = resolvedSheet.classId,
+                tabs = resolvedSheet.tabs,
+                columns = resolvedSheet.columns,
+                columnCategories = resolvedSheet.columnCategories,
+                rows = resolvedSheet.rows,
+                workGroups = resolvedSheet.workGroups,
+                workGroupMembers = resolvedSheet.workGroupMembers,
+                insights = if (insights.isEmpty()) buildNotebookInsightsUseCase.build(resolvedSheet) else insights,
+            ).also { sheet ->
+                cacheKey?.let { sheetCache.put(it, sheet) }
+            }
+        }
     }
 
     private fun mergeColumns(

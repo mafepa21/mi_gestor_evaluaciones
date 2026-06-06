@@ -15,6 +15,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
  
+- Señales avanzadas de "Seguimiento EF" y "Cobertura LOMLOE" en el Radar docente, derivadas de `peItems` y `AITrendsSnapshot` sin ampliar KMP ni SQLDelight.
 - Señal avanzada de "Media y cierre evaluativo" en el Radar docente, calculada desde resúmenes de grupo, agenda e instrumentos rápidos ya expuestos por el Dashboard.
 - Radar docente proactivo compartido para Dashboard iOS/iPadOS y macOS, con insights deterministas, hechos usados, acciones reales por plataforma y briefing no bloqueante con fallback local.
 - Script de automatización de Git y GitHub `scripts/auto_commit_pr.sh` para realizar análisis de seguridad local, commits formateados, push y apertura de PRs en draft de forma automática.
@@ -46,6 +47,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
  
+- Verificación de builds Apple completada con éxito vía `scripts/verify_apple_builds.sh` tras añadir señales avanzadas EF y LOMLOE al Radar.
 - Compilación de Compose Desktop completada con éxito vía `./gradlew :desktopApp:compileKotlin` tras adaptar el uso de `LocalSyncServer`.
 - Verificación de builds Apple completada con éxito vía `scripts/verify_apple_builds.sh` tras corregir los fallos de CI en macOS e iOS Simulator.
 - Verificación de builds Apple completada con éxito vía `scripts/verify_apple_builds.sh` tras añadir la señal avanzada de media y cierre evaluativo al Radar.

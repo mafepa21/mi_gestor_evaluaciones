@@ -4,11 +4,15 @@ private struct NotebookNavigationSubtitleModifier: ViewModifier {
     let subtitle: String
 
     func body(content: Content) -> some View {
+        #if os(macOS)
         if #available(iOS 26.0, macOS 26.0, *) {
             content.navigationSubtitle(subtitle)
         } else {
             content
         }
+        #else
+        content
+        #endif
     }
 }
 

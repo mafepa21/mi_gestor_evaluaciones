@@ -140,6 +140,10 @@ struct DashboardProactiveSnapshot {
     let todaySessions: [DashboardProactiveSession]
     let alerts: [DashboardProactiveSignal]
     let peItems: [DashboardProactiveSignal]
+    let groupSummaries: [DashboardProactiveGroupSummary]
+    let agendaItems: [DashboardProactiveAgendaItem]
+    let quickColumns: [String]
+    let quickRubrics: [String]
 
     init(
         todayCount: Int,
@@ -148,7 +152,11 @@ struct DashboardProactiveSnapshot {
         nextSessionLabel: String,
         todaySessions: [DashboardProactiveSession] = [],
         alerts: [DashboardProactiveSignal] = [],
-        peItems: [DashboardProactiveSignal] = []
+        peItems: [DashboardProactiveSignal] = [],
+        groupSummaries: [DashboardProactiveGroupSummary] = [],
+        agendaItems: [DashboardProactiveAgendaItem] = [],
+        quickColumns: [String] = [],
+        quickRubrics: [String] = []
     ) {
         self.todayCount = todayCount
         self.alertsCount = alertsCount
@@ -157,6 +165,10 @@ struct DashboardProactiveSnapshot {
         self.todaySessions = todaySessions
         self.alerts = alerts
         self.peItems = peItems
+        self.groupSummaries = groupSummaries
+        self.agendaItems = agendaItems
+        self.quickColumns = quickColumns
+        self.quickRubrics = quickRubrics
     }
 
     init(snapshot: DashboardSnapshot) {
@@ -193,7 +205,30 @@ struct DashboardProactiveSnapshot {
                     severity: $0.severity,
                     count: 1
                 )
-            }
+            },
+            groupSummaries: snapshot.groupSummaries.map {
+                DashboardProactiveGroupSummary(
+                    classId: Int64($0.classId),
+                    groupName: $0.groupName,
+                    attendancePct: Int($0.attendancePct),
+                    evaluationCompletedPct: Int($0.evaluationCompletedPct),
+                    averageScore: $0.averageScore,
+                    studentsInFollowUp: Int($0.studentsInFollowUp),
+                    lastNotes: $0.lastNotes
+                )
+            },
+            agendaItems: snapshot.agendaItems.map {
+                DashboardProactiveAgendaItem(
+                    id: $0.id,
+                    type: $0.type,
+                    title: $0.title,
+                    subtitle: $0.subtitle,
+                    timeLabel: $0.timeLabel,
+                    status: $0.status
+                )
+            },
+            quickColumns: snapshot.quickColumns,
+            quickRubrics: snapshot.quickRubrics
         )
     }
 }
@@ -213,6 +248,25 @@ struct DashboardProactiveSignal: Hashable {
     let detail: String
     let severity: String
     let count: Int
+}
+
+struct DashboardProactiveGroupSummary: Hashable {
+    let classId: Int64
+    let groupName: String
+    let attendancePct: Int
+    let evaluationCompletedPct: Int
+    let averageScore: Double
+    let studentsInFollowUp: Int
+    let lastNotes: String
+}
+
+struct DashboardProactiveAgendaItem: Hashable {
+    let id: String
+    let type: String
+    let title: String
+    let subtitle: String
+    let timeLabel: String
+    let status: String
 }
 
 @MainActor
@@ -293,6 +347,10 @@ enum DashboardProactiveInsightEngine {
             )
         }
 
+        if let evaluationInsight = buildEvaluationClosureInsight(snapshot: snapshot, context: context) {
+            insights.append(evaluationInsight)
+        }
+
         let riskAlerts = snapshot.alerts.filter { alert in
             !pendingAlerts.contains(where: { $0.id == alert.id })
         }
@@ -312,47 +370,12 @@ enum DashboardProactiveInsightEngine {
             )
         }
 
-        if !snapshot.peItems.isEmpty {
-            let severePE = snapshot.peItems.filter { $0.severity.lowercased() == "high" }.count
-            insights.append(
-                DashboardProactiveInsight(
-                    id: "pe-\(snapshot.peItems[0].id)",
-                    kind: .physicalEducation,
-                    priority: severePE > 0 ? .high : .medium,
-                    title: "Educación Física",
-                    summary: snapshot.peItems.count == 1 ? snapshot.peItems[0].title : "\(snapshot.peItems.count) señales EF para revisar.",
-                    facts: Array(snapshot.peItems.prefix(3).map { "\($0.title): \($0.detail)" }),
-                    recommendedActions: [.reviewPhysicalEducation, .openInspector],
-                    confidenceNote: "Basado en señales EF ya presentes en el dashboard."
-                )
-            )
+        if let physicalEducationInsight = buildPhysicalEducationInsight(snapshot: snapshot) {
+            insights.append(physicalEducationInsight)
         }
 
-        if let trends {
-            var trendFacts: [String] = []
-            if trends.curriculumCoveragePct < 75 {
-                trendFacts.append("Cobertura curricular: \(format(trends.curriculumCoveragePct))%.")
-            }
-            if trends.attendanceRate > 0, trends.attendanceRate < 85 {
-                trendFacts.append("Asistencia media: \(format(trends.attendanceRate))%.")
-            }
-            if !trends.missingCompetencyLabels.isEmpty {
-                trendFacts.append("Competencias sin evidencia: \(trends.missingCompetencyLabels.prefix(3).joined(separator: ", ")).")
-            }
-            if !trendFacts.isEmpty {
-                insights.append(
-                    DashboardProactiveInsight(
-                        id: "lomloe-trends",
-                        kind: .evaluation,
-                        priority: trends.curriculumCoveragePct < 50 || trends.attendanceRate < 75 ? .high : .medium,
-                        title: "Cobertura y fiabilidad",
-                        summary: "Conviene revisar evidencias antes de dar por cerrada la lectura del grupo.",
-                        facts: trendFacts,
-                        recommendedActions: [.openNotebook, .evaluatePending, .openInspector],
-                        confidenceNote: "Basado en tendencias y auditoría LOMLOE del grupo."
-                    )
-                )
-            }
+        if let trends, let curriculumInsight = buildCurriculumCoverageInsight(trends: trends) {
+            insights.append(curriculumInsight)
         }
 
         if context.syncPendingChanges > 0 || context.pairedSyncHost == nil || (context.platformName == "macOS" && context.latestBackupDate == nil) {
@@ -406,6 +429,196 @@ enum DashboardProactiveInsightEngine {
         return needles.contains { lowercased.contains($0) }
     }
 
+    private static func buildEvaluationClosureInsight(
+        snapshot: DashboardProactiveSnapshot,
+        context: DashboardProactiveContext
+    ) -> DashboardProactiveInsight? {
+        guard !snapshot.groupSummaries.isEmpty || !snapshot.quickColumns.isEmpty || !snapshot.quickRubrics.isEmpty else {
+            return nil
+        }
+
+        let selectedGroup = context.className.flatMap { className in
+            snapshot.groupSummaries.first { summary in
+                className.localizedCaseInsensitiveContains(summary.groupName)
+                    || summary.groupName.localizedCaseInsensitiveContains(className)
+            }
+        }
+        let candidate = selectedGroup
+            ?? snapshot.groupSummaries.sorted { lhs, rhs in
+                if lhs.evaluationCompletedPct == rhs.evaluationCompletedPct {
+                    return lhs.studentsInFollowUp > rhs.studentsInFollowUp
+                }
+                return lhs.evaluationCompletedPct < rhs.evaluationCompletedPct
+            }.first
+
+        var facts: [String] = []
+        var priority: DashboardProactiveInsight.Priority = .low
+        var summary = "Revisa instrumentos y evidencias antes de cerrar la lectura evaluativa."
+
+        if let candidate {
+            facts.append("\(candidate.groupName): evaluación completada al \(candidate.evaluationCompletedPct)%.")
+            if candidate.averageScore > 0 {
+                facts.append("Media visible: \(format(candidate.averageScore)).")
+            }
+            if candidate.studentsInFollowUp > 0 {
+                facts.append("Alumnado en seguimiento: \(candidate.studentsInFollowUp).")
+            }
+            if !candidate.lastNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                facts.append("Últimas notas: \(candidate.lastNotes).")
+            }
+
+            if candidate.evaluationCompletedPct < 60 {
+                priority = .high
+                summary = "La media del grupo puede no ser fiable: faltan evidencias suficientes."
+            } else if candidate.evaluationCompletedPct < 80 || candidate.studentsInFollowUp > 0 {
+                priority = .medium
+                summary = "Conviene completar evidencias antes de usar la media como lectura cerrada."
+            }
+        }
+
+        if !snapshot.quickRubrics.isEmpty {
+            facts.append("Rúbricas disponibles para evaluación rápida: \(snapshot.quickRubrics.prefix(3).joined(separator: ", ")).")
+            priority = max(priority, .medium)
+        }
+        if !snapshot.quickColumns.isEmpty {
+            facts.append("Columnas rápidas disponibles: \(snapshot.quickColumns.prefix(3).joined(separator: ", ")).")
+        }
+
+        let openEvaluationAgenda = snapshot.agendaItems.filter { item in
+            !isClosedAgendaStatus(item.status)
+                && containsAny("\(item.type) \(item.title) \(item.subtitle)", ["evalu", "rúbrica", "rubric", "nota", "evidencia"])
+        }
+        if !openEvaluationAgenda.isEmpty {
+            facts.append("Agenda evaluativa abierta: \(openEvaluationAgenda.prefix(2).map(\.title).joined(separator: ", ")).")
+            priority = max(priority, .medium)
+        }
+
+        guard priority >= .medium, !facts.isEmpty else { return nil }
+
+        return DashboardProactiveInsight(
+            id: "evaluation-closure-\(candidate?.classId ?? -1)-\(snapshot.quickRubrics.count)-\(openEvaluationAgenda.count)",
+            kind: .evaluation,
+            priority: priority,
+            title: "Media y cierre evaluativo",
+            summary: summary,
+            facts: Array(facts.prefix(5)),
+            recommendedActions: [.openNotebook, .evaluatePending, .quickEvaluation, .openReports],
+            confidenceNote: "Basado en resumen de grupo, agenda e instrumentos rápidos ya cargados."
+        )
+    }
+
+    private static func buildPhysicalEducationInsight(
+        snapshot: DashboardProactiveSnapshot
+    ) -> DashboardProactiveInsight? {
+        guard !snapshot.peItems.isEmpty else { return nil }
+
+        let highItems = snapshot.peItems.filter { $0.severity.lowercased() == "high" }
+        let mediumItems = snapshot.peItems.filter { $0.severity.lowercased() == "medium" }
+        let regressionItems = snapshot.peItems.filter { item in
+            containsAny("\(item.type) \(item.title) \(item.detail)", ["regresión", "regresion", "empeor", "descenso", "baja"])
+        }
+        let missingItems = snapshot.peItems.filter { item in
+            containsAny("\(item.type) \(item.title) \(item.detail)", ["faltan", "pendiente", "incomplet", "sin registro", "sin marca"])
+        }
+
+        var facts = Array(snapshot.peItems.prefix(3).map { "\($0.title): \($0.detail)" })
+        if !regressionItems.isEmpty {
+            facts.append("Señales de regresión detectadas: \(regressionItems.count).")
+        }
+        if !missingItems.isEmpty {
+            facts.append("Registros o marcas pendientes: \(missingItems.count).")
+        }
+
+        let priority: DashboardProactiveInsight.Priority
+        if !highItems.isEmpty || !regressionItems.isEmpty {
+            priority = .high
+        } else if !mediumItems.isEmpty || !missingItems.isEmpty {
+            priority = .medium
+        } else {
+            priority = .low
+        }
+
+        guard priority >= .medium else { return nil }
+
+        let summary: String
+        if !regressionItems.isEmpty {
+            summary = "Conviene revisar evolución física antes de cerrar la sesión o el bloque."
+        } else if !missingItems.isEmpty {
+            summary = "Hay marcas o evidencias EF pendientes que pueden afectar al seguimiento."
+        } else {
+            summary = snapshot.peItems.count == 1 ? snapshot.peItems[0].title : "\(snapshot.peItems.count) señales EF para revisar."
+        }
+
+        return DashboardProactiveInsight(
+            id: "pe-advanced-\(snapshot.peItems[0].id)-\(regressionItems.count)-\(missingItems.count)",
+            kind: .physicalEducation,
+            priority: priority,
+            title: "Seguimiento EF",
+            summary: summary,
+            facts: Array(facts.prefix(5)),
+            recommendedActions: [.reviewPhysicalEducation, .openNotebook, .openInspector],
+            confidenceNote: "Basado en señales EF operativas ya presentes en el dashboard."
+        )
+    }
+
+    private static func buildCurriculumCoverageInsight(
+        trends: KmpBridge.AITrendsSnapshot
+    ) -> DashboardProactiveInsight? {
+        var facts: [String] = []
+        if trends.curriculumCoveragePct < 85 {
+            facts.append("Cobertura curricular: \(format(trends.curriculumCoveragePct))%.")
+        }
+        if !trends.missingCompetencyLabels.isEmpty {
+            facts.append("Competencias sin evidencia: \(trends.missingCompetencyLabels.prefix(4).joined(separator: ", ")).")
+        }
+        if trends.attendanceRate > 0, trends.attendanceRate < 85 {
+            facts.append("Asistencia media: \(format(trends.attendanceRate))%.")
+        }
+        if trends.trendDirection == "DOWNWARD" {
+            facts.append("Tendencia de rendimiento: descendente (\(format(abs(trends.averageGradeDelta))) pt).")
+        }
+
+        let hasCoverageGap = trends.curriculumCoveragePct < 85 || !trends.missingCompetencyLabels.isEmpty
+        let hasReliabilityGap = trends.attendanceRate > 0 && trends.attendanceRate < 85
+        guard hasCoverageGap || hasReliabilityGap || trends.trendDirection == "DOWNWARD" else { return nil }
+
+        let priority: DashboardProactiveInsight.Priority
+        if trends.curriculumCoveragePct < 50 || trends.attendanceRate < 75 || trends.trendDirection == "DOWNWARD" {
+            priority = .high
+        } else {
+            priority = .medium
+        }
+
+        let summary: String
+        if !trends.missingCompetencyLabels.isEmpty {
+            summary = "Faltan evidencias competenciales antes de una lectura LOMLOE sólida."
+        } else if hasReliabilityGap {
+            summary = "La asistencia puede estar afectando a la fiabilidad de la lectura del grupo."
+        } else {
+            summary = "Conviene revisar cobertura curricular antes de cerrar evaluación."
+        }
+
+        return DashboardProactiveInsight(
+            id: "lomloe-advanced-\(format(trends.curriculumCoveragePct))-\(trends.missingCompetencyLabels.count)",
+            kind: .evaluation,
+            priority: priority,
+            title: "Cobertura LOMLOE",
+            summary: summary,
+            facts: Array(facts.prefix(5)),
+            recommendedActions: [.openNotebook, .evaluatePending, .openReports],
+            confidenceNote: "Basado en tendencias, asistencia y auditoría LOMLOE del grupo."
+        )
+    }
+
+    private static func isClosedAgendaStatus(_ raw: String) -> Bool {
+        switch raw.lowercased() {
+        case "completed", "closed", "done", "completada", "cerrada":
+            return true
+        default:
+            return false
+        }
+    }
+
     private static func compact(_ values: [String?]) -> [String] {
         values.compactMap { value in
             let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -433,48 +646,53 @@ struct DashboardProactiveInsightCard: View {
             header
             if let aiBriefing {
                 briefingBlock(aiBriefing)
+            } else if isLoadingAIBriefing {
+                briefingLoadingBlock
             }
             if insights.isEmpty {
                 emptyState
             } else {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 16) {
                     ForEach(insights.prefix(3)) { insight in
                         insightRow(insight)
                     }
                 }
             }
         }
-        .padding(18)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .padding(16)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(Color.primary.opacity(0.08), lineWidth: 1)
         )
+        .shadow(color: .black.opacity(0.08), radius: 12, x: 0, y: 4)
     }
 
     private var header: some View {
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: 8) {
             Label("Radar docente", systemImage: "scope")
-                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .font(.headline)
             Spacer()
             if isLoadingAIBriefing {
                 ProgressView()
                     .controlSize(.small)
+                    .accessibilityLabel("Generando briefing docente")
             }
         }
     }
 
     private func briefingBlock(_ draft: TeachingAssistantDraft) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Image(systemName: "sparkles")
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(EvaluationDesign.accent)
+                    .accessibilityHidden(true)
                 Text(draft.title)
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .font(.subheadline.weight(.semibold))
                 Spacer()
             }
             Text(draft.summary)
-                .font(.system(size: 14, weight: .medium))
+                .font(.subheadline)
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
             if let confidence = draft.confidenceNote {
@@ -483,29 +701,48 @@ struct DashboardProactiveInsightCard: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(14)
-        .background(Color.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(16)
+        .background(EvaluationDesign.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private var briefingLoadingBlock: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(Color.primary.opacity(0.12))
+                .frame(width: 160, height: 10)
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(Color.primary.opacity(0.08))
+                .frame(maxWidth: .infinity, minHeight: 10, maxHeight: 10)
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(Color.primary.opacity(0.06))
+                .frame(width: 220, height: 10)
+        }
+        .padding(16)
+        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Generando briefing docente")
     }
 
     private func insightRow(_ insight: DashboardProactiveInsight) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 8) {
                 Image(systemName: insight.kind.systemImage)
                     .foregroundStyle(insight.priority.tint)
-                    .frame(width: 22)
-                VStack(alignment: .leading, spacing: 5) {
+                    .frame(width: 24)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
                         Text(insight.title)
-                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .font(.subheadline.weight(.semibold))
                         Text(insight.priority.label)
                             .font(.caption2.weight(.bold))
                             .foregroundStyle(insight.priority.tint)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 3)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
                             .background(insight.priority.tint.opacity(0.12), in: Capsule())
                     }
                     Text(insight.summary)
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -527,23 +764,23 @@ struct DashboardProactiveInsightCard: View {
                             Text(confidence)
                                 .font(.caption)
                                 .foregroundStyle(.tertiary)
-                                .padding(.top, 2)
+                                .padding(.top, 8)
                         }
                     }
-                    .padding(.top, 6)
+                    .padding(.top, 8)
                 }
                 .font(.caption.weight(.semibold))
             }
         }
-        .padding(14)
-        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(16)
+        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func actionRow(for insight: DashboardProactiveInsight) -> some View {
         let actions = insight.recommendedActions.filter(actionAvailability)
         return Group {
             if !actions.isEmpty {
-                HStack(spacing: 8) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 128), spacing: 8)], alignment: .leading, spacing: 8) {
                     ForEach(actions.prefix(3)) { action in
                         Button {
                             onAction(action)
@@ -553,6 +790,7 @@ struct DashboardProactiveInsightCard: View {
                                 .lineLimit(1)
                         }
                         .buttonStyle(.bordered)
+                        .controlSize(.small)
                     }
                 }
             }
@@ -564,7 +802,7 @@ struct DashboardProactiveInsightCard: View {
             .font(.callout)
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(14)
+            .padding(16)
             .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }

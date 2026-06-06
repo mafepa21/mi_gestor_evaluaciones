@@ -169,6 +169,7 @@ final class AppleFoundationReportService {
         modelLoading: "Apple Intelligence se está preparando en este dispositivo. Vuelve a intentarlo en unos segundos."
     )
     private var availabilityRetryTask: Task<Void, Never>?
+    private var reportPromptCache: [String: String] = [:]
 
     #if canImport(FoundationModels)
     private var cachedReportSessionStorage: Any?
@@ -360,7 +361,7 @@ final class AppleFoundationReportService {
         let session = consumeReportSession()
         activeReportSessionStorage = session
         let response = try await session.respond(
-            to: reportPrompt(from: context, audience: audience, tone: tone),
+            to: cachedReportPrompt(from: context, audience: audience, tone: tone),
             generating: GeneratedAIReportDraft.self,
             includeSchemaInPrompt: true,
             options: AppleFoundationModelSupport.generationOptions(temperature: reportTemperature(for: context))
@@ -508,6 +509,41 @@ final class AppleFoundationReportService {
         - Si hay adaptaciones o apoyos, añádelos en una frase breve antes de las orientaciones.
         - Usa una redacción estable y consistente entre regeneraciones.
         """
+    }
+
+    @available(iOS 26.0, macOS 26.0, *)
+    private func cachedReportPrompt(
+        from context: KmpBridge.ReportGenerationContext,
+        audience: AIReportAudience,
+        tone: AIReportTone
+    ) -> String {
+        let key = [
+            "report",
+            context.kind.rawValue,
+            "\(context.classId)",
+            "\(context.studentId ?? -1)",
+            audience.rawValue,
+            tone.rawValue,
+            context.summary,
+            context.metrics.map { "\($0.title):\($0.value)" }.joined(separator: "|"),
+            context.factLines.joined(separator: "|"),
+            context.strengths.joined(separator: "|"),
+            context.needsAttention.joined(separator: "|"),
+            context.recommendedActions.joined(separator: "|"),
+            context.supportNotes.joined(separator: "|"),
+            context.dataQualityNote ?? ""
+        ].joined(separator: "¬").hashValue.description
+
+        if let cached = reportPromptCache[key] {
+            NotebookGridPerformanceDebug.event("reportAIPrompt hit")
+            return cached
+        }
+        let prompt = reportPrompt(from: context, audience: audience, tone: tone)
+        reportPromptCache[key] = prompt
+        if reportPromptCache.count > 8 {
+            reportPromptCache.removeValue(forKey: reportPromptCache.keys.first ?? key)
+        }
+        return prompt
     }
 
     private func promptLines(

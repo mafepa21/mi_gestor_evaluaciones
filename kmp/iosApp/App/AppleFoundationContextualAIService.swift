@@ -929,6 +929,8 @@ final class AppleFoundationContextualAIService {
 
     private var activeTeachingRiskLevel: RiskLevel?
     private var activeTeachingConfidenceFallback: String?
+    private var contextualPromptCache: [String: String] = [:]
+    private var notebookPromptCache: [String: String] = [:]
     private var runtimeFailureObserver: NSObjectProtocol?
 
     init() {
@@ -1221,7 +1223,7 @@ final class AppleFoundationContextualAIService {
     ) async throws -> ContextualAIResult {
         let session = consumeContextualSession()
         let response = try await session.respond(
-            to: contextualPrompt(from: context, action: action, audience: audience, tone: tone, customPrompt: customPrompt),
+            to: cachedContextualPrompt(from: context, action: action, audience: audience, tone: tone, customPrompt: customPrompt),
             generating: GeneratedContextualAIResult.self,
             includeSchemaInPrompt: true,
             options: AppleFoundationModelSupport.generationOptions(temperature: 0.25)
@@ -1268,7 +1270,7 @@ final class AppleFoundationContextualAIService {
     ) async throws -> NotebookAICommentDraft {
         let session = consumeNotebookSession()
         let response = try await session.respond(
-            to: notebookPrompt(from: context, audience: audience, tone: tone),
+            to: cachedNotebookPrompt(from: context, audience: audience, tone: tone),
             generating: GeneratedNotebookCommentDraft.self,
             includeSchemaInPrompt: true,
             options: AppleFoundationModelSupport.generationOptions(temperature: 0.3)
@@ -1427,6 +1429,42 @@ final class AppleFoundationContextualAIService {
     }
 
     @available(iOS 26.0, macOS 26.0, *)
+    private func cachedContextualPrompt(
+        from context: KmpBridge.ScreenAIContext,
+        action: KmpBridge.ContextualAIAction,
+        audience: AIReportAudience,
+        tone: AIReportTone,
+        customPrompt: String?
+    ) -> String {
+        let key = [
+            "screen",
+            context.kind.rawValue,
+            "\(context.classId ?? -1)",
+            "\(context.studentId ?? -1)",
+            action.actionId.rawValue,
+            audience.rawValue,
+            tone.rawValue,
+            customPrompt ?? "",
+            context.summary,
+            context.metrics.map { "\($0.title):\($0.value)" }.joined(separator: "|"),
+            context.factLines.joined(separator: "|"),
+            context.supportNotes.joined(separator: "|"),
+            context.dataQualityNote ?? ""
+        ].joined(separator: "¬").hashValue.description
+
+        if let cached = contextualPromptCache[key] {
+            NotebookGridPerformanceDebug.event("contextualAIPrompt hit")
+            return cached
+        }
+        let prompt = contextualPrompt(from: context, action: action, audience: audience, tone: tone, customPrompt: customPrompt)
+        contextualPromptCache[key] = prompt
+        if contextualPromptCache.count > 8 {
+            contextualPromptCache.removeValue(forKey: contextualPromptCache.keys.first ?? key)
+        }
+        return prompt
+    }
+
+    @available(iOS 26.0, macOS 26.0, *)
     private func notebookPrompt(
         from context: KmpBridge.NotebookAICommentContext,
         audience: AIReportAudience,
@@ -1482,6 +1520,41 @@ final class AppleFoundationContextualAIService {
         - warnings: entre 0 y 3 advertencias prudentes.
         - No menciones una nota oficial ni inventes causas.
         """
+    }
+
+    @available(iOS 26.0, macOS 26.0, *)
+    private func cachedNotebookPrompt(
+        from context: KmpBridge.NotebookAICommentContext,
+        audience: AIReportAudience,
+        tone: AIReportTone
+    ) -> String {
+        let key = [
+            "notebook",
+            "\(context.classId)",
+            "\(context.studentId)",
+            audience.rawValue,
+            tone.rawValue,
+            context.summary,
+            "\(context.averageScore ?? -1)",
+            "\(context.followUpCount)",
+            "\(context.incidentCount)",
+            "\(context.evidenceCount)",
+            context.relevantValues.map { "\($0.title):\($0.categoryLabel):\($0.value)" }.joined(separator: "|"),
+            context.competencyLabels.joined(separator: "|"),
+            context.dataQualityNote ?? "",
+            context.existingComment ?? ""
+        ].joined(separator: "¬").hashValue.description
+
+        if let cached = notebookPromptCache[key] {
+            NotebookGridPerformanceDebug.event("notebookAIPrompt hit")
+            return cached
+        }
+        let prompt = notebookPrompt(from: context, audience: audience, tone: tone)
+        notebookPromptCache[key] = prompt
+        if notebookPromptCache.count > 8 {
+            notebookPromptCache.removeValue(forKey: notebookPromptCache.keys.first ?? key)
+        }
+        return prompt
     }
 
     @available(iOS 26.0, macOS 26.0, *)

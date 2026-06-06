@@ -31,11 +31,11 @@ class GetNotebookUseCase(
 
         val allPersistedCells = providedCells ?: notebookCellsRepository.listClassCells(classId)
         val cellsByStudent = allPersistedCells.groupBy { it.studentId }
-        val gradesByStudent = providedGrades?.groupBy { it.studentId }
+        val gradesByStudent = (providedGrades ?: gradesRepository.listGradesForClass(classId))
+            .groupBy { it.studentId }
 
         val rows = students.map { student ->
-            val grades = gradesByStudent?.get(student.id)
-                ?: gradesRepository.listGradesForStudentInClass(student.id, classId)
+            val grades = gradesByStudent[student.id].orEmpty()
             val cells = evaluations.map { evaluation ->
                 val value = grades.firstOrNull {
                     it.evaluationId == evaluation.id || it.columnId == "eval_${evaluation.id}"

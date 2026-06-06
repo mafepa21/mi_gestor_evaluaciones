@@ -370,47 +370,12 @@ enum DashboardProactiveInsightEngine {
             )
         }
 
-        if !snapshot.peItems.isEmpty {
-            let severePE = snapshot.peItems.filter { $0.severity.lowercased() == "high" }.count
-            insights.append(
-                DashboardProactiveInsight(
-                    id: "pe-\(snapshot.peItems[0].id)",
-                    kind: .physicalEducation,
-                    priority: severePE > 0 ? .high : .medium,
-                    title: "Educación Física",
-                    summary: snapshot.peItems.count == 1 ? snapshot.peItems[0].title : "\(snapshot.peItems.count) señales EF para revisar.",
-                    facts: Array(snapshot.peItems.prefix(3).map { "\($0.title): \($0.detail)" }),
-                    recommendedActions: [.reviewPhysicalEducation, .openInspector],
-                    confidenceNote: "Basado en señales EF ya presentes en el dashboard."
-                )
-            )
+        if let physicalEducationInsight = buildPhysicalEducationInsight(snapshot: snapshot) {
+            insights.append(physicalEducationInsight)
         }
 
-        if let trends {
-            var trendFacts: [String] = []
-            if trends.curriculumCoveragePct < 75 {
-                trendFacts.append("Cobertura curricular: \(format(trends.curriculumCoveragePct))%.")
-            }
-            if trends.attendanceRate > 0, trends.attendanceRate < 85 {
-                trendFacts.append("Asistencia media: \(format(trends.attendanceRate))%.")
-            }
-            if !trends.missingCompetencyLabels.isEmpty {
-                trendFacts.append("Competencias sin evidencia: \(trends.missingCompetencyLabels.prefix(3).joined(separator: ", ")).")
-            }
-            if !trendFacts.isEmpty {
-                insights.append(
-                    DashboardProactiveInsight(
-                        id: "lomloe-trends",
-                        kind: .evaluation,
-                        priority: trends.curriculumCoveragePct < 50 || trends.attendanceRate < 75 ? .high : .medium,
-                        title: "Cobertura y fiabilidad",
-                        summary: "Conviene revisar evidencias antes de dar por cerrada la lectura del grupo.",
-                        facts: trendFacts,
-                        recommendedActions: [.openNotebook, .evaluatePending, .openInspector],
-                        confidenceNote: "Basado en tendencias y auditoría LOMLOE del grupo."
-                    )
-                )
-            }
+        if let trends, let curriculumInsight = buildCurriculumCoverageInsight(trends: trends) {
+            insights.append(curriculumInsight)
         }
 
         if context.syncPendingChanges > 0 || context.pairedSyncHost == nil || (context.platformName == "macOS" && context.latestBackupDate == nil) {
@@ -539,6 +504,109 @@ enum DashboardProactiveInsightEngine {
             facts: Array(facts.prefix(5)),
             recommendedActions: [.openNotebook, .evaluatePending, .quickEvaluation, .openReports],
             confidenceNote: "Basado en resumen de grupo, agenda e instrumentos rápidos ya cargados."
+        )
+    }
+
+    private static func buildPhysicalEducationInsight(
+        snapshot: DashboardProactiveSnapshot
+    ) -> DashboardProactiveInsight? {
+        guard !snapshot.peItems.isEmpty else { return nil }
+
+        let highItems = snapshot.peItems.filter { $0.severity.lowercased() == "high" }
+        let mediumItems = snapshot.peItems.filter { $0.severity.lowercased() == "medium" }
+        let regressionItems = snapshot.peItems.filter { item in
+            containsAny("\(item.type) \(item.title) \(item.detail)", ["regresión", "regresion", "empeor", "descenso", "baja"])
+        }
+        let missingItems = snapshot.peItems.filter { item in
+            containsAny("\(item.type) \(item.title) \(item.detail)", ["faltan", "pendiente", "incomplet", "sin registro", "sin marca"])
+        }
+
+        var facts = Array(snapshot.peItems.prefix(3).map { "\($0.title): \($0.detail)" })
+        if !regressionItems.isEmpty {
+            facts.append("Señales de regresión detectadas: \(regressionItems.count).")
+        }
+        if !missingItems.isEmpty {
+            facts.append("Registros o marcas pendientes: \(missingItems.count).")
+        }
+
+        let priority: DashboardProactiveInsight.Priority
+        if !highItems.isEmpty || !regressionItems.isEmpty {
+            priority = .high
+        } else if !mediumItems.isEmpty || !missingItems.isEmpty {
+            priority = .medium
+        } else {
+            priority = .low
+        }
+
+        guard priority >= .medium else { return nil }
+
+        let summary: String
+        if !regressionItems.isEmpty {
+            summary = "Conviene revisar evolución física antes de cerrar la sesión o el bloque."
+        } else if !missingItems.isEmpty {
+            summary = "Hay marcas o evidencias EF pendientes que pueden afectar al seguimiento."
+        } else {
+            summary = snapshot.peItems.count == 1 ? snapshot.peItems[0].title : "\(snapshot.peItems.count) señales EF para revisar."
+        }
+
+        return DashboardProactiveInsight(
+            id: "pe-advanced-\(snapshot.peItems[0].id)-\(regressionItems.count)-\(missingItems.count)",
+            kind: .physicalEducation,
+            priority: priority,
+            title: "Seguimiento EF",
+            summary: summary,
+            facts: Array(facts.prefix(5)),
+            recommendedActions: [.reviewPhysicalEducation, .openNotebook, .openInspector],
+            confidenceNote: "Basado en señales EF operativas ya presentes en el dashboard."
+        )
+    }
+
+    private static func buildCurriculumCoverageInsight(
+        trends: KmpBridge.AITrendsSnapshot
+    ) -> DashboardProactiveInsight? {
+        var facts: [String] = []
+        if trends.curriculumCoveragePct < 85 {
+            facts.append("Cobertura curricular: \(format(trends.curriculumCoveragePct))%.")
+        }
+        if !trends.missingCompetencyLabels.isEmpty {
+            facts.append("Competencias sin evidencia: \(trends.missingCompetencyLabels.prefix(4).joined(separator: ", ")).")
+        }
+        if trends.attendanceRate > 0, trends.attendanceRate < 85 {
+            facts.append("Asistencia media: \(format(trends.attendanceRate))%.")
+        }
+        if trends.trendDirection == "DOWNWARD" {
+            facts.append("Tendencia de rendimiento: descendente (\(format(abs(trends.averageGradeDelta))) pt).")
+        }
+
+        let hasCoverageGap = trends.curriculumCoveragePct < 85 || !trends.missingCompetencyLabels.isEmpty
+        let hasReliabilityGap = trends.attendanceRate > 0 && trends.attendanceRate < 85
+        guard hasCoverageGap || hasReliabilityGap || trends.trendDirection == "DOWNWARD" else { return nil }
+
+        let priority: DashboardProactiveInsight.Priority
+        if trends.curriculumCoveragePct < 50 || trends.attendanceRate < 75 || trends.trendDirection == "DOWNWARD" {
+            priority = .high
+        } else {
+            priority = .medium
+        }
+
+        let summary: String
+        if !trends.missingCompetencyLabels.isEmpty {
+            summary = "Faltan evidencias competenciales antes de una lectura LOMLOE sólida."
+        } else if hasReliabilityGap {
+            summary = "La asistencia puede estar afectando a la fiabilidad de la lectura del grupo."
+        } else {
+            summary = "Conviene revisar cobertura curricular antes de cerrar evaluación."
+        }
+
+        return DashboardProactiveInsight(
+            id: "lomloe-advanced-\(format(trends.curriculumCoveragePct))-\(trends.missingCompetencyLabels.count)",
+            kind: .evaluation,
+            priority: priority,
+            title: "Cobertura LOMLOE",
+            summary: summary,
+            facts: Array(facts.prefix(5)),
+            recommendedActions: [.openNotebook, .evaluatePending, .openReports],
+            confidenceNote: "Basado en tendencias, asistencia y auditoría LOMLOE del grupo."
         )
     }
 

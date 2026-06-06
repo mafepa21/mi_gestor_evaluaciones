@@ -32,6 +32,7 @@ class BuildNotebookSheetUseCase(
     private val formulaEvaluator: FormulaEvaluator = FormulaEvaluator(),
     private val buildNotebookInsightsUseCase: BuildNotebookInsightsUseCase = BuildNotebookInsightsUseCase(),
     private val sheetCache: NotebookSheetMemoryCache = NotebookSheetMemoryCache(),
+    private val averageCache: AverageCache = AverageCache(),
 ) {
     suspend fun build(
         classId: Long,
@@ -169,10 +170,14 @@ class BuildNotebookSheetUseCase(
             val calculatedValuesByColumnId = mutableMapOf<String, Double>()
 
             if (calculated.isEmpty()) {
-                val explanation = row.computeAverageExplanation(
-                    columns = columns,
-                    calculatedValuesByColumnId = emptyMap(),
-                )
+                val explanation = averageCache.getOrPut(
+                    averageCache.key(row, columns, emptyMap())
+                ) {
+                    row.computeAverageExplanation(
+                        columns = columns,
+                        calculatedValuesByColumnId = emptyMap(),
+                    )
+                }
                 return@map row.copy(
                     weightedAverage = explanation?.average,
                     averageExplanation = explanation,
@@ -199,10 +204,14 @@ class BuildNotebookSheetUseCase(
                     .getOrNull()
                     ?.let { calculatedValuesByColumnId[column.id] = it }
             }
-            val explanation = row.computeAverageExplanation(
-                columns = columns,
-                calculatedValuesByColumnId = calculatedValuesByColumnId,
-            )
+            val explanation = averageCache.getOrPut(
+                averageCache.key(row, columns, calculatedValuesByColumnId)
+            ) {
+                row.computeAverageExplanation(
+                    columns = columns,
+                    calculatedValuesByColumnId = calculatedValuesByColumnId,
+                )
+            }
             row.copy(
                 weightedAverage = explanation?.average,
                 averageExplanation = explanation,

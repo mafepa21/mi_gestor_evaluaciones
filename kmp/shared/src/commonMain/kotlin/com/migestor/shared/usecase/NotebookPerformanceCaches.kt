@@ -1,14 +1,17 @@
 package com.migestor.shared.usecase
 
 import com.migestor.shared.domain.Grade
+import com.migestor.shared.domain.NotebookAverageExplanation
 import com.migestor.shared.domain.NotebookColumnCategory
 import com.migestor.shared.domain.NotebookColumnDefinition
+import com.migestor.shared.domain.NotebookRow
 import com.migestor.shared.domain.NotebookSheet
 import com.migestor.shared.domain.NotebookTab
 import com.migestor.shared.domain.NotebookWorkGroup
 import com.migestor.shared.domain.NotebookWorkGroupMember
 import com.migestor.shared.domain.PersistedNotebookCell
 import com.migestor.shared.domain.Student
+import com.migestor.shared.domain.gradeValueFor
 import kotlin.time.TimeSource
 
 object NotebookPerformanceDebug {
@@ -56,6 +59,41 @@ class NotebookSheetMemoryCache(
 
     fun clear() {
         entries.clear()
+    }
+}
+
+class AverageCache(
+    private val maxEntries: Int = 512,
+) {
+    private val entries = LinkedHashMap<String, NotebookAverageExplanation?>()
+
+    fun getOrPut(key: String, compute: () -> NotebookAverageExplanation?): NotebookAverageExplanation? {
+        entries.remove(key)?.also {
+            entries[key] = it
+            NotebookPerformanceDebug.event("averageCache hit")
+            return it
+        }
+        NotebookPerformanceDebug.event("averageCache miss")
+        return compute().also { value ->
+            entries[key] = value
+            while (entries.size > maxEntries) {
+                entries.remove(entries.keys.first())
+            }
+        }
+    }
+
+    fun key(
+        row: NotebookRow,
+        columns: List<NotebookColumnDefinition>,
+        calculatedValuesByColumnId: Map<String, Double>,
+    ): String {
+        val includedColumns = columns
+            .filter { it.countsTowardAverage() }
+            .joinToString("|") { column ->
+                val value = row.gradeValueFor(column, calculatedValuesByColumnId)
+                "${column.id}:${column.weight}:${column.type.name}:${column.inputKind.name}:${column.scaleKind.name}:${value ?: "empty"}"
+            }
+        return "${row.student.id}|$includedColumns"
     }
 }
 

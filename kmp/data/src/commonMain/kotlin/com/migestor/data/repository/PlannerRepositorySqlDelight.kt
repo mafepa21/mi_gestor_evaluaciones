@@ -87,10 +87,15 @@ class PlannerRepositorySqlDelight(
     }
 
     override suspend fun listSessionsInRange(groupId: Long?, fromDate: LocalDate, toDate: LocalDate): List<PlanningSession> = withContext(Dispatchers.Default) {
-        val all = db.plannerQueries.selectSessionsForWeek(fromDate.toString(), toDate.toString())
-            .executeAsList()
-            .map { mapToDomain(it) }
-        if (groupId == null) all else all.filter { it.groupId == groupId }
+        if (groupId == null) {
+            db.plannerQueries.selectSessionsForWeek(fromDate.toString(), toDate.toString())
+                .executeAsList()
+                .map { mapToDomain(it) }
+        } else {
+            db.plannerQueries.selectSessionsForGroupInRange(groupId, fromDate.toString(), toDate.toString())
+                .executeAsList()
+                .map { mapToDomain(it) }
+        }
     }
 
     override suspend fun listAllSessions(): List<PlanningSession> = withContext(Dispatchers.Default) {
@@ -443,10 +448,9 @@ class PlannerRepositorySqlDelight(
         )
 
     private fun resolvedPlacement(session: PlanningSession, date: LocalDate, period: Int): SessionPlacement {
-        val slot = db.appDatabaseQueries.selectAllTeacherSchedules().executeAsList()
-            .flatMap { schedule -> db.appDatabaseQueries.selectTeacherScheduleSlots(schedule.id).executeAsList() }
-            .filter { it.school_class_id == session.groupId && it.day_of_week.toInt() == date.dayOfWeek.isoDayNumber }
-            .sortedBy { it.start_time }
+        val slot = db.appDatabaseQueries
+            .selectTeacherScheduleSlotsForClassAndDay(session.groupId, date.dayOfWeek.isoDayNumber.toLong())
+            .executeAsList()
             .getOrNull(period - 1)
         val fallback = DEFAULT_TIME_SLOTS.firstOrNull { it.period == period }
         val week = IsoWeekHelper.isoWeekOf(date)
@@ -488,8 +492,7 @@ class PlannerRepositorySqlDelight(
     private fun buildRelocationPlan(request: SessionRelocationRequest): SessionRelocationPlan {
         if (request.sourceSessionIds.isEmpty()) return SessionRelocationPlan(emptyList(), emptyList())
 
-        val sourceRows = db.plannerQueries.selectAllSessions().executeAsList()
-            .filter { request.sourceSessionIds.contains(it.id) }
+        val sourceRows = db.plannerQueries.selectSessionsByIds(request.sourceSessionIds).executeAsList()
         val sourceIds = sourceRows.map { it.id }.toSet()
         val conflicts = mutableListOf<SessionRelocationConflict>()
         val relocations = mutableListOf<SessionRelocationItem>()
@@ -520,7 +523,7 @@ class PlannerRepositorySqlDelight(
             }
 
             val existingAtDestination = db.plannerQueries
-                .selectSessionsByDateAndGroup(destinationDate.toString(), destinationGroupId)
+                .selectSessionsByDateAndRequiredGroup(destinationDate.toString(), destinationGroupId)
                 .executeAsList()
                 .firstOrNull { it.period.toInt() == destinationPeriod }
 
@@ -598,7 +601,57 @@ class PlannerRepositorySqlDelight(
         )
     }
 
+    private fun mapToDomain(row: com.migestor.data.db.SelectSessionsForGroupInRange): PlanningSession {
+        val date = LocalDate.parse(row.date)
+        return PlanningSession(
+            id = row.id,
+            teachingUnitId = row.unit_id ?: 0,
+            teachingUnitName = row.unit_name ?: "",
+            teachingUnitColor = row.unit_color ?: "#4A90D9",
+            groupId = row.group_id,
+            groupName = row.group_name,
+            dayOfWeek = date.dayOfWeek.isoDayNumber,
+            period = row.period.toInt(),
+            weekNumber = IsoWeekHelper.isoWeekOf(date),
+            year = date.year,
+            objectives = row.objectives ?: "",
+            activities = row.activities ?: "",
+            evaluation = row.evaluation ?: "",
+            linkedAssessmentIdsCsv = row.linked_assessment_ids_csv,
+            teacherScheduleSlotId = row.teacher_schedule_slot_id,
+            startTime = row.start_time,
+            endTime = row.end_time,
+            learningSituationSessionPlanId = row.learning_situation_session_plan_id,
+            status = try { SessionStatus.valueOf(row.status ?: "PLANNED") } catch (e: Exception) { SessionStatus.PLANNED }
+        )
+    }
+
     private fun mapToDomain(row: com.migestor.data.db.SelectAllSessions): PlanningSession {
+        val date = LocalDate.parse(row.date)
+        return PlanningSession(
+            id = row.id,
+            teachingUnitId = row.unit_id ?: 0,
+            teachingUnitName = row.unit_name ?: "",
+            teachingUnitColor = row.unit_color ?: "#4A90D9",
+            groupId = row.group_id,
+            groupName = row.group_name,
+            dayOfWeek = date.dayOfWeek.isoDayNumber,
+            period = row.period.toInt(),
+            weekNumber = IsoWeekHelper.isoWeekOf(date),
+            year = date.year,
+            objectives = row.objectives ?: "",
+            activities = row.activities ?: "",
+            evaluation = row.evaluation ?: "",
+            linkedAssessmentIdsCsv = row.linked_assessment_ids_csv,
+            teacherScheduleSlotId = row.teacher_schedule_slot_id,
+            startTime = row.start_time,
+            endTime = row.end_time,
+            learningSituationSessionPlanId = row.learning_situation_session_plan_id,
+            status = try { SessionStatus.valueOf(row.status ?: "PLANNED") } catch (e: Exception) { SessionStatus.PLANNED }
+        )
+    }
+
+    private fun mapToDomain(row: com.migestor.data.db.SelectSessionsByIds): PlanningSession {
         val date = LocalDate.parse(row.date)
         return PlanningSession(
             id = row.id,

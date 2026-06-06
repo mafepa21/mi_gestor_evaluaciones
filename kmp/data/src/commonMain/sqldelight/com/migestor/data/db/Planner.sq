@@ -32,6 +32,9 @@ CREATE TABLE IF NOT EXISTS planner_session (
     FOREIGN KEY (unit_id) REFERENCES teaching_unit(id) ON DELETE SET NULL,
     FOREIGN KEY (teacher_schedule_slot_id) REFERENCES teacher_schedule_slots(id) ON DELETE SET NULL
 );
+CREATE INDEX IF NOT EXISTS idx_planner_session_group_date_period ON planner_session(group_id, date, period);
+CREATE INDEX IF NOT EXISTS idx_planner_session_unit ON planner_session(unit_id);
+CREATE INDEX IF NOT EXISTS idx_planner_session_slot_status_date ON planner_session(teacher_schedule_slot_id, status, date);
 
 CREATE TABLE IF NOT EXISTS session_journal (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -149,6 +152,8 @@ CREATE TABLE IF NOT EXISTS planned_session (
     FOREIGN KEY (teaching_unit_id) REFERENCES teaching_unit(id) ON DELETE SET NULL,
     FOREIGN KEY (school_class_id) REFERENCES classes(id) ON DELETE CASCADE
 );
+CREATE INDEX IF NOT EXISTS idx_planned_session_class_date_start ON planned_session(school_class_id, date, start_time);
+CREATE INDEX IF NOT EXISTS idx_planned_session_date ON planned_session(date);
 
 -- Queries
 
@@ -165,6 +170,17 @@ FROM planner_session s
 LEFT JOIN teaching_unit u ON s.unit_id = u.id
 JOIN classes c ON s.group_id = c.id
 WHERE s.date BETWEEN :startDate AND :endDate;
+
+selectSessionsForGroupInRange:
+SELECT
+    s.*,
+    u.name AS unit_name,
+    u.color_hex AS unit_color,
+    c.name AS group_name
+FROM planner_session s
+LEFT JOIN teaching_unit u ON s.unit_id = u.id
+JOIN classes c ON s.group_id = c.id
+WHERE s.group_id = :groupId AND s.date BETWEEN :startDate AND :endDate;
 
 selectAllSessions:
 SELECT
@@ -187,6 +203,39 @@ FROM planner_session s
 LEFT JOIN teaching_unit u ON s.unit_id = u.id
 JOIN classes c ON s.group_id = c.id
 WHERE s.date = :date AND (:groupId IS NULL OR s.group_id = :groupId);
+
+selectSessionsByDate:
+SELECT
+    s.*,
+    u.name AS unit_name,
+    u.color_hex AS unit_color,
+    c.name AS group_name
+FROM planner_session s
+LEFT JOIN teaching_unit u ON s.unit_id = u.id
+JOIN classes c ON s.group_id = c.id
+WHERE s.date = :date;
+
+selectSessionsByDateAndRequiredGroup:
+SELECT
+    s.*,
+    u.name AS unit_name,
+    u.color_hex AS unit_color,
+    c.name AS group_name
+FROM planner_session s
+LEFT JOIN teaching_unit u ON s.unit_id = u.id
+JOIN classes c ON s.group_id = c.id
+WHERE s.date = :date AND s.group_id = :groupId;
+
+selectSessionsByIds:
+SELECT
+    s.*,
+    u.name AS unit_name,
+    u.color_hex AS unit_color,
+    c.name AS group_name
+FROM planner_session s
+LEFT JOIN teaching_unit u ON s.unit_id = u.id
+JOIN classes c ON s.group_id = c.id
+WHERE s.id IN ?;
 
 selectSessionsByUnit:
 SELECT 

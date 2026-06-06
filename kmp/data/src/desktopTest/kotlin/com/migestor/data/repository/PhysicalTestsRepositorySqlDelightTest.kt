@@ -186,6 +186,7 @@ class PhysicalTestsRepositorySqlDelightTest {
         driver.execute(null, "CREATE TABLE notebook_tabs (id TEXT PRIMARY KEY)", 0)
         driver.createLegacyClassesTable()
         driver.createLegacyWorkGroupsTable()
+        driver.createLegacyPerformanceIndexTables()
 
         AppDatabase.Schema.migrate(driver, 18, AppDatabase.Schema.version)
         val student = StudentsRepositorySqlDelight(AppDatabase(driver)).listStudents().single()

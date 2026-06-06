@@ -1,0 +1,20 @@
+CREATE INDEX IF NOT EXISTS idx_planned_session_class_date_start
+ON planned_session(school_class_id, date, start_time);
+
+CREATE INDEX IF NOT EXISTS idx_planned_session_date
+ON planned_session(date);
+
+CREATE INDEX IF NOT EXISTS idx_planner_session_group_date_period
+ON planner_session(group_id, date, period);
+
+CREATE INDEX IF NOT EXISTS idx_planner_session_unit
+ON planner_session(unit_id);
+
+CREATE INDEX IF NOT EXISTS idx_planner_session_slot_status_date
+ON planner_session(teacher_schedule_slot_id, status, date);
+
+CREATE INDEX IF NOT EXISTS idx_teacher_schedule_slots_schedule_day_start
+ON teacher_schedule_slots(teacher_schedule_id, day_of_week, start_time, id);
+
+CREATE INDEX IF NOT EXISTS idx_teacher_schedule_slots_class_day_start
+ON teacher_schedule_slots(school_class_id, day_of_week, start_time);

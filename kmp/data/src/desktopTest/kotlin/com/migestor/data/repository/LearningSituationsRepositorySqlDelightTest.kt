@@ -20,6 +20,8 @@ class LearningSituationsRepositorySqlDelightTest {
     fun `schema migration from 22 creates learning situation tables and planner link column`() {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         createVersion22Baseline(driver)
+        driver.createLegacyPerformanceIndexTables()
+        driver.createLegacyNotebookCellAuditTable()
 
         AppDatabase.Schema.migrate(driver, 22, AppDatabase.Schema.version)
 

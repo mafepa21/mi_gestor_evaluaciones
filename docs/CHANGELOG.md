@@ -13,7 +13,18 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
-Sin cambios pendientes.
+### Data
+
+- Se añaden migraciones SQLDelight `26.sqm`, `27.sqm` y `28.sqm` con índices compuestos para asistencia, incidencias, planner, horarios, rúbricas, learning situations, celdas y auditoría de celdas.
+- Se reemplazan lecturas amplias en repositorios de notas y planner por queries más selectivas, manteniendo sin cambios los contratos de dominio.
+
+### Docs
+
+- Se documenta la auditoría de performance SQLDelight y el criterio de PRs pequeños para revisar índices, consultas lentas, filtros frecuentes y joins.
+
+### Verification
+
+- Se añade cobertura de test para comprobar que el schema crea los índices críticos de performance.
 
 ## 0.3.0-alpha.1 - 2026-06-06
 

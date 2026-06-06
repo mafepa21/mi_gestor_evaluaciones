@@ -14,6 +14,7 @@ import com.migestor.data.repository.SessionJournalRepositorySqlDelight
 import com.migestor.data.repository.StudentsRepositorySqlDelight
 import com.migestor.data.repository.TeacherScheduleRepositorySqlDelight
 import com.migestor.data.repository.CalendarRepositorySqlDelight
+import com.migestor.data.repository.queryStrings
 import com.migestor.shared.domain.NotebookColumnDefinition
 import com.migestor.shared.domain.NotebookColumnType
 import com.migestor.shared.domain.ConfigTemplateKind
@@ -525,5 +526,46 @@ class RepositoriesIntegrationTest {
         val restored = planner.listSessions(14, 2026).associateBy { it.id }
         assertEquals(2, restored.getValue(sourceId).period)
         assertEquals(1, restored.getValue(occupantId).period)
+    }
+
+    @Test
+    fun `schema creates performance indexes for daily data queries`() = runTest {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        AppDatabase.Schema.create(driver)
+
+        val indexes = driver.queryStrings(
+            """
+            SELECT name
+            FROM sqlite_master
+            WHERE type = 'index'
+            ORDER BY name
+            """.trimIndent()
+        ).toSet()
+
+        val expectedIndexes = setOf(
+            "idx_attendance_class_date_student",
+            "idx_attendance_class_student_date",
+            "idx_incidents_class_date",
+            "idx_incidents_class_student_date",
+            "idx_notebook_cell_entries_column",
+            "idx_notebook_cell_audit_lookup",
+            "idx_planned_session_class_date_start",
+            "idx_planned_session_date",
+            "idx_planner_session_group_date_period",
+            "idx_planner_session_unit",
+            "idx_planner_session_slot_status_date",
+            "idx_teacher_schedule_slots_schedule_day_start",
+            "idx_teacher_schedule_slots_class_day_start",
+            "idx_rubric_criteria_rubric_sort",
+            "idx_rubric_levels_criterion_sort",
+            "idx_evaluations_class_id",
+            "idx_evaluation_competency_links_evaluation",
+            "idx_learning_situation_versions_lookup",
+            "idx_learning_situation_sequence_versions_lookup",
+            "idx_learning_situation_session_plans_sequence",
+            "idx_learning_situation_links_lookup",
+        )
+
+        assertTrue(indexes.containsAll(expectedIndexes))
     }
 }

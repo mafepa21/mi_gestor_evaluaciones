@@ -1,0 +1,23 @@
+CREATE INDEX IF NOT EXISTS idx_rubric_criteria_rubric_sort
+ON rubric_criteria(rubric_id, sort_order, id);
+
+CREATE INDEX IF NOT EXISTS idx_rubric_levels_criterion_sort
+ON rubric_levels(criterion_id, sort_order, id);
+
+CREATE INDEX IF NOT EXISTS idx_evaluations_class_id
+ON evaluations(class_id, id);
+
+CREATE INDEX IF NOT EXISTS idx_evaluation_competency_links_evaluation
+ON evaluation_competency_links(evaluation_id, id);
+
+CREATE INDEX IF NOT EXISTS idx_learning_situation_versions_lookup
+ON learning_situation_versions(learning_situation_id, version_number DESC);
+
+CREATE INDEX IF NOT EXISTS idx_learning_situation_sequence_versions_lookup
+ON learning_situation_sequence_versions(learning_situation_id, version_number DESC);
+
+CREATE INDEX IF NOT EXISTS idx_learning_situation_session_plans_sequence
+ON learning_situation_session_plans(sequence_version_id, session_number);
+
+CREATE INDEX IF NOT EXISTS idx_learning_situation_links_lookup
+ON learning_situation_links(learning_situation_id, resource_kind, label);

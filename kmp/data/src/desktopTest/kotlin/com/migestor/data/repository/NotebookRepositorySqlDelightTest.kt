@@ -434,6 +434,7 @@ class NotebookRepositorySqlDelightTest {
         driver.execute(null, "CREATE TABLE notebook_tabs (id TEXT PRIMARY KEY)", 0)
         driver.createLegacyClassesTable()
         driver.createLegacyWorkGroupsTable()
+        driver.createLegacyPerformanceIndexTables()
 
         AppDatabase.Schema.migrate(driver, 20, AppDatabase.Schema.version)
         val db = AppDatabase(driver)

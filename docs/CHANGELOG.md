@@ -26,6 +26,10 @@ El formato sigue una variante practica de Keep a Changelog:
 - El Cuaderno reutiliza cachés en memoria para el sheet por versión efectiva de clase/configuración/alumnado/columnas/celdas/rúbricas, medias por alumno/columnas/valores, render model SwiftUI y contexto derivado de Apple IA.
 - Apple IA aplica un presupuesto centralizado de contexto antes de generar prompts, sourceDigest, evidencias auditadas y claves de caché de reportes/docencia.
 
+### Fixed
+
+- El script Apple KMP de macOS prioriza `macosArm64` cuando Xcode pasa `ARCHS="arm64 x86_64"`, y permite forzar Intel solo con `KMP_MACOS_ARCH=x64`.
+
 ### Data
 
 - Se añade migración SQLDelight `29.sqm` para persistir `center_id`, `academic_year_id`, `stage_cycle_id` y `subject_id` en `classes`, con índices por asignatura y curso académico.

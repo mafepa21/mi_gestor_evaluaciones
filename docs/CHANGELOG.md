@@ -28,7 +28,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
-- El script Apple KMP de macOS prioriza `macosArm64` cuando Xcode pasa `ARCHS="arm64 x86_64"`, y permite forzar Intel solo con `KMP_MACOS_ARCH=x64`.
+- El build Apple KMP de macOS prioriza `macosArm64` cuando Xcode pasa `ARCHS="arm64 x86_64"`, excluye `x86_64` en el target Mac actual y permite forzar Intel solo con `KMP_MACOS_ARCH=x64`.
 
 ### Data
 

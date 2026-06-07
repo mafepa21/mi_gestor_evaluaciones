@@ -190,6 +190,10 @@ class ClassesRepositorySqlDelight(
                         name = it.name,
                         course = it.course.toInt(),
                         description = it.description,
+                        centerId = it.center_id,
+                        academicYearId = it.academic_year_id,
+                        stageCycleId = it.stage_cycle_id,
+                        subjectId = it.subject_id,
                         trace = AuditTrace(
                             updatedAt = Instant.fromEpochMilliseconds(it.updated_at_epoch_ms),
                             deviceId = it.device_id,
@@ -207,6 +211,10 @@ class ClassesRepositorySqlDelight(
                 name = it.name,
                 course = it.course.toInt(),
                 description = it.description,
+                centerId = it.center_id,
+                academicYearId = it.academic_year_id,
+                stageCycleId = it.stage_cycle_id,
+                subjectId = it.subject_id,
                 trace = AuditTrace(
                     updatedAt = Instant.fromEpochMilliseconds(it.updated_at_epoch_ms),
                     deviceId = it.device_id,
@@ -221,13 +229,17 @@ class ClassesRepositorySqlDelight(
         name: String,
         course: Int,
         description: String?,
+        centerId: Long?,
+        academicYearId: Long?,
+        stageCycleId: Long?,
+        subjectId: Long?,
         updatedAtEpochMs: Long,
         deviceId: String?,
         syncVersion: Long,
     ): Long = withContext(Dispatchers.Default) {
         val now = if (updatedAtEpochMs > 0) updatedAtEpochMs else Clock.System.now().toEpochMilliseconds()
         db.transactionWithResult {
-            db.appDatabaseQueries.upsertClass(id, name, course.toLong(), description, now, deviceId, syncVersion)
+            db.appDatabaseQueries.upsertClass(id, name, course.toLong(), description, centerId, academicYearId, stageCycleId, subjectId, now, deviceId, syncVersion)
             id ?: db.appDatabaseQueries.lastInsertedId().executeAsOne()
         }
     }

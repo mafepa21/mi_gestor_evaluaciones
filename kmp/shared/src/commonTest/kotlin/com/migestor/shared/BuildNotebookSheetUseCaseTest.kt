@@ -627,7 +627,7 @@ private class FakeClassesRepository2(
         return flowOf(emptyList())
     }
     override suspend fun listClasses(): List<SchoolClass> = emptyList()
-    override suspend fun saveClass(id: Long?, name: String, course: Int, description: String?, updatedAtEpochMs: Long, deviceId: String?, syncVersion: Long): Long = 1
+    override suspend fun saveClass(id: Long?, name: String, course: Int, description: String?, centerId: Long?, academicYearId: Long?, stageCycleId: Long?, subjectId: Long?, updatedAtEpochMs: Long, deviceId: String?, syncVersion: Long): Long = 1
     override suspend fun deleteClass(classId: Long) = Unit
     override suspend fun addStudentToClass(classId: Long, studentId: Long) = Unit
     override suspend fun removeStudentFromClass(classId: Long, studentId: Long) = Unit

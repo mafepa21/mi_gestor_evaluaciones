@@ -56,7 +56,7 @@ private class FakeClassesRepository(
 
     override suspend fun listClasses(): List<SchoolClass> = emptyList()
 
-    override suspend fun saveClass(id: Long?, name: String, course: Int, description: String?, updatedAtEpochMs: Long, deviceId: String?, syncVersion: Long): Long = 1
+    override suspend fun saveClass(id: Long?, name: String, course: Int, description: String?, centerId: Long?, academicYearId: Long?, stageCycleId: Long?, subjectId: Long?, updatedAtEpochMs: Long, deviceId: String?, syncVersion: Long): Long = 1
 
     override suspend fun deleteClass(classId: Long) = Unit
 

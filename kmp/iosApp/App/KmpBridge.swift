@@ -2388,6 +2388,10 @@ final class KmpBridge: ObservableObject {
             name: name,
             course: course,
             description: nil,
+            centerId: nil,
+            academicYearId: nil,
+            stageCycleId: nil,
+            subjectId: nil,
             updatedAtEpochMs: nowMs,
             deviceId: localDeviceId,
             syncVersion: 1
@@ -7162,6 +7166,10 @@ final class KmpBridge: ObservableObject {
                     name: name,
                     course: Int32(course),
                     description: payloadObject["description"] as? String,
+                    centerId: kotlinLong(positiveInt64Value(payloadObject["centerId"])),
+                    academicYearId: kotlinLong(positiveInt64Value(payloadObject["academicYearId"])),
+                    stageCycleId: kotlinLong(positiveInt64Value(payloadObject["stageCycleId"])),
+                    subjectId: kotlinLong(positiveInt64Value(payloadObject["subjectId"])),
                     updatedAtEpochMs: change.updatedAtEpochMs,
                     deviceId: change.deviceId,
                     syncVersion: 1
@@ -8291,6 +8299,10 @@ final class KmpBridge: ObservableObject {
         if let value = raw as? NSNumber { return value.int64Value }
         if let value = raw as? String { return Int64(value) }
         return nil
+    }
+
+    private func positiveInt64Value(_ raw: Any?) -> Int64? {
+        int64Value(raw).flatMap { $0 > 0 ? $0 : nil }
     }
 
     private func doubleValue(_ raw: Any?) -> Double? {

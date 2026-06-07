@@ -54,13 +54,29 @@ class SaveClassUseCase(
         name: String,
         course: Int,
         description: String? = null,
+        centerId: Long? = null,
+        academicYearId: Long? = null,
+        stageCycleId: Long? = null,
+        subjectId: Long? = null,
         updatedAtEpochMs: Long = 0,
         deviceId: String? = null,
         syncVersion: Long = 0,
     ): Long {
         requireNotBlank(name, "Nombre de clase")
         require(course > 0) { "Curso debe ser mayor que cero" }
-        return repository.saveClass(id, name.trim(), course, description?.trim(), updatedAtEpochMs = updatedAtEpochMs, deviceId = deviceId, syncVersion = syncVersion)
+        return repository.saveClass(
+            id = id,
+            name = name.trim(),
+            course = course,
+            description = description?.trim(),
+            centerId = centerId,
+            academicYearId = academicYearId,
+            stageCycleId = stageCycleId,
+            subjectId = subjectId,
+            updatedAtEpochMs = updatedAtEpochMs,
+            deviceId = deviceId,
+            syncVersion = syncVersion,
+        )
     }
 }
 

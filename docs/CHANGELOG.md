@@ -14,7 +14,38 @@ El formato sigue una variante practica de Keep a Changelog:
 ## Unreleased
 
 ### Added
+
+- Instrumentación debug desactivada por defecto para medir builds del sheet del Cuaderno, recálculo de medias, construcción del render model, filas visibles, hits/misses de caché y prompts derivados de IA.
+
+### Changed
+
+- El Cuaderno reutiliza cachés en memoria para el sheet por versión efectiva de clase/configuración/alumnado/columnas/celdas/rúbricas, medias por alumno/columnas/valores, render model SwiftUI y contexto derivado de Apple IA.
+- Apple IA aplica un presupuesto centralizado de contexto antes de generar prompts, sourceDigest, evidencias auditadas y claves de caché de reportes/docencia.
+
+### Data
+
+- Se añaden migraciones SQLDelight `26.sqm`, `27.sqm` y `28.sqm` con índices compuestos para asistencia, incidencias, planner, horarios, rúbricas, learning situations, celdas y auditoría de celdas.
+- Se reemplazan lecturas amplias en repositorios de notas y planner por queries más selectivas, manteniendo sin cambios los contratos de dominio.
+- El snapshot del Cuaderno agrupa notas y celdas por clase antes de construir filas, evitando consultas repetidas por alumno sin modificar SQLDelight ni añadir migraciones.
+
+### Docs
+
+- Se documenta la auditoría de performance SQLDelight y el criterio de PRs pequeños para revisar índices, consultas lentas, filtros frecuentes y joins.
+
+### Verification
+
+- Se añade cobertura de test para comprobar que el schema crea los índices críticos de performance.
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` completado correctamente tras limitar payloads de Apple IA.
+- `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` completado correctamente tras la auditoría de caché del Cuaderno.
+
+## 0.3.0-alpha.1 - 2026-06-06
+
+### Added
  
+- Señales avanzadas de "Seguimiento EF" y "Cobertura LOMLOE" en el Radar docente, derivadas de `peItems` y `AITrendsSnapshot` sin ampliar KMP ni SQLDelight.
+- Señal avanzada de "Media y cierre evaluativo" en el Radar docente, calculada desde resúmenes de grupo, agenda e instrumentos rápidos ya expuestos por el Dashboard.
+- Radar docente proactivo compartido para Dashboard iOS/iPadOS y macOS, con insights deterministas, hechos usados, acciones reales por plataforma y briefing no bloqueante con fallback local.
+- Script de automatización de Git y GitHub `scripts/auto_commit_pr.sh` para realizar análisis de seguridad local, commits formateados, push y apertura de PRs en draft de forma automática.
 - Detalle de cálculo de media personalizado `CustomAverageExplanationPopoverView` que muestra "Incluye", "No incluye", "Pendientes", pesos e indicador de estado de cálculo.
 - Integración de presentación de popover/sheet a nivel raíz en `NotebookModuleView.swift` para evitar conflictos de gestos e instanciación de popovers duplicados en celdas del grid.
 - Exposición del snapshot de tendencias académicas `AITrendsSnapshot` y la función `getAITrendsAndMetrics` en `KmpBridge.swift`.
@@ -23,7 +54,10 @@ El formato sigue una variante practica de Keep a Changelog:
 - Bloque de parámetros con el análisis acumulado de tendencias de IA en `RubricsReportsWorkspaceViews.swift`.
 
 ### Changed
-
+ 
+- Pulido visual del componente `DashboardProactiveInsightCard`: espaciado en rejilla de 8pt, acciones adaptativas, loading skeleton y accesibilidad en iconos/progreso.
+- El Dashboard Apple pasa a priorizar señales accionables de "Radar docente" antes de los bloques informativos tradicionales, manteniendo filtros y exportación como herramientas secundarias.
+- Se corrige `.gitignore` con el patrón global `**/.xcode-derived/` y se remueven del repositorio Git los archivos de caché generados por Xcode que impedían pasar las validaciones de seguridad local.
 - Se unificó y encapsuló el cálculo de medias, resolución de valores de celdas (`gradeValueFor`) y desglose de explicación (`computeAverageExplanation`) en `Models.kt`, eliminando implementaciones duplicadas en `BuildNotebookSheetUseCase.kt` y `NotebookViewModel.kt`.
 - Se fija `0.3.0-dev` como version interna actual hasta contar con una release reproducible y verificada.
 - Los manifiestos activos bajan de `1.0` a `0.3.0` para reflejar el estado real de madurez del producto.
@@ -31,6 +65,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- Corrección de los checks Apple en CI: `navigationSubtitle` queda limitado a macOS y el Command Center Helper usa la firma actual de `LocalSyncServer`.
 - Corrección en la eliminación de columnas vinculadas a evaluaciones que usan identificadores personalizados. Al eliminar una evaluación, la base de datos de manera en cascada establecía a NULL el `evaluation_id` de la columna asociada en `notebook_columns`, impidiendo resolver la columna para eliminarla físicamente y dejándola huérfana (por lo que seguía apareciendo en el menú de cálculo de media). Ahora, se busca y elimina primero la columna usando su ID real antes de romper la relación.
 - Corrección de evaluación de fórmulas calculadas: ahora las celdas vacías no se inicializan por defecto a `0.0`, lo que evita alterar a la baja de manera errónea el promedio ponderado y devuelve un valor `null` correcto en caso de variables de fórmulas no evaluadas.
 - Corrección de tipo en `GetAITrendsAndMetricsUseCase.kt` (comparaciones numéricas contra literales `0L` para evitar mismatch con tipo `Long`).
@@ -39,13 +74,21 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
  
+- Verificación de builds Apple completada con éxito vía `scripts/verify_apple_builds.sh` tras añadir señales avanzadas EF y LOMLOE al Radar.
+- Compilación de Compose Desktop completada con éxito vía `./gradlew :desktopApp:compileKotlin` tras adaptar el uso de `LocalSyncServer`.
+- Verificación de builds Apple completada con éxito vía `scripts/verify_apple_builds.sh` tras corregir los fallos de CI en macOS e iOS Simulator.
+- Verificación de builds Apple completada con éxito vía `scripts/verify_apple_builds.sh` tras añadir la señal avanzada de media y cierre evaluativo al Radar.
+- Verificación de builds Apple completada con éxito vía `scripts/verify_apple_builds.sh` tras el pulido visual del Radar docente.
+- Verificación de builds Apple completada con éxito vía `scripts/verify_apple_builds.sh` tras integrar el Radar docente proactivo en iOS/iPadOS y macOS.
 - Incorporación de pruebas unitarias específicas en `NotebookViewModelTest.kt` para validar el borrado completo de columnas con IDs personalizados y el comportamiento de fallback.
 - Paso de todas las pruebas unitarias asíncronas en Kotlin compartidas (`./gradlew :shared:desktopTest`), incluyendo la cobertura para la eliminación correcta de columnas y evaluaciones.
 - Verificación de compilación multiplataforma (iOS Simulator y macOS Native/Catalyst) completada con éxito tras la integración del popover de desglose de media.
 -  Validación de compilación multiplataforma (iOS Simulator y macOS Native/Catalyst) completada con éxito vía `./scripts/verify_apple_builds.sh`.
 
 ### Docs
-
+ 
+- Se crea `ADR-2026-06-05-dashboard-radar.md` para formalizar el enfoque del Radar docente: reglas primero, Apple IA como redacción grounded y fallback determinista.
+- Se actualiza `docs/VERSIONING.md` para incorporar la guía de uso del script de automatización `scripts/auto_commit_pr.sh`.
 - Se crea `docs/VERSIONING.md` como guia canonica de SemVer interno, ramas, commits, tags, GitHub Releases, versionado de manifests y registro automatico de cambios por PR.
 - Se anade base de preparacion comercial: licencia propietaria, politica de seguridad, borrador de privacidad, avisos de terceros, due diligence, mapa de datos personales y matriz de modulos.
 - Se crea la estructura documental base del repositorio: indice, gobierno, roadmap, baseline inicial y plantilla de PR.

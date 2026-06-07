@@ -485,7 +485,7 @@ class GradesRepositorySqlDelight(
     ): Long = withContext(Dispatchers.Default) {
         val now = if (updatedAtEpochMs > 0) updatedAtEpochMs else Clock.System.now().toEpochMilliseconds()
         val created = if (createdAtEpochMs > 0) createdAtEpochMs else now
-        val existingRecord = db.appDatabaseQueries.selectGradesByStudentAndClass(studentId, classId).executeAsList().find { it.column_id == columnId }
+        val existingRecord = db.appDatabaseQueries.selectGradeByStudentClassAndColumn(classId, studentId, columnId).executeAsOneOrNull()
         val existingValue = existingRecord?.value_
         
         val canApply = shouldApplyIncomingChange(

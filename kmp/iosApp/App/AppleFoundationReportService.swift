@@ -169,6 +169,7 @@ final class AppleFoundationReportService {
         modelLoading: "Apple Intelligence se está preparando en este dispositivo. Vuelve a intentarlo en unos segundos."
     )
     private var availabilityRetryTask: Task<Void, Never>?
+    private var reportPromptCache: [String: String] = [:]
 
     #if canImport(FoundationModels)
     private var cachedReportSessionStorage: Any?
@@ -360,7 +361,7 @@ final class AppleFoundationReportService {
         let session = consumeReportSession()
         activeReportSessionStorage = session
         let response = try await session.respond(
-            to: reportPrompt(from: context, audience: audience, tone: tone),
+            to: cachedReportPrompt(from: context, audience: audience, tone: tone),
             generating: GeneratedAIReportDraft.self,
             includeSchemaInPrompt: true,
             options: AppleFoundationModelSupport.generationOptions(temperature: reportTemperature(for: context))
@@ -392,13 +393,13 @@ final class AppleFoundationReportService {
         audience: AIReportAudience,
         tone: AIReportTone
     ) -> String {
-        let metrics = context.metrics.prefix(4).map {
+        let metrics = context.metrics.prefix(AIContextBudget.maxMetrics).map {
             "- \(promptFragment($0.title, limit: 60)): \(promptFragment($0.value, limit: 60))"
         }.joined(separator: "\n")
-        let facts = promptLines(context.factLines, maxItems: 6, itemLimit: 120, fallback: "Sin hechos adicionales.")
+        let facts = promptLines(context.factLines, maxItems: AIContextBudget.maxFacts, itemLimit: 120, fallback: "Sin hechos adicionales.")
         let strengths = promptLines(context.strengths, maxItems: 4, itemLimit: 100, fallback: "Sin fortalezas concluyentes.")
-        let needsAttention = promptLines(context.needsAttention, maxItems: 4, itemLimit: 100, fallback: "Sin alertas concluyentes.")
-        let actions = promptLines(context.recommendedActions, maxItems: 4, itemLimit: 100, fallback: "Mantener recogida de evidencias.")
+        let needsAttention = promptLines(context.needsAttention, maxItems: AIContextBudget.maxWarnings, itemLimit: 100, fallback: "Sin alertas concluyentes.")
+        let actions = promptLines(context.recommendedActions, maxItems: AIContextBudget.maxActions, itemLimit: 100, fallback: "Mantener recogida de evidencias.")
         let notes = promptLines(context.supportNotes, maxItems: 3, itemLimit: 100, fallback: "Sin notas de apoyo adicionales.")
         let curriculumReferences = promptLines(context.curriculumReferences, maxItems: 3, itemLimit: 100, fallback: "Sin referencias curriculares preseleccionadas.")
         let promptDirectives = promptLines(context.promptDirectives, maxItems: 3, itemLimit: 100, fallback: "Redacción general prudente.")
@@ -448,7 +449,7 @@ final class AppleFoundationReportService {
             }
         }()
 
-        return """
+        return AIContextBudget.prompt("""
         Genera un borrador estructurado para un informe escolar.
 
         Tipo de informe: \(promptFragment(context.kind.title, limit: 80))
@@ -507,7 +508,42 @@ final class AppleFoundationReportService {
         - Debe usar 4 bloques integrados: resultados de aprendizaje, evolución personal, progresos/talentos y orientaciones.
         - Si hay adaptaciones o apoyos, añádelos en una frase breve antes de las orientaciones.
         - Usa una redacción estable y consistente entre regeneraciones.
-        """
+        """)
+    }
+
+    @available(iOS 26.0, macOS 26.0, *)
+    private func cachedReportPrompt(
+        from context: KmpBridge.ReportGenerationContext,
+        audience: AIReportAudience,
+        tone: AIReportTone
+    ) -> String {
+        let key = [
+            "report",
+            context.kind.rawValue,
+            "\(context.classId)",
+            "\(context.studentId ?? -1)",
+            audience.rawValue,
+            tone.rawValue,
+            context.summary,
+            context.metrics.prefix(AIContextBudget.maxMetrics).map { "\($0.title):\($0.value)" }.joined(separator: "|"),
+            AIContextBudget.evidenceLines(context.factLines).joined(separator: "|"),
+            AIContextBudget.lines(context.strengths, maxItems: 4, itemLimit: 100).joined(separator: "|"),
+            AIContextBudget.lines(context.needsAttention, maxItems: AIContextBudget.maxWarnings, itemLimit: 100).joined(separator: "|"),
+            AIContextBudget.lines(context.recommendedActions, maxItems: AIContextBudget.maxActions, itemLimit: 100).joined(separator: "|"),
+            AIContextBudget.lines(context.supportNotes, maxItems: 3, itemLimit: 100).joined(separator: "|"),
+            context.dataQualityNote ?? ""
+        ].joined(separator: "¬").hashValue.description
+
+        if let cached = reportPromptCache[key] {
+            NotebookGridPerformanceDebug.event("reportAIPrompt hit")
+            return cached
+        }
+        let prompt = reportPrompt(from: context, audience: audience, tone: tone)
+        reportPromptCache[key] = prompt
+        if reportPromptCache.count > 8 {
+            reportPromptCache.removeValue(forKey: reportPromptCache.keys.first ?? key)
+        }
+        return prompt
     }
 
     private func promptLines(

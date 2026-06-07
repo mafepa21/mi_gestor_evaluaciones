@@ -24,7 +24,7 @@ build/
 
 # Xcode
 DerivedData/
-kmp/.xcode-derived/
+**/.xcode-derived/
 *.xcworkspace/xcuserdata/
 **/xcuserdata/
 *.xcuserstate

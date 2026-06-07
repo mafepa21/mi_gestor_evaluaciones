@@ -1,0 +1,17 @@
+CREATE INDEX IF NOT EXISTS idx_attendance_class_date_student
+ON attendance(class_id, date_epoch_ms DESC, student_id);
+
+CREATE INDEX IF NOT EXISTS idx_attendance_class_student_date
+ON attendance(class_id, student_id, date_epoch_ms DESC);
+
+CREATE INDEX IF NOT EXISTS idx_incidents_class_date
+ON incidents(class_id, date_epoch_ms DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_incidents_class_student_date
+ON incidents(class_id, student_id, date_epoch_ms DESC);
+
+CREATE INDEX IF NOT EXISTS idx_notebook_cell_entries_column
+ON notebook_cell_entries(column_id);
+
+CREATE INDEX IF NOT EXISTS idx_notebook_cell_audit_lookup
+ON notebook_cell_audit_events(class_id, student_id, column_id, changed_at_epoch_ms DESC);

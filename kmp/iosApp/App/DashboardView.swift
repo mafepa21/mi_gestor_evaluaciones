@@ -102,6 +102,13 @@ struct DashboardView: View {
     @State private var isQuickEvaluationPresented = false
     @State private var classTrends: KmpBridge.AITrendsSnapshot? = nil
     @State private var isLoadingClassTrends = false
+    @State private var proactiveInsights: [DashboardProactiveInsight] = []
+    @State private var aiBriefing: TeachingAssistantDraft? = nil
+    @State private var isLoadingAIBriefing = false
+    @State private var aiBriefingCache: [String: TeachingAssistantDraft] = [:]
+    @State private var activeAIBriefingKey: String?
+
+    private let teachingAssistantService = AppleFoundationTeachingAssistantService()
 
     private var mode: OperationalDashboardMode {
         OperationalDashboardMode(rawValue: modeRawValue) ?? .office
@@ -233,6 +240,7 @@ struct DashboardView: View {
         ScrollView {
             if let snapshot = bridge.dashboardSnapshot {
                 VStack(alignment: .leading, spacing: EvaluationDesign.sectionSpacing) {
+                    dashboardProactiveRadar(snapshot: snapshot)
                     dashboardWorkCenter(snapshot: snapshot)
 
                     let blocks: [DashboardBlock] = mode == .classroom
@@ -402,6 +410,21 @@ struct DashboardView: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func dashboardProactiveRadar(snapshot: DashboardSnapshot) -> some View {
+        DashboardProactiveInsightCard(
+            insights: proactiveInsights,
+            aiBriefing: aiBriefing,
+            isLoadingAIBriefing: isLoadingAIBriefing,
+            actionAvailability: { action in
+                proactiveActionAvailable(action, snapshot: snapshot)
+            },
+            onAction: { action in
+                handleProactiveAction(action, snapshot: snapshot)
+            }
+        )
     }
 
     private func dashboardExportMenu(snapshot: DashboardSnapshot) -> some View {
@@ -1202,6 +1225,105 @@ struct DashboardView: View {
         )
         await bridge.refreshDashboard(mode: mode.kotlinMode)
         await loadClassTrends()
+        rebuildProactiveRadar()
+    }
+
+    private func rebuildProactiveRadar() {
+        guard let snapshot = bridge.dashboardSnapshot else {
+            proactiveInsights = []
+            aiBriefing = nil
+            return
+        }
+        proactiveInsights = DashboardProactiveInsightEngine.build(
+            snapshot: snapshot,
+            trends: classTrends,
+            context: DashboardProactiveContext(
+                className: selectedClassLabel,
+                modeLabel: mode == .classroom ? "Clase" : "Despacho",
+                syncPendingChanges: bridge.syncPendingChanges,
+                pairedSyncHost: bridge.pairedSyncHost,
+                platformName: "iOS"
+            ),
+            limit: 5
+        )
+        loadAIBriefingIfNeeded(snapshot: snapshot)
+    }
+
+    private func loadAIBriefingIfNeeded(snapshot: DashboardSnapshot) {
+        let key = aiBriefingKey(snapshot: snapshot)
+        activeAIBriefingKey = key
+        if let cached = aiBriefingCache[key] {
+            aiBriefing = cached
+            return
+        }
+        aiBriefing = DashboardProactiveInsightEngine.fallbackBriefing(from: proactiveInsights, className: selectedClassLabel)
+        guard !isLoadingAIBriefing else { return }
+        isLoadingAIBriefing = true
+        let classId = selectedClassId
+        Task { @MainActor in
+            defer { isLoadingAIBriefing = false }
+            do {
+                let context = try await bridge.buildDashboardAIContext(classId: classId)
+                let draft = try await teachingAssistantService.generateDraft(
+                    for: .dailyBriefing,
+                    bridge: bridge,
+                    context: context,
+                    audience: .docente,
+                    tone: .breve,
+                    customPrompt: nil
+                )
+                guard activeAIBriefingKey == key else { return }
+                aiBriefingCache[key] = draft
+                aiBriefing = draft
+            } catch {
+                guard activeAIBriefingKey == key else { return }
+                let fallback = DashboardProactiveInsightEngine.fallbackBriefing(from: proactiveInsights, className: selectedClassLabel)
+                if let fallback {
+                    aiBriefingCache[key] = fallback
+                    aiBriefing = fallback
+                }
+            }
+        }
+    }
+
+    private func aiBriefingKey(snapshot: DashboardSnapshot) -> String {
+        let day = Calendar.current.startOfDay(for: Date()).timeIntervalSince1970
+        return "\(selectedClassId ?? -1)|\(modeRawValue)|\(day)|\(snapshot.pendingCount)|\(snapshot.alertsCount)|\(bridge.syncPendingChanges)"
+    }
+
+    private func proactiveActionAvailable(_ action: DashboardProactiveAction, snapshot: DashboardSnapshot) -> Bool {
+        switch action {
+        case .passList:
+            return dashboardActionClassId != nil
+        case .quickEvaluation, .evaluatePending:
+            return dashboardActionClassId != nil
+        case .openInspector:
+            return !snapshot.todaySessions.isEmpty || !snapshot.alerts.isEmpty || !snapshot.peItems.isEmpty
+        case .reviewPhysicalEducation:
+            return !snapshot.peItems.isEmpty
+        case .reviewSystem:
+            return false
+        case .openNotebook, .openPlanner, .openReports:
+            return false
+        }
+    }
+
+    private func handleProactiveAction(_ action: DashboardProactiveAction, snapshot: DashboardSnapshot) {
+        switch action {
+        case .passList:
+            Task { await performPassList() }
+        case .quickEvaluation, .evaluatePending:
+            performQuickEvaluation()
+        case .openInspector:
+            openInspectorForCurrentSnapshot()
+        case .reviewPhysicalEducation:
+            if let firstPE = snapshot.peItems.first {
+                inspectorSelection = .pe(firstPE.id)
+                isInspectorPresented = true
+            }
+        case .reviewSystem, .openNotebook, .openPlanner, .openReports:
+            break
+        }
     }
 
     private func csvToday(_ snapshot: DashboardSnapshot) -> String {
@@ -1543,4 +1665,3 @@ struct ScaleButtonStyle: ButtonStyle {
             .animation(.spring(response: 0.2, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }
-

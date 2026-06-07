@@ -144,13 +144,6 @@ fun main() = application {
                     val adapter = SqlDelightSyncAdapter(createdContainer)
                     LocalSyncServer(
                         syncCoordinator = SyncCoordinator(adapter),
-                        sqlDriver = createdContainer.driver,
-                        dataChangeListener = { entities ->
-                            CoroutineScope(Dispatchers.Main).launch {
-                                syncRefreshTick++
-                                println("[desktop] Sync remoto aplicado: ${entities.joinToString(",")}")
-                            }
-                        },
                     ).also { server ->
                         server.start()
                     }

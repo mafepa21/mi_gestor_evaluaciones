@@ -27,6 +27,7 @@ Prioridad: alta.
 - Asistencia: flujo diario rapido y consistente.
 - Alumnado: perfiles utiles, busqueda y datos relevantes.
 - Planificacion: sesiones, situaciones de aprendizaje y continuidad docente.
+- Dashboard: Radar docente proactivo para priorizar que pasa ahora, por que importa y que accion diaria ejecutar.
 
 ## Fase 2 - Apple premium
 
@@ -34,6 +35,7 @@ Prioridad: alta.
 
 - iPad: shell de trabajo clara, inspector no invasivo y acciones principales visibles.
 - macOS: paridad progresiva con convenciones desktop reales.
+- Dashboard Apple: briefing local no bloqueante con fallback determinista y acciones reales por plataforma.
 - Accesibilidad: contraste, foco, labels y navegacion por teclado donde aplique.
 - UI/UX: reducir ruido visual, reforzar jerarquia y mantener rejilla disciplinada.
 

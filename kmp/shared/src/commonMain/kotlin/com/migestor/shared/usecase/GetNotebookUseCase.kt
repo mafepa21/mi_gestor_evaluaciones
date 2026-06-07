@@ -2,6 +2,8 @@ package com.migestor.shared.usecase
 
 import com.migestor.shared.domain.NotebookCell
 import com.migestor.shared.domain.NotebookRow
+import com.migestor.shared.domain.Grade
+import com.migestor.shared.domain.PersistedNotebookCell
 import com.migestor.shared.formula.FormulaEvaluator
 import com.migestor.shared.repository.ClassesRepository
 import com.migestor.shared.repository.EvaluationsRepository
@@ -19,17 +21,21 @@ class GetNotebookUseCase(
         classId: Long,
         providedStudents: List<com.migestor.shared.domain.Student>? = null,
         providedEvaluations: List<com.migestor.shared.domain.Evaluation>? = null,
+        providedGrades: List<Grade>? = null,
+        providedCells: List<PersistedNotebookCell>? = null,
     ): NotebookResult {
         require(classId > 0) { "ClassId inválido" }
 
         val students = providedStudents ?: classesRepository.listStudentsInClass(classId)
         val evaluations = providedEvaluations ?: evaluationsRepository.listClassEvaluations(classId)
 
-        val allPersistedCells = notebookCellsRepository.listClassCells(classId)
+        val allPersistedCells = providedCells ?: notebookCellsRepository.listClassCells(classId)
         val cellsByStudent = allPersistedCells.groupBy { it.studentId }
+        val gradesByStudent = (providedGrades ?: gradesRepository.listGradesForClass(classId))
+            .groupBy { it.studentId }
 
         val rows = students.map { student ->
-            val grades = gradesRepository.listGradesForStudentInClass(student.id, classId)
+            val grades = gradesByStudent[student.id].orEmpty()
             val cells = evaluations.map { evaluation ->
                 val value = grades.firstOrNull {
                     it.evaluationId == evaluation.id || it.columnId == "eval_${evaluation.id}"

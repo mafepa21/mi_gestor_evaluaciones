@@ -102,6 +102,70 @@ struct TeachingEvidencePack {
     var factTexts: [String] { factsUsed.map(\.text) }
     var warningTexts: [String] { warnings.map(\.text) }
     var recommendedActionTexts: [String] { recommendedActions.map(\.text) }
+
+    func applyingAIBudget() -> TeachingEvidencePack {
+        TeachingEvidencePack(
+            useCase: useCase,
+            title: title,
+            subtitle: subtitle,
+            summary: AIContextBudget.text(summary, limit: 500),
+            metrics: Array(metrics.prefix(AIContextBudget.maxMetrics)),
+            factsUsed: AIContextBudget.evidenceLines(factTexts).map(FactItem.init),
+            warnings: AIContextBudget.lines(warningTexts, maxItems: AIContextBudget.maxWarnings, itemLimit: 140).map(WarningItem.init),
+            recommendedActions: AIContextBudget.lines(recommendedActionTexts, maxItems: AIContextBudget.maxActions, itemLimit: 140).map(RecommendedActionItem.init),
+            confidenceNote: confidenceNote.map { AIContextBudget.text($0, limit: 220) },
+            riskLevel: riskLevel,
+            sourceDigest: AIContextBudget.sourceDigest([sourceDigest]),
+            hasEnoughData: hasEnoughData
+        )
+    }
+}
+
+enum AIContextBudget {
+    static let maxMetrics = 4
+    static let maxFacts = 8
+    static let maxWarnings = 4
+    static let maxActions = 4
+    static let maxCharts = 3
+    static let maxSourceDigestCharacters = 1_500
+    static let maxIncludedEvidenceItems = 8
+    static let maxPromptCharacters = 6_000
+
+    static func lines(_ lines: [String], maxItems: Int, itemLimit: Int) -> [String] {
+        lines
+            .map { text($0, limit: itemLimit) }
+            .filter { !$0.isEmpty }
+            .prefix(maxItems)
+            .map { $0 }
+    }
+
+    static func evidenceLines(_ lines: [String]) -> [String] {
+        self.lines(lines, maxItems: maxIncludedEvidenceItems, itemLimit: 180)
+    }
+
+    static func sourceDigest(_ groups: [String]...) -> String {
+        var seen = Set<String>()
+        let compacted = groups
+            .flatMap { $0 }
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .filter { seen.insert($0).inserted }
+        return text(compacted.joined(separator: " "), limit: maxSourceDigestCharacters)
+    }
+
+    static func prompt(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count > maxPromptCharacters else { return trimmed }
+        return "\(trimmed.prefix(maxPromptCharacters))..."
+    }
+
+    static func text(_ value: String, limit: Int) -> String {
+        let normalized = value
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+        guard normalized.count > limit else { return normalized }
+        return "\(normalized.prefix(limit))..."
+    }
 }
 
 struct TeachingAssistantDraft {
@@ -135,31 +199,35 @@ enum DailyBriefEvidenceBuilder {
         let dashboard = try await bridge.buildDashboardAIContext(classId: classId)
         let diary = try await bridge.buildDiaryAIContext(classId: classId)
         let evaluation = try await bridge.buildEvaluationAIContext(classId: classId)
-        let facts = compactTexts(dashboard.factLines, Array(diary.factLines.prefix(2)), Array(evaluation.factLines.prefix(2))).map(FactItem.init)
-        let warnings = compactTexts(
+        let facts = AIContextBudget.lines(
+            compactTexts(dashboard.factLines, Array(diary.factLines.prefix(2)), Array(evaluation.factLines.prefix(2))),
+            maxItems: AIContextBudget.maxFacts,
+            itemLimit: 180
+        ).map(FactItem.init)
+        let warnings = AIContextBudget.lines(compactTexts(
             dashboard.supportNotes,
             diary.supportNotes,
             dashboard.dataQualityNote.map { [$0] } ?? [],
             diary.dataQualityNote.map { [$0] } ?? [],
             evaluation.dataQualityNote.map { [$0] } ?? []
-        ).prefix(4).map(WarningItem.init)
-        let actions = compactTexts(
+        ), maxItems: AIContextBudget.maxWarnings, itemLimit: 140).map(WarningItem.init)
+        let actions = AIContextBudget.lines(compactTexts(
             dashboard.suggestedActions.map(\.subtitle),
             diary.suggestedActions.map(\.subtitle),
             evaluation.suggestedActions.map(\.subtitle)
-        ).prefix(4).map(RecommendedActionItem.init)
+        ), maxItems: AIContextBudget.maxActions, itemLimit: 140).map(RecommendedActionItem.init)
         return TeachingEvidencePack(
             useCase: .dailyBriefing,
             title: "Briefing docente diario",
             subtitle: dashboard.className ?? dashboard.subtitle,
             summary: "Panorámica breve del día con foco en prioridad operativa, seguimiento y evaluación pendiente.",
-            metrics: dashboard.metrics,
-            factsUsed: Array(facts.prefix(6)),
+            metrics: Array(dashboard.metrics.prefix(AIContextBudget.maxMetrics)),
+            factsUsed: facts,
             warnings: Array(warnings),
             recommendedActions: Array(actions),
             confidenceNote: firstNonEmpty(dashboard.dataQualityNote, diary.dataQualityNote, evaluation.dataQualityNote),
             riskLevel: nil,
-            sourceDigest: compactTexts([dashboard.summary, diary.summary, evaluation.summary]).joined(separator: " "),
+            sourceDigest: AIContextBudget.sourceDigest([dashboard.summary, diary.summary, evaluation.summary]),
             hasEnoughData: dashboard.hasEnoughData || diary.hasEnoughData || evaluation.hasEnoughData
         )
     }
@@ -242,7 +310,7 @@ enum StudentRiskEvidenceBuilder {
             recommendedActions: Array(actions.prefix(5)),
             confidenceNote: profile.instrumentsCount == 0 ? "La lectura es prudente porque todavía hay poca evidencia evaluativa." : nil,
             riskLevel: level,
-            sourceDigest: compactTexts([level.summarySentence], warnings.map(\.text), actions.map(\.text)).joined(separator: " "),
+            sourceDigest: AIContextBudget.sourceDigest([level.summarySentence], warnings.map(\.text), actions.map(\.text)),
             hasEnoughData: profile.instrumentsCount > 0 || profile.incidentCount > 0 || profile.followUpCount > 0 || profile.journalNoteCount > 0
         )
     }
@@ -355,7 +423,7 @@ enum NotebookCommentEvidenceBuilder {
             recommendedActions: Array(actions.prefix(3)),
             confidenceNote: context.dataQualityNote,
             riskLevel: nil,
-            sourceDigest: compactTexts([context.summary], facts.map(\.text)).joined(separator: " "),
+            sourceDigest: AIContextBudget.sourceDigest([context.summary], facts.map(\.text)),
             hasEnoughData: context.hasEnoughData
         )
     }
@@ -381,26 +449,34 @@ enum GroupInsightEvidenceBuilder {
             )
         }
         let charts = try await bridge.buildPrebuiltAnalyticsCharts(classId: classId, timeRange: timeRange)
-        let selectedCharts = Array(charts.prefix(3))
-        let facts = selectedCharts.flatMap { chart in compactTexts(["\(chart.title): \(chart.teacherDigest)"], Array(chart.factLines.prefix(2))) }.map(FactItem.init)
-        let warnings = selectedCharts.flatMap { chart in compactTexts(chart.warnings, chart.emptyStateMessage.map { [$0] } ?? []) }.map(WarningItem.init)
-        let actions = compactTexts([
+        let selectedCharts = Array(charts.prefix(AIContextBudget.maxCharts))
+        let facts = AIContextBudget.lines(
+            selectedCharts.flatMap { chart in compactTexts(["\(chart.title): \(chart.teacherDigest)"], Array(chart.factLines.prefix(2))) },
+            maxItems: AIContextBudget.maxFacts,
+            itemLimit: 180
+        ).map(FactItem.init)
+        let warnings = AIContextBudget.lines(
+            selectedCharts.flatMap { chart in compactTexts(chart.warnings, chart.emptyStateMessage.map { [$0] } ?? []) },
+            maxItems: AIContextBudget.maxWarnings,
+            itemLimit: 140
+        ).map(WarningItem.init)
+        let actions = AIContextBudget.lines(compactTexts([
             "Revisar primero el gráfico con más alertas o variación reciente.",
             "Cruzar asistencia, incidencias y evaluación antes de sacar conclusiones firmes.",
             "Usar este insight como apoyo de decisión, no como juicio automático."
-        ]).map(RecommendedActionItem.init)
+        ]), maxItems: AIContextBudget.maxActions, itemLimit: 140).map(RecommendedActionItem.init)
         return TeachingEvidencePack(
             useCase: .groupInsight,
             title: "Inspector analítico del grupo",
             subtitle: selectedCharts.first?.subtitle ?? "Patrones del grupo",
             summary: "Lectura guiada del grupo a partir de paneles analíticos ya disponibles y hechos verificables.",
-            metrics: selectedCharts.first?.metrics ?? [],
-            factsUsed: Array(facts.prefix(8)),
-            warnings: Array(warnings.prefix(4)),
+            metrics: Array((selectedCharts.first?.metrics ?? []).prefix(AIContextBudget.maxMetrics)),
+            factsUsed: facts,
+            warnings: warnings,
             recommendedActions: Array(actions),
             confidenceNote: selectedCharts.isEmpty ? "No hay paneles analíticos suficientes para una lectura fiable." : nil,
             riskLevel: nil,
-            sourceDigest: selectedCharts.map { $0.insertableSummary }.joined(separator: " "),
+            sourceDigest: AIContextBudget.sourceDigest(selectedCharts.map { $0.insertableSummary }),
             hasEnoughData: selectedCharts.contains { $0.hasEnoughData }
         )
     }
@@ -429,7 +505,7 @@ enum SessionClosureEvidenceBuilder {
             recommendedActions: Array(actions),
             confidenceNote: diary.dataQualityNote,
             riskLevel: nil,
-            sourceDigest: compactTexts([diary.summary], firstNonEmpty(pe?.summary).map { [$0] } ?? []).joined(separator: " "),
+            sourceDigest: AIContextBudget.sourceDigest([diary.summary], firstNonEmpty(pe?.summary).map { [$0] } ?? []),
             hasEnoughData: diary.hasEnoughData || (pe?.hasEnoughData ?? false)
         )
     }
@@ -443,21 +519,33 @@ enum CoverageAuditEvidenceBuilder {
         }
         let reportContext = try await bridge.buildReportGenerationContext(classId: classId, kind: .groupOverview, termLabel: nil)
         let evaluationContext = try await bridge.buildEvaluationAIContext(classId: classId)
-        let facts = compactTexts(reportContext.factLines, evaluationContext.factLines).map(FactItem.init)
-        let warnings = compactTexts(reportContext.needsAttention, evaluationContext.supportNotes, evaluationContext.dataQualityNote.map { [$0] } ?? []).map(WarningItem.init)
-        let actions = compactTexts(reportContext.recommendedActions, ["Añadir evidencias nuevas antes del siguiente informe si aparecen huecos de cobertura."]).map(RecommendedActionItem.init)
+        let facts = AIContextBudget.lines(
+            compactTexts(Array(reportContext.factLines.prefix(AIContextBudget.maxFacts)), Array(evaluationContext.factLines.prefix(AIContextBudget.maxFacts))),
+            maxItems: AIContextBudget.maxFacts,
+            itemLimit: 180
+        ).map(FactItem.init)
+        let warnings = AIContextBudget.lines(
+            compactTexts(Array(reportContext.needsAttention.prefix(AIContextBudget.maxWarnings)), evaluationContext.supportNotes, evaluationContext.dataQualityNote.map { [$0] } ?? []),
+            maxItems: AIContextBudget.maxWarnings,
+            itemLimit: 140
+        ).map(WarningItem.init)
+        let actions = AIContextBudget.lines(
+            compactTexts(reportContext.recommendedActions, ["Añadir evidencias nuevas antes del siguiente informe si aparecen huecos de cobertura."]),
+            maxItems: AIContextBudget.maxActions,
+            itemLimit: 140
+        ).map(RecommendedActionItem.init)
         return TeachingEvidencePack(
             useCase: .coverageAudit,
             title: "Auditoría de cobertura evaluativa",
             subtitle: reportContext.className,
             summary: "Lectura rápida de cobertura usando estructura evaluativa y evidencias registradas en el grupo.",
-            metrics: evaluationContext.metrics,
-            factsUsed: Array(facts.prefix(8)),
-            warnings: Array(warnings.prefix(4)),
-            recommendedActions: Array(actions.prefix(4)),
+            metrics: Array(evaluationContext.metrics.prefix(AIContextBudget.maxMetrics)),
+            factsUsed: facts,
+            warnings: warnings,
+            recommendedActions: actions,
             confidenceNote: reportContext.dataQualityNote ?? evaluationContext.dataQualityNote,
             riskLevel: nil,
-            sourceDigest: compactTexts([reportContext.summary, evaluationContext.summary]).joined(separator: " "),
+            sourceDigest: AIContextBudget.sourceDigest([reportContext.summary, evaluationContext.summary]),
             hasEnoughData: reportContext.hasEnoughData || evaluationContext.hasEnoughData
         )
     }
@@ -503,7 +591,11 @@ final class AppleFoundationTeachingAssistantService {
             }
             let kind: KmpBridge.ReportKind = context.studentId == nil ? .groupOverview : .studentSummary
             let reportContext = try await bridge.buildReportGenerationContext(classId: classId, studentId: context.studentId, kind: kind, termLabel: nil)
-            let generation = try await aiOrchestrator.generateWithTrace(.report(reportContext, audience, tone), dataSource: reportContext.className, includedEvidence: reportContext.factLines)
+            let generation = try await aiOrchestrator.generateWithTrace(
+                .report(reportContext, audience, tone),
+                dataSource: reportContext.className,
+                includedEvidence: AIContextBudget.evidenceLines(reportContext.factLines)
+            )
             guard case .report(let draft) = generation.result else {
                 throw AIContextualServiceError.insufficientContext("No se pudo preparar el borrador de tutoría.")
             }
@@ -517,12 +609,16 @@ final class AppleFoundationTeachingAssistantService {
                 classId: resolvedClassId,
                 request: KmpBridge.AnalyticsRequest(chartKind: .sameCourseComparison, timeRange: .last30Days, selectedClassIds: context.classId.map { [$0] } ?? [], selectedClassNames: context.className.map { [$0] } ?? [], prompt: nil, querySummary: "Comparativa global del grupo")
             ), chart.hasEnoughData {
-                let generation = try? await aiOrchestrator.generateWithTrace(.chartInsight(chart), dataSource: chart.subtitle, includedEvidence: chart.factLines)
+                let generation = try? await aiOrchestrator.generateWithTrace(
+                    .chartInsight(chart),
+                    dataSource: chart.subtitle,
+                    includedEvidence: AIContextBudget.evidenceLines(chart.factLines)
+                )
                 let insight: AIChartInsight? = {
                     guard case .chartInsight(let value) = generation?.result else { return nil }
                     return value
                 }()
-                let enrichedPack = TeachingEvidencePack(useCase: pack.useCase, title: pack.title, subtitle: chart.subtitle, summary: insight?.insight ?? pack.summary, metrics: chart.metrics, factsUsed: pack.factsUsed, warnings: compactTexts(pack.warningTexts, insight?.warnings ?? []).map(WarningItem.init), recommendedActions: compactTexts(pack.recommendedActionTexts, insight?.recommendedActions ?? []).map(RecommendedActionItem.init), confidenceNote: pack.confidenceNote, riskLevel: nil, sourceDigest: compactTexts([pack.sourceDigest], firstNonEmpty(insight?.insertableSummary).map { [$0] } ?? []).joined(separator: " "), hasEnoughData: true)
+                let enrichedPack = TeachingEvidencePack(useCase: pack.useCase, title: pack.title, subtitle: chart.subtitle, summary: insight?.insight ?? pack.summary, metrics: chart.metrics, factsUsed: pack.factsUsed, warnings: compactTexts(pack.warningTexts, insight?.warnings ?? []).map(WarningItem.init), recommendedActions: compactTexts(pack.recommendedActionTexts, insight?.recommendedActions ?? []).map(RecommendedActionItem.init), confidenceNote: pack.confidenceNote, riskLevel: nil, sourceDigest: AIContextBudget.sourceDigest([pack.sourceDigest], firstNonEmpty(insight?.insertableSummary).map { [$0] } ?? []), hasEnoughData: true).applyingAIBudget()
                 return try await tracedTeachingDraft(enrichedPack, audience: audience, tone: tone, customPrompt: customPrompt)
             }
             return try await tracedTeachingDraft(pack, audience: audience, tone: tone, customPrompt: customPrompt)
@@ -543,10 +639,11 @@ final class AppleFoundationTeachingAssistantService {
     }
 
     private func tracedTeachingDraft(_ pack: TeachingEvidencePack, audience: AIReportAudience, tone: AIReportTone, customPrompt: String?) async throws -> TeachingAssistantDraft {
+        let budgetedPack = pack.applyingAIBudget()
         let generation = try await aiOrchestrator.generateWithTrace(
-            .teachingDraft(pack, audience, tone, customPrompt),
-            dataSource: pack.subtitle,
-            includedEvidence: pack.factTexts
+            .teachingDraft(budgetedPack, audience, tone, customPrompt),
+            dataSource: budgetedPack.subtitle,
+            includedEvidence: AIContextBudget.evidenceLines(budgetedPack.factTexts)
         )
         guard case .teachingDraft(let draft) = generation.result else {
             throw AIContextualServiceError.insufficientContext("No se pudo generar el borrador docente.")
@@ -929,6 +1026,8 @@ final class AppleFoundationContextualAIService {
 
     private var activeTeachingRiskLevel: RiskLevel?
     private var activeTeachingConfidenceFallback: String?
+    private var contextualPromptCache: [String: String] = [:]
+    private var notebookPromptCache: [String: String] = [:]
     private var runtimeFailureObserver: NSObjectProtocol?
 
     init() {
@@ -1221,7 +1320,7 @@ final class AppleFoundationContextualAIService {
     ) async throws -> ContextualAIResult {
         let session = consumeContextualSession()
         let response = try await session.respond(
-            to: contextualPrompt(from: context, action: action, audience: audience, tone: tone, customPrompt: customPrompt),
+            to: cachedContextualPrompt(from: context, action: action, audience: audience, tone: tone, customPrompt: customPrompt),
             generating: GeneratedContextualAIResult.self,
             includeSchemaInPrompt: true,
             options: AppleFoundationModelSupport.generationOptions(temperature: 0.25)
@@ -1268,7 +1367,7 @@ final class AppleFoundationContextualAIService {
     ) async throws -> NotebookAICommentDraft {
         let session = consumeNotebookSession()
         let response = try await session.respond(
-            to: notebookPrompt(from: context, audience: audience, tone: tone),
+            to: cachedNotebookPrompt(from: context, audience: audience, tone: tone),
             generating: GeneratedNotebookCommentDraft.self,
             includeSchemaInPrompt: true,
             options: AppleFoundationModelSupport.generationOptions(temperature: 0.3)
@@ -1389,7 +1488,7 @@ final class AppleFoundationContextualAIService {
         let facts = context.factLines.prefix(6).map { "- \($0)" }.joined(separator: "\n")
         let notes = context.supportNotes.prefix(3).map { "- \($0)" }.joined(separator: "\n")
 
-        return """
+        return AIContextBudget.prompt("""
         Genera una ayuda contextual breve para la pantalla activa.
 
         Pantalla: \(context.title)
@@ -1423,7 +1522,43 @@ final class AppleFoundationContextualAIService {
         - bullets: entre 2 y 4 puntos accionables.
         - recommendedActions: entre 1 y 3 acciones concretas.
         - No repitas literalmente todas las métricas.
-        """
+        """)
+    }
+
+    @available(iOS 26.0, macOS 26.0, *)
+    private func cachedContextualPrompt(
+        from context: KmpBridge.ScreenAIContext,
+        action: KmpBridge.ContextualAIAction,
+        audience: AIReportAudience,
+        tone: AIReportTone,
+        customPrompt: String?
+    ) -> String {
+        let key = [
+            "screen",
+            context.kind.rawValue,
+            "\(context.classId ?? -1)",
+            "\(context.studentId ?? -1)",
+            action.actionId.rawValue,
+            audience.rawValue,
+            tone.rawValue,
+            customPrompt ?? "",
+            context.summary,
+            context.metrics.map { "\($0.title):\($0.value)" }.joined(separator: "|"),
+            AIContextBudget.evidenceLines(context.factLines).joined(separator: "|"),
+            AIContextBudget.lines(context.supportNotes, maxItems: AIContextBudget.maxWarnings, itemLimit: 140).joined(separator: "|"),
+            context.dataQualityNote ?? ""
+        ].joined(separator: "¬").hashValue.description
+
+        if let cached = contextualPromptCache[key] {
+            NotebookGridPerformanceDebug.event("contextualAIPrompt hit")
+            return cached
+        }
+        let prompt = contextualPrompt(from: context, action: action, audience: audience, tone: tone, customPrompt: customPrompt)
+        contextualPromptCache[key] = prompt
+        if contextualPromptCache.count > 8 {
+            contextualPromptCache.removeValue(forKey: contextualPromptCache.keys.first ?? key)
+        }
+        return prompt
     }
 
     @available(iOS 26.0, macOS 26.0, *)
@@ -1439,7 +1574,7 @@ final class AppleFoundationContextualAIService {
         let warnings = evidence.warningTexts.map { "- \($0)" }.joined(separator: "\n")
         let actions = evidence.recommendedActionTexts.map { "- \($0)" }.joined(separator: "\n")
 
-        return """
+        return AIContextBudget.prompt("""
         Genera un comentario de cuaderno editable por el profesorado.
 
         Alumno: \(context.studentName)
@@ -1481,7 +1616,42 @@ final class AppleFoundationContextualAIService {
         - factsUsed: entre 2 y 5 hechos realmente utilizados.
         - warnings: entre 0 y 3 advertencias prudentes.
         - No menciones una nota oficial ni inventes causas.
-        """
+        """)
+    }
+
+    @available(iOS 26.0, macOS 26.0, *)
+    private func cachedNotebookPrompt(
+        from context: KmpBridge.NotebookAICommentContext,
+        audience: AIReportAudience,
+        tone: AIReportTone
+    ) -> String {
+        let key = [
+            "notebook",
+            "\(context.classId)",
+            "\(context.studentId)",
+            audience.rawValue,
+            tone.rawValue,
+            context.summary,
+            "\(context.averageScore ?? -1)",
+            "\(context.followUpCount)",
+            "\(context.incidentCount)",
+            "\(context.evidenceCount)",
+            context.relevantValues.prefix(5).map { "\($0.title):\($0.categoryLabel):\($0.value)" }.joined(separator: "|"),
+            context.competencyLabels.prefix(3).joined(separator: "|"),
+            context.dataQualityNote ?? "",
+            context.existingComment ?? ""
+        ].joined(separator: "¬").hashValue.description
+
+        if let cached = notebookPromptCache[key] {
+            NotebookGridPerformanceDebug.event("notebookAIPrompt hit")
+            return cached
+        }
+        let prompt = notebookPrompt(from: context, audience: audience, tone: tone)
+        notebookPromptCache[key] = prompt
+        if notebookPromptCache.count > 8 {
+            notebookPromptCache.removeValue(forKey: notebookPromptCache.keys.first ?? key)
+        }
+        return prompt
     }
 
     @available(iOS 26.0, macOS 26.0, *)
@@ -1496,7 +1666,7 @@ final class AppleFoundationContextualAIService {
         let warnings = evidence.warningTexts.prefix(3).map { "- \($0)" }.joined(separator: "\n")
         let actions = evidence.recommendedActionTexts.prefix(3).map { "- \($0)" }.joined(separator: "\n")
 
-        return """
+        return AIContextBudget.prompt("""
         Genera una ayuda docente grounded y accionable.
 
         Caso de uso: \(evidence.useCase.title)
@@ -1534,7 +1704,7 @@ final class AppleFoundationContextualAIService {
         - recommendedActions: entre 1 y 4 acciones concretas.
         - confidenceNote: deja una cadena vacía salvo que haya una limitación real de datos; si la hay, una sola frase breve.
         - No inventes causas, diagnósticos, sanciones ni etiquetas sensibles.
-        """
+        """)
     }
 
     @available(iOS 26.0, macOS 26.0, *)
@@ -1547,7 +1717,7 @@ final class AppleFoundationContextualAIService {
             let maxText = range.maxValue.map { String(format: "%.2f", $0) } ?? "null"
             return #"{"index":\#(index + 1),"minValue":\#(minText),"maxValue":\#(maxText),"score":\#(String(format: "%.1f", range.score)),"label":"\#(range.label)"}"#
         }.joined(separator: "\n")
-        return """
+        return AIContextBudget.prompt("""
         Genera una propuesta editable de baremo físico para el módulo EF · Condición física.
         Debes devolver exactamente la estructura generada por el schema, equivalente a JSON estricto.
 
@@ -1584,7 +1754,7 @@ final class AppleFoundationContextualAIService {
         - warnings debe incluir prudencia sobre contexto, seguridad, diversidad del alumnado y revisión docente.
         - warnings debe incluir literalmente: \(PhysicalScaleProfileCatalog.safetyWarnings.joined(separator: " | "))
         - editableProposal debe poder pegarse como borrador docente breve.
-        """
+        """)
     }
 
     @available(iOS 26.0, macOS 26.0, *)

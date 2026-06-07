@@ -94,6 +94,7 @@ CREATE TABLE IF NOT EXISTS rubric_criteria (
     sync_version INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (rubric_id) REFERENCES rubrics(id) ON DELETE CASCADE
 );
+CREATE INDEX IF NOT EXISTS idx_rubric_criteria_rubric_sort ON rubric_criteria(rubric_id, sort_order, id);
 
 CREATE TABLE IF NOT EXISTS rubric_levels (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -108,6 +109,7 @@ CREATE TABLE IF NOT EXISTS rubric_levels (
     sync_version INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (criterion_id) REFERENCES rubric_criteria(id) ON DELETE CASCADE
 );
+CREATE INDEX IF NOT EXISTS idx_rubric_levels_criterion_sort ON rubric_levels(criterion_id, sort_order, id);
 
 CREATE TABLE IF NOT EXISTS evaluations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -128,6 +130,7 @@ CREATE TABLE IF NOT EXISTS evaluations (
     FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
     FOREIGN KEY (rubric_id) REFERENCES rubrics(id) ON DELETE SET NULL
 );
+CREATE INDEX IF NOT EXISTS idx_evaluations_class_id ON evaluations(class_id, id);
 
 CREATE TABLE IF NOT EXISTS grades (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -187,6 +190,8 @@ CREATE TABLE IF NOT EXISTS attendance (
     FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
     FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE
 );
+CREATE INDEX IF NOT EXISTS idx_attendance_class_date_student ON attendance(class_id, date_epoch_ms DESC, student_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_class_student_date ON attendance(class_id, student_id, date_epoch_ms DESC);
 
 CREATE TABLE IF NOT EXISTS backup_entries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -299,6 +304,8 @@ CREATE TABLE IF NOT EXISTS teacher_schedule_slots (
     FOREIGN KEY (school_class_id) REFERENCES classes(id) ON DELETE CASCADE,
     FOREIGN KEY (weekly_template_id) REFERENCES weekly_slot_template(id) ON DELETE SET NULL
 );
+CREATE INDEX IF NOT EXISTS idx_teacher_schedule_slots_schedule_day_start ON teacher_schedule_slots(teacher_schedule_id, day_of_week, start_time, id);
+CREATE INDEX IF NOT EXISTS idx_teacher_schedule_slots_class_day_start ON teacher_schedule_slots(school_class_id, day_of_week, start_time);
 
 CREATE TABLE IF NOT EXISTS planner_evaluation_periods (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -357,6 +364,7 @@ CREATE TABLE IF NOT EXISTS evaluation_competency_links (
     FOREIGN KEY (evaluation_id) REFERENCES evaluations(id) ON DELETE CASCADE,
     FOREIGN KEY (competency_id) REFERENCES competency_criteria(id) ON DELETE CASCADE
 );
+CREATE INDEX IF NOT EXISTS idx_evaluation_competency_links_evaluation ON evaluation_competency_links(evaluation_id, id);
 
 CREATE TABLE IF NOT EXISTS incidents (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -375,6 +383,8 @@ CREATE TABLE IF NOT EXISTS incidents (
     FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
     FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE SET NULL
 );
+CREATE INDEX IF NOT EXISTS idx_incidents_class_date ON incidents(class_id, date_epoch_ms DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_incidents_class_student_date ON incidents(class_id, student_id, date_epoch_ms DESC);
 
 CREATE TABLE IF NOT EXISTS calendar_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -464,6 +474,7 @@ CREATE TABLE IF NOT EXISTS learning_situation_versions (
     UNIQUE(learning_situation_id, version_number),
     FOREIGN KEY (learning_situation_id) REFERENCES learning_situations(id) ON DELETE CASCADE
 );
+CREATE INDEX IF NOT EXISTS idx_learning_situation_versions_lookup ON learning_situation_versions(learning_situation_id, version_number DESC);
 
 CREATE TABLE IF NOT EXISTS learning_situation_classes (
     learning_situation_id INTEGER NOT NULL,
@@ -492,6 +503,7 @@ CREATE TABLE IF NOT EXISTS learning_situation_links (
     FOREIGN KEY (learning_situation_id) REFERENCES learning_situations(id) ON DELETE CASCADE,
     FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE SET NULL
 );
+CREATE INDEX IF NOT EXISTS idx_learning_situation_links_lookup ON learning_situation_links(learning_situation_id, resource_kind, label);
 
 CREATE TABLE IF NOT EXISTS learning_situation_sequence_versions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -510,6 +522,7 @@ CREATE TABLE IF NOT EXISTS learning_situation_sequence_versions (
     UNIQUE(learning_situation_id, version_number),
     FOREIGN KEY (learning_situation_id) REFERENCES learning_situations(id) ON DELETE CASCADE
 );
+CREATE INDEX IF NOT EXISTS idx_learning_situation_sequence_versions_lookup ON learning_situation_sequence_versions(learning_situation_id, version_number DESC);
 
 CREATE TABLE IF NOT EXISTS learning_situation_session_plans (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -533,6 +546,7 @@ CREATE TABLE IF NOT EXISTS learning_situation_session_plans (
     FOREIGN KEY (learning_situation_id) REFERENCES learning_situations(id) ON DELETE CASCADE,
     FOREIGN KEY (sequence_version_id) REFERENCES learning_situation_sequence_versions(id) ON DELETE CASCADE
 );
+CREATE INDEX IF NOT EXISTS idx_learning_situation_session_plans_sequence ON learning_situation_session_plans(sequence_version_id, session_number);
 
 CREATE TABLE IF NOT EXISTS notebook_cell_entries (
     class_id INTEGER NOT NULL,
@@ -560,6 +574,7 @@ CREATE TABLE IF NOT EXISTS notebook_cell_entries (
     FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
     FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
 );
+CREATE INDEX IF NOT EXISTS idx_notebook_cell_entries_column ON notebook_cell_entries(column_id);
 
 selectAllStudents:
 SELECT id, first_name, last_name, email, photo_path, is_injured, sex, sex_source, birth_date_iso, updated_at_epoch_ms, device_id, sync_version
@@ -648,7 +663,7 @@ FROM grades
 WHERE student_id = ? AND class_id = ?;
 
 selectGradeByStudentClassAndColumn:
-SELECT updated_at_epoch_ms, device_id
+SELECT value, updated_at_epoch_ms, device_id
 FROM grades
 WHERE class_id = ? AND student_id = ? AND column_id = ?
 LIMIT 1;
@@ -892,6 +907,12 @@ SELECT id, teacher_schedule_id, school_class_id, subject_label, unit_label, day_
 FROM teacher_schedule_slots
 WHERE teacher_schedule_id = ?
 ORDER BY day_of_week, start_time, id;
+
+selectTeacherScheduleSlotsForClassAndDay:
+SELECT id, teacher_schedule_id, school_class_id, subject_label, unit_label, day_of_week, start_time, end_time, weekly_template_id
+FROM teacher_schedule_slots
+WHERE school_class_id = ? AND day_of_week = ?
+ORDER BY start_time, id;
 
 selectTeacherScheduleSlotById:
 SELECT id, teacher_schedule_id, school_class_id, subject_label, unit_label, day_of_week, start_time, end_time, weekly_template_id
@@ -1731,6 +1752,7 @@ CREATE TABLE IF NOT EXISTS notebook_cell_audit_events (
     FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
     FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
 );
+CREATE INDEX IF NOT EXISTS idx_notebook_cell_audit_lookup ON notebook_cell_audit_events(class_id, student_id, column_id, changed_at_epoch_ms DESC);
 
 insertNotebookCellAudit:
 INSERT INTO notebook_cell_audit_events(

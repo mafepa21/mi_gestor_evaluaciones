@@ -405,24 +405,20 @@ struct NotebookModuleView: View {
 
     @ViewBuilder
     func spreadsheetContent(data: NotebookUiStateData, rows: [NotebookTableRow]) -> some View {
-        let segments = displaySegments(data: data)
-        let fixedSegments = gridLayoutModel.visibleFixedSegments(in: segments)
-        let leadingFixedSegments = fixedSegments.filter { !gridLayoutModel.isTrailingFixedSegment($0) }
-        let trailingFixedSegments = fixedSegments.filter(gridLayoutModel.isTrailingFixedSegment)
-        let scrollableSegments = segments.filter { !gridLayoutModel.isFixedSegment($0) }
-        let laneItems = gridLayoutModel.headerLaneItems(data: data, activeTabId: activeNotebookTabId(data: data), segments: scrollableSegments)
+        let renderModel = gridLayoutModel.renderModel(
+            data: data,
+            activeTabId: activeNotebookTabId(data: data),
+            viewPreset: viewPreset,
+            isCompact: isCompact
+        )
         let trailingPaddingCompensation = NotebookStyle.outerPadding * 2
-        let hasFolders = laneItems.contains {
-            if case .folder = $0 { return true }
-            return false
-        }
-        let shouldShowFolderLane = hasFolders && !isCompact
+        let shouldShowFolderLane = renderModel.hasGroupedHeaders
 
         NotebookGridContent(
             rows: rows,
             surfaceMode: surfaceMode,
             fixedColumnWidth: fixedZoneWidth,
-            trailingFixedColumnWidth: trailingFixedSegments.isEmpty ? 0 : defaultFixedWidth(for: .average) + trailingPaddingCompensation,
+            trailingFixedColumnWidth: renderModel.trailingFixedSegments.isEmpty ? 0 : defaultFixedWidth(for: .average) + trailingPaddingCompensation,
             isFixedColumnResizing: isDraggingFixedZoneDivider,
             topAccessoryHeight: shouldShowFolderLane ? notebookGridFolderLaneHeight : 0,
             headerHeight: notebookGridHeaderHeight,
@@ -430,9 +426,9 @@ struct NotebookModuleView: View {
             structuralInvalidationKey: gridStructuralInvalidationKey(data: data),
             rowReloadRevisions: rowReloadRevisions,
             transientCellIds: transientGridCellIds,
-            fixedSegments: leadingFixedSegments,
-            trailingFixedSegments: trailingFixedSegments,
-            scrollableSegments: scrollableSegments
+            fixedSegments: renderModel.fixedSegments,
+            trailingFixedSegments: renderModel.trailingFixedSegments,
+            scrollableSegments: renderModel.scrollableSegments
         ) {
             IOSEmptyState(
                 title: "Sin alumnos visibles",
@@ -484,7 +480,7 @@ struct NotebookModuleView: View {
             Group {
                 if shouldShowFolderLane {
                     HStack(alignment: .top, spacing: 8) {
-                        ForEach(laneItems, id: \.id) { item in
+                        ForEach(renderModel.laneItems, id: \.id) { item in
                             switch item {
                             case .spacer(_, let width):
                                 Color.clear
@@ -521,7 +517,7 @@ struct NotebookModuleView: View {
                 segments: segments,
                 rowIndex: index,
                 allRows: rows,
-                navigableSegments: scrollableSegments
+                navigableSegments: renderModel.scrollableSegments
             )
         }
     }

@@ -393,13 +393,13 @@ final class AppleFoundationReportService {
         audience: AIReportAudience,
         tone: AIReportTone
     ) -> String {
-        let metrics = context.metrics.prefix(4).map {
+        let metrics = context.metrics.prefix(AIContextBudget.maxMetrics).map {
             "- \(promptFragment($0.title, limit: 60)): \(promptFragment($0.value, limit: 60))"
         }.joined(separator: "\n")
-        let facts = promptLines(context.factLines, maxItems: 6, itemLimit: 120, fallback: "Sin hechos adicionales.")
+        let facts = promptLines(context.factLines, maxItems: AIContextBudget.maxFacts, itemLimit: 120, fallback: "Sin hechos adicionales.")
         let strengths = promptLines(context.strengths, maxItems: 4, itemLimit: 100, fallback: "Sin fortalezas concluyentes.")
-        let needsAttention = promptLines(context.needsAttention, maxItems: 4, itemLimit: 100, fallback: "Sin alertas concluyentes.")
-        let actions = promptLines(context.recommendedActions, maxItems: 4, itemLimit: 100, fallback: "Mantener recogida de evidencias.")
+        let needsAttention = promptLines(context.needsAttention, maxItems: AIContextBudget.maxWarnings, itemLimit: 100, fallback: "Sin alertas concluyentes.")
+        let actions = promptLines(context.recommendedActions, maxItems: AIContextBudget.maxActions, itemLimit: 100, fallback: "Mantener recogida de evidencias.")
         let notes = promptLines(context.supportNotes, maxItems: 3, itemLimit: 100, fallback: "Sin notas de apoyo adicionales.")
         let curriculumReferences = promptLines(context.curriculumReferences, maxItems: 3, itemLimit: 100, fallback: "Sin referencias curriculares preseleccionadas.")
         let promptDirectives = promptLines(context.promptDirectives, maxItems: 3, itemLimit: 100, fallback: "Redacción general prudente.")
@@ -449,7 +449,7 @@ final class AppleFoundationReportService {
             }
         }()
 
-        return """
+        return AIContextBudget.prompt("""
         Genera un borrador estructurado para un informe escolar.
 
         Tipo de informe: \(promptFragment(context.kind.title, limit: 80))
@@ -508,7 +508,7 @@ final class AppleFoundationReportService {
         - Debe usar 4 bloques integrados: resultados de aprendizaje, evolución personal, progresos/talentos y orientaciones.
         - Si hay adaptaciones o apoyos, añádelos en una frase breve antes de las orientaciones.
         - Usa una redacción estable y consistente entre regeneraciones.
-        """
+        """)
     }
 
     @available(iOS 26.0, macOS 26.0, *)
@@ -525,12 +525,12 @@ final class AppleFoundationReportService {
             audience.rawValue,
             tone.rawValue,
             context.summary,
-            context.metrics.map { "\($0.title):\($0.value)" }.joined(separator: "|"),
-            context.factLines.joined(separator: "|"),
-            context.strengths.joined(separator: "|"),
-            context.needsAttention.joined(separator: "|"),
-            context.recommendedActions.joined(separator: "|"),
-            context.supportNotes.joined(separator: "|"),
+            context.metrics.prefix(AIContextBudget.maxMetrics).map { "\($0.title):\($0.value)" }.joined(separator: "|"),
+            AIContextBudget.evidenceLines(context.factLines).joined(separator: "|"),
+            AIContextBudget.lines(context.strengths, maxItems: 4, itemLimit: 100).joined(separator: "|"),
+            AIContextBudget.lines(context.needsAttention, maxItems: AIContextBudget.maxWarnings, itemLimit: 100).joined(separator: "|"),
+            AIContextBudget.lines(context.recommendedActions, maxItems: AIContextBudget.maxActions, itemLimit: 100).joined(separator: "|"),
+            AIContextBudget.lines(context.supportNotes, maxItems: 3, itemLimit: 100).joined(separator: "|"),
             context.dataQualityNote ?? ""
         ].joined(separator: "¬").hashValue.description
 

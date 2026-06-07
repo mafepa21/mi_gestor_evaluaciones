@@ -121,6 +121,7 @@ final class AppleAIOrchestrator {
         let startedAt = Date()
         let availability = availability()
         let result = try await generate(request)
+        let boundedEvidence = AIContextBudget.evidenceLines(includedEvidence)
         let durationMs = Int64(Date().timeIntervalSince(startedAt) * 1000)
         let usedFallback = fallbackWasUsed(result: result, availability: availability)
         let state: AppleAIGenerationState = usedFallback ? .rulesFallback : availability.generationState
@@ -132,7 +133,7 @@ final class AppleAIOrchestrator {
                 audit: AppleAIGenerationAudit(
                     generatedAt: Date(),
                     dataSource: dataSource,
-                    includedEvidence: includedEvidence,
+                    includedEvidence: boundedEvidence,
                     usedRealAI: availability.isAvailable && !usedFallback,
                     usedFallback: usedFallback,
                     durationMs: durationMs

@@ -9,6 +9,7 @@ import com.migestor.shared.domain.PhysicalTestDefinition
 import com.migestor.shared.domain.PhysicalTestResult
 import com.migestor.shared.domain.PhysicalTestScale
 import com.migestor.shared.domain.PhysicalTestScaleRange
+import com.migestor.shared.domain.ReadingFluencyMeasurements
 import com.migestor.shared.domain.asAssessmentMeasurementDefinition
 import com.migestor.shared.domain.asAssessmentMeasurementResult
 import com.migestor.shared.domain.asAssessmentMeasurementScale
@@ -86,5 +87,28 @@ class AssessmentMeasurementsTest {
         assertEquals("jump", genericResult.definitionId)
         assertEquals(1.72, genericResult.rawValue)
         assertEquals(7.0, genericResult.score)
+    }
+
+    @Test
+    fun `reading fluency provides a non physical measurement vertical`() {
+        val definition = ReadingFluencyMeasurements.wordsPerMinuteDefinition()
+        val scale = ReadingFluencyMeasurements.progressScale()
+        val result = ReadingFluencyMeasurements.result(
+            id = "reading-result-1",
+            classId = 3,
+            studentId = 5,
+            wordsPerMinute = 92.0,
+            observedAtEpochMs = 2_000,
+        )
+
+        assertEquals(MeasurementDomain.READING_FLUENCY, definition.domain)
+        assertEquals("WORDS_PER_MINUTE", definition.measurementKind)
+        assertEquals("ppm", definition.unit)
+        assertEquals(MeasurementDomain.READING_FLUENCY, scale.domain)
+        assertEquals(3, scale.ranges.size)
+        assertEquals("Fluida", scale.ranges.last().label)
+        assertEquals(MeasurementDomain.READING_FLUENCY, result.domain)
+        assertEquals(92.0, result.rawValue)
+        assertEquals(10.0, result.score)
     }
 }

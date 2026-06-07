@@ -21,6 +21,7 @@ El formato sigue una variante practica de Keep a Changelog:
 - Capa KMP `AssessmentMeasurement*` para preparar mediciones generales manteniendo `PhysicalTest*` como especialización EF.
 - Catálogo visible de asignaturas en Cursos, con alta, edición, borrado seguro y asignación de materia al crear o editar grupos.
 - Presets reales por materia para el Cuaderno, aplicables desde Añadir columna con nombre, peso, media, categoría y contexto preconfigurados.
+- Piloto no-EF de mediciones genéricas para fluidez lectora (`READING_FLUENCY`) con definición, escala y resultado reutilizando `AssessmentMeasurement*`.
 
 ### Changed
 
@@ -55,6 +56,7 @@ El formato sigue una variante practica de Keep a Changelog:
 - `./gradlew :data:desktopTest` y `./gradlew :shared:desktopTest` completados correctamente tras añadir el catálogo de asignaturas.
 - `xcodebuild -quiet -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` completado correctamente tras conectar asignaturas en Cursos.
 - `xcodebuild -quiet -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` completado correctamente tras convertir plantillas por materia en presets aplicables.
+- `./gradlew :shared:desktopTest` completado correctamente tras añadir el piloto `READING_FLUENCY`.
 - Se añade cobertura de test para comprobar que el schema crea los índices críticos de performance.
 - `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` completado correctamente tras limitar payloads de Apple IA.
 - `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` completado correctamente tras la auditoría de caché del Cuaderno.

@@ -72,3 +72,4 @@ Prioridad: futura, con base documental inicial creada.
 - Revisar si la app Flutter original queda como legado, referencia o target activo.
 - Convertir el borrador de privacidad y datos personales en documentos publicables revisados.
 - Revisar limpieza de ramas remotas historicas cuando no haya PRs abiertos dependientes.
+- Migrar PhysicalTests de forma gradual hacia mediciones genéricas después del piloto `READING_FLUENCY`, sin tocar tablas físicas hasta necesitar persistencia compartida.

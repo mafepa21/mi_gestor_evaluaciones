@@ -603,6 +603,18 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 deleteStudent:
 DELETE FROM students WHERE id = ?;
 
+selectAllSubjects:
+SELECT id, code, name, stage_cycle_id, updated_at_epoch_ms, device_id, sync_version
+FROM subjects
+ORDER BY name, code;
+
+upsertSubject:
+INSERT OR REPLACE INTO subjects(id, code, name, stage_cycle_id, updated_at_epoch_ms, device_id, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+deleteSubject:
+DELETE FROM subjects WHERE id = ?;
+
 selectAllClasses:
 SELECT id, name, course, description, center_id, academic_year_id, stage_cycle_id, subject_id, updated_at_epoch_ms, device_id, sync_version
 FROM classes

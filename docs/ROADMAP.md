@@ -44,7 +44,7 @@ Prioridad: alta.
 Prioridad: media-alta.
 
 - SQLDelight: migraciones seguras y pruebas de repositorio.
-- Multi-asignatura: consolidar la relación real grupo-asignatura y usarla en filtros, plantillas y onboarding.
+- Multi-asignatura: relación real grupo-asignatura con catálogo visible; siguiente paso, usarla en filtros, plantillas aplicables y onboarding.
 - Backups: restauracion fiable y trazable.
 - Sync: estrategia clara para LAN/local y futuras opciones.
 - Exportaciones: informes utiles y reproducibles.

@@ -34,6 +34,7 @@ import com.migestor.shared.domain.SessionStatus
 import com.migestor.shared.domain.Student
 import com.migestor.shared.domain.StudentSex
 import com.migestor.shared.domain.StudentSexSource
+import com.migestor.shared.domain.Subject
 import com.migestor.shared.domain.TeachingUnit
 import com.migestor.shared.util.IsoWeekHelper
 import com.migestor.shared.repository.AttendanceRepository
@@ -55,6 +56,7 @@ import com.migestor.shared.repository.StudentGradeHistoryPoint
 import com.migestor.shared.repository.StudentAttendanceStats
 import com.migestor.shared.repository.StudentIncidentPoint
 import com.migestor.shared.repository.CompetencyCoveragePoint
+import com.migestor.shared.repository.SubjectsRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
@@ -1739,6 +1741,68 @@ class ConfigurationTemplateRepositorySqlDelight(
             authorUserId = authorUserId,
             associatedGroupId = latest.associated_group_id,
         )
+    }
+}
+
+class SubjectsRepositorySqlDelight(
+    private val db: AppDatabase,
+) : SubjectsRepository {
+    override fun observeSubjects(): Flow<List<Subject>> {
+        return db.appDatabaseQueries
+            .selectAllSubjects()
+            .asFlow()
+            .mapToList(Dispatchers.Default)
+            .map { rows ->
+                rows.map {
+                    Subject(
+                        id = it.id,
+                        code = it.code,
+                        name = it.name,
+                        stageCycleId = it.stage_cycle_id,
+                        trace = AuditTrace(
+                            updatedAt = Instant.fromEpochMilliseconds(it.updated_at_epoch_ms),
+                            deviceId = it.device_id,
+                            syncVersion = it.sync_version,
+                        )
+                    )
+                }
+            }
+    }
+
+    override suspend fun listSubjects(): List<Subject> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectAllSubjects().executeAsList().map {
+            Subject(
+                id = it.id,
+                code = it.code,
+                name = it.name,
+                stageCycleId = it.stage_cycle_id,
+                trace = AuditTrace(
+                    updatedAt = Instant.fromEpochMilliseconds(it.updated_at_epoch_ms),
+                    deviceId = it.device_id,
+                    syncVersion = it.sync_version,
+                )
+            )
+        }
+    }
+
+    override suspend fun saveSubject(
+        id: Long?,
+        code: String,
+        name: String,
+        stageCycleId: Long?,
+        updatedAtEpochMs: Long,
+        deviceId: String?,
+        syncVersion: Long,
+    ): Long = withContext(Dispatchers.Default) {
+        val now = if (updatedAtEpochMs > 0) updatedAtEpochMs else Clock.System.now().toEpochMilliseconds()
+        db.transactionWithResult {
+            db.appDatabaseQueries.upsertSubject(id, code, name, stageCycleId, now, deviceId, syncVersion)
+            id ?: db.appDatabaseQueries.lastInsertedId().executeAsOne()
+        }
+    }
+
+    override suspend fun deleteSubject(subjectId: Long) = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.deleteSubject(subjectId)
     }
 }
 

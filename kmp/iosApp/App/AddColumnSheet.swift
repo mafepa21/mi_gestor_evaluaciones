@@ -400,6 +400,7 @@ struct AddColumnSheet: View {
 
     @State private var columnName: String = ""
     @State private var selectedBlueprintId: String? = nil
+    @State private var selectedSubjectTemplateId: String? = nil
     @State private var weight: String = "10"
     @State private var formula: String = ""
     @State private var selectedRubricId: Int64? = nil
@@ -514,6 +515,7 @@ struct AddColumnSheet: View {
                 }
                 .appOnChange(of: selectedBlueprintId) { _ in
                     syncBlueprintDefaults()
+                    reapplySelectedSubjectTemplateIfNeeded()
                     refreshSummaryAvailability()
                     syncRubricNameIfNeeded()
                     syncRubricSectionExpansion()
@@ -669,17 +671,20 @@ struct AddColumnSheet: View {
                 HStack(spacing: 8) {
                     ForEach(subjectTemplateRecommendations) { template in
                         Button {
-                            selectedBlueprintId = template.notebookBlueprintId
-                            if columnName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                columnName = template.title
-                            }
+                            applySubjectTemplate(template, updateBlueprint: true)
                         } label: {
-                            Label(template.title, systemImage: template.systemImage)
-                                .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .background(NotebookStyle.surfaceSoft, in: Capsule())
-                                .overlay(Capsule().stroke(NotebookStyle.softBorder, lineWidth: 1))
+                            VStack(alignment: .leading, spacing: 4) {
+                                Label(template.title, systemImage: template.systemImage)
+                                    .font(.caption.weight(.semibold))
+                                Text(template.subtitle)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(selectedSubjectTemplateId == template.id ? tintForTemplate(template).opacity(0.14) : NotebookStyle.surfaceSoft, in: Capsule())
+                            .overlay(Capsule().stroke(selectedSubjectTemplateId == template.id ? tintForTemplate(template).opacity(0.45) : NotebookStyle.softBorder, lineWidth: 1))
                         }
                         .buttonStyle(.plain)
                     }
@@ -1604,6 +1609,57 @@ struct AddColumnSheet: View {
                 unitOrSituation = NotebookIndividualSummaryPreferences.marker
             }
         }
+    }
+
+    private func reapplySelectedSubjectTemplateIfNeeded() {
+        guard let selectedSubjectTemplateId,
+              let template = subjectTemplateRecommendations.first(where: { $0.id == selectedSubjectTemplateId })
+        else { return }
+        guard template.columnPreset.blueprintId == selectedBlueprintId else {
+            self.selectedSubjectTemplateId = nil
+            return
+        }
+        applySubjectTemplate(template, updateBlueprint: false)
+    }
+
+    private func applySubjectTemplate(_ template: SubjectTemplateDescriptor, updateBlueprint: Bool) {
+        selectedSubjectTemplateId = template.id
+        let preset = template.columnPreset
+        if updateBlueprint && selectedBlueprintId != preset.blueprintId {
+            selectedBlueprintId = preset.blueprintId
+        }
+        columnName = preset.defaultTitle
+        weight = formattedPresetWeight(preset.weight)
+        countsTowardAverage = preset.countsTowardAverage
+        unitOrSituation = preset.unitOrSituation ?? ""
+        isPinned = preset.isPinned
+        isLocked = preset.isLocked
+        isTemplate = preset.isTemplate
+        if let categoryName = preset.categoryName {
+            if let existing = availableCategories.first(where: { $0.name.localizedCaseInsensitiveCompare(categoryName) == .orderedSame }) {
+                categoryPlacementMode = .existing
+                selectedCategoryId = existing.id
+                newCategoryName = ""
+            } else {
+                categoryPlacementMode = .createNew
+                selectedCategoryId = nil
+                newCategoryName = categoryName
+            }
+        }
+    }
+
+    private func formattedPresetWeight(_ value: Double) -> String {
+        if value.rounded() == value {
+            return String(Int(value))
+        }
+        return String(value)
+    }
+
+    private func tintForTemplate(_ template: SubjectTemplateDescriptor) -> Color {
+        guard let blueprint = blueprints.first(where: { $0.id == template.columnPreset.blueprintId }) else {
+            return .accentColor
+        }
+        return color(for: blueprint.categoryKind)
     }
 
     private func defaultCountsTowardAverage(for blueprint: NotebookColumnBlueprint) -> Bool {

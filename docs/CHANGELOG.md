@@ -20,6 +20,7 @@ El formato sigue una variante practica de Keep a Changelog:
 - Registro de plantillas por asignatura sobre tipos de columna existentes del Cuaderno.
 - Capa KMP `AssessmentMeasurement*` para preparar mediciones generales manteniendo `PhysicalTest*` como especialización EF.
 - Catálogo visible de asignaturas en Cursos, con alta, edición, borrado seguro y asignación de materia al crear o editar grupos.
+- Presets reales por materia para el Cuaderno, aplicables desde Añadir columna con nombre, peso, media, categoría y contexto preconfigurados.
 
 ### Changed
 
@@ -53,6 +54,7 @@ El formato sigue una variante practica de Keep a Changelog:
 - `xcodebuild -quiet -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -configuration Debug -destination 'generic/platform=macOS' ARCHS=arm64 ONLY_ACTIVE_ARCH=YES build` completado correctamente. El build macOS genérico sin `ARCHS=arm64` falla porque el script del target selecciona el framework macOS x64 cuando Xcode pasa `ARCHS=arm64 x86_64`.
 - `./gradlew :data:desktopTest` y `./gradlew :shared:desktopTest` completados correctamente tras añadir el catálogo de asignaturas.
 - `xcodebuild -quiet -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` completado correctamente tras conectar asignaturas en Cursos.
+- `xcodebuild -quiet -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` completado correctamente tras convertir plantillas por materia en presets aplicables.
 - Se añade cobertura de test para comprobar que el schema crea los índices críticos de performance.
 - `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` completado correctamente tras limitar payloads de Apple IA.
 - `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` completado correctamente tras la auditoría de caché del Cuaderno.

@@ -419,6 +419,8 @@ struct AddColumnSheet: View {
     @State private var expandedRubricSectionIds: Set<String> = []
     @State private var isSavingColumn = false
     @State private var saveErrorMessage: String? = nil
+    @AppStorage("teacher.enabledSubjectProfiles.v1")
+    private var enabledSubjectProfilesRaw: String = TeacherSubjectProfile.general.rawValue
 
     private let blueprints: [NotebookColumnBlueprint] = [
         .init(id: "written_test", title: "Nota numérica", subtitle: "Calificación 0-10", icon: "number.circle", type: .numeric, categoryKind: .evaluation, instrumentKind: .writtenTest, inputKind: .numeric010, scaleKind: .tenPoint, defaultWeight: 10),
@@ -442,6 +444,10 @@ struct AddColumnSheet: View {
     private var selectedBlueprint: NotebookColumnBlueprint? {
         guard let selectedBlueprintId else { return nil }
         return blueprints.first(where: { $0.id == selectedBlueprintId })
+    }
+
+    private var subjectTemplateRecommendations: [SubjectTemplateDescriptor] {
+        SubjectTemplateRegistry.templates(for: TeacherSubjectProfile.decodeSet(enabledSubjectProfilesRaw))
     }
 
     private enum CategoryPlacementMode: String, CaseIterable, Identifiable {
@@ -608,6 +614,8 @@ struct AddColumnSheet: View {
             Text("Tipo de columna")
                 .font(.headline)
 
+            subjectTemplateSection
+
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(basicBlueprints) { blueprint in
@@ -651,6 +659,36 @@ struct AddColumnSheet: View {
         }
     }
 
+    private var subjectTemplateSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Plantillas por materia")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(subjectTemplateRecommendations) { template in
+                        Button {
+                            selectedBlueprintId = template.notebookBlueprintId
+                            if columnName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                columnName = template.title
+                            }
+                        } label: {
+                            Label(template.title, systemImage: template.systemImage)
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(NotebookStyle.surfaceSoft, in: Capsule())
+                                .overlay(Capsule().stroke(NotebookStyle.softBorder, lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+        }
+    }
+
     private var externalColumnDestinations: some View {
         VStack(alignment: .leading, spacing: 12) {
             externalDestinationCard(
@@ -662,7 +700,7 @@ struct AddColumnSheet: View {
 
             externalDestinationCard(
                 title: "Pruebas físicas",
-                subtitle: "Crea baterías, asignaciones, marcas y baremos desde EF · Condición física.",
+                subtitle: "Crea baterías, asignaciones, marcas y baremos desde Mediciones y baremos.",
                 icon: "figure.run",
                 tint: .orange
             )
@@ -767,7 +805,7 @@ struct AddColumnSheet: View {
 
                     externalDestinationCard(
                         title: "Pruebas físicas",
-                        subtitle: "Se gestionan desde EF · Condición física.",
+                        subtitle: "Se gestionan desde Mediciones y baremos.",
                         icon: "figure.run",
                         tint: .orange
                     )

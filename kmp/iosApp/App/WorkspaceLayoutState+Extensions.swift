@@ -177,7 +177,7 @@ extension AppWorkspaceShell {
         message: String
     ) -> KmpBridge.ScreenAIContext {
         KmpBridge.ScreenAIContext(
-            kind: module == .reports ? .reports : module.section == .physicalEducation ? .pe : .courses,
+            kind: module == .reports ? .reports : module.section == .domainModules ? .pe : .courses,
             title: module.title,
             subtitle: module.subtitle,
             classId: classId,

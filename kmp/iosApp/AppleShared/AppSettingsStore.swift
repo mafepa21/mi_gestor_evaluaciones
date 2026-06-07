@@ -65,6 +65,14 @@ public final class AppSettingsStore: ObservableObject {
     
     @AppStorage("settings.deviceDisplayName")
     public var deviceDisplayName: String = defaultDeviceName
+
+    @AppStorage("teacher.enabledSubjectProfiles.v1")
+    private var enabledSubjectProfilesRaw: String = TeacherSubjectProfile.general.rawValue
+
+    public var enabledSubjectProfiles: Set<TeacherSubjectProfile> {
+        get { TeacherSubjectProfile.decodeSet(enabledSubjectProfilesRaw) }
+        set { enabledSubjectProfilesRaw = TeacherSubjectProfile.encodeSet(newValue) }
+    }
     
     // Apple AI Feature Flags
     @AppStorage("settings.appleAIReportsEnabled")

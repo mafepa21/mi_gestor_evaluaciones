@@ -455,7 +455,7 @@ enum AppWorkspaceSection: String, CaseIterable, Identifiable {
     case academic = "Académico"
     case operations = "Operativa"
     case evaluation = "Evaluación"
-    case physicalEducation = "Educación Física"
+    case domainModules = "Módulos de dominio"
     case system = "Sistema"
 
     var id: String { rawValue }
@@ -501,12 +501,12 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .rubrics: return "Rúbricas"
         case .reports: return "Informes"
         case .library: return "Biblioteca"
-        case .peSessions: return "EF · Sesiones"
-        case .peTests: return "EF · Condición física"
-        case .peRubrics: return "EF · Rúbricas"
-        case .peIncidents: return "EF · Incidencias"
-        case .peMaterial: return "EF · Material"
-        case .peTournaments: return "EF · Torneos"
+        case .peSessions: return "Sesiones prácticas"
+        case .peTests: return "Mediciones y baremos"
+        case .peRubrics: return "Rúbricas por área"
+        case .peIncidents: return "Incidencias y seguridad"
+        case .peMaterial: return "Recursos y material"
+        case .peTournaments: return "Retos y torneos"
         case .settings: return "Ajustes"
         case .backups: return "Seguridad"
         }
@@ -527,10 +527,10 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .rubrics: return "Banco de rúbricas"
         case .reports: return "Salida docente"
         case .library: return "Plantillas reutilizables"
-        case .peSessions: return "Operativa en pista"
-        case .peTests: return "Pruebas, baremos e históricos"
-        case .peRubrics: return "Rúbricas motrices"
-        case .peIncidents: return "Seguridad y seguimiento"
+        case .peSessions: return "Operativa de actividades"
+        case .peTests: return "Progreso, marcas e históricos"
+        case .peRubrics: return "Criterios específicos"
+        case .peIncidents: return "Seguimiento operativo"
         case .peMaterial: return "Inventario rápido"
         case .peTournaments: return "Competición y resultados"
         case .settings: return "Configuración"
@@ -573,9 +573,18 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .evaluationHub, .rubrics, .reports, .library:
             return .evaluation
         case .peSessions, .peTests, .peRubrics, .peIncidents, .peMaterial, .peTournaments:
-            return .physicalEducation
+            return .domainModules
         case .settings, .backups:
             return .system
+        }
+    }
+
+    var requiresPhysicalEducationProfile: Bool {
+        switch self {
+        case .peSessions, .peTests, .peRubrics, .peIncidents, .peMaterial, .peTournaments:
+            return true
+        default:
+            return false
         }
     }
 }
@@ -717,7 +726,8 @@ struct AppWorkspaceShell: View {
         let query = debouncedSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return [] }
 
-        let moduleResults = IOSFeatureRegistry.all
+        let enabledProfiles = TeacherSubjectProfile.decodeSet(UserDefaults.standard.string(forKey: "teacher.enabledSubjectProfiles.v1") ?? TeacherSubjectProfile.general.rawValue)
+        let moduleResults = IOSFeatureRegistry.all(enabledProfiles: enabledProfiles)
             .filter { $0.title.localizedCaseInsensitiveContains(query) || $0.subtitle.localizedCaseInsensitiveContains(query) }
             .map { WorkspaceSearchResult(title: $0.title, subtitle: $0.subtitle, kind: .module($0.module)) }
 

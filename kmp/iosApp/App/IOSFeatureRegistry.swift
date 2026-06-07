@@ -34,17 +34,27 @@ enum IOSFeatureRegistry {
         .init(module: .rubrics, title: "Rúbricas", subtitle: "Banco de evaluación", systemImage: "checklist", priority: .teaching, visibleInDailyMode: false),
         .init(module: .reports, title: "Informes", subtitle: "Salida docente", systemImage: "doc.richtext", priority: .teaching, visibleInDailyMode: false),
         .init(module: .library, title: "Biblioteca", subtitle: "Plantillas reutilizables", systemImage: "books.vertical", priority: .tools, visibleInDailyMode: false),
-        .init(module: .peSessions, title: "EF · Sesiones", subtitle: "Operativa en pista", systemImage: "figure.run", priority: .tools, visibleInDailyMode: false),
-        .init(module: .peTests, title: "EF · Condición física", subtitle: "Baremos e históricos", systemImage: "stopwatch", priority: .tools, visibleInDailyMode: false),
-        .init(module: .peRubrics, title: "EF · Rúbricas", subtitle: "Rúbricas motrices", systemImage: "figure.cooldown", priority: .tools, visibleInDailyMode: false),
-        .init(module: .peIncidents, title: "EF · Incidencias", subtitle: "Seguridad y seguimiento", systemImage: "cross.case", priority: .tools, visibleInDailyMode: false),
-        .init(module: .peMaterial, title: "EF · Material", subtitle: "Inventario rápido", systemImage: "shippingbox", priority: .tools, visibleInDailyMode: false),
-        .init(module: .peTournaments, title: "EF · Torneos", subtitle: "Competición y resultados", systemImage: "trophy", priority: .tools, visibleInDailyMode: false),
+        .init(module: .peSessions, title: "Sesiones prácticas", subtitle: "Operativa de actividades", systemImage: "figure.run", priority: .tools, visibleInDailyMode: false),
+        .init(module: .peTests, title: "Mediciones y baremos", subtitle: "Progreso, marcas e históricos", systemImage: "stopwatch", priority: .tools, visibleInDailyMode: false),
+        .init(module: .peRubrics, title: "Rúbricas por área", subtitle: "Criterios específicos", systemImage: "figure.cooldown", priority: .tools, visibleInDailyMode: false),
+        .init(module: .peIncidents, title: "Incidencias y seguridad", subtitle: "Seguimiento operativo", systemImage: "cross.case", priority: .tools, visibleInDailyMode: false),
+        .init(module: .peMaterial, title: "Recursos y material", subtitle: "Inventario rápido", systemImage: "shippingbox", priority: .tools, visibleInDailyMode: false),
+        .init(module: .peTournaments, title: "Retos y torneos", subtitle: "Competición y resultados", systemImage: "trophy", priority: .tools, visibleInDailyMode: false),
         .init(module: .settings, title: "Ajustes", subtitle: "Configuración", systemImage: "gearshape", priority: .settings, visibleInDailyMode: false),
         .init(module: .backups, title: "Seguridad", subtitle: "Copias y restauración", systemImage: "lock.shield", priority: .settings, visibleInDailyMode: false)
     ]
 
     static let all: [IOSFeatureDescriptor] = daily + secondary
+
+    static func secondary(enabledProfiles: Set<TeacherSubjectProfile>) -> [IOSFeatureDescriptor] {
+        secondary.filter { descriptor in
+            !descriptor.module.requiresPhysicalEducationProfile || enabledProfiles.contains(.physicalEducation)
+        }
+    }
+
+    static func all(enabledProfiles: Set<TeacherSubjectProfile>) -> [IOSFeatureDescriptor] {
+        daily + secondary(enabledProfiles: enabledProfiles)
+    }
 
     static func descriptor(for module: AppWorkspaceModule) -> IOSFeatureDescriptor {
         all.first(where: { $0.module == module })

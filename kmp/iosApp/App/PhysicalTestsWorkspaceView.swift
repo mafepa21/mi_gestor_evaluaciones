@@ -324,7 +324,7 @@ struct PhysicalTestsWorkspaceView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .background(EvaluationBackdrop())
-            .navigationTitle("EF · Condición física")
+            .navigationTitle("Mediciones y baremos")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
@@ -447,7 +447,7 @@ struct PhysicalTestsWorkspaceView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 16) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("EF · Condición física")
+                    Text("Mediciones y baremos")
                         .font(.system(size: 32, weight: .black, design: .rounded))
                     Text("\(selectedClassName) · pruebas, baremos e históricos")
                         .font(.subheadline.weight(.semibold))

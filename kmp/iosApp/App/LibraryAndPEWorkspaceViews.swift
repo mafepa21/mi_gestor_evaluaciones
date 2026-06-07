@@ -11,6 +11,8 @@ struct LibraryWorkspaceView: View {
     @State var selectedTemplateId: Int64?
     @State var selectedKindFilter = "Todas"
     @State var searchText = ""
+    @AppStorage("teacher.enabledSubjectProfiles.v1")
+    private var enabledSubjectProfilesRaw: String = TeacherSubjectProfile.general.rawValue
 
     var selectedTemplate: ConfigTemplate? {
         filteredTemplates.first(where: { $0.id == selectedTemplateId }) ?? templates.first(where: { $0.id == selectedTemplateId })
@@ -36,6 +38,10 @@ struct LibraryWorkspaceView: View {
 
     var templateMetrics: (total: Int, kinds: Int, versions: Int) {
         (filteredTemplates.count, max(availableKinds.count - 1, 0), versions.count)
+    }
+
+    var subjectTemplates: [SubjectTemplateDescriptor] {
+        SubjectTemplateRegistry.templates(for: TeacherSubjectProfile.decodeSet(enabledSubjectProfilesRaw))
     }
 
     var body: some View {
@@ -72,6 +78,19 @@ struct LibraryWorkspaceView: View {
                 .padding(16)
 
                 List {
+                    Section("Por asignatura") {
+                        ForEach(subjectTemplates) { template in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Label(template.title, systemImage: template.systemImage)
+                                    .font(.headline)
+                                Text(template.subtitle)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
+
                     Section("Plantillas") {
                         ForEach(filteredTemplates, id: \.id) { template in
                             Button {
@@ -1334,4 +1353,3 @@ struct PETournamentsWorkspaceView: View {
             .foregroundStyle(.secondary)
     }
 }
-

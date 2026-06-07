@@ -2,7 +2,10 @@ import SwiftUI
 import MiGestorKit
 
 extension AppWorkspaceShell {
+    @ViewBuilder
     var workspaceSidebar: some View {
+        let enabledProfiles = TeacherSubjectProfile.decodeSet(UserDefaults.standard.string(forKey: "teacher.enabledSubjectProfiles.v1") ?? TeacherSubjectProfile.general.rawValue)
+
         List {
             Section {
                 VStack(alignment: .leading, spacing: 8) {
@@ -27,7 +30,7 @@ extension AppWorkspaceShell {
             }
 
             Section("Más herramientas") {
-                ForEach(IOSFeatureRegistry.secondary) { feature in
+                ForEach(IOSFeatureRegistry.secondary(enabledProfiles: enabledProfiles)) { feature in
                     Button {
                         open(module: feature.module)
                     } label: {

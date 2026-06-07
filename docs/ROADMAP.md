@@ -44,6 +44,7 @@ Prioridad: alta.
 Prioridad: media-alta.
 
 - SQLDelight: migraciones seguras y pruebas de repositorio.
+- Multi-asignatura: consolidar la relación real grupo-asignatura y usarla en filtros, plantillas y onboarding.
 - Backups: restauracion fiable y trazable.
 - Sync: estrategia clara para LAN/local y futuras opciones.
 - Exportaciones: informes utiles y reproducibles.
@@ -54,6 +55,7 @@ Prioridad: media-alta.
 Prioridad: futura, con base documental inicial creada.
 
 - Onboarding y datos de ejemplo.
+- Posicionamiento multi-asignatura: core docente como producto principal y EF como vertical opcional.
 - Guia de uso para docentes.
 - Release notes publicables.
 - Evidencias de calidad: builds, tests, capturas, auditorias.

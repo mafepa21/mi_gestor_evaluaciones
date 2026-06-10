@@ -329,44 +329,9 @@ struct MacRootView: View {
 
     @ToolbarContentBuilder
     private var macNotebookToolbar: some ToolbarContent {
-        ToolbarItemGroup {
-            Menu {
-                ForEach(groupedNotebookClasses, id: \.course) { group in
-                    Menu("\(group.course)º") {
-                        ForEach(group.classes, id: \.id) { schoolClass in
-                            Button {
-                                selectNotebookClass(schoolClass.id)
-                            } label: {
-                                HStack {
-                                    if schoolClass.id == activeNotebookClass?.id {
-                                        Image(systemName: "checkmark")
-                                    }
-                                    Text(schoolClass.name)
-                                }
-                            }
-                        }
-                    }
-                }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "books.vertical.fill")
-                        .foregroundStyle(Color.accentColor)
-                    Text(activeNotebookClassLabel)
-                        .fontWeight(.medium)
-                }
-            }
-            .menuStyle(.button)
-            .help("Seleccionar clase activa")
-
-            Picker("Vista", selection: Binding(
-                get: { layoutState.notebookSurfaceMode },
-                set: { layoutState.setNotebookSurfaceMode($0) }
-            )) {
-                Image(systemName: "tablecells").tag("grid")
-                Image(systemName: "rectangle.3.group").tag("seatingPlan")
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 80)
+        ToolbarItemGroup(placement: .primaryAction) {
+            macNotebookClassSelector
+                .layoutPriority(3)
 
             if session.bridge.syncPendingChanges > 0 {
                 MacStatusPill(
@@ -384,22 +349,7 @@ struct MacRootView: View {
             .disabled(!notebookToolbarActions.addColumnAvailable)
             .keyboardShortcut("n", modifiers: .command)
             .help("Añadir nueva columna (⌘N)")
-
-            Button {
-                notebookToolbarActions.openOrganizationMenu()
-            } label: {
-                Label("Organizar columnas", systemImage: "slider.horizontal.3")
-            }
-            .disabled(!notebookToolbarActions.organizationMenuAvailable)
-            .help("Organizar columnas")
-
-            Button {
-                notebookToolbarActions.openGroupManagement()
-            } label: {
-                Label("Gestionar grupos", systemImage: "person.2")
-            }
-            .disabled(!notebookToolbarActions.groupManagementAvailable)
-            .help("Gestionar grupos de trabajo")
+            .layoutPriority(3)
 
             Button {
                 toggleInspector()
@@ -408,58 +358,122 @@ struct MacRootView: View {
             }
             .keyboardShortcut("i", modifiers: [.command])
             .help(isInspectorVisible ? "Ocultar inspector" : "Mostrar inspector")
+            .layoutPriority(2)
 
             Label("Buscar", systemImage: "magnifyingglass")
                 .labelStyle(.iconOnly)
                 .foregroundStyle(.secondary)
+                .layoutPriority(2)
 
             TextField("Buscar", text: Binding(
                 get: { layoutState.notebookSearchText },
                 set: { layoutState.setNotebookSearchText($0) }
             ))
             .textFieldStyle(.roundedBorder)
-            .frame(width: 220)
+            .frame(minWidth: 160, idealWidth: 220, maxWidth: 260)
+            .layoutPriority(2)
 
-            Menu {
-                Button {
-                    notebookToolbarActions.refresh()
-                } label: {
-                    Label("Recargar", systemImage: "arrow.clockwise")
-                }
+            macNotebookOverflowMenu
+                .layoutPriority(1)
+        }
+    }
 
-                if let exportText = notebookToolbarActions.exportText {
-                    ShareLink(item: exportText) {
-                        Label("Exportar", systemImage: "square.and.arrow.up")
+    private var macNotebookClassSelector: some View {
+        Menu {
+            ForEach(groupedNotebookClasses, id: \.course) { group in
+                Menu("\(group.course)º") {
+                    ForEach(group.classes, id: \.id) { schoolClass in
+                        Button {
+                            selectNotebookClass(schoolClass.id)
+                        } label: {
+                            HStack {
+                                if schoolClass.id == activeNotebookClass?.id {
+                                    Image(systemName: "checkmark")
+                                }
+                                Text(schoolClass.name)
+                            }
+                        }
                     }
                 }
-
-                Button {
-                    notebookToolbarActions.undo()
-                } label: {
-                    Label("Deshacer", systemImage: "arrow.uturn.backward")
-                }
-                .disabled(!notebookToolbarActions.canUndo)
-                .keyboardShortcut("z", modifiers: .command)
-
-                Button {
-                    notebookToolbarActions.toggleAttendanceQuickMode()
-                } label: {
-                    Label(
-                        notebookToolbarActions.isAttendanceQuickMode ? "Salir de asistencia rápida" : "Asistencia rápida",
-                        systemImage: notebookToolbarActions.isAttendanceQuickMode ? "figure.walk.circle.fill" : "figure.walk.circle"
-                    )
-                }
-
-                Button {
-                    notebookToolbarActions.openAdvancedMenu()
-                } label: {
-                    Label("Opciones avanzadas", systemImage: "ellipsis.circle")
-                }
-            } label: {
-                Label("Más", systemImage: "ellipsis.circle")
             }
-            .help("Más acciones del cuaderno")
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "books.vertical.fill")
+                    .foregroundStyle(Color.accentColor)
+                Text(activeNotebookClassLabel)
+                    .fontWeight(.medium)
+            }
         }
+        .menuStyle(.button)
+        .help("Seleccionar clase activa")
+    }
+
+    private var macNotebookOverflowMenu: some View {
+        Menu {
+            Button {
+                notebookToolbarActions.refresh()
+            } label: {
+                Label("Recargar", systemImage: "arrow.clockwise")
+            }
+
+            if let exportText = notebookToolbarActions.exportText {
+                ShareLink(item: exportText) {
+                    Label("Exportar", systemImage: "square.and.arrow.up")
+                }
+            }
+
+            Button {
+                notebookToolbarActions.undo()
+            } label: {
+                Label("Deshacer", systemImage: "arrow.uturn.backward")
+            }
+            .disabled(!notebookToolbarActions.canUndo)
+            .keyboardShortcut("z", modifiers: .command)
+
+            Divider()
+
+            Button {
+                notebookToolbarActions.openAdvancedMenu()
+            } label: {
+                Label("Opciones avanzadas", systemImage: "ellipsis.circle")
+            }
+
+            Picker("Vista", selection: Binding(
+                get: { layoutState.notebookSurfaceMode },
+                set: { layoutState.setNotebookSurfaceMode($0) }
+            )) {
+                Label("Grid", systemImage: "tablecells").tag("grid")
+                Label("Plano", systemImage: "rectangle.3.group").tag("seatingPlan")
+            }
+
+            Button {
+                notebookToolbarActions.toggleAttendanceQuickMode()
+            } label: {
+                Label(
+                    notebookToolbarActions.isAttendanceQuickMode ? "Salir de asistencia rápida" : "Asistencia rápida",
+                    systemImage: notebookToolbarActions.isAttendanceQuickMode ? "figure.walk.circle.fill" : "figure.walk.circle"
+                )
+            }
+
+            Divider()
+
+            Button {
+                notebookToolbarActions.openOrganizationMenu()
+            } label: {
+                Label("Organizar columnas", systemImage: "slider.horizontal.3")
+            }
+            .disabled(!notebookToolbarActions.organizationMenuAvailable)
+
+            Button {
+                notebookToolbarActions.openGroupManagement()
+            } label: {
+                Label("Gestionar grupos", systemImage: "person.2")
+            }
+            .disabled(!notebookToolbarActions.groupManagementAvailable)
+        } label: {
+            Label("Más", systemImage: "ellipsis.circle")
+        }
+        .help("Más acciones del cuaderno")
     }
 
     private var activeNotebookClass: SchoolClass? {

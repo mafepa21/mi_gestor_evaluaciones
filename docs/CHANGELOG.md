@@ -28,6 +28,7 @@ El formato sigue una variante practica de Keep a Changelog:
 - La navegación iOS/iPadOS/macOS generaliza los módulos EF como módulos de dominio: sesiones prácticas, mediciones y baremos, recursos, incidencias y retos.
 - El Cuaderno reutiliza cachés en memoria para el sheet por versión efectiva de clase/configuración/alumnado/columnas/celdas/rúbricas, medias por alumno/columnas/valores, render model SwiftUI y contexto derivado de Apple IA.
 - Apple IA aplica un presupuesto centralizado de contexto antes de generar prompts, sourceDigest, evidencias auditadas y claves de caché de reportes/docencia.
+- La toolbar del Cuaderno en macOS e iPad prioriza clase, añadir columna, búsqueda e inspector, desplazando recarga, exportación, deshacer, organización, grupos y opciones avanzadas al menú secundario.
 
 ### Fixed
 
@@ -60,6 +61,7 @@ El formato sigue una variante practica de Keep a Changelog:
 - Se añade cobertura de test para comprobar que el schema crea los índices críticos de performance.
 - `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` completado correctamente tras limitar payloads de Apple IA.
 - `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` completado correctamente tras la auditoría de caché del Cuaderno.
+- `git diff --check -- kmp/iosApp/MacApp/MacRootView.swift kmp/iosApp/App/IPadWorkspaceShell.swift` completado correctamente tras reorganizar la toolbar del Cuaderno. Los builds `xcodebuild` de iOS Simulator y macOS no se ejecutaron porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y no hay Xcode completo visible en `/Applications`.
 
 ## 0.3.0-alpha.1 - 2026-06-06
 

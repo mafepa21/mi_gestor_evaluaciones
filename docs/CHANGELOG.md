@@ -30,6 +30,7 @@ El formato sigue una variante practica de Keep a Changelog:
 - Apple IA aplica un presupuesto centralizado de contexto antes de generar prompts, sourceDigest, evidencias auditadas y claves de caché de reportes/docencia.
 - La toolbar del Cuaderno en macOS e iPad prioriza clase, añadir columna, búsqueda e inspector, desplazando recarga, exportación, deshacer, organización, grupos y opciones avanzadas al menú secundario.
 - macOS incorpora una base controlada de Liquid Glass para paneles principales, paneles secundarios, superficies legibles, hairline borders y estados activos/inactivos sin aplicar transparencia al grid del Cuaderno.
+- El Dashboard macOS conserva el servicio pesado de Apple IA en `@State` y queda auditada la inicialización de stores en Cuaderno, Planner y Tests físicos para evitar recreaciones accidentales.
 
 ### Fixed
 
@@ -64,6 +65,7 @@ El formato sigue una variante practica de Keep a Changelog:
 - `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` completado correctamente tras la auditoría de caché del Cuaderno.
 - `git diff --check -- kmp/iosApp/MacApp/MacRootView.swift kmp/iosApp/App/IPadWorkspaceShell.swift` completado correctamente tras reorganizar la toolbar del Cuaderno. Los builds `xcodebuild` de iOS Simulator y macOS no se ejecutaron porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y no hay Xcode completo visible en `/Applications`.
 - `git diff --check` completado correctamente tras añadir la base Liquid Glass macOS. Build Apple pendiente por la misma configuración local de `xcode-select` en CommandLineTools.
+- `git diff --check` completado correctamente tras auditar `@State`/stores en `MacDashboardView.swift`, `MacPhysicalTestsView.swift`, `NotebookModuleView.swift` y `PlannerWorkspaceIOS.swift`. Build Apple pendiente por `xcode-select` en CommandLineTools.
 
 ## 0.3.0-alpha.1 - 2026-06-06
 

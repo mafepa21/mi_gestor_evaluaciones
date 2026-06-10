@@ -35,7 +35,7 @@ struct MacDashboardView: View {
     @State private var aiBriefingCache: [String: TeachingAssistantDraft] = [:]
     @State private var activeAIBriefingKey: String?
 
-    private let teachingAssistantService = AppleFoundationTeachingAssistantService()
+    @State private var teachingAssistantService = AppleFoundationTeachingAssistantService()
 
     private var activeContext: CurrentClassDashboardContext? {
         guard case .ready(let snapshot) = loadState else { return nil }

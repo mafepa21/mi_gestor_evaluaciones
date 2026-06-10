@@ -13,12 +13,12 @@ enum MacAppStyle {
     static let metricLabel: Font = .caption.weight(.medium)
     static let bodyText: Font = .callout
 
-    static let cardBackground = Color(nsColor: .controlBackgroundColor)
-    static let pageBackground = Color(nsColor: .windowBackgroundColor)
-    static let subtleFill = Color(nsColor: .quaternaryLabelColor).opacity(0.08)
+    static let cardBackground = MacLiquidGlassStyle.readableSurfaceFallback
+    static let pageBackground = MacLiquidGlassStyle.pageBackground
+    static let subtleFill = MacLiquidGlassStyle.secondaryPanelFallback
 
-    static let cardBorder = Color(nsColor: .separatorColor).opacity(0.6)
-    static let divider = Color(nsColor: .separatorColor)
+    static let cardBorder = MacLiquidGlassStyle.hairlineBorder
+    static let divider = MacLiquidGlassStyle.hairlineBorder
 
     static let successTint = AppleDesignSystem.success
     static let warningTint = AppleDesignSystem.warning
@@ -60,12 +60,7 @@ struct MacMetricCard: View {
         }
         .padding(MacAppStyle.innerPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(MacAppStyle.cardBackground)
-        .overlay {
-            RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous)
-                .stroke(MacAppStyle.cardBorder, lineWidth: 0.5)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
+        .macLiquidGlassPanel(.primaryPanel, tint: tint)
     }
 }
 
@@ -102,7 +97,7 @@ struct MacStatusPill: View {
             .padding(.vertical, 4)
             .background {
                 Capsule(style: .continuous)
-                    .fill((isActive ? tint : Color.secondary).opacity(0.12))
+                    .fill(MacLiquidGlassStyle.statusFill(isActive: isActive, tint: tint))
             }
     }
 }
@@ -160,8 +155,8 @@ struct MacPopupActionBar: View {
         .background(MacAppStyle.cardBackground)
         .overlay(alignment: .bottom) {
             Rectangle()
-                .fill(MacAppStyle.divider.opacity(0.8))
-                .frame(height: 0.5)
+                .fill(MacLiquidGlassStyle.hairlineBorder)
+                .frame(height: MacLiquidGlassStyle.hairlineWidth)
         }
     }
 }

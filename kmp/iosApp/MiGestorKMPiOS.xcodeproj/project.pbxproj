@@ -211,6 +211,7 @@
 		B20B74F08202FFF9657EF528 /* PlannerWorkspaceIOS.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AFC9FBC11C0B8B50E847112 /* PlannerWorkspaceIOS.swift */; };
 		B3E353DF6888D460947A3171 /* NotebookViewModifiers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000A844E2F1245DA5956673 /* NotebookViewModifiers.swift */; };
 		B3F0FF57249376955AE83723 /* MacAttendanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5FCBA2AF2D125D2CD13CFF5 /* MacAttendanceView.swift */; };
+		B68141438B789797C40E8E50 /* MacLiquidGlassStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD67BA2D3B2271344013D4FC /* MacLiquidGlassStyle.swift */; };
 		B7CB07BCB74E309D55528193 /* KmpBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = B819027ADD26559CC96B1BDB /* KmpBridge.swift */; };
 		B82B37EE06DEB54E59585F17 /* NotebookSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 515D5694AA82CA792EE56E33 /* NotebookSettingsView.swift */; };
 		B86B619FDD72816E0439D460 /* NotebookModuleColumnModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C45D5A2BB65125E3D5FC54F /* NotebookModuleColumnModel.swift */; };
@@ -486,6 +487,7 @@
 		FAC46319C44007155F43DDDB /* NotebookAverageExplanationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookAverageExplanationView.swift; sourceTree = "<group>"; };
 		FBDA814F8187BFDA3302D347 /* NotebookGridContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookGridContainer.swift; sourceTree = "<group>"; };
 		FD37D3647E23B5BBF18CD01E /* MacPremiumComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacPremiumComponents.swift; sourceTree = "<group>"; };
+		FD67BA2D3B2271344013D4FC /* MacLiquidGlassStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacLiquidGlassStyle.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -525,6 +527,7 @@
 				75913A6148C5D164F2EFA2A7 /* MacCommandCenterCoordinator.swift */,
 				D7030138D429F12877D448CD /* MacDashboardView.swift */,
 				540E9FF031B5425A4147DC64 /* MacFeatureRegistry.swift */,
+				FD67BA2D3B2271344013D4FC /* MacLiquidGlassStyle.swift */,
 				09D87D21656FDFADF58B2FBA /* MacModuleStubs.swift */,
 				2F3DD7E125A0DCF4D0CFEEC4 /* MacPhysicalTestsInspectorView.swift */,
 				418B317080940EE2A662D215 /* MacPhysicalTestsToolbarActions.swift */,
@@ -978,6 +981,7 @@
 				BC91ADD74993C72E5A133C3D /* MacCommandCenterCoordinator.swift in Sources */,
 				303A136D412D596B99BB06A8 /* MacDashboardView.swift in Sources */,
 				3D42ABE38DAA65311889C449 /* MacFeatureRegistry.swift in Sources */,
+				B68141438B789797C40E8E50 /* MacLiquidGlassStyle.swift in Sources */,
 				042FE630464B6D6C17B475DC /* MacModuleStubs.swift in Sources */,
 				0D06A8F60DA55AD0D6366DC1 /* MacPhysicalTestsInspectorView.swift in Sources */,
 				1680A7159701320DC112E710 /* MacPhysicalTestsToolbarActions.swift in Sources */,

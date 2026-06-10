@@ -31,8 +31,20 @@ struct NotebookInspectorPanel: View {
     var body: some View {
         Group {
             if let selection = inspectorSelection,
-               let item = rows.first(where: { $0.student.id == selection.studentId }),
-               let column = data.sheet.columns.first(where: { $0.id == selection.columnId }) {
+               selection.isAverage,
+               let item = rows.first(where: { $0.student.id == selection.studentId }) {
+                CustomAverageExplanationPopoverView(
+                    studentName: "\(item.student.firstName) \(item.student.lastName)",
+                    explanation: item.row.averageExplanation,
+                    columns: data.sheet.columns,
+                    onClose: {
+                        isInspectorPresented = false
+                        inspectorSelection = nil
+                    }
+                )
+            } else if let selection = inspectorSelection,
+                      let item = rows.first(where: { $0.student.id == selection.studentId }),
+                      let column = data.sheet.columns.first(where: { $0.id == selection.columnId }) {
                 inspector(for: item, column: column, selection: selection)
             } else {
                 NotebookStateCard(

@@ -31,16 +31,23 @@ struct NotebookAverageExplanationView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         resultSection(explanation)
 
-                        if !explanation.included.isEmpty {
+                        if !explanation.weightedContributions.isEmpty {
                             sectionHeader(title: "Incluye", icon: "plus.circle.fill", color: NotebookStyle.successTint)
-                            ForEach(explanation.included, id: \.columnId) { contribution in
+                            ForEach(explanation.weightedContributions, id: \.columnId) { contribution in
                                 contributionRow(contribution)
                             }
                         }
 
-                        if !explanation.excluded.isEmpty {
+                        if !explanation.pendingCells.isEmpty {
+                            sectionHeader(title: "Pendiente", icon: "clock.fill", color: NotebookStyle.warningTint)
+                            ForEach(explanation.pendingCells, id: \.columnId) { pending in
+                                pendingRow(pending)
+                            }
+                        }
+
+                        if !explanation.excludedColumns.isEmpty {
                             sectionHeader(title: "No incluye", icon: "minus.circle.fill", color: .secondary)
-                            ForEach(explanation.excluded, id: \.columnId) { exclusion in
+                            ForEach(explanation.excludedColumns, id: \.columnId) { exclusion in
                                 exclusionRow(exclusion)
                             }
                         }
@@ -98,8 +105,8 @@ struct NotebookAverageExplanationView: View {
     }
 
     private func resultDetailText(_ explanation: NotebookAverageExplanation) -> String {
-        let included = explanation.included.count
-        let pending = explanation.excluded.filter { $0.reason == .empty }.count
+        let included = explanation.includedColumns.count
+        let pending = explanation.pendingCells.count
         if included == 0 { return "Sin columnas con datos suficientes." }
         if pending == 0 { return "\(included) columnas incluidas." }
         return "\(included) incluidas · \(pending) pendientes."
@@ -117,12 +124,12 @@ struct NotebookAverageExplanationView: View {
         .padding(.top, 4)
     }
 
-    private func contributionRow(_ c: NotebookAverageContribution) -> some View {
+    private func contributionRow(_ c: WeightedContribution) -> some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text(c.title)
                     .font(.system(size: 13, weight: .medium))
-                Text("Peso \(formattedDecimal(c.weight))%")
+                Text("Peso \(formattedDecimal(c.weight))% · aporta \(formattedDecimal(c.weightedValue))")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -136,7 +143,26 @@ struct NotebookAverageExplanationView: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
-    private func exclusionRow(_ e: NotebookAverageExclusion) -> some View {
+    private func pendingRow(_ p: PendingCell) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(p.title)
+                    .font(.system(size: 13, weight: .medium))
+                Text("Celda vacía · peso previsto \(formattedDecimal(p.expectedWeight))%")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary.opacity(0.8))
+            }
+            Spacer()
+            Image(systemName: "clock")
+                .font(.caption)
+                .foregroundStyle(NotebookStyle.warningTint)
+        }
+        .padding(10)
+        .background(NotebookStyle.warningTint.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func exclusionRow(_ e: ExcludedColumn) -> some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text(e.title)

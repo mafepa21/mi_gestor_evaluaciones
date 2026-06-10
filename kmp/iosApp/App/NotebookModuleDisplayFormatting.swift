@@ -235,14 +235,14 @@ extension NotebookModuleView {
     func averageState(for item: NotebookTableRow) -> AverageCellState {
         guard let explanation = item.row.averageExplanation,
               explanation.average != nil,
-              !explanation.included.isEmpty else {
+              !explanation.includedColumns.isEmpty else {
             return .insufficient
         }
-        return explanation.excluded.contains { $0.reason == .empty } ? .pending : .complete
+        return explanation.pendingCells.isEmpty ? .complete : .pending
     }
 
     func averagePendingCount(for item: NotebookTableRow) -> Int {
-        item.row.averageExplanation?.excluded.filter { $0.reason == .empty }.count ?? 0
+        item.row.averageExplanation?.pendingCells.count ?? 0
     }
 
     func averageBadge(for item: NotebookTableRow) -> some View {

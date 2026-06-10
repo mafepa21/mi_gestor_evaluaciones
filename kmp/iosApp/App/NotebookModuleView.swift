@@ -1183,10 +1183,10 @@ struct CustomAverageExplanationPopoverView: View {
     private var averageState: AverageState {
         guard let explanation = explanation,
               explanation.average != nil,
-              !explanation.included.isEmpty else {
+              !explanation.includedColumns.isEmpty else {
             return .insufficient
         }
-        return explanation.excluded.contains { $0.reason == .empty } ? .pending : .complete
+        return explanation.pendingCells.isEmpty ? .complete : .pending
     }
 
     var body: some View {
@@ -1198,30 +1198,28 @@ struct CustomAverageExplanationPopoverView: View {
                     VStack(alignment: .leading, spacing: 16) {
                         summaryInfo(explanation)
 
-                        if !explanation.included.isEmpty {
+                        if !explanation.weightedContributions.isEmpty {
                             VStack(alignment: .leading, spacing: 8) {
                                 sectionHeader(title: "Incluye", icon: "plus.circle.fill", color: NotebookStyle.successTint)
-                                ForEach(explanation.included, id: \.columnId) { c in
+                                ForEach(explanation.weightedContributions, id: \.columnId) { c in
                                     contributionRow(c)
                                 }
                             }
                         }
 
-                        let pendingExclusions = explanation.excluded.filter { $0.reason == .empty }
-                        if !pendingExclusions.isEmpty {
+                        if !explanation.pendingCells.isEmpty {
                             VStack(alignment: .leading, spacing: 8) {
                                 sectionHeader(title: "Pendientes", icon: "clock.fill", color: NotebookStyle.warningTint)
-                                ForEach(pendingExclusions, id: \.columnId) { e in
-                                    pendingRow(e)
+                                ForEach(explanation.pendingCells, id: \.columnId) { pending in
+                                    pendingRow(pending)
                                 }
                             }
                         }
 
-                        let otherExclusions = explanation.excluded.filter { $0.reason != .empty }
-                        if !otherExclusions.isEmpty {
+                        if !explanation.excludedColumns.isEmpty {
                             VStack(alignment: .leading, spacing: 8) {
                                 sectionHeader(title: "No incluye", icon: "minus.circle.fill", color: .secondary)
-                                ForEach(otherExclusions, id: \.columnId) { e in
+                                ForEach(explanation.excludedColumns, id: \.columnId) { e in
                                     exclusionRow(e)
                                 }
                             }
@@ -1348,7 +1346,7 @@ struct CustomAverageExplanationPopoverView: View {
     }
 
     private func summaryInfo(_ explanation: NotebookAverageExplanation) -> some View {
-        let totalWeight = explanation.included.reduce(0.0) { $0 + $1.weight }
+        let totalWeight = explanation.includedColumns.reduce(0.0) { $0 + $1.weight }
         return HStack {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Resumen del cálculo")
@@ -1376,7 +1374,7 @@ struct CustomAverageExplanationPopoverView: View {
         }
     }
 
-    private func contributionRow(_ c: NotebookAverageContribution) -> some View {
+    private func contributionRow(_ c: WeightedContribution) -> some View {
         HStack(spacing: 12) {
             let color: Color = {
                 if let col = columns.first(where: { $0.id == c.columnId }),
@@ -1396,7 +1394,7 @@ struct CustomAverageExplanationPopoverView: View {
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
-                Text("Peso: \(formattedDecimal(c.weight))%")
+                Text("Peso: \(formattedDecimal(c.weight))% · aporta \(formattedDecimal(c.weightedValue))")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -1417,27 +1415,21 @@ struct CustomAverageExplanationPopoverView: View {
         )
     }
 
-    private func pendingRow(_ e: NotebookAverageExclusion) -> some View {
+    private func pendingRow(_ pending: PendingCell) -> some View {
         HStack(spacing: 12) {
             RoundedRectangle(cornerRadius: 2)
                 .fill(NotebookStyle.warningTint)
                 .frame(width: 4, height: 28)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(e.title)
+                Text(pending.title)
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                 
-                if let col = columns.first(where: { $0.id == e.columnId }) {
-                    Text("Peso estimado: \(formattedDecimal(col.weight))%")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("Falta nota")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
+                Text("Celda vacía · peso previsto \(formattedDecimal(pending.expectedWeight))%")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
 
             Spacer()
@@ -1463,7 +1455,7 @@ struct CustomAverageExplanationPopoverView: View {
         )
     }
 
-    private func exclusionRow(_ e: NotebookAverageExclusion) -> some View {
+    private func exclusionRow(_ e: ExcludedColumn) -> some View {
         HStack(spacing: 12) {
             RoundedRectangle(cornerRadius: 2)
                 .fill(Color.secondary)

@@ -349,6 +349,9 @@ class BuildNotebookSheetUseCaseTest {
         assertEquals(7.0, sheet.rows.first().weightedAverage)
         assertEquals(50.0, explanation?.totalIncludedWeight)
         assertEquals(NotebookAverageExclusionReason.EMPTY, explanation?.excluded?.single { it.columnId == "eval_12" }?.reason)
+        assertEquals(listOf("eval_12"), explanation?.pendingCells?.map { it.columnId })
+        assertEquals(50.0, explanation?.pendingCells?.single()?.expectedWeight)
+        assertEquals(listOf("eval_11"), explanation?.includedColumns?.map { it.columnId })
     }
 
     @Test
@@ -499,6 +502,12 @@ class BuildNotebookSheetUseCaseTest {
         )
 
         assertEquals(9.0, sheet.rows.first().weightedAverage)
+        val explanation = sheet.rows.first().averageExplanation
+        assertEquals(listOf("eval_12"), explanation?.includedColumns?.map { it.columnId })
+        assertEquals(
+            NotebookAverageExclusionReason.RAW_VALUE_ONLY,
+            explanation?.excludedColumns?.single { it.columnId == "eval_11" }?.reason
+        )
     }
 
     @Test

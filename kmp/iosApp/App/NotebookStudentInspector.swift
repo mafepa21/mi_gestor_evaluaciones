@@ -21,6 +21,10 @@ struct NotebookStudentInspector: View {
     let aiSectionTitle: String?
     let aiSectionOrigin: String?
     let aiRegenerateTitle: String?
+    let averageExplanation: NotebookAverageExplanation?
+    let pendingColumns: [PendingCell]
+    let recentObservations: [NotebookInspectorObservation]
+    let rubricSummaries: [NotebookInspectorRubricSummary]
     let canOpenEvaluation: Bool
     let canOpenRubric: Bool
     let showsAttendanceShortcut: Bool
@@ -44,10 +48,14 @@ struct NotebookStudentInspector: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 inspectorHeader
+                averageSection
+                pendingColumnsSection
+                observationsSection
+                rubricSection
+                quickActions
                 detailsSection
                 trendsSection
                 aiSection
-                quickActions
                 evidenceEditor
                 auditHistorySection
             }
@@ -89,12 +97,64 @@ struct NotebookStudentInspector: View {
                         }
                         .buttonStyle(.plain)
                         .padding(-4)
+                        .accessibilityLabel("Cerrar inspector")
                     }
                 }
 
                 HStack(spacing: 8) {
                     NotebookPill(label: valueText.isEmpty ? "Sin valor" : valueText, systemImage: "number", active: true, tint: NotebookStyle.primaryTint, compact: true)
                     NotebookPill(label: "Peso \(weightText)", systemImage: "scalemass", active: false, tint: NotebookStyle.primaryTint, compact: true)
+                }
+            }
+        }
+    }
+
+    private var averageSection: some View {
+        NotebookInspectorSection(title: "Media explicada", systemImage: "function") {
+            NotebookAverageCompactSummaryView(explanation: averageExplanation)
+        }
+    }
+
+    @ViewBuilder
+    private var pendingColumnsSection: some View {
+        NotebookInspectorSection(title: "Columnas pendientes", systemImage: "clock.badge.exclamationmark") {
+            if pendingColumns.isEmpty {
+                NotebookInspectorEmptyLine(text: "Sin columnas evaluables pendientes.")
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(pendingColumns, id: \.columnId) { pending in
+                        NotebookInspectorPendingRow(pending: pending)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var observationsSection: some View {
+        NotebookInspectorSection(title: "Últimas observaciones", systemImage: "text.bubble") {
+            if recentObservations.isEmpty {
+                NotebookInspectorEmptyLine(text: "Sin observaciones registradas para este alumno.")
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(recentObservations) { observation in
+                        NotebookInspectorObservationRow(observation: observation)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var rubricSection: some View {
+        NotebookInspectorSection(title: "Rúbricas asociadas", systemImage: "list.bullet.rectangle") {
+            if rubricSummaries.isEmpty {
+                NotebookInspectorEmptyLine(text: "No hay rúbricas asociadas en este cuaderno.")
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(rubricSummaries) { rubric in
+                        NotebookInspectorRubricRow(summary: rubric)
+                    }
                 }
             }
         }
@@ -462,10 +522,25 @@ struct NotebookStudentInspector: View {
         do {
             trends = try await bridge.getAITrendsAndMetrics(classId: classId, studentId: studentId)
         } catch {
-            print("Error loading trends: \(error)")
+            trends = nil
         }
         isLoadingTrends = false
     }
+}
+
+struct NotebookInspectorObservation: Identifiable, Hashable {
+    let id: String
+    let columnTitle: String
+    let note: String
+    let icon: String
+    let attachmentCount: Int
+}
+
+struct NotebookInspectorRubricSummary: Identifiable, Hashable {
+    let id: String
+    let title: String
+    let value: String
+    let isPending: Bool
 }
 
 private struct NotebookInspectorInfoRow: View {
@@ -482,6 +557,123 @@ private struct NotebookInspectorInfoRow: View {
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+}
+
+private struct NotebookInspectorPendingRow: View {
+    let pending: PendingCell
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "clock")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(NotebookStyle.warningTint)
+                .frame(width: 24, height: 24)
+                .background(NotebookStyle.warningTint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(pending.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                Text("Peso previsto \(formattedDecimal(pending.expectedWeight))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+        }
+        .padding(8)
+        .background(NotebookStyle.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func formattedDecimal(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.locale = .current
+        formatter.numberStyle = .decimal
+        formatter.maximumFractionDigits = 1
+        return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.1f", value)
+    }
+}
+
+private struct NotebookInspectorObservationRow: View {
+    let observation: NotebookInspectorObservation
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: observation.icon.isEmpty ? "note.text" : observation.icon)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(NotebookStyle.primaryTint)
+                    .frame(width: 24, height: 24)
+                    .background(NotebookStyle.primaryTint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .accessibilityHidden(true)
+
+                Text(observation.columnTitle)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+
+                Spacer(minLength: 8)
+
+                if observation.attachmentCount > 0 {
+                    Label("\(observation.attachmentCount)", systemImage: "paperclip")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Text(observation.note)
+                .font(.subheadline)
+                .foregroundStyle(.primary)
+                .lineLimit(3)
+        }
+        .padding(8)
+        .background(NotebookStyle.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+private struct NotebookInspectorRubricRow: View {
+    let summary: NotebookInspectorRubricSummary
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: summary.isPending ? "circle.dotted" : "checkmark.seal.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(summary.isPending ? NotebookStyle.warningTint : NotebookStyle.successTint)
+                .frame(width: 24, height: 24)
+                .background(
+                    (summary.isPending ? NotebookStyle.warningTint : NotebookStyle.successTint).opacity(0.12),
+                    in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                )
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(summary.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                Text(summary.value)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+        }
+        .padding(8)
+        .background(NotebookStyle.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+private struct NotebookInspectorEmptyLine: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(8)
+            .background(NotebookStyle.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 

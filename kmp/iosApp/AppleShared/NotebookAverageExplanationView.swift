@@ -203,6 +203,86 @@ struct NotebookAverageExplanationView: View {
     }
 }
 
+struct NotebookAverageCompactSummaryView: View {
+    let explanation: NotebookAverageExplanation?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(explanation?.average.map { formattedDecimal($0.doubleValue) } ?? "--")
+                    .font(.title2.weight(.bold))
+                    .foregroundStyle(explanation?.average == nil ? .secondary : NotebookStyle.primaryTint)
+                    .monospacedDigit()
+
+                Text(summaryText)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                Spacer(minLength: 8)
+            }
+
+            if let explanation {
+                HStack(spacing: 8) {
+                    metricChip(
+                        title: "Entran",
+                        value: "\(explanation.includedColumns.count)",
+                        tint: NotebookStyle.successTint
+                    )
+                    metricChip(
+                        title: "Pendientes",
+                        value: "\(explanation.pendingCells.count)",
+                        tint: NotebookStyle.warningTint
+                    )
+                    metricChip(
+                        title: "Fuera",
+                        value: "\(explanation.excludedColumns.count)",
+                        tint: .secondary
+                    )
+                }
+
+                if let topContribution = explanation.weightedContributions.max(by: { abs($0.weightedValue) < abs($1.weightedValue) }) {
+                    Text("Mayor señal: \(topContribution.title) · \(formattedDecimal(topContribution.value)) con peso \(formattedDecimal(topContribution.weight))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var summaryText: String {
+        guard let explanation else { return "Sin cálculo disponible" }
+        if explanation.average == nil { return "Datos insuficientes" }
+        if explanation.pendingCells.isEmpty { return "Media consolidada" }
+        return "Media provisional"
+    }
+
+    private func metricChip(title: String, value: String, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title.uppercased())
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.headline.weight(.bold))
+                .foregroundStyle(tint)
+                .monospacedDigit()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(8)
+        .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func formattedDecimal(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.locale = .current
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 1
+        formatter.maximumFractionDigits = 2
+        return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.1f", value)
+    }
+}
+
 struct NotebookAverageExplanationPresentationModifier: ViewModifier {
     #if !os(macOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass

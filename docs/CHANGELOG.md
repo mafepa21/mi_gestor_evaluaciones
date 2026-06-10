@@ -15,6 +15,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- Inspector rápido de alumno en el Cuaderno con Media explicada, columnas pendientes, últimas observaciones, rúbricas asociadas y acciones principales.
 - Modelo explícito de explicación de Media del Cuaderno con columnas incluidas, columnas excluidas, celdas pendientes y contribuciones ponderadas, manteniendo compatibilidad con el contrato anterior.
 - Instrumentación debug desactivada por defecto para medir builds del sheet del Cuaderno, recálculo de medias, construcción del render model, filas visibles, hits/misses de caché y prompts derivados de IA.
 - Perfil docente multi-asignatura local en SwiftUI con perfiles General, Educación Física, Lenguas, Ciencias, Matemáticas, Música, Tecnología y Personalizado.
@@ -26,6 +27,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- La celda Media en macOS abre la ficha rápida completa del alumno, no solo el desglose aislado de cálculo.
 - Las columnas de pruebas físicas del Cuaderno separan dato bruto y nota evaluable: `Marca`/`Nivel` se crean como dato bruto y `Nota` como nota baremada ponderable.
 - La celda Media del Cuaderno separa visualmente qué entra, qué queda pendiente, qué no entra y cuánto aporta cada peso; en macOS se abre dentro del inspector contextual.
 - La navegación iOS/iPadOS/macOS generaliza los módulos EF como módulos de dominio: sesiones prácticas, mediciones y baremos, recursos, incidencias y retos.
@@ -55,6 +57,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `./gradlew :shared:desktopTest` completado correctamente tras convertir el inspector del Cuaderno en ficha rápida del alumno.
+- `./gradlew :shared:compileKotlinMetadata` completado correctamente tras el ajuste del inspector.
+- `git diff --check` completado correctamente tras el ajuste del inspector.
+- `PLATFORM_NAME=macosx ARCHS=arm64 CONFIGURATION=Debug ./scripts/build_apple_framework.sh` no pudo completarse porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y `xcodebuild` requiere Xcode completo.
 - `./gradlew :shared:desktopTest` completado correctamente tras separar columnas físicas brutas y notas baremadas.
 - `./gradlew :shared:compileKotlinMetadata` completado correctamente tras reforzar la regla KMP de dato bruto físico.
 - `git diff --check` completado correctamente tras separar columnas físicas brutas y notas baremadas.

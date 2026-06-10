@@ -442,6 +442,9 @@ struct NotebookAverageEditorSheet: View {
 
     private static func isPhysicalRawMeasure(_ column: NotebookColumnDefinition) -> Bool {
         guard column.instrumentKind == .physicalTest else { return false }
+        if let context = column.unitOrSituation?.lowercased(), context.hasPrefix("dato bruto") {
+            return true
+        }
         switch column.scaleKind {
         case .time, .distance, .repetitions:
             return true

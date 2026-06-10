@@ -885,6 +885,19 @@ private val rawPhysicalScaleKinds = setOf(
     NotebookScaleKind.REPETITIONS,
 )
 
+private fun String?.isPhysicalRawDataLabel(): Boolean {
+    val normalized = this
+        ?.trim()
+        ?.lowercase()
+        ?.replace("á", "a")
+        ?.replace("é", "e")
+        ?: return false
+    return normalized.startsWith("dato bruto") ||
+        normalized.startsWith("marca fisica") ||
+        normalized == "marca" ||
+        normalized == "nivel"
+}
+
 enum class NotebookColumnVisibility {
     VISIBLE,
     HIDDEN,
@@ -996,7 +1009,9 @@ data class NotebookColumnDefinition(
     fun countsTowardAverage(): Boolean {
         if (!countsTowardAverage || weight <= 0.0) return false
         if (visibility == NotebookColumnVisibility.ARCHIVED) return false
-        if (instrumentKind == NotebookInstrumentKind.PHYSICAL_TEST && scaleKind in rawPhysicalScaleKinds) {
+        if (instrumentKind == NotebookInstrumentKind.PHYSICAL_TEST &&
+            (scaleKind in rawPhysicalScaleKinds || unitOrSituation.isPhysicalRawDataLabel())
+        ) {
             return false
         }
         return when (type) {
@@ -1010,7 +1025,9 @@ data class NotebookColumnDefinition(
 
     fun averageExclusionReason(): NotebookAverageExclusionReason {
         if (visibility == NotebookColumnVisibility.ARCHIVED) return NotebookAverageExclusionReason.LOCKED_OR_ARCHIVED
-        if (instrumentKind == NotebookInstrumentKind.PHYSICAL_TEST && scaleKind in rawPhysicalScaleKinds) {
+        if (instrumentKind == NotebookInstrumentKind.PHYSICAL_TEST &&
+            (scaleKind in rawPhysicalScaleKinds || unitOrSituation.isPhysicalRawDataLabel())
+        ) {
             return NotebookAverageExclusionReason.RAW_VALUE_ONLY
         }
         if (weight <= 0.0) return NotebookAverageExclusionReason.RAW_VALUE_ONLY

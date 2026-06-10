@@ -511,6 +511,64 @@ class BuildNotebookSheetUseCaseTest {
     }
 
     @Test
+    fun `physical level raw data is excluded even when scale is ten point`() = runTest {
+        val classId = 1L
+        val student = Student(id = 1, firstName = "Ana", lastName = "Lopez")
+        val grades = listOf(
+            Grade(id = 1, classId = classId, studentId = 1, columnId = "navette_level", evaluationId = null, value = 7.5),
+            Grade(id = 2, classId = classId, studentId = 1, columnId = "navette_score", evaluationId = null, value = 8.0),
+        )
+
+        val useCase = BuildNotebookSheetUseCase(
+            getNotebookUseCase = GetNotebookUseCase(
+                classesRepository = FakeClassesRepository2(student, classId),
+                evaluationsRepository = FakeEvaluationsRepository2(emptyList()),
+                gradesRepository = FakeGradesRepository2(grades),
+                notebookCellsRepository = FakeNotebookCellsRepository2()
+            )
+        )
+
+        val sheet = useCase.build(
+            classId = classId,
+            evaluations = emptyList(),
+            students = listOf(student),
+            tabs = listOf(NotebookTab(id = "eval", title = "Evaluación", order = 0)),
+            configuredColumns = listOf(
+                NotebookColumnDefinition(
+                    id = "navette_level",
+                    title = "Course Navette · Nivel",
+                    type = NotebookColumnType.NUMERIC,
+                    instrumentKind = NotebookInstrumentKind.PHYSICAL_TEST,
+                    scaleKind = NotebookScaleKind.TEN_POINT,
+                    unitOrSituation = "Dato bruto · periodo",
+                    tabIds = listOf("eval"),
+                    weight = 50.0,
+                    countsTowardAverage = true,
+                ),
+                NotebookColumnDefinition(
+                    id = "navette_score",
+                    title = "Course Navette · Nota",
+                    type = NotebookColumnType.NUMERIC,
+                    instrumentKind = NotebookInstrumentKind.PHYSICAL_TEST,
+                    scaleKind = NotebookScaleKind.TEN_POINT,
+                    unitOrSituation = "Nota baremada",
+                    tabIds = listOf("eval"),
+                    weight = 50.0,
+                    countsTowardAverage = true,
+                ),
+            )
+        )
+
+        val explanation = sheet.rows.first().averageExplanation
+        assertEquals(8.0, sheet.rows.first().weightedAverage)
+        assertEquals(listOf("navette_score"), explanation?.includedColumns?.map { it.columnId })
+        assertEquals(
+            NotebookAverageExclusionReason.RAW_VALUE_ONLY,
+            explanation?.excludedColumns?.single { it.columnId == "navette_level" }?.reason
+        )
+    }
+
+    @Test
     fun `hidden and rubric columns can count while archived columns are excluded`() = runTest {
         val classId = 1L
         val student = Student(id = 1, firstName = "Ana", lastName = "Lopez")

@@ -23,6 +23,9 @@ Estado: casi cerrada.
 Prioridad: alta.
 
 - Cuaderno: carga rapida, grid estable, columnas ocultas seguras, medias explicables y categorias claras.
+  Avance: Media explicable con desglose de columnas incluidas, pendientes, exclusiones y aportaciones ponderadas ya integrada en KMP y SwiftUI.
+  Avance: pruebas físicas separan dato bruto (`Marca`/`Nivel`) y nota baremada (`Nota`) para evitar contaminar la Media.
+  Avance: inspector convertido en ficha rápida del alumno con Media, pendientes, observaciones, rúbricas y acciones.
 - Rubricas: evaluacion fiable, integracion con cuaderno e informes.
 - Asistencia: flujo diario rapido y consistente.
 - Alumnado: perfiles utiles, busqueda y datos relevantes.
@@ -35,7 +38,6 @@ Prioridad: alta.
 
 - iPad: shell de trabajo clara, inspector no invasivo y acciones principales visibles.
 - macOS: paridad progresiva con convenciones desktop reales.
-  Avance: la barra lateral de macOS se organiza en secciones agrupadas (Hoy, Evaluación, Planificación, Sistema) para una experiencia de escritorio real. Rediseño de utilidades: Backups completado.
 - Dashboard Apple: briefing local no bloqueante con fallback determinista y acciones reales por plataforma.
 - Accesibilidad: contraste, foco, labels y navegacion por teclado donde aplique.
 - UI/UX: reducir ruido visual, reforzar jerarquia y mantener rejilla disciplinada.
@@ -45,6 +47,7 @@ Prioridad: alta.
 Prioridad: media-alta.
 
 - SQLDelight: migraciones seguras y pruebas de repositorio.
+- Multi-asignatura: relación real grupo-asignatura con catálogo visible y presets aplicables por materia; siguiente paso, usarla en filtros y onboarding.
 - Backups: restauracion fiable y trazable.
 - Sync: estrategia clara para LAN/local y futuras opciones.
 - Exportaciones: informes utiles y reproducibles.
@@ -55,6 +58,7 @@ Prioridad: media-alta.
 Prioridad: futura, con base documental inicial creada.
 
 - Onboarding y datos de ejemplo.
+- Posicionamiento multi-asignatura: core docente como producto principal y EF como vertical opcional.
 - Guia de uso para docentes.
 - Release notes publicables.
 - Evidencias de calidad: builds, tests, capturas, auditorias.
@@ -71,3 +75,4 @@ Prioridad: futura, con base documental inicial creada.
 - Revisar si la app Flutter original queda como legado, referencia o target activo.
 - Convertir el borrador de privacidad y datos personales en documentos publicables revisados.
 - Revisar limpieza de ramas remotas historicas cuando no haya PRs abiertos dependientes.
+- Migrar PhysicalTests de forma gradual hacia mediciones genéricas después del piloto `READING_FLUENCY`, sin tocar tablas físicas hasta necesitar persistencia compartida.

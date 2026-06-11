@@ -17,6 +17,7 @@ import com.migestor.data.repository.IncidentsRepositorySqlDelight
 import com.migestor.data.repository.NotebookCellsRepositorySqlDelight
 import com.migestor.data.repository.RubricsRepositorySqlDelight
 import com.migestor.data.repository.StudentsRepositorySqlDelight
+import com.migestor.data.repository.SubjectsRepositorySqlDelight
 import com.migestor.data.repository.NotebookRepositorySqlDelight
 import com.migestor.data.repository.PlannerRepositorySqlDelight
 import com.migestor.data.repository.PhysicalTestsRepositorySqlDelight
@@ -42,6 +43,7 @@ import com.migestor.shared.usecase.SaveLevelUseCase
 import com.migestor.shared.usecase.SaveRubricUseCase
 import com.migestor.shared.usecase.SaveSessionUseCase
 import com.migestor.shared.usecase.SaveStudentUseCase
+import com.migestor.shared.usecase.SaveSubjectUseCase
 import kotlinx.datetime.Clock
 
 import com.migestor.data.repository.NotebookConfigRepositorySqlDelight
@@ -52,6 +54,7 @@ class KmpContainer(val driver: SqlDriver) {
 
     val studentsRepository = StudentsRepositorySqlDelight(database)
     val classesRepository = ClassesRepositorySqlDelight(database)
+    val subjectsRepository = SubjectsRepositorySqlDelight(database)
     val notebookConfigRepository = NotebookConfigRepositorySqlDelight(database)
     val evaluationsRepository = EvaluationsRepositorySqlDelight(database)
     val gradesRepository = GradesRepositorySqlDelight(database)
@@ -96,6 +99,7 @@ class KmpContainer(val driver: SqlDriver) {
 
     val saveStudent = SaveStudentUseCase(studentsRepository)
     val saveClass = SaveClassUseCase(classesRepository)
+    val saveSubject = SaveSubjectUseCase(subjectsRepository)
     val saveEvaluation = SaveEvaluationUseCase(evaluationsRepository)
     val recordGrade = RecordGradeUseCase(gradesRepository)
     val saveRubric = SaveRubricUseCase(rubricsRepository)

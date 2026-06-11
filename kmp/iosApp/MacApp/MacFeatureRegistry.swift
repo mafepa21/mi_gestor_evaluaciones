@@ -45,7 +45,7 @@ enum MacFeatureRegistry {
         .init(feature: .situations, title: "Situaciones", subtitle: "Programación e importación DOCX", systemImage: "doc.text.magnifyingglass", source: .parityIOS, enabledInV1: true),
         .init(feature: .students, title: "Alumnado", subtitle: "Directorio y seguimiento rápido", systemImage: "person.3.sequence.fill", source: .parityIOS, enabledInV1: true),
         .init(feature: .rubrics, title: "Rúbricas", subtitle: "Banco de evaluación y edición", systemImage: "checklist.checked", source: .parityIOS, enabledInV1: true),
-        .init(feature: .physicalTests, title: "EF · Condición física", subtitle: "Baremos, marcas e históricos", systemImage: "stopwatch.fill", source: .parityIOS, enabledInV1: true),
+        .init(feature: .physicalTests, title: "Mediciones y baremos", subtitle: "Progreso, marcas e históricos", systemImage: "stopwatch.fill", source: .parityIOS, enabledInV1: true),
         .init(feature: .sync, title: "Sync LAN", subtitle: "Emparejado, pull y observabilidad", systemImage: "arrow.triangle.2.circlepath.circle.fill", source: .inheritedDesktop, enabledInV1: true),
         .init(feature: .backups, title: "Backups", subtitle: "Copias locales y restauración", systemImage: "externaldrive.badge.timemachine", source: .inheritedDesktop, enabledInV1: true),
         .init(feature: .reports, title: "Informes", subtitle: "Exportaciones y contexto IA", systemImage: "doc.text.image", source: .parityIOS, enabledInV1: true),

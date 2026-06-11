@@ -73,6 +73,10 @@ class SqlDelightSyncAdapter(
                         put("name", JsonPrimitive(schoolClass.name))
                         put("course", JsonPrimitive(schoolClass.course))
                         put("description", schoolClass.description?.let(::JsonPrimitive) ?: JsonPrimitive(""))
+                        put("centerId", schoolClass.centerId?.let(::JsonPrimitive) ?: JsonPrimitive(0L))
+                        put("academicYearId", schoolClass.academicYearId?.let(::JsonPrimitive) ?: JsonPrimitive(0L))
+                        put("stageCycleId", schoolClass.stageCycleId?.let(::JsonPrimitive) ?: JsonPrimitive(0L))
+                        put("subjectId", schoolClass.subjectId?.let(::JsonPrimitive) ?: JsonPrimitive(0L))
                     }.toString(),
                 )
             }
@@ -1022,6 +1026,10 @@ class SqlDelightSyncAdapter(
                             name = name,
                             course = course,
                             description = payload.string("description"),
+                            centerId = payload.long("centerId")?.takeIf { it > 0L },
+                            academicYearId = payload.long("academicYearId")?.takeIf { it > 0L },
+                            stageCycleId = payload.long("stageCycleId")?.takeIf { it > 0L },
+                            subjectId = payload.long("subjectId")?.takeIf { it > 0L },
                             updatedAtEpochMs = change.updatedAtEpochMs,
                             deviceId = change.deviceId,
                             syncVersion = 1,

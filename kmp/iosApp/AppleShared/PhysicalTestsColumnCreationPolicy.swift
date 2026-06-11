@@ -28,7 +28,7 @@ struct PhysicalTestsColumnCreationPolicy {
             var scoreColumnId = existingLink?.scoreColumnId
             
             if assignment.rawColumnMode && rawColumnId == nil {
-                let title = "\(template.name) · marca"
+                let title = rawColumnTitle(for: template)
                 if let existingColumnId = existingNotebookPhysicalColumnId(bridge: bridge, title: title, categoryId: categoryId) {
                     rawColumnId = existingColumnId
                 } else {
@@ -37,7 +37,7 @@ struct PhysicalTestsColumnCreationPolicy {
                         name: title,
                         categoryId: categoryId,
                         inputKind: template.measurement.inputKind,
-                        unitOrSituation: template.unit,
+                        unitOrSituation: rawColumnContext(for: template),
                         scaleKind: template.measurement.scaleKind,
                         iconName: "stopwatch.fill",
                         weight: 0,
@@ -48,7 +48,7 @@ struct PhysicalTestsColumnCreationPolicy {
             }
 
             if assignment.scoreColumnMode && scoreColumnId == nil {
-                let title = "\(template.name) · nota"
+                let title = scoreColumnTitle(for: template)
                 if let existingColumnId = existingNotebookPhysicalColumnId(bridge: bridge, title: title, categoryId: categoryId) {
                     scoreColumnId = existingColumnId
                 } else {
@@ -78,6 +78,27 @@ struct PhysicalTestsColumnCreationPolicy {
                     )
                 )
             }
+        }
+    }
+
+    static func rawColumnTitle(for template: PhysicalTestTemplate) -> String {
+        "\(template.name) · \(rawColumnLabel(for: template))"
+    }
+
+    static func scoreColumnTitle(for template: PhysicalTestTemplate) -> String {
+        "\(template.name) · Nota"
+    }
+
+    static func rawColumnContext(for template: PhysicalTestTemplate) -> String {
+        "Dato bruto · \(template.unit)"
+    }
+
+    private static func rawColumnLabel(for template: PhysicalTestTemplate) -> String {
+        switch template.measurement {
+        case .level:
+            return "Nivel"
+        default:
+            return "Marca"
         }
     }
     

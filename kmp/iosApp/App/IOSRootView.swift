@@ -614,8 +614,12 @@ struct IOSGlobalContextRow: View {
 struct IOSWorkspaceSidebar: View {
     let activeModule: AppWorkspaceModule
     let onSelectModule: (AppWorkspaceModule) -> Void
+    @AppStorage("teacher.enabledSubjectProfiles.v1")
+    private var enabledSubjectProfilesRaw: String = TeacherSubjectProfile.general.rawValue
 
     var body: some View {
+        let enabledProfiles = TeacherSubjectProfile.decodeSet(enabledSubjectProfilesRaw)
+
         List {
             Section {
                 VStack(alignment: .leading, spacing: 6) {
@@ -635,7 +639,7 @@ struct IOSWorkspaceSidebar: View {
             }
 
             Section("Más herramientas") {
-                ForEach(IOSFeatureRegistry.secondary) { feature in
+                ForEach(IOSFeatureRegistry.secondary(enabledProfiles: enabledProfiles)) { feature in
                     sidebarRow(for: feature)
                 }
             }

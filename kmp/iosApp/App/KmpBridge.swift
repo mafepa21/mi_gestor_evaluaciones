@@ -4,6 +4,8 @@ import Combine
 import Security
 import CryptoKit
 
+typealias KmpSubject = MiGestorKit.Subject
+
 enum IosFormatting {
     private static let decimalFormatter: NumberFormatter = {
         let formatter = NumberFormatter()
@@ -199,6 +201,7 @@ final class KmpBridge: ObservableObject {
     @Published var status: String = "Inicializando..."
     @Published var statsText: String = "-"
     @Published var classes: [SchoolClass] = []
+    @Published var subjects: [KmpSubject] = []
     @Published var studentsInClass: [Student] = []
     @Published var evaluationsInClass: [Evaluation] = []
     @Published var rubrics: [RubricDetail] = []
@@ -1055,6 +1058,7 @@ final class KmpBridge: ObservableObject {
             try await refreshDashboard()
             try await loadDashboard(mode: .office)
             try await refreshClasses()
+            try await refreshSubjects()
             try await refreshRubrics()
             try await refreshRubricClassLinks()
             try await refreshPlanning()
@@ -1267,9 +1271,16 @@ final class KmpBridge: ObservableObject {
         }
     }
 
+    private func refreshSubjects() async throws {
+        subjects = try await container.subjectsRepository.listSubjects()
+    }
+
     func ensureClassesLoaded() async {
         if classes.isEmpty {
             try? await refreshClasses()
+        }
+        if subjects.isEmpty {
+            try? await refreshSubjects()
         }
     }
 
@@ -2381,13 +2392,17 @@ final class KmpBridge: ObservableObject {
         return components.date ?? Date.distantPast
     }
 
-    func createClass(name: String, course: Int32) async throws -> Int64 {
+    func createClass(name: String, course: Int32, subjectId: Int64? = nil) async throws -> Int64 {
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
         let classId = try await container.saveClass.invoke(
             id: nil,
             name: name,
             course: course,
             description: nil,
+            centerId: nil,
+            academicYearId: nil,
+            stageCycleId: nil,
+            subjectId: kotlinLong(subjectId),
             updatedAtEpochMs: nowMs,
             deviceId: localDeviceId,
             syncVersion: 1
@@ -2403,10 +2418,88 @@ final class KmpBridge: ObservableObject {
                 "id": classId.int64Value,
                 "name": name,
                 "course": Int(course),
-                "description": NSNull()
+                "description": NSNull(),
+                "subjectId": subjectId.map { NSNumber(value: $0) } ?? NSNull()
             ]
         )
         return classId.int64Value
+    }
+
+    func updateClass(
+        id: Int64,
+        name: String,
+        course: Int32,
+        description: String?,
+        centerId: Int64?,
+        academicYearId: Int64?,
+        stageCycleId: Int64?,
+        subjectId: Int64?
+    ) async throws {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        _ = try await container.saveClass.invoke(
+            id: kotlinLong(id),
+            name: name,
+            course: course,
+            description: description,
+            centerId: kotlinLong(centerId),
+            academicYearId: kotlinLong(academicYearId),
+            stageCycleId: kotlinLong(stageCycleId),
+            subjectId: kotlinLong(subjectId),
+            updatedAtEpochMs: nowMs,
+            deviceId: localDeviceId,
+            syncVersion: 1
+        )
+        try await refreshClasses()
+        if selectedStudentsClassId == id {
+            try await refreshStudentsDirectory()
+        }
+        enqueueLocalChange(
+            entity: "class",
+            id: "\(id)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "id": id,
+                "name": name,
+                "course": Int(course),
+                "description": description ?? NSNull(),
+                "centerId": centerId.map { NSNumber(value: $0) } ?? NSNull(),
+                "academicYearId": academicYearId.map { NSNumber(value: $0) } ?? NSNull(),
+                "stageCycleId": stageCycleId.map { NSNumber(value: $0) } ?? NSNull(),
+                "subjectId": subjectId.map { NSNumber(value: $0) } ?? NSNull()
+            ]
+        )
+    }
+
+    func saveSubject(id: Int64? = nil, code: String, name: String, stageCycleId: Int64? = nil) async throws -> Int64 {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let subjectId = try await container.saveSubject.invoke(
+            id: kotlinLong(id),
+            code: code,
+            name: name,
+            stageCycleId: kotlinLong(stageCycleId),
+            updatedAtEpochMs: nowMs,
+            deviceId: localDeviceId,
+            syncVersion: 1
+        )
+        try await refreshSubjects()
+        enqueueLocalChange(
+            entity: "subject",
+            id: "\(subjectId.int64Value)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "id": subjectId.int64Value,
+                "code": code,
+                "name": name,
+                "stageCycleId": stageCycleId.map { NSNumber(value: $0) } ?? NSNull()
+            ]
+        )
+        return subjectId.int64Value
+    }
+
+    func deleteSubject(id: Int64) async throws {
+        try await container.subjectsRepository.deleteSubject(subjectId: id)
+        try await refreshSubjects()
+        try await refreshClasses()
     }
 
     func createStudentAndAssignToClass(firstName: String, lastName: String, classId: Int64) async throws {
@@ -7162,6 +7255,10 @@ final class KmpBridge: ObservableObject {
                     name: name,
                     course: Int32(course),
                     description: payloadObject["description"] as? String,
+                    centerId: kotlinLong(positiveInt64Value(payloadObject["centerId"])),
+                    academicYearId: kotlinLong(positiveInt64Value(payloadObject["academicYearId"])),
+                    stageCycleId: kotlinLong(positiveInt64Value(payloadObject["stageCycleId"])),
+                    subjectId: kotlinLong(positiveInt64Value(payloadObject["subjectId"])),
                     updatedAtEpochMs: change.updatedAtEpochMs,
                     deviceId: change.deviceId,
                     syncVersion: 1
@@ -8291,6 +8388,10 @@ final class KmpBridge: ObservableObject {
         if let value = raw as? NSNumber { return value.int64Value }
         if let value = raw as? String { return Int64(value) }
         return nil
+    }
+
+    private func positiveInt64Value(_ raw: Any?) -> Int64? {
+        int64Value(raw).flatMap { $0 > 0 ? $0 : nil }
     }
 
     private func doubleValue(_ raw: Any?) -> Double? {

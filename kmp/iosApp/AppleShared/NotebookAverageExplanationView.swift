@@ -31,16 +31,23 @@ struct NotebookAverageExplanationView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         resultSection(explanation)
 
-                        if !explanation.included.isEmpty {
+                        if !explanation.weightedContributions.isEmpty {
                             sectionHeader(title: "Incluye", icon: "plus.circle.fill", color: NotebookStyle.successTint)
-                            ForEach(explanation.included, id: \.columnId) { contribution in
+                            ForEach(explanation.weightedContributions, id: \.columnId) { contribution in
                                 contributionRow(contribution)
                             }
                         }
 
-                        if !explanation.excluded.isEmpty {
+                        if !explanation.pendingCells.isEmpty {
+                            sectionHeader(title: "Pendiente", icon: "clock.fill", color: NotebookStyle.warningTint)
+                            ForEach(explanation.pendingCells, id: \.columnId) { pending in
+                                pendingRow(pending)
+                            }
+                        }
+
+                        if !explanation.excludedColumns.isEmpty {
                             sectionHeader(title: "No incluye", icon: "minus.circle.fill", color: .secondary)
-                            ForEach(explanation.excluded, id: \.columnId) { exclusion in
+                            ForEach(explanation.excludedColumns, id: \.columnId) { exclusion in
                                 exclusionRow(exclusion)
                             }
                         }
@@ -98,8 +105,8 @@ struct NotebookAverageExplanationView: View {
     }
 
     private func resultDetailText(_ explanation: NotebookAverageExplanation) -> String {
-        let included = explanation.included.count
-        let pending = explanation.excluded.filter { $0.reason == .empty }.count
+        let included = explanation.includedColumns.count
+        let pending = explanation.pendingCells.count
         if included == 0 { return "Sin columnas con datos suficientes." }
         if pending == 0 { return "\(included) columnas incluidas." }
         return "\(included) incluidas · \(pending) pendientes."
@@ -117,12 +124,12 @@ struct NotebookAverageExplanationView: View {
         .padding(.top, 4)
     }
 
-    private func contributionRow(_ c: NotebookAverageContribution) -> some View {
+    private func contributionRow(_ c: WeightedContribution) -> some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text(c.title)
                     .font(.system(size: 13, weight: .medium))
-                Text("Peso \(formattedDecimal(c.weight))%")
+                Text("Peso \(formattedDecimal(c.weight))% · aporta \(formattedDecimal(c.weightedValue))")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -136,7 +143,26 @@ struct NotebookAverageExplanationView: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
-    private func exclusionRow(_ e: NotebookAverageExclusion) -> some View {
+    private func pendingRow(_ p: PendingCell) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(p.title)
+                    .font(.system(size: 13, weight: .medium))
+                Text("Celda vacía · peso previsto \(formattedDecimal(p.expectedWeight))%")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary.opacity(0.8))
+            }
+            Spacer()
+            Image(systemName: "clock")
+                .font(.caption)
+                .foregroundStyle(NotebookStyle.warningTint)
+        }
+        .padding(10)
+        .background(NotebookStyle.warningTint.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func exclusionRow(_ e: ExcludedColumn) -> some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text(e.title)
@@ -165,6 +191,86 @@ struct NotebookAverageExplanationView: View {
         case .nonNumeric: return "Dato no numérico"
         default: return "Excluido"
         }
+    }
+
+    private func formattedDecimal(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.locale = .current
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 1
+        formatter.maximumFractionDigits = 2
+        return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.1f", value)
+    }
+}
+
+struct NotebookAverageCompactSummaryView: View {
+    let explanation: NotebookAverageExplanation?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(explanation?.average.map { formattedDecimal($0.doubleValue) } ?? "--")
+                    .font(.title2.weight(.bold))
+                    .foregroundStyle(explanation?.average == nil ? .secondary : NotebookStyle.primaryTint)
+                    .monospacedDigit()
+
+                Text(summaryText)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                Spacer(minLength: 8)
+            }
+
+            if let explanation {
+                HStack(spacing: 8) {
+                    metricChip(
+                        title: "Entran",
+                        value: "\(explanation.includedColumns.count)",
+                        tint: NotebookStyle.successTint
+                    )
+                    metricChip(
+                        title: "Pendientes",
+                        value: "\(explanation.pendingCells.count)",
+                        tint: NotebookStyle.warningTint
+                    )
+                    metricChip(
+                        title: "Fuera",
+                        value: "\(explanation.excludedColumns.count)",
+                        tint: .secondary
+                    )
+                }
+
+                if let topContribution = explanation.weightedContributions.max(by: { abs($0.weightedValue) < abs($1.weightedValue) }) {
+                    Text("Mayor señal: \(topContribution.title) · \(formattedDecimal(topContribution.value)) con peso \(formattedDecimal(topContribution.weight))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var summaryText: String {
+        guard let explanation else { return "Sin cálculo disponible" }
+        if explanation.average == nil { return "Datos insuficientes" }
+        if explanation.pendingCells.isEmpty { return "Media consolidada" }
+        return "Media provisional"
+    }
+
+    private func metricChip(title: String, value: String, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title.uppercased())
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.headline.weight(.bold))
+                .foregroundStyle(tint)
+                .monospacedDigit()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(8)
+        .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func formattedDecimal(_ value: Double) -> String {

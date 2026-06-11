@@ -18,10 +18,20 @@ CREATE TABLE IF NOT EXISTS classes (
     name TEXT NOT NULL,
     course INTEGER NOT NULL,
     description TEXT,
+    center_id INTEGER,
+    academic_year_id INTEGER,
+    stage_cycle_id INTEGER,
+    subject_id INTEGER,
     updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
     device_id TEXT,
-    sync_version INTEGER NOT NULL DEFAULT 0
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (center_id) REFERENCES centers(id) ON DELETE SET NULL,
+    FOREIGN KEY (academic_year_id) REFERENCES academic_years(id) ON DELETE SET NULL,
+    FOREIGN KEY (stage_cycle_id) REFERENCES stage_cycles(id) ON DELETE SET NULL,
+    FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE SET NULL
 );
+CREATE INDEX IF NOT EXISTS idx_classes_subject ON classes(subject_id);
+CREATE INDEX IF NOT EXISTS idx_classes_academic_year ON classes(academic_year_id);
 
 CREATE TABLE IF NOT EXISTS class_students (
     class_id INTEGER NOT NULL,
@@ -593,14 +603,26 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 deleteStudent:
 DELETE FROM students WHERE id = ?;
 
+selectAllSubjects:
+SELECT id, code, name, stage_cycle_id, updated_at_epoch_ms, device_id, sync_version
+FROM subjects
+ORDER BY name, code;
+
+upsertSubject:
+INSERT OR REPLACE INTO subjects(id, code, name, stage_cycle_id, updated_at_epoch_ms, device_id, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+deleteSubject:
+DELETE FROM subjects WHERE id = ?;
+
 selectAllClasses:
-SELECT id, name, course, description, updated_at_epoch_ms, device_id, sync_version
+SELECT id, name, course, description, center_id, academic_year_id, stage_cycle_id, subject_id, updated_at_epoch_ms, device_id, sync_version
 FROM classes
 ORDER BY course, name;
 
 upsertClass:
-INSERT OR REPLACE INTO classes(id, name, course, description, updated_at_epoch_ms, device_id, sync_version)
-VALUES (?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO classes(id, name, course, description, center_id, academic_year_id, stage_cycle_id, subject_id, updated_at_epoch_ms, device_id, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 deleteClass:
 DELETE FROM classes WHERE id = ?;

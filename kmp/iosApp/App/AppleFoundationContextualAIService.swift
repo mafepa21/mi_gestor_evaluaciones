@@ -1718,7 +1718,7 @@ final class AppleFoundationContextualAIService {
             return #"{"index":\#(index + 1),"minValue":\#(minText),"maxValue":\#(maxText),"score":\#(String(format: "%.1f", range.score)),"label":"\#(range.label)"}"#
         }.joined(separator: "\n")
         return AIContextBudget.prompt("""
-        Genera una propuesta editable de baremo físico para el módulo EF · Condición física.
+        Genera una propuesta editable de baremo físico para el módulo Mediciones y baremos.
         Debes devolver exactamente la estructura generada por el schema, equivalente a JSON estricto.
 
         Caso de uso: \(TeachingAssistantUseCase.physicalScaleRecommendation.title)

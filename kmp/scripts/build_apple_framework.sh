@@ -20,6 +20,12 @@ fi
 APPLE_PLATFORM="${PLATFORM_NAME:-iphonesimulator}"
 APPLE_CONFIG="${CONFIGURATION:-Debug}"
 APPLE_ARCHS="${ARCHS:-${NATIVE_ARCH_ACTUAL:-arm64}}"
+KMP_MACOS_ARCH_OVERRIDE="${KMP_MACOS_ARCH:-}"
+
+if [[ -n "$KMP_MACOS_ARCH_OVERRIDE" && "$KMP_MACOS_ARCH_OVERRIDE" != "arm64" && "$KMP_MACOS_ARCH_OVERRIDE" != "x64" ]]; then
+    echo "Unsupported KMP_MACOS_ARCH: $KMP_MACOS_ARCH_OVERRIDE. Use arm64 or x64."
+    exit 1
+fi
 
 case "$APPLE_PLATFORM" in
     iphoneos)
@@ -31,7 +37,16 @@ case "$APPLE_PLATFORM" in
         SRC_ARCH="iosSimulatorArm64"
         ;;
     macosx)
-        if [[ "$APPLE_ARCHS" == *"x86_64"* ]]; then
+        if [[ "$KMP_MACOS_ARCH_OVERRIDE" == "x64" ]]; then
+            GRADLE_TARGET="MacosX64"
+            SRC_ARCH="macosX64"
+        elif [[ "$KMP_MACOS_ARCH_OVERRIDE" == "arm64" ]]; then
+            GRADLE_TARGET="MacosArm64"
+            SRC_ARCH="macosArm64"
+        elif [[ " $APPLE_ARCHS " == *" arm64 "* ]]; then
+            GRADLE_TARGET="MacosArm64"
+            SRC_ARCH="macosArm64"
+        elif [[ " $APPLE_ARCHS " == *" x86_64 "* ]]; then
             GRADLE_TARGET="MacosX64"
             SRC_ARCH="macosX64"
         else

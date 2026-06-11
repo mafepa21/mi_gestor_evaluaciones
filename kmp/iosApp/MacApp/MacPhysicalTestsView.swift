@@ -362,7 +362,7 @@ struct MacPhysicalTestsView: View {
     private var dashboard: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
-                header(title: "EF · Condición física", subtitle: "\(selectedClassName) · Baremos, marcas e históricos")
+                header(title: "Mediciones y baremos", subtitle: "\(selectedClassName) · Baremos, marcas e históricos")
 
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 12)], spacing: 12) {
                     MacMetricCard(label: "Pruebas", value: "\(tests.count)", tint: .orange, systemImage: "stopwatch.fill")

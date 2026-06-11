@@ -455,7 +455,7 @@ enum AppWorkspaceSection: String, CaseIterable, Identifiable {
     case academic = "Académico"
     case operations = "Operativa"
     case evaluation = "Evaluación"
-    case physicalEducation = "Educación Física"
+    case domainModules = "Módulos de dominio"
     case system = "Sistema"
 
     var id: String { rawValue }
@@ -501,12 +501,12 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .rubrics: return "Rúbricas"
         case .reports: return "Informes"
         case .library: return "Biblioteca"
-        case .peSessions: return "EF · Sesiones"
+        case .peSessions: return "Sesiones prácticas"
         case .peTests: return "EF · Condición física"
-        case .peRubrics: return "EF · Rúbricas"
-        case .peIncidents: return "EF · Incidencias"
-        case .peMaterial: return "EF · Material"
-        case .peTournaments: return "EF · Torneos"
+        case .peRubrics: return "Rúbricas por área"
+        case .peIncidents: return "Incidencias y seguridad"
+        case .peMaterial: return "Recursos y material"
+        case .peTournaments: return "Retos y torneos"
         case .settings: return "Ajustes"
         case .backups: return "Seguridad"
         }
@@ -527,10 +527,10 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .rubrics: return "Banco de rúbricas"
         case .reports: return "Salida docente"
         case .library: return "Plantillas reutilizables"
-        case .peSessions: return "Operativa en pista"
-        case .peTests: return "Pruebas, baremos e históricos"
-        case .peRubrics: return "Rúbricas motrices"
-        case .peIncidents: return "Seguridad y seguimiento"
+        case .peSessions: return "Operativa de actividades"
+        case .peTests: return "Progreso, marcas e históricos"
+        case .peRubrics: return "Criterios específicos"
+        case .peIncidents: return "Seguimiento operativo"
         case .peMaterial: return "Inventario rápido"
         case .peTournaments: return "Competición y resultados"
         case .settings: return "Configuración"
@@ -573,9 +573,18 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .evaluationHub, .rubrics, .reports, .library:
             return .evaluation
         case .peSessions, .peTests, .peRubrics, .peIncidents, .peMaterial, .peTournaments:
-            return .physicalEducation
+            return .domainModules
         case .settings, .backups:
             return .system
+        }
+    }
+
+    var requiresPhysicalEducationProfile: Bool {
+        switch self {
+        case .peSessions, .peTests, .peRubrics, .peIncidents, .peMaterial, .peTournaments:
+            return true
+        default:
+            return false
         }
     }
 }
@@ -717,7 +726,8 @@ struct AppWorkspaceShell: View {
         let query = debouncedSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return [] }
 
-        let moduleResults = IOSFeatureRegistry.all
+        let enabledProfiles = TeacherSubjectProfile.decodeSet(UserDefaults.standard.string(forKey: "teacher.enabledSubjectProfiles.v1") ?? TeacherSubjectProfile.general.rawValue)
+        let moduleResults = IOSFeatureRegistry.all(enabledProfiles: enabledProfiles)
             .filter { $0.title.localizedCaseInsensitiveContains(query) || $0.subtitle.localizedCaseInsensitiveContains(query) }
             .map { WorkspaceSearchResult(title: $0.title, subtitle: $0.subtitle, kind: .module($0.module)) }
 
@@ -1437,34 +1447,8 @@ struct AppWorkspaceShell: View {
 
     var notebookMacLikeToolbar: some View {
         HStack(spacing: 12) {
-            Button {
-                isClassPickerPresented = true
-            } label: {
-                Label(activeNotebookClassLabel, systemImage: "rectangle.3.group")
-                    .lineLimit(1)
-                    .frame(minWidth: 132, maxWidth: 180, alignment: .leading)
-            }
-            .buttonStyle(.bordered)
-            .disabled(bridge.classes.isEmpty)
-            .popover(isPresented: $isClassPickerPresented, arrowEdge: .top) {
-                NotebookClassPickerPopover(
-                    classes: bridge.classes,
-                    selectedClassId: selectedClassId,
-                    onSelectClass: { updateGlobalClassContext($0) },
-                    onClose: { isClassPickerPresented = false }
-                )
-            }
-            .help("Cambiar clase del cuaderno")
-
-            Picker("Vista", selection: Binding(
-                get: { layoutState.notebookSurfaceMode },
-                set: { layoutState.setNotebookSurfaceMode($0) }
-            )) {
-                Text("Grid").tag("grid")
-                Text("Plano").tag("seatingPlan")
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 112)
+            notebookClassSelectorButton
+                .layoutPriority(3)
 
             if bridge.syncPendingChanges > 0 {
                 HStack(spacing: 4) {
@@ -1490,33 +1474,15 @@ struct AppWorkspaceShell: View {
             .disabled(!layoutState.notebookAddColumnAvailable)
             .keyboardShortcut("n", modifiers: .command)
             .help("Añadir nueva columna (⌘N)")
+            .layoutPriority(3)
 
-            #if os(macOS)
-            Button {
-                layoutState.openNotebookOrganizationMenu()
-            } label: {
-                Label("Organizar columnas", systemImage: "slider.horizontal.3")
-            }
-            .buttonStyle(.bordered)
-            .disabled(!layoutState.notebookOrganizationMenuAvailable)
-            .help("Organizar columnas")
-            #endif
-
-            #if os(macOS)
-            Button {
-                layoutState.toggleNotebookInspector()
-            } label: {
-                Label(layoutState.isNotebookInspectorPresented ? "Ocultar inspector" : "Mostrar inspector", systemImage: "sidebar.right")
-            }
-            .buttonStyle(.bordered)
-            .disabled(!layoutState.notebookInspectorAvailable)
-            .keyboardShortcut("i", modifiers: [.command])
-            .help(layoutState.isNotebookInspectorPresented ? "Ocultar inspector" : "Mostrar inspector")
-            #endif
+            notebookInspectorButton
+                .layoutPriority(2)
 
             Label("Buscar", systemImage: "magnifyingglass")
                 .labelStyle(.iconOnly)
                 .foregroundStyle(.secondary)
+                .layoutPriority(2)
 
             TextField(
                 "Buscar",
@@ -1526,84 +1492,136 @@ struct AppWorkspaceShell: View {
                 )
             )
             .textFieldStyle(.roundedBorder)
-            .frame(width: 220)
+            .frame(minWidth: 160, idealWidth: 220, maxWidth: 260)
+            .layoutPriority(2)
 
-            Menu {
-                #if os(iOS)
-                Button {
-                    UserDefaults.standard.set("calculated", forKey: "notebook.addColumn.lastBlueprintId")
-                    layoutState.showNotebookAddColumn()
-                } label: {
-                    Label("Columnas indirectas", systemImage: "function")
-                }
-                .disabled(!layoutState.notebookAddColumnAvailable)
+            notebookOverflowMenu
+                .layoutPriority(1)
+        }
+    }
 
-                Button {
-                    layoutState.openNotebookOrganizationMenu()
-                } label: {
-                    Label("Organizar / reordenar columnas", systemImage: "arrow.up.arrow.down")
-                }
-                .disabled(!layoutState.notebookOrganizationMenuAvailable)
+    var notebookClassSelectorButton: some View {
+        Button {
+            isClassPickerPresented = true
+        } label: {
+            Label(activeNotebookClassLabel, systemImage: "rectangle.3.group")
+                .lineLimit(1)
+                .frame(minWidth: 132, maxWidth: 180, alignment: .leading)
+        }
+        .buttonStyle(.bordered)
+        .disabled(bridge.classes.isEmpty)
+        .popover(isPresented: $isClassPickerPresented, arrowEdge: .top) {
+            NotebookClassPickerPopover(
+                classes: bridge.classes,
+                selectedClassId: selectedClassId,
+                onSelectClass: { updateGlobalClassContext($0) },
+                onClose: { isClassPickerPresented = false }
+            )
+        }
+        .help("Cambiar clase del cuaderno")
+    }
 
-                Button {
-                    layoutState.openNotebookHiddenColumns()
-                } label: {
-                    Label("Mostrar columnas ocultas", systemImage: "eye.slash")
-                }
-                .disabled(!layoutState.notebookOrganizationMenuAvailable)
-
-                Button {
-                    layoutState.toggleNotebookInspector()
-                } label: {
-                    Label(
-                        layoutState.isNotebookInspectorPresented ? "Ocultar inspector" : "Mostrar inspector",
-                        systemImage: "sidebar.right"
-                    )
-                }
-                .disabled(!layoutState.notebookInspectorAvailable)
-
-                Divider()
-                #endif
-
-                Button {
-                    layoutState.notebookRefresh()
-                } label: {
-                    Label("Recargar", systemImage: "arrow.clockwise")
-                }
-
-                if let exportText = layoutState.notebookExportText {
-                    ShareLink(item: exportText) {
-                        Label("Exportar", systemImage: "square.and.arrow.up")
-                    }
-                }
-
-                Button {
-                    layoutState.notebookUndo()
-                } label: {
-                    Label("Deshacer", systemImage: "arrow.uturn.backward")
-                }
-                .disabled(!layoutState.notebookCanUndo)
-
-                Button {
-                    layoutState.notebookToggleAttendanceQuickMode()
-                } label: {
-                    Label(
-                        layoutState.notebookIsAttendanceQuickMode ? "Salir de asistencia rápida" : "Asistencia rápida",
-                        systemImage: layoutState.notebookIsAttendanceQuickMode ? "figure.walk.circle.fill" : "figure.walk.circle"
-                    )
-                }
-
-                Button {
-                    layoutState.notebookGenerateSummary()
-                } label: {
-                    Label("Opciones avanzadas", systemImage: "ellipsis.circle")
-                }
+    @ViewBuilder
+    var notebookInspectorButton: some View {
+        if layoutState.isNotebookInspectorPresented {
+            Button {
+                layoutState.toggleNotebookInspector()
             } label: {
-                Label("Más", systemImage: "ellipsis.circle")
+                Label("Ocultar inspector", systemImage: "sidebar.right")
+            }
+            #if os(iOS)
+            .buttonStyle(.borderedProminent)
+            #else
+            .buttonStyle(.bordered)
+            #endif
+            .disabled(!layoutState.notebookInspectorAvailable)
+            .keyboardShortcut("i", modifiers: [.command])
+            .help("Ocultar inspector")
+        } else {
+            Button {
+                layoutState.toggleNotebookInspector()
+            } label: {
+                Label("Mostrar inspector", systemImage: "sidebar.right")
             }
             .buttonStyle(.bordered)
-            .help("Más acciones del cuaderno")
+            .disabled(!layoutState.notebookInspectorAvailable)
+            .keyboardShortcut("i", modifiers: [.command])
+            .help("Mostrar inspector")
         }
+    }
+
+    var notebookOverflowMenu: some View {
+        Menu {
+            Button {
+                layoutState.notebookRefresh()
+            } label: {
+                Label("Recargar", systemImage: "arrow.clockwise")
+            }
+
+            if let exportText = layoutState.notebookExportText {
+                ShareLink(item: exportText) {
+                    Label("Exportar", systemImage: "square.and.arrow.up")
+                }
+            }
+
+            Button {
+                layoutState.notebookUndo()
+            } label: {
+                Label("Deshacer", systemImage: "arrow.uturn.backward")
+            }
+            .disabled(!layoutState.notebookCanUndo)
+
+            Divider()
+
+            Button {
+                layoutState.notebookGenerateSummary()
+            } label: {
+                Label("Opciones avanzadas", systemImage: "ellipsis.circle")
+            }
+
+            Picker("Vista", selection: Binding(
+                get: { layoutState.notebookSurfaceMode },
+                set: { layoutState.setNotebookSurfaceMode($0) }
+            )) {
+                Label("Grid", systemImage: "tablecells").tag("grid")
+                Label("Plano", systemImage: "rectangle.3.group").tag("seatingPlan")
+            }
+
+            Button {
+                layoutState.notebookToggleAttendanceQuickMode()
+            } label: {
+                Label(
+                    layoutState.notebookIsAttendanceQuickMode ? "Salir de asistencia rápida" : "Asistencia rápida",
+                    systemImage: layoutState.notebookIsAttendanceQuickMode ? "figure.walk.circle.fill" : "figure.walk.circle"
+                )
+            }
+
+            Divider()
+
+            Button {
+                layoutState.openNotebookOrganizationMenu()
+            } label: {
+                Label("Organizar columnas", systemImage: "slider.horizontal.3")
+            }
+            .disabled(!layoutState.notebookOrganizationMenuAvailable)
+
+            Button {
+                layoutState.openNotebookHiddenColumns()
+            } label: {
+                Label("Mostrar columnas ocultas", systemImage: "eye.slash")
+            }
+            .disabled(!layoutState.notebookOrganizationMenuAvailable)
+
+            Button {
+                activeModule = .courses
+            } label: {
+                Label("Gestión de grupos", systemImage: "person.2")
+            }
+        } label: {
+            Label("Más", systemImage: "ellipsis.circle")
+        }
+        .buttonStyle(.bordered)
+        .help("Más acciones del cuaderno")
     }
 
     var notebookToolbarActions: some View {

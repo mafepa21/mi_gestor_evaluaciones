@@ -10,6 +10,7 @@ import com.migestor.shared.repository.GradesRepository
 import com.migestor.shared.repository.PlannerRepository
 import com.migestor.shared.repository.RubricsRepository
 import com.migestor.shared.repository.StudentsRepository
+import com.migestor.shared.repository.SubjectsRepository
 import kotlinx.datetime.LocalDate
 
 class SaveStudentUseCase(
@@ -54,13 +55,63 @@ class SaveClassUseCase(
         name: String,
         course: Int,
         description: String? = null,
+        centerId: Long? = null,
+        academicYearId: Long? = null,
+        stageCycleId: Long? = null,
+        subjectId: Long? = null,
         updatedAtEpochMs: Long = 0,
         deviceId: String? = null,
         syncVersion: Long = 0,
     ): Long {
         requireNotBlank(name, "Nombre de clase")
         require(course > 0) { "Curso debe ser mayor que cero" }
-        return repository.saveClass(id, name.trim(), course, description?.trim(), updatedAtEpochMs = updatedAtEpochMs, deviceId = deviceId, syncVersion = syncVersion)
+        return repository.saveClass(
+            id = id,
+            name = name.trim(),
+            course = course,
+            description = description?.trim(),
+            centerId = centerId,
+            academicYearId = academicYearId,
+            stageCycleId = stageCycleId,
+            subjectId = subjectId,
+            updatedAtEpochMs = updatedAtEpochMs,
+            deviceId = deviceId,
+            syncVersion = syncVersion,
+        )
+    }
+}
+
+class SaveSubjectUseCase(
+    private val repository: SubjectsRepository,
+) {
+    suspend operator fun invoke(
+        id: Long? = null,
+        code: String,
+        name: String,
+        stageCycleId: Long? = null,
+        updatedAtEpochMs: Long = 0,
+        deviceId: String? = null,
+        syncVersion: Long = 0,
+    ): Long {
+        requireNotBlank(name, "Nombre de asignatura")
+        val trimmedName = name.trim()
+        val resolvedCode = code.trim().ifBlank {
+            trimmedName
+                .split(Regex("\\s+"))
+                .mapNotNull { it.firstOrNull()?.uppercaseChar()?.toString() }
+                .joinToString("")
+                .ifBlank { "ASIG" }
+        }
+            .take(16)
+        return repository.saveSubject(
+            id = id,
+            code = resolvedCode,
+            name = trimmedName,
+            stageCycleId = stageCycleId,
+            updatedAtEpochMs = updatedAtEpochMs,
+            deviceId = deviceId,
+            syncVersion = syncVersion,
+        )
     }
 }
 

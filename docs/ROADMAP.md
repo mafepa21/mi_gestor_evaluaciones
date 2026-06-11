@@ -31,6 +31,7 @@ Prioridad: alta.
 - Alumnado: perfiles utiles, busqueda y datos relevantes.
 - Planificacion: sesiones, situaciones de aprendizaje y continuidad docente.
 - Dashboard: Radar docente proactivo para priorizar que pasa ahora, por que importa y que accion diaria ejecutar.
+  Avance: Dashboard macOS "Hoy" prioriza la clase actual o próxima, pendiente principal y acción recomendada antes que los paneles secundarios.
 
 ## Fase 2 - Apple premium
 
@@ -38,7 +39,9 @@ Prioridad: alta.
 
 - iPad: shell de trabajo clara, inspector no invasivo y acciones principales visibles.
 - macOS: paridad progresiva con convenciones desktop reales.
+  Avance: la barra lateral de macOS se organiza en secciones agrupadas (Hoy, Evaluación, Planificación, Sistema) para una experiencia de escritorio real.
 - Dashboard Apple: briefing local no bloqueante con fallback determinista y acciones reales por plataforma.
+  Avance: el briefing diario usa contrato estable de 3 alertas, 2 acciones, resumen evaluativo y aviso de datos incompletos.
 - Accesibilidad: contraste, foco, labels y navegacion por teclado donde aplique.
 - UI/UX: reducir ruido visual, reforzar jerarquia y mantener rejilla disciplinada.
 

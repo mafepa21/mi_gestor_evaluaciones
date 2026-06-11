@@ -1,0 +1,7 @@
+ALTER TABLE classes ADD COLUMN center_id INTEGER;
+ALTER TABLE classes ADD COLUMN academic_year_id INTEGER;
+ALTER TABLE classes ADD COLUMN stage_cycle_id INTEGER;
+ALTER TABLE classes ADD COLUMN subject_id INTEGER;
+
+CREATE INDEX IF NOT EXISTS idx_classes_subject ON classes(subject_id);
+CREATE INDEX IF NOT EXISTS idx_classes_academic_year ON classes(academic_year_id);

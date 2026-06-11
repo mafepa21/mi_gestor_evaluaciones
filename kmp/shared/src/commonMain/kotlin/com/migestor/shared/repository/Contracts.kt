@@ -34,6 +34,10 @@ interface ClassesRepository {
         name: String,
         course: Int,
         description: String? = null,
+        centerId: Long? = null,
+        academicYearId: Long? = null,
+        stageCycleId: Long? = null,
+        subjectId: Long? = null,
         updatedAtEpochMs: Long = 0,
         deviceId: String? = null,
         syncVersion: Long = 0,
@@ -42,6 +46,21 @@ interface ClassesRepository {
     suspend fun addStudentToClass(classId: Long, studentId: Long)
     suspend fun removeStudentFromClass(classId: Long, studentId: Long)
     suspend fun listStudentsInClass(classId: Long): List<Student>
+}
+
+interface SubjectsRepository {
+    fun observeSubjects(): Flow<List<Subject>>
+    suspend fun listSubjects(): List<Subject>
+    suspend fun saveSubject(
+        id: Long? = null,
+        code: String,
+        name: String,
+        stageCycleId: Long? = null,
+        updatedAtEpochMs: Long = 0,
+        deviceId: String? = null,
+        syncVersion: Long = 0,
+    ): Long
+    suspend fun deleteSubject(subjectId: Long)
 }
 
 interface EvaluationsRepository {

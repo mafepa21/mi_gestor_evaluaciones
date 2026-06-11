@@ -349,6 +349,9 @@ class BuildNotebookSheetUseCaseTest {
         assertEquals(7.0, sheet.rows.first().weightedAverage)
         assertEquals(50.0, explanation?.totalIncludedWeight)
         assertEquals(NotebookAverageExclusionReason.EMPTY, explanation?.excluded?.single { it.columnId == "eval_12" }?.reason)
+        assertEquals(listOf("eval_12"), explanation?.pendingCells?.map { it.columnId })
+        assertEquals(50.0, explanation?.pendingCells?.single()?.expectedWeight)
+        assertEquals(listOf("eval_11"), explanation?.includedColumns?.map { it.columnId })
     }
 
     @Test
@@ -499,6 +502,70 @@ class BuildNotebookSheetUseCaseTest {
         )
 
         assertEquals(9.0, sheet.rows.first().weightedAverage)
+        val explanation = sheet.rows.first().averageExplanation
+        assertEquals(listOf("eval_12"), explanation?.includedColumns?.map { it.columnId })
+        assertEquals(
+            NotebookAverageExclusionReason.RAW_VALUE_ONLY,
+            explanation?.excludedColumns?.single { it.columnId == "eval_11" }?.reason
+        )
+    }
+
+    @Test
+    fun `physical level raw data is excluded even when scale is ten point`() = runTest {
+        val classId = 1L
+        val student = Student(id = 1, firstName = "Ana", lastName = "Lopez")
+        val grades = listOf(
+            Grade(id = 1, classId = classId, studentId = 1, columnId = "navette_level", evaluationId = null, value = 7.5),
+            Grade(id = 2, classId = classId, studentId = 1, columnId = "navette_score", evaluationId = null, value = 8.0),
+        )
+
+        val useCase = BuildNotebookSheetUseCase(
+            getNotebookUseCase = GetNotebookUseCase(
+                classesRepository = FakeClassesRepository2(student, classId),
+                evaluationsRepository = FakeEvaluationsRepository2(emptyList()),
+                gradesRepository = FakeGradesRepository2(grades),
+                notebookCellsRepository = FakeNotebookCellsRepository2()
+            )
+        )
+
+        val sheet = useCase.build(
+            classId = classId,
+            evaluations = emptyList(),
+            students = listOf(student),
+            tabs = listOf(NotebookTab(id = "eval", title = "Evaluación", order = 0)),
+            configuredColumns = listOf(
+                NotebookColumnDefinition(
+                    id = "navette_level",
+                    title = "Course Navette · Nivel",
+                    type = NotebookColumnType.NUMERIC,
+                    instrumentKind = NotebookInstrumentKind.PHYSICAL_TEST,
+                    scaleKind = NotebookScaleKind.TEN_POINT,
+                    unitOrSituation = "Dato bruto · periodo",
+                    tabIds = listOf("eval"),
+                    weight = 50.0,
+                    countsTowardAverage = true,
+                ),
+                NotebookColumnDefinition(
+                    id = "navette_score",
+                    title = "Course Navette · Nota",
+                    type = NotebookColumnType.NUMERIC,
+                    instrumentKind = NotebookInstrumentKind.PHYSICAL_TEST,
+                    scaleKind = NotebookScaleKind.TEN_POINT,
+                    unitOrSituation = "Nota baremada",
+                    tabIds = listOf("eval"),
+                    weight = 50.0,
+                    countsTowardAverage = true,
+                ),
+            )
+        )
+
+        val explanation = sheet.rows.first().averageExplanation
+        assertEquals(8.0, sheet.rows.first().weightedAverage)
+        assertEquals(listOf("navette_score"), explanation?.includedColumns?.map { it.columnId })
+        assertEquals(
+            NotebookAverageExclusionReason.RAW_VALUE_ONLY,
+            explanation?.excludedColumns?.single { it.columnId == "navette_level" }?.reason
+        )
     }
 
     @Test
@@ -627,7 +694,7 @@ private class FakeClassesRepository2(
         return flowOf(emptyList())
     }
     override suspend fun listClasses(): List<SchoolClass> = emptyList()
-    override suspend fun saveClass(id: Long?, name: String, course: Int, description: String?, updatedAtEpochMs: Long, deviceId: String?, syncVersion: Long): Long = 1
+    override suspend fun saveClass(id: Long?, name: String, course: Int, description: String?, centerId: Long?, academicYearId: Long?, stageCycleId: Long?, subjectId: Long?, updatedAtEpochMs: Long, deviceId: String?, syncVersion: Long): Long = 1
     override suspend fun deleteClass(classId: Long) = Unit
     override suspend fun addStudentToClass(classId: Long, studentId: Long) = Unit
     override suspend fun removeStudentFromClass(classId: Long, studentId: Long) = Unit

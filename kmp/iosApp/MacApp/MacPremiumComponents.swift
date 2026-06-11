@@ -30,7 +30,7 @@ struct MacPremiumOperationState: View {
                 .lineLimit(1)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
-                .background(tint.opacity(0.12), in: Capsule(style: .continuous))
+                .background(MacLiquidGlassStyle.statusFill(isActive: true, tint: tint), in: Capsule(style: .continuous))
                 .help(label)
                 .transition(MacAppStyle.smallStateTransition)
         }
@@ -180,12 +180,7 @@ struct MacPremiumFilterBar<Content: View>: View {
         }
         .padding(MacAppStyle.innerPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(MacAppStyle.cardBackground)
-        .overlay {
-            RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous)
-                .stroke(MacAppStyle.cardBorder, lineWidth: 0.5)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
+        .macLiquidGlassPanel(.secondaryPanel)
     }
 }
 
@@ -199,11 +194,7 @@ struct MacPremiumControlStrip<Content: View>: View {
         .padding(.horizontal, MacAppStyle.innerPadding)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(MacAppStyle.subtleFill, in: RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous)
-                .stroke(MacAppStyle.cardBorder.opacity(0.55), lineWidth: 0.5)
-        }
+        .macLiquidGlassPanel(.secondaryPanel)
     }
 }
 
@@ -246,10 +237,10 @@ struct MacPremiumTableContainer<Content: View>: View {
                         .foregroundStyle(MacAppStyle.infoTint)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
-                        .background(MacAppStyle.cardBackground, in: Capsule(style: .continuous))
+                        .background(MacLiquidGlassStyle.readableSurfaceFallback, in: Capsule(style: .continuous))
                         .overlay {
                             Capsule(style: .continuous)
-                                .stroke(MacAppStyle.cardBorder, lineWidth: 0.5)
+                                .stroke(MacAppStyle.cardBorder, lineWidth: MacLiquidGlassStyle.hairlineWidth)
                         }
                         .padding(12)
                         .transition(MacAppStyle.smallStateTransition)
@@ -258,12 +249,7 @@ struct MacPremiumTableContainer<Content: View>: View {
             .animation(MacAppStyle.smallStateAnimation, value: isLoading)
         }
         .padding(MacAppStyle.innerPadding)
-        .background(MacAppStyle.cardBackground)
-        .overlay {
-            RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous)
-                .stroke(MacAppStyle.cardBorder, lineWidth: 0.5)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
+        .macLiquidGlassPanel(.primaryPanel)
     }
 }
 
@@ -288,12 +274,7 @@ struct MacPremiumInspectorSection<Content: View>: View {
         }
         .padding(MacAppStyle.innerPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(MacAppStyle.cardBackground)
-        .overlay {
-            RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous)
-                .stroke(MacAppStyle.cardBorder, lineWidth: 0.5)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
+        .macLiquidGlassPanel(.secondaryPanel)
     }
 }
 
@@ -336,12 +317,7 @@ struct MacPremiumInspectorHeader<Badges: View>: View {
         }
         .padding(MacAppStyle.innerPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(MacAppStyle.cardBackground)
-        .overlay {
-            RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous)
-                .stroke(MacAppStyle.cardBorder, lineWidth: 0.5)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
+        .macLiquidGlassPanel(.secondaryPanel)
     }
 }
 

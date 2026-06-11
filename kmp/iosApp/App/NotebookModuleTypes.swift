@@ -30,10 +30,13 @@ enum NotebookAttendanceStatus {
 }
 
 struct NotebookInspectorSelection: Identifiable, Hashable {
+    static let averageColumnId = "__notebook_average__"
+
     let studentId: Int64
     let columnId: String
 
     var id: String { "\(studentId)|\(columnId)" }
+    var isAverage: Bool { columnId == Self.averageColumnId }
 }
 
 final class NotebookMacInspectorState: ObservableObject {

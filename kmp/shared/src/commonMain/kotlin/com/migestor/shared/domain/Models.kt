@@ -885,6 +885,19 @@ private val rawPhysicalScaleKinds = setOf(
     NotebookScaleKind.REPETITIONS,
 )
 
+private fun String?.isPhysicalRawDataLabel(): Boolean {
+    val normalized = this
+        ?.trim()
+        ?.lowercase()
+        ?.replace("á", "a")
+        ?.replace("é", "e")
+        ?: return false
+    return normalized.startsWith("dato bruto") ||
+        normalized.startsWith("marca fisica") ||
+        normalized == "marca" ||
+        normalized == "nivel"
+}
+
 enum class NotebookColumnVisibility {
     VISIBLE,
     HIDDEN,
@@ -996,7 +1009,9 @@ data class NotebookColumnDefinition(
     fun countsTowardAverage(): Boolean {
         if (!countsTowardAverage || weight <= 0.0) return false
         if (visibility == NotebookColumnVisibility.ARCHIVED) return false
-        if (instrumentKind == NotebookInstrumentKind.PHYSICAL_TEST && scaleKind in rawPhysicalScaleKinds) {
+        if (instrumentKind == NotebookInstrumentKind.PHYSICAL_TEST &&
+            (scaleKind in rawPhysicalScaleKinds || unitOrSituation.isPhysicalRawDataLabel())
+        ) {
             return false
         }
         return when (type) {
@@ -1010,7 +1025,9 @@ data class NotebookColumnDefinition(
 
     fun averageExclusionReason(): NotebookAverageExclusionReason {
         if (visibility == NotebookColumnVisibility.ARCHIVED) return NotebookAverageExclusionReason.LOCKED_OR_ARCHIVED
-        if (instrumentKind == NotebookInstrumentKind.PHYSICAL_TEST && scaleKind in rawPhysicalScaleKinds) {
+        if (instrumentKind == NotebookInstrumentKind.PHYSICAL_TEST &&
+            (scaleKind in rawPhysicalScaleKinds || unitOrSituation.isPhysicalRawDataLabel())
+        ) {
             return NotebookAverageExclusionReason.RAW_VALUE_ONLY
         }
         if (weight <= 0.0) return NotebookAverageExclusionReason.RAW_VALUE_ONLY
@@ -1205,6 +1222,41 @@ data class NotebookAverageExplanation(
     val excluded: List<NotebookAverageExclusion>,
     val totalIncludedWeight: Double,
     val policy: NotebookEmptyCellPolicy,
+    val includedColumns: List<IncludedColumn> = included.map {
+        IncludedColumn(
+            columnId = it.columnId,
+            title = it.title,
+            value = it.value,
+            weight = it.weight,
+        )
+    },
+    val excludedColumns: List<ExcludedColumn> = excluded
+        .filter { it.reason != NotebookAverageExclusionReason.EMPTY }
+        .map {
+            ExcludedColumn(
+                columnId = it.columnId,
+                title = it.title,
+                reason = it.reason,
+            )
+        },
+    val pendingCells: List<PendingCell> = excluded
+        .filter { it.reason == NotebookAverageExclusionReason.EMPTY }
+        .map {
+            PendingCell(
+                columnId = it.columnId,
+                title = it.title,
+                expectedWeight = 0.0,
+            )
+        },
+    val weightedContributions: List<WeightedContribution> = included.map {
+        WeightedContribution(
+            columnId = it.columnId,
+            title = it.title,
+            value = it.value,
+            weight = it.weight,
+            weightedValue = it.weightedValue,
+        )
+    },
 )
 
 data class NotebookAverageContribution(
@@ -1215,10 +1267,37 @@ data class NotebookAverageContribution(
     val weightedValue: Double,
 )
 
+data class IncludedColumn(
+    val columnId: String,
+    val title: String,
+    val value: Double,
+    val weight: Double,
+)
+
 data class NotebookAverageExclusion(
     val columnId: String,
     val title: String,
     val reason: NotebookAverageExclusionReason,
+)
+
+data class ExcludedColumn(
+    val columnId: String,
+    val title: String,
+    val reason: NotebookAverageExclusionReason,
+)
+
+data class PendingCell(
+    val columnId: String,
+    val title: String,
+    val expectedWeight: Double,
+)
+
+data class WeightedContribution(
+    val columnId: String,
+    val title: String,
+    val value: Double,
+    val weight: Double,
+    val weightedValue: Double,
 )
 
 enum class NotebookAverageExclusionReason {
@@ -1272,42 +1351,86 @@ fun NotebookRow.computeAverageExplanation(
 
     val included = mutableListOf<NotebookAverageContribution>()
     val excluded = mutableListOf<NotebookAverageExclusion>()
+    val includedColumns = mutableListOf<IncludedColumn>()
+    val excludedColumns = mutableListOf<ExcludedColumn>()
+    val pendingCells = mutableListOf<PendingCell>()
+    val weightedContributions = mutableListOf<WeightedContribution>()
 
     evaluableColumns.forEach { column ->
         if (!column.countsTowardAverage()) {
-            excluded += NotebookAverageExclusion(
+            val exclusion = NotebookAverageExclusion(
                 columnId = column.id,
                 title = column.title,
                 reason = column.averageExclusionReason()
+            )
+            excluded += exclusion
+            excludedColumns += ExcludedColumn(
+                columnId = exclusion.columnId,
+                title = exclusion.title,
+                reason = exclusion.reason,
             )
             return@forEach
         }
 
         val value = gradeValueFor(column, calculatedValuesByColumnId, numericDrafts)
         if (value != null) {
-            included += NotebookAverageContribution(
+            val contribution = NotebookAverageContribution(
                 columnId = column.id,
                 title = column.title,
                 value = value,
                 weight = column.weight,
                 weightedValue = value * column.weight
             )
+            included += contribution
+            includedColumns += IncludedColumn(
+                columnId = contribution.columnId,
+                title = contribution.title,
+                value = contribution.value,
+                weight = contribution.weight,
+            )
+            weightedContributions += WeightedContribution(
+                columnId = contribution.columnId,
+                title = contribution.title,
+                value = contribution.value,
+                weight = contribution.weight,
+                weightedValue = contribution.weightedValue,
+            )
         } else {
             when (column.emptyCellPolicy) {
                 NotebookEmptyCellPolicy.COUNT_AS_ZERO -> {
-                    included += NotebookAverageContribution(
+                    val contribution = NotebookAverageContribution(
                         columnId = column.id,
                         title = column.title,
                         value = 0.0,
                         weight = column.weight,
                         weightedValue = 0.0
                     )
+                    included += contribution
+                    includedColumns += IncludedColumn(
+                        columnId = contribution.columnId,
+                        title = contribution.title,
+                        value = contribution.value,
+                        weight = contribution.weight,
+                    )
+                    weightedContributions += WeightedContribution(
+                        columnId = contribution.columnId,
+                        title = contribution.title,
+                        value = contribution.value,
+                        weight = contribution.weight,
+                        weightedValue = contribution.weightedValue,
+                    )
                 }
                 else -> {
-                    excluded += NotebookAverageExclusion(
+                    val exclusion = NotebookAverageExclusion(
                         columnId = column.id,
                         title = column.title,
                         reason = NotebookAverageExclusionReason.EMPTY
+                    )
+                    excluded += exclusion
+                    pendingCells += PendingCell(
+                        columnId = column.id,
+                        title = column.title,
+                        expectedWeight = column.weight,
                     )
                 }
             }
@@ -1327,7 +1450,11 @@ fun NotebookRow.computeAverageExplanation(
         included = included,
         excluded = excluded,
         totalIncludedWeight = totalWeight,
-        policy = NotebookEmptyCellPolicy.EXCLUDE_FROM_AVERAGE
+        policy = NotebookEmptyCellPolicy.EXCLUDE_FROM_AVERAGE,
+        includedColumns = includedColumns,
+        excludedColumns = excludedColumns,
+        pendingCells = pendingCells,
+        weightedContributions = weightedContributions,
     )
 }
 

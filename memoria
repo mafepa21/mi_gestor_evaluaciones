@@ -405,6 +405,32 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-06-11 - Fase 5: Condición física como módulo diferencial (EF · Condición física)
+
+Resumen:
+- Se renombró el módulo de "Mediciones y baremos" a "EF · Condición física" en todas las capas de presentación, menús y hojas de adición de columnas en iPad/iOS y macOS.
+- Se reestructuraron las secciones del espacio de trabajo en iPad/iOS (`PhysicalTestsWorkspaceView.swift`) y macOS (`MacPhysicalTestsView.swift`), incorporando una nueva sección/pestaña de "Informes" con estadísticas agregadas y atajos para compartir reportes de clase.
+- Se implementó el autoavance en pista con 1 tap y teclas de retorno rápidas para el registro ágil en exteriores en `PhysicalTestCaptureView.swift`, con controles táctiles significativamente más grandes.
+
+Validación:
+- Validación de sintaxis SwiftUI y regeneración de proyectos Xcode con XcodeGen.
+- Las compilaciones locales mediante script fallan por la configuración de `xcode-select` apuntando a las `CommandLineTools` (Xcode no instalado completamente en CLI).
+
+### 2026-06-11 - Rediseño de Backups y Observabilidad de Sincronización en macOS (Fase 4 - PR 10 y PR 11)
+
+Resumen:
+- Se rediseñó la vista de copias de seguridad en macOS (`MacBackupsView.swift`) para convertirla en una utilidad orientada a tabla (master-detail) que maximiza el espacio disponible, delegando los detalles técnicos y acciones destructivas (con confirmación) al panel inspector lateral derecho (`MacBackupInspectorView.swift`).
+- Se reestructuró la vista de sincronización local en macOS (`MacSyncView.swift`) utilizando `HSplitView` para dividir la pantalla en dos columnas independientes: un panel izquierdo de observabilidad (con estado de conexión, métricas principales, banner de errores y recomendación de acción contextualizada) y un panel derecho para emparejamiento (QR, PIN manual y diagnóstico técnico).
+- Ambos cambios fueron divididos en ramas y Pull Requests independientes (Drafts PR #48 y PR #49) y se actualizaron aisladamente sus correspondientes `docs/CHANGELOG.md` y `docs/ROADMAP.md`.
+
+Validación:
+- Validación de sintaxis SwiftUI y regeneración exitosa de los proyectos XcodeGen (`xcodegen generate`).
+- Se verificó que las compilaciones locales del script `verify_apple_builds.sh` fallan de forma esperada debido únicamente a la ausencia de la instalación completa de Xcode (limitado a las `CommandLineTools` de macOS).
+
+Notas para futuras conversaciones:
+- El workspace local en la rama de desarrollo `codex-ui-notebook-student-inspector` ha sido restaurado con sus stashes originales.
+- Las dos ramas creadas y empujadas a origin son: `codex/feature-mac-backups-table` (PR #48) y `codex/feature-mac-sync-observability` (PR #49).
+
 ### 2026-06-05 - Solución al bug de columnas huérfanas en el cálculo de media tras borrado
 
 Resumen:

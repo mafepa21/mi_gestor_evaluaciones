@@ -590,7 +590,16 @@ extension NotebookModuleView {
                     .frame(width: resolvedFixedWidth(for: fixed), alignment: .leading)
             case .average:
                 Button {
+                    #if os(macOS)
+                    inspectorSelection = NotebookInspectorSelection(
+                        studentId: item.student.id,
+                        columnId: NotebookInspectorSelection.averageColumnId
+                    )
+                    isInspectorPresented = true
+                    focusMode = .reviewing
+                    #else
                     averageExplanationRow = item
+                    #endif
                 } label: {
                     averageBadge(for: item)
                         .frame(width: resolvedFixedWidth(for: fixed), alignment: .leading)

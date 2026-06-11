@@ -907,8 +907,7 @@ struct NotebookModuleView: View {
                         .presentationDragIndicator(.visible)
                     #endif
                 }
-                .navigationTitle(macPresentation == .full ? (currentClass?.name ?? "Cuaderno") : "Cuaderno")
-                .notebookNavigationSubtitle(notebookNavigationSubtitle(data: data))
+                .navigationTitle(macPresentation == .full && currentClass?.name != nil ? "Cuaderno — \(currentClass!.name)" : "Cuaderno")
                 .notebookKeyboardNavigation {
                     navigateFromFocused(direction: navigationDirection, data: data)
                 }
@@ -933,6 +932,236 @@ struct NotebookModuleView: View {
                 .appOnChange(of: bridge.rubricEvaluationState.isSaveSuccessful) { saved in
                     guard saved, bridge.isNotebookRubricAutoAdvanceActive else { return }
                     openNextRubricStudentIfPossible()
+                }
+                .toolbar {
+                    if toolbarMode == .shellOwned || toolbarMode == .macWindowOwned {
+                        // Acción principal (Nueva columna)
+                        ToolbarItem(placement: .primaryAction) {
+                            Button {
+                                addColumnContext = NotebookAddColumnContext(categoryId: nil, startsCreatingCategory: false)
+                            } label: {
+                                Label("Añadir columna", systemImage: "plus")
+                            }
+                            .help("Añadir nueva columna de evaluación")
+                        }
+
+                        // Filtro de grupos (WorkGroups)
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            let groups = groupedRows(data: data)
+                            if !groups.isEmpty {
+                                Menu {
+                                    Button("Grupo completo") {
+                                        selectedGroupId = nil
+                                    }
+                                    ForEach(groups, id: \.id) { gp in
+                                        Button {
+                                            selectedGroupId = gp.id
+                                        } label: {
+                                            HStack {
+                                                Text("\(gp.name) (\(memberCount(gp.id, in: data)) alumnos)")
+                                                if selectedGroupId == gp.id {
+                                                    Image(systemName: "checkmark")
+                                                }
+                                            }
+                                        }
+                                    }
+                                } label: {
+                                    let activeGroupName = selectedGroupId.flatMap { gid in groups.first(where: { $0.id == gid })?.name }
+                                    Label(activeGroupName ?? "Filtrar grupo", systemImage: "person.2")
+                                }
+                            }
+                        }
+
+                        // Menú de configuración de columnas
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Menu {
+                                Button {
+                                    isOrganizationMenuPresented = true
+                                } label: {
+                                    Label("Organizar columnas", systemImage: "arrow.up.and.down.and.arrow.left.and.right")
+                                }
+                                Button {
+                                    isHiddenColumnsSheetPresented = true
+                                } label: {
+                                    Label("Columnas ocultas", systemImage: "eye.slash")
+                                }
+                                Button {
+                                    presentCreateCategory()
+                                } label: {
+                                    Label("Nueva categoría", systemImage: "folder.badge.plus")
+                                }
+                            } label: {
+                                Label("Configurar columnas", systemImage: "rectangle.3.group")
+                            }
+                        }
+
+                        // Botón del Inspector
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button {
+                                if inspectorSelection == nil {
+                                    openInspectorForSelection(data)
+                                }
+                                if inspectorSelection != nil {
+                                    isInspectorPresented.toggle()
+                                    focusMode = isInspectorPresented ? .reviewing : .normal
+                                }
+                            } label: {
+                                Label(isInspectorPresented ? "Ocultar inspector" : "Mostrar inspector",
+                                      systemImage: isInspectorPresented ? "sidebar.right" : "sidebar.squares.right")
+                            }
+                            .disabled(inspectorSelection == nil && managedColumns(data: data).isEmpty)
+                            .keyboardShortcut("i", modifiers: [.command])
+                        }
+
+                        // Menú avanzado / Más acciones
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Menu {
+                                Button {
+                                    undoLastCellChange()
+                                } label: {
+                                    Label("Deshacer cambio", systemImage: "arrow.uturn.backward")
+                                }
+                                .disabled(undoStack.isEmpty)
+                                .keyboardShortcut("z", modifiers: .command)
+
+                                Button {
+                                    isAttendanceQuickMode.toggle()
+                                    if isAttendanceQuickMode {
+                                        activeChoiceCellId = nil
+                                        focusedCellId = nil
+                                    }
+                                } label: {
+                                    Label(isAttendanceQuickMode ? "Salir de asistencia rápida" : "Asistencia rápida",
+                                          systemImage: isAttendanceQuickMode ? "figure.walk.circle.fill" : "figure.walk.circle")
+                                }
+
+                                Button {
+                                    notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: nil)
+                                } label: {
+                                    Label("Generar síntesis IA", systemImage: "apple.intelligence")
+                                }
+                                .disabled(data.sheet.rows.isEmpty || data.sheet.columns.filter(isNotebookIndividualSummaryColumn).isEmpty)
+
+                                ShareLink(item: exportText(data: data)) {
+                                    Label("Exportar cuaderno", systemImage: "square.and.arrow.up")
+                                }
+                            } label: {
+                                Label("Más acciones", systemImage: "ellipsis.circle")
+                            }
+                        }
+
+                        // Barra de estado (.status)
+                        ToolbarItem(placement: .status) {
+                            HStack(spacing: 8) {
+                                // Estado de guardado
+                                HStack(spacing: 4) {
+                                    Image(systemName: saveBadge.icon)
+                                        .symbolEffect(.rotate, isActive: bridge.notebookSaveState == .saving)
+                                    Text(saveBadge.text)
+                                }
+                                .foregroundStyle(saveBadge.color)
+
+                                Text("•")
+                                    .foregroundStyle(.secondary)
+
+                                // Sincronización
+                                if bridge.syncPendingChanges > 0 {
+                                    Text("\(bridge.syncPendingChanges) pnd.")
+                                        .foregroundStyle(Color.orange)
+                                } else {
+                                    Text("Sincronizado")
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                Text("•")
+                                    .foregroundStyle(.secondary)
+
+                                // Total alumnos
+                                Text("\(filteredRows(data: data).count) alumnos")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .font(.footnote)
+                        }
+                    }
+                }
+                .toolbarTitleMenu {
+                    if toolbarMode == .shellOwned || toolbarMode == .macWindowOwned {
+                        Section("Clase") {
+                            ForEach(sortedClasses, id: \.id) { schoolClass in
+                                Button {
+                                    selectNotebookClass(schoolClass.id)
+                                } label: {
+                                    HStack {
+                                        Text(classLabel(for: schoolClass))
+                                        if selectedClassId == schoolClass.id {
+                                            Image(systemName: "checkmark")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        let tabs = orderedNotebookTabs(data: data)
+                        if !tabs.isEmpty {
+                            Section("Trimestre / Pestaña") {
+                                ForEach(tabs, id: \.id) { tab in
+                                    Button {
+                                        selectNotebookTab(tab.id)
+                                    } label: {
+                                        HStack {
+                                            Text(tab.title)
+                                            if activeNotebookTabId(data: data) == tab.id {
+                                                Image(systemName: "checkmark")
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if !classSituations.isEmpty {
+                            Section("Situación de aprendizaje") {
+                                Button {
+                                    groupByWorkGroupMode = "none"
+                                } label: {
+                                    HStack {
+                                        Text("Sin filtrar (Ver todas)")
+                                        if groupByWorkGroupMode == "none" {
+                                            Image(systemName: "checkmark")
+                                        }
+                                    }
+                                }
+                                ForEach(classSituations, id: \.id) { situation in
+                                    Button {
+                                        let targetMode = "situation_\(situation.id)"
+                                        groupByWorkGroupMode = groupByWorkGroupMode == targetMode ? "none" : targetMode
+                                    } label: {
+                                        HStack {
+                                            Text(situation.title)
+                                            if groupByWorkGroupMode == "situation_\(situation.id)" {
+                                                Image(systemName: "checkmark")
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Section("Vista") {
+                            ForEach(NotebookSurfaceMode.allCases) { mode in
+                                Button {
+                                    surfaceMode = mode
+                                } label: {
+                                    HStack {
+                                        Label(mode.title, systemImage: mode.systemImage)
+                                        if surfaceMode == mode {
+                                            Image(systemName: "checkmark")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
         }
     }

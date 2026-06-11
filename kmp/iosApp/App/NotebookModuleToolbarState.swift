@@ -14,6 +14,17 @@ extension NotebookModuleView {
         ["", "✅", "⭐", "⚠️", "🏠", "🧩", "📌", "💬"]
     }
 
+    var saveBadge: (text: String, icon: String, color: Color) {
+        if bridge.notebookSaveState == .saved {
+            return ("Guardado", "checkmark.circle.fill", .secondary)
+        } else if bridge.notebookSaveState == .saving {
+            return ("Guardando…", "arrow.triangle.2.circlepath", .secondary)
+        } else if bridge.notebookSaveState == .unsaved {
+            return ("Sin guardar", "circle.dotted", Color.orange)
+        }
+        return ("Estado pendiente", "circle", .secondary)
+    }
+
     var sortedClasses: [SchoolClass] {
         bridge.classes.sorted {
             if $0.course != $1.course { return $0.course < $1.course }

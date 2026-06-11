@@ -45,4 +45,13 @@ extension View {
     func notebookKeyboardNavigation(onNext: @escaping () -> Void) -> some View {
         modifier(NotebookKeyboardNavigationModifier(onNext: onNext))
     }
+
+    @ViewBuilder
+    func notebookSearchable(if condition: Bool, text: Binding<String>, prompt: String) -> some View {
+        if condition {
+            self.searchable(text: text, prompt: prompt)
+        } else {
+            self
+        }
+    }
 }

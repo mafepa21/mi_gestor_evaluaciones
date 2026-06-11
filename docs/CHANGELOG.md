@@ -29,6 +29,11 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- Se simplifica la barra de herramientas del Cuaderno (`NotebookModuleView.swift`) mostrando solo las acciones principales (`[+ Columna]` y `[Buscar]`) y agrupando el resto bajo el menú secundario `[···]`.
+- Se añade el toggle "Vista compacta" en el menú `···` que disminuye dinámicamente la altura del grid (38 en macOS y 40 en iOS).
+- Se añade el botón "Configuración de media" en el menú `···` para acceder a la configuración de medias.
+- Se agrupan todas las demás acciones secundarias (Deshacer, Asistencia rápida, Síntesis IA, Inspector, Organizar columnas, Columnas ocultas, Exportar cuaderno y submenú Filtros) en el menú `···`.
+- Se añade el helper `.notebookSearchable(if:text:prompt:)` en `NotebookViewModifiers.swift` para evitar barras de búsqueda duplicadas en iPhone.
 - Se añade el rol de toolbar de edición nativo (`.toolbarRole(.editor)`) en el Cuaderno (`NotebookModuleView.swift`) para adaptar la alineación de la navegación en iPadOS y mejorar la experiencia de edición documental/tabla.
 - La toolbar del Cuaderno se rediseña por completo como toolbar nativa de SwiftUI (`.toolbar` y `.toolbarTitleMenu`) en iPad y macOS. Se elimina la barra manual (`notebookMacLikeToolbar`) en `IPadWorkspaceShell.swift` y se delega el título, clase activa, trimestre, situaciones de aprendizaje, filtros, acciones primarias/secundarias y la barra de estado de guardado/sincronización directamente a los componentes y placements nativos del sistema.
 - La celda Media en macOS abre la ficha rápida completa del alumno, no solo el desglose aislado de cálculo.
@@ -64,6 +69,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Ejecución de `./scripts/verify_apple_builds.sh`. La verificación falló a nivel del entorno local ya que `xcode-select` apunta a `CommandLineTools` en lugar de una instalación completa de Xcode, impidiendo el uso de `xcodebuild` en consola.
 - `./gradlew :shared:compileCommonMainKotlinMetadata :shared:compileDebugKotlinAndroid` completado correctamente tras añadir reordenación de criterios de rúbrica.
 - `./gradlew :shared:compileKotlinIosSimulatorArm64` no pudo completarse porque `/usr/bin/xcrun xcodebuild -version` devuelve error 72 en la configuración local de Xcode/Command Line Tools, también fuera del sandbox.
 - `./gradlew :shared:desktopTest` completado correctamente tras convertir el inspector del Cuaderno en ficha rápida del alumno.

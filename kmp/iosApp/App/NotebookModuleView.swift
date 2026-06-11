@@ -13,11 +13,15 @@ enum NotebookToolbarMode {
 }
 
 struct NotebookModuleView: View {
+    @State var isCompactViewActive = false
+
     #if os(macOS)
-    let notebookGridRowHeight: CGFloat = 50
+    var notebookGridRowHeight: CGFloat {
+        isCompactViewActive ? 38 : 50
+    }
     #else
     var notebookGridRowHeight: CGFloat {
-        isCompact ? 56 : 52
+        isCompactViewActive ? 40 : (isCompact ? 56 : 52)
     }
     #endif
     let notebookGridHeaderHeight: CGFloat = 56
@@ -945,77 +949,10 @@ struct NotebookModuleView: View {
                             .help("Añadir nueva columna de evaluación")
                         }
 
-                        // Filtro de grupos (WorkGroups)
-                        ToolbarItem(placement: .navigationBarTrailing) {
-                            let groups = groupedRows(data: data)
-                            if !groups.isEmpty {
-                                Menu {
-                                    Button("Grupo completo") {
-                                        selectedGroupId = nil
-                                    }
-                                    ForEach(groups, id: \.id) { gp in
-                                        Button {
-                                            selectedGroupId = gp.id
-                                        } label: {
-                                            HStack {
-                                                Text("\(gp.name) (\(memberCount(gp.id, in: data)) alumnos)")
-                                                if selectedGroupId == gp.id {
-                                                    Image(systemName: "checkmark")
-                                                }
-                                            }
-                                        }
-                                    }
-                                } label: {
-                                    let activeGroupName = selectedGroupId.flatMap { gid in groups.first(where: { $0.id == gid })?.name }
-                                    Label(activeGroupName ?? "Filtrar grupo", systemImage: "person.2")
-                                }
-                            }
-                        }
-
-                        // Menú de configuración de columnas
+                        // Menú de acciones secundarias agrupadas (···)
                         ToolbarItem(placement: .navigationBarTrailing) {
                             Menu {
-                                Button {
-                                    isOrganizationMenuPresented = true
-                                } label: {
-                                    Label("Organizar columnas", systemImage: "arrow.up.and.down.and.arrow.left.and.right")
-                                }
-                                Button {
-                                    isHiddenColumnsSheetPresented = true
-                                } label: {
-                                    Label("Columnas ocultas", systemImage: "eye.slash")
-                                }
-                                Button {
-                                    presentCreateCategory()
-                                } label: {
-                                    Label("Nueva categoría", systemImage: "folder.badge.plus")
-                                }
-                            } label: {
-                                Label("Configurar columnas", systemImage: "rectangle.3.group")
-                            }
-                        }
-
-                        // Botón del Inspector
-                        ToolbarItem(placement: .navigationBarTrailing) {
-                            Button {
-                                if inspectorSelection == nil {
-                                    openInspectorForSelection(data)
-                                }
-                                if inspectorSelection != nil {
-                                    isInspectorPresented.toggle()
-                                    focusMode = isInspectorPresented ? .reviewing : .normal
-                                }
-                            } label: {
-                                Label(isInspectorPresented ? "Ocultar inspector" : "Mostrar inspector",
-                                      systemImage: isInspectorPresented ? "sidebar.right" : "sidebar.squares.right")
-                            }
-                            .disabled(inspectorSelection == nil && managedColumns(data: data).isEmpty)
-                            .keyboardShortcut("i", modifiers: [.command])
-                        }
-
-                        // Menú avanzado / Más acciones
-                        ToolbarItem(placement: .navigationBarTrailing) {
-                            Menu {
+                                // 1. Deshacer cambio
                                 Button {
                                     undoLastCellChange()
                                 } label: {
@@ -1024,6 +961,7 @@ struct NotebookModuleView: View {
                                 .disabled(undoStack.isEmpty)
                                 .keyboardShortcut("z", modifiers: .command)
 
+                                // 2. Asistencia rápida
                                 Button {
                                     isAttendanceQuickMode.toggle()
                                     if isAttendanceQuickMode {
@@ -1035,6 +973,7 @@ struct NotebookModuleView: View {
                                           systemImage: isAttendanceQuickMode ? "figure.walk.circle.fill" : "figure.walk.circle")
                                 }
 
+                                // 3. Generar síntesis IA
                                 Button {
                                     notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: nil)
                                 } label: {
@@ -1042,11 +981,116 @@ struct NotebookModuleView: View {
                                 }
                                 .disabled(data.sheet.rows.isEmpty || data.sheet.columns.filter(isNotebookIndividualSummaryColumn).isEmpty)
 
+                                // 4. Mostrar/Ocultar inspector
+                                Button {
+                                    if inspectorSelection == nil {
+                                        openInspectorForSelection(data)
+                                    }
+                                    if inspectorSelection != nil {
+                                        isInspectorPresented.toggle()
+                                        focusMode = isInspectorPresented ? .reviewing : .normal
+                                    }
+                                } label: {
+                                    Label(isInspectorPresented ? "Ocultar inspector" : "Mostrar inspector",
+                                          systemImage: isInspectorPresented ? "sidebar.right" : "sidebar.squares.right")
+                                }
+                                .disabled(inspectorSelection == nil && managedColumns(data: data).isEmpty)
+                                .keyboardShortcut("i", modifiers: [.command])
+
+                                Divider()
+
+                                // 5. Reordenar columnas (Organizar columnas)
+                                Button {
+                                    isOrganizationMenuPresented = true
+                                } label: {
+                                    Label("Reordenar columnas", systemImage: "arrow.up.and.down.and.arrow.left.and.right")
+                                }
+
+                                // 6. Mostrar columnas ocultas
+                                Button {
+                                    isHiddenColumnsSheetPresented = true
+                                } label: {
+                                    Label("Mostrar columnas ocultas", systemImage: "eye.slash")
+                                }
+
+                                // 7. Exportar
                                 ShareLink(item: exportText(data: data)) {
                                     Label("Exportar cuaderno", systemImage: "square.and.arrow.up")
                                 }
+
+                                // 8. Vista compacta
+                                Button {
+                                    isCompactViewActive.toggle()
+                                } label: {
+                                    HStack {
+                                        Label("Vista compacta", systemImage: "rectangle.compress.vertical")
+                                        if isCompactViewActive {
+                                            Image(systemName: "checkmark")
+                                        }
+                                    }
+                                }
+
+                                // 9. Configuración de media
+                                Button {
+                                    isAverageConfigurationPresented = true
+                                } label: {
+                                    Label("Configuración de media", systemImage: "percent")
+                                }
+
+                                // 10. Filtros
+                                let groups = groupedRows(data: data)
+                                if !groups.isEmpty || !classSituations.isEmpty {
+                                    Menu {
+                                        if !groups.isEmpty {
+                                            Menu {
+                                                Button("Grupo completo") {
+                                                    selectedGroupId = nil
+                                                }
+                                                ForEach(groups, id: \.id) { gp in
+                                                    Button {
+                                                        selectedGroupId = gp.id
+                                                    } label: {
+                                                        HStack {
+                                                            Text("\(gp.name) (\(memberCount(gp.id, in: data)) alumnos)")
+                                                            if selectedGroupId == gp.id {
+                                                                Image(systemName: "checkmark")
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            } label: {
+                                                Label("Filtrar grupo", systemImage: "person.2")
+                                            }
+                                        }
+
+                                        if !classSituations.isEmpty {
+                                            Menu {
+                                                Button("Sin filtrar (Ver todas)") {
+                                                    groupByWorkGroupMode = "none"
+                                                }
+                                                ForEach(classSituations, id: \.id) { situation in
+                                                    Button {
+                                                        let targetMode = "situation_\(situation.id)"
+                                                        groupByWorkGroupMode = groupByWorkGroupMode == targetMode ? "none" : targetMode
+                                                    } label: {
+                                                        HStack {
+                                                            Text(situation.title)
+                                                            if groupByWorkGroupMode == "situation_\(situation.id)" {
+                                                                Image(systemName: "checkmark")
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            } label: {
+                                                Label("Situación de aprendizaje", systemImage: "folder")
+                                            }
+                                        }
+                                    } label: {
+                                        Label("Filtros", systemImage: "line.3.horizontal.decrease.circle")
+                                    }
+                                }
                             } label: {
-                                Label("Más acciones", systemImage: "ellipsis.circle")
+                                Label("Acciones del cuaderno", systemImage: "ellipsis.circle")
                             }
                         }
 
@@ -1168,6 +1212,7 @@ struct NotebookModuleView: View {
                     }
                 }
                 .toolbarRole(.editor)
+                .notebookSearchable(if: toolbarMode != .inlineCompact, text: $searchText, prompt: "Buscar alumno")
         }
     }
 

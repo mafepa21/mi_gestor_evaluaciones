@@ -62,8 +62,7 @@ struct NotebookCompactCommandBar<SecondaryActions: View>: View {
             classPicker
                 .frame(maxWidth: 132)
 
-            IOSSearchField(text: $searchText, placeholder: "Buscar")
-                .frame(maxWidth: .infinity)
+            Spacer()
 
             iconButton(systemImage: "plus", label: "Nueva columna", action: onAddColumn, isProminent: true)
             secondaryMenu
@@ -81,9 +80,6 @@ struct NotebookCompactCommandBar<SecondaryActions: View>: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
-
-            IOSSearchField(text: $searchText, placeholder: "Buscar alumno")
-                .frame(minWidth: 210, maxWidth: 300)
 
             Spacer(minLength: 0)
 

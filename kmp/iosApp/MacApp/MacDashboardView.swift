@@ -125,10 +125,12 @@ struct MacDashboardView: View {
 
     @ViewBuilder
     private func readyContent(snapshot: MacDashboardSnapshot, isWide: Bool) -> some View {
+        let context = snapshot.currentClassContext ?? snapshot.nextClassContext
         if isWide {
             HStack(alignment: .top, spacing: 24) {
                 DashboardHeroNowCard(
-                    context: snapshot.currentClassContext ?? snapshot.nextClassContext,
+                    context: context,
+                    pendingItems: snapshot.pendingItems,
                     onAction: handleQuickAction,
                     onOpenSheet: { activeSheet = $0 }
                 )
@@ -142,14 +144,21 @@ struct MacDashboardView: View {
                         actionAvailability: proactiveActionAvailable,
                         onAction: handleProactiveAction
                     )
+                    DashboardAlertsCard(snapshot: snapshot, insights: proactiveInsights, onNavigate: onNavigate)
                     DashboardPendingCard(items: snapshot.pendingItems, onNavigate: onNavigate)
-                    DashboardRiskCard(snapshot: snapshot, insights: proactiveInsights, onNavigate: onNavigate)
+                    DashboardNextClassCard(context: snapshot.nextClassContext ?? snapshot.currentClassContext, onNavigate: onNavigate)
                     DashboardStatusCard(summary: snapshot.syncStatus, backupStore: backupStore, platformName: bootstrap.platformName)
                 }
                 .frame(width: 380)
             }
         } else {
             VStack(alignment: .leading, spacing: 24) {
+                DashboardHeroNowCard(
+                    context: context,
+                    pendingItems: snapshot.pendingItems,
+                    onAction: handleQuickAction,
+                    onOpenSheet: { activeSheet = $0 }
+                )
                 DashboardProactiveInsightCard(
                     insights: proactiveInsights,
                     aiBriefing: aiBriefing,
@@ -157,13 +166,9 @@ struct MacDashboardView: View {
                     actionAvailability: proactiveActionAvailable,
                     onAction: handleProactiveAction
                 )
-                DashboardHeroNowCard(
-                    context: snapshot.currentClassContext ?? snapshot.nextClassContext,
-                    onAction: handleQuickAction,
-                    onOpenSheet: { activeSheet = $0 }
-                )
+                DashboardAlertsCard(snapshot: snapshot, insights: proactiveInsights, onNavigate: onNavigate)
                 DashboardPendingCard(items: snapshot.pendingItems, onNavigate: onNavigate)
-                DashboardRiskCard(snapshot: snapshot, insights: proactiveInsights, onNavigate: onNavigate)
+                DashboardNextClassCard(context: snapshot.nextClassContext ?? snapshot.currentClassContext, onNavigate: onNavigate)
                 DashboardStatusCard(summary: snapshot.syncStatus, backupStore: backupStore, platformName: bootstrap.platformName)
             }
         }
@@ -776,14 +781,22 @@ private struct MacPanel<Content: View>: View {
 
 private struct DashboardHeroNowCard: View {
     let context: CurrentClassDashboardContext?
+    let pendingItems: [DashboardPendingItem]
     let onAction: (MacDashboardDestination) -> Void
     let onOpenSheet: (DashboardSheet) -> Void
+
+    private var primaryPending: DashboardPendingItem? {
+        pendingItems.sorted { lhs, rhs in
+            priorityRank(lhs.priority) > priorityRank(rhs.priority)
+        }.first
+    }
 
     var body: some View {
         MacPanel(title: "Ahora") {
             VStack(alignment: .leading, spacing: 24) {
                 if let context {
                     contextHeader(context)
+                    decisionBlock(context)
                     if context.isFromPlannedSession {
                         plannedSessionBlock(context)
                     } else if context.status == .active {
@@ -824,6 +837,48 @@ private struct DashboardHeroNowCard: View {
             Spacer()
             MacStatusPill(label: statusLabel(context.status), isActive: context.status == .active, tint: statusTint(context.status))
         }
+    }
+
+    private func decisionBlock(_ context: CurrentClassDashboardContext) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(subtitle(for: context))
+                .font(.largeTitle.weight(.semibold))
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            VStack(alignment: .leading, spacing: 8) {
+                if let pending = primaryPending {
+                    Label("Pendiente: \(pending.title)", systemImage: "exclamationmark.circle")
+                        .foregroundStyle(pending.priority.tint)
+                    Text(pending.subtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Label("Pendiente: sin bloqueos prioritarios", systemImage: "checkmark.circle")
+                        .foregroundStyle(MacAppStyle.successTint)
+                }
+            }
+            .font(.headline)
+
+            Button {
+                if context.status == .active {
+                    onOpenSheet(.quickEvaluation(classId: context.classId))
+                } else {
+                    onAction(.plannerAgenda)
+                }
+            } label: {
+                Label(recommendedActionTitle(for: context), systemImage: context.status == .active ? "sparkles" : "calendar.badge.plus")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(MacAppStyle.subtleFill)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func plannedSessionBlock(_ context: CurrentClassDashboardContext) -> some View {
@@ -957,6 +1012,18 @@ private struct DashboardHeroNowCard: View {
         default: return "Día"
         }
     }
+
+    private func recommendedActionTitle(for context: CurrentClassDashboardContext) -> String {
+        context.status == .active ? "Abrir evaluación rápida" : "Preparar próxima clase"
+    }
+
+    private func priorityRank(_ priority: DashboardPendingItem.Priority) -> Int {
+        switch priority {
+        case .high: return 3
+        case .medium: return 2
+        case .low: return 1
+        }
+    }
 }
 
 private struct DashboardQuickActionButton: View {
@@ -1053,24 +1120,24 @@ private struct DashboardPendingCard: View {
     }
 }
 
-private struct DashboardRiskCard: View {
+private struct DashboardAlertsCard: View {
     let snapshot: MacDashboardSnapshot
     let insights: [DashboardProactiveInsight]
     let onNavigate: (MacDashboardDestination) -> Void
 
-    private var riskItems: [DashboardPendingItem] {
+    private var alertItems: [DashboardPendingItem] {
         snapshot.pendingItems.filter { $0.priority == .high }
     }
 
-    private var proactiveRiskItems: [DashboardProactiveInsight] {
+    private var proactiveAlertItems: [DashboardProactiveInsight] {
         insights.filter { $0.priority >= .high && $0.kind != .system }
     }
 
     var body: some View {
-        MacPanel(title: "Riesgo") {
+        MacPanel(title: "Alertas") {
             VStack(spacing: 12) {
-                if riskItems.isEmpty {
-                    if proactiveRiskItems.isEmpty {
+                if alertItems.isEmpty {
+                    if proactiveAlertItems.isEmpty {
                         Text("Sin alumnado o sesiones en riesgo inmediato con los datos cargados.")
                             .font(.callout)
                             .foregroundStyle(.secondary)
@@ -1079,12 +1146,12 @@ private struct DashboardRiskCard: View {
                             .background(MacAppStyle.subtleFill)
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     } else {
-                        ForEach(proactiveRiskItems.prefix(2)) { insight in
-                            proactiveRiskRow(insight)
+                        ForEach(proactiveAlertItems.prefix(2)) { insight in
+                            proactiveAlertRow(insight)
                         }
                     }
                 } else {
-                    ForEach(riskItems) { item in
+                    ForEach(alertItems.prefix(3)) { item in
                         Button {
                             if let destination = item.destination {
                                 onNavigate(destination)
@@ -1114,7 +1181,7 @@ private struct DashboardRiskCard: View {
         }
     }
 
-    private func proactiveRiskRow(_ insight: DashboardProactiveInsight) -> some View {
+    private func proactiveAlertRow(_ insight: DashboardProactiveInsight) -> some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: insight.kind.systemImage)
                 .foregroundStyle(insight.priority.tint)
@@ -1131,6 +1198,60 @@ private struct DashboardRiskCard: View {
         .padding(16)
         .background(MacAppStyle.subtleFill)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+private struct DashboardNextClassCard: View {
+    let context: CurrentClassDashboardContext?
+    let onNavigate: (MacDashboardDestination) -> Void
+
+    var body: some View {
+        MacPanel(title: "Próxima clase") {
+            if let context {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(context.className ?? "Clase")
+                        .font(.headline)
+                    Text([context.subjectLabel, context.unitLabel, context.sessionTitle].compactMap { $0?.nilIfBlank }.joined(separator: " · "))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let start = context.startTime, let end = context.endTime {
+                        Label("\(dayLabel(context.dayOfWeek)) · \(start)-\(end)", systemImage: "clock")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    Button {
+                        onNavigate(.plannerAgenda)
+                    } label: {
+                        Label("Abrir planner", systemImage: "calendar")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                Text("Sin próxima clase detectada en la agenda docente.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(16)
+                    .background(MacAppStyle.subtleFill)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+        }
+    }
+
+    private func dayLabel(_ day: Int?) -> String {
+        switch day {
+        case 1: return "Lunes"
+        case 2: return "Martes"
+        case 3: return "Miércoles"
+        case 4: return "Jueves"
+        case 5: return "Viernes"
+        case 6: return "Sábado"
+        case 7: return "Domingo"
+        default: return "Día"
+        }
     }
 }
 

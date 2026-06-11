@@ -15,32 +15,77 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- Reordenación nativa de columnas del Cuaderno, borrador de criterios en el builder de rúbricas y reordenación local de sesiones/baterías desde listas SwiftUI.
+- Acciones rápidas por swipe/context menu en sesiones del Planner y baterías físicas para completar, editar, duplicar, abrir diario/asignar y eliminar cuando el contrato existente lo permite.
+- Inspector rápido de alumno en el Cuaderno con Media explicada, columnas pendientes, últimas observaciones, rúbricas asociadas y acciones principales.
+- Modelo explícito de explicación de Media del Cuaderno con columnas incluidas, columnas excluidas, celdas pendientes y contribuciones ponderadas, manteniendo compatibilidad con el contrato anterior.
 - Instrumentación debug desactivada por defecto para medir builds del sheet del Cuaderno, recálculo de medias, construcción del render model, filas visibles, hits/misses de caché y prompts derivados de IA.
+- Perfil docente multi-asignatura local en SwiftUI con perfiles General, Educación Física, Lenguas, Ciencias, Matemáticas, Música, Tecnología y Personalizado.
+- Registro de plantillas por asignatura sobre tipos de columna existentes del Cuaderno.
+- Capa KMP `AssessmentMeasurement*` para preparar mediciones generales manteniendo `PhysicalTest*` como especialización EF.
+- Catálogo visible de asignaturas en Cursos, con alta, edición, borrado seguro y asignación de materia al crear o editar grupos.
+- Presets reales por materia para el Cuaderno, aplicables desde Añadir columna con nombre, peso, media, categoría y contexto preconfigurados.
+- Piloto no-EF de mediciones genéricas para fluidez lectora (`READING_FLUENCY`) con definición, escala y resultado reutilizando `AssessmentMeasurement*`.
 
 ### Changed
 
-- Rediseño de la interfaz de sincronización local en macOS (`MacSyncView.swift`) utilizando una distribución con `HSplitView` dividida en un panel izquierdo de observabilidad (estado de conexión con badge, métricas principales, banner de errores y recomendación de acción contextualizada) y un panel derecho para enlace (QR, PIN manual y diagnóstico técnico).
-- La barra lateral (sidebar) en macOS se organiza en secciones agrupadas (Hoy, Evaluación, Planificación, Sistema) en lugar de listar todos los módulos al mismo nivel, mejorando la ergonomía de escritorio.
+- La celda Media en macOS abre la ficha rápida completa del alumno, no solo el desglose aislado de cálculo.
+- Las columnas de pruebas físicas del Cuaderno separan dato bruto y nota evaluable: `Marca`/`Nivel` se crean como dato bruto y `Nota` como nota baremada ponderable.
+- La celda Media del Cuaderno separa visualmente qué entra, qué queda pendiente, qué no entra y cuánto aporta cada peso; en macOS se abre dentro del inspector contextual.
+- La navegación iOS/iPadOS/macOS generaliza los módulos EF como módulos de dominio: sesiones prácticas, mediciones y baremos, recursos, incidencias y retos.
 - El Cuaderno reutiliza cachés en memoria para el sheet por versión efectiva de clase/configuración/alumnado/columnas/celdas/rúbricas, medias por alumno/columnas/valores, render model SwiftUI y contexto derivado de Apple IA.
 - Apple IA aplica un presupuesto centralizado de contexto antes de generar prompts, sourceDigest, evidencias auditadas y claves de caché de reportes/docencia.
+- La toolbar del Cuaderno en macOS e iPad prioriza clase, añadir columna, búsqueda e inspector, desplazando recarga, exportación, deshacer, organización, grupos y opciones avanzadas al menú secundario.
+- macOS incorpora una base controlada de Liquid Glass para paneles principales, paneles secundarios, superficies legibles, hairline borders y estados activos/inactivos sin aplicar transparencia al grid del Cuaderno.
+- El Dashboard macOS conserva el servicio pesado de Apple IA en `@State` y queda auditada la inicialización de stores en Cuaderno, Planner y Tests físicos para evitar recreaciones accidentales.
+
+### Fixed
+
+- El build Apple KMP de macOS prioriza `macosArm64` cuando Xcode pasa `ARCHS="arm64 x86_64"`, excluye `x86_64` en el target Mac actual y permite forzar Intel solo con `KMP_MACOS_ARCH=x64`.
 
 ### Data
 
+- Se añade migración SQLDelight `29.sqm` para persistir `center_id`, `academic_year_id`, `stage_cycle_id` y `subject_id` en `classes`, con índices por asignatura y curso académico.
+- `ClassesRepositorySqlDelight` devuelve y guarda la metadata académica ya existente en `SchoolClass`.
+- `SubjectsRepositorySqlDelight` expone la tabla `subjects` como catálogo gestionable y el bridge Apple refresca clases cuando cambia una asignatura.
 - Se añaden migraciones SQLDelight `26.sqm`, `27.sqm` y `28.sqm` con índices compuestos para asistencia, incidencias, planner, horarios, rúbricas, learning situations, celdas y auditoría de celdas.
 - Se reemplazan lecturas amplias en repositorios de notas y planner por queries más selectivas, manteniendo sin cambios los contratos de dominio.
 - El snapshot del Cuaderno agrupa notas y celdas por clase antes de construir filas, evitando consultas repetidas por alumno sin modificar SQLDelight ni añadir migraciones.
 
 ### Docs
 
+- Se documenta la estrategia multi-asignatura, los módulos de dominio y el roadmap específico del refactor.
 - Se documenta la auditoría de performance SQLDelight y el criterio de PRs pequeños para revisar índices, consultas lentas, filtros frecuentes y joins.
 
 ### Verification
 
-- Validación de sintaxis SwiftUI y regeneración de proyecto con XcodeGen exitosa para la vista de Sincronización en macOS.
-- `git diff --check -- kmp/iosApp/MacApp/` completado correctamente tras el agrupamiento de barra lateral en macOS. Los builds `xcodebuild` de macOS e iOS Simulator no pudieron completarse porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` en este entorno host y requiere Xcode completo.
+- `./gradlew :shared:compileCommonMainKotlinMetadata :shared:compileDebugKotlinAndroid` completado correctamente tras añadir reordenación de criterios de rúbrica.
+- `./gradlew :shared:compileKotlinIosSimulatorArm64` no pudo completarse porque `/usr/bin/xcrun xcodebuild -version` devuelve error 72 en la configuración local de Xcode/Command Line Tools, también fuera del sandbox.
+- `./gradlew :shared:desktopTest` completado correctamente tras convertir el inspector del Cuaderno en ficha rápida del alumno.
+- `./gradlew :shared:compileKotlinMetadata` completado correctamente tras el ajuste del inspector.
+- `git diff --check` completado correctamente tras el ajuste del inspector.
+- `PLATFORM_NAME=macosx ARCHS=arm64 CONFIGURATION=Debug ./scripts/build_apple_framework.sh` no pudo completarse porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y `xcodebuild` requiere Xcode completo.
+- `./gradlew :shared:desktopTest` completado correctamente tras separar columnas físicas brutas y notas baremadas.
+- `./gradlew :shared:compileKotlinMetadata` completado correctamente tras reforzar la regla KMP de dato bruto físico.
+- `git diff --check` completado correctamente tras separar columnas físicas brutas y notas baremadas.
+- `PLATFORM_NAME=macosx ARCHS=arm64 CONFIGURATION=Debug ./scripts/build_apple_framework.sh` no pudo completarse porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y `xcodebuild` requiere Xcode completo.
+- `./gradlew :shared:desktopTest` completado correctamente tras ampliar la explicación de Media del Cuaderno.
+- `./gradlew :shared:compileKotlinMetadata` completado correctamente tras ampliar el contrato común de Media.
+- `PLATFORM_NAME=macosx ARCHS=arm64 CONFIGURATION=Debug ./scripts/build_apple_framework.sh` no pudo completarse porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y `xcodebuild` requiere Xcode completo.
+- `./gradlew :shared:desktopTest` completado correctamente tras añadir la capa `AssessmentMeasurement*`.
+- `./gradlew :data:desktopTest` completado correctamente tras la migración `29.sqm`.
+- `xcodebuild -quiet -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` completado correctamente.
+- `xcodebuild -quiet -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -configuration Debug -destination 'generic/platform=macOS' ARCHS=arm64 ONLY_ACTIVE_ARCH=YES build` completado correctamente. El build macOS genérico sin `ARCHS=arm64` falla porque el script del target selecciona el framework macOS x64 cuando Xcode pasa `ARCHS=arm64 x86_64`.
+- `./gradlew :data:desktopTest` y `./gradlew :shared:desktopTest` completados correctamente tras añadir el catálogo de asignaturas.
+- `xcodebuild -quiet -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` completado correctamente tras conectar asignaturas en Cursos.
+- `xcodebuild -quiet -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` completado correctamente tras convertir plantillas por materia en presets aplicables.
+- `./gradlew :shared:desktopTest` completado correctamente tras añadir el piloto `READING_FLUENCY`.
 - Se añade cobertura de test para comprobar que el schema crea los índices críticos de performance.
 - `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` completado correctamente tras limitar payloads de Apple IA.
 - `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` completado correctamente tras la auditoría de caché del Cuaderno.
+- `git diff --check -- kmp/iosApp/MacApp/MacRootView.swift kmp/iosApp/App/IPadWorkspaceShell.swift` completado correctamente tras reorganizar la toolbar del Cuaderno. Los builds `xcodebuild` de iOS Simulator y macOS no se ejecutaron porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y no hay Xcode completo visible en `/Applications`.
+- `git diff --check` completado correctamente tras añadir la base Liquid Glass macOS. Build Apple pendiente por la misma configuración local de `xcode-select` en CommandLineTools.
+- `git diff --check` completado correctamente tras auditar `@State`/stores en `MacDashboardView.swift`, `MacPhysicalTestsView.swift`, `NotebookModuleView.swift` y `PlannerWorkspaceIOS.swift`. Build Apple pendiente por `xcode-select` en CommandLineTools.
 
 ## 0.3.0-alpha.1 - 2026-06-06
 

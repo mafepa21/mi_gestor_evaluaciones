@@ -43,6 +43,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- Se corrige el funcionamiento del Drag & Drop en el Plano de clase (`NotebookSeatingPlanView.swift`) asociándolo al coordinate space `seatingCanvas`, evitando que las tarjetas de los alumnos vibren o se queden atascadas al arrastrar.
+- Se añade el helper `appEditMode` en `AppleViewCompatibility.swift` para activar de forma segura `editMode` en iPadOS (necesario para la reordenación de columnas en `NotebookColumnOrganizerSheet.swift`) sin provocar errores de compilación en el target de macOS.
 - Se corrige un error de compilación en `NotebookModuleView.swift` causado por el uso del modificador `.symbolEffect(.rotate)` en plataformas anteriores a iOS 17.0/18.0, encapsulándolo bajo una comprobación de versión `#available(iOS 18.0, macOS 14.0, *)`.
 - El build Apple KMP de macOS prioriza `macosArm64` cuando Xcode pasa `ARCHS="arm64 x86_64"`, excluye `x86_64` en el target Mac actual y permite forzar Intel solo con `KMP_MACOS_ARCH=x64`.
 

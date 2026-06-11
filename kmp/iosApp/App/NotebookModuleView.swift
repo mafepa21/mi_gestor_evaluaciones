@@ -1055,8 +1055,12 @@ struct NotebookModuleView: View {
                             HStack(spacing: 8) {
                                 // Estado de guardado
                                 HStack(spacing: 4) {
-                                    Image(systemName: saveBadge.icon)
-                                        .symbolEffect(.rotate, isActive: bridge.notebookSaveState == .saving)
+                                    if #available(iOS 18.0, macOS 14.0, *) {
+                                        Image(systemName: saveBadge.icon)
+                                            .symbolEffect(.rotate, isActive: bridge.notebookSaveState == .saving)
+                                    } else {
+                                        Image(systemName: saveBadge.icon)
+                                    }
                                     Text(saveBadge.text)
                                 }
                                 .foregroundStyle(saveBadge.color)
@@ -1163,6 +1167,7 @@ struct NotebookModuleView: View {
                         }
                     }
                 }
+                .toolbarRole(.editor)
         }
     }
 

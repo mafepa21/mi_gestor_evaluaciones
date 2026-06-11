@@ -29,6 +29,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- Se añade el rol de toolbar de edición nativo (`.toolbarRole(.editor)`) en el Cuaderno (`NotebookModuleView.swift`) para adaptar la alineación de la navegación en iPadOS y mejorar la experiencia de edición documental/tabla.
 - La toolbar del Cuaderno se rediseña por completo como toolbar nativa de SwiftUI (`.toolbar` y `.toolbarTitleMenu`) en iPad y macOS. Se elimina la barra manual (`notebookMacLikeToolbar`) en `IPadWorkspaceShell.swift` y se delega el título, clase activa, trimestre, situaciones de aprendizaje, filtros, acciones primarias/secundarias y la barra de estado de guardado/sincronización directamente a los componentes y placements nativos del sistema.
 - La celda Media en macOS abre la ficha rápida completa del alumno, no solo el desglose aislado de cálculo.
 - Las columnas de pruebas físicas del Cuaderno separan dato bruto y nota evaluable: `Marca`/`Nivel` se crean como dato bruto y `Nota` como nota baremada ponderable.
@@ -42,6 +43,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- Se corrige un error de compilación en `NotebookModuleView.swift` causado por el uso del modificador `.symbolEffect(.rotate)` en plataformas anteriores a iOS 17.0/18.0, encapsulándolo bajo una comprobación de versión `#available(iOS 18.0, macOS 14.0, *)`.
 - El build Apple KMP de macOS prioriza `macosArm64` cuando Xcode pasa `ARCHS="arm64 x86_64"`, excluye `x86_64` en el target Mac actual y permite forzar Intel solo con `KMP_MACOS_ARCH=x64`.
 
 ### Data
@@ -87,6 +89,7 @@ El formato sigue una variante practica de Keep a Changelog:
 - `git diff --check -- kmp/iosApp/MacApp/MacRootView.swift kmp/iosApp/App/IPadWorkspaceShell.swift` completado correctamente tras reorganizar la toolbar del Cuaderno. Los builds `xcodebuild` de iOS Simulator y macOS no se ejecutaron porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y no hay Xcode completo visible en `/Applications`.
 - `git diff --check` completado correctamente tras añadir la base Liquid Glass macOS. Build Apple pendiente por la misma configuración local de `xcode-select` en CommandLineTools.
 - `git diff --check` completado correctamente tras auditar `@State`/stores en `MacDashboardView.swift`, `MacPhysicalTestsView.swift`, `NotebookModuleView.swift` y `PlannerWorkspaceIOS.swift`. Build Apple pendiente por `xcode-select` en CommandLineTools.
+- Verificación de builds completada correctamente para macOS (`MiGestorKMPMac`) e iOS Simulator (`MiGestorKMPiOS`) usando la herramienta `scripts/verify_apple_builds.sh` apuntando al developer path de `Xcode-beta.app`.
 
 ## 0.3.0-alpha.1 - 2026-06-06
 

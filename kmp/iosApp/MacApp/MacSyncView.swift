@@ -20,16 +20,76 @@ struct MacSyncView: View {
         )
     }
 
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
-                pageHeader
-                connectionSection
-                pairingSection
-                advancedDiagnosticsSection
-            }
-            .padding(MacAppStyle.pagePadding)
+    private var recommendedAction: String {
+        if syncConflictCount > 0 {
+            return "Se ha detectado un conflicto de datos. Revisa la base de datos y pulsa 'Resolver conflictos' para solucionarlo."
         }
+        switch connectionSummary {
+        case .connected:
+            if bridge.syncPendingChanges > 0 {
+                return "Pulsa 'Reintentar sync' para forzar la sincronización de los cambios pendientes, o espera a que el iPad inicie la transferencia."
+            } else {
+                return "La sincronización está activa y al día. No se requiere ninguna acción."
+            }
+        case .ready:
+            return "Abre la cámara del iPad y escanea el código QR de la derecha, o introduce el PIN manual para enlazar tu dispositivo."
+        case .starting:
+            return "Espera a que el servicio LAN publique una dirección IP local válida en tu red."
+        case .stopped:
+            return "Pulsa 'Conectar iPad' en las acciones rápidas para activar la sincronización local."
+        case .networkError(let message):
+            return "Error de red local (\(message)). Verifica que el Mac esté conectado a una red local/WiFi activa."
+        case .failed(let message):
+            return "Error del helper de sincronización (\(message)). Prueba a reiniciar el servicio de emparejamiento."
+        }
+    }
+
+    private var activeError: String? {
+        if let feedback = diagnosticFeedback, feedback.contains("Error") {
+            return feedback
+        }
+        let status = bridge.syncStatusMessage
+        if status.contains("Error") || status.contains("failed") {
+            return status
+        }
+        if case .networkError(let msg) = connectionSummary {
+            return "Error de red: \(msg)"
+        }
+        if case .failed(let msg) = connectionSummary {
+            return "Fallo del servicio: \(msg)"
+        }
+        return nil
+    }
+
+    var body: some View {
+        HSplitView {
+            // Panel Izquierdo: Observabilidad
+            ScrollView {
+                VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
+                    pageHeader
+                    observabilitySection
+                    quickActionsSection
+                    if let diagnosticFeedback, !diagnosticFeedback.contains("Error") {
+                        Text(diagnosticFeedback)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(MacAppStyle.pagePadding)
+            }
+            .frame(minWidth: 440)
+
+            // Panel Derecho: Emparejamiento y Diagnóstico
+            ScrollView {
+                VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
+                    pairingSection
+                    advancedDiagnosticsSection
+                }
+                .padding(MacAppStyle.pagePadding)
+            }
+            .frame(minWidth: 360, maxWidth: 440)
+        }
+        .background(MacAppStyle.pageBackground)
     }
 
     private var pageHeader: some View {
@@ -42,54 +102,73 @@ struct MacSyncView: View {
         }
     }
 
-    private var connectionSection: some View {
+    private var observabilitySection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 16) {
+            HStack(spacing: 12) {
                 Circle()
                     .fill(healthSummary.tint)
-                    .frame(width: 16, height: 16)
+                    .frame(width: 12, height: 12)
                     .overlay {
                         Circle()
-                            .stroke(healthSummary.tint.opacity(0.24), lineWidth: 8)
+                            .stroke(healthSummary.tint.opacity(0.24), lineWidth: 6)
                     }
-                    .padding(.top, 7)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 10) {
-                        Text(healthSummary.title)
-                            .font(.title3.weight(.semibold))
-                        MacStatusPill(
-                            label: healthSummary.visualStateLabel,
-                            isActive: healthSummary.isAttentionState,
-                            tint: healthSummary.tint
-                        )
-                    }
-
-                    Text(healthSummary.detail)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-
+                
+                Text(healthSummary.title)
+                    .font(.title3.weight(.bold))
+                
                 Spacer()
+                
+                MacStatusPill(
+                    label: healthSummary.visualStateLabel,
+                    isActive: healthSummary.isAttentionState,
+                    tint: healthSummary.tint
+                )
             }
-
+            
+            Text(healthSummary.detail)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            
             Divider()
-
+            
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: MacAppStyle.cardSpacing) {
-                statusMetric("Este dispositivo", currentDeviceName, "desktopcomputer")
-                statusMetric("iPad conectado", connectionSummary.isConnected ? "Sí" : "No", "ipad")
                 statusMetric("Última sincronización", bridge.syncLastRunAt.map(relativeTime) ?? "Sin registro", "clock")
                 statusMetric("Cambios pendientes", "\(bridge.syncPendingChanges)", "arrow.up.circle")
-                statusMetric("Conflictos", "\(syncConflictCount)", "exclamationmark.triangle")
+                statusMetric("Host emparejado", bridge.pairedSyncHost ?? "Ninguno", "network")
+                statusMetric("Dispositivo", connectionSummary.deviceName ?? "No conectado", "ipad")
             }
-
-            commandCenterActions
-
-            if let diagnosticFeedback {
-                Text(diagnosticFeedback)
-                    .font(.caption)
+            
+            if let activeError {
+                HStack(spacing: 10) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(MacAppStyle.dangerTint)
+                    Text(activeError)
+                        .font(.caption)
+                        .foregroundStyle(MacAppStyle.dangerTint)
+                        .textSelection(.enabled)
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(MacAppStyle.dangerTint.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
+            }
+            
+            Divider()
+            
+            VStack(alignment: .leading, spacing: 6) {
+                Text("ACCIÓN RECOMENDADA")
+                    .font(MacAppStyle.metricLabel)
                     .foregroundStyle(.secondary)
+                    .tracking(0.4)
+                
+                Text(recommendedAction)
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(healthSummary.tint == MacAppStyle.dangerTint ? MacAppStyle.dangerTint : .primary)
             }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(healthSummary.tint.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
         }
         .padding(MacAppStyle.innerPadding)
         .background(MacAppStyle.cardBackground)
@@ -98,6 +177,47 @@ struct MacSyncView: View {
                 .stroke(MacAppStyle.cardBorder, lineWidth: 0.5)
         }
         .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
+    }
+
+    private var quickActionsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Acciones rápidas")
+                .font(MacAppStyle.sectionTitle)
+            
+            HStack(spacing: 8) {
+                Button {
+                    connectIPad()
+                } label: {
+                    Label("Conectar iPad", systemImage: "ipad.and.iphone")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(commandCenter.serviceState == .starting)
+
+                Button {
+                    retrySync()
+                } label: {
+                    Label("Reintentar sync", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+                .disabled(bridge.pairedSyncHost == nil)
+
+                Button {
+                    resolveConflicts()
+                } label: {
+                    Label("Resolver conflictos", systemImage: "exclamationmark.triangle")
+                }
+                .buttonStyle(.bordered)
+                .disabled(syncConflictCount == 0)
+
+                Button {
+                    copyPairingLink()
+                } label: {
+                    Label("Copiar enlace", systemImage: "link")
+                }
+                .buttonStyle(.bordered)
+                .disabled(commandCenter.serviceState.pairingPayload == nil)
+            }
+        }
     }
 
     private func statusMetric(_ title: String, _ value: String, _ systemImage: String) -> some View {
@@ -116,51 +236,6 @@ struct MacSyncView: View {
         .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.chipRadius, style: .continuous))
     }
 
-    private var commandCenterActions: some View {
-        HStack(spacing: 8) {
-            Button {
-                connectIPad()
-            } label: {
-                Label("Conectar iPad", systemImage: "ipad.and.iphone")
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(commandCenter.serviceState == .starting)
-
-            Button {
-                retrySync()
-            } label: {
-                Label("Reintentar sync", systemImage: "arrow.clockwise")
-            }
-            .buttonStyle(.bordered)
-            .disabled(bridge.pairedSyncHost == nil)
-
-            Button {
-                showHistory()
-            } label: {
-                Label("Ver historial", systemImage: "clock.arrow.circlepath")
-            }
-            .buttonStyle(.bordered)
-
-            Button {
-                resolveConflicts()
-            } label: {
-                Label("Resolver conflictos", systemImage: "exclamationmark.triangle")
-            }
-            .buttonStyle(.bordered)
-            .disabled(syncConflictCount == 0)
-
-            Button {
-                copyPairingLink()
-            } label: {
-                Label("Copiar enlace de emparejamiento", systemImage: "link")
-            }
-            .buttonStyle(.bordered)
-            .disabled(commandCenter.serviceState.pairingPayload == nil)
-
-            Spacer()
-        }
-    }
-
     private var pairingSection: some View {
         VStack(alignment: .leading, spacing: MacAppStyle.cardSpacing) {
             MacSectionHeader(title: "Emparejamiento")
@@ -171,7 +246,7 @@ struct MacSyncView: View {
                 } else {
                     RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous)
                         .fill(MacAppStyle.subtleFill)
-                        .frame(width: 174, height: 174)
+                        .frame(width: 150, height: 150)
                         .overlay {
                             VStack(spacing: 8) {
                                 Image(systemName: connectionSummary.placeholderImage)
@@ -591,7 +666,7 @@ private struct SyncHealthSummary {
 
     init(connection: SyncConnectionSummary, pendingChanges: Int, lastSyncAt: Date?, conflictCount: Int) {
         if conflictCount > 0 {
-            title = "Conflicto de sincronización"
+            title = "Conflicto de Sincronización"
             detail = "\(conflictCount) conflicto requiere revisión antes de continuar."
             tint = MacAppStyle.dangerTint
             visualStateLabel = "Conflicto"

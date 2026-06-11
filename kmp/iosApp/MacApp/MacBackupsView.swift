@@ -3,135 +3,37 @@ import AppKit
 
 struct MacBackupsView: View {
     @ObservedObject var store: MacBackupStore
-    @State private var restoreCandidate: MacBackupRecord?
-    @State private var showRestoreConfirmation = false
-    @State private var showRetentionConfirmation = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
-                MacPremiumModuleHeader(
-                    title: "Backups",
-                    subtitle: store.lastMessage,
-                    state: store.operationState,
-                    primaryAction: MacPremiumHeaderAction(
-                        title: "Crear backup ahora",
-                        systemImage: "plus.circle.fill",
-                        isDisabled: store.isCreatingBackup,
-                        handler: { Task { await store.createBackup() } }
-                    ),
-                    secondaryActions: [
-                        MacPremiumHeaderAction(
-                            title: "Restaurar",
-                            systemImage: "arrow.counterclockwise",
-                            isDisabled: store.selectedBackup == nil,
-                            handler: { requestRestore(store.selectedBackup) }
-                        ),
-                        MacPremiumHeaderAction(
-                            title: "Ver carpeta",
-                            systemImage: "folder",
-                            handler: store.openBackupDirectory
-                        )
-                    ]
-                )
+        VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
+            MacPremiumModuleHeader(
+                title: "Backups",
+                subtitle: store.lastMessage,
+                state: store.operationState,
+                primaryAction: MacPremiumHeaderAction(
+                    title: "Crear backup ahora",
+                    systemImage: "plus.circle.fill",
+                    isDisabled: store.isCreatingBackup,
+                    handler: { Task { await store.createBackup() } }
+                ),
+                secondaryActions: [
+                    MacPremiumHeaderAction(
+                        title: "Ver carpeta",
+                        systemImage: "folder",
+                        handler: store.openBackupDirectory
+                    )
+                ]
+            )
 
-                backupHero
-                backupActions
-                backupError
-                retentionWarning
-                backupHistory
-            }
-            .padding(MacAppStyle.pagePadding)
+            backupError
+            retentionWarning
+            
+            backupHistory
+                .frame(maxHeight: .infinity)
         }
+        .padding(MacAppStyle.pagePadding)
         .task {
             await store.loadBackups()
-        }
-        .confirmationDialog(
-            "Restaurar backup",
-            isPresented: $showRestoreConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Restaurar esta copia", role: .destructive) {
-                Task { await store.restoreSelectedBackup() }
-            }
-            Button("Cancelar", role: .cancel) {}
-        } message: {
-            Text("Se creará primero una copia de emergencia y después se reemplazará la base de datos actual por \(restoreCandidate?.displayName ?? "la copia seleccionada"). La aplicación se reiniciará automáticamente.")
-        }
-        .confirmationDialog(
-            "Aplicar retención",
-            isPresented: $showRetentionConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Eliminar copias antiguas", role: .destructive) {
-                Task { await store.deleteBackupsBeyondRetention() }
-            }
-            Button("Cancelar", role: .cancel) {}
-        } message: {
-            Text("Se mantendrán las 10 copias más recientes y se borrarán las antiguas.")
-        }
-    }
-
-    private var backupHero: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .top, spacing: 16) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Protección de datos")
-                        .font(.title2.weight(.semibold))
-                    Text(store.latestBackup.map { "Última copia: \($0.createdAt.macBackupDateText)" } ?? "Última copia: sin copias")
-                        .font(MacAppStyle.bodyText)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                Image(systemName: store.latestBackup == nil ? "externaldrive.badge.questionmark" : "externaldrive.badge.checkmark")
-                    .font(.system(size: 34, weight: .semibold))
-                    .foregroundStyle(store.latestBackup == nil ? MacAppStyle.warningTint : MacAppStyle.successTint)
-            }
-
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: MacAppStyle.cardSpacing) {
-                MacMetricCard(label: "Estado", value: store.protectedStatus, tint: store.latestBackup == nil ? MacAppStyle.warningTint : MacAppStyle.successTint, systemImage: "shield")
-                MacMetricCard(label: "Base de datos", value: store.latestBackup?.sizeBytes.macBackupFileSizeText ?? "--", systemImage: "internaldrive")
-                MacMetricCard(label: "Retención", value: store.retentionSummary, systemImage: "clock.arrow.circlepath")
-                MacMetricCard(label: "Historial", value: "\(store.backups.count)", systemImage: "list.bullet.rectangle")
-            }
-        }
-        .padding(MacAppStyle.innerPadding)
-        .background(MacAppStyle.cardBackground)
-        .overlay {
-            RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous)
-                .stroke(MacAppStyle.cardBorder, lineWidth: 0.5)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
-    }
-
-    private var backupActions: some View {
-        HStack(spacing: 8) {
-            Button {
-                Task { await store.createBackup() }
-            } label: {
-                Label("Crear backup ahora", systemImage: "plus.circle.fill")
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(store.isCreatingBackup)
-
-            Button {
-                requestRestore(store.selectedBackup)
-            } label: {
-                Label("Restaurar", systemImage: "arrow.counterclockwise")
-            }
-            .buttonStyle(.bordered)
-            .disabled(store.selectedBackup == nil)
-
-            Button {
-                store.openBackupDirectory()
-            } label: {
-                Label("Ver carpeta", systemImage: "folder")
-            }
-            .buttonStyle(.bordered)
-
-            Spacer()
         }
     }
 
@@ -160,7 +62,7 @@ struct MacBackupsView: View {
                     .foregroundStyle(MacAppStyle.warningTint)
                 Spacer()
                 Button("Aplicar retención") {
-                    showRetentionConfirmation = true
+                    Task { await store.deleteBackupsBeyondRetention() }
                 }
                 .buttonStyle(.bordered)
             }
@@ -183,6 +85,7 @@ struct MacBackupsView: View {
                     systemImage: "externaldrive",
                     description: Text("Crea una copia para activar el historial verificable.")
                 )
+                .frame(maxWidth: .infinity, minHeight: 320)
             } else {
                 Table(store.backups, selection: $store.selectedBackupID) {
                     TableColumn("Fecha") { backup in
@@ -209,26 +112,7 @@ struct MacBackupsView: View {
                         )
                     }
                     .width(min: 130, ideal: 160)
-
-                    TableColumn("Acciones") { backup in
-                        HStack(spacing: 8) {
-                            Button("Restaurar") {
-                                store.selectedBackupID = backup.id
-                                requestRestore(backup)
-                            }
-                            .buttonStyle(.borderless)
-                            .disabled(!backup.isRestorable)
-
-                            Button("Ver") {
-                                store.selectedBackupID = backup.id
-                                store.openSelectedInFinder()
-                            }
-                            .buttonStyle(.borderless)
-                        }
-                    }
-                    .width(min: 150, ideal: 180)
                 }
-                .frame(minHeight: 340)
             }
         }
     }
@@ -242,12 +126,5 @@ struct MacBackupsView: View {
         case .missingFile:
             return MacAppStyle.warningTint
         }
-    }
-
-    private func requestRestore(_ backup: MacBackupRecord?) {
-        guard let backup else { return }
-        restoreCandidate = backup
-        store.selectedBackupID = backup.id
-        showRestoreConfirmation = true
     }
 }

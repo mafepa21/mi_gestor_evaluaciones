@@ -112,6 +112,7 @@ struct NotebookColumnOrganizerSheet: View {
                 }
                 .listStyle(.inset)
                 .searchable(text: $searchText, placement: .toolbar, prompt: "Buscar columna")
+                .appEditMode(isSelectionMode: isSelectionMode)
             }
 
             Divider()

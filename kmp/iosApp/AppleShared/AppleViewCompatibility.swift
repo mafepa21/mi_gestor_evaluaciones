@@ -135,6 +135,15 @@ extension View {
             }
         }
     }
+
+    @ViewBuilder
+    func appEditMode(isSelectionMode: Bool) -> some View {
+#if os(iOS)
+        self.environment(\.editMode, .constant(isSelectionMode ? .inactive : .active))
+#else
+        self
+#endif
+    }
 }
 
 #if os(macOS)

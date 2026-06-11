@@ -137,29 +137,41 @@ struct MacRootView: View {
     }
 
     private var macSidebar: some View {
-        List(MacFeatureRegistry.all, selection: selectedFeatureBinding) { feature in
-            HStack(spacing: 10) {
-                Image(systemName: feature.systemImage)
-                    .frame(width: 20, height: 20)
-                    .foregroundStyle(iconTint(for: feature.feature))
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(feature.title)
-                        .font(.callout.weight(.medium))
-                    Text(feature.subtitle)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+        List(selection: selectedFeatureBinding) {
+            ForEach(MacFeatureSection.allCases) { section in
+                Section(header: Text(section.rawValue)) {
+                    ForEach(section.features) { featureType in
+                        sidebarRow(for: featureType)
+                    }
                 }
-            }
-            .padding(.vertical, 2)
-            .tag(feature.feature)
-            .contextMenu {
-                sidebarContextMenu(for: feature.feature)
             }
         }
         .listStyle(.sidebar)
         .navigationTitle("MiGestor")
         .navigationSubtitle(session.bridge.statsText)
+    }
+
+    @ViewBuilder
+    private func sidebarRow(for featureType: MacFeatureDescriptor.Feature) -> some View {
+        let feature = MacFeatureRegistry.descriptor(for: featureType)
+        HStack(spacing: 10) {
+            Image(systemName: feature.systemImage)
+                .frame(width: 20, height: 20)
+                .foregroundStyle(iconTint(for: featureType))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(feature.title)
+                    .font(.callout.weight(.medium))
+                Text(feature.subtitle)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.vertical, 2)
+        .tag(featureType)
+        .contextMenu {
+            sidebarContextMenu(for: featureType)
+        }
     }
 
     private var selectedFeatureBinding: Binding<MacFeatureDescriptor.Feature> {

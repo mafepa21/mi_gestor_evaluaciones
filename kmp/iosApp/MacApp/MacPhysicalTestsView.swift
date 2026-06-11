@@ -18,6 +18,7 @@ enum PhysicalTestsMacSection: String, CaseIterable, Identifiable {
     case capture
     case scales
     case history
+    case reports
 
     var id: String { rawValue }
 
@@ -30,6 +31,7 @@ enum PhysicalTestsMacSection: String, CaseIterable, Identifiable {
         case .capture: return "Captura"
         case .scales: return "Baremos"
         case .history: return "Histórico"
+        case .reports: return "Informes"
         }
     }
 
@@ -42,6 +44,7 @@ enum PhysicalTestsMacSection: String, CaseIterable, Identifiable {
         case .capture: return "tablecells"
         case .scales: return "slider.horizontal.3"
         case .history: return "clock.arrow.circlepath"
+        case .reports: return "doc.text.image"
         }
     }
 }
@@ -356,13 +359,15 @@ struct MacPhysicalTestsView: View {
             scalesView
         case .history:
             history
+        case .reports:
+            reportsView
         }
     }
 
     private var dashboard: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
-                header(title: "Mediciones y baremos", subtitle: "\(selectedClassName) · Baremos, marcas e históricos")
+                header(title: "EF · Condición física", subtitle: "\(selectedClassName) · Baremos, marcas e históricos")
 
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 12)], spacing: 12) {
                     MacMetricCard(label: "Pruebas", value: "\(tests.count)", tint: .orange, systemImage: "stopwatch.fill")
@@ -1701,6 +1706,61 @@ struct MacPhysicalTestsView: View {
         case .best: return .best
         case .average: return .average
         case .last: return .last
+        }
+    }
+
+    private var reportsView: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
+                header(title: "EF · Condición física", subtitle: "\(selectedClassName) · Resumen y exportación de informes")
+
+                if tests.isEmpty {
+                    MacPhysicalEmptyState(
+                        title: "Sin datos para informes",
+                        systemImage: "doc.text.magnifyingglass",
+                        subtitle: "Registra marcas en capturas para ver estadísticas e informes de rendimiento de la clase."
+                    )
+                    .frame(minHeight: 320)
+                } else {
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("Resumen de rendimiento de la clase")
+                            .font(.title3.weight(.bold))
+
+                        HStack {
+                            Spacer()
+                            ShareLink(item: "Informe de Condición Física de \(selectedClassName)\nPruebas registradas: \(tests.count)\nRegistros totales: \(recordedCount)") {
+                                Label("Exportar informe de clase", systemImage: "square.and.arrow.up")
+                            }
+                            .buttonStyle(.borderedProminent)
+                            Spacer()
+                        }
+                        .padding(.vertical, 8)
+
+                        ForEach(tests, id: \.evaluation.id) { test in
+                            HStack {
+                                Text(test.evaluation.name)
+                                    .font(.headline)
+                                Spacer()
+                                VStack(alignment: .trailing) {
+                                    Text("Media: \(PhysicalTestsFormatting.decimal(test.average))")
+                                        .font(.callout.bold())
+                                        .foregroundStyle(.secondary)
+                                    Text("Mejor: \(test.best.map { PhysicalTestsFormatting.decimal($0) } ?? "-")")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .padding()
+                            .background(MacAppStyle.cardBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius))
+                        }
+                    }
+                    .padding(MacAppStyle.innerPadding)
+                    .background(MacAppStyle.cardBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius))
+                }
+            }
+            .padding(MacAppStyle.pagePadding)
         }
     }
 }

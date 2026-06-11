@@ -410,13 +410,14 @@ enum DashboardProactiveInsightEngine {
     static func fallbackBriefing(from insights: [DashboardProactiveInsight], className: String?) -> TeachingAssistantDraft? {
         guard let first = insights.first else { return nil }
         let facts = Array(insights.flatMap(\.facts).prefix(6))
-        let actions = Array(insights.flatMap { $0.recommendedActions.map(\.title) }.removingDuplicates().prefix(4))
+        let actions = Array(insights.flatMap { $0.recommendedActions.map(\.title) }.removingDuplicates().prefix(2))
+        let alerts = Array(insights.filter { $0.priority >= .high }.map(\.title).prefix(3))
         return TeachingAssistantDraft(
-            title: "Briefing docente",
+            title: "Briefing docente diario",
             subtitle: className ?? "Dashboard",
             summary: first.summary,
             factsUsed: facts,
-            warnings: Array(insights.filter { $0.priority >= .high }.map(\.title).prefix(4)),
+            warnings: alerts.isEmpty ? ["Sin alerta prioritaria con los datos cargados."] : alerts,
             recommendedActions: actions.isEmpty ? ["Revisar el detalle del dashboard."] : actions,
             editableText: ([first.title, first.summary] + facts).joined(separator: "\n"),
             confidenceNote: "Generado por reglas del radar porque la IA local no ha aportado un briefing adicional.",
@@ -682,7 +683,7 @@ struct DashboardProactiveInsightCard: View {
     }
 
     private func briefingBlock(_ draft: TeachingAssistantDraft) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 8) {
                 Image(systemName: "sparkles")
                     .foregroundStyle(EvaluationDesign.accent)
@@ -695,14 +696,48 @@ struct DashboardProactiveInsightCard: View {
                 .font(.subheadline)
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            briefingSection("3 alertas prioritarias", items: normalizedAlerts(from: draft))
+            briefingSection("2 acciones recomendadas", items: normalizedActions(from: draft))
+
             if let confidence = draft.confidenceNote {
-                Text(confidence)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Aviso de datos incompletos")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text(confidence)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
         .padding(16)
         .background(EvaluationDesign.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func briefingSection(_ title: String, items: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            ForEach(items, id: \.self) { item in
+                Text("• \(item)")
+                    .font(.caption)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func normalizedAlerts(from draft: TeachingAssistantDraft) -> [String] {
+        let fallback = ["Sin alerta prioritaria con los datos cargados."]
+        return Array((draft.warnings.isEmpty ? fallback : draft.warnings).prefix(3))
+    }
+
+    private func normalizedActions(from draft: TeachingAssistantDraft) -> [String] {
+        let fallback = ["Revisar el detalle del dashboard."]
+        return Array((draft.recommendedActions.isEmpty ? fallback : draft.recommendedActions).prefix(2))
     }
 
     private var briefingLoadingBlock: some View {

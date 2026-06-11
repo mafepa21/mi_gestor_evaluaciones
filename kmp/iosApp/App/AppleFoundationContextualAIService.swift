@@ -180,6 +180,59 @@ struct TeachingAssistantDraft {
     let riskLevel: RiskLevel?
 }
 
+enum DailyBriefingDraftContract {
+    static func normalized(_ draft: TeachingAssistantDraft, dataWarning: String?) -> TeachingAssistantDraft {
+        let alerts = normalizedItems(
+            draft.warnings,
+            targetCount: 3,
+            fallback: "Sin alerta prioritaria adicional con los datos cargados."
+        )
+        let actions = normalizedItems(
+            draft.recommendedActions,
+            targetCount: 2,
+            fallback: "Revisar el detalle del dashboard antes de la siguiente clase."
+        )
+        let confidence = firstNonEmpty(dataWarning, draft.confidenceNote) ?? "Sin incidencias de calidad reseñables en los datos usados."
+        let editableText = """
+        \(draft.title)
+
+        \(draft.subtitle)
+
+        Resumen de evaluación
+        \(draft.summary)
+
+        3 alertas prioritarias
+        \(alerts.map { "• \($0)" }.joined(separator: "\n"))
+
+        2 acciones recomendadas
+        \(actions.map { "• \($0)" }.joined(separator: "\n"))
+
+        Aviso de datos incompletos
+        \(confidence)
+        """
+
+        return TeachingAssistantDraft(
+            title: draft.title.isEmpty ? "Briefing docente diario" : draft.title,
+            subtitle: draft.subtitle,
+            summary: draft.summary,
+            factsUsed: Array(draft.factsUsed.prefix(6)),
+            warnings: alerts,
+            recommendedActions: actions,
+            editableText: editableText,
+            confidenceNote: confidence,
+            riskLevel: draft.riskLevel
+        )
+    }
+
+    private static func normalizedItems(_ items: [String], targetCount: Int, fallback: String) -> [String] {
+        var result = compactTexts(items)
+        while result.count < targetCount {
+            result.append(fallback)
+        }
+        return Array(result.prefix(targetCount))
+    }
+}
+
 func compactTexts(_ groups: [String]...) -> [String] {
     let flattened = groups.flatMap { $0 }
     var seen = Set<String>()
@@ -210,17 +263,17 @@ enum DailyBriefEvidenceBuilder {
             dashboard.dataQualityNote.map { [$0] } ?? [],
             diary.dataQualityNote.map { [$0] } ?? [],
             evaluation.dataQualityNote.map { [$0] } ?? []
-        ), maxItems: AIContextBudget.maxWarnings, itemLimit: 140).map(WarningItem.init)
+        ), maxItems: 3, itemLimit: 140).map(WarningItem.init)
         let actions = AIContextBudget.lines(compactTexts(
             dashboard.suggestedActions.map(\.subtitle),
             diary.suggestedActions.map(\.subtitle),
             evaluation.suggestedActions.map(\.subtitle)
-        ), maxItems: AIContextBudget.maxActions, itemLimit: 140).map(RecommendedActionItem.init)
+        ), maxItems: 2, itemLimit: 140).map(RecommendedActionItem.init)
         return TeachingEvidencePack(
             useCase: .dailyBriefing,
             title: "Briefing docente diario",
             subtitle: dashboard.className ?? dashboard.subtitle,
-            summary: "Panorámica breve del día con foco en prioridad operativa, seguimiento y evaluación pendiente.",
+            summary: "Resumen de evaluación del día con foco en prioridad operativa, seguimiento y evidencias pendientes.",
             metrics: Array(dashboard.metrics.prefix(AIContextBudget.maxMetrics)),
             factsUsed: facts,
             warnings: Array(warnings),
@@ -1026,6 +1079,7 @@ final class AppleFoundationContextualAIService {
 
     private var activeTeachingRiskLevel: RiskLevel?
     private var activeTeachingConfidenceFallback: String?
+    private var activeTeachingUseCase: TeachingAssistantUseCase?
     private var contextualPromptCache: [String: String] = [:]
     private var notebookPromptCache: [String: String] = [:]
     private var runtimeFailureObserver: NSObjectProtocol?
@@ -1135,6 +1189,7 @@ final class AppleFoundationContextualAIService {
         #endif
         activeTeachingRiskLevel = nil
         activeTeachingConfidenceFallback = nil
+        activeTeachingUseCase = nil
     }
 
     func generateResult(
@@ -1305,6 +1360,7 @@ final class AppleFoundationContextualAIService {
         )
         return mapTeachingDraft(
             response.content,
+            useCase: activeTeachingUseCase ?? .groupInsight,
             riskLevel: activeTeachingRiskLevel,
             confidenceFallback: activeTeachingConfidenceFallback
         )
@@ -1395,13 +1451,19 @@ final class AppleFoundationContextualAIService {
         activeTeachingSessionStorage = session
         activeTeachingRiskLevel = evidence.riskLevel
         activeTeachingConfidenceFallback = evidence.confidenceNote
+        activeTeachingUseCase = evidence.useCase
         let response = try await session.respond(
             to: teachingPrompt(from: evidence, audience: audience, tone: tone, customPrompt: customPrompt),
             generating: GeneratedTeachingAssistantDraft.self,
             includeSchemaInPrompt: true,
             options: AppleFoundationModelSupport.generationOptions(temperature: 0.2)
         )
-        return mapTeachingDraft(response.content, riskLevel: evidence.riskLevel, confidenceFallback: evidence.confidenceNote)
+        return mapTeachingDraft(
+            response.content,
+            useCase: evidence.useCase,
+            riskLevel: evidence.riskLevel,
+            confidenceFallback: evidence.confidenceNote
+        )
     }
 
     @available(iOS 26.0, macOS 26.0, *)
@@ -1441,6 +1503,7 @@ final class AppleFoundationContextualAIService {
     @available(iOS 26.0, macOS 26.0, *)
     private func mapTeachingDraft(
         _ content: GeneratedTeachingAssistantDraft,
+        useCase: TeachingAssistantUseCase,
         riskLevel: RiskLevel?,
         confidenceFallback: String?
     ) -> TeachingAssistantDraft {
@@ -1448,7 +1511,7 @@ final class AppleFoundationContextualAIService {
         let warningBlock = content.warnings.map { "• \($0)" }.joined(separator: "\n")
         let actionBlock = content.recommendedActions.map { "• \($0)" }.joined(separator: "\n")
 
-        return TeachingAssistantDraft(
+        let draft = TeachingAssistantDraft(
             title: content.title,
             subtitle: content.subtitle,
             summary: content.summary,
@@ -1474,6 +1537,8 @@ final class AppleFoundationContextualAIService {
             confidenceNote: normalizedOptional(content.confidenceNote) ?? confidenceFallback,
             riskLevel: riskLevel
         )
+        guard useCase == .dailyBriefing else { return draft }
+        return DailyBriefingDraftContract.normalized(draft, dataWarning: confidenceFallback)
     }
 
     @available(iOS 26.0, macOS 26.0, *)
@@ -1666,6 +1731,14 @@ final class AppleFoundationContextualAIService {
         let warnings = evidence.warningTexts.prefix(3).map { "- \($0)" }.joined(separator: "\n")
         let actions = evidence.recommendedActionTexts.prefix(3).map { "- \($0)" }.joined(separator: "\n")
 
+        let dailyBriefingRequirements = """
+        - Para briefing diario, devuelve exactamente:
+          - warnings: 3 alertas prioritarias, sin inventar datos.
+          - recommendedActions: 2 acciones concretas de 1 clic o preparación inmediata.
+          - summary: 1 resumen de evaluación en 1 o 2 frases.
+          - confidenceNote: 1 aviso breve de datos incompletos; si no hay incidencias, dilo explícitamente.
+        """
+
         return AIContextBudget.prompt("""
         Genera una ayuda docente grounded y accionable.
 
@@ -1703,6 +1776,7 @@ final class AppleFoundationContextualAIService {
         - warnings: entre 0 y 4 advertencias prudentes.
         - recommendedActions: entre 1 y 4 acciones concretas.
         - confidenceNote: deja una cadena vacía salvo que haya una limitación real de datos; si la hay, una sola frase breve.
+        \(evidence.useCase == .dailyBriefing ? dailyBriefingRequirements : "")
         - No inventes causas, diagnósticos, sanciones ni etiquetas sensibles.
         """)
     }
@@ -1860,7 +1934,7 @@ final class AppleFoundationContextualAIService {
         let facts = Array(evidence.factTexts.prefix(6))
         let warnings = Array(evidence.warningTexts.prefix(4))
         let actions = Array((evidence.recommendedActionTexts.isEmpty ? ["Mantener seguimiento prudente y recoger nuevas evidencias."] : evidence.recommendedActionTexts).prefix(4))
-        return TeachingAssistantDraft(
+        let draft = TeachingAssistantDraft(
             title: evidence.title,
             subtitle: evidence.subtitle,
             summary: evidence.summary,
@@ -1884,6 +1958,8 @@ final class AppleFoundationContextualAIService {
             confidenceNote: evidence.confidenceNote ?? "Generado por reglas porque la IA local no está disponible.",
             riskLevel: evidence.riskLevel
         )
+        guard evidence.useCase == .dailyBriefing else { return draft }
+        return DailyBriefingDraftContract.normalized(draft, dataWarning: evidence.confidenceNote)
     }
 
     private func normalizedOptional(_ value: String?) -> String? {

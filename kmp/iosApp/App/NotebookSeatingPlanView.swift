@@ -121,7 +121,7 @@ struct NotebookSeatingPlanView: View {
                     }
                     #endif
                     .gesture(
-                        DragGesture()
+                        DragGesture(coordinateSpace: .named("seatingCanvas"))
                             .onChanged { value in
                                 if draggingStudentId != item.student.id {
                                     draggingStudentId = item.student.id
@@ -141,6 +141,7 @@ struct NotebookSeatingPlanView: View {
                 }
             }
             .padding(20)
+            .coordinateSpace(name: "seatingCanvas")
         }
     }
 

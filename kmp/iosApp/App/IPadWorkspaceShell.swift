@@ -752,7 +752,7 @@ struct AppWorkspaceShell: View {
                 VStack(spacing: 0) {
                     if layoutState.isFocusModeEnabled {
                         compactFocusToolbar
-                    } else {
+                    } else if activeModule != .notebook {
                         workspaceToolbar
                         Divider().opacity(0.24)
                     }

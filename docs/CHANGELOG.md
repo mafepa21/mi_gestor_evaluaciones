@@ -29,6 +29,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- La toolbar del Cuaderno se rediseña por completo como toolbar nativa de SwiftUI (`.toolbar` y `.toolbarTitleMenu`) en iPad y macOS. Se elimina la barra manual (`notebookMacLikeToolbar`) en `IPadWorkspaceShell.swift` y se delega el título, clase activa, trimestre, situaciones de aprendizaje, filtros, acciones primarias/secundarias y la barra de estado de guardado/sincronización directamente a los componentes y placements nativos del sistema.
 - La celda Media en macOS abre la ficha rápida completa del alumno, no solo el desglose aislado de cálculo.
 - Las columnas de pruebas físicas del Cuaderno separan dato bruto y nota evaluable: `Marca`/`Nivel` se crean como dato bruto y `Nota` como nota baremada ponderable.
 - La celda Media del Cuaderno separa visualmente qué entra, qué queda pendiente, qué no entra y cuánto aporta cada peso; en macOS se abre dentro del inspector contextual.

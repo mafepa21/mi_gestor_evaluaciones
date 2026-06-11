@@ -405,6 +405,21 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-06-11 - Toolbar Nativa en SwiftUI para el Cuaderno (iOS/macOS)
+
+Resumen:
+- Se rediseñó por completo la barra de herramientas del Cuaderno de Evaluaciones para utilizar la API nativa de SwiftUI (`.toolbar` y `.toolbarTitleMenu`).
+- En `IPadWorkspaceShell.swift`, se ocultó la barra de herramientas y divisores manuales (`notebookMacLikeToolbar`) cuando el módulo del Cuaderno está activo, delegando la barra superior completamente al safe area de navegación del sistema.
+- Se implementó `.toolbarTitleMenu` en `NotebookModuleView.swift` con menús desplegables integrados para el cambio rápido de clase (`sortedClasses`), trimestre (`orderedNotebookTabs`), situaciones de aprendizaje (mapeado a agrupación de WorkGroups en `groupByWorkGroupMode`) y el modo de visualización (`surfaceMode`).
+- Se reestructuraron las acciones primarias y secundarias nativas: botón "+" como `primaryAction` para crear columnas, y menús contextuales en trailing para filtros de grupo, configuración de columnas (organización, columnas ocultas, categorías), visibilidad del inspector y menú avanzado (deshacer, asistencia rápida, síntesis IA, exportar).
+- Se configuró la barra de estado nativa (`.status`) para mostrar de forma integrada y en segundo plano el estado de guardado, la sincronización del bridge y el recuento de alumnos visibles.
+- Se retiró la vista de barra manual obsoleta `NotebookTopBar: View` del final de `NotebookTopBar.swift`, conservando intactos los componentes de estilo comunes.
+
+Validación:
+- Validación de sintaxis en Swift y ejecución de `xcodegen generate` para regenerar el proyecto Xcode.
+- Corregida la ambigüedad entre `Optional.map` y `Sequence.map` sobre el nombre de la clase al declarar `.navigationTitle(...)` desempaquetando el opcional con un operador ternario explícito.
+- La compilación CLI local falla debido a la configuración de `xcode-select` de la máquina host apuntando a las `CommandLineTools` (Xcode completo no disponible en CLI).
+
 ### 2026-06-11 - Fase 5: Condición física como módulo diferencial (EF · Condición física)
 
 Resumen:

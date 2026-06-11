@@ -1212,7 +1212,8 @@ struct NotebookModuleView: View {
                     }
                 }
                 .toolbarRole(.editor)
-                .notebookSearchable(if: toolbarMode != .inlineCompact, text: $searchText, prompt: "Buscar alumno")
+                .notebookSearchable(if: toolbarMode == .inlineCompact, text: $searchText, prompt: "Buscar alumno")
+                .avoidHidingContentDuringSearch()
         }
     }
 

@@ -29,6 +29,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- Sustitución de campos de búsqueda diseñados a mano en el Cuaderno, asistencia y búsqueda global por el modificador nativo `.searchable` en el shell de iPad/macOS (`IPadWorkspaceShell.swift`) y en el Cuaderno (`NotebookModuleView.swift`), unificando y simplificando la experiencia de búsqueda. Se introduce el helper `.avoidHidingContentDuringSearch()` para soportar de manera segura la opción `.avoidHidingContent` en iOS 17.1+ / macOS 14.1+ manteniendo compatibilidad nativa con iOS 16.0.
 - Se simplifica la barra de herramientas del Cuaderno (`NotebookModuleView.swift`) mostrando solo las acciones principales (`[+ Columna]` y `[Buscar]`) y agrupando el resto bajo el menú secundario `[···]`.
 - Se añade el toggle "Vista compacta" en el menú `···` que disminuye dinámicamente la altura del grid (38 en macOS y 40 en iOS).
 - Se añade el botón "Configuración de media" en el menú `···` para acceder a la configuración de medias.

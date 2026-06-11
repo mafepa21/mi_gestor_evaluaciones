@@ -767,6 +767,33 @@ struct AppWorkspaceShell: View {
                         .padding(.horizontal, 24)
                 }
             }
+            .searchable(
+                text: Binding(
+                    get: {
+                        if activeModule == .notebook {
+                            return layoutState.notebookSearchText
+                        } else if activeModule == .attendance {
+                            return layoutState.attendanceSearchText
+                        } else {
+                            return searchText
+                        }
+                    },
+                    set: { newValue in
+                        if activeModule == .notebook {
+                            layoutState.setNotebookSearchText(newValue)
+                        } else if activeModule == .attendance {
+                            layoutState.setAttendanceSearchText(newValue)
+                        } else {
+                            searchText = newValue
+                        }
+                    }
+                ),
+                placement: .toolbar,
+                prompt: activeModule == .notebook ? "Buscar alumnado o columnas" :
+                        activeModule == .attendance ? "Buscar alumno…" :
+                        "Buscar alumno, rúbrica o sesión…"
+            )
+            .avoidHidingContentDuringSearch()
         }
         #if os(macOS)
         .navigationSplitViewStyle(.automatic)
@@ -1004,43 +1031,6 @@ struct AppWorkspaceShell: View {
                                     .frame(minWidth: 220, alignment: .leading)
                             }
                             .buttonStyle(.bordered)
-
-                            HStack(spacing: 10) {
-                                Image(systemName: "magnifyingglass")
-                                    .foregroundStyle(.secondary)
-                                TextField(
-                                    activeModule == .notebook ? "Buscar alumno…" : "Buscar módulos, grupos o alumnado…",
-                                    text: Binding(
-                                        get: {
-                                            activeModule == .notebook ? layoutState.notebookSearchText : searchText
-                                        },
-                                        set: { newValue in
-                                            if activeModule == .notebook {
-                                                layoutState.setNotebookSearchText(newValue)
-                                            } else {
-                                                searchText = newValue
-                                            }
-                                        }
-                                    )
-                                )
-                                    .textFieldStyle(.plain)
-                                if !(activeModule == .notebook ? layoutState.notebookSearchText : searchText).isEmpty {
-                                    Button {
-                                        if activeModule == .notebook {
-                                            layoutState.setNotebookSearchText("")
-                                        } else {
-                                            searchText = ""
-                                        }
-                                    } label: {
-                                        Image(systemName: "xmark.circle.fill")
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 12)
-                            .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                         }
                     }
 
@@ -1122,7 +1112,6 @@ struct AppWorkspaceShell: View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 12) {
                 attendanceClassMenu
-                attendanceSearchField
                 attendanceFilterMenu
                 attendanceActionsMenu
                 Spacer(minLength: 8)
@@ -1139,7 +1128,6 @@ struct AppWorkspaceShell: View {
                     attendanceDatePicker
                 }
                 HStack(spacing: 12) {
-                    attendanceSearchField
                     attendanceModePicker(width: 280)
                 }
             }
@@ -1168,34 +1156,6 @@ struct AppWorkspaceShell: View {
                 .frame(minWidth: 220, alignment: .leading)
         }
         .buttonStyle(.bordered)
-    }
-
-    var attendanceSearchField: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-            TextField(
-                "Buscar alumno…",
-                text: Binding(
-                    get: { layoutState.attendanceSearchText },
-                    set: { layoutState.setAttendanceSearchText($0) }
-                )
-            )
-            .textFieldStyle(.plain)
-            if !layoutState.attendanceSearchText.isEmpty {
-                Button {
-                    layoutState.setAttendanceSearchText("")
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Borrar búsqueda")
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     var attendanceFilterMenu: some View {
@@ -1479,22 +1439,6 @@ struct AppWorkspaceShell: View {
             notebookInspectorButton
                 .layoutPriority(2)
 
-            Label("Buscar", systemImage: "magnifyingglass")
-                .labelStyle(.iconOnly)
-                .foregroundStyle(.secondary)
-                .layoutPriority(2)
-
-            TextField(
-                "Buscar",
-                text: Binding(
-                    get: { layoutState.notebookSearchText },
-                    set: { layoutState.setNotebookSearchText($0) }
-                )
-            )
-            .textFieldStyle(.roundedBorder)
-            .frame(minWidth: 160, idealWidth: 220, maxWidth: 260)
-            .layoutPriority(2)
-
             notebookOverflowMenu
                 .layoutPriority(1)
         }
@@ -1749,8 +1693,6 @@ struct AppWorkspaceShell: View {
                 notebookGroupFilterMenu
             }
 
-            notebookSearchField
-
             Spacer(minLength: 8)
         }
     }
@@ -1778,34 +1720,6 @@ struct AppWorkspaceShell: View {
         .buttonStyle(.bordered)
     }
 
-    var notebookSearchField: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-            TextField(
-                "Buscar alumno…",
-                text: Binding(
-                    get: { layoutState.notebookSearchText },
-                    set: { layoutState.setNotebookSearchText($0) }
-                )
-            )
-            .textFieldStyle(.plain)
-            if !layoutState.notebookSearchText.isEmpty {
-                Button {
-                    layoutState.setNotebookSearchText("")
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Borrar búsqueda")
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .frame(minWidth: 200, maxWidth: 300)
-    }
 
     var searchResultsOverlay: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -4104,3 +4018,15 @@ private extension String {
         return trimmed.isEmpty ? nil : trimmed
     }
 }
+
+extension View {
+    @ViewBuilder
+    func avoidHidingContentDuringSearch() -> some View {
+        if #available(iOS 17.1, macOS 14.1, *) {
+            self.searchPresentationToolbarBehavior(.avoidHidingContent)
+        } else {
+            self
+        }
+    }
+}
+

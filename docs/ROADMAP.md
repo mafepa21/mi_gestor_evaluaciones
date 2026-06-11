@@ -34,7 +34,8 @@ Prioridad: alta.
 Prioridad: alta.
 
 - iPad: shell de trabajo clara, inspector no invasivo y acciones principales visibles.
-- macOS: paridad progresiva con convenciones desktop reales (rediseño de utilidades: Sync LAN completado).
+- macOS: paridad progresiva con convenciones desktop reales.
+  Avance: la barra lateral de macOS se organiza en secciones agrupadas (Hoy, Evaluación, Planificación, Sistema) para una experiencia de escritorio real. Rediseño de utilidades: Sync LAN completado.
 - Dashboard Apple: briefing local no bloqueante con fallback determinista y acciones reales por plataforma.
 - Accesibilidad: contraste, foco, labels y navegacion por teclado donde aplique.
 - UI/UX: reducir ruido visual, reforzar jerarquia y mantener rejilla disciplinada.

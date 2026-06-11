@@ -20,6 +20,7 @@ El formato sigue una variante practica de Keep a Changelog:
 ### Changed
 
 - Rediseño de la interfaz de sincronización local en macOS (`MacSyncView.swift`) utilizando una distribución con `HSplitView` dividida en un panel izquierdo de observabilidad (estado de conexión con badge, métricas principales, banner de errores y recomendación de acción contextualizada) y un panel derecho para enlace (QR, PIN manual y diagnóstico técnico).
+- La barra lateral (sidebar) en macOS se organiza en secciones agrupadas (Hoy, Evaluación, Planificación, Sistema) en lugar de listar todos los módulos al mismo nivel, mejorando la ergonomía de escritorio.
 - El Cuaderno reutiliza cachés en memoria para el sheet por versión efectiva de clase/configuración/alumnado/columnas/celdas/rúbricas, medias por alumno/columnas/valores, render model SwiftUI y contexto derivado de Apple IA.
 - Apple IA aplica un presupuesto centralizado de contexto antes de generar prompts, sourceDigest, evidencias auditadas y claves de caché de reportes/docencia.
 
@@ -36,6 +37,7 @@ El formato sigue una variante practica de Keep a Changelog:
 ### Verification
 
 - Validación de sintaxis SwiftUI y regeneración de proyecto con XcodeGen exitosa para la vista de Sincronización en macOS.
+- `git diff --check -- kmp/iosApp/MacApp/` completado correctamente tras el agrupamiento de barra lateral en macOS. Los builds `xcodebuild` de macOS e iOS Simulator no pudieron completarse porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` en este entorno host y requiere Xcode completo.
 - Se añade cobertura de test para comprobar que el schema crea los índices críticos de performance.
 - `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` completado correctamente tras limitar payloads de Apple IA.
 - `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` completado correctamente tras la auditoría de caché del Cuaderno.

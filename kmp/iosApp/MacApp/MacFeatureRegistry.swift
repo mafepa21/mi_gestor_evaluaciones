@@ -56,3 +56,26 @@ enum MacFeatureRegistry {
         all.first(where: { $0.feature == feature }) ?? all[0]
     }
 }
+
+enum MacFeatureSection: String, CaseIterable, Identifiable {
+    case hoy = "Hoy"
+    case evaluacion = "Evaluación"
+    case planificacion = "Planificación"
+    case sistema = "Sistema"
+
+    var id: String { rawValue }
+
+    var features: [MacFeatureDescriptor.Feature] {
+        switch self {
+        case .hoy:
+            return [.dashboard, .teacherRadar]
+        case .evaluacion:
+            return [.notebook, .attendance, .rubrics, .physicalTests]
+        case .planificacion:
+            return [.planner, .situations, .students]
+        case .sistema:
+            return [.reports, .sync, .backups, .settings]
+        }
+    }
+}
+

@@ -405,6 +405,16 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-06-11 - Preparación de la versión 0.3.0-alpha.2 y Cierre de Cambios del Cuaderno y Sincronización
+
+Resumen:
+- Se promovió el bloque de cambios acumulados en la sección `Unreleased` de `docs/CHANGELOG.md` a la nueva versión oficial `0.3.0-alpha.2` con fecha del 11 de junio de 2026.
+- Se creó una nueva rama de release `release/0.3.0-alpha.2` a partir de `main` actualizada (con las PRs #18, #54, #56, #57 y #58 fusionadas).
+- Se ejecutaron los scripts de verificación obligatorios, confirmando que la consistencia de versión y la seguridad de archivos sensibles pasan sin fallos.
+
+Notas para futuras conversaciones:
+- La base de datos y los manifiestos continúan en la versión `0.3.0` (o `0.3.0-dev` interna), de acuerdo con `docs/VERSIONING.md`, puesto que el sufijo de pre-release se gestiona a nivel de Git y etiquetas de release.
+
 ### 2026-06-11 - Rol de Edición, Drag & Drop y Corrección de Compilación en el Cuaderno (iOS/macOS)
 
 Resumen:

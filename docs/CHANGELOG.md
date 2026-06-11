@@ -15,6 +15,20 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Data
+
+### Docs
+
+### Verification
+
+## 0.3.0-alpha.2 - 2026-06-11
+
+### Added
+
 - Reordenación nativa de columnas del Cuaderno, borrador de criterios en el builder de rúbricas y reordenación local de sesiones/baterías desde listas SwiftUI.
 - Acciones rápidas por swipe/context menu en sesiones del Planner y baterías físicas para completar, editar, duplicar, abrir diario/asignar y eliminar cuando el contrato existente lo permite.
 - Inspector rápido de alumno en el Cuaderno con Media explicada, columnas pendientes, últimas observaciones, rúbricas asociadas y acciones principales.

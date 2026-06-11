@@ -502,7 +502,7 @@ enum AppWorkspaceModule: String, CaseIterable, Identifiable {
         case .reports: return "Informes"
         case .library: return "Biblioteca"
         case .peSessions: return "Sesiones prácticas"
-        case .peTests: return "Mediciones y baremos"
+        case .peTests: return "EF · Condición física"
         case .peRubrics: return "Rúbricas por área"
         case .peIncidents: return "Incidencias y seguridad"
         case .peMaterial: return "Recursos y material"

@@ -705,7 +705,7 @@ struct AddColumnSheet: View {
 
             externalDestinationCard(
                 title: "Pruebas físicas",
-                subtitle: "Crea baterías, asignaciones, marcas y baremos desde Mediciones y baremos.",
+                subtitle: "Crea baterías, asignaciones, marcas y baremos desde EF · Condición física.",
                 icon: "figure.run",
                 tint: .orange
             )
@@ -810,7 +810,7 @@ struct AddColumnSheet: View {
 
                     externalDestinationCard(
                         title: "Pruebas físicas",
-                        subtitle: "Se gestionan desde Mediciones y baremos.",
+                        subtitle: "Se gestionan desde EF · Condición física.",
                         icon: "figure.run",
                         tint: .orange
                     )

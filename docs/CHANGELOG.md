@@ -15,6 +15,14 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- Pestaña y sección de "Informes" en el módulo EF · Condición física en iPad/iOS y macOS, que muestra resúmenes grupales, promedios de pruebas y atajos para compartir informes.
+- Auto-avance opcional en la captura en pista de marcas físicas, que permite guardar y avanzar automáticamente al siguiente estudiante.
+
+### Changed
+
+- Renombrado del producto/módulo "Mediciones y baremos" a "EF · Condición física" en todas las vistas de iPad/iOS y macOS, AddColumnSheet y AppSettingsModels.
+- Controles de captura en pista con botones significativamente más grandes y optimizados para uso táctil rápido en exteriores.
+
 - Inspector rápido de alumno en el Cuaderno con Media explicada, columnas pendientes, últimas observaciones, rúbricas asociadas y acciones principales.
 - Modelo explícito de explicación de Media del Cuaderno con columnas incluidas, columnas excluidas, celdas pendientes y contribuciones ponderadas, manteniendo compatibilidad con el contrato anterior.
 - Instrumentación debug desactivada por defecto para medir builds del sheet del Cuaderno, recálculo de medias, construcción del render model, filas visibles, hits/misses de caché y prompts derivados de IA.
@@ -27,6 +35,9 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- La barra lateral (sidebar) en macOS se organiza en secciones agrupadas (Hoy, Evaluación, Planificación, Sistema) en lugar de listar todos los módulos al mismo nivel, mejorando la ergonomía de escritorio.
+- El Dashboard macOS se reorganiza alrededor de un hero "Ahora" con clase/franja, pendiente principal y acción recomendada de 1 clic, desplazando alertas, pendientes, próxima clase y sync/backups a paneles secundarios.
+- El briefing docente diario queda normalizado como asistencia proactiva local: 3 alertas prioritarias, 2 acciones recomendadas, 1 resumen de evaluación y 1 aviso de datos incompletos tanto con Apple Foundation Models como con fallback determinista.
 - La celda Media en macOS abre la ficha rápida completa del alumno, no solo el desglose aislado de cálculo.
 - Las columnas de pruebas físicas del Cuaderno separan dato bruto y nota evaluable: `Marca`/`Nivel` se crean como dato bruto y `Nota` como nota baremada ponderable.
 - La celda Media del Cuaderno separa visualmente qué entra, qué queda pendiente, qué no entra y cuánto aporta cada peso; en macOS se abre dentro del inspector contextual.
@@ -57,6 +68,9 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `git diff --check -- kmp/iosApp/MacApp/` completado correctamente tras el agrupamiento de barra lateral en macOS. Los builds `xcodebuild` de macOS e iOS Simulator no pudieron completarse porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` en este entorno host y requiere Xcode completo.
+- `git diff --check` completado correctamente tras reorganizar el Dashboard macOS "Hoy" y normalizar el briefing diario proactivo.
+- `xcodebuild -quiet -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -configuration Debug -destination 'generic/platform=macOS' ARCHS=arm64 ONLY_ACTIVE_ARCH=YES build` no pudo iniciarse porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y `xcodebuild` requiere Xcode completo.
 - `./gradlew :shared:desktopTest` completado correctamente tras convertir el inspector del Cuaderno en ficha rápida del alumno.
 - `./gradlew :shared:compileKotlinMetadata` completado correctamente tras el ajuste del inspector.
 - `git diff --check` completado correctamente tras el ajuste del inspector.

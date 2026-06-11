@@ -35,7 +35,7 @@ enum IOSFeatureRegistry {
         .init(module: .reports, title: "Informes", subtitle: "Salida docente", systemImage: "doc.richtext", priority: .teaching, visibleInDailyMode: false),
         .init(module: .library, title: "Biblioteca", subtitle: "Plantillas reutilizables", systemImage: "books.vertical", priority: .tools, visibleInDailyMode: false),
         .init(module: .peSessions, title: "Sesiones prácticas", subtitle: "Operativa de actividades", systemImage: "figure.run", priority: .tools, visibleInDailyMode: false),
-        .init(module: .peTests, title: "Mediciones y baremos", subtitle: "Progreso, marcas e históricos", systemImage: "stopwatch", priority: .tools, visibleInDailyMode: false),
+        .init(module: .peTests, title: "EF · Condición física", subtitle: "Progreso, marcas e históricos", systemImage: "stopwatch", priority: .tools, visibleInDailyMode: false),
         .init(module: .peRubrics, title: "Rúbricas por área", subtitle: "Criterios específicos", systemImage: "figure.cooldown", priority: .tools, visibleInDailyMode: false),
         .init(module: .peIncidents, title: "Incidencias y seguridad", subtitle: "Seguimiento operativo", systemImage: "cross.case", priority: .tools, visibleInDailyMode: false),
         .init(module: .peMaterial, title: "Recursos y material", subtitle: "Inventario rápido", systemImage: "shippingbox", priority: .tools, visibleInDailyMode: false),

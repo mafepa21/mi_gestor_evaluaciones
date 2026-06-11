@@ -68,12 +68,13 @@ struct PhysicalTestTemplate: Identifiable, Hashable {
 }
 
 private enum PhysicalTestsWorkspaceTab: String, CaseIterable, Identifiable {
-    case bank = "Banco"
+    case bank = "Pruebas"
+    case scales = "Baremos"
     case batteries = "Baterías"
     case assignments = "Asignaciones"
     case capture = "Captura"
-    case scales = "Baremos"
     case history = "Histórico"
+    case reports = "Informes"
 
     var id: String { rawValue }
 }
@@ -309,22 +310,24 @@ struct PhysicalTestsWorkspaceView: View {
                     switch selectedTab {
                     case .bank:
                         bankView
+                    case .scales:
+                        scalesView
                     case .batteries:
                         batteriesView
                     case .assignments:
                         assignmentsView
                     case .capture:
                         captureDashboard
-                    case .scales:
-                        scalesView
                     case .history:
                         historyView
+                    case .reports:
+                        reportsView
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .background(EvaluationBackdrop())
-            .navigationTitle("Mediciones y baremos")
+            .navigationTitle("EF · Condición física")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
@@ -447,7 +450,7 @@ struct PhysicalTestsWorkspaceView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 16) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Mediciones y baremos")
+                    Text("EF · Condición física")
                         .font(.system(size: 32, weight: .black, design: .rounded))
                     Text("\(selectedClassName) · pruebas, baremos e históricos")
                         .font(.subheadline.weight(.semibold))
@@ -1456,6 +1459,65 @@ private struct PhysicalBatteryBuilder: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(selectedTemplateIds.isEmpty || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
+        }
+    }
+}
+
+extension PhysicalTestsWorkspaceView {
+    private var reportsView: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                Text("Informe de condición física")
+                    .font(.title2.weight(.bold))
+                    .foregroundStyle(.primary)
+
+                if tests.isEmpty {
+                    PhysicalEmptyState(
+                        title: "Sin datos para informes",
+                        systemImage: "doc.text.magnifyingglass",
+                        subtitle: "Registra marcas en capturas para ver estadísticas e informes de rendimiento de la clase."
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 260)
+                } else {
+                    NotebookSurface {
+                        VStack(alignment: .leading, spacing: 14) {
+                            Text("Resumen de rendimiento de la clase")
+                                .font(.headline)
+                            
+                            HStack {
+                                Spacer()
+                                ShareLink(item: "Informe de Condición Física de \(selectedClassName)\nPruebas registradas: \(tests.count)\nRegistros totales: \(recordedCount)") {
+                                    Label("Exportar informe de clase", systemImage: "square.and.arrow.up")
+                                }
+                                .buttonStyle(.borderedProminent)
+                                Spacer()
+                            }
+                            .padding(.vertical, 8)
+                            
+                            Divider()
+
+                            ForEach(tests, id: \.evaluation.id) { test in
+                                HStack {
+                                    Text(test.evaluation.name)
+                                        .font(.subheadline.weight(.semibold))
+                                    Spacer()
+                                    VStack(alignment: .trailing) {
+                                        Text("Media: \(PhysicalTestsFormatting.decimal(test.average))")
+                                            .font(.caption.bold())
+                                            .foregroundStyle(.secondary)
+                                        Text("Mejor: \(test.best.map { PhysicalTestsFormatting.decimal($0) } ?? "-")")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .padding(.vertical, 4)
+                            }
+                        }
+                        .padding(16)
+                    }
+                }
+            }
+            .padding(20)
         }
     }
 }

@@ -24,6 +24,7 @@ struct PhysicalTestCaptureView: View {
     @State private var isSaving = false
     @State private var scaleWarning: String?
     @State private var resolvedScale: MiGestorKit.PhysicalTestScale?
+    @State private var isAutoAdvanceEnabled = true
 
     private var currentResult: KmpBridge.PhysicalTestSnapshot.StudentResult? {
         guard test.results.indices.contains(selectedIndex) else { return nil }
@@ -77,6 +78,11 @@ struct PhysicalTestCaptureView: View {
                                         .appKeyboardType(.decimalPad)
                                         .textFieldStyle(.roundedBorder)
                                         .frame(minHeight: 62)
+                                        .onSubmit {
+                                            if isAutoAdvanceEnabled {
+                                                Task { await saveAndAdvance() }
+                                            }
+                                        }
                                 }
                             }
                         }
@@ -110,18 +116,34 @@ struct PhysicalTestCaptureView: View {
                     Button {
                         move(by: -1)
                     } label: {
-                        Label("Anterior", systemImage: "chevron.left")
+                        Image(systemName: "chevron.left")
+                            .font(.title2.weight(.bold))
+                            .frame(width: 60, height: 60)
+                            .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 16))
                     }
+                    .buttonStyle(.plain)
                     .disabled(selectedIndex == 0 || isSaving)
 
-                    Spacer()
+                    Toggle(isOn: $isAutoAdvanceEnabled) {
+                        Label("Auto-avance", systemImage: "arrow.right.circle")
+                            .font(.headline)
+                    }
+                    .toggleStyle(.button)
+                    .frame(height: 60)
 
                     Button {
                         Task { await saveAndAdvance() }
                     } label: {
-                        Label(selectedIndex == test.results.count - 1 ? "Guardar" : "Guardar y siguiente", systemImage: "checkmark.circle.fill")
+                        HStack {
+                            Spacer()
+                            Label(selectedIndex == test.results.count - 1 ? "GUARDAR" : "GUARDAR Y SIGUIENTE", systemImage: "checkmark.circle.fill")
+                                .font(.system(size: 18, weight: .bold, design: .rounded))
+                            Spacer()
+                        }
+                        .frame(height: 60)
                     }
                     .buttonStyle(.borderedProminent)
+                    .tint(.green)
                     .disabled(currentResult == nil || isSaving)
                 }
                 .padding(16)

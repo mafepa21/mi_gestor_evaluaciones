@@ -405,6 +405,16 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-06-11 - Rol de Edición y Corrección de Compilación en el Cuaderno (iOS/macOS)
+
+Resumen:
+- Se añadió el rol de barra de herramientas de edición nativo (`.toolbarRole(.editor)`) a la vista del Cuaderno (`NotebookModuleView.swift`). Esto optimiza la alineación y el flujo de navegación en iPadOS al editar contenidos documentales o de tipo hoja de cálculo.
+- Se corrigió un bug de compilación de iOS/macOS en `NotebookModuleView.swift` originado por el uso del modificador `.symbolEffect(.rotate, ...)` en plataformas anteriores a iOS 18.0 / macOS 14.0, protegiéndolo con un condicional de versión `#available(iOS 18.0, macOS 14.0, *)`.
+
+Validación:
+- Verificación exitosa de los builds locales para macOS (`MiGestorKMPMac`) e iOS Simulator (`MiGestorKMPiOS`) mediante `./scripts/verify_apple_builds.sh` con el path de desarrollador de Xcode-beta.
+- Cambios confirmados, empujados y abiertos en la rama `codex/feature-notebook-native-toolbar` (Draft PR #55).
+
 ### 2026-06-11 - Toolbar Nativa en SwiftUI para el Cuaderno (iOS/macOS)
 
 Resumen:

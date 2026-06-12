@@ -17,6 +17,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- El Cuaderno concentra el cambio de contexto en el `toolbarTitleMenu` nativo del título: clase, trimestre, grupo, situación de aprendizaje, vista y configuración, eliminando el selector visible de clase/subtítulo en la barra compacta.
+
 ### Fixed
 
 ### Data
@@ -24,6 +26,8 @@ El formato sigue una variante practica de Keep a Changelog:
 ### Docs
 
 ### Verification
+
+- `git diff --check -- kmp/iosApp/App/NotebookModuleView.swift kmp/iosApp/App/NotebookCompactCommandBar.swift` completado correctamente. `xcodebuild -quiet -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` no pudo ejecutarse porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y no hay Xcode instalado en `/Applications`.
 
 ## 0.3.0-alpha.2 - 2026-06-11
 

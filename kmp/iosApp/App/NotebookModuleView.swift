@@ -308,18 +308,10 @@ struct NotebookModuleView: View {
             VStack(alignment: .leading, spacing: 0) {
                 if toolbarMode == .inlineCompact {
                     NotebookCompactCommandBar(
-                        bridge: bridge,
-                        searchText: $searchText,
-                        classTitle: activeClassLabel,
-                        subtitle: tabs.count == 1 ? tabs.first?.title : nil,
-                        selectedClassId: bridge.notebookViewModel.currentClassId?.int64Value,
-                        classes: sortedClasses,
-                        focusMode: focusMode,
                         isInspectorPresented: isInspectorPresented,
                         canUndo: !undoStack.isEmpty,
                         isAttendanceQuickMode: isAttendanceQuickMode,
                         showsAdvancedActions: focusMode == .normal,
-                        onSelectClass: selectNotebookClass,
                         onAddColumn: {
                             addColumnContext = NotebookAddColumnContext(categoryId: nil, startsCreatingCategory: false)
                         },
@@ -911,7 +903,7 @@ struct NotebookModuleView: View {
                         .presentationDragIndicator(.visible)
                     #endif
                 }
-                .navigationTitle(macPresentation == .full && currentClass?.name != nil ? "Cuaderno — \(currentClass!.name)" : "Cuaderno")
+                .navigationTitle("Cuaderno")
                 .notebookKeyboardNavigation {
                     navigateFromFocused(direction: navigationDirection, data: data)
                 }
@@ -949,7 +941,6 @@ struct NotebookModuleView: View {
                             .help("Añadir nueva columna de evaluación")
                         }
 
-                        // Menú de acciones secundarias agrupadas (···)
                         ToolbarItem(placement: .navigationBarTrailing) {
                             Menu {
                                 // 1. Deshacer cambio
@@ -1133,7 +1124,7 @@ struct NotebookModuleView: View {
                     }
                 }
                 .toolbarTitleMenu {
-                    if toolbarMode == .shellOwned || toolbarMode == .macWindowOwned {
+                    if toolbarMode == .shellOwned || toolbarMode == .macWindowOwned || toolbarMode == .inlineCompact {
                         Section("Clase") {
                             ForEach(sortedClasses, id: \.id) { schoolClass in
                                 Button {
@@ -1151,7 +1142,7 @@ struct NotebookModuleView: View {
 
                         let tabs = orderedNotebookTabs(data: data)
                         if !tabs.isEmpty {
-                            Section("Trimestre / Pestaña") {
+                            Section("Trimestre") {
                                 ForEach(tabs, id: \.id) { tab in
                                     Button {
                                         selectNotebookTab(tab.id)
@@ -1159,6 +1150,34 @@ struct NotebookModuleView: View {
                                         HStack {
                                             Text(tab.title)
                                             if activeNotebookTabId(data: data) == tab.id {
+                                                Image(systemName: "checkmark")
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        let groups = groupedRows(data: data)
+                        if !groups.isEmpty {
+                            Section("Grupo") {
+                                Button {
+                                    selectedGroupId = nil
+                                } label: {
+                                    HStack {
+                                        Text("Grupo completo")
+                                        if selectedGroupId == nil {
+                                            Image(systemName: "checkmark")
+                                        }
+                                    }
+                                }
+                                ForEach(groups, id: \.id) { group in
+                                    Button {
+                                        selectedGroupId = group.id
+                                    } label: {
+                                        HStack {
+                                            Text("\(group.name) (\(memberCount(group.id, in: data)) alumnos)")
+                                            if selectedGroupId == group.id {
                                                 Image(systemName: "checkmark")
                                             }
                                         }
@@ -1207,6 +1226,14 @@ struct NotebookModuleView: View {
                                         }
                                     }
                                 }
+                            }
+                        }
+
+                        Section("Configuración") {
+                            Button {
+                                isAverageConfigurationPresented = true
+                            } label: {
+                                Label("Ver configuración del cuaderno", systemImage: "gearshape")
                             }
                         }
                     }

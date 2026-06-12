@@ -80,6 +80,29 @@ struct MacRootView: View {
 
     @ViewBuilder
     private var navigationSplit: some View {
+        if selectedFeature == .notebook {
+            navigationSplitContent
+                .toolbar(id: "notebook.toolbar") {
+                    ToolbarItem(id: "toggleSidebar", placement: .navigation) {
+                        Button {
+                            toggleSidebar()
+                        } label: {
+                            Label("Barra lateral", systemImage: "sidebar.leading")
+                        }
+                        .help("Mostrar/Ocultar barra lateral (⌘⌥S)")
+                    }
+
+                    macNotebookToolbar
+                }
+        } else {
+            navigationSplitContent
+                .toolbar {
+                    macToolbar
+                }
+        }
+    }
+
+    private var navigationSplitContent: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             macSidebar
         } detail: {
@@ -102,9 +125,6 @@ struct MacRootView: View {
             }
         }
         .animation(uiFeatureFlags.interactionAnimation, value: banner?.id)
-        .toolbar {
-            macToolbar
-        }
         .onReceive(NotificationCenter.default.publisher(for: .macRootNewItemRequested)) { _ in
             performPrimaryCreation()
         }
@@ -323,7 +343,7 @@ struct MacRootView: View {
 
     @ToolbarContentBuilder
     private var macToolbar: some ToolbarContent {
-        ToolbarItem(placement: .navigation) {
+        ToolbarItem(id: "toggleSidebar", placement: .navigation) {
             Button {
                 toggleSidebar()
             } label: {
@@ -340,11 +360,12 @@ struct MacRootView: View {
     }
 
     @ToolbarContentBuilder
-    private var macNotebookToolbar: some ToolbarContent {
-        ToolbarItemGroup(placement: .primaryAction) {
+    private var macNotebookToolbar: some CustomizableToolbarContent {
+        ToolbarItem(id: "notebook.classSelector", placement: .primaryAction) {
             macNotebookClassSelector
-                .layoutPriority(3)
+        }
 
+        ToolbarItem(id: "notebook.syncStatus", placement: .primaryAction, showsByDefault: false) {
             if session.bridge.syncPendingChanges > 0 {
                 MacStatusPill(
                     label: "\(session.bridge.syncPendingChanges) pendientes",
@@ -352,17 +373,30 @@ struct MacRootView: View {
                     tint: MacAppStyle.warningTint
                 )
             }
+        }
 
+        ToolbarItem(id: "notebook.addColumn", placement: .primaryAction) {
             Button {
                 notebookToolbarActions.addColumn()
             } label: {
-                Label("Nueva columna", systemImage: "plus")
+                Label("Añadir columna", systemImage: "plus.rectangle.on.rectangle")
             }
             .disabled(!notebookToolbarActions.addColumnAvailable)
             .keyboardShortcut("n", modifiers: .command)
             .help("Añadir nueva columna (⌘N)")
-            .layoutPriority(3)
+        }
 
+        ToolbarItem(id: "notebook.hiddenColumns", placement: .primaryAction) {
+            Button {
+                layoutState.openNotebookHiddenColumns()
+            } label: {
+                Label("Columnas ocultas", systemImage: "eye.slash")
+            }
+            .disabled(!notebookToolbarActions.organizationMenuAvailable)
+            .help("Revisar columnas ocultas")
+        }
+
+        ToolbarItem(id: "notebook.inspector", placement: .primaryAction) {
             Button {
                 toggleInspector()
             } label: {
@@ -370,23 +404,25 @@ struct MacRootView: View {
             }
             .keyboardShortcut("i", modifiers: [.command])
             .help(isInspectorVisible ? "Ocultar inspector" : "Mostrar inspector")
-            .layoutPriority(2)
+        }
 
-            Label("Buscar", systemImage: "magnifyingglass")
-                .labelStyle(.iconOnly)
-                .foregroundStyle(.secondary)
-                .layoutPriority(2)
+        ToolbarItem(id: "notebook.search", placement: .primaryAction) {
+            HStack(spacing: 6) {
+                Label("Buscar", systemImage: "magnifyingglass")
+                    .labelStyle(.iconOnly)
+                    .foregroundStyle(.secondary)
 
-            TextField("Buscar", text: Binding(
-                get: { layoutState.notebookSearchText },
-                set: { layoutState.setNotebookSearchText($0) }
-            ))
-            .textFieldStyle(.roundedBorder)
-            .frame(minWidth: 160, idealWidth: 220, maxWidth: 260)
-            .layoutPriority(2)
+                TextField("Buscar", text: Binding(
+                    get: { layoutState.notebookSearchText },
+                    set: { layoutState.setNotebookSearchText($0) }
+                ))
+                .textFieldStyle(.roundedBorder)
+                .frame(minWidth: 160, idealWidth: 220, maxWidth: 260)
+            }
+        }
 
+        ToolbarItem(id: "notebook.more", placement: .primaryAction) {
             macNotebookOverflowMenu
-                .layoutPriority(1)
         }
     }
 

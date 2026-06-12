@@ -26,6 +26,8 @@ struct MiGestorKMPMacApp: App {
                 }
         }
         .commands {
+            ToolbarCommands()
+
             CommandGroup(replacing: .textFormatting) {}
 
             CommandGroup(replacing: .newItem) {

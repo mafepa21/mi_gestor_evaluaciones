@@ -20,9 +20,12 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- La barra compacta del Cuaderno pasa a ser contextual: sin selección muestra Columna/Buscar/Filtros, con celda activa muestra Copiar/Pegar/Rellenar/Borrar/Comentario y al seleccionar encabezado muestra Editar/Ocultar/Duplicar/Reordenar/Media.
 - El Cuaderno concentra el cambio de contexto en el `toolbarTitleMenu` nativo del título: clase, trimestre, grupo, situación de aprendizaje, vista y configuración, eliminando el selector visible de clase/subtítulo en la barra compacta.
 
 ### Fixed
+
+- La toolbar contextual del Cuaderno se muestra también en iPad/macOS cuando el módulo usa toolbar nativa (`shellOwned`/`macWindowOwned`), no solo en la barra compacta de iPhone.
 
 ### Data
 
@@ -30,6 +33,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `git diff --check` completado correctamente tras añadir la toolbar contextual del grid. `xcodebuild -list -project kmp/iosApp/MiGestorKMPiOS.xcodeproj` no pudo ejecutarse porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y no hay Xcode completo visible en `/Applications`.
 - `xcodegen generate` completado correctamente para incluir `AppleAppCommands.swift` en los targets Apple. `git diff --check` completado correctamente tras añadir comandos y shortcuts Apple. `xcodebuild -list -project kmp/iosApp/MiGestorKMPiOS.xcodeproj` y la misma prueba con `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` no pudieron ejecutarse porque el entorno apunta a `/Library/Developer/CommandLineTools` y no hay Xcode completo visible en `/Applications`.
 - `git diff --check -- kmp/iosApp/MacApp/MacRootView.swift kmp/iosApp/MacApp/MiGestorKMPMacApp.swift docs/CHANGELOG.md` completado correctamente. Prueba aislada `swift -module-cache-path /private/tmp/migestor-swift-module-cache -e '...'` completada para validar `toolbar(id:)` con `some CustomizableToolbarContent`. `xcodebuild -list -project kmp/iosApp/MiGestorKMPiOS.xcodeproj` no pudo ejecutarse porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y no hay `Xcode.app` ni `Xcode-beta.app` en `/Applications`.
 - `git diff --check -- kmp/iosApp/App/NotebookModuleView.swift kmp/iosApp/App/NotebookCompactCommandBar.swift` completado correctamente. `xcodebuild -quiet -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` no pudo ejecutarse porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y no hay Xcode instalado en `/Applications`.

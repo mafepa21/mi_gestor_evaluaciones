@@ -192,8 +192,16 @@ extension NotebookModuleView {
                         tint: displayTint(for: column),
                         folderStyle: column.categoryId != nil,
                         hasColumnColor: hasCustomColumnColor(column),
-                        isHighlighted: highlightedColumnId == column.id || highlightedCategoryId == column.categoryId
+                        isHighlighted: selectedColumnId == column.id || highlightedColumnId == column.id || highlightedCategoryId == column.categoryId
                     )
+                }
+                .onTapGesture {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        selectedColumnId = column.id
+                        inspectorSelection = nil
+                        focusedCellId = nil
+                        activeChoiceCellId = nil
+                    }
                 }
                 .contextMenu {
                     columnContextMenu(column, data: data)
@@ -419,6 +427,7 @@ extension NotebookModuleView {
                         isAttendanceQuickMode: isAttendanceQuickMode,
                         reloadToken: rowReloadRevisions[item.student.id, default: 0],
                         onSelect: {
+                            selectedColumnId = nil
                             inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
                             if focusedCellId == nil && activeChoiceCellId == nil && !isInspectorPresented {
                                 focusMode = .normal
@@ -473,6 +482,7 @@ extension NotebookModuleView {
                 )
                 .contextMenu {
                     Button("Abrir inspector") {
+                        selectedColumnId = nil
                         inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
                         isInspectorPresented = true
                         focusMode = .reviewing
@@ -498,6 +508,7 @@ extension NotebookModuleView {
 
                     if isNotebookIndividualSummaryColumn(column) {
                         Button(summaryActionTitle(for: column, data: data)) {
+                            selectedColumnId = nil
                             inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
                             focusMode = .reviewing
                             notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: column.id)

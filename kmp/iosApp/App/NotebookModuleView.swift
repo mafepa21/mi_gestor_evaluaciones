@@ -324,7 +324,7 @@ struct NotebookModuleView: View {
                             addColumnContext = NotebookAddColumnContext(categoryId: nil, startsCreatingCategory: false)
                         },
                         onSearch: {
-                            isSearchPresented = true
+                            presentNotebookSearch()
                         },
                         onCopySelection: {
                             copySelectedCell(data: data)
@@ -773,6 +773,101 @@ struct NotebookModuleView: View {
         return .none
     }
 
+    @ViewBuilder
+    func nativeContextualToolbarActions(data: NotebookUiStateData) -> some View {
+        switch toolbarSelectionContext(data: data) {
+        case .none:
+            Button {
+                addColumnContext = NotebookAddColumnContext(categoryId: nil, startsCreatingCategory: false)
+            } label: {
+                Label("Columna", systemImage: "plus")
+            }
+            .help("Añadir nueva columna de evaluación")
+
+            Button {
+                presentNotebookSearch()
+            } label: {
+                Label("Buscar", systemImage: "magnifyingglass")
+            }
+            .help("Buscar alumnado o columnas")
+
+            Menu {
+                notebookFilterMenuContent(data: data)
+            } label: {
+                Label("Filtros", systemImage: "line.3.horizontal.decrease.circle")
+            }
+            .help("Filtros del cuaderno")
+        case .cells:
+            Button {
+                copySelectedCell(data: data)
+            } label: {
+                Label("Copiar", systemImage: "doc.on.doc")
+            }
+
+            Button {
+                pasteIntoSelectedCell(data: data)
+            } label: {
+                Label("Pegar", systemImage: "clipboard")
+            }
+
+            Button {
+                showToast("Selecciona un rango para rellenar varias celdas", style: .warning)
+            } label: {
+                Label("Rellenar", systemImage: "arrow.down.to.line")
+            }
+
+            Button {
+                clearSelectedCell(data: data)
+            } label: {
+                Label("Borrar", systemImage: "eraser")
+            }
+
+            Button {
+                openCommentForSelectedCell(data: data)
+            } label: {
+                Label("Comentario", systemImage: "text.bubble")
+            }
+        case .column:
+            Button {
+                editSelectedColumn(data: data)
+            } label: {
+                Label("Editar", systemImage: "pencil")
+            }
+
+            Button {
+                hideSelectedColumn(data: data)
+            } label: {
+                Label("Ocultar", systemImage: "eye.slash")
+            }
+
+            Button {
+                duplicateSelectedColumn(data: data)
+            } label: {
+                Label("Duplicar", systemImage: "plus.square.on.square")
+            }
+
+            Button {
+                isOrganizationMenuPresented = true
+            } label: {
+                Label("Reordenar", systemImage: "arrow.up.arrow.down")
+            }
+
+            Button {
+                toggleSelectedColumnAverage(data: data)
+            } label: {
+                Label("Media", systemImage: "percent")
+            }
+        }
+    }
+
+    func presentNotebookSearch() {
+        if toolbarMode == .inlineCompact {
+            isSearchPresented = true
+        } else {
+            NotificationCenter.default.post(name: .appleAppSearchRequested, object: nil)
+        }
+    }
+
     func selectedNotebookColumn(data: NotebookUiStateData) -> NotebookColumnDefinition? {
         guard let selectedColumnId else { return nil }
         return data.sheet.columns.first { $0.id == selectedColumnId }
@@ -1149,14 +1244,8 @@ struct NotebookModuleView: View {
                 }
                 .toolbar {
                     if toolbarMode == .shellOwned || toolbarMode == .macWindowOwned {
-                        // Acción principal (Nueva columna)
-                        ToolbarItem(placement: .primaryAction) {
-                            Button {
-                                addColumnContext = NotebookAddColumnContext(categoryId: nil, startsCreatingCategory: false)
-                            } label: {
-                                Label("Añadir columna", systemImage: "plus")
-                            }
-                            .help("Añadir nueva columna de evaluación")
+                        ToolbarItemGroup(placement: .primaryAction) {
+                            nativeContextualToolbarActions(data: data)
                         }
 
                         ToolbarItem(placement: .navigationBarTrailing) {

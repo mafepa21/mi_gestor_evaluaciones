@@ -25,6 +25,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- La toolbar contextual del Cuaderno se muestra también en iPad/macOS cuando el módulo usa toolbar nativa (`shellOwned`/`macWindowOwned`), no solo en la barra compacta de iPhone.
+
 ### Data
 
 ### Docs

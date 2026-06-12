@@ -1,19 +1,10 @@
 import SwiftUI
-import MiGestorKit
 
 struct NotebookCompactCommandBar<SecondaryActions: View>: View {
-    @ObservedObject var bridge: KmpBridge
-    @Binding var searchText: String
-    let classTitle: String
-    let subtitle: String?
-    let selectedClassId: Int64?
-    let classes: [SchoolClass]
-    let focusMode: NotebookFocusMode
     let isInspectorPresented: Bool
     let canUndo: Bool
     let isAttendanceQuickMode: Bool
     let showsAdvancedActions: Bool
-    let onSelectClass: (Int64) -> Void
     let onAddColumn: () -> Void
     let onOpenOrganization: () -> Void
     let onToggleInspector: () -> Void
@@ -21,7 +12,6 @@ struct NotebookCompactCommandBar<SecondaryActions: View>: View {
     let onToggleAttendanceQuickMode: () -> Void
     let onOpenGroupManagement: () -> Void
     let secondaryActions: () -> SecondaryActions
-    @State private var isClassPickerPresented = false
 
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -59,9 +49,6 @@ struct NotebookCompactCommandBar<SecondaryActions: View>: View {
 
     private var compactBody: some View {
         HStack(spacing: 8) {
-            classPicker
-                .frame(maxWidth: 132)
-
             Spacer()
 
             iconButton(systemImage: "plus", label: "Nueva columna", action: onAddColumn, isProminent: true)
@@ -71,16 +58,6 @@ struct NotebookCompactCommandBar<SecondaryActions: View>: View {
 
     private var regularBody: some View {
         HStack(spacing: 10) {
-            classPicker
-                .frame(maxWidth: 230)
-
-            if let subtitle, !subtitle.isEmpty {
-                Text(subtitle)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-
             Spacer(minLength: 0)
 
             iconButton(systemImage: "plus", label: "Nueva columna", action: onAddColumn, isProminent: true)
@@ -97,49 +74,6 @@ struct NotebookCompactCommandBar<SecondaryActions: View>: View {
             }
 
             secondaryMenu
-        }
-    }
-
-    private var classPicker: some View {
-        Button {
-            isClassPickerPresented = true
-        } label: {
-            HStack(spacing: 7) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(classTitle)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    if isCompact, let subtitle, !subtitle.isEmpty {
-                        Text(subtitle)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                }
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: NotebookStyle.innerRadius, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: NotebookStyle.innerRadius, style: .continuous)
-                    .stroke(NotebookStyle.softBorder, lineWidth: 1)
-            )
-        }
-        .buttonStyle(NotebookScaleButtonStyle())
-        .accessibilityLabel("Seleccionar clase")
-        .popover(isPresented: $isClassPickerPresented, arrowEdge: .top) {
-            NotebookClassPickerPopover(
-                classes: classes,
-                selectedClassId: selectedClassId,
-                onSelectClass: { onSelectClass($0) },
-                onClose: { isClassPickerPresented = false }
-            )
         }
     }
 

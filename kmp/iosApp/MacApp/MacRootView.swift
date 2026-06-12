@@ -16,6 +16,7 @@ struct MacRootView: View {
     @StateObject private var backupStore: MacBackupStore
     @SceneStorage("mac.root.columnVisibility") private var storedColumnVisibility = MacRootColumnVisibilityValue.all
     @SceneStorage("mac.root.inspectorVisible") private var storedInspectorVisible = true
+    @FocusState private var isNotebookSearchFocused: Bool
     @State private var attendanceToolbarActions: MacAttendanceToolbarActions? = nil
     @State private var dashboardToolbarActions: MacDashboardToolbarActions? = nil
     @State private var studentsReloadToken = 0
@@ -125,27 +126,38 @@ struct MacRootView: View {
             }
         }
         .animation(uiFeatureFlags.interactionAnimation, value: banner?.id)
-        .onReceive(NotificationCenter.default.publisher(for: .macRootNewItemRequested)) { _ in
-            performPrimaryCreation()
+        .onReceive(NotificationCenter.default.publisher(for: .appleAppAddNotebookColumnRequested)) { _ in
+            performNotebookAddColumn()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .macRootSaveRequested)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .appleAppSaveOrSyncRequested)) { _ in
             performSave()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .macRootRefreshRequested)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .appleAppRefreshRequested)) { _ in
             refreshCurrentFeature()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .macRootToggleSidebarRequested)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .appleAppToggleSidebarRequested)) { _ in
             toggleSidebar()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .macRootToggleInspectorRequested)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .appleAppToggleInspectorRequested)) { _ in
             toggleInspector()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .macRootBackupRequested)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .appleAppBackupRequested)) { _ in
             performBackup()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .macRootExportRequested)) { _ in
-            selectFeature(.reports)
-            showBanner("Informes", systemImage: "doc.text.image", tint: MacAppStyle.infoTint)
+        .onReceive(NotificationCenter.default.publisher(for: .appleAppSearchRequested)) { _ in
+            focusSearch()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .appleAppShowHiddenNotebookColumnsRequested)) { _ in
+            openNotebookHiddenColumns()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .appleAppReorderNotebookColumnsRequested)) { _ in
+            openNotebookColumnOrganizer()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .appleAppExportReportRequested)) { _ in
+            openReports()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .appleAppNavigateRequested)) { notification in
+            navigateFromCommand(notification.object)
         }
         .appOnChange(of: session.selectedFeature) { newFeature in
             guard selectedFeature != newFeature else { return }
@@ -382,7 +394,6 @@ struct MacRootView: View {
                 Label("Añadir columna", systemImage: "plus.rectangle.on.rectangle")
             }
             .disabled(!notebookToolbarActions.addColumnAvailable)
-            .keyboardShortcut("n", modifiers: .command)
             .help("Añadir nueva columna (⌘N)")
         }
 
@@ -417,6 +428,7 @@ struct MacRootView: View {
                     set: { layoutState.setNotebookSearchText($0) }
                 ))
                 .textFieldStyle(.roundedBorder)
+                .focused($isNotebookSearchFocused)
                 .frame(minWidth: 160, idealWidth: 220, maxWidth: 260)
             }
         }
@@ -830,6 +842,60 @@ struct MacRootView: View {
         }
     }
 
+    private func performNotebookAddColumn() {
+        selectFeature(.notebook)
+        if notebookToolbarActions.addColumnAvailable {
+            notebookToolbarActions.addColumn()
+        } else if layoutState.notebookAddColumnAvailable {
+            layoutState.showNotebookAddColumn()
+        } else {
+            showBanner("Selecciona un grupo para añadir columnas", systemImage: "plus.rectangle", tint: MacAppStyle.warningTint)
+        }
+    }
+
+    private func focusSearch() {
+        if selectedFeature != .notebook {
+            selectFeature(.notebook)
+        }
+        isNotebookSearchFocused = true
+    }
+
+    private func openNotebookHiddenColumns() {
+        selectFeature(.notebook)
+        layoutState.openNotebookHiddenColumns()
+    }
+
+    private func openNotebookColumnOrganizer() {
+        selectFeature(.notebook)
+        if notebookToolbarActions.organizationMenuAvailable {
+            notebookToolbarActions.openOrganizationMenu()
+        } else if layoutState.notebookOrganizationMenuAvailable {
+            layoutState.openNotebookOrganizationMenu()
+        } else {
+            showBanner("Organización no disponible", systemImage: "slider.horizontal.3", tint: MacAppStyle.warningTint)
+        }
+    }
+
+    private func openReports() {
+        selectFeature(.reports)
+        showBanner("Informes", systemImage: "doc.text.image", tint: MacAppStyle.infoTint)
+    }
+
+    private func navigateFromCommand(_ object: Any?) {
+        guard let rawValue = object as? String,
+              let destination = AppleAppCommandDestination(rawValue: rawValue)
+        else { return }
+
+        switch destination {
+        case .notebook:
+            selectFeature(.notebook)
+        case .attendance:
+            selectFeature(.attendance)
+        case .planner:
+            selectFeature(.planner)
+        }
+    }
+
     private func performSave() {
         switch selectedFeature {
         case .notebook:
@@ -926,16 +992,6 @@ private struct MacRootTransientBanner: View {
             .shadow(color: .black.opacity(0.12), radius: 12, y: 6)
             .accessibilityLabel(banner.title)
     }
-}
-
-extension Notification.Name {
-    static let macRootNewItemRequested = Notification.Name("macRootNewItemRequested")
-    static let macRootSaveRequested = Notification.Name("macRootSaveRequested")
-    static let macRootRefreshRequested = Notification.Name("macRootRefreshRequested")
-    static let macRootToggleInspectorRequested = Notification.Name("macRootToggleInspectorRequested")
-    static let macRootToggleSidebarRequested = Notification.Name("macRootToggleSidebarRequested")
-    static let macRootBackupRequested = Notification.Name("macRootBackupRequested")
-    static let macRootExportRequested = Notification.Name("macRootExportRequested")
 }
 
 private enum MacRootColumnVisibilityValue {

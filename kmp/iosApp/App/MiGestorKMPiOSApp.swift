@@ -16,6 +16,9 @@ struct MiGestorKMPiOSApp: App {
                     handleScenePhase(newPhase)
                 }
         }
+        .commands {
+            AppleAppCommands()
+        }
     }
 
     private func handleScenePhase(_ newPhase: ScenePhase) {

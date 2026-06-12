@@ -701,6 +701,7 @@ struct AppWorkspaceShell: View {
     @State var classroomCaptureText = ""
     @State var isSavingClassroomCapture = false
     @State private var isClassPickerPresented = false
+    @State private var isSearchPresented = false
 
     var activeNotebookClassLabel: String {
         guard let selectedClassId,
@@ -788,6 +789,7 @@ struct AppWorkspaceShell: View {
                         }
                     }
                 ),
+                isPresented: $isSearchPresented,
                 placement: .toolbar,
                 prompt: activeModule == .notebook ? "Buscar alumnado o columnas" :
                         activeModule == .attendance ? "Buscar alumno…" :
@@ -899,6 +901,27 @@ struct AppWorkspaceShell: View {
                 layoutState.isSidebarVisible = isVisible
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .appleAppAddNotebookColumnRequested)) { _ in
+            performNotebookAddColumnCommand()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .appleAppSearchRequested)) { _ in
+            isSearchPresented = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .appleAppSaveOrSyncRequested)) { _ in
+            performSaveOrSyncCommand()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .appleAppShowHiddenNotebookColumnsRequested)) { _ in
+            performNotebookHiddenColumnsCommand()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .appleAppReorderNotebookColumnsRequested)) { _ in
+            performNotebookReorderColumnsCommand()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .appleAppExportReportRequested)) { _ in
+            activeModule = .reports
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .appleAppNavigateRequested)) { notification in
+            navigateFromCommand(notification.object)
+        }
     }
 
     var notebookToolbarMode: NotebookToolbarMode {
@@ -907,6 +930,57 @@ struct AppWorkspaceShell: View {
         #else
         .shellOwned
         #endif
+    }
+
+    func performNotebookAddColumnCommand() {
+        activeModule = .notebook
+        Task { @MainActor in
+            await Task.yield()
+            layoutState.showNotebookAddColumn()
+        }
+    }
+
+    func performNotebookHiddenColumnsCommand() {
+        activeModule = .notebook
+        Task { @MainActor in
+            await Task.yield()
+            layoutState.openNotebookHiddenColumns()
+        }
+    }
+
+    func performNotebookReorderColumnsCommand() {
+        activeModule = .notebook
+        Task { @MainActor in
+            await Task.yield()
+            layoutState.openNotebookOrganizationMenu()
+        }
+    }
+
+    func performSaveOrSyncCommand() {
+        Task {
+            if activeModule == .notebook {
+                await MainActor.run {
+                    layoutState.notebookRefresh()
+                }
+            }
+            await bridge.pullMissingSyncChanges()
+            try? await bridge.refreshStudentsDirectory()
+        }
+    }
+
+    func navigateFromCommand(_ object: Any?) {
+        guard let rawValue = object as? String,
+              let destination = AppleAppCommandDestination(rawValue: rawValue)
+        else { return }
+
+        switch destination {
+        case .notebook:
+            activeModule = .notebook
+        case .attendance:
+            activeModule = .attendance
+        case .planner:
+            activeModule = .planner
+        }
     }
 
     func contextualAISheet(_ sheet: ContextualAISheetState) -> some View {
@@ -1432,7 +1506,6 @@ struct AppWorkspaceShell: View {
             .buttonStyle(.bordered)
             #endif
             .disabled(!layoutState.notebookAddColumnAvailable)
-            .keyboardShortcut("n", modifiers: .command)
             .help("Añadir nueva columna (⌘N)")
             .layoutPriority(3)
 
@@ -4029,4 +4102,3 @@ extension View {
         }
     }
 }
-

@@ -15,6 +15,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- La toolbar macOS del Cuaderno usa `toolbar(id: "notebook.toolbar")` con ítems identificables y acción directa para revisar columnas ocultas, habilitando personalización nativa de la barra.
+
 ### Changed
 
 - El Cuaderno concentra el cambio de contexto en el `toolbarTitleMenu` nativo del título: clase, trimestre, grupo, situación de aprendizaje, vista y configuración, eliminando el selector visible de clase/subtítulo en la barra compacta.
@@ -27,6 +29,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `git diff --check -- kmp/iosApp/MacApp/MacRootView.swift kmp/iosApp/MacApp/MiGestorKMPMacApp.swift docs/CHANGELOG.md` completado correctamente. Prueba aislada `swift -module-cache-path /private/tmp/migestor-swift-module-cache -e '...'` completada para validar `toolbar(id:)` con `some CustomizableToolbarContent`. `xcodebuild -list -project kmp/iosApp/MiGestorKMPiOS.xcodeproj` no pudo ejecutarse porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y no hay `Xcode.app` ni `Xcode-beta.app` en `/Applications`.
 - `git diff --check -- kmp/iosApp/App/NotebookModuleView.swift kmp/iosApp/App/NotebookCompactCommandBar.swift` completado correctamente. `xcodebuild -quiet -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` no pudo ejecutarse porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y no hay Xcode instalado en `/Applications`.
 
 ## 0.3.0-alpha.2 - 2026-06-11

@@ -4,6 +4,9 @@ import MiGestorKit
 #if canImport(UIKit)
 import UIKit
 #endif
+#if canImport(AppKit)
+import AppKit
+#endif
 
 enum NotebookToolbarMode {
     case inlineCompact
@@ -42,7 +45,9 @@ struct NotebookModuleView: View {
     let macPresentation: NotebookMacPresentation
     @State var addColumnContext: NotebookAddColumnContext? = nil
     @State var searchText = ""
+    @State var isSearchPresented = false
     @State var selectedGroupId: Int64? = nil
+    @State var selectedColumnId: String? = nil
     @State var viewPreset: NotebookViewPreset = .all
     @State var surfaceMode: NotebookSurfaceMode = .grid
     @State var todayAttendanceByStudentId: [Int64: String] = [:]
@@ -191,6 +196,7 @@ struct NotebookModuleView: View {
     func closeInspectorAndTransientState() {
         isInspectorPresented = false
         inspectorSelection = nil
+        selectedColumnId = nil
         focusMode = .normal
         inspectorNoteDraft = ""
         inspectorIconDraft = ""
@@ -209,6 +215,7 @@ struct NotebookModuleView: View {
 
         selectedStudentId = nil
         selectedGroupId = nil
+        selectedColumnId = nil
         highlightedRandomStudentId = nil
         activeChoiceCellId = nil
         focusedCellId = nil
@@ -312,8 +319,42 @@ struct NotebookModuleView: View {
                         canUndo: !undoStack.isEmpty,
                         isAttendanceQuickMode: isAttendanceQuickMode,
                         showsAdvancedActions: focusMode == .normal,
+                        selectionContext: toolbarSelectionContext(data: data),
                         onAddColumn: {
                             addColumnContext = NotebookAddColumnContext(categoryId: nil, startsCreatingCategory: false)
+                        },
+                        onSearch: {
+                            isSearchPresented = true
+                        },
+                        onCopySelection: {
+                            copySelectedCell(data: data)
+                        },
+                        onPasteSelection: {
+                            pasteIntoSelectedCell(data: data)
+                        },
+                        onFillSelection: {
+                            showToast("Selecciona un rango para rellenar varias celdas", style: .warning)
+                        },
+                        onClearSelection: {
+                            clearSelectedCell(data: data)
+                        },
+                        onCommentSelection: {
+                            openCommentForSelectedCell(data: data)
+                        },
+                        onEditColumn: {
+                            editSelectedColumn(data: data)
+                        },
+                        onHideColumn: {
+                            hideSelectedColumn(data: data)
+                        },
+                        onDuplicateColumn: {
+                            duplicateSelectedColumn(data: data)
+                        },
+                        onReorderColumn: {
+                            isOrganizationMenuPresented = true
+                        },
+                        onToggleColumnAverage: {
+                            toggleSelectedColumnAverage(data: data)
                         },
                         onOpenOrganization: {
                             isOrganizationMenuPresented = true
@@ -343,6 +384,9 @@ struct NotebookModuleView: View {
                         },
                         onOpenGroupManagement: {
                             isGroupManagementPresented = true
+                        },
+                        filters: {
+                            notebookFilterMenuContent(data: data)
                         },
                         secondaryActions: {
                             notebookCommandMenuContent(data: data, tabs: tabs, rows: rows)
@@ -667,6 +711,180 @@ struct NotebookModuleView: View {
         ShareLink(item: exportText(data: data)) {
             Label("Exportar cuaderno", systemImage: "square.and.arrow.up")
         }
+    }
+
+    @ViewBuilder
+    func notebookFilterMenuContent(data: NotebookUiStateData) -> some View {
+        let groups = groupedRows(data: data)
+        if groups.isEmpty && classSituations.isEmpty {
+            Button("Sin filtros disponibles") {}
+                .disabled(true)
+        } else {
+            if !groups.isEmpty {
+                Menu {
+                    Button("Grupo completo") {
+                        selectedGroupId = nil
+                    }
+                    ForEach(groups, id: \.id) { group in
+                        Button {
+                            selectedGroupId = group.id
+                        } label: {
+                            Label(
+                                "\(group.name) (\(memberCount(group.id, in: data)) alumnos)",
+                                systemImage: selectedGroupId == group.id ? "checkmark" : "person.2"
+                            )
+                        }
+                    }
+                } label: {
+                    Label("Grupo", systemImage: "person.2")
+                }
+            }
+
+            if !classSituations.isEmpty {
+                Menu {
+                    Button("Sin filtrar") {
+                        groupByWorkGroupMode = "none"
+                    }
+                    ForEach(classSituations, id: \.id) { situation in
+                        Button {
+                            let targetMode = "situation_\(situation.id)"
+                            groupByWorkGroupMode = groupByWorkGroupMode == targetMode ? "none" : targetMode
+                        } label: {
+                            Label(
+                                situation.title,
+                                systemImage: groupByWorkGroupMode == "situation_\(situation.id)" ? "checkmark" : "folder"
+                            )
+                        }
+                    }
+                } label: {
+                    Label("Situación de aprendizaje", systemImage: "folder")
+                }
+            }
+        }
+    }
+
+    func toolbarSelectionContext(data: NotebookUiStateData) -> NotebookToolbarSelectionContext {
+        if selectedNotebookColumn(data: data) != nil {
+            return .column
+        }
+        if selectedNotebookCell(data: data) != nil {
+            return .cells
+        }
+        return .none
+    }
+
+    func selectedNotebookColumn(data: NotebookUiStateData) -> NotebookColumnDefinition? {
+        guard let selectedColumnId else { return nil }
+        return data.sheet.columns.first { $0.id == selectedColumnId }
+    }
+
+    func selectedNotebookCell(data: NotebookUiStateData) -> (selection: NotebookInspectorSelection, row: NotebookTableRow, column: NotebookColumnDefinition)? {
+        guard let selection = inspectorSelection,
+              !selection.isAverage,
+              let row = filteredRows(data: data).first(where: { $0.student.id == selection.studentId }),
+              let column = data.sheet.columns.first(where: { $0.id == selection.columnId }) else {
+            return nil
+        }
+        return (selection, row, column)
+    }
+
+    func copySelectedCell(data: NotebookUiStateData) {
+        guard let selected = selectedNotebookCell(data: data) else { return }
+        setClipboardText(displayValue(for: selected.row, column: selected.column))
+        showToast("Celda copiada")
+    }
+
+    func pasteIntoSelectedCell(data: NotebookUiStateData) {
+        guard let selected = selectedNotebookCell(data: data),
+              let value = clipboardText()?.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
+        guard isToolbarEditableCellColumn(selected.column) else {
+            showToast("Esta columna se edita desde su acción específica", style: .warning)
+            return
+        }
+        recordCellUndo(
+            studentId: selected.selection.studentId,
+            column: selected.column,
+            previousValue: displayValue(for: selected.row, column: selected.column),
+            previousDisplayLabel: nil
+        )
+        bridge.saveColumnGrade(studentId: selected.selection.studentId, column: selected.column, value: value)
+        reloadNotebookRow(selected.selection.studentId)
+        showToast("Celda pegada")
+    }
+
+    func clearSelectedCell(data: NotebookUiStateData) {
+        guard let selected = selectedNotebookCell(data: data) else { return }
+        guard isToolbarEditableCellColumn(selected.column) else {
+            showToast("Esta columna se edita desde su acción específica", style: .warning)
+            return
+        }
+        recordCellUndo(
+            studentId: selected.selection.studentId,
+            column: selected.column,
+            previousValue: displayValue(for: selected.row, column: selected.column),
+            previousDisplayLabel: nil
+        )
+        bridge.saveColumnGrade(studentId: selected.selection.studentId, column: selected.column, value: "")
+        reloadNotebookRow(selected.selection.studentId)
+        showToast("Celda borrada")
+    }
+
+    func openCommentForSelectedCell(data: NotebookUiStateData) {
+        guard selectedNotebookCell(data: data) != nil else { return }
+        isInspectorPresented = true
+        focusMode = .reviewing
+        syncInspectorDraft()
+    }
+
+    func editSelectedColumn(data: NotebookUiStateData) {
+        guard let column = selectedNotebookColumn(data: data) else { return }
+        editingColumnId = column.id
+        columnDraft = column.title
+        isRenameColumnAlertPresented = true
+    }
+
+    func hideSelectedColumn(data: NotebookUiStateData) {
+        guard let column = selectedNotebookColumn(data: data) else { return }
+        toggleColumnVisibility(column)
+    }
+
+    func duplicateSelectedColumn(data: NotebookUiStateData) {
+        guard let column = selectedNotebookColumn(data: data) else { return }
+        duplicateColumnStructure(column)
+    }
+
+    func toggleSelectedColumnAverage(data: NotebookUiStateData) {
+        guard let column = selectedNotebookColumn(data: data) else { return }
+        saveColumnMutation(
+            column,
+            countsTowardAverage: !column.countsTowardAverage,
+            weight: column.countsTowardAverage ? 0 : max(column.weight, 1)
+        )
+        showToast(column.countsTowardAverage ? "Columna excluida de la media" : "Columna incluida en la media")
+    }
+
+    func isToolbarEditableCellColumn(_ column: NotebookColumnDefinition) -> Bool {
+        column.type != .calculated && column.type != .rubric
+    }
+
+    func setClipboardText(_ text: String) {
+        #if canImport(UIKit)
+        UIPasteboard.general.string = text
+        #elseif canImport(AppKit)
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+        #endif
+    }
+
+    func clipboardText() -> String? {
+        #if canImport(UIKit)
+        return UIPasteboard.general.string
+        #elseif canImport(AppKit)
+        return NSPasteboard.general.string(forType: .string)
+        #else
+        return nil
+        #endif
     }
 
     func snapFixedZoneWidth() {
@@ -1239,7 +1457,7 @@ struct NotebookModuleView: View {
                     }
                 }
                 .toolbarRole(.editor)
-                .notebookSearchable(if: toolbarMode == .inlineCompact, text: $searchText, prompt: "Buscar alumno")
+                .notebookPresentedSearchable(if: toolbarMode == .inlineCompact, text: $searchText, isPresented: $isSearchPresented, prompt: "Buscar alumno")
                 .avoidHidingContentDuringSearch()
         }
     }
@@ -1801,6 +2019,21 @@ struct CustomAverageExplanationPopoverView: View {
         case .lockedOrArchived: return "Bloqueado / Archivado"
         case .nonNumeric: return "Dato no numérico"
         default: return "Excluido"
+        }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func notebookPresentedSearchable(if condition: Bool, text: Binding<String>, isPresented: Binding<Bool>, prompt: String) -> some View {
+        if condition {
+            if #available(iOS 17.0, macOS 14.0, *) {
+                searchable(text: text, isPresented: isPresented, prompt: prompt)
+            } else {
+                searchable(text: text, prompt: prompt)
+            }
+        } else {
+            self
         }
     }
 }

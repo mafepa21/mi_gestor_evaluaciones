@@ -1,16 +1,35 @@
 import SwiftUI
 
-struct NotebookCompactCommandBar<SecondaryActions: View>: View {
+enum NotebookToolbarSelectionContext: Equatable {
+    case none
+    case cells
+    case column
+}
+
+struct NotebookCompactCommandBar<FilterActions: View, SecondaryActions: View>: View {
     let isInspectorPresented: Bool
     let canUndo: Bool
     let isAttendanceQuickMode: Bool
     let showsAdvancedActions: Bool
+    let selectionContext: NotebookToolbarSelectionContext
     let onAddColumn: () -> Void
+    let onSearch: () -> Void
+    let onCopySelection: () -> Void
+    let onPasteSelection: () -> Void
+    let onFillSelection: () -> Void
+    let onClearSelection: () -> Void
+    let onCommentSelection: () -> Void
+    let onEditColumn: () -> Void
+    let onHideColumn: () -> Void
+    let onDuplicateColumn: () -> Void
+    let onReorderColumn: () -> Void
+    let onToggleColumnAverage: () -> Void
     let onOpenOrganization: () -> Void
     let onToggleInspector: () -> Void
     let onUndo: () -> Void
     let onToggleAttendanceQuickMode: () -> Void
     let onOpenGroupManagement: () -> Void
+    let filters: () -> FilterActions
     let secondaryActions: () -> SecondaryActions
 
     #if os(iOS)
@@ -49,18 +68,22 @@ struct NotebookCompactCommandBar<SecondaryActions: View>: View {
 
     private var compactBody: some View {
         HStack(spacing: 8) {
-            Spacer()
-
-            iconButton(systemImage: "plus", label: "Nueva columna", action: onAddColumn, isProminent: true)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    contextualActions
+                }
+                .padding(.vertical, 1)
+            }
             secondaryMenu
         }
+        .animation(.spring(response: 0.35, dampingFraction: 0.75), value: selectionContext)
     }
 
     private var regularBody: some View {
         HStack(spacing: 10) {
             Spacer(minLength: 0)
 
-            iconButton(systemImage: "plus", label: "Nueva columna", action: onAddColumn, isProminent: true)
+            contextualActions
 
             if showsAdvancedActions {
                 iconButton(systemImage: "person.2", label: "Gestionar grupos", action: onOpenGroupManagement)
@@ -74,6 +97,35 @@ struct NotebookCompactCommandBar<SecondaryActions: View>: View {
             }
 
             secondaryMenu
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.75), value: selectionContext)
+    }
+
+    @ViewBuilder
+    private var contextualActions: some View {
+        switch selectionContext {
+        case .none:
+            textButton(systemImage: "plus", label: "Columna", action: onAddColumn, isProminent: true)
+            textButton(systemImage: "magnifyingglass", label: "Buscar", action: onSearch)
+            Menu {
+                filters()
+            } label: {
+                commandLabel(systemImage: "line.3.horizontal.decrease.circle", label: "Filtros")
+            }
+            .buttonStyle(NotebookScaleButtonStyle())
+            .accessibilityLabel("Filtros del cuaderno")
+        case .cells:
+            textButton(systemImage: "doc.on.doc", label: "Copiar", action: onCopySelection)
+            textButton(systemImage: "clipboard", label: "Pegar", action: onPasteSelection)
+            textButton(systemImage: "arrow.down.to.line", label: "Rellenar", action: onFillSelection)
+            textButton(systemImage: "eraser", label: "Borrar", action: onClearSelection)
+            textButton(systemImage: "text.bubble", label: "Comentario", action: onCommentSelection)
+        case .column:
+            textButton(systemImage: "pencil", label: "Editar", action: onEditColumn)
+            textButton(systemImage: "eye.slash", label: "Ocultar", action: onHideColumn)
+            textButton(systemImage: "plus.square.on.square", label: "Duplicar", action: onDuplicateColumn)
+            textButton(systemImage: "arrow.up.arrow.down", label: "Reordenar", action: onReorderColumn)
+            textButton(systemImage: "percent", label: "Media", action: onToggleColumnAverage)
         }
     }
 
@@ -140,6 +192,37 @@ struct NotebookCompactCommandBar<SecondaryActions: View>: View {
         .buttonStyle(NotebookScaleButtonStyle())
         .help(label)
         .accessibilityLabel(label)
+    }
+
+    private func textButton(
+        systemImage: String,
+        label: String,
+        action: @escaping () -> Void,
+        isProminent: Bool = false
+    ) -> some View {
+        Button(action: action) {
+            commandLabel(systemImage: systemImage, label: label, isProminent: isProminent)
+        }
+        .buttonStyle(NotebookScaleButtonStyle())
+        .help(label)
+        .accessibilityLabel(label)
+    }
+
+    private func commandLabel(systemImage: String, label: String, isProminent: Bool = false) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .font(.system(size: 13, weight: .bold))
+            Text(label)
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .lineLimit(1)
+        }
+        .foregroundStyle(isProminent ? .white : .primary)
+        .frame(height: 34)
+        .padding(.horizontal, 12)
+        .background(
+            Capsule(style: .continuous)
+                .fill(isProminent ? IOSAppStyle.info : Color.secondary.opacity(0.08))
+        )
     }
 }
 

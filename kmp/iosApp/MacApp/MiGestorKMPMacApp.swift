@@ -27,51 +27,33 @@ struct MiGestorKMPMacApp: App {
         }
         .commands {
             ToolbarCommands()
+            AppleAppCommands()
 
             CommandGroup(replacing: .textFormatting) {}
 
-            CommandGroup(replacing: .newItem) {
-                Button("Nuevo") {
-                    NotificationCenter.default.post(name: .macRootNewItemRequested, object: nil)
-                }
-                .keyboardShortcut("n", modifiers: .command)
-            }
-
-            CommandGroup(after: .saveItem) {
-                Button("Guardar") {
-                    NotificationCenter.default.post(name: .macRootSaveRequested, object: nil)
-                }
-                .keyboardShortcut("s", modifiers: .command)
-            }
-
             CommandGroup(after: .newItem) {
                 Button("Refrescar") {
-                    NotificationCenter.default.post(name: .macRootRefreshRequested, object: nil)
+                    AppleAppCommand.post(.appleAppRefreshRequested)
                 }
                 .keyboardShortcut("r", modifiers: .command)
 
                 Button("Crear backup") {
-                    NotificationCenter.default.post(name: .macRootBackupRequested, object: nil)
+                    AppleAppCommand.post(.appleAppBackupRequested)
                 }
                 .keyboardShortcut("b", modifiers: .command)
 
-                Button("Exportar informes") {
-                    NotificationCenter.default.post(name: .macRootExportRequested, object: nil)
-                }
-                .keyboardShortcut("e", modifiers: [.command, .shift])
-
                 Button("Mostrar u ocultar inspector") {
-                    NotificationCenter.default.post(name: .macRootToggleInspectorRequested, object: nil)
+                    AppleAppCommand.post(.appleAppToggleInspectorRequested)
                 }
                 .keyboardShortcut("i", modifiers: [.command, .option])
 
                 Button("Mostrar u ocultar barra lateral") {
-                    NotificationCenter.default.post(name: .macRootToggleSidebarRequested, object: nil)
+                    AppleAppCommand.post(.appleAppToggleSidebarRequested)
                 }
                 .keyboardShortcut("s", modifiers: [.command, .option])
 
                 Button("Refrescar dashboard") {
-                    NotificationCenter.default.post(name: .macRootRefreshRequested, object: nil)
+                    AppleAppCommand.post(.appleAppRefreshRequested)
                 }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
             }

@@ -15,6 +15,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- Comandos de menú y atajos de teclado compartidos para iPad con teclado y macOS: añadir columna (`⌘N` / `⌘⇧C`), buscar (`⌘F`), guardar/sincronizar (`⌘S`), columnas ocultas (`⌘⇧H`), reordenar columnas (`⌘⌥R`), exportar informe (`⌘E`) y navegación rápida a Cuaderno/Asistencia/Planner (`⌘1`/`⌘2`/`⌘3`).
 - La toolbar macOS del Cuaderno usa `toolbar(id: "notebook.toolbar")` con ítems identificables y acción directa para revisar columnas ocultas, habilitando personalización nativa de la barra.
 
 ### Changed
@@ -29,6 +30,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `xcodegen generate` completado correctamente para incluir `AppleAppCommands.swift` en los targets Apple. `git diff --check` completado correctamente tras añadir comandos y shortcuts Apple. `xcodebuild -list -project kmp/iosApp/MiGestorKMPiOS.xcodeproj` y la misma prueba con `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` no pudieron ejecutarse porque el entorno apunta a `/Library/Developer/CommandLineTools` y no hay Xcode completo visible en `/Applications`.
 - `git diff --check -- kmp/iosApp/MacApp/MacRootView.swift kmp/iosApp/MacApp/MiGestorKMPMacApp.swift docs/CHANGELOG.md` completado correctamente. Prueba aislada `swift -module-cache-path /private/tmp/migestor-swift-module-cache -e '...'` completada para validar `toolbar(id:)` con `some CustomizableToolbarContent`. `xcodebuild -list -project kmp/iosApp/MiGestorKMPiOS.xcodeproj` no pudo ejecutarse porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y no hay `Xcode.app` ni `Xcode-beta.app` en `/Applications`.
 - `git diff --check -- kmp/iosApp/App/NotebookModuleView.swift kmp/iosApp/App/NotebookCompactCommandBar.swift` completado correctamente. `xcodebuild -quiet -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` no pudo ejecutarse porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y no hay Xcode instalado en `/Applications`.
 

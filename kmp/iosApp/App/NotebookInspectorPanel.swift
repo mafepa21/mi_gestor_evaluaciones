@@ -117,7 +117,7 @@ struct NotebookInspectorPanel: View {
             },
             onRegenerateAI: {
                 if let column {
-                    if isSummaryColumn {
+                    if isSummaryColumn(column) {
                         onRegenerateSummary(column.id)
                     } else {
                         onRegenerateAI(NotebookAISheetRequest(

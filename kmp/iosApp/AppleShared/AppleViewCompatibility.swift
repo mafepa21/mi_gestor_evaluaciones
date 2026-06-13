@@ -144,6 +144,20 @@ extension View {
         self
 #endif
     }
+
+    @ViewBuilder
+    func appSearchable(
+        text: Binding<String>,
+        isPresented: Binding<Bool>,
+        placement: SearchFieldPlacement = .automatic,
+        prompt: String
+    ) -> some View {
+        if #available(iOS 17.0, macOS 14.0, *) {
+            self.searchable(text: text, isPresented: isPresented, placement: placement, prompt: prompt)
+        } else {
+            self.searchable(text: text, placement: placement, prompt: prompt)
+        }
+    }
 }
 
 #if os(macOS)

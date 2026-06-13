@@ -68,7 +68,7 @@ struct NotebookMacLayout: View {
             selectedClassId: $selectedClassId,
             selectedStudentId: $selectedStudentId,
             onOpenModule: onOpenModule,
-            toolbarMode: .macWindowOwned,
+            toolbarMode: .hidden,
             macPresentation: presentation,
             macInspectorState: inspectorState,
             macToolbarActions: showsNotebookToolbar ? toolbarActions : nil

@@ -41,6 +41,7 @@ Prioridad: alta.
 - macOS: paridad progresiva con convenciones desktop reales.
   Avance: la barra lateral de macOS se organiza en secciones agrupadas (Hoy, Evaluación, Planificación, Sistema) para una experiencia de escritorio real.
   Avance: Informes, Backups y Sync LAN pueden abrirse como ventanas auxiliares nativas para trabajar en paralelo con el Cuaderno.
+  Avance: la toolbar del Cuaderno macOS queda centrada en acciones diarias y `⌘F` enfoca la búsqueda sin cambiar de módulo inesperadamente.
 - Dashboard Apple: briefing local no bloqueante con fallback determinista y acciones reales por plataforma.
   Avance: el briefing diario usa contrato estable de 3 alertas, 2 acciones, resumen evaluativo y aviso de datos incompletos.
 - Accesibilidad: contraste, foco, labels y navegacion por teclado donde aplique.

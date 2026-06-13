@@ -159,6 +159,10 @@ struct MacRootView: View {
                 selectFeature(newFeature, propagateToSession: false)
             }
         }
+        .appOnChange(of: selectedFeature) { newFeature in
+            guard newFeature != .notebook else { return }
+            isNotebookSearchFocused = false
+        }
     }
 
     private var macSidebar: some View {
@@ -381,16 +385,6 @@ struct MacRootView: View {
             .help("Añadir nueva columna (⌘N)")
         }
 
-        ToolbarItem(id: "notebook.hiddenColumns", placement: .primaryAction) {
-            Button {
-                layoutState.openNotebookHiddenColumns()
-            } label: {
-                Label("Columnas ocultas", systemImage: "eye.slash")
-            }
-            .disabled(!notebookToolbarActions.organizationMenuAvailable)
-            .help("Revisar columnas ocultas")
-        }
-
         ToolbarItem(id: "notebook.search", placement: .primaryAction) {
             HStack(spacing: 6) {
                 Label("Buscar", systemImage: "magnifyingglass")
@@ -490,6 +484,13 @@ struct MacRootView: View {
             }
 
             Divider()
+
+            Button {
+                layoutState.openNotebookHiddenColumns()
+            } label: {
+                Label("Columnas ocultas", systemImage: "eye.slash")
+            }
+            .disabled(!notebookToolbarActions.organizationMenuAvailable)
 
             Button {
                 notebookToolbarActions.openOrganizationMenu()
@@ -821,10 +822,16 @@ struct MacRootView: View {
     }
 
     private func focusSearch() {
-        if selectedFeature != .notebook {
-            selectFeature(.notebook)
+        guard selectedFeature == .notebook else {
+            showBanner("La búsqueda global está disponible en Cuaderno", systemImage: "magnifyingglass", tint: MacAppStyle.infoTint)
+            isNotebookSearchFocused = false
+            return
         }
-        isNotebookSearchFocused = true
+
+        Task { @MainActor in
+            await Task.yield()
+            isNotebookSearchFocused = true
+        }
     }
 
     private func openNotebookHiddenColumns() {

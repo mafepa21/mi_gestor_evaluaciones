@@ -21,6 +21,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- La toolbar macOS del Cuaderno reduce su superficie primaria a clase activa, añadir columna, búsqueda, estado de sync opcional y menú secundario; Columnas ocultas pasa al menú `Más`.
+- En macOS, `⌘F` ya no cambia de módulo automáticamente: enfoca la búsqueda del Cuaderno solo cuando el Cuaderno está activo y muestra un aviso discreto en otros módulos.
 - En macOS, `⌘B` abre el centro de Backups y `⌘⇧S` abre Sync LAN como ventanas de trabajo; `⌘E` pasa a abrir Informes en vez de tratarse como una exportacion directa.
 - La barra compacta del Cuaderno pasa a ser contextual: sin selección muestra Columna/Buscar/Filtros, con celda activa muestra Copiar/Pegar/Rellenar/Borrar/Comentario y al seleccionar encabezado muestra Editar/Ocultar/Duplicar/Reordenar/Media.
 - El Cuaderno concentra el cambio de contexto en el `toolbarTitleMenu` nativo del título: clase, trimestre, grupo, situación de aprendizaje, vista y configuración, eliminando el selector visible de clase/subtítulo en la barra compacta.
@@ -38,6 +40,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `git diff --check -- kmp/iosApp/MacApp/MacRootView.swift docs/CHANGELOG.md docs/ROADMAP.md` completado correctamente tras ajustar foco de búsqueda y toolbar primaria del Cuaderno macOS. `scripts/verify_apple_builds.sh` regenero el proyecto con XcodeGen, pero los builds macOS e iOS volvieron a quedar bloqueados por `xcode-select` apuntando a `/Library/Developer/CommandLineTools`.
 - `git diff --check -- kmp/iosApp/MacApp/MacRootView.swift docs/CHANGELOG.md` completado correctamente tras eliminar los toggles manuales duplicados de sidebar/inspector. `scripts/verify_apple_builds.sh` regenero el proyecto con XcodeGen, pero los builds macOS e iOS volvieron a quedar bloqueados por `xcode-select` apuntando a `/Library/Developer/CommandLineTools`.
 - `git diff --check -- kmp/iosApp/MacApp/MiGestorKMPMacApp.swift kmp/iosApp/MacApp/MacAppSessionController.swift kmp/iosApp/MacApp/MacRootView.swift kmp/iosApp/AppleShared/AppleAppCommands.swift` completado correctamente tras añadir ventanas auxiliares macOS. `scripts/verify_apple_builds.sh` regenero el proyecto con XcodeGen, pero los builds macOS e iOS no pudieron ejecutarse porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y no hay Xcode completo visible en `/Applications`.
 - `git diff --check` completado correctamente tras añadir la toolbar contextual del grid. `xcodebuild -list -project kmp/iosApp/MiGestorKMPiOS.xcodeproj` no pudo ejecutarse porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y no hay Xcode completo visible en `/Applications`.

@@ -57,7 +57,7 @@ struct NotebookInspectorPanel: View {
             item.row.persistedCells.first(where: { $0.columnId == selectedColumn.id })
         } ?? nil
         let isAIColumn = column.map { bridge.isNotebookAICommentColumn($0) } ?? false
-        let isSummaryColumn = column.map { isSummaryColumn($0) } ?? false
+        let isSummaryColumnValue = column.map { isSummaryColumn($0) } ?? false
 
         return NotebookStudentInspector(
             bridge: bridge,
@@ -75,9 +75,9 @@ struct NotebookInspectorPanel: View {
             evaluationText: column.map { evaluationTitle($0) } ?? "Media del alumno",
             rubricText: column.map { rubricTitle($0) } ?? rubricSummaryText(for: item),
             semanticIcons: semanticIcons,
-            aiSectionTitle: isAIColumn ? (isSummaryColumn ? "Síntesis pedagógica" : "Comentario IA") : nil,
-            aiSectionOrigin: isAIColumn ? (isSummaryColumn ? "Columna de síntesis pedagógica editable" : "Columna de comentario IA editable") : nil,
-            aiRegenerateTitle: isAIColumn ? (isSummaryColumn ? "Regenerar síntesis pedagógica" : "Regenerar comentario IA") : nil,
+            aiSectionTitle: isAIColumn ? (isSummaryColumnValue ? "Síntesis pedagógica" : "Comentario IA") : nil,
+            aiSectionOrigin: isAIColumn ? (isSummaryColumnValue ? "Columna de síntesis pedagógica editable" : "Columna de comentario IA editable") : nil,
+            aiRegenerateTitle: isAIColumn ? (isSummaryColumnValue ? "Regenerar síntesis pedagógica" : "Regenerar comentario IA") : nil,
             averageExplanation: item.row.averageExplanation,
             pendingColumns: item.row.averageExplanation?.pendingCells ?? [],
             recentObservations: recentObservations(for: item),

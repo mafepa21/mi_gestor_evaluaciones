@@ -21,12 +21,17 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- La toolbar macOS del Cuaderno reduce su superficie primaria a clase activa, añadir columna, búsqueda, estado de sync opcional y menú secundario; Columnas ocultas pasa al menú `Más`.
+- En macOS, `⌘F` ya no cambia de módulo automáticamente: enfoca la búsqueda del Cuaderno solo cuando el Cuaderno está activo y muestra un aviso discreto en otros módulos.
 - En macOS, `⌘B` abre el centro de Backups y `⌘⇧S` abre Sync LAN como ventanas de trabajo; `⌘E` pasa a abrir Informes en vez de tratarse como una exportacion directa.
 - La barra compacta del Cuaderno pasa a ser contextual: sin selección muestra Columna/Buscar/Filtros, con celda activa muestra Copiar/Pegar/Rellenar/Borrar/Comentario y al seleccionar encabezado muestra Editar/Ocultar/Duplicar/Reordenar/Media.
 - El Cuaderno concentra el cambio de contexto en el `toolbarTitleMenu` nativo del título: clase, trimestre, grupo, situación de aprendizaje, vista y configuración, eliminando el selector visible de clase/subtítulo en la barra compacta.
 
 ### Fixed
 
+- Corrige la compilación Apple del inspector del Cuaderno evitando una colisión de nombre entre el closure `isSummaryColumn` y su valor booleano local.
+- El Cuaderno macOS vuelve a mostrar la tira de pestañas y permite crear nuevas pestañas aunque la toolbar principal sea propiedad de la shell.
+- El Cuaderno macOS deja de renderizar dos toolbars a la vez: `MacRootView` queda como unico owner de la toolbar y `NotebookModuleView` publica acciones sin pintar su barra interna.
 - La toolbar macOS deja de duplicar los botones manuales de barra lateral e inspector; se conserva el control nativo de `NavigationSplitView`/inspector y los atajos siguen funcionando.
 - La toolbar contextual del Cuaderno se muestra también en iPad/macOS cuando el módulo usa toolbar nativa (`shellOwned`/`macWindowOwned`), no solo en la barra compacta de iPhone.
 
@@ -38,6 +43,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Logs de GitHub Actions del run `27462430911` inspeccionados: macOS e iOS fallaban por `NotebookInspectorPanel.swift:60:44: error: cannot call value of non-function type 'Bool'`. `git diff --check -- kmp/iosApp/App/NotebookInspectorPanel.swift docs/CHANGELOG.md` completado correctamente tras el fix. La verificación local `scripts/verify_apple_builds.sh` sigue bloqueada por `xcode-select` apuntando a `/Library/Developer/CommandLineTools`.
+- `git diff --check -- kmp/iosApp/App/NotebookModuleView.swift kmp/iosApp/MacApp/NotebookMacLayout.swift docs/CHANGELOG.md docs/ROADMAP.md` completado correctamente tras restaurar pestañas y creación de pestañas en el Cuaderno macOS shell-owned. `scripts/verify_apple_builds.sh` regenero el proyecto con XcodeGen, pero los builds macOS e iOS volvieron a quedar bloqueados por `xcode-select` apuntando a `/Library/Developer/CommandLineTools`.
+- `git diff --check -- kmp/iosApp/MacApp/NotebookMacLayout.swift docs/CHANGELOG.md docs/ROADMAP.md` completado correctamente tras ocultar la toolbar interna duplicada del Cuaderno macOS. `scripts/verify_apple_builds.sh` regenero el proyecto con XcodeGen, pero los builds macOS e iOS volvieron a quedar bloqueados por `xcode-select` apuntando a `/Library/Developer/CommandLineTools`.
+- `git diff --check -- kmp/iosApp/MacApp/MacRootView.swift docs/CHANGELOG.md docs/ROADMAP.md` completado correctamente tras ajustar foco de búsqueda y toolbar primaria del Cuaderno macOS. `scripts/verify_apple_builds.sh` regenero el proyecto con XcodeGen, pero los builds macOS e iOS volvieron a quedar bloqueados por `xcode-select` apuntando a `/Library/Developer/CommandLineTools`.
 - `git diff --check -- kmp/iosApp/MacApp/MacRootView.swift docs/CHANGELOG.md` completado correctamente tras eliminar los toggles manuales duplicados de sidebar/inspector. `scripts/verify_apple_builds.sh` regenero el proyecto con XcodeGen, pero los builds macOS e iOS volvieron a quedar bloqueados por `xcode-select` apuntando a `/Library/Developer/CommandLineTools`.
 - `git diff --check -- kmp/iosApp/MacApp/MiGestorKMPMacApp.swift kmp/iosApp/MacApp/MacAppSessionController.swift kmp/iosApp/MacApp/MacRootView.swift kmp/iosApp/AppleShared/AppleAppCommands.swift` completado correctamente tras añadir ventanas auxiliares macOS. `scripts/verify_apple_builds.sh` regenero el proyecto con XcodeGen, pero los builds macOS e iOS no pudieron ejecutarse porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y no hay Xcode completo visible en `/Applications`.
 - `git diff --check` completado correctamente tras añadir la toolbar contextual del grid. `xcodebuild -list -project kmp/iosApp/MiGestorKMPiOS.xcodeproj` no pudo ejecutarse porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y no hay Xcode completo visible en `/Applications`.

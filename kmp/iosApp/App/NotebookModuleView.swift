@@ -12,6 +12,7 @@ enum NotebookToolbarMode {
     case inlineCompact
     case shellOwned
     case macWindowOwned
+    case macShellOwned
     case hidden
 }
 
@@ -393,7 +394,7 @@ struct NotebookModuleView: View {
                         }
                     )
                 }
-                if tabs.count > 1 && focusMode == .normal {
+                if !tabs.isEmpty && focusMode == .normal {
                     NotebookTabStrip(
                         tabs: tabs,
                         activeTabId: activeNotebookTabId(data: data),
@@ -1431,7 +1432,7 @@ struct NotebookModuleView: View {
                     }
                 }
                 .toolbarTitleMenu {
-                    if toolbarMode == .shellOwned || toolbarMode == .macWindowOwned || toolbarMode == .inlineCompact {
+                    if toolbarMode == .shellOwned || toolbarMode == .macWindowOwned || toolbarMode == .macShellOwned || toolbarMode == .inlineCompact {
                         Section("Clase") {
                             ForEach(sortedClasses, id: \.id) { schoolClass in
                                 Button {
@@ -1449,7 +1450,13 @@ struct NotebookModuleView: View {
 
                         let tabs = orderedNotebookTabs(data: data)
                         if !tabs.isEmpty {
-                            Section("Trimestre") {
+                            Section("Pestañas") {
+                                Button {
+                                    presentCreateNotebookTab()
+                                } label: {
+                                    Label("Nueva pestaña", systemImage: "plus.rectangle.on.rectangle")
+                                }
+
                                 ForEach(tabs, id: \.id) { tab in
                                     Button {
                                         selectNotebookTab(tab.id)

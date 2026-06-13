@@ -768,7 +768,7 @@ struct AppWorkspaceShell: View {
                         .padding(.horizontal, 24)
                 }
             }
-            .searchable(
+            .appSearchable(
                 text: Binding(
                     get: {
                         if activeModule == .notebook {
@@ -796,6 +796,11 @@ struct AppWorkspaceShell: View {
                         "Buscar alumno, rúbrica o sesión…"
             )
             .avoidHidingContentDuringSearch()
+            .toolbar {
+                if activeModule == .notebook && isRegularWidth {
+                    notebookToolbarItems
+                }
+            }
         }
         #if os(macOS)
         .navigationSplitViewStyle(.automatic)
@@ -926,9 +931,9 @@ struct AppWorkspaceShell: View {
 
     var notebookToolbarMode: NotebookToolbarMode {
         #if os(iOS)
-        horizontalSizeClass == .compact ? .inlineCompact : .shellOwned
+        horizontalSizeClass == .compact ? .inlineCompact : .macShellOwned
         #else
-        .shellOwned
+        .macShellOwned
         #endif
     }
 
@@ -1006,7 +1011,7 @@ struct AppWorkspaceShell: View {
     var workspaceToolbar: some View {
         Group {
             if activeModule == .notebook {
-                notebookMacLikeToolbar
+                EmptyView()
             } else {
                 VStack(spacing: 14) {
                     HStack(spacing: 16) {
@@ -1479,14 +1484,26 @@ struct AppWorkspaceShell: View {
         }
     }
 
-    var notebookMacLikeToolbar: some View {
-        HStack(spacing: 12) {
-            notebookClassSelectorButton
-                .layoutPriority(3)
+    private var isRegularWidth: Bool {
+        #if os(iOS)
+        horizontalSizeClass == .regular
+        #else
+        true
+        #endif
+    }
 
-            if bridge.syncPendingChanges > 0 {
+    @ToolbarContentBuilder
+    var notebookToolbarItems: some ToolbarContent {
+        ToolbarItem(placement: .navigationBarLeading) {
+            notebookClassSelectorButton
+        }
+
+        if bridge.syncPendingChanges > 0 {
+            ToolbarItem(placement: .navigationBarLeading) {
                 HStack(spacing: 4) {
-                    Text("\(bridge.syncPendingChanges) pendientes")
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.footnote)
+                    Text("\(bridge.syncPendingChanges) pnd.")
                         .font(.footnote.weight(.semibold))
                 }
                 .foregroundStyle(IOSAppStyle.warning)
@@ -1494,26 +1511,79 @@ struct AppWorkspaceShell: View {
                 .padding(.vertical, 6)
                 .background(IOSAppStyle.warning.opacity(0.12), in: Capsule())
             }
+        }
 
+        if !layoutState.notebookAvailableGroups.isEmpty {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                notebookGroupFilterMenu
+            }
+        }
+
+        ToolbarItem(placement: .navigationBarTrailing) {
+            Picker("Vista", selection: Binding(
+                get: { layoutState.notebookSurfaceMode },
+                set: { layoutState.setNotebookSurfaceMode($0) }
+            )) {
+                Text("Grid").tag("grid")
+                Text("Plano").tag("seatingPlan")
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 112)
+        }
+
+        ToolbarItem(placement: .navigationBarTrailing) {
             Button {
                 layoutState.showNotebookAddColumn()
             } label: {
-                Label("Añadir columna", systemImage: "plus")
+                Label("Nueva columna", systemImage: "plus")
             }
-            #if os(iOS)
-            .buttonStyle(.borderedProminent)
-            #else
-            .buttonStyle(.bordered)
-            #endif
             .disabled(!layoutState.notebookAddColumnAvailable)
-            .help("Añadir nueva columna (⌘N)")
-            .layoutPriority(3)
+        }
 
+        ToolbarItem(placement: .navigationBarTrailing) {
+            Button {
+                layoutState.openNotebookOrganizationMenu()
+            } label: {
+                Label("Organizar", systemImage: "slider.horizontal.3")
+            }
+            .disabled(!layoutState.notebookOrganizationMenuAvailable)
+        }
+
+        ToolbarItem(placement: .navigationBarTrailing) {
             notebookInspectorButton
-                .layoutPriority(2)
+        }
 
+        ToolbarItem(placement: .navigationBarTrailing) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField(
+                    "Buscar",
+                    text: Binding(
+                        get: { layoutState.notebookSearchText },
+                        set: { layoutState.setNotebookSearchText($0) }
+                    )
+                )
+                .textFieldStyle(.plain)
+                if !layoutState.notebookSearchText.isEmpty {
+                    Button {
+                        layoutState.setNotebookSearchText("")
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Borrar búsqueda")
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .frame(minWidth: 120, idealWidth: 180, maxWidth: 220)
+        }
+
+        ToolbarItem(placement: .navigationBarTrailing) {
             notebookOverflowMenu
-                .layoutPriority(1)
         }
     }
 

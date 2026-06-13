@@ -25,6 +25,7 @@ struct IOSRootBanner: Identifiable, Equatable {
 struct IOSRootView: View {
     @EnvironmentObject private var bridge: KmpBridge
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @StateObject private var layoutState = WorkspaceLayoutState()
     @StateObject private var selectionStore = IOSSelectionStore()
@@ -54,17 +55,15 @@ struct IOSRootView: View {
             .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 280)
         } detail: {
             VStack(spacing: 0) {
-                if activeModule == .notebook {
-                    notebookMacLikeToolbar
-                } else {
+                if activeModule != .notebook {
                     IOSGlobalContextRow(
                         activeModule: activeModule,
                         layoutState: layoutState,
                         selectionStore: selectionStore,
                         searchText: $searchText
                     )
+                    Divider().opacity(0.24)
                 }
-                Divider().opacity(0.24)
                 IOSWorkspaceContent(
                     activeModule: activeModule,
                     layoutState: layoutState,
@@ -79,13 +78,17 @@ struct IOSRootView: View {
                 )
             }
             .toolbar {
-                IOSContextualToolbar(
-                    activeModule: activeModule,
-                    layoutState: layoutState,
-                    selectionStore: selectionStore,
-                    onSync: { Task { await bridge.pullMissingSyncChanges() } },
-                    onToggleInspector: toggleInspector
-                )
+                if activeModule == .notebook && horizontalSizeClass == .regular {
+                    notebookToolbarItems
+                } else {
+                    IOSContextualToolbar(
+                        activeModule: activeModule,
+                        layoutState: layoutState,
+                        selectionStore: selectionStore,
+                        onSync: { Task { await bridge.pullMissingSyncChanges() } },
+                        onToggleInspector: toggleInspector
+                    )
+                }
             }
         }
         .navigationSplitViewStyle(.prominentDetail)
@@ -305,10 +308,9 @@ struct IOSRootView: View {
         .buttonStyle(.bordered)
     }
 
-    @ViewBuilder
-    private var notebookMacLikeToolbar: some View {
-        HStack(spacing: 12) {
-            // Selector de clase
+    @ToolbarContentBuilder
+    private var notebookToolbarItems: some ToolbarContent {
+        ToolbarItem(placement: .navigationBarLeading) {
             Menu {
                 ForEach(groupedNotebookClasses, id: \.course) { group in
                     Section("\(group.course)º") {
@@ -327,18 +329,38 @@ struct IOSRootView: View {
                     }
                 }
             } label: {
-                Label(activeNotebookClassLabel, systemImage: "rectangle.3.group")
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Image(systemName: "books.vertical.fill")
+                        .foregroundStyle(Color.accentColor)
+                    Text(activeNotebookClassLabel)
+                        .fontWeight(.medium)
+                }
             }
-            .buttonStyle(.bordered)
             .disabled(bridge.classes.isEmpty)
+        }
 
-            // Selector de grupo (si está disponible)
-            if !layoutState.notebookAvailableGroups.isEmpty {
+        if bridge.syncPendingChanges > 0 {
+            ToolbarItem(placement: .navigationBarLeading) {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.footnote)
+                    Text("\(bridge.syncPendingChanges) pnd.")
+                        .font(.footnote.weight(.semibold))
+                }
+                .foregroundStyle(IOSAppStyle.warning)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(IOSAppStyle.warning.opacity(0.12), in: Capsule())
+            }
+        }
+
+        if !layoutState.notebookAvailableGroups.isEmpty {
+            ToolbarItem(placement: .navigationBarTrailing) {
                 notebookGroupFilterMenu
             }
+        }
 
-            // Selector de vista
+        ToolbarItem(placement: .navigationBarTrailing) {
             Picker("Vista", selection: Binding(
                 get: { layoutState.notebookSurfaceMode },
                 set: { layoutState.setNotebookSurfaceMode($0) }
@@ -348,49 +370,32 @@ struct IOSRootView: View {
             }
             .pickerStyle(.segmented)
             .frame(width: 112)
+        }
 
-            // Indicador de sincronización
-            if bridge.syncPendingChanges > 0 {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.footnote)
-                    Text("\(bridge.syncPendingChanges) pendientes")
-                        .font(.footnote.weight(.semibold))
-                }
-                .foregroundStyle(IOSAppStyle.warning)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(IOSAppStyle.warning.opacity(0.12), in: Capsule())
-            }
-
-            Spacer()
-
-            // Botón Nueva columna
+        ToolbarItem(placement: .navigationBarTrailing) {
             Button {
                 layoutState.showNotebookAddColumn()
             } label: {
                 Label("Nueva columna", systemImage: "plus")
             }
-            .buttonStyle(.borderedProminent)
             .disabled(!layoutState.notebookAddColumnAvailable)
+        }
 
-            // Botón Organizar (icon-only para HIG e integración limpia)
+        ToolbarItem(placement: .navigationBarTrailing) {
             Button {
                 layoutState.openNotebookOrganizationMenu()
             } label: {
                 Label("Organizar", systemImage: "slider.horizontal.3")
-                    .labelStyle(.iconOnly)
             }
-            .buttonStyle(.bordered)
             .disabled(!layoutState.notebookOrganizationMenuAvailable)
+        }
 
-            // Botón Inspector (icon-only para HIG e integración limpia, evitando bug de ternaria en buttonStyle)
+        ToolbarItem(placement: .navigationBarTrailing) {
             if layoutState.isNotebookInspectorPresented {
                 Button {
                     layoutState.toggleNotebookInspector()
                 } label: {
                     Label("Ocultar inspector", systemImage: "sidebar.right")
-                        .labelStyle(.iconOnly)
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(!layoutState.notebookInspectorAvailable)
@@ -399,13 +404,13 @@ struct IOSRootView: View {
                     layoutState.toggleNotebookInspector()
                 } label: {
                     Label("Mostrar inspector", systemImage: "sidebar.right")
-                        .labelStyle(.iconOnly)
                 }
                 .buttonStyle(.bordered)
                 .disabled(!layoutState.notebookInspectorAvailable)
             }
+        }
 
-            // Campo de búsqueda compacto (con ancho adaptativo)
+        ToolbarItem(placement: .navigationBarTrailing) {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
@@ -432,8 +437,9 @@ struct IOSRootView: View {
             .padding(.vertical, 8)
             .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .frame(minWidth: 120, idealWidth: 180, maxWidth: 220)
+        }
 
-            // Menú de más acciones
+        ToolbarItem(placement: .navigationBarTrailing) {
             Menu {
                 Button {
                     layoutState.notebookRefresh()
@@ -459,24 +465,28 @@ struct IOSRootView: View {
                 } label: {
                     Label(
                         layoutState.notebookIsAttendanceQuickMode ? "Salir de asistencia rápida" : "Asistencia rápida",
-                        systemImage: layoutState.notebookIsAttendanceQuickMode ? "bolt.slash" : "bolt"
+                        systemImage: layoutState.notebookIsAttendanceQuickMode ? "figure.walk.circle.fill" : "figure.walk.circle"
                     )
                 }
 
+                Divider()
+
                 Button {
-                    layoutState.notebookGenerateSummary()
+                    layoutState.openNotebookHiddenColumns()
                 } label: {
-                    Label("Opciones avanzadas", systemImage: "ellipsis.circle")
+                    Label("Columnas ocultas", systemImage: "eye.slash")
+                }
+                .disabled(!layoutState.notebookOrganizationMenuAvailable)
+
+                Button {
+                    activeModule = .courses
+                } label: {
+                    Label("Gestión de grupos", systemImage: "person.2")
                 }
             } label: {
                 Label("Más", systemImage: "ellipsis.circle")
             }
-            .buttonStyle(.bordered)
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 14)
-        .padding(.bottom, 12)
-        .background(appMutedCardBackground(for: colorScheme).opacity(0.94))
     }
 }
 
@@ -876,9 +886,9 @@ struct IOSWorkspaceContent: View {
 
     private var notebookToolbarMode: NotebookToolbarMode {
         #if os(iOS)
-        horizontalSizeClass == .compact ? .inlineCompact : .shellOwned
+        horizontalSizeClass == .compact ? .inlineCompact : .macShellOwned
         #else
-        .shellOwned
+        .macShellOwned
         #endif
     }
 }

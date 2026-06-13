@@ -28,8 +28,12 @@ final class MacAppSessionController: ObservableObject {
 
     let bridge = KmpBridge()
     let bootstrap = AppleBridgeBootstrap.current()
+    let commandCenter = MacCommandCenterCoordinator()
+    let backupStore: MacBackupStore
 
     init() {
+        backupStore = MacBackupStore(bridge: bridge)
+
         let defaults = UserDefaults.standard
         let storedFeature = defaults.string(forKey: Defaults.selectedFeature)
             .flatMap(MacFeatureDescriptor.Feature.init(rawValue:))

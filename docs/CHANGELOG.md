@@ -29,6 +29,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- Corrige la compilación Apple del inspector del Cuaderno evitando una colisión de nombre entre el closure `isSummaryColumn` y su valor booleano local.
 - El Cuaderno macOS vuelve a mostrar la tira de pestañas y permite crear nuevas pestañas aunque la toolbar principal sea propiedad de la shell.
 - El Cuaderno macOS deja de renderizar dos toolbars a la vez: `MacRootView` queda como unico owner de la toolbar y `NotebookModuleView` publica acciones sin pintar su barra interna.
 - La toolbar macOS deja de duplicar los botones manuales de barra lateral e inspector; se conserva el control nativo de `NavigationSplitView`/inspector y los atajos siguen funcionando.
@@ -42,6 +43,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Logs de GitHub Actions del run `27462430911` inspeccionados: macOS e iOS fallaban por `NotebookInspectorPanel.swift:60:44: error: cannot call value of non-function type 'Bool'`. `git diff --check -- kmp/iosApp/App/NotebookInspectorPanel.swift docs/CHANGELOG.md` completado correctamente tras el fix. La verificación local `scripts/verify_apple_builds.sh` sigue bloqueada por `xcode-select` apuntando a `/Library/Developer/CommandLineTools`.
 - `git diff --check -- kmp/iosApp/App/NotebookModuleView.swift kmp/iosApp/MacApp/NotebookMacLayout.swift docs/CHANGELOG.md docs/ROADMAP.md` completado correctamente tras restaurar pestañas y creación de pestañas en el Cuaderno macOS shell-owned. `scripts/verify_apple_builds.sh` regenero el proyecto con XcodeGen, pero los builds macOS e iOS volvieron a quedar bloqueados por `xcode-select` apuntando a `/Library/Developer/CommandLineTools`.
 - `git diff --check -- kmp/iosApp/MacApp/NotebookMacLayout.swift docs/CHANGELOG.md docs/ROADMAP.md` completado correctamente tras ocultar la toolbar interna duplicada del Cuaderno macOS. `scripts/verify_apple_builds.sh` regenero el proyecto con XcodeGen, pero los builds macOS e iOS volvieron a quedar bloqueados por `xcode-select` apuntando a `/Library/Developer/CommandLineTools`.
 - `git diff --check -- kmp/iosApp/MacApp/MacRootView.swift docs/CHANGELOG.md docs/ROADMAP.md` completado correctamente tras ajustar foco de búsqueda y toolbar primaria del Cuaderno macOS. `scripts/verify_apple_builds.sh` regenero el proyecto con XcodeGen, pero los builds macOS e iOS volvieron a quedar bloqueados por `xcode-select` apuntando a `/Library/Developer/CommandLineTools`.

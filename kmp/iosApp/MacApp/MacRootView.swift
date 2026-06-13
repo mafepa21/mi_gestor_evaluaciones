@@ -4,8 +4,10 @@ import MiGestorKit
 
 struct MacRootView: View {
     @ObservedObject var session: MacAppSessionController
+    @ObservedObject private var commandCenter: MacCommandCenterCoordinator
+    @ObservedObject private var backupStore: MacBackupStore
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
-    @StateObject private var commandCenter = MacCommandCenterCoordinator()
+    @Environment(\.openWindow) private var openWindow
     @StateObject private var layoutState = WorkspaceLayoutState()
     @StateObject private var notebookInspectorState = NotebookMacInspectorState()
     @StateObject private var notebookToolbarActions = NotebookMacToolbarActions()
@@ -13,7 +15,6 @@ struct MacRootView: View {
     @StateObject private var physicalTestsInspectorState = PhysicalTestsMacInspectorState()
     @StateObject private var studentsStore = MacStudentsStore()
     @StateObject private var studentSelection = StudentSelectionStore()
-    @StateObject private var backupStore: MacBackupStore
     @SceneStorage("mac.root.columnVisibility") private var storedColumnVisibility = MacRootColumnVisibilityValue.all
     @SceneStorage("mac.root.inspectorVisible") private var storedInspectorVisible = true
     @FocusState private var isNotebookSearchFocused: Bool
@@ -30,7 +31,8 @@ struct MacRootView: View {
 
     init(session: MacAppSessionController) {
         self.session = session
-        _backupStore = StateObject(wrappedValue: MacBackupStore(bridge: session.bridge))
+        _commandCenter = ObservedObject(wrappedValue: session.commandCenter)
+        _backupStore = ObservedObject(wrappedValue: session.backupStore)
     }
 
     var body: some View {
@@ -84,15 +86,6 @@ struct MacRootView: View {
         if selectedFeature == .notebook {
             navigationSplitContent
                 .toolbar(id: "notebook.toolbar") {
-                    ToolbarItem(id: "toggleSidebar", placement: .navigation) {
-                        Button {
-                            toggleSidebar()
-                        } label: {
-                            Label("Barra lateral", systemImage: "sidebar.leading")
-                        }
-                        .help("Mostrar/Ocultar barra lateral (⌘⌥S)")
-                    }
-
                     macNotebookToolbar
                 }
         } else {
@@ -355,15 +348,6 @@ struct MacRootView: View {
 
     @ToolbarContentBuilder
     private var macToolbar: some ToolbarContent {
-        ToolbarItem(id: "toggleSidebar", placement: .navigation) {
-            Button {
-                toggleSidebar()
-            } label: {
-                Label("Barra lateral", systemImage: "sidebar.leading")
-            }
-            .help("Mostrar/Ocultar barra lateral (⌘⌥S)")
-        }
-
         if selectedFeature == .notebook {
             macNotebookToolbar
         } else {
@@ -405,16 +389,6 @@ struct MacRootView: View {
             }
             .disabled(!notebookToolbarActions.organizationMenuAvailable)
             .help("Revisar columnas ocultas")
-        }
-
-        ToolbarItem(id: "notebook.inspector", placement: .primaryAction) {
-            Button {
-                toggleInspector()
-            } label: {
-                Label(isInspectorVisible ? "Ocultar inspector" : "Mostrar inspector", systemImage: "sidebar.right")
-            }
-            .keyboardShortcut("i", modifiers: [.command])
-            .help(isInspectorVisible ? "Ocultar inspector" : "Mostrar inspector")
         }
 
         ToolbarItem(id: "notebook.search", placement: .primaryAction) {
@@ -666,13 +640,6 @@ struct MacRootView: View {
             .keyboardShortcut("r", modifiers: [.command])
             .help("Refrescar datos")
 
-            Button {
-                toggleInspector()
-            } label: {
-                Label(isInspectorVisible ? "Ocultar inspector" : "Mostrar inspector", systemImage: "sidebar.right")
-            }
-            .keyboardShortcut("i", modifiers: [.command])
-            .help(isInspectorVisible ? "Ocultar inspector" : "Mostrar inspector")
         }
 
         ToolbarItem {
@@ -877,8 +844,8 @@ struct MacRootView: View {
     }
 
     private func openReports() {
-        selectFeature(.reports)
-        showBanner("Informes", systemImage: "doc.text.image", tint: MacAppStyle.infoTint)
+        openWindow(id: MacDesktopWindowID.reports.rawValue)
+        showBanner("Informes abierto en ventana", systemImage: "doc.text.image", tint: MacAppStyle.infoTint)
     }
 
     private func navigateFromCommand(_ object: Any?) {

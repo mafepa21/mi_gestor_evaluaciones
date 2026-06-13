@@ -49,7 +49,7 @@ struct AppleAppCommands: Commands {
             }
             .keyboardShortcut("r", modifiers: [.command, .option])
 
-            Button("Exportar informe") {
+            Button("Abrir informes") {
                 AppleAppCommand.post(.appleAppExportReportRequested)
             }
             .keyboardShortcut("e", modifiers: .command)

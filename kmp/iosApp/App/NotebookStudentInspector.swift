@@ -46,6 +46,7 @@ struct NotebookStudentInspector: View {
     @State private var isLoadingTrends = false
     @State private var educationalInsight: StudentInsightDraft? = nil
     @State private var averageInsight: AverageExplanationDraft? = nil
+    @State private var earlyWarning: EarlyWarning? = nil
     @State private var isLoadingEducationalInsight = false
     @State private var educationalInsightError: String? = nil
     @State private var educationalInsightOrchestrator = AppleAIOrchestrator()
@@ -128,6 +129,7 @@ struct NotebookStudentInspector: View {
             NotebookEducationalInsightView(
                 insight: educationalInsight,
                 averageInsight: averageInsight,
+                earlyWarning: earlyWarning,
                 isLoading: isLoadingEducationalInsight,
                 errorMessage: educationalInsightError,
                 onRefresh: {
@@ -569,6 +571,11 @@ struct NotebookStudentInspector: View {
             } else {
                 averageInsight = nil
             }
+
+            let warningResult = try await educationalInsightOrchestrator.generate(.earlyWarning(evidence))
+            if case .earlyWarning(let warning) = warningResult {
+                earlyWarning = warning
+            }
         } catch {
             educationalInsightError = error.localizedDescription
         }
@@ -714,6 +721,7 @@ private struct NotebookInspectorRubricRow: View {
 private struct NotebookEducationalInsightView: View {
     let insight: StudentInsightDraft?
     let averageInsight: AverageExplanationDraft?
+    let earlyWarning: EarlyWarning?
     let isLoading: Bool
     let errorMessage: String?
     let onRefresh: () -> Void
@@ -756,6 +764,10 @@ private struct NotebookEducationalInsightView: View {
             }
 
             if let insight {
+                if let earlyWarning {
+                    NotebookEarlyWarningView(warning: earlyWarning)
+                }
+
                 VStack(alignment: .leading, spacing: 8) {
                     NotebookInsightSignalRow(title: "Rendimiento", value: insight.performanceSignal, systemImage: "chart.line.uptrend.xyaxis")
                     NotebookInsightSignalRow(title: "Asistencia", value: insight.attendanceSignal, systemImage: "calendar.badge.clock")
@@ -789,6 +801,70 @@ private struct NotebookEducationalInsightView: View {
                 .background(NotebookStyle.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
         }
+    }
+}
+
+private struct NotebookEarlyWarningView: View {
+    let warning: EarlyWarning
+
+    private var tint: Color {
+        switch warning.severity {
+        case .normal: return NotebookStyle.successTint
+        case .moderate: return NotebookStyle.warningTint
+        case .priority: return .red
+        }
+    }
+
+    private var icon: String {
+        switch warning.severity {
+        case .normal: return "checkmark.seal"
+        case .moderate: return "exclamationmark.triangle"
+        case .priority: return "exclamationmark.octagon"
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(tint)
+                    .frame(width: 24, height: 24)
+                    .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Alerta preventiva")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                    Text(warning.severity.title)
+                        .font(.subheadline.weight(.semibold))
+                }
+
+                Spacer(minLength: 8)
+
+                Text("\(Int((warning.confidence * 100).rounded()))%")
+                    .font(.caption.monospacedDigit().weight(.bold))
+                    .foregroundStyle(.secondary)
+            }
+
+            if !warning.causes.isEmpty {
+                Text(warning.causes.prefix(2).joined(separator: " · "))
+                    .font(.caption)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let recommendation = warning.recommendations.first {
+                Text(recommendation)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(10)
+        .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(tint.opacity(0.18)))
     }
 }
 

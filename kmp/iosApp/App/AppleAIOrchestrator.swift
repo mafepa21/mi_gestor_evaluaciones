@@ -40,6 +40,7 @@ enum AppleAIRequest {
     case studentInsight(StudentInsightEvidence)
     case averageExplanation(NotebookAverageExplanation, StudentInsightEvidence)
     case tutorMeetingSummary(StudentInsightEvidence)
+    case earlyWarning(StudentInsightEvidence)
     case physicalScaleRecommendation(PhysicalScaleRecommendationInput)
     case physicalProgressAnalysis(PhysicalProgressEvidence)
     case formulaSuggestion(String, String, [NotebookColumnDefinition])
@@ -54,6 +55,7 @@ enum AppleAIResult {
     case studentInsight(StudentInsightDraft)
     case averageExplanation(AverageExplanationDraft)
     case tutorMeetingSummary(TutorMeetingSummaryDraft)
+    case earlyWarning(EarlyWarning)
     case physicalScaleRecommendation(PhysicalScaleRecommendationDraft)
     case physicalProgressAnalysis(PhysicalProgressAnalysis)
     case formulaSuggestion(String)
@@ -128,6 +130,8 @@ final class AppleAIOrchestrator {
             return .averageExplanation(try await studentInsights.generateAverageExplanation(from: explanation, evidence: evidence))
         case let .tutorMeetingSummary(evidence):
             return .tutorMeetingSummary(try await studentInsights.generateTutorMeetingSummary(from: evidence))
+        case let .earlyWarning(evidence):
+            return .earlyWarning(try await studentInsights.generateEarlyWarning(from: evidence))
         case let .physicalScaleRecommendation(input):
             return .physicalScaleRecommendation(try await contextual.generatePhysicalScaleRecommendation(from: input))
         case let .physicalProgressAnalysis(evidence):
@@ -189,6 +193,8 @@ final class AppleAIOrchestrator {
             return draft.appearsToBeRulesFallback
         case .tutorMeetingSummary(let draft):
             return draft.appearsToBeRulesFallback
+        case .earlyWarning(let warning):
+            return warning.appearsToBeRulesFallback
         case .physicalScaleRecommendation(let draft):
             return draft.appearsToBeRulesFallback
         case .physicalProgressAnalysis(let analysis):

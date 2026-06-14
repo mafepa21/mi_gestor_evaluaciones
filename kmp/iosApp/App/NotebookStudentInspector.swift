@@ -22,6 +22,7 @@ struct NotebookStudentInspector: View {
     let aiSectionOrigin: String?
     let aiRegenerateTitle: String?
     let averageExplanation: NotebookAverageExplanation?
+    let studentInsightEvidence: StudentInsightEvidence
     let pendingColumns: [PendingCell]
     let recentObservations: [NotebookInspectorObservation]
     let rubricSummaries: [NotebookInspectorRubricSummary]
@@ -43,12 +44,18 @@ struct NotebookStudentInspector: View {
 
     @State private var trends: KmpBridge.AITrendsSnapshot? = nil
     @State private var isLoadingTrends = false
+    @State private var educationalInsight: StudentInsightDraft? = nil
+    @State private var averageInsight: AverageExplanationDraft? = nil
+    @State private var isLoadingEducationalInsight = false
+    @State private var educationalInsightError: String? = nil
+    @State private var educationalInsightOrchestrator = AppleAIOrchestrator()
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 inspectorHeader
                 averageSection
+                educationalInsightSection
                 pendingColumnsSection
                 observationsSection
                 rubricSection
@@ -64,6 +71,7 @@ struct NotebookStudentInspector: View {
         .background(EvaluationBackdrop())
         .task(id: studentId) {
             await loadTrends()
+            await refreshEducationalInsight()
         }
     }
 
@@ -112,6 +120,20 @@ struct NotebookStudentInspector: View {
     private var averageSection: some View {
         NotebookInspectorSection(title: "Media explicada", systemImage: "function") {
             NotebookAverageCompactSummaryView(explanation: averageExplanation)
+        }
+    }
+
+    private var educationalInsightSection: some View {
+        NotebookInspectorSection(title: "Insight educativo", systemImage: "sparkles") {
+            NotebookEducationalInsightView(
+                insight: educationalInsight,
+                averageInsight: averageInsight,
+                isLoading: isLoadingEducationalInsight,
+                errorMessage: educationalInsightError,
+                onRefresh: {
+                    Task { await refreshEducationalInsight() }
+                }
+            )
         }
     }
 
@@ -526,6 +548,31 @@ struct NotebookStudentInspector: View {
         }
         isLoadingTrends = false
     }
+
+    private func refreshEducationalInsight() async {
+        let evidence = studentInsightEvidence.withTrends(trends)
+        isLoadingEducationalInsight = true
+        educationalInsightError = nil
+        defer { isLoadingEducationalInsight = false }
+
+        do {
+            let insightResult = try await educationalInsightOrchestrator.generate(.studentInsight(evidence))
+            if case .studentInsight(let draft) = insightResult {
+                educationalInsight = draft
+            }
+
+            if let explanation = averageExplanation {
+                let averageResult = try await educationalInsightOrchestrator.generate(.averageExplanation(explanation, evidence))
+                if case .averageExplanation(let draft) = averageResult {
+                    averageInsight = draft
+                }
+            } else {
+                averageInsight = nil
+            }
+        } catch {
+            educationalInsightError = error.localizedDescription
+        }
+    }
 }
 
 struct NotebookInspectorObservation: Identifiable, Hashable {
@@ -661,6 +708,154 @@ private struct NotebookInspectorRubricRow: View {
         }
         .padding(8)
         .background(NotebookStyle.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+private struct NotebookEducationalInsightView: View {
+    let insight: StudentInsightDraft?
+    let averageInsight: AverageExplanationDraft?
+    let isLoading: Bool
+    let errorMessage: String?
+    let onRefresh: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 8) {
+                    if isLoading && insight == nil {
+                        ProgressView()
+                            .tint(NotebookStyle.primaryTint)
+                    } else if let insight {
+                        Text(insight.summary)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text(insight.confidenceNote)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text(errorMessage ?? "Sin lectura educativa disponible todavía.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Spacer(minLength: 8)
+
+                Button(action: onRefresh) {
+                    if isLoading {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .disabled(isLoading)
+                .accessibilityLabel("Actualizar insight educativo")
+            }
+
+            if let insight {
+                VStack(alignment: .leading, spacing: 8) {
+                    NotebookInsightSignalRow(title: "Rendimiento", value: insight.performanceSignal, systemImage: "chart.line.uptrend.xyaxis")
+                    NotebookInsightSignalRow(title: "Asistencia", value: insight.attendanceSignal, systemImage: "calendar.badge.clock")
+                }
+
+                NotebookInsightTagGroup(title: "Fortalezas", systemImage: "checkmark.seal", items: insight.strengths, tint: NotebookStyle.successTint)
+                NotebookInsightTagGroup(title: "A mejorar", systemImage: "target", items: insight.improvementAreas, tint: NotebookStyle.warningTint)
+
+                if !insight.risks.isEmpty {
+                    NotebookInsightTagGroup(title: "Riesgos", systemImage: "exclamationmark.triangle", items: insight.risks, tint: NotebookStyle.warningTint)
+                }
+
+                NotebookInsightTagGroup(title: "Recomendaciones", systemImage: "arrow.right.circle", items: insight.recommendations, tint: NotebookStyle.primaryTint)
+            }
+
+            if let averageInsight {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Lectura de media", systemImage: "function")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                    Text(averageInsight.explanation)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text([averageInsight.includedSummary, averageInsight.pendingSummary, averageInsight.weightSummary].joined(separator: " "))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(8)
+                .background(NotebookStyle.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+        }
+    }
+}
+
+private struct NotebookInsightSignalRow: View {
+    let title: String
+    let value: String
+    let systemImage: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(NotebookStyle.primaryTint)
+                .frame(width: 24, height: 24)
+                .background(NotebookStyle.primaryTint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title.uppercased())
+                    .font(.system(size: 10, weight: .black, design: .rounded))
+                    .foregroundStyle(.secondary)
+                Text(value)
+                    .font(.caption)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(8)
+        .background(NotebookStyle.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+private struct NotebookInsightTagGroup: View {
+    let title: String
+    let systemImage: String
+    let items: [String]
+    let tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(title, systemImage: systemImage)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
+
+            if items.isEmpty {
+                Text("Sin datos destacados.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(items, id: \.self) { item in
+                        HStack(alignment: .top, spacing: 8) {
+                            Circle()
+                                .fill(tint)
+                                .frame(width: 6, height: 6)
+                                .padding(.top, 6)
+                            Text(item)
+                                .font(.caption)
+                                .foregroundStyle(.primary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                .padding(8)
+                .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+        }
     }
 }
 

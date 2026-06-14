@@ -29,9 +29,14 @@ La segunda entrega aplica el mismo criterio a informes:
 - `StudentReportSummary` es el objeto estructurado para fortalezas, aspectos a vigilar, areas de progreso, recomendaciones y versiones docente/familia.
 - `AIReportDraft` se mantiene como envoltorio compatible para las vistas existentes y para texto editable/exportable.
 
+La tercera entrega inicia el mismo criterio en Educacion Fisica:
+
+- `PhysicalProgressAnalysis` resume estado, fortalezas, debilidades, recomendaciones y alertas desde snapshots de pruebas fisicas.
+- La primera integracion es por grupo/test en la pestaña Informes; no persiste datos ni recalcula marcas.
+
 ## Consecuencias
 
 - No se recalculan medias ni pesos en Swift ni en Foundation Models.
 - Los prompts deben incluir evidencia acotada y trazable.
-- Las futuras areas de Educacion Fisica y alertas preventivas deben seguir el mismo patron: datos KMP, objeto Swift, UI nativa.
+- Las futuras alertas preventivas deben seguir el mismo patron: datos KMP, objeto Swift, UI nativa.
 - Cualquier cambio que requiera datos nuevos debe justificarse antes de tocar `KmpBridge.swift`, `kmp/shared` o `kmp/data`.

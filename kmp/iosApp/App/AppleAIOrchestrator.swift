@@ -41,6 +41,7 @@ enum AppleAIRequest {
     case averageExplanation(NotebookAverageExplanation, StudentInsightEvidence)
     case tutorMeetingSummary(StudentInsightEvidence)
     case physicalScaleRecommendation(PhysicalScaleRecommendationInput)
+    case physicalProgressAnalysis(PhysicalProgressEvidence)
     case formulaSuggestion(String, String, [NotebookColumnDefinition])
 }
 
@@ -54,6 +55,7 @@ enum AppleAIResult {
     case averageExplanation(AverageExplanationDraft)
     case tutorMeetingSummary(TutorMeetingSummaryDraft)
     case physicalScaleRecommendation(PhysicalScaleRecommendationDraft)
+    case physicalProgressAnalysis(PhysicalProgressAnalysis)
     case formulaSuggestion(String)
 }
 
@@ -128,6 +130,8 @@ final class AppleAIOrchestrator {
             return .tutorMeetingSummary(try await studentInsights.generateTutorMeetingSummary(from: evidence))
         case let .physicalScaleRecommendation(input):
             return .physicalScaleRecommendation(try await contextual.generatePhysicalScaleRecommendation(from: input))
+        case let .physicalProgressAnalysis(evidence):
+            return .physicalProgressAnalysis(try await contextual.generatePhysicalProgressAnalysis(from: evidence))
         case let .formulaSuggestion(prompt, currentFormula, columns):
             return .formulaSuggestion(try await formulas.generateFormula(request: prompt, currentFormula: currentFormula, availableColumns: columns))
         }
@@ -187,6 +191,8 @@ final class AppleAIOrchestrator {
             return draft.appearsToBeRulesFallback
         case .physicalScaleRecommendation(let draft):
             return draft.appearsToBeRulesFallback
+        case .physicalProgressAnalysis(let analysis):
+            return analysis.appearsToBeRulesFallback
         case .formulaSuggestion:
             return false
         }

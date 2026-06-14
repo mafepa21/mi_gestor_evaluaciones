@@ -26,6 +26,7 @@ Prioridad: alta.
   Avance: Media explicable con desglose de columnas incluidas, pendientes, exclusiones y aportaciones ponderadas ya integrada en KMP y SwiftUI.
   Avance: pruebas físicas separan dato bruto (`Marca`/`Nivel`) y nota baremada (`Nota`) para evitar contaminar la Media.
   Avance: inspector convertido en ficha rápida del alumno con Media, pendientes, observaciones, rúbricas y acciones.
+  Avance: inspector incorpora Inteligencia Educativa local estructurada para resumir fortalezas, riesgos, recomendaciones y lectura docente de la media sin recalcular los datos KMP.
 - Rubricas: evaluacion fiable, integracion con cuaderno e informes.
 - Asistencia: flujo diario rapido y consistente.
 - Alumnado: perfiles utiles, busqueda y datos relevantes.
@@ -58,6 +59,7 @@ Prioridad: media-alta.
 - Backups: restauracion fiable y trazable.
 - Sync: estrategia clara para LAN/local y futuras opciones.
 - Exportaciones: informes utiles y reproducibles.
+  Avance: Informes Apple IA dispone de `StudentReportSummary` estructurado como base para renderizar informes nativos y PDFs sin depender de texto libre como contrato principal.
 - Privacidad: mantener `PRIVACY.md` y `docs/04_legal_comercial/datos_personales.md` como base operativa pendiente de revision juridica.
 
 ## Fase 4 - Preparacion comercial

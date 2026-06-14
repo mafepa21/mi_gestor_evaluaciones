@@ -58,14 +58,34 @@ struct NotebookInspectorPanel: View {
         } ?? nil
         let isAIColumn = column.map { bridge.isNotebookAICommentColumn($0) } ?? false
         let isSummaryColumnValue = column.map { isSummaryColumn($0) } ?? false
+        let observations = recentObservations(for: item)
+        let rubrics = rubricSummaries(for: item)
+        let insight = data.sheet.insights.first(where: { $0.studentId == item.student.id })
+        let studentName = "\(item.student.firstName) \(item.student.lastName)"
+        let averageText = averageValueText(for: item)
+        let evidence = StudentInsightEvidence(
+            studentId: item.student.id,
+            studentName: studentName,
+            averageText: averageText,
+            averageScore: doubleValue(from: item.row.weightedAverage),
+            attendanceStatus: insight?.latestAttendanceStatus,
+            followUpCount: Int(insight?.followUpCount ?? 0),
+            incidentCount: Int(insight?.incidentCount ?? 0),
+            evidenceCount: Int(insight?.evidenceCount ?? 0),
+            competencyLabels: insight?.linkedCompetencyLabels ?? [],
+            observations: observations,
+            rubricSummaries: rubrics,
+            averageExplanation: item.row.averageExplanation,
+            trends: nil
+        )
 
         return NotebookStudentInspector(
             bridge: bridge,
             classId: currentClassId,
             studentId: item.student.id,
-            studentName: "\(item.student.firstName) \(item.student.lastName)",
+            studentName: studentName,
             columnTitle: column?.title ?? "Media",
-            valueText: column.map { displayValue(item, $0) } ?? averageValueText(for: item),
+            valueText: column.map { displayValue(item, $0) } ?? averageText,
             categoryText: column.map { categoryTitle($0, data) } ?? "Resumen evaluativo",
             weightText: column.map { String(format: "%.1f", $0.weight) } ?? averageWeightText(for: item),
             typeText: column.map { "\($0.instrumentKind.name) · \($0.inputKind.name)" } ?? "Media ponderada",
@@ -79,9 +99,10 @@ struct NotebookInspectorPanel: View {
             aiSectionOrigin: isAIColumn ? (isSummaryColumnValue ? "Columna de síntesis pedagógica editable" : "Columna de comentario IA editable") : nil,
             aiRegenerateTitle: isAIColumn ? (isSummaryColumnValue ? "Regenerar síntesis pedagógica" : "Regenerar comentario IA") : nil,
             averageExplanation: item.row.averageExplanation,
+            studentInsightEvidence: evidence,
             pendingColumns: item.row.averageExplanation?.pendingCells ?? [],
-            recentObservations: recentObservations(for: item),
-            rubricSummaries: rubricSummaries(for: item),
+            recentObservations: observations,
+            rubricSummaries: rubrics,
             canOpenEvaluation: column?.evaluationId != nil,
             canOpenRubric: column?.rubricId != nil,
             showsAttendanceShortcut: column?.categoryKind == .attendance,
@@ -156,6 +177,15 @@ struct NotebookInspectorPanel: View {
     private func averageWeightText(for item: NotebookTableRow) -> String {
         guard let explanation = item.row.averageExplanation else { return "0.0" }
         return IosFormatting.decimal(from: explanation.totalIncludedWeight)
+    }
+
+    private func doubleValue(from value: Any?) -> Double? {
+        guard let value else { return nil }
+        if let value = value as? Double { return value }
+        if let value = value as? Float { return Double(value) }
+        if let value = value as? NSNumber { return value.doubleValue }
+        if let value = value as? KotlinDouble { return value.doubleValue }
+        return nil
     }
 
     private func rubricSummaryText(for item: NotebookTableRow) -> String {

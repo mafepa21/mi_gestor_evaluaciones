@@ -28,22 +28,31 @@ enum AppleAIIntent: Equatable {
     case contextual(TeachingAssistantUseCase)
     case report(AIReportAudience)
     case analytics
+    case studentInsight
 }
 
 enum AppleAIRequest {
     case report(KmpBridge.ReportGenerationContext, AIReportAudience, AIReportTone)
+    case reportSummary(KmpBridge.ReportGenerationContext, AIReportAudience, AIReportTone)
     case chartInsight(KmpBridge.ChartFacts)
     case notebookComment(KmpBridge.NotebookAICommentContext, AIReportAudience, AIReportTone)
     case teachingDraft(TeachingEvidencePack, AIReportAudience, AIReportTone, String?)
+    case studentInsight(StudentInsightEvidence)
+    case averageExplanation(NotebookAverageExplanation, StudentInsightEvidence)
+    case tutorMeetingSummary(StudentInsightEvidence)
     case physicalScaleRecommendation(PhysicalScaleRecommendationInput)
     case formulaSuggestion(String, String, [NotebookColumnDefinition])
 }
 
 enum AppleAIResult {
     case report(AIReportDraft)
+    case reportSummary(StudentReportSummary)
     case chartInsight(AIChartInsight)
     case notebookComment(NotebookAICommentDraft)
     case teachingDraft(TeachingAssistantDraft)
+    case studentInsight(StudentInsightDraft)
+    case averageExplanation(AverageExplanationDraft)
+    case tutorMeetingSummary(TutorMeetingSummaryDraft)
     case physicalScaleRecommendation(PhysicalScaleRecommendationDraft)
     case formulaSuggestion(String)
 }
@@ -58,6 +67,7 @@ final class AppleAIOrchestrator {
     private let contextual = AppleFoundationContextualAIService()
     private let reports = AppleFoundationReportService()
     private let analytics = AppleFoundationAnalyticsService()
+    private let studentInsights = AppleFoundationStudentInsightService()
     private let formulas = AppleFoundationFormulaService()
 
     func availability() -> AppleAIAvailability {
@@ -93,6 +103,8 @@ final class AppleAIOrchestrator {
             reports.prewarm()
         case .analytics:
             analytics.prewarm()
+        case .studentInsight:
+            studentInsights.prewarm()
         }
     }
 
@@ -100,12 +112,20 @@ final class AppleAIOrchestrator {
         switch request {
         case let .report(context, audience, tone):
             return .report(try await reports.generateDraft(from: context, audience: audience, tone: tone))
+        case let .reportSummary(context, audience, tone):
+            return .reportSummary(try await reports.generateSummary(from: context, audience: audience, tone: tone))
         case let .chartInsight(facts):
             return .chartInsight(try await analytics.generateInsight(from: facts))
         case let .notebookComment(context, audience, tone):
             return .notebookComment(try await contextual.generateNotebookComment(from: context, audience: audience, tone: tone))
         case let .teachingDraft(evidence, audience, tone, customPrompt):
             return .teachingDraft(try await contextual.generateTeachingDraft(from: evidence, audience: audience, tone: tone, customPrompt: customPrompt))
+        case let .studentInsight(evidence):
+            return .studentInsight(try await studentInsights.generateStudentInsight(from: evidence))
+        case let .averageExplanation(explanation, evidence):
+            return .averageExplanation(try await studentInsights.generateAverageExplanation(from: explanation, evidence: evidence))
+        case let .tutorMeetingSummary(evidence):
+            return .tutorMeetingSummary(try await studentInsights.generateTutorMeetingSummary(from: evidence))
         case let .physicalScaleRecommendation(input):
             return .physicalScaleRecommendation(try await contextual.generatePhysicalScaleRecommendation(from: input))
         case let .formulaSuggestion(prompt, currentFormula, columns):
@@ -151,11 +171,19 @@ final class AppleAIOrchestrator {
         switch result {
         case .report(let draft):
             return draft.appearsToBeRulesFallback
+        case .reportSummary(let summary):
+            return summary.appearsToBeRulesFallback
         case .chartInsight(let insight):
             return insight.appearsToBeRulesFallback
         case .notebookComment(let draft):
             return draft.appearsToBeRulesFallback
         case .teachingDraft(let draft):
+            return draft.appearsToBeRulesFallback
+        case .studentInsight(let draft):
+            return draft.appearsToBeRulesFallback
+        case .averageExplanation(let draft):
+            return draft.appearsToBeRulesFallback
+        case .tutorMeetingSummary(let draft):
             return draft.appearsToBeRulesFallback
         case .physicalScaleRecommendation(let draft):
             return draft.appearsToBeRulesFallback

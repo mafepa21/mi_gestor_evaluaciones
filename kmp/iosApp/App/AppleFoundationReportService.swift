@@ -60,18 +60,61 @@ enum AIReportAvailabilityState: Equatable {
     }
 }
 
-struct AIReportDraft {
+struct StudentReportSummary: Hashable {
     let title: String
     let summary: String
     let strengths: [String]
-    let needsAttention: [String]
-    let recommendedActions: [String]
-    let familyFacingVersion: String
-    let teacherNotesVersion: String
+    let weaknesses: [String]
+    let progressAreas: [String]
+    let recommendations: [String]
+    let familyFacingSummary: String
+    let teacherNotes: String
+}
+
+extension StudentReportSummary {
+    var appearsToBeRulesFallback: Bool {
+        title.localizedCaseInsensitiveContains("reglas") ||
+        teacherNotes.localizedCaseInsensitiveContains("Resumen docente:")
+    }
+}
+
+struct AIReportDraft {
+    let reportSummary: StudentReportSummary
+
+    var title: String { reportSummary.title }
+    var summary: String { reportSummary.summary }
+    var strengths: [String] { reportSummary.strengths }
+    var needsAttention: [String] { reportSummary.weaknesses }
+    var recommendedActions: [String] { reportSummary.recommendations }
+    var familyFacingVersion: String { reportSummary.familyFacingSummary }
+    var teacherNotesVersion: String { reportSummary.teacherNotes }
+
+    init(
+        title: String,
+        summary: String,
+        strengths: [String],
+        needsAttention: [String],
+        progressAreas: [String] = [],
+        recommendedActions: [String],
+        familyFacingVersion: String,
+        teacherNotesVersion: String
+    ) {
+        self.reportSummary = StudentReportSummary(
+            title: title,
+            summary: summary,
+            strengths: strengths,
+            weaknesses: needsAttention,
+            progressAreas: progressAreas,
+            recommendations: recommendedActions,
+            familyFacingSummary: familyFacingVersion,
+            teacherNotes: teacherNotesVersion
+        )
+    }
 
     var editableText: String {
         let strengthBlock = strengths.isEmpty ? "Sin fortalezas concluyentes con los datos actuales." : strengths.map { "• \($0)" }.joined(separator: "\n")
         let attentionBlock = needsAttention.isEmpty ? "Sin alertas específicas con los datos actuales." : needsAttention.map { "• \($0)" }.joined(separator: "\n")
+        let progressBlock = reportSummary.progressAreas.isEmpty ? "Sin áreas de progreso específicas con los datos actuales." : reportSummary.progressAreas.map { "• \($0)" }.joined(separator: "\n")
         let actionBlock = recommendedActions.isEmpty ? "• Mantener recogida de evidencias antes del próximo corte." : recommendedActions.map { "• \($0)" }.joined(separator: "\n")
 
         return """
@@ -85,6 +128,9 @@ struct AIReportDraft {
 
         Aspectos a vigilar
         \(attentionBlock)
+
+        Áreas de progreso
+        \(progressBlock)
 
         Próximos pasos recomendados
         \(actionBlock)
@@ -259,6 +305,14 @@ final class AppleFoundationReportService {
         }
     }
 
+    func generateSummary(
+        from context: KmpBridge.ReportGenerationContext,
+        audience: AIReportAudience,
+        tone: AIReportTone
+    ) async throws -> StudentReportSummary {
+        try await generateDraft(from: context, audience: audience, tone: tone).reportSummary
+    }
+
     func generateTeacherRadarReport(
         from evidence: TeachingEvidencePack,
         audience: AIReportAudience = .tutoria,
@@ -285,6 +339,7 @@ final class AppleFoundationReportService {
             summary: evidence.summary,
             strengths: Array(strengths.prefix(4)),
             needsAttention: Array(warnings.prefix(5)),
+            progressAreas: Array(evidence.factTexts.filter { !$0.localizedCaseInsensitiveContains("mejora") }.prefix(3)),
             recommendedActions: Array(actions.prefix(5)),
             familyFacingVersion: "Resumen prudente basado en datos objetivos del seguimiento docente. No incluye causas personales ni diagnósticos.",
             teacherNotesVersion: """
@@ -381,6 +436,7 @@ final class AppleFoundationReportService {
             summary: content.summary,
             strengths: content.strengths,
             needsAttention: content.needsAttention,
+            progressAreas: content.progressAreas,
             recommendedActions: content.recommendedActions,
             familyFacingVersion: content.familyFacingVersion,
             teacherNotesVersion: content.teacherNotesVersion
@@ -497,6 +553,7 @@ final class AppleFoundationReportService {
         - summary: un párrafo breve y prudente.
         - strengths: entre 1 y 4 puntos.
         - needsAttention: entre 1 y 4 puntos.
+        - progressAreas: entre 1 y 4 áreas de progreso o continuidad observable.
         - recommendedActions: entre 1 y 4 acciones concretas.
         - familyFacingVersion: lenguaje claro, no técnico y respetuoso.
         - teacherNotesVersion: lenguaje profesional, accionable y conciso.
@@ -579,6 +636,7 @@ final class AppleFoundationReportService {
     private func fallbackDraft(from context: KmpBridge.ReportGenerationContext) -> AIReportDraft {
         let strengths = Array((context.strengths.isEmpty ? context.factLines : context.strengths).prefix(4))
         let needsAttention = Array((context.needsAttention.isEmpty ? context.supportNotes : context.needsAttention).prefix(4))
+        let progressAreas = Array((context.curriculumReferences.isEmpty ? context.promptDirectives : context.curriculumReferences).prefix(4))
         let recommendedActions = Array((context.recommendedActions.isEmpty ? ["Mantener recogida de evidencias antes del próximo corte."] : context.recommendedActions).prefix(4))
         let summary = context.summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? "Borrador generado por reglas con los datos disponibles del cuaderno."
@@ -604,6 +662,7 @@ final class AppleFoundationReportService {
             summary: summary,
             strengths: strengths.isEmpty ? ["Sin fortalezas concluyentes con los datos actuales."] : strengths,
             needsAttention: needsAttention.isEmpty ? ["Sin alertas específicas con los datos actuales."] : needsAttention,
+            progressAreas: progressAreas.isEmpty ? ["Mantener continuidad en la recogida de evidencias observables."] : progressAreas,
             recommendedActions: recommendedActions,
             familyFacingVersion: familyVersion,
             teacherNotesVersion: teacherVersion
@@ -656,6 +715,7 @@ final class AppleFoundationReportService {
         let summary: String
         let strengths: [String]
         let needsAttention: [String]
+        let progressAreas: [String]
         let recommendedActions: [String]
         let familyFacingVersion: String
         let teacherNotesVersion: String

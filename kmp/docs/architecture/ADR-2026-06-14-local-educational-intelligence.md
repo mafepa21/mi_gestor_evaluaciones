@@ -24,9 +24,14 @@ La primera entrega vive en el inspector del Cuaderno con:
 - `TutorMeetingSummaryDraft`
 - `StudentInsightEvidence`
 
+La segunda entrega aplica el mismo criterio a informes:
+
+- `StudentReportSummary` es el objeto estructurado para fortalezas, aspectos a vigilar, areas de progreso, recomendaciones y versiones docente/familia.
+- `AIReportDraft` se mantiene como envoltorio compatible para las vistas existentes y para texto editable/exportable.
+
 ## Consecuencias
 
 - No se recalculan medias ni pesos en Swift ni en Foundation Models.
 - Los prompts deben incluir evidencia acotada y trazable.
-- Las futuras areas de informes, Educacion Fisica y alertas preventivas deben seguir el mismo patron: datos KMP, objeto Swift, UI nativa.
+- Las futuras areas de Educacion Fisica y alertas preventivas deben seguir el mismo patron: datos KMP, objeto Swift, UI nativa.
 - Cualquier cambio que requiera datos nuevos debe justificarse antes de tocar `KmpBridge.swift`, `kmp/shared` o `kmp/data`.

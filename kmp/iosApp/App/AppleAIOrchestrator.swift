@@ -33,6 +33,7 @@ enum AppleAIIntent: Equatable {
 
 enum AppleAIRequest {
     case report(KmpBridge.ReportGenerationContext, AIReportAudience, AIReportTone)
+    case reportSummary(KmpBridge.ReportGenerationContext, AIReportAudience, AIReportTone)
     case chartInsight(KmpBridge.ChartFacts)
     case notebookComment(KmpBridge.NotebookAICommentContext, AIReportAudience, AIReportTone)
     case teachingDraft(TeachingEvidencePack, AIReportAudience, AIReportTone, String?)
@@ -45,6 +46,7 @@ enum AppleAIRequest {
 
 enum AppleAIResult {
     case report(AIReportDraft)
+    case reportSummary(StudentReportSummary)
     case chartInsight(AIChartInsight)
     case notebookComment(NotebookAICommentDraft)
     case teachingDraft(TeachingAssistantDraft)
@@ -110,6 +112,8 @@ final class AppleAIOrchestrator {
         switch request {
         case let .report(context, audience, tone):
             return .report(try await reports.generateDraft(from: context, audience: audience, tone: tone))
+        case let .reportSummary(context, audience, tone):
+            return .reportSummary(try await reports.generateSummary(from: context, audience: audience, tone: tone))
         case let .chartInsight(facts):
             return .chartInsight(try await analytics.generateInsight(from: facts))
         case let .notebookComment(context, audience, tone):
@@ -167,6 +171,8 @@ final class AppleAIOrchestrator {
         switch result {
         case .report(let draft):
             return draft.appearsToBeRulesFallback
+        case .reportSummary(let summary):
+            return summary.appearsToBeRulesFallback
         case .chartInsight(let insight):
             return insight.appearsToBeRulesFallback
         case .notebookComment(let draft):

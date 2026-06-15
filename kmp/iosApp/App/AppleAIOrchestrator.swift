@@ -31,6 +31,53 @@ enum AppleAIIntent: Equatable {
     case studentInsight
 }
 
+enum EducationalIntelligenceAgent: String, CaseIterable, Identifiable {
+    case tutor
+    case evaluator
+    case physicalEducation
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .tutor:
+            return "Agente Tutor"
+        case .evaluator:
+            return "Agente Evaluador"
+        case .physicalEducation:
+            return "Agente EF"
+        }
+    }
+
+    var summary: String {
+        switch self {
+        case .tutor:
+            return "Prepara tutorias desde evidencias del alumno."
+        case .evaluator:
+            return "Explica medias e insights sin recalcular KMP."
+        case .physicalEducation:
+            return "Resume progreso fisico desde snapshots de pruebas."
+        }
+    }
+}
+
+enum EducationalIntelligenceAgentInput {
+    case student(StudentInsightEvidence)
+    case average(NotebookAverageExplanation, StudentInsightEvidence)
+    case physical(PhysicalProgressEvidence)
+}
+
+enum EducationalIntelligenceAgentError: LocalizedError {
+    case unsupportedInput(EducationalIntelligenceAgent)
+
+    var errorDescription: String? {
+        switch self {
+        case .unsupportedInput(let agent):
+            return "\(agent.title) no puede procesar esa evidencia."
+        }
+    }
+}
+
 enum AppleAIRequest {
     case report(KmpBridge.ReportGenerationContext, AIReportAudience, AIReportTone)
     case reportSummary(KmpBridge.ReportGenerationContext, AIReportAudience, AIReportTone)
@@ -138,6 +185,24 @@ final class AppleAIOrchestrator {
             return .physicalProgressAnalysis(try await contextual.generatePhysicalProgressAnalysis(from: evidence))
         case let .formulaSuggestion(prompt, currentFormula, columns):
             return .formulaSuggestion(try await formulas.generateFormula(request: prompt, currentFormula: currentFormula, availableColumns: columns))
+        }
+    }
+
+    func generate(
+        agent: EducationalIntelligenceAgent,
+        input: EducationalIntelligenceAgentInput
+    ) async throws -> AppleAIResult {
+        switch (agent, input) {
+        case (.tutor, .student(let evidence)):
+            return try await generate(.tutorMeetingSummary(evidence))
+        case (.evaluator, .student(let evidence)):
+            return try await generate(.studentInsight(evidence))
+        case (.evaluator, .average(let explanation, let evidence)):
+            return try await generate(.averageExplanation(explanation, evidence))
+        case (.physicalEducation, .physical(let evidence)):
+            return try await generate(.physicalProgressAnalysis(evidence))
+        default:
+            throw EducationalIntelligenceAgentError.unsupportedInput(agent)
         }
     }
 

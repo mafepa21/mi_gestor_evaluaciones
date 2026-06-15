@@ -52,6 +52,8 @@ Prioridad: alta.
 - IA preventiva: señal local no diagnóstica desde evidencias del Cuaderno.
   Avance: `EarlyWarning` se muestra dentro del inspector del alumno con severidad, causas, recomendación y confianza revisable.
   Avance: el inspector presenta `EarlyWarning` como señal preventiva revisable y no como diagnóstico, con confianza cualitativa y procedencia visible.
+- Agentes educativos internos: agrupar capacidades de Tutor, Evaluador y EF sin interfaz de chat.
+  Avance: `AppleAIOrchestrator` inicia un router tipado para enviar evidencias existentes a los servicios estructurados ya implementados.
 - Accesibilidad: contraste, foco, labels y navegacion por teclado donde aplique.
 - UI/UX: reducir ruido visual, reforzar jerarquia y mantener rejilla disciplinada.
 

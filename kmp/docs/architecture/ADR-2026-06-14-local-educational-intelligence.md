@@ -39,9 +39,16 @@ La cuarta entrega inicia IA preventiva:
 - `EarlyWarning` clasifica severidad, causas, evidencia, recomendaciones y confianza desde `StudentInsightEvidence`.
 - La primera integracion vive en el inspector del alumno; no persiste alertas ni crea decisiones automaticas.
 
+La quinta entrega inicia agentes especializados internos:
+
+- `EducationalIntelligenceAgent` agrupa capacidades bajo roles `tutor`, `evaluator` y `physicalEducation`.
+- `AppleAIOrchestrator` enruta cada agente hacia requests ya existentes, sin interfaz de chat ni nueva fuente de datos.
+- Los agentes son una organizacion interna de capacidades, no actores autonomos con capacidad de modificar datos o decidir navegacion.
+
 ## Consecuencias
 
 - No se recalculan medias ni pesos en Swift ni en Foundation Models.
 - Los prompts deben incluir evidencia acotada y trazable.
 - Las futuras ampliaciones preventivas deben seguir el mismo patron: datos KMP, objeto Swift, UI nativa.
+- Los agentes especializados deben reutilizar requests estructurados existentes antes de crear nuevos servicios.
 - Cualquier cambio que requiera datos nuevos debe justificarse antes de tocar `KmpBridge.swift`, `kmp/shared` o `kmp/data`.

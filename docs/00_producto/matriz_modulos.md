@@ -17,7 +17,7 @@ verdad, que riesgo tiene y cual es la siguiente accion revisable.
 | Backups | Activo parcial. | `BackupsWorkspaceView.swift`, Mac backups. | Restauracion destructiva o fuga de datos. | Prueba backup/restauracion con fixtures. | Definir checklist de backup por release. |
 | Sync local/LAN | En curso o futuro. | `sync/SyncCoordinator.kt`, servicios desktop. | Transferencia no documentada y conflictos. | Tests de contrato antes de activar. | ADR antes de sync externo o comercial. |
 | Educacion Fisica | Activo. | `PhysicalTestsWorkspaceView.swift`, escalas y perfiles. | Interpretacion de marcas y datos sensibles de salud/rendimiento. | Tests de dominio fisico y revision UX. | Separar datos brutos de evaluables. |
-| IA contextual | Activo parcial. | Servicios Apple Foundation y casos KMP de tendencias. | Transparencia, minimizacion y salida externa. | Build Apple y fixtures anonimos. | Documentar cada flujo de IA. |
+| IA contextual | Activo parcial. | Servicios Apple Foundation y casos KMP de tendencias. | Transparencia, minimizacion, tono no diagnostico y salida externa. | Build Apple, auditoria de prompts y fixtures anonimos. | Documentar cada flujo de IA y revisar señales sensibles antes de ampliar producto. |
 | Ajustes | Activo. | `SettingsWorkspaceView.swift`, Mac settings. | Opciones sin utilidad diaria o configuracion no persistida. | Build Apple y prueba manual. | Mantener solo controles necesarios. |
 
 ## Capas tecnicas

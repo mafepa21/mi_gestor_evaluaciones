@@ -25,10 +25,11 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- El `EarlyWarning` del inspector del Cuaderno se presenta como señal preventiva revisable, con etiquetas de confianza cualitativas y nota de procedencia visible, evitando apariencia de diagnóstico o decisión automática.
 - `AppleAIOrchestrator` añade intents estructurados para insight de alumno, explicación docente de media y resumen de tutoría sin recalcular datos KMP ni modificar persistencia.
 - `AppleFoundationReportService` pasa a mapear la generación local y el fallback de informes hacia `StudentReportSummary`, separando el resumen estructurado del texto editable.
 - `AppleFoundationContextualAIService` añade análisis estructurado de progreso físico sin recalcular marcas ni tocar persistencia.
-- `AppleFoundationStudentInsightService` añade alertas preventivas estructuradas sin diagnosticar ni modificar datos del alumno.
+- `AppleFoundationStudentInsightService` añade señales preventivas estructuradas sin diagnosticar ni modificar datos del alumno.
 - Se simplifica el toolbar del Cuaderno en iOS/iPadOS unificándolo en un único toolbar nativo superior que contiene el selector de clases, estado de sincronización, selector de vista (Grid/Plano), añadir columna, reordenar columnas, toggle de inspector, búsqueda y menú overflow, eliminando la barra manual duplicada `notebookMacLikeToolbar` del cuerpo de la pantalla y el toolbar nativo duplicado de `NotebookModuleView` en iPad.
 - La toolbar macOS del Cuaderno reduce su superficie primaria a clase activa, añadir columna, búsqueda, estado de sync opcional y menú secundario; Columnas ocultas pasa al menú `Más`.
 - En macOS, `⌘F` ya no cambia de módulo automáticamente: enfoca la búsqueda del Cuaderno solo cuando el Cuaderno está activo y muestra un aviso discreto en otros módulos.
@@ -54,6 +55,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Auditoría acotada del flujo `EarlyWarning` en `NotebookStudentInspector.swift`, `AppleFoundationStudentInsightService.swift` y llamadas Apple directas: se mitigó el riesgo de tono diagnóstico sustituyendo “alerta/riesgo” por “señal/revisión”, confianza porcentual por etiqueta cualitativa y reglas de prompt centradas en señales observables.
+- `git diff --check` completado correctamente tras la estabilización de `EarlyWarning`. `xcodebuild -list -project kmp/iosApp/MiGestorKMPiOS.xcodeproj` no pudo ejecutarse porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y requiere Xcode completo.
 - `plutil -lint kmp/iosApp/MiGestorKMPiOS.xcodeproj/project.pbxproj` y `git diff --check` completados correctamente tras registrar `AppleFoundationStudentInsightService.swift` en los targets Apple. `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -list` no pudo ejecutarse porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y no hay Xcode completo visible en `/Applications`.
 - `git diff --check` completado correctamente tras introducir `StudentReportSummary` en `AppleFoundationReportService` y exponer `reportSummary` en `AppleAIOrchestrator`. La compilación Xcode sigue pendiente por la misma limitación de entorno local.
 - `git diff --check` completado correctamente tras iniciar `PhysicalProgressAnalysis` en Educación Física. La compilación Xcode sigue pendiente por la limitación de Command Line Tools.

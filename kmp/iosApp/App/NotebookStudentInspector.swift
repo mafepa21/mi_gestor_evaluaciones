@@ -823,6 +823,14 @@ private struct NotebookEarlyWarningView: View {
         }
     }
 
+    private var confidenceLabel: String {
+        switch warning.confidence {
+        case ..<0.4: return "Confianza baja"
+        case ..<0.7: return "Confianza media"
+        default: return "Confianza alta"
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
@@ -834,7 +842,7 @@ private struct NotebookEarlyWarningView: View {
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Alerta preventiva")
+                    Text("Señal preventiva")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(.secondary)
                     Text(warning.severity.title)
@@ -843,7 +851,7 @@ private struct NotebookEarlyWarningView: View {
 
                 Spacer(minLength: 8)
 
-                Text("\(Int((warning.confidence * 100).rounded()))%")
+                Text(confidenceLabel)
                     .font(.caption.monospacedDigit().weight(.bold))
                     .foregroundStyle(.secondary)
             }
@@ -861,6 +869,11 @@ private struct NotebookEarlyWarningView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+
+            Text(warning.confidenceNote)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(10)
         .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))

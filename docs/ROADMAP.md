@@ -49,8 +49,9 @@ Prioridad: alta.
   Avance: el briefing diario usa contrato estable de 3 alertas, 2 acciones, resumen evaluativo y aviso de datos incompletos.
 - Educación Física: análisis local de progreso físico por grupo.
   Avance: `PhysicalProgressAnalysis` empieza a leer snapshots de pruebas físicas para resumir estado, fortalezas, debilidades, recomendaciones y alertas desde la pestaña Informes.
-- IA preventiva: alerta local no diagnóstica desde evidencias del Cuaderno.
+- IA preventiva: señal local no diagnóstica desde evidencias del Cuaderno.
   Avance: `EarlyWarning` se muestra dentro del inspector del alumno con severidad, causas, recomendación y confianza revisable.
+  Avance: el inspector presenta `EarlyWarning` como señal preventiva revisable y no como diagnóstico, con confianza cualitativa y procedencia visible.
 - Accesibilidad: contraste, foco, labels y navegacion por teclado donde aplique.
 - UI/UX: reducir ruido visual, reforzar jerarquia y mantener rejilla disciplinada.
 

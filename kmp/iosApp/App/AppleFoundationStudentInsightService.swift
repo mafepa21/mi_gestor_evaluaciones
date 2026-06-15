@@ -125,9 +125,9 @@ enum EarlyWarningSeverity: String, CaseIterable, Hashable {
 
     var title: String {
         switch self {
-        case .normal: return "Seguimiento normal"
-        case .moderate: return "Riesgo moderado"
-        case .priority: return "Atención prioritaria"
+        case .normal: return "Seguimiento ordinario"
+        case .moderate: return "Revisar señales"
+        case .priority: return "Revisión prioritaria"
         }
     }
 }
@@ -280,7 +280,7 @@ final class AppleFoundationStudentInsightService {
 
     func generateEarlyWarning(from evidence: StudentInsightEvidence) async throws -> EarlyWarning {
         guard evidence.hasEnoughData else {
-            return fallbackEarlyWarning(from: evidence, reason: "Datos insuficientes para alerta preventiva.")
+            return fallbackEarlyWarning(from: evidence, reason: "Datos insuficientes para señal preventiva.")
         }
         guard AppleFoundationModelSupport.resolveAvailability(isEnabled: true) == .available else {
             return fallbackEarlyWarning(from: evidence, reason: "Generado por reglas locales revisables.")
@@ -355,11 +355,12 @@ final class AppleFoundationStudentInsightService {
     private func makeEarlyWarningSession() -> LanguageModelSession {
         LanguageModelSession(
             instructions: """
-            Actúas como sistema local de alerta preventiva educativa.
+            Actúas como sistema local de señal preventiva educativa.
             Usa exclusivamente la evidencia proporcionada.
             No diagnostiques, no etiquetes al alumno y no inventes causas.
             Clasifica severidad solo como normal, moderate o priority.
-            Devuelve evidencia y recomendaciones revisables por el docente.
+            Redacta causas como señales observables del cuaderno, no como motivos personales.
+            Devuelve evidencia y recomendaciones revisables por el docente antes de actuar.
             """
         )
     }
@@ -480,6 +481,8 @@ final class AppleFoundationStudentInsightService {
             - Máximo 3 causas, 4 evidencias y 3 recomendaciones.
             - Si faltan datos, usa normal o moderate con confidence bajo.
             - No inventes factores personales, clínicos ni familiares.
+            - Las causas deben ser señales visibles en la evidencia, no conclusiones diagnósticas.
+            - Las recomendaciones deben ser acciones docentes revisables y no decisiones automáticas.
             """
         )
     }

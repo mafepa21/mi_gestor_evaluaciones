@@ -1102,7 +1102,10 @@ struct PhysicalTestsWorkspaceView: View {
         progressAnalysisError = nil
         defer { isGeneratingProgressAnalysis = false }
         do {
-            let result = try await aiOrchestrator.generate(.physicalProgressAnalysis(evidence))
+            let result = try await aiOrchestrator.generate(
+                capability: .physicalProgressAnalysis,
+                input: .physical(evidence)
+            )
             if case .physicalProgressAnalysis(let analysis) = result {
                 progressAnalysis = analysis
             }

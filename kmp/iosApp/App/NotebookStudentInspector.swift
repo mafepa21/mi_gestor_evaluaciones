@@ -558,13 +558,19 @@ struct NotebookStudentInspector: View {
         defer { isLoadingEducationalInsight = false }
 
         do {
-            let insightResult = try await educationalInsightOrchestrator.generate(.studentInsight(evidence))
+            let insightResult = try await educationalInsightOrchestrator.generate(
+                capability: .studentInsight,
+                input: .student(evidence)
+            )
             if case .studentInsight(let draft) = insightResult {
                 educationalInsight = draft
             }
 
             if let explanation = averageExplanation {
-                let averageResult = try await educationalInsightOrchestrator.generate(.averageExplanation(explanation, evidence))
+                let averageResult = try await educationalInsightOrchestrator.generate(
+                    capability: .averageExplanation,
+                    input: .average(explanation, evidence)
+                )
                 if case .averageExplanation(let draft) = averageResult {
                     averageInsight = draft
                 }
@@ -572,7 +578,10 @@ struct NotebookStudentInspector: View {
                 averageInsight = nil
             }
 
-            let warningResult = try await educationalInsightOrchestrator.generate(.earlyWarning(evidence))
+            let warningResult = try await educationalInsightOrchestrator.generate(
+                capability: .earlyWarning,
+                input: .student(evidence)
+            )
             if case .earlyWarning(let warning) = warningResult {
                 earlyWarning = warning
             }

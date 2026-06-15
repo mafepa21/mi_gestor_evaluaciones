@@ -31,6 +31,111 @@ enum AppleAIIntent: Equatable {
     case studentInsight
 }
 
+enum EducationalIntelligenceAgent: String, CaseIterable, Identifiable {
+    case tutor
+    case evaluator
+    case physicalEducation
+
+    var id: String { rawValue }
+
+    var capabilities: [EducationalIntelligenceCapability] {
+        EducationalIntelligenceCapability.allCases.filter { $0.agent == self }
+    }
+
+    var title: String {
+        switch self {
+        case .tutor:
+            return "Agente Tutor"
+        case .evaluator:
+            return "Agente Evaluador"
+        case .physicalEducation:
+            return "Agente EF"
+        }
+    }
+
+    var summary: String {
+        switch self {
+        case .tutor:
+            return "Prepara tutorias desde evidencias del alumno."
+        case .evaluator:
+            return "Explica medias e insights sin recalcular KMP."
+        case .physicalEducation:
+            return "Resume progreso fisico desde snapshots de pruebas."
+        }
+    }
+}
+
+enum EducationalIntelligenceCapability: String, CaseIterable, Identifiable {
+    case studentInsight
+    case averageExplanation
+    case tutorMeetingSummary
+    case earlyWarning
+    case physicalProgressAnalysis
+
+    var id: String { rawValue }
+
+    var agent: EducationalIntelligenceAgent {
+        switch self {
+        case .studentInsight, .averageExplanation:
+            return .evaluator
+        case .tutorMeetingSummary, .earlyWarning:
+            return .tutor
+        case .physicalProgressAnalysis:
+            return .physicalEducation
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .studentInsight:
+            return "Insight educativo"
+        case .averageExplanation:
+            return "Media explicada"
+        case .tutorMeetingSummary:
+            return "Resumen de tutoría"
+        case .earlyWarning:
+            return "Señal preventiva"
+        case .physicalProgressAnalysis:
+            return "Análisis EF"
+        }
+    }
+
+    var summary: String {
+        switch self {
+        case .studentInsight:
+            return "Resume fortalezas, mejoras y recomendaciones del alumno."
+        case .averageExplanation:
+            return "Redacta la media calculada por KMP sin recalcularla."
+        case .tutorMeetingSummary:
+            return "Prepara puntos clave y acciones para una tutoría."
+        case .earlyWarning:
+            return "Ordena señales revisables sin diagnosticar ni decidir."
+        case .physicalProgressAnalysis:
+            return "Resume progreso físico desde snapshots existentes."
+        }
+    }
+}
+
+enum EducationalIntelligenceAgentInput {
+    case student(StudentInsightEvidence)
+    case average(NotebookAverageExplanation, StudentInsightEvidence)
+    case physical(PhysicalProgressEvidence)
+}
+
+enum EducationalIntelligenceAgentError: LocalizedError {
+    case unsupportedInput(EducationalIntelligenceAgent)
+    case unsupportedCapability(EducationalIntelligenceCapability)
+
+    var errorDescription: String? {
+        switch self {
+        case .unsupportedInput(let agent):
+            return "\(agent.title) no puede procesar esa evidencia."
+        case .unsupportedCapability(let capability):
+            return "\(capability.title) no puede procesar esa evidencia."
+        }
+    }
+}
+
 enum AppleAIRequest {
     case report(KmpBridge.ReportGenerationContext, AIReportAudience, AIReportTone)
     case reportSummary(KmpBridge.ReportGenerationContext, AIReportAudience, AIReportTone)
@@ -141,6 +246,44 @@ final class AppleAIOrchestrator {
         }
     }
 
+    func generate(
+        agent: EducationalIntelligenceAgent,
+        input: EducationalIntelligenceAgentInput
+    ) async throws -> AppleAIResult {
+        switch (agent, input) {
+        case (.tutor, .student(let evidence)):
+            return try await generate(.tutorMeetingSummary(evidence))
+        case (.evaluator, .student(let evidence)):
+            return try await generate(.studentInsight(evidence))
+        case (.evaluator, .average(let explanation, let evidence)):
+            return try await generate(.averageExplanation(explanation, evidence))
+        case (.physicalEducation, .physical(let evidence)):
+            return try await generate(.physicalProgressAnalysis(evidence))
+        default:
+            throw EducationalIntelligenceAgentError.unsupportedInput(agent)
+        }
+    }
+
+    func generate(
+        capability: EducationalIntelligenceCapability,
+        input: EducationalIntelligenceAgentInput
+    ) async throws -> AppleAIResult {
+        switch (capability, input) {
+        case (.studentInsight, .student(let evidence)):
+            return try await generate(.studentInsight(evidence))
+        case (.averageExplanation, .average(let explanation, let evidence)):
+            return try await generate(.averageExplanation(explanation, evidence))
+        case (.tutorMeetingSummary, .student(let evidence)):
+            return try await generate(.tutorMeetingSummary(evidence))
+        case (.earlyWarning, .student(let evidence)):
+            return try await generate(.earlyWarning(evidence))
+        case (.physicalProgressAnalysis, .physical(let evidence)):
+            return try await generate(.physicalProgressAnalysis(evidence))
+        default:
+            throw EducationalIntelligenceAgentError.unsupportedCapability(capability)
+        }
+    }
+
     func generateWithTrace(
         _ request: AppleAIRequest,
         dataSource: String,
@@ -161,6 +304,36 @@ final class AppleAIOrchestrator {
                 audit: AppleAIGenerationAudit(
                     generatedAt: Date(),
                     dataSource: dataSource,
+                    includedEvidence: boundedEvidence,
+                    usedRealAI: availability.isAvailable && !usedFallback,
+                    usedFallback: usedFallback,
+                    durationMs: durationMs
+                )
+            )
+        )
+    }
+
+    func generateWithTrace(
+        capability: EducationalIntelligenceCapability,
+        input: EducationalIntelligenceAgentInput,
+        dataSource: String,
+        includedEvidence: [String]
+    ) async throws -> AppleAIGeneration {
+        let startedAt = Date()
+        let availability = availability()
+        let result = try await generate(capability: capability, input: input)
+        let boundedEvidence = AIContextBudget.evidenceLines(includedEvidence)
+        let durationMs = Int64(Date().timeIntervalSince(startedAt) * 1000)
+        let usedFallback = fallbackWasUsed(result: result, availability: availability)
+        let state: AppleAIGenerationState = usedFallback ? .rulesFallback : availability.generationState
+        return AppleAIGeneration(
+            result: result,
+            metadata: AppleAIGenerationMetadata(
+                state: state,
+                availabilityMessage: usedFallback ? "Resultado generado con reglas locales revisables." : availability.message,
+                audit: AppleAIGenerationAudit(
+                    generatedAt: Date(),
+                    dataSource: "\(capability.agent.title) · \(dataSource)",
                     includedEvidence: boundedEvidence,
                     usedRealAI: availability.isAvailable && !usedFallback,
                     usedFallback: usedFallback,

@@ -956,6 +956,70 @@ struct PhysicalScaleRecommendationDraft: Hashable {
     var editableProposal: String
 }
 
+struct PhysicalProgressMetric: Identifiable, Hashable {
+    let id: String
+    let testName: String
+    let average: Double
+    let best: Double?
+    let recordedCount: Int
+    let totalCount: Int
+    let directionLabel: String
+}
+
+struct PhysicalProgressEvidence: Hashable {
+    let className: String
+    let termLabel: String?
+    let metrics: [PhysicalProgressMetric]
+
+    var recordedCount: Int {
+        metrics.reduce(0) { $0 + $1.recordedCount }
+    }
+
+    var totalCount: Int {
+        metrics.reduce(0) { $0 + $1.totalCount }
+    }
+
+    var completionRate: Double {
+        guard totalCount > 0 else { return 0 }
+        return Double(recordedCount) / Double(totalCount) * 100
+    }
+
+    var hasEnoughData: Bool {
+        metrics.contains { $0.recordedCount > 0 }
+    }
+
+    var evidenceLines: [String] {
+        var lines = [
+            "Grupo: \(className)",
+            "Evaluación: \(termLabel ?? "No especificada")",
+            "Cobertura de registros: \(IosFormatting.decimal(from: completionRate))%"
+        ]
+        lines += metrics.prefix(8).map { metric in
+            let bestText = metric.best.map { IosFormatting.decimal(from: $0) } ?? "sin mejor marca"
+            return "\(metric.testName): media \(IosFormatting.decimal(from: metric.average)), mejor \(bestText), registros \(metric.recordedCount)/\(metric.totalCount), dirección \(metric.directionLabel)"
+        }
+        return AIContextBudget.evidenceLines(lines)
+    }
+}
+
+struct PhysicalProgressAnalysis: Hashable {
+    let summary: String
+    let trend: String
+    let improvementPercentage: Double?
+    let strengths: [String]
+    let weaknesses: [String]
+    let recommendations: [String]
+    let alerts: [String]
+    let confidenceNote: String
+}
+
+extension PhysicalProgressAnalysis {
+    var appearsToBeRulesFallback: Bool {
+        confidenceNote.localizedCaseInsensitiveContains("reglas") ||
+        confidenceNote.localizedCaseInsensitiveContains("faltan marcas")
+    }
+}
+
 struct StudentSexInferenceDraft: Hashable {
     var sex: String
     var confidence: Double
@@ -1274,6 +1338,25 @@ final class AppleFoundationContextualAIService {
         return fallbackPhysicalScaleRecommendation(from: input, seedRanges: seedRanges)
     }
 
+    func generatePhysicalProgressAnalysis(
+        from evidence: PhysicalProgressEvidence
+    ) async throws -> PhysicalProgressAnalysis {
+        guard evidence.hasEnoughData else {
+            return fallbackPhysicalProgressAnalysis(from: evidence, reason: "Faltan marcas suficientes para analizar evolución física.")
+        }
+        let availability = currentAvailability()
+        guard availability.isAvailable else {
+            return fallbackPhysicalProgressAnalysis(from: evidence, reason: "Generado por reglas porque la IA local no está disponible.")
+        }
+
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, macOS 26.0, *) {
+            return try await generateLocalPhysicalProgressAnalysis(from: evidence)
+        }
+        #endif
+        return fallbackPhysicalProgressAnalysis(from: evidence, reason: "Generado por reglas porque la IA local no está disponible.")
+    }
+
     func inferStudentSex(firstName: String, lastName: String) async throws -> StudentSexInferenceDraft {
         let cleanedFirstName = firstName.trimmingCharacters(in: .whitespacesAndNewlines)
         return StudentSexInferenceDraft(
@@ -1435,6 +1518,42 @@ final class AppleFoundationContextualAIService {
         } catch {
             AppleFoundationModelSupport.recordRuntimeFailure(error)
             return fallbackPhysicalScaleRecommendation(from: input, seedRanges: seedRanges)
+        }
+    }
+
+    @available(iOS 26.0, macOS 26.0, *)
+    private func generateLocalPhysicalProgressAnalysis(
+        from evidence: PhysicalProgressEvidence
+    ) async throws -> PhysicalProgressAnalysis {
+        let session = LanguageModelSession(
+            instructions: """
+            Actúas como asistente local de Educación Física.
+            Analizas progreso físico de grupo desde marcas objetivas ya calculadas por la app.
+            No inventes mediciones, percentiles, diagnósticos ni normativa.
+            Devuelve un objeto breve para SwiftUI con fortalezas, debilidades, recomendaciones y alertas.
+            Redacta en español de España.
+            """
+        )
+        do {
+            let response = try await session.respond(
+                to: physicalProgressPrompt(from: evidence),
+                generating: GeneratedPhysicalProgressAnalysis.self,
+                includeSchemaInPrompt: true,
+                options: AppleFoundationModelSupport.generationOptions(temperature: 0.2)
+            )
+            return PhysicalProgressAnalysis(
+                summary: response.content.summary,
+                trend: response.content.trend,
+                improvementPercentage: response.content.improvementPercentage,
+                strengths: response.content.strengths,
+                weaknesses: response.content.weaknesses,
+                recommendations: response.content.recommendations,
+                alerts: response.content.alerts,
+                confidenceNote: response.content.confidenceNote
+            )
+        } catch {
+            AppleFoundationModelSupport.recordRuntimeFailure(error)
+            return fallbackPhysicalProgressAnalysis(from: evidence, reason: "Generado por reglas porque la IA local no está disponible.")
         }
     }
 
@@ -1800,6 +1919,70 @@ final class AppleFoundationContextualAIService {
         )
     }
 
+    private func physicalProgressPrompt(from evidence: PhysicalProgressEvidence) -> String {
+        AIContextBudget.prompt(
+            """
+            Genera PhysicalProgressAnalysis para el grupo.
+
+            Evidencia
+            \(evidence.evidenceLines.map { "- \($0)" }.joined(separator: "\n"))
+
+            Reglas:
+            - No calcules nuevos resultados ni inventes mediciones.
+            - improvementPercentage puede ser nil si no hay histórico comparable.
+            - Máximo 3 fortalezas, 3 debilidades, 3 recomendaciones y 3 alertas.
+            - Si solo hay una medición por prueba, habla de estado actual y no de evolución temporal.
+            """
+        )
+    }
+
+    private func fallbackPhysicalProgressAnalysis(
+        from evidence: PhysicalProgressEvidence,
+        reason: String
+    ) -> PhysicalProgressAnalysis {
+        let completedMetrics = evidence.metrics.filter { $0.recordedCount > 0 }
+        let fullMetrics = completedMetrics.filter { $0.recordedCount >= $0.totalCount && $0.totalCount > 0 }
+        let incompleteMetrics = evidence.metrics.filter { $0.recordedCount < $0.totalCount }
+        let highAverages = completedMetrics.filter { $0.average >= 7 }
+        let lowAverages = completedMetrics.filter { $0.average > 0 && $0.average < 5 }
+
+        return PhysicalProgressAnalysis(
+            summary: evidence.hasEnoughData
+                ? "Lectura inicial de condición física basada en las marcas registradas del grupo."
+                : "Aún no hay marcas suficientes para analizar la condición física del grupo.",
+            trend: fullMetrics.count >= max(1, evidence.metrics.count / 2) ? "Cobertura suficiente" : "Cobertura parcial",
+            improvementPercentage: nil,
+            strengths: compactOptionalTexts([
+                highAverages.first.map { "Buen rendimiento medio en \($0.testName)." },
+                fullMetrics.first.map { "Registro completo en \($0.testName)." },
+                evidence.completionRate >= 80 ? "Cobertura alta de registros físicos." : nil
+            ]).prefix(3).map { $0 },
+            weaknesses: compactOptionalTexts([
+                lowAverages.first.map { "Media baja en \($0.testName)." },
+                incompleteMetrics.first.map { "Faltan registros en \($0.testName)." },
+                evidence.completionRate < 60 ? "Cobertura de datos todavía limitada." : nil
+            ]).prefix(3).map { $0 },
+            recommendations: compactOptionalTexts([
+                "Completar marcas pendientes antes de comparar evolución.",
+                lowAverages.first.map { "Revisar propuesta didáctica asociada a \($0.testName)." },
+                "Contrastar los resultados con observación técnica y contexto del grupo."
+            ]).prefix(3).map { $0 },
+            alerts: compactOptionalTexts([
+                evidence.completionRate < 50 ? "Menos de la mitad de registros completados." : nil,
+                lowAverages.count >= 2 ? "Varias pruebas presentan medias bajas." : nil
+            ]).prefix(3).map { $0 },
+            confidenceNote: reason
+        )
+    }
+
+    private func compactOptionalTexts(_ values: [String?]) -> [String] {
+        var seen = Set<String>()
+        return values
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .filter { seen.insert($0).inserted }
+    }
+
     private func fallbackResult(
         from context: KmpBridge.ScreenAIContext,
         action: KmpBridge.ContextualAIAction
@@ -1986,6 +2169,19 @@ final class AppleFoundationContextualAIService {
         let explanation: String
         let warnings: [String]
         let editableProposal: String
+    }
+
+    @available(iOS 26.0, macOS 26.0, *)
+    @Generable
+    struct GeneratedPhysicalProgressAnalysis {
+        let summary: String
+        let trend: String
+        let improvementPercentage: Double?
+        let strengths: [String]
+        let weaknesses: [String]
+        let recommendations: [String]
+        let alerts: [String]
+        let confidenceNote: String
     }
 
     #endif

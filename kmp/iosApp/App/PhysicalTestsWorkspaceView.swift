@@ -175,6 +175,10 @@ struct PhysicalTestsWorkspaceView: View {
     @State private var selectedFilterTerm = ""
     @State private var completionFilter: PhysicalCompletionFilter = .all
     @State private var scale = PhysicalTestScaleDraft.defaultJump
+    @State private var progressAnalysis: PhysicalProgressAnalysis?
+    @State private var isGeneratingProgressAnalysis = false
+    @State private var progressAnalysisError: String?
+    @State private var aiOrchestrator = AppleAIOrchestrator()
 
     private var selectedClassName: String {
         selectedClassId.flatMap { id in bridge.classes.first(where: { $0.id == id })?.name } ?? "Clase global"
@@ -253,6 +257,25 @@ struct PhysicalTestsWorkspaceView: View {
 
     private var recordedCount: Int {
         tests.reduce(0) { $0 + $1.recordedCount }
+    }
+
+    private var physicalProgressEvidence: PhysicalProgressEvidence {
+        PhysicalProgressEvidence(
+            className: selectedClassName,
+            termLabel: selectedFilterTerm.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : selectedFilterTerm,
+            metrics: filteredTests.map { test in
+                let testId = testDefinitionId(for: test)
+                return PhysicalProgressMetric(
+                    id: test.evaluation.id.description,
+                    testName: test.evaluation.name,
+                    average: test.average,
+                    best: test.best,
+                    recordedCount: test.recordedCount,
+                    totalCount: test.results.count,
+                    directionLabel: direction(for: testId) == .higherIsBetter ? "mayor marca = mejor" : "menor marca = mejor"
+                )
+            }
+        )
     }
 
     private var activeScaleTestId: String? {
@@ -342,6 +365,11 @@ struct PhysicalTestsWorkspaceView: View {
             .appOnChange(of: selectedClassId) { _ in syncSelectedClassDefaults() }
             .appOnChange(of: selectedTestId) { _ in resetScaleDraftForActiveTest() }
             .appOnChange(of: selectedFilterTestId) { _ in resetScaleDraftForActiveTest() }
+            .appOnChange(of: selectedTab) { tab in
+                if tab == .reports, progressAnalysis == nil {
+                    Task { await generateProgressAnalysis() }
+                }
+            }
             .sheet(isPresented: $showingCreateSheet) {
                 PhysicalTestCreationSheet(defaultClassId: selectedClassId, templates: PhysicalTestTemplate.defaults) {
                     Task { await reload() }
@@ -1062,6 +1090,27 @@ struct PhysicalTestsWorkspaceView: View {
         }
     }
 
+    @MainActor
+    private func generateProgressAnalysis() async {
+        let evidence = physicalProgressEvidence
+        guard evidence.hasEnoughData else {
+            progressAnalysis = nil
+            progressAnalysisError = "Registra al menos una marca para analizar la condición física."
+            return
+        }
+        isGeneratingProgressAnalysis = true
+        progressAnalysisError = nil
+        defer { isGeneratingProgressAnalysis = false }
+        do {
+            let result = try await aiOrchestrator.generate(.physicalProgressAnalysis(evidence))
+            if case .physicalProgressAnalysis(let analysis) = result {
+                progressAnalysis = analysis
+            }
+        } catch {
+            progressAnalysisError = error.localizedDescription
+        }
+    }
+
     private func scaleDraft(from persisted: MiGestorKit.PhysicalTestScale) -> PhysicalTestScaleDraft {
         PhysicalTestScaleDraft(
             persistedScaleId: persisted.id,
@@ -1479,6 +1528,16 @@ extension PhysicalTestsWorkspaceView {
                     )
                     .frame(maxWidth: .infinity, minHeight: 260)
                 } else {
+                    PhysicalProgressAnalysisCard(
+                        analysis: progressAnalysis,
+                        evidence: physicalProgressEvidence,
+                        isLoading: isGeneratingProgressAnalysis,
+                        errorMessage: progressAnalysisError,
+                        onRefresh: {
+                            Task { await generateProgressAnalysis() }
+                        }
+                    )
+
                     NotebookSurface {
                         VStack(alignment: .leading, spacing: 14) {
                             Text("Resumen de rendimiento de la clase")
@@ -1486,7 +1545,7 @@ extension PhysicalTestsWorkspaceView {
                             
                             HStack {
                                 Spacer()
-                                ShareLink(item: "Informe de Condición Física de \(selectedClassName)\nPruebas registradas: \(tests.count)\nRegistros totales: \(recordedCount)") {
+                                ShareLink(item: physicalReportExportText) {
                                     Label("Exportar informe de clase", systemImage: "square.and.arrow.up")
                                 }
                                 .buttonStyle(.borderedProminent)
@@ -1518,6 +1577,166 @@ extension PhysicalTestsWorkspaceView {
                 }
             }
             .padding(20)
+        }
+    }
+
+    private var physicalReportExportText: String {
+        var lines = [
+            "Informe de Condición Física de \(selectedClassName)",
+            "Pruebas registradas: \(tests.count)",
+            "Registros totales: \(recordedCount)"
+        ]
+        if let progressAnalysis {
+            lines += [
+                "",
+                "Análisis",
+                progressAnalysis.summary,
+                "Tendencia: \(progressAnalysis.trend)"
+            ]
+            if !progressAnalysis.strengths.isEmpty {
+                lines += ["", "Fortalezas"] + progressAnalysis.strengths.map { "- \($0)" }
+            }
+            if !progressAnalysis.weaknesses.isEmpty {
+                lines += ["", "A vigilar"] + progressAnalysis.weaknesses.map { "- \($0)" }
+            }
+            if !progressAnalysis.recommendations.isEmpty {
+                lines += ["", "Recomendaciones"] + progressAnalysis.recommendations.map { "- \($0)" }
+            }
+        }
+        return lines.joined(separator: "\n")
+    }
+}
+
+private struct PhysicalProgressAnalysisCard: View {
+    let analysis: PhysicalProgressAnalysis?
+    let evidence: PhysicalProgressEvidence
+    let isLoading: Bool
+    let errorMessage: String?
+    let onRefresh: () -> Void
+
+    var body: some View {
+        NotebookSurface {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("Análisis EF local", systemImage: "figure.run.circle")
+                            .font(.headline)
+                        Text("Cobertura \(IosFormatting.decimal(from: evidence.completionRate))% · \(evidence.recordedCount)/\(evidence.totalCount) registros")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Button(action: onRefresh) {
+                        if isLoading {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(isLoading)
+                    .accessibilityLabel("Actualizar análisis de condición física")
+                }
+
+                if isLoading && analysis == nil {
+                    ProgressView("Analizando marcas registradas...")
+                        .tint(NotebookStyle.primaryTint)
+                } else if let analysis {
+                    Text(analysis.summary)
+                        .font(.subheadline.weight(.semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    HStack(spacing: 10) {
+                        PhysicalAnalysisBadge(title: "Tendencia", value: analysis.trend, systemImage: "chart.line.uptrend.xyaxis")
+                        PhysicalAnalysisBadge(
+                            title: "Mejora",
+                            value: analysis.improvementPercentage.map { "\(IosFormatting.decimal(from: $0))%" } ?? "Sin histórico",
+                            systemImage: "percent"
+                        )
+                    }
+
+                    PhysicalAnalysisList(title: "Fortalezas", items: analysis.strengths, tint: .green)
+                    PhysicalAnalysisList(title: "A vigilar", items: analysis.weaknesses, tint: .orange)
+                    PhysicalAnalysisList(title: "Recomendaciones", items: analysis.recommendations, tint: NotebookStyle.primaryTint)
+
+                    if !analysis.alerts.isEmpty {
+                        PhysicalAnalysisList(title: "Alertas", items: analysis.alerts, tint: .red)
+                    }
+
+                    Text(analysis.confidenceNote)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text(errorMessage ?? "Sin análisis disponible todavía.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+}
+
+private struct PhysicalAnalysisBadge: View {
+    let title: String
+    let value: String
+    let systemImage: String
+
+    var body: some View {
+        Label {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title.uppercased())
+                    .font(.system(size: 9, weight: .black, design: .rounded))
+                    .foregroundStyle(.secondary)
+                Text(value)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+        } icon: {
+            Image(systemName: systemImage)
+                .foregroundStyle(NotebookStyle.primaryTint)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(NotebookStyle.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+private struct PhysicalAnalysisList: View {
+    let title: String
+    let items: [String]
+    let tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
+            if items.isEmpty {
+                Text("Sin datos destacados.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(items, id: \.self) { item in
+                        HStack(alignment: .top, spacing: 8) {
+                            Circle()
+                                .fill(tint)
+                                .frame(width: 6, height: 6)
+                                .padding(.top, 6)
+                            Text(item)
+                                .font(.caption)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                .padding(10)
+                .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
         }
     }
 }

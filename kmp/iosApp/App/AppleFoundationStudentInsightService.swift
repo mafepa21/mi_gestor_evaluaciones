@@ -118,6 +118,29 @@ struct TutorMeetingSummaryDraft: Hashable {
     let familyFacingSummary: String
 }
 
+enum EarlyWarningSeverity: String, CaseIterable, Hashable {
+    case normal
+    case moderate
+    case priority
+
+    var title: String {
+        switch self {
+        case .normal: return "Seguimiento ordinario"
+        case .moderate: return "Revisar señales"
+        case .priority: return "Revisión prioritaria"
+        }
+    }
+}
+
+struct EarlyWarning: Hashable {
+    let severity: EarlyWarningSeverity
+    let causes: [String]
+    let evidence: [String]
+    let recommendations: [String]
+    let confidence: Double
+    let confidenceNote: String
+}
+
 enum StudentInsightServiceError: LocalizedError {
     case unavailable(String)
 
@@ -135,6 +158,7 @@ final class AppleFoundationStudentInsightService {
     private var insightSessionStorage: Any?
     private var averageSessionStorage: Any?
     private var tutorSessionStorage: Any?
+    private var earlyWarningSessionStorage: Any?
     #endif
 
     func prewarm() {
@@ -144,6 +168,7 @@ final class AppleFoundationStudentInsightService {
             _ = consumeInsightSession()
             _ = consumeAverageSession()
             _ = consumeTutorSession()
+            _ = consumeEarlyWarningSession()
         }
         #endif
     }
@@ -253,6 +278,41 @@ final class AppleFoundationStudentInsightService {
         return fallbackTutorSummary(from: evidence)
     }
 
+    func generateEarlyWarning(from evidence: StudentInsightEvidence) async throws -> EarlyWarning {
+        guard evidence.hasEnoughData else {
+            return fallbackEarlyWarning(from: evidence, reason: "Datos insuficientes para señal preventiva.")
+        }
+        guard AppleFoundationModelSupport.resolveAvailability(isEnabled: true) == .available else {
+            return fallbackEarlyWarning(from: evidence, reason: "Generado por reglas locales revisables.")
+        }
+
+        #if canImport(FoundationModels)
+        if #available(iOS 26.0, macOS 26.0, *) {
+            do {
+                let response = try await consumeEarlyWarningSession().respond(
+                    to: earlyWarningPrompt(from: evidence),
+                    generating: GeneratedEarlyWarning.self,
+                    includeSchemaInPrompt: true,
+                    options: AppleFoundationModelSupport.generationOptions(temperature: 0.1)
+                )
+                return EarlyWarning(
+                    severity: EarlyWarningSeverity(rawValue: response.content.severity) ?? .normal,
+                    causes: response.content.causes,
+                    evidence: response.content.evidence,
+                    recommendations: response.content.recommendations,
+                    confidence: min(max(response.content.confidence, 0), 1),
+                    confidenceNote: response.content.confidenceNote
+                )
+            } catch {
+                AppleFoundationModelSupport.recordRuntimeFailure(error)
+                return fallbackEarlyWarning(from: evidence, reason: "Generado por reglas locales revisables.")
+            }
+        }
+        #endif
+
+        return fallbackEarlyWarning(from: evidence, reason: "Generado por reglas locales revisables.")
+    }
+
     #if canImport(FoundationModels)
     @available(iOS 26.0, macOS 26.0, *)
     private func makeInsightSession() -> LanguageModelSession {
@@ -292,6 +352,20 @@ final class AppleFoundationStudentInsightService {
     }
 
     @available(iOS 26.0, macOS 26.0, *)
+    private func makeEarlyWarningSession() -> LanguageModelSession {
+        LanguageModelSession(
+            instructions: """
+            Actúas como sistema local de señal preventiva educativa.
+            Usa exclusivamente la evidencia proporcionada.
+            No diagnostiques, no etiquetes al alumno y no inventes causas.
+            Clasifica severidad solo como normal, moderate o priority.
+            Redacta causas como señales observables del cuaderno, no como motivos personales.
+            Devuelve evidencia y recomendaciones revisables por el docente antes de actuar.
+            """
+        )
+    }
+
+    @available(iOS 26.0, macOS 26.0, *)
     private func consumeInsightSession() -> LanguageModelSession {
         if let session = insightSessionStorage as? LanguageModelSession { return session }
         let session = makeInsightSession()
@@ -312,6 +386,14 @@ final class AppleFoundationStudentInsightService {
         if let session = tutorSessionStorage as? LanguageModelSession { return session }
         let session = makeTutorSession()
         tutorSessionStorage = session
+        return session
+    }
+
+    @available(iOS 26.0, macOS 26.0, *)
+    private func consumeEarlyWarningSession() -> LanguageModelSession {
+        if let session = earlyWarningSessionStorage as? LanguageModelSession { return session }
+        let session = makeEarlyWarningSession()
+        earlyWarningSessionStorage = session
         return session
     }
     #endif
@@ -381,6 +463,26 @@ final class AppleFoundationStudentInsightService {
             Reglas:
             - Máximo 4 puntos clave, 3 preocupaciones y 3 acciones.
             - La versión para familia debe ser respetuosa y no técnica.
+            """
+        )
+    }
+
+    private func earlyWarningPrompt(from evidence: StudentInsightEvidence) -> String {
+        AIContextBudget.prompt(
+            """
+            Genera un EarlyWarning preventivo para el alumno.
+
+            Evidencia
+            \(evidence.evidenceLines.map { "- \($0)" }.joined(separator: "\n"))
+
+            Reglas:
+            - severity debe ser uno de: normal, moderate, priority.
+            - confidence entre 0 y 1.
+            - Máximo 3 causas, 4 evidencias y 3 recomendaciones.
+            - Si faltan datos, usa normal o moderate con confidence bajo.
+            - No inventes factores personales, clínicos ni familiares.
+            - Las causas deben ser señales visibles en la evidencia, no conclusiones diagnósticas.
+            - Las recomendaciones deben ser acciones docentes revisables y no decisiones automáticas.
             """
         )
     }
@@ -458,6 +560,49 @@ final class AppleFoundationStudentInsightService {
         )
     }
 
+    private func fallbackEarlyWarning(from evidence: StudentInsightEvidence, reason: String) -> EarlyWarning {
+        var score = 0
+        if let average = evidence.averageScore, average < 5 { score += 2 }
+        if evidence.trends?.trendDirection == "DOWNWARD" { score += 2 }
+        if (evidence.trends?.attendanceRate ?? 100) < 80 { score += 2 }
+        if evidence.followUpCount > 0 { score += 1 }
+        if evidence.incidentCount > 0 { score += 1 }
+        if evidence.averageExplanation?.pendingCells.isEmpty == false { score += 1 }
+
+        let severity: EarlyWarningSeverity
+        if score >= 5 {
+            severity = .priority
+        } else if score >= 2 {
+            severity = .moderate
+        } else {
+            severity = .normal
+        }
+
+        let causes = compactLimited([
+            evidence.averageScore.map { $0 < 5 ? "Media actual por debajo de 5." : nil } ?? nil,
+            evidence.trends?.trendDirection == "DOWNWARD" ? "Tendencia reciente descendente." : nil,
+            (evidence.trends?.attendanceRate ?? 100) < 80 ? "Asistencia acumulada baja." : nil,
+            evidence.followUpCount > 0 ? "Seguimientos activos registrados." : nil,
+            evidence.incidentCount > 0 ? "Incidencias registradas." : nil,
+            evidence.averageExplanation?.pendingCells.isEmpty == false ? "Columnas evaluables pendientes." : nil
+        ], limit: 3)
+
+        let recommendations = compactLimited([
+            severity == .normal ? "Mantener observación ordinaria y recoger evidencias." : "Revisar el caso en la próxima sesión de seguimiento.",
+            evidence.averageExplanation?.pendingCells.isEmpty == false ? "Cerrar columnas pendientes antes de tomar decisiones." : nil,
+            evidence.trends?.trendDirection == "DOWNWARD" ? "Contrastar la bajada con evidencias recientes." : nil
+        ], limit: 3)
+
+        return EarlyWarning(
+            severity: severity,
+            causes: causes,
+            evidence: evidence.evidenceLines,
+            recommendations: recommendations,
+            confidence: evidence.hasEnoughData ? min(0.35 + Double(score) * 0.1, 0.85) : 0.2,
+            confidenceNote: reason
+        )
+    }
+
     private func compactLimited(_ values: [String?], limit: Int) -> [String] {
         var seen = Set<String>()
         return values
@@ -501,6 +646,17 @@ final class AppleFoundationStudentInsightService {
         let actions: [String]
         let familyFacingSummary: String
     }
+
+    @available(iOS 26.0, macOS 26.0, *)
+    @Generable
+    struct GeneratedEarlyWarning {
+        let severity: String
+        let causes: [String]
+        let evidence: [String]
+        let recommendations: [String]
+        let confidence: Double
+        let confidenceNote: String
+    }
     #endif
 }
 
@@ -520,5 +676,12 @@ extension AverageExplanationDraft {
 extension TutorMeetingSummaryDraft {
     var appearsToBeRulesFallback: Bool {
         familyFacingSummary.localizedCaseInsensitiveContains("datos actuales")
+    }
+}
+
+extension EarlyWarning {
+    var appearsToBeRulesFallback: Bool {
+        confidenceNote.localizedCaseInsensitiveContains("reglas") ||
+        confidenceNote.localizedCaseInsensitiveContains("insuficientes")
     }
 }

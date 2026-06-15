@@ -17,14 +17,19 @@ El formato sigue una variante practica de Keep a Changelog:
 
 - El inspector del Cuaderno incorpora una primera capa de Inteligencia Educativa local: `StudentInsightDraft`, `AverageExplanationDraft` y `TutorMeetingSummaryDraft` estructurados desde evidencia existente, con fallback determinista cuando Foundation Models no está disponible.
 - Informes Apple IA incorpora `StudentReportSummary` como modelo estructurado para fortalezas, aspectos a vigilar, áreas de progreso, recomendaciones y versiones docente/familia, manteniendo `AIReportDraft` como envoltorio compatible.
+- Educación Física inicia `PhysicalProgressAnalysis` para analizar condición física del grupo desde snapshots de pruebas, con fallback local y tarjeta contextual en la pestaña Informes.
+- El inspector del Cuaderno inicia `EarlyWarning` preventivo con severidad, causas, evidencia, recomendaciones y confianza desde la misma evidencia local del alumno.
 - macOS incorpora ventanas auxiliares nativas para Informes, Backups y Sync LAN, reutilizando la misma sesion, bridge, Command Center y store de backups que la ventana principal.
 - Comandos de menú y atajos de teclado compartidos para iPad con teclado y macOS: añadir columna (`⌘N` / `⌘⇧C`), buscar (`⌘F`), guardar/sincronizar (`⌘S`), columnas ocultas (`⌘⇧H`), reordenar columnas (`⌘⌥R`), abrir Informes (`⌘E`) y navegación rápida a Cuaderno/Asistencia/Planner (`⌘1`/`⌘2`/`⌘3`).
 - La toolbar macOS del Cuaderno usa `toolbar(id: "notebook.toolbar")` con ítems identificables y acción directa para revisar columnas ocultas, habilitando personalización nativa de la barra.
 
 ### Changed
 
+- El `EarlyWarning` del inspector del Cuaderno se presenta como señal preventiva revisable, con etiquetas de confianza cualitativas y nota de procedencia visible, evitando apariencia de diagnóstico o decisión automática.
 - `AppleAIOrchestrator` añade intents estructurados para insight de alumno, explicación docente de media y resumen de tutoría sin recalcular datos KMP ni modificar persistencia.
 - `AppleFoundationReportService` pasa a mapear la generación local y el fallback de informes hacia `StudentReportSummary`, separando el resumen estructurado del texto editable.
+- `AppleFoundationContextualAIService` añade análisis estructurado de progreso físico sin recalcular marcas ni tocar persistencia.
+- `AppleFoundationStudentInsightService` añade señales preventivas estructuradas sin diagnosticar ni modificar datos del alumno.
 - Se simplifica el toolbar del Cuaderno en iOS/iPadOS unificándolo en un único toolbar nativo superior que contiene el selector de clases, estado de sincronización, selector de vista (Grid/Plano), añadir columna, reordenar columnas, toggle de inspector, búsqueda y menú overflow, eliminando la barra manual duplicada `notebookMacLikeToolbar` del cuerpo de la pantalla y el toolbar nativo duplicado de `NotebookModuleView` en iPad.
 - La toolbar macOS del Cuaderno reduce su superficie primaria a clase activa, añadir columna, búsqueda, estado de sync opcional y menú secundario; Columnas ocultas pasa al menú `Más`.
 - En macOS, `⌘F` ya no cambia de módulo automáticamente: enfoca la búsqueda del Cuaderno solo cuando el Cuaderno está activo y muestra un aviso discreto en otros módulos.
@@ -50,8 +55,12 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- Auditoría acotada del flujo `EarlyWarning` en `NotebookStudentInspector.swift`, `AppleFoundationStudentInsightService.swift` y llamadas Apple directas: se mitigó el riesgo de tono diagnóstico sustituyendo “alerta/riesgo” por “señal/revisión”, confianza porcentual por etiqueta cualitativa y reglas de prompt centradas en señales observables.
+- `git diff --check` completado correctamente tras la estabilización de `EarlyWarning`. `xcodebuild -list -project kmp/iosApp/MiGestorKMPiOS.xcodeproj` no pudo ejecutarse porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y requiere Xcode completo.
 - `plutil -lint kmp/iosApp/MiGestorKMPiOS.xcodeproj/project.pbxproj` y `git diff --check` completados correctamente tras registrar `AppleFoundationStudentInsightService.swift` en los targets Apple. `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -list` no pudo ejecutarse porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y no hay Xcode completo visible en `/Applications`.
 - `git diff --check` completado correctamente tras introducir `StudentReportSummary` en `AppleFoundationReportService` y exponer `reportSummary` en `AppleAIOrchestrator`. La compilación Xcode sigue pendiente por la misma limitación de entorno local.
+- `git diff --check` completado correctamente tras iniciar `PhysicalProgressAnalysis` en Educación Física. La compilación Xcode sigue pendiente por la limitación de Command Line Tools.
+- `git diff --check` completado correctamente tras iniciar `EarlyWarning` preventivo en el inspector del Cuaderno. La compilación Xcode sigue pendiente por la limitación de Command Line Tools.
 - Se validó la consistencia estructural de los cambios en [IOSRootView.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/IOSRootView.swift) y [IPadWorkspaceShell.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/IPadWorkspaceShell.swift) mediante la ejecución de `xcodegen generate` completado correctamente. Los builds locales de `verify_apple_builds.sh` fallan porque `xcode-select` apunta a `CommandLineTools` en el entorno, pero la sintaxis SwiftUI de la barra de herramientas cumple con la especificación de Apple para iOS 16.0+.
 - Se validó el cambio de compatibilidad con iOS 16.0 en [IPadWorkspaceShell.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/IPadWorkspaceShell.swift) mediante `xcodegen generate` completado correctamente. Los builds locales de `xcodebuild` no pudieron compilar porque `xcode-select` apunta a `CommandLineTools` en el entorno, pero el ajuste de compatibilidad en SwiftUI sigue el estándar establecido en el proyecto.
 - Logs de GitHub Actions del run `27462430911` inspeccionados: macOS e iOS fallaban por `NotebookInspectorPanel.swift:60:44: error: cannot call value of non-function type 'Bool'`. `git diff --check -- kmp/iosApp/App/NotebookInspectorPanel.swift docs/CHANGELOG.md` completado correctamente tras el fix. La verificación local `scripts/verify_apple_builds.sh` sigue bloqueada por `xcode-select` apuntando a `/Library/Developer/CommandLineTools`.

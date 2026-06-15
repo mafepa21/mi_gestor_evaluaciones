@@ -1002,7 +1002,7 @@ struct PhysicalProgressEvidence: Hashable {
     }
 }
 
-struct PhysicalProgressAnalysis: Hashable {
+struct PhysicalProgressAnalysis: Codable, Hashable, Sendable {
     let summary: String
     let trend: String
     let improvementPercentage: Double?
@@ -1011,6 +1011,29 @@ struct PhysicalProgressAnalysis: Hashable {
     let recommendations: [String]
     let alerts: [String]
     let confidenceNote: String
+
+    init(
+        summary: String,
+        trend: String,
+        improvementPercentage: Double?,
+        strengths: [String],
+        weaknesses: [String],
+        recommendations: [String],
+        alerts: [String],
+        confidenceNote: String
+    ) {
+        self.summary = AppleAIOutputNormalizer.nonEmpty(summary, fallback: "Análisis EF no disponible.")
+        self.trend = AppleAIOutputNormalizer.nonEmpty(trend, fallback: "Sin tendencia suficiente.")
+        self.improvementPercentage = improvementPercentage
+        self.strengths = AppleAIOutputNormalizer.compactLimited(strengths, limit: 4)
+        self.weaknesses = AppleAIOutputNormalizer.compactLimited(weaknesses, limit: 4)
+        self.recommendations = AppleAIOutputNormalizer.compactLimited(recommendations, limit: 4)
+        self.alerts = AppleAIOutputNormalizer.compactLimited(alerts, limit: 3)
+        self.confidenceNote = AppleAIOutputNormalizer.nonEmpty(
+            confidenceNote,
+            fallback: "Confianza basada en marcas registradas."
+        )
+    }
 }
 
 extension PhysicalProgressAnalysis {

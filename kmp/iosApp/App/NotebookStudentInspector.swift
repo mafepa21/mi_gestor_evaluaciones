@@ -46,7 +46,9 @@ struct NotebookStudentInspector: View {
     @State private var isLoadingTrends = false
     @State private var educationalInsight: StudentInsightDraft? = nil
     @State private var averageInsight: AverageExplanationDraft? = nil
+    @State private var tutorMeetingSummary: TutorMeetingSummaryDraft? = nil
     @State private var earlyWarning: EarlyWarning? = nil
+    @State private var educationalInsightMetadata: AppleAIGenerationMetadata? = nil
     @State private var isLoadingEducationalInsight = false
     @State private var educationalInsightError: String? = nil
     @State private var educationalInsightOrchestrator = AppleAIOrchestrator()
@@ -129,7 +131,9 @@ struct NotebookStudentInspector: View {
             NotebookEducationalInsightView(
                 insight: educationalInsight,
                 averageInsight: averageInsight,
+                tutorMeetingSummary: tutorMeetingSummary,
                 earlyWarning: earlyWarning,
+                metadata: educationalInsightMetadata,
                 isLoading: isLoadingEducationalInsight,
                 errorMessage: educationalInsightError,
                 onRefresh: {
@@ -558,31 +562,48 @@ struct NotebookStudentInspector: View {
         defer { isLoadingEducationalInsight = false }
 
         do {
-            let insightResult = try await educationalInsightOrchestrator.generate(
+            let insightGeneration = try await educationalInsightOrchestrator.generateWithTrace(
                 capability: .studentInsight,
-                input: .student(evidence)
+                input: .student(evidence),
+                dataSource: "Inspector del Cuaderno",
+                includedEvidence: evidence.evidenceLines
             )
-            if case .studentInsight(let draft) = insightResult {
+            educationalInsightMetadata = insightGeneration.metadata
+            if case .studentInsight(let draft) = insightGeneration.result {
                 educationalInsight = draft
             }
 
             if let explanation = averageExplanation {
-                let averageResult = try await educationalInsightOrchestrator.generate(
+                let averageGeneration = try await educationalInsightOrchestrator.generateWithTrace(
                     capability: .averageExplanation,
-                    input: .average(explanation, evidence)
+                    input: .average(explanation, evidence),
+                    dataSource: "Inspector del Cuaderno",
+                    includedEvidence: evidence.evidenceLines
                 )
-                if case .averageExplanation(let draft) = averageResult {
+                if case .averageExplanation(let draft) = averageGeneration.result {
                     averageInsight = draft
                 }
             } else {
                 averageInsight = nil
             }
 
-            let warningResult = try await educationalInsightOrchestrator.generate(
-                capability: .earlyWarning,
-                input: .student(evidence)
+            let tutorGeneration = try await educationalInsightOrchestrator.generateWithTrace(
+                capability: .tutorMeetingSummary,
+                input: .student(evidence),
+                dataSource: "Inspector del Cuaderno",
+                includedEvidence: evidence.evidenceLines
             )
-            if case .earlyWarning(let warning) = warningResult {
+            if case .tutorMeetingSummary(let summary) = tutorGeneration.result {
+                tutorMeetingSummary = summary
+            }
+
+            let warningGeneration = try await educationalInsightOrchestrator.generateWithTrace(
+                capability: .earlyWarning,
+                input: .student(evidence),
+                dataSource: "Inspector del Cuaderno",
+                includedEvidence: evidence.evidenceLines
+            )
+            if case .earlyWarning(let warning) = warningGeneration.result {
                 earlyWarning = warning
             }
         } catch {
@@ -730,7 +751,9 @@ private struct NotebookInspectorRubricRow: View {
 private struct NotebookEducationalInsightView: View {
     let insight: StudentInsightDraft?
     let averageInsight: AverageExplanationDraft?
+    let tutorMeetingSummary: TutorMeetingSummaryDraft?
     let earlyWarning: EarlyWarning?
+    let metadata: AppleAIGenerationMetadata?
     let isLoading: Bool
     let errorMessage: String?
     let onRefresh: () -> Void
@@ -772,6 +795,10 @@ private struct NotebookEducationalInsightView: View {
                 .accessibilityLabel("Actualizar insight educativo")
             }
 
+            if let metadata {
+                AppleAIStatusBadge(state: metadata.state, message: metadata.availabilityMessage)
+            }
+
             if let insight {
                 if let earlyWarning {
                     NotebookEarlyWarningView(warning: earlyWarning)
@@ -786,10 +813,14 @@ private struct NotebookEducationalInsightView: View {
                 NotebookInsightTagGroup(title: "A mejorar", systemImage: "target", items: insight.improvementAreas, tint: NotebookStyle.warningTint)
 
                 if !insight.risks.isEmpty {
-                    NotebookInsightTagGroup(title: "Riesgos", systemImage: "exclamationmark.triangle", items: insight.risks, tint: NotebookStyle.warningTint)
+                    NotebookInsightTagGroup(title: "Señales a revisar", systemImage: "exclamationmark.triangle", items: insight.risks, tint: NotebookStyle.warningTint)
                 }
 
                 NotebookInsightTagGroup(title: "Recomendaciones", systemImage: "arrow.right.circle", items: insight.recommendations, tint: NotebookStyle.primaryTint)
+            }
+
+            if let tutorMeetingSummary {
+                NotebookTutorMeetingSummaryView(summary: tutorMeetingSummary)
             }
 
             if let averageInsight {
@@ -810,6 +841,52 @@ private struct NotebookEducationalInsightView: View {
                 .background(NotebookStyle.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
         }
+    }
+}
+
+private struct NotebookTutorMeetingSummaryView: View {
+    let summary: TutorMeetingSummaryDraft
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("Tutoría", systemImage: "person.crop.rectangle.stack")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
+
+            if !summary.keyPoints.isEmpty {
+                NotebookInsightTagGroup(
+                    title: "Puntos clave",
+                    systemImage: "list.bullet.clipboard",
+                    items: summary.keyPoints,
+                    tint: NotebookStyle.primaryTint
+                )
+            }
+
+            if !summary.concerns.isEmpty {
+                NotebookInsightTagGroup(
+                    title: "A revisar",
+                    systemImage: "exclamationmark.triangle",
+                    items: summary.concerns,
+                    tint: NotebookStyle.warningTint
+                )
+            }
+
+            if !summary.actions.isEmpty {
+                NotebookInsightTagGroup(
+                    title: "Acciones",
+                    systemImage: "checklist",
+                    items: summary.actions,
+                    tint: NotebookStyle.successTint
+                )
+            }
+
+            Text(summary.familyFacingSummary)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(10)
+        .background(NotebookStyle.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 

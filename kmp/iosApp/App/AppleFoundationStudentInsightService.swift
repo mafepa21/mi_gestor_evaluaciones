@@ -91,34 +91,151 @@ struct StudentInsightEvidence {
     }
 }
 
-struct StudentInsightDraft: Hashable {
+struct RiskAnalysis: Codable, Hashable, Sendable {
+    let severity: EarlyWarningSeverity
+    let causes: [String]
+    let evidence: [String]
+    let confidence: Double
+    let confidenceNote: String
+
+    init(
+        severity: EarlyWarningSeverity,
+        causes: [String],
+        evidence: [String],
+        confidence: Double,
+        confidenceNote: String
+    ) {
+        self.severity = severity
+        self.causes = AppleAIOutputNormalizer.compactLimited(causes, limit: 3)
+        self.evidence = AppleAIOutputNormalizer.compactLimited(evidence, limit: 5)
+        self.confidence = AppleAIOutputNormalizer.clampedConfidence(confidence)
+        self.confidenceNote = AppleAIOutputNormalizer.nonEmpty(
+            confidenceNote,
+            fallback: "Confianza basada en evidencias disponibles."
+        )
+    }
+}
+
+struct StudentInsight: Codable, Hashable, Sendable {
     let summary: String
     let strengths: [String]
     let improvementAreas: [String]
     let attendanceSignal: String
     let performanceSignal: String
-    let risks: [String]
+    let riskAnalysis: RiskAnalysis
     let recommendations: [String]
     let confidenceNote: String
+
+    var risks: [String] {
+        riskAnalysis.causes
+    }
+
+    init(
+        summary: String,
+        strengths: [String],
+        improvementAreas: [String],
+        attendanceSignal: String,
+        performanceSignal: String,
+        riskAnalysis: RiskAnalysis,
+        recommendations: [String],
+        confidenceNote: String
+    ) {
+        self.summary = AppleAIOutputNormalizer.nonEmpty(summary, fallback: "Lectura educativa no disponible.")
+        self.strengths = AppleAIOutputNormalizer.compactLimited(strengths, limit: 3)
+        self.improvementAreas = AppleAIOutputNormalizer.compactLimited(improvementAreas, limit: 3)
+        self.attendanceSignal = AppleAIOutputNormalizer.nonEmpty(attendanceSignal, fallback: "Sin señal reciente de asistencia.")
+        self.performanceSignal = AppleAIOutputNormalizer.nonEmpty(performanceSignal, fallback: "Sin tendencia suficiente.")
+        self.riskAnalysis = riskAnalysis
+        self.recommendations = AppleAIOutputNormalizer.compactLimited(recommendations, limit: 3)
+        self.confidenceNote = AppleAIOutputNormalizer.nonEmpty(
+            confidenceNote,
+            fallback: "Confianza basada en evidencias disponibles."
+        )
+    }
+
+    init(
+        summary: String,
+        strengths: [String],
+        improvementAreas: [String],
+        attendanceSignal: String,
+        performanceSignal: String,
+        risks: [String],
+        recommendations: [String],
+        confidenceNote: String
+    ) {
+        self.init(
+            summary: summary,
+            strengths: strengths,
+            improvementAreas: improvementAreas,
+            attendanceSignal: attendanceSignal,
+            performanceSignal: performanceSignal,
+            riskAnalysis: RiskAnalysis(
+                severity: risks.isEmpty ? .normal : .moderate,
+                causes: risks,
+                evidence: [],
+                confidence: risks.isEmpty ? 0.35 : 0.55,
+                confidenceNote: confidenceNote
+            ),
+            recommendations: recommendations,
+            confidenceNote: confidenceNote
+        )
+    }
 }
 
-struct AverageExplanationDraft: Hashable {
+typealias StudentInsightDraft = StudentInsight
+
+struct AverageExplanation: Codable, Hashable, Sendable {
     let explanation: String
     let includedSummary: String
     let excludedSummary: String
     let pendingSummary: String
     let weightSummary: String
     let warnings: [String]
+
+    init(
+        explanation: String,
+        includedSummary: String,
+        excludedSummary: String,
+        pendingSummary: String,
+        weightSummary: String,
+        warnings: [String]
+    ) {
+        self.explanation = AppleAIOutputNormalizer.nonEmpty(explanation, fallback: "Media explicada no disponible.")
+        self.includedSummary = AppleAIOutputNormalizer.nonEmpty(includedSummary, fallback: "Sin columnas incluidas.")
+        self.excludedSummary = AppleAIOutputNormalizer.nonEmpty(excludedSummary, fallback: "Sin columnas excluidas.")
+        self.pendingSummary = AppleAIOutputNormalizer.nonEmpty(pendingSummary, fallback: "Sin columnas pendientes.")
+        self.weightSummary = AppleAIOutputNormalizer.nonEmpty(weightSummary, fallback: "Peso no disponible.")
+        self.warnings = AppleAIOutputNormalizer.compactLimited(warnings, limit: 3)
+    }
 }
 
-struct TutorMeetingSummaryDraft: Hashable {
+typealias AverageExplanationDraft = AverageExplanation
+
+struct TutorMeetingSummary: Codable, Hashable, Sendable {
     let keyPoints: [String]
     let concerns: [String]
     let actions: [String]
     let familyFacingSummary: String
+
+    init(
+        keyPoints: [String],
+        concerns: [String],
+        actions: [String],
+        familyFacingSummary: String
+    ) {
+        self.keyPoints = AppleAIOutputNormalizer.compactLimited(keyPoints, limit: 4)
+        self.concerns = AppleAIOutputNormalizer.compactLimited(concerns, limit: 3)
+        self.actions = AppleAIOutputNormalizer.compactLimited(actions, limit: 3)
+        self.familyFacingSummary = AppleAIOutputNormalizer.nonEmpty(
+            familyFacingSummary,
+            fallback: "Resumen prudente basado en los datos actuales del cuaderno."
+        )
+    }
 }
 
-enum EarlyWarningSeverity: String, CaseIterable, Hashable {
+typealias TutorMeetingSummaryDraft = TutorMeetingSummary
+
+enum EarlyWarningSeverity: String, CaseIterable, Hashable, Codable, Sendable {
     case normal
     case moderate
     case priority
@@ -130,15 +247,69 @@ enum EarlyWarningSeverity: String, CaseIterable, Hashable {
         case .priority: return "Revisión prioritaria"
         }
     }
+
+    static func normalized(_ rawValue: String) -> EarlyWarningSeverity {
+        let normalized = rawValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if let exact = EarlyWarningSeverity(rawValue: normalized) {
+            return exact
+        }
+        if normalized.contains("prior") || normalized.contains("alto") || normalized.contains("urg") {
+            return .priority
+        }
+        if normalized.contains("mod") || normalized.contains("revis") || normalized.contains("medio") {
+            return .moderate
+        }
+        return .normal
+    }
 }
 
-struct EarlyWarning: Hashable {
+struct EarlyWarning: Codable, Hashable, Sendable {
     let severity: EarlyWarningSeverity
     let causes: [String]
     let evidence: [String]
     let recommendations: [String]
     let confidence: Double
     let confidenceNote: String
+
+    init(
+        severity: EarlyWarningSeverity,
+        causes: [String],
+        evidence: [String],
+        recommendations: [String],
+        confidence: Double,
+        confidenceNote: String
+    ) {
+        self.severity = severity
+        self.causes = AppleAIOutputNormalizer.compactLimited(causes, limit: 3)
+        self.evidence = AppleAIOutputNormalizer.compactLimited(evidence, limit: 6)
+        self.recommendations = AppleAIOutputNormalizer.compactLimited(recommendations, limit: 3)
+        self.confidence = AppleAIOutputNormalizer.clampedConfidence(confidence)
+        self.confidenceNote = AppleAIOutputNormalizer.nonEmpty(
+            confidenceNote,
+            fallback: "Confianza basada en evidencias disponibles."
+        )
+    }
+}
+
+enum AppleAIOutputNormalizer {
+    static func compactLimited(_ values: [String], limit: Int) -> [String] {
+        var seen = Set<String>()
+        return values
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .filter { seen.insert($0).inserted }
+            .prefix(limit)
+            .map { $0 }
+    }
+
+    static func nonEmpty(_ value: String, fallback: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? fallback : trimmed
+    }
+
+    static func clampedConfidence(_ value: Double) -> Double {
+        min(max(value, 0), 1)
+    }
 }
 
 enum StudentInsightServiceError: LocalizedError {
@@ -296,11 +467,11 @@ final class AppleFoundationStudentInsightService {
                     options: AppleFoundationModelSupport.generationOptions(temperature: 0.1)
                 )
                 return EarlyWarning(
-                    severity: EarlyWarningSeverity(rawValue: response.content.severity) ?? .normal,
+                    severity: EarlyWarningSeverity.normalized(response.content.severity),
                     causes: response.content.causes,
                     evidence: response.content.evidence,
                     recommendations: response.content.recommendations,
-                    confidence: min(max(response.content.confidence, 0), 1),
+                    confidence: response.content.confidence,
                     confidenceNote: response.content.confidenceNote
                 )
             } catch {

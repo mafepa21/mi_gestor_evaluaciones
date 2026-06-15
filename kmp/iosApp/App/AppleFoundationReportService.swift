@@ -60,7 +60,7 @@ enum AIReportAvailabilityState: Equatable {
     }
 }
 
-struct StudentReportSummary: Hashable {
+struct StudentReportSummary: Codable, Hashable, Sendable {
     let title: String
     let summary: String
     let strengths: [String]
@@ -69,6 +69,32 @@ struct StudentReportSummary: Hashable {
     let recommendations: [String]
     let familyFacingSummary: String
     let teacherNotes: String
+
+    init(
+        title: String,
+        summary: String,
+        strengths: [String],
+        weaknesses: [String],
+        progressAreas: [String],
+        recommendations: [String],
+        familyFacingSummary: String,
+        teacherNotes: String
+    ) {
+        self.title = AppleAIOutputNormalizer.nonEmpty(title, fallback: "Resumen educativo")
+        self.summary = AppleAIOutputNormalizer.nonEmpty(summary, fallback: "Sin resumen disponible.")
+        self.strengths = AppleAIOutputNormalizer.compactLimited(strengths, limit: 5)
+        self.weaknesses = AppleAIOutputNormalizer.compactLimited(weaknesses, limit: 5)
+        self.progressAreas = AppleAIOutputNormalizer.compactLimited(progressAreas, limit: 5)
+        self.recommendations = AppleAIOutputNormalizer.compactLimited(recommendations, limit: 5)
+        self.familyFacingSummary = AppleAIOutputNormalizer.nonEmpty(
+            familyFacingSummary,
+            fallback: "Resumen para familia no disponible."
+        )
+        self.teacherNotes = AppleAIOutputNormalizer.nonEmpty(
+            teacherNotes,
+            fallback: "Resumen docente no disponible."
+        )
+    }
 }
 
 extension StudentReportSummary {

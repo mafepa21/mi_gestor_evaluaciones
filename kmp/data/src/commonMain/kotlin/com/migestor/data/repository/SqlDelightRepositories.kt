@@ -310,6 +310,8 @@ class ClassesRepositorySqlDelight(
 class EvaluationsRepositorySqlDelight(
     private val db: AppDatabase,
 ) : EvaluationsRepository {
+    private fun Long?.validRubricId(): Long? = this?.takeIf { it > 0L }
+
     override fun observeClassEvaluations(classId: Long): Flow<List<Evaluation>> {
         return db.appDatabaseQueries
             .selectEvaluationsByClass(classId)
@@ -325,7 +327,7 @@ class EvaluationsRepositorySqlDelight(
                         type = it.type,
                         weight = it.weight,
                         formula = it.formula,
-                        rubricId = it.rubric_id,
+                        rubricId = it.rubric_id.validRubricId(),
                         description = it.description,
                         trace = AuditTrace(
                             authorUserId = it.author_user_id,
@@ -350,7 +352,7 @@ class EvaluationsRepositorySqlDelight(
                 type = it.type,
                 weight = it.weight,
                 formula = it.formula,
-                rubricId = it.rubric_id,
+                rubricId = it.rubric_id.validRubricId(),
                 description = it.description,
                 trace = AuditTrace(
                     authorUserId = it.author_user_id,
@@ -374,7 +376,7 @@ class EvaluationsRepositorySqlDelight(
                 type = it.type,
                 weight = it.weight,
                 formula = it.formula,
-                rubricId = it.rubric_id,
+                rubricId = it.rubric_id.validRubricId(),
                 description = it.description,
                 trace = AuditTrace(
                     authorUserId = it.author_user_id,
@@ -409,7 +411,7 @@ class EvaluationsRepositorySqlDelight(
         val created = if (createdAtEpochMs > 0) createdAtEpochMs else now
         db.transactionWithResult {
             db.appDatabaseQueries.upsertEvaluation(
-                id, classId, code, name, type, weight, formula, rubricId, description, 
+                id, classId, code, name, type, weight, formula, rubricId.validRubricId(), description,
                 authorUserId, created, now, associatedGroupId, deviceId, syncVersion
             )
             id ?: db.appDatabaseQueries.lastInsertedId().executeAsOne()

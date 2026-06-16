@@ -60,7 +60,7 @@ struct MacMetricCard: View {
         }
         .padding(MacAppStyle.innerPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .macLiquidGlassPanel(.primaryPanel, tint: tint)
+        .macLiquidGlassPanel(.primaryPanel, isActive: true, tint: tint, isInteractive: true)
     }
 }
 
@@ -152,7 +152,7 @@ struct MacPopupActionBar: View {
         }
         .padding(.horizontal, MacAppStyle.innerPadding)
         .padding(.vertical, 12)
-        .background(MacAppStyle.cardBackground)
+        .macLiquidGlassPanel(.chrome, cornerRadius: 0, isActive: true)
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(MacLiquidGlassStyle.hairlineBorder)

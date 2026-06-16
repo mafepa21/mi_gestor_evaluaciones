@@ -173,6 +173,7 @@ final class MacCommandCenterCoordinator: ObservableObject {
                 self.lastRunningSnapshot = nil
                 self.lastLifecycleState = .stopped
                 self.updateState(.stopped, message: "La sincronización LAN no está activa en este Mac.")
+                NotificationCenter.default.post(name: .syncHelperStopped, object: nil)
             }
         }
 
@@ -209,6 +210,7 @@ final class MacCommandCenterCoordinator: ObservableObject {
         process = nil
         stdoutPipe = nil
         stderrPipe = nil
+        NotificationCenter.default.post(name: .syncHelperStopped, object: nil)
     }
 
     func restartForNewPin() {
@@ -403,6 +405,15 @@ final class MacCommandCenterCoordinator: ObservableObject {
                 ),
                 message: "Escanea este QR desde el iPad para enlazar."
             )
+            // Notify KmpBridge that a valid LAN endpoint is now available.
+            // KmpBridge subscribes to this notification to start the SSE listener
+            // and the periodic sync loop, ensuring no requests go out to 127.0.0.1
+            // before the helper process is ready.
+            NotificationCenter.default.post(
+                name: .syncHelperBecameReady,
+                object: nil,
+                userInfo: ["host": snapshot.host, "port": snapshot.port]
+            )
 
         case let .networkError(message):
             lastLifecycleState = .networkError
@@ -568,4 +579,8 @@ extension Notification.Name {
     static let appleCommandCenterStartRequested = Notification.Name("appleCommandCenterStartRequested")
     static let appleCommandCenterStopRequested = Notification.Name("appleCommandCenterStopRequested")
     static let appleCommandCenterRegeneratePinRequested = Notification.Name("appleCommandCenterRegeneratePinRequested")
+    /// Posted when the helper process publishes a valid LAN IP. UserInfo: ["host": String, "port": Int].
+    static let syncHelperBecameReady = Notification.Name("syncHelperBecameReady")
+    /// Posted when the helper process has stopped (cleanly or due to error).
+    static let syncHelperStopped = Notification.Name("syncHelperStopped")
 }

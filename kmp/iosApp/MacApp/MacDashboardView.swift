@@ -64,6 +64,7 @@ struct MacDashboardView: View {
                     }
                 }
                 .padding(MacAppStyle.pagePadding)
+                .macLiquidGlassGroup(spacing: 18)
             }
         }
         .background(MacAppStyle.pageBackground)
@@ -755,10 +756,19 @@ private enum DashboardSheet: Identifiable, Hashable {
 
 private struct MacPanel<Content: View>: View {
     let title: String
+    var role: MacLiquidGlassSurfaceRole = .primaryPanel
+    var tint: Color? = nil
     let content: Content
 
-    init(title: String, @ViewBuilder content: () -> Content) {
+    init(
+        title: String,
+        role: MacLiquidGlassSurfaceRole = .primaryPanel,
+        tint: Color? = nil,
+        @ViewBuilder content: () -> Content
+    ) {
         self.title = title
+        self.role = role
+        self.tint = tint
         self.content = content()
     }
 
@@ -768,9 +778,7 @@ private struct MacPanel<Content: View>: View {
             content
         }
         .padding(MacAppStyle.innerPadding)
-        .background(MacAppStyle.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
-        .shadow(color: .black.opacity(0.08), radius: 12, x: 0, y: 4)
+        .macLiquidGlassPanel(role, isActive: true, tint: tint)
     }
 }
 
@@ -780,7 +788,7 @@ private struct DashboardHeroNowCard: View {
     let onOpenSheet: (DashboardSheet) -> Void
 
     var body: some View {
-        MacPanel(title: "Ahora") {
+        MacPanel(title: "Ahora", tint: contextTint) {
             VStack(alignment: .leading, spacing: 24) {
                 if let context {
                     contextHeader(context)
@@ -800,6 +808,11 @@ private struct DashboardHeroNowCard: View {
                 }
             }
         }
+    }
+
+    private var contextTint: Color {
+        guard let context else { return MacAppStyle.infoTint }
+        return Color(hex: context.classColorHex ?? "#2563EB")
     }
 
     private func contextHeader(_ context: CurrentClassDashboardContext) -> some View {
@@ -975,8 +988,7 @@ private struct DashboardQuickActionButton: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .frame(minHeight: 48)
-        .background(MacAppStyle.subtleFill)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .macLiquidGlassPanel(.secondaryPanel, cornerRadius: 12, isInteractive: true)
     }
 }
 
@@ -985,7 +997,7 @@ private struct DashboardPendingCard: View {
     let onNavigate: (MacDashboardDestination) -> Void
 
     var body: some View {
-        MacPanel(title: "Pendientes") {
+        MacPanel(title: "Pendientes", tint: items.first?.priority.tint ?? MacAppStyle.infoTint) {
             VStack(spacing: 12) {
                 if items.isEmpty {
                     Text("Sin pendientes fiables con los datos disponibles.")
@@ -1067,7 +1079,7 @@ private struct DashboardRiskCard: View {
     }
 
     var body: some View {
-        MacPanel(title: "Riesgo") {
+        MacPanel(title: "Riesgo", tint: riskItems.isEmpty && proactiveRiskItems.isEmpty ? MacAppStyle.successTint : MacAppStyle.warningTint) {
             VStack(spacing: 12) {
                 if riskItems.isEmpty {
                     if proactiveRiskItems.isEmpty {
@@ -1140,7 +1152,7 @@ private struct DashboardStatusCard: View {
     let platformName: String
 
     var body: some View {
-        MacPanel(title: "Sistema") {
+        MacPanel(title: "Sistema", tint: summary.state.tint) {
             VStack(alignment: .leading, spacing: 12) {
                 statusRow("Sync LAN", value: summaryLine, tint: summary.state.tint)
                 statusRow("Cambios pendientes", value: "\(summary.pendingChanges)", tint: summary.pendingChanges > 0 ? MacAppStyle.warningTint : MacAppStyle.successTint)

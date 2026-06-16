@@ -928,7 +928,11 @@ final class KmpBridge: ObservableObject {
         self.pairedServerFingerprint = syncSecureStore.loadString(key: "sync.server.fingerprint")
         
         #if os(macOS)
-        self.pairedSyncHost = "127.0.0.1"
+        // On macOS the sync endpoint is the helper process, which is NOT running yet at
+        // init time. We intentionally leave pairedSyncHost as nil here so that
+        // startSyncEventListenerIfPaired() and syncNow() are no-ops until
+        // MacCommandCenterCoordinator calls notifyHelperReady(host:port:) once the
+        // helper has published a valid LAN IP address.
         self.syncToken = "loopback-token"
         self.pairedServerFingerprint = nil
         #endif
@@ -950,9 +954,12 @@ final class KmpBridge: ObservableObject {
             self.lanSyncDiscovery.start()
             self.startAutoSyncLoop()
             self.startSyncEventListenerIfPaired()
+            #if os(iOS)
+            // On iOS the persisted host/token come from a real pairing; rehydrate on launch.
             if self.hasPersistedLanPairing {
                 await self.syncNow(reason: "rehydrate", forceFullPull: false, silent: true)
             }
+            #endif
         }
 
         setupObservers()
@@ -969,6 +976,33 @@ final class KmpBridge: ObservableObject {
     }
 
     private func setupObservers() {
+        #if os(macOS)
+        // macOS: react to the helper process lifecycle via NotificationCenter so the
+        // SSE listener and auto-sync loop start only when the server is actually ready.
+        NotificationCenter.default.addObserver(
+            forName: .syncHelperBecameReady,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self else { return }
+            guard let host = notification.userInfo?["host"] as? String,
+                  let port = notification.userInfo?["port"] as? Int else { return }
+            Task { @MainActor in
+                self.notifyHelperReady(host: host, port: port)
+            }
+        }
+        NotificationCenter.default.addObserver(
+            forName: .syncHelperStopped,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            Task { @MainActor in
+                self.notifyHelperStopped()
+            }
+        }
+        #endif
+
         // Observe Notebook State with Debounce (to stabilize UI during typing)
         Task { @MainActor [weak self] in
             guard let self else { return }
@@ -4331,6 +4365,432 @@ final class KmpBridge: ObservableObject {
                 label: proposal.title,
                 trace: situation.trace
             )
+        }
+    }
+
+    func materializeLearningSituationAssessmentInstruments(
+        situation: LearningSituation,
+        classId: Int64,
+        draft: LearningSituationAssessmentImportDraft,
+        targetTabId: String? = nil
+    ) async throws {
+        let selectedInstruments = draft.instruments.filter(\.isSelected)
+        guard !selectedInstruments.isEmpty else {
+            throw NSError(domain: "LearningSituations", code: 2, userInfo: [NSLocalizedDescriptionKey: "Selecciona al menos un instrumento."])
+        }
+
+        try await repairLearningSituationAssessmentInstrumentImportIfNeeded(classId: classId)
+
+        for (index, instrument) in selectedInstruments.enumerated() {
+            let rubricId = try await saveAssessmentInstrumentRubricIfNeeded(
+                instrument: instrument,
+                classId: classId,
+                sourceFileName: draft.sourceFileName
+            )
+            let evaluationId = try await container.evaluationsRepository.saveEvaluation(
+                id: nil,
+                classId: classId,
+                code: "SA\(situation.id)-I\(index + 1)",
+                name: instrument.title,
+                type: instrument.kind.label,
+                weight: (instrument.weightPercent ?? 0) / 100.0,
+                formula: nil,
+                rubricId: rubricId.map { KotlinLong(value: $0) },
+                description: "Instrumento importado desde \(draft.sourceFileName) para \(situation.title)",
+                authorUserId: nil,
+                createdAtEpochMs: 0,
+                updatedAtEpochMs: 0,
+                associatedGroupId: KotlinLong(value: classId),
+                deviceId: localDeviceId,
+                syncVersion: 1
+            ).int64Value
+            let columnId = try await ensureNotebookColumnForAssessmentInstrument(
+                classId: classId,
+                evaluationId: evaluationId,
+                title: instrument.title,
+                rubricId: rubricId,
+                instrument: instrument,
+                situationTitle: situation.title,
+                targetTabId: targetTabId
+            )
+            try await saveLearningSituationLinkedResource(
+                situationId: situation.id,
+                kind: .evaluation,
+                resourceId: "\(evaluationId)",
+                classId: classId,
+                label: instrument.title,
+                trace: situation.trace
+            )
+            try await saveLearningSituationLinkedResource(
+                situationId: situation.id,
+                kind: .notebookColumn,
+                resourceId: columnId,
+                classId: classId,
+                label: instrument.title,
+                trace: situation.trace
+            )
+            if let rubricId {
+                try await saveLearningSituationLinkedResource(
+                    situationId: situation.id,
+                    kind: .rubric,
+                    resourceId: "\(rubricId)",
+                    classId: classId,
+                    label: "Rubrica · \(instrument.title)",
+                    trace: situation.trace
+                )
+            }
+        }
+        refreshCurrentNotebook()
+        scheduleNotebookSnapshotSync(forClassId: classId)
+    }
+
+    func learningSituationNotebookTabs(for classId: Int64) async throws -> [NotebookTab] {
+        try await container.notebookConfigRepository.listTabs(classId: classId)
+    }
+
+    func repairLearningSituationAssessmentInstrumentImportIfNeeded(classId: Int64) async throws {
+        let repairedLevels = try await repairAssessmentInstrumentRubricLevelPoints(classId: classId)
+        let repairedColumns = try await repairAssessmentInstrumentNotebookColumns(classId: classId)
+        let repairedEvaluations = try await repairAssessmentInstrumentEvaluations(classId: classId)
+        if repairedLevels || repairedColumns || repairedEvaluations {
+            refreshCurrentNotebook()
+            scheduleNotebookSnapshotSync(forClassId: classId)
+        }
+    }
+
+    private func saveAssessmentInstrumentRubricIfNeeded(
+        instrument: AssessmentInstrumentDraft,
+        classId: Int64,
+        sourceFileName: String
+    ) async throws -> Int64? {
+        guard instrument.kind == .rubric else { return nil }
+        guard let rubric = instrument.rubric, !rubric.criteria.isEmpty, !rubric.levels.isEmpty else {
+            return nil
+        }
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let rubricId = try await container.rubricsRepository.saveRubric(
+            id: nil,
+            name: instrument.title,
+            description: "Importada desde \(sourceFileName)",
+            classId: KotlinLong(value: classId),
+            teachingUnitId: nil,
+            createdAtEpochMs: nowMs,
+            updatedAtEpochMs: nowMs,
+            deviceId: localDeviceId,
+            syncVersion: 1
+        ).int64Value
+
+        for (criterionIndex, criterion) in rubric.criteria.enumerated() {
+            let criterionId = try await container.rubricsRepository.saveCriterion(
+                id: nil,
+                rubricId: rubricId,
+                description: criterion.title,
+                weight: criterion.weight,
+                order: Int32(criterionIndex),
+                updatedAtEpochMs: nowMs,
+                deviceId: localDeviceId,
+                syncVersion: 1
+            ).int64Value
+            for (levelIndex, level) in rubric.levels.enumerated() {
+                let description = levelIndex < criterion.descriptors.count
+                    ? criterion.descriptors[levelIndex].nilIfBlank
+                    : nil
+                _ = try await container.rubricsRepository.saveLevel(
+                    id: nil,
+                    criterionId: criterionId,
+                    name: level.label,
+                    points: Int32(level.points),
+                    description: description,
+                    order: Int32(levelIndex),
+                    updatedAtEpochMs: nowMs,
+                    deviceId: localDeviceId,
+                    syncVersion: 1
+                )
+            }
+        }
+        try? await refreshRubrics()
+        try? await refreshRubricClassLinks()
+        return rubricId
+    }
+
+    private func ensureNotebookColumnForAssessmentInstrument(
+        classId: Int64,
+        evaluationId: Int64,
+        title: String,
+        rubricId: Int64?,
+        instrument: AssessmentInstrumentDraft,
+        situationTitle: String,
+        targetTabId: String?
+    ) async throws -> String {
+        if let existingColumnId = try await container.notebookRepository.getColumnIdForEvaluation(evaluationId: evaluationId) {
+            return existingColumnId
+        }
+        let targetTabId = try await resolveNotebookTargetTabId(classId: classId, preferredTabId: targetTabId)
+
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let nowInstant = Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMs)
+        let resolvedWeight = instrument.weightPercent ?? 0
+        let columnId = "eval_\(evaluationId)"
+        let column = NotebookColumnDefinition(
+            id: columnId,
+            title: title,
+            type: notebookColumnType(for: instrument, rubricId: rubricId),
+            categoryKind: .evaluation,
+            instrumentKind: notebookInstrumentKind(for: instrument.kind),
+            inputKind: notebookInputKind(for: instrument, rubricId: rubricId),
+            evaluationId: KotlinLong(value: evaluationId),
+            rubricId: rubricId.map { KotlinLong(value: $0) },
+            formula: nil,
+            weight: resolvedWeight,
+            dateEpochMs: nil,
+            unitOrSituation: situationTitle,
+            competencyCriteriaIds: [],
+            scaleKind: notebookScaleKind(for: instrument, rubricId: rubricId),
+            tabIds: [targetTabId],
+            sessions: [],
+            sharedAcrossTabs: false,
+            colorHex: nil,
+            iconName: nil,
+            order: -1,
+            widthDp: 132,
+            categoryId: nil,
+            ordinalLevels: [],
+            availableIcons: [],
+            countsTowardAverage: resolvedWeight > 0,
+            isPinned: false,
+            isHidden: false,
+            visibility: .visible,
+            isLocked: false,
+            isTemplate: false,
+            emptyCellPolicy: .excludeFromAverage,
+            trace: AuditTrace(
+                authorUserId: nil,
+                createdAt: nowInstant,
+                updatedAt: nowInstant,
+                associatedGroupId: KotlinLong(value: classId),
+                deviceId: localDeviceId,
+                syncVersion: 1
+            )
+        )
+        try await container.notebookRepository.saveColumn(classId: classId, column: column)
+        return columnId
+    }
+
+    private func resolveNotebookTargetTabId(classId: Int64, preferredTabId: String?) async throws -> String {
+        let tabs = try await container.notebookConfigRepository.listTabs(classId: classId)
+        if let preferredTabId, tabs.contains(where: { $0.id == preferredTabId }) {
+            return preferredTabId
+        }
+        if let first = tabs.first?.id {
+            return first
+        }
+        let createdTitle = try await container.notebookRepository.createTab(classId: classId, tabName: "Evaluación")
+        let refreshedTabs = try await container.notebookConfigRepository.listTabs(classId: classId)
+        return refreshedTabs.first(where: { $0.title == createdTitle })?.id ?? refreshedTabs.first?.id ?? "TAB_\(classId)"
+    }
+
+    private func repairAssessmentInstrumentRubricLevelPoints(classId: Int64) async throws -> Bool {
+        let targetNames: Set<String> = ["Plan Design Rubric", "Peer-Coaching Rubric"]
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let importedRubrics = try await container.rubricsRepository.listRubrics().filter { detail in
+            targetNames.contains(detail.rubric.name) && detail.rubric.classId?.int64Value == classId
+        }
+        var didRepair = false
+        for detail in importedRubrics {
+            for criterion in detail.criteria {
+                for level in criterion.levels {
+                    let expectedPoints = level.order + 1
+                    guard level.points != expectedPoints else { continue }
+                    _ = try await container.rubricsRepository.saveLevel(
+                        id: KotlinLong(value: level.id),
+                        criterionId: level.criterionId,
+                        name: level.name,
+                        points: Int32(expectedPoints),
+                        description: level.description,
+                        order: Int32(level.order),
+                        updatedAtEpochMs: nowMs,
+                        deviceId: localDeviceId,
+                        syncVersion: level.trace.syncVersion
+                    )
+                    didRepair = true
+                }
+            }
+        }
+        if didRepair {
+            try? await refreshRubrics()
+            try? await refreshRubricClassLinks()
+        }
+        return didRepair
+    }
+
+    private func repairAssessmentInstrumentNotebookColumns(classId: Int64) async throws -> Bool {
+        let columns = try await container.notebookConfigRepository.listColumns(classId: classId)
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let nowInstant = Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMs)
+        var didRepair = false
+
+        for column in columns {
+            guard let repair = assessmentInstrumentColumnRepair(for: column.title) else { continue }
+            guard column.type != repair.type ||
+                    column.instrumentKind != repair.instrumentKind ||
+                    column.inputKind != repair.inputKind ||
+                    column.scaleKind != repair.scaleKind else {
+                continue
+            }
+            let repaired = NotebookColumnDefinition(
+                id: column.id,
+                title: column.title,
+                type: repair.type,
+                categoryKind: .evaluation,
+                instrumentKind: repair.instrumentKind,
+                inputKind: repair.inputKind,
+                evaluationId: column.evaluationId,
+                rubricId: nil,
+                formula: column.formula,
+                weight: column.weight,
+                dateEpochMs: column.dateEpochMs,
+                unitOrSituation: column.unitOrSituation,
+                competencyCriteriaIds: column.competencyCriteriaIds,
+                scaleKind: repair.scaleKind,
+                tabIds: column.tabIds,
+                sessions: column.sessions,
+                sharedAcrossTabs: column.sharedAcrossTabs,
+                colorHex: column.colorHex,
+                iconName: column.iconName,
+                order: Int32(column.order),
+                widthDp: column.widthDp,
+                categoryId: column.categoryId,
+                ordinalLevels: column.ordinalLevels,
+                availableIcons: column.availableIcons,
+                countsTowardAverage: column.countsTowardAverage,
+                isPinned: column.isPinned,
+                isHidden: column.isHidden,
+                visibility: column.visibility,
+                isLocked: column.isLocked,
+                isTemplate: column.isTemplate,
+                emptyCellPolicy: column.emptyCellPolicy,
+                trace: AuditTrace(
+                    authorUserId: nil,
+                    createdAt: column.trace.createdAt,
+                    updatedAt: nowInstant,
+                    associatedGroupId: KotlinLong(value: classId),
+                    deviceId: localDeviceId,
+                    syncVersion: column.trace.syncVersion
+                )
+            )
+            try await container.notebookConfigRepository.saveColumn(classId: classId, column: repaired)
+            didRepair = true
+        }
+        return didRepair
+    }
+
+    private func repairAssessmentInstrumentEvaluations(classId: Int64) async throws -> Bool {
+        let evaluations = try await container.evaluationsRepository.listClassEvaluations(classId: classId)
+        var didRepair = false
+        for evaluation in evaluations {
+            let currentRubricId = evaluation.rubricId?.int64Value
+            let targetRepair = assessmentInstrumentColumnRepair(for: evaluation.name)
+            let shouldClearImportedRubric = targetRepair != nil && targetRepair?.type != .rubric && currentRubricId != nil
+            let shouldClearZeroRubric = currentRubricId == 0
+            guard shouldClearImportedRubric || shouldClearZeroRubric else { continue }
+            _ = try await container.evaluationsRepository.saveEvaluation(
+                id: KotlinLong(value: evaluation.id),
+                classId: classId,
+                code: evaluation.code,
+                name: evaluation.name,
+                type: evaluation.type,
+                weight: evaluation.weight,
+                formula: evaluation.formula,
+                rubricId: nil,
+                description: evaluation.description_,
+                authorUserId: evaluation.trace.authorUserId,
+                createdAtEpochMs: evaluation.trace.createdAt.toEpochMilliseconds(),
+                updatedAtEpochMs: 0,
+                associatedGroupId: evaluation.trace.associatedGroupId,
+                deviceId: localDeviceId,
+                syncVersion: evaluation.trace.syncVersion
+            )
+            didRepair = true
+        }
+        return didRepair
+    }
+
+    private struct AssessmentInstrumentColumnRepair {
+        let type: NotebookColumnType
+        let instrumentKind: NotebookInstrumentKind
+        let inputKind: NotebookCellInputKind
+        let scaleKind: NotebookScaleKind
+    }
+
+    private func assessmentInstrumentColumnRepair(for title: String) -> AssessmentInstrumentColumnRepair? {
+        switch title.trimmingCharacters(in: .whitespacesAndNewlines) {
+        case "Plan Design Rubric", "Peer-Coaching Rubric":
+            return AssessmentInstrumentColumnRepair(type: .rubric, instrumentKind: .rubric, inputKind: .rubric, scaleKind: .tenPoint)
+        case "Daily Workout Log", "Diagnostic Record Sheet - Session 1":
+            return AssessmentInstrumentColumnRepair(type: .ordinal, instrumentKind: .observationScale, inputKind: .numeric14, scaleKind: .fourLevel)
+        case "Plan Safety Checklist - Session 2", "Adjustment Sheet - Session 7", "Healthy Habits Quiz - Session 8":
+            return AssessmentInstrumentColumnRepair(type: .check, instrumentKind: .checklist, inputKind: .check, scaleKind: .custom)
+        case "Final Submission Checklist":
+            return AssessmentInstrumentColumnRepair(type: .check, instrumentKind: .finalProduct, inputKind: .check, scaleKind: .custom)
+        case "Teacher Observation Grid CE 2.2 - Execution and self-regulation":
+            return AssessmentInstrumentColumnRepair(type: .text, instrumentKind: .systematicObservation, inputKind: .shortNote, scaleKind: .custom)
+        default:
+            return nil
+        }
+    }
+
+    private func notebookColumnType(for instrument: AssessmentInstrumentDraft, rubricId: Int64?) -> NotebookColumnType {
+        if rubricId != nil { return .rubric }
+        switch instrument.kind {
+        case .checklist, .submissionChecklist:
+            return .check
+        case .teacherObservation:
+            return .text
+        case .observationGrid:
+            return .ordinal
+        case .rubric:
+            return .numeric
+        }
+    }
+
+    private func notebookInstrumentKind(for kind: AssessmentInstrumentKind) -> NotebookInstrumentKind {
+        switch kind {
+        case .rubric:
+            return .rubric
+        case .observationGrid:
+            return .observationScale
+        case .checklist:
+            return .checklist
+        case .teacherObservation:
+            return .systematicObservation
+        case .submissionChecklist:
+            return .finalProduct
+        }
+    }
+
+    private func notebookInputKind(for instrument: AssessmentInstrumentDraft, rubricId: Int64?) -> NotebookCellInputKind {
+        if rubricId != nil { return .rubric }
+        switch instrument.kind {
+        case .checklist, .submissionChecklist:
+            return .check
+        case .teacherObservation:
+            return .shortNote
+        case .observationGrid:
+            return .numeric14
+        case .rubric:
+            return .numeric010
+        }
+    }
+
+    private func notebookScaleKind(for instrument: AssessmentInstrumentDraft, rubricId: Int64?) -> NotebookScaleKind {
+        if rubricId != nil { return .tenPoint }
+        switch instrument.kind {
+        case .observationGrid:
+            return .fourLevel
+        case .rubric:
+            return .tenPoint
+        case .checklist, .submissionChecklist, .teacherObservation:
+            return .custom
         }
     }
 
@@ -8770,6 +9230,39 @@ final class KmpBridge: ObservableObject {
         }
     }
 
+    // MARK: - Helper lifecycle notifications (macOS only)
+
+    /// Called by MacCommandCenterCoordinator (via Notification) when the helper process
+    /// has published a valid LAN IP address. At that point it is safe to start the
+    /// event listener and trigger an initial sync.
+    func notifyHelperReady(host: String, port: Int) {
+        #if os(macOS)
+        guard !host.isEmpty else { return }
+        print("[Sync] helper ready at \(host):\(port) — starting listener")
+        pairedSyncHost = host
+        syncEventListener.stop()
+        startSyncEventListenerIfPaired()
+        startAutoSyncLoop()
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.syncNow(reason: "helper_ready", forceFullPull: true, silent: true)
+        }
+        #endif
+    }
+
+    /// Called by MacCommandCenterCoordinator (via Notification) when the helper process
+    /// has stopped. Stops the event listener and periodic sync loop without clearing
+    /// the paired state, so the UI remains accurate.
+    func notifyHelperStopped() {
+        #if os(macOS)
+        print("[Sync] helper stopped — suspending listener")
+        syncEventListener.stop()
+        autoSyncLoopTask?.cancel()
+        autoSyncLoopTask = nil
+        pairedSyncHost = nil
+        #endif
+    }
+
     private func getDatabaseURL() -> URL? {
         let fileManager = FileManager.default
         guard let appSupportURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
@@ -9329,7 +9822,11 @@ final class LanSyncClient {
 
         var components = URLComponents()
         components.scheme = "https"
+        #if os(macOS)
+        components.host = "127.0.0.1"
+        #else
         components.host = host
+        #endif
         components.port = 8765
         components.path = path
         components.queryItems = queryItems.isEmpty ? nil : queryItems

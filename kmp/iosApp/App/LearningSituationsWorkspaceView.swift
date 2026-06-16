@@ -842,8 +842,13 @@ private struct LearningSituationEvaluationSheet: View {
     @State private var classId: Int64?
     @State private var proposals: [LearningSituationEvaluationDraft] = []
     @State private var activeProposalId: UUID?
+    @State private var showingInstrumentImporter = false
     @State private var showingRubricImporter = false
     @State private var showingRubricBuilder = false
+    @State private var instrumentImportDraft: LearningSituationAssessmentImportDraft?
+    @State private var instrumentImportPreview: LearningSituationAssessmentImportDraft?
+    @State private var instrumentTargetTabs: [NotebookTab] = []
+    @State private var selectedInstrumentTargetTabId: String?
     @State private var rubricImportPreview: AppleRubricImportPreview?
     @State private var errorMessage = ""
 
@@ -852,9 +857,17 @@ private struct LearningSituationEvaluationSheet: View {
     }
 
     private var canSave: Bool {
-        classId != nil &&
-        !selectedProposals.isEmpty &&
-        selectedProposals.allSatisfy { $0.rubricId != nil }
+        if instrumentImportDraft != nil {
+            let hasTargetTab = instrumentTargetTabs.isEmpty || selectedInstrumentTargetTabId != nil
+            return classId != nil && !selectedImportedInstruments.isEmpty && hasTargetTab
+        }
+        return classId != nil &&
+            !selectedProposals.isEmpty &&
+            selectedProposals.allSatisfy { $0.rubricId != nil }
+    }
+
+    private var selectedImportedInstruments: [AssessmentInstrumentDraft] {
+        instrumentImportDraft?.instruments.filter(\.isSelected) ?? []
     }
 
     var body: some View {
@@ -863,27 +876,58 @@ private struct LearningSituationEvaluationSheet: View {
                 Picker("Grupo", selection: $classId) {
                     ForEach(bridge.classes, id: \.id) { Text($0.name).tag(Optional($0.id)) }
                 }
-                Section("Instrumentos propuestos") {
-                    ForEach($proposals) { $proposal in
-                        VStack(alignment: .leading, spacing: 8) {
-                            Toggle(isOn: $proposal.isSelected) {
-                                VStack(alignment: .leading) {
-                                    Text(proposal.title)
-                                    Text(proposal.weightPercent.map { "\(Int($0))%" } ?? "Sin ponderación")
-                                        .font(.caption).foregroundStyle(.secondary)
-                                }
-                            }
-
-                            HStack {
-                                rubricStatus(for: proposal)
-                                Spacer()
-                                rubricMenu(for: $proposal)
-                            }
-                        }
-                        .padding(.vertical, 4)
+                Section("Documento de instrumentos") {
+                    Button {
+                        showingInstrumentImporter = true
+                    } label: {
+                        Label("Adjuntar documento DOCX", systemImage: "doc.badge.plus")
+                    }
+                    if let instrumentImportDraft {
+                        Label("\(instrumentImportDraft.instruments.count) instrumentos detectados en \(instrumentImportDraft.sourceFileName)", systemImage: "checkmark.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.green)
                     }
                 }
-                Text(canSave ? "Se crearán evaluaciones y columnas de rúbrica vinculadas." : "Cada instrumento seleccionado necesita una rúbrica antes de crear las columnas.")
+                if instrumentImportDraft == nil {
+                    Section("Instrumentos propuestos") {
+                        ForEach($proposals) { $proposal in
+                            VStack(alignment: .leading, spacing: 8) {
+                                Toggle(isOn: $proposal.isSelected) {
+                                    VStack(alignment: .leading) {
+                                        Text(proposal.title)
+                                        Text(proposal.weightPercent.map { "\(Int($0))%" } ?? "Sin ponderacion")
+                                            .font(.caption).foregroundStyle(.secondary)
+                                    }
+                                }
+
+                                HStack {
+                                    rubricStatus(for: proposal)
+                                    Spacer()
+                                    rubricMenu(for: $proposal)
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
+                } else {
+                    Section("Instrumentos detectados") {
+                        importedInstrumentRows
+                    }
+                    Section("Pestaña del cuaderno") {
+                        if instrumentTargetTabs.isEmpty {
+                            Label("Se creará la pestaña Evaluación si el grupo no tiene pestañas.", systemImage: "folder.badge.plus")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Picker("Añadir en", selection: $selectedInstrumentTargetTabId) {
+                                ForEach(instrumentTargetTabs, id: \.id) { tab in
+                                    Text(tab.title).tag(Optional(tab.id))
+                                }
+                            }
+                        }
+                    }
+                }
+                Text(statusMessage)
                     .font(.footnote)
                     .foregroundStyle(canSave ? .green : .secondary)
             }
@@ -896,11 +940,26 @@ private struct LearningSituationEvaluationSheet: View {
                 }
             }
             .fileImporter(
+                isPresented: $showingInstrumentImporter,
+                allowedContentTypes: [.docx],
+                allowsMultipleSelection: false
+            ) { result in
+                Task { await handleInstrumentImport(result) }
+            }
+            .fileImporter(
                 isPresented: $showingRubricImporter,
                 allowedContentTypes: [.xlsx, .commaSeparatedText],
                 allowsMultipleSelection: false
             ) { result in
                 Task { await handleRubricImportFile(result) }
+            }
+            .sheet(item: $instrumentImportPreview) { preview in
+                LearningSituationAssessmentImportPreviewSheet(draft: preview) {
+                    instrumentImportPreview = nil
+                } confirm: { accepted in
+                    instrumentImportDraft = accepted
+                    instrumentImportPreview = nil
+                }
             }
             .sheet(item: $rubricImportPreview) { preview in
                 LearningSituationRubricImportPreviewSheet(preview: preview) {
@@ -928,6 +987,7 @@ private struct LearningSituationEvaluationSheet: View {
             Task {
                 try? await bridge.refreshRubrics()
                 try? await bridge.refreshRubricClassLinks()
+                await loadNotebookTabsAndRepairImport()
             }
         }
         .appOnChange(of: classId) { newValue in
@@ -935,6 +995,35 @@ private struct LearningSituationEvaluationSheet: View {
                 bridge.selectClass(id: newValue)
                 bridge.selectRubricClass(newValue)
             }
+            Task { await loadNotebookTabsAndRepairImport() }
+        }
+    }
+
+    private var statusMessage: String {
+        if instrumentImportDraft != nil {
+            return canSave
+                ? "Se crearan evaluaciones, columnas y vinculos para los instrumentos seleccionados."
+                : "Selecciona al menos un instrumento detectado antes de crear."
+        }
+        return canSave
+            ? "Se crearan evaluaciones y columnas de rubrica vinculadas."
+            : "Cada instrumento seleccionado necesita una rubrica antes de crear las columnas."
+    }
+
+    private var importedInstrumentRows: some View {
+        ForEach(Array((instrumentImportDraft?.instruments ?? []).indices), id: \.self) { index in
+            Toggle(isOn: Binding(
+                get: { instrumentImportDraft?.instruments[index].isSelected ?? false },
+                set: { instrumentImportDraft?.instruments[index].isSelected = $0 }
+            )) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(instrumentImportDraft?.instruments[index].title ?? "")
+                    Text(importedInstrumentSubtitle(instrumentImportDraft?.instruments[index]))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.vertical, 4)
         }
     }
 
@@ -1011,6 +1100,16 @@ private struct LearningSituationEvaluationSheet: View {
     }
 
     @MainActor
+    private func handleInstrumentImport(_ result: Result<[URL], Error>) async {
+        do {
+            guard let url = try result.get().first else { return }
+            instrumentImportPreview = try LearningSituationAssessmentInstrumentsImportService().preview(from: url)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
     private func handleRubricImportFile(_ result: Result<[URL], Error>) async {
         do {
             guard let url = try result.get().first else { return }
@@ -1040,6 +1139,27 @@ private struct LearningSituationEvaluationSheet: View {
               let index = proposals.firstIndex(where: { $0.id == activeProposalId }) else { return }
         proposals[index].rubricId = rubricId
         proposals[index].isSelected = true
+    }
+
+    @MainActor
+    private func loadNotebookTabsAndRepairImport() async {
+        guard let classId else {
+            instrumentTargetTabs = []
+            selectedInstrumentTargetTabId = nil
+            return
+        }
+        do {
+            let tabs = try await bridge.learningSituationNotebookTabs(for: classId)
+            instrumentTargetTabs = tabs
+            if let selectedInstrumentTargetTabId,
+               tabs.contains(where: { $0.id == selectedInstrumentTargetTabId }) {
+                return
+            }
+            selectedInstrumentTargetTabId = tabs.first?.id
+            try await bridge.repairLearningSituationAssessmentInstrumentImportIfNeeded(classId: classId)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     private func makeRubricImportPreview(from rows: [[String]]) -> AppleRubricImportPreview {
@@ -1072,12 +1192,100 @@ private struct LearningSituationEvaluationSheet: View {
     private func save() async {
         guard let classId else { return }
         do {
-            try await bridge.materializeLearningSituationEvaluations(situation: situation, classId: classId, proposals: proposals)
+            if let instrumentImportDraft {
+                try await bridge.materializeLearningSituationAssessmentInstruments(
+                    situation: situation,
+                    classId: classId,
+                    draft: instrumentImportDraft,
+                    targetTabId: selectedInstrumentTargetTabId
+                )
+            } else {
+                try await bridge.materializeLearningSituationEvaluations(situation: situation, classId: classId, proposals: proposals)
+            }
             dismiss()
             onSaved()
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func importedInstrumentSubtitle(_ instrument: AssessmentInstrumentDraft?) -> String {
+        guard let instrument else { return "" }
+        var parts = [instrument.kind.label]
+        if let criterion = instrument.criterionLabel, !criterion.isEmpty { parts.append(criterion) }
+        parts.append(instrument.weightPercent.map { "\(Int($0.rounded()))%" } ?? "Auxiliar")
+        let detailCount = instrument.rubric?.criteria.count ?? instrument.checklistItems.count + instrument.observationFields.count
+        if detailCount > 0 { parts.append("\(detailCount) items") }
+        return parts.joined(separator: " · ")
+    }
+}
+
+private struct LearningSituationAssessmentImportPreviewSheet: View {
+    let draft: LearningSituationAssessmentImportDraft
+    let cancel: () -> Void
+    let confirm: (LearningSituationAssessmentImportDraft) -> Void
+    @State private var editableDraft: LearningSituationAssessmentImportDraft
+
+    init(
+        draft: LearningSituationAssessmentImportDraft,
+        cancel: @escaping () -> Void,
+        confirm: @escaping (LearningSituationAssessmentImportDraft) -> Void
+    ) {
+        self.draft = draft
+        self.cancel = cancel
+        self.confirm = confirm
+        _editableDraft = State(initialValue: draft)
+    }
+
+    private var selectedCount: Int {
+        editableDraft.instruments.filter(\.isSelected).count
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Instrumentos detectados") {
+                    ForEach(Array(editableDraft.instruments.indices), id: \.self) { index in
+                        Toggle(isOn: $editableDraft.instruments[index].isSelected) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(editableDraft.instruments[index].title)
+                                Text(subtitle(for: editableDraft.instruments[index]))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+                if !editableDraft.warnings.isEmpty {
+                    Section("Advertencias") {
+                        ForEach(editableDraft.warnings, id: \.self) { warning in
+                            Label(warning, systemImage: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Revisar instrumentos")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancelar", action: cancel)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Usar seleccionados") { confirm(editableDraft) }
+                        .disabled(selectedCount == 0)
+                }
+            }
+        }
+        .frame(minWidth: 620, minHeight: 520)
+    }
+
+    private func subtitle(for instrument: AssessmentInstrumentDraft) -> String {
+        var parts = [instrument.kind.label]
+        if let criterion = instrument.criterionLabel, !criterion.isEmpty { parts.append(criterion) }
+        parts.append(instrument.weightPercent.map { "\(Int($0.rounded()))%" } ?? "Auxiliar")
+        let detailCount = instrument.rubric?.criteria.count ?? instrument.checklistItems.count + instrument.observationFields.count
+        if detailCount > 0 { parts.append("\(detailCount) items") }
+        return parts.joined(separator: " · ")
     }
 }
 

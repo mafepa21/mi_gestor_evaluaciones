@@ -405,6 +405,39 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-06-16 - Solución al fallo de serialización JSON de snapshots en Swift por tipos KotlinLong
+
+Resumen:
+- **Causa raíz**: Aunque en la sesión anterior se añadieron los metadatos al snapshot de `notebook_column` en `KmpBridge.swift`, la llamada a `JSONSerialization.data(withJSONObject:)` en Swift fallaba silenciosamente (retornando `nil` mediante `try?`) en tiempo de ejecución. Esto ocurría porque el diccionario del payload contenía referencias de tipo `KotlinLong` (como `evaluationId` y `rubricId` opcionales de Kotlin) en lugar de tipos nativos de Swift/Objective-C compatibles con JSON (como `Int64` o `NSNumber`). Al fallar silenciosamente, las columnas nuevas de evaluación y sus notas nunca se enviaban al servidor en el push, lo que causaba que la sincronización posterior degradara las columnas locales a campos de texto plano.
+- **Cambios realizados**: Se convirtieron todos los accesos a `evaluationId` y `rubricId` dentro de `enqueueNotebookSnapshot` en `KmpBridge.swift` (para los payloads de `evaluation`, `notebook_column` y `grade`) para usar `.int64Value` nativo.
+- **Validación**: Proyecto Xcode generado con éxito mediante XcodeGen. Compilación en la sandbox fallida por limitación conocida de la terminal del agente (`xcodebuild requires Xcode...`).
+
+### 2026-06-16 - Corrección de compilación y pérdida de metadatos en sincronización de columnas estructuradas
+
+Resumen:
+- **Causa raíz de la regresión de columnas**: Se identificó que al materializar o reparar columnas, el sistema ejecutaba correctamente la persistencia local en SQLite. Sin embargo, pasados unos segundos se disparaba la sincronización automática (`scheduleNotebookSnapshotSync` -> `enqueueNotebookSnapshot`), la cual regenera el snapshot de cambios locales. Al construir el payload para la entidad `"notebook_column"`, se omitía serializar los nuevos metadatos (`inputKind`, `scaleKind`, `instrumentKind`, `categoryKind`, etc.). Esto hacía que el servidor LAN (y por ende, la sincronización de vuelta al cliente) restableciera dichos valores a sus defaults (`inputKind = TEXT`), convirtiendo visualmente las columnas de instrumentos interactivos en cajas de texto plano.
+- **Corrección en encolado de sincronización**: Se actualizó el constructor de payloads de `"notebook_column"` dentro de `enqueueNotebookSnapshot` en `KmpBridge.swift` para incluir de forma exhaustiva todos los metadatos y propiedades de la columna (tales como `categoryKind`, `instrumentKind`, `inputKind`, `scaleKind`, `widthDp`, etc.).
+- **Errores de compilación y compatibilidad**: Resueltos los fallos estáticos en `KmpBridge.swift` y `NotebookStructuredInstrumentSupport.swift`. En este último, se reemplazó `ContentUnavailableView` (iOS 17+) por `NotebookContentUnavailableView` local para mantener la compatibilidad con iOS 16.0.
+- **XcodeGen esquemas compartidos**: Se configuró `scheme: {}` en `project.yml` para los targets Apple, habilitando la compilación automatizada de esquemas vía CLI.
+- **Validación**: Compilación estática limpia validada en macOS Simulator e iOS Simulator usando `./scripts/verify_apple_builds.sh` bajo Xcode 27.0.
+
+Notas para futuras conversaciones:
+- Cualquier nueva propiedad añadida a `NotebookColumnDefinition` debe replicarse tanto en la serialización/deserialización del adaptador KMP (`SqlDelightSyncAdapter.kt`) como en el constructor de payloads Swift (`enqueueNotebookSnapshot` de `KmpBridge.swift`).
+- La aplicación tiene como target mínimo de iOS la versión 16.0; evitar el uso de vistas exclusivas de iOS 17 sin fallback.
+
+### 2026-06-16 - Instrumentos de evaluación estructurados con persistencia propia
+
+Resumen:
+- Se añade una capa de instrumentos estructurados sobre el Cuaderno para que checklists, observaciones 1-4, formularios y quizzes conserven sus ítems reales por alumno, columna e instrumento, sin reducirlos a una celda de texto o un único check.
+- SQLDelight incorpora tablas propias para plantillas, ítems y respuestas (`notebook_instrument_templates`, `notebook_instrument_items`, `notebook_instrument_responses`), migración `30.sqm`, rescue migrations Apple/Desktop y borrado explícito asociado a columnas.
+- El importador de instrumentos de situaciones materializa plantillas para los instrumentos del DOCX de `Building Health`: daily log, diagnostic record, safety checklist, teacher observation grid, adjustment sheet, healthy habits quiz y final submission checklist, manteniendo las rúbricas en su flujo actual.
+- SwiftUI mantiene el grid ligero con resumen compacto y abre un `StructuredInstrumentEvaluationSheet` para completar el instrumento de un alumno; guardar respuestas actualiza el resumen de celda.
+- Validación: `./gradlew :data:compileDebugKotlinAndroid`, reconstrucción del framework KMP macOS, `xcodebuild` macOS limpio con DerivedData en `/private/tmp/MiGestorStructuredDerived`, `git diff --check` y `plutil -lint` completados correctamente.
+
+Notas para futuras conversaciones:
+- Las rúbricas siguen usando tablas de rúbricas; los nuevos instrumentos no rúbrica usan repositorio propio y no deben contaminar la media salvo que la columna tenga `weight > 0` y `countsTowardAverage=true`.
+- Queda pendiente una prueba manual en MiGestorKMPMac sobre `1º BAC A > Tema 1` para comprobar apertura/reapertura de `Final Submission Checklist` y persistencia visual del resumen.
+
 ### 2026-06-16 - Forzar loopback 127.0.0.1 en macOS para evitar errores HTTP 401 en sincronización e importaciones
 
 Resumen:

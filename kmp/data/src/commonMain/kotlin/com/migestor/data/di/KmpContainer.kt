@@ -15,6 +15,7 @@ import com.migestor.data.repository.EvaluationsRepositorySqlDelight
 import com.migestor.data.repository.GradesRepositorySqlDelight
 import com.migestor.data.repository.IncidentsRepositorySqlDelight
 import com.migestor.data.repository.NotebookCellsRepositorySqlDelight
+import com.migestor.data.repository.NotebookInstrumentsRepositorySqlDelight
 import com.migestor.data.repository.RubricsRepositorySqlDelight
 import com.migestor.data.repository.StudentsRepositorySqlDelight
 import com.migestor.data.repository.SubjectsRepositorySqlDelight
@@ -59,6 +60,7 @@ class KmpContainer(val driver: SqlDriver) {
     val evaluationsRepository = EvaluationsRepositorySqlDelight(database)
     val gradesRepository = GradesRepositorySqlDelight(database)
     val notebookCellsRepository = NotebookCellsRepositorySqlDelight(database)
+    val notebookInstrumentsRepository = NotebookInstrumentsRepositorySqlDelight(database)
     val rubricsRepository = RubricsRepositorySqlDelight(database)
     val attendanceRepository = AttendanceRepositorySqlDelight(database)
     val aiAuditRepository = AIAuditRepositorySqlDelight(database)

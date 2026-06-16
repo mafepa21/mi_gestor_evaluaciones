@@ -58,6 +58,7 @@
 		27FDE45A8D5EE651EBCF9133 /* NotebookColumnOrganizerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1BA1A353C3D0548CC0C2E8A /* NotebookColumnOrganizerSheet.swift */; };
 		288029144DAFFC789B765F85 /* CoursesWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC6FF32972AD484A9FAEABBC /* CoursesWorkspaceView.swift */; };
 		2A06B1A387AF1081E88869D0 /* BackupCenterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1027C324D7108B1CD8EB79AC /* BackupCenterView.swift */; };
+		2A132DCD2DEABBDD1A1E8DC8 /* NotebookStructuredInstrumentSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FA4D40A51F6DA104CCFFE1E /* NotebookStructuredInstrumentSupport.swift */; };
 		2E0C1B67E85317A3147416FF /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2BAD893EC7E90121671F7BDB /* Assets.xcassets */; };
 		2F72D4E14B451CD4EE6F131C /* NotebookModuleToolbarState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A4E8D89679CED5E074F1005 /* NotebookModuleToolbarState.swift */; };
 		303A136D412D596B99BB06A8 /* MacDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7030138D429F12877D448CD /* MacDashboardView.swift */; };
@@ -75,6 +76,7 @@
 		3BB39B41E8AB85E4AC0B5FA4 /* WorkspaceModuleSwitcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 438FE85184775DE1F77E9FBD /* WorkspaceModuleSwitcher.swift */; };
 		3BE78AF890C467D8F2E67271 /* NotebookModuleCellActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4046A78B0D3C0FB40273F527 /* NotebookModuleCellActions.swift */; };
 		3C174718E1D1C8F7AFA23C0E /* PendingEvaluationPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72D234C2A47232591178F898 /* PendingEvaluationPickerSheet.swift */; };
+		3C4B4FC0834FCC529CBE0229 /* NotebookStructuredInstrumentSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FA4D40A51F6DA104CCFFE1E /* NotebookStructuredInstrumentSupport.swift */; };
 		3CB4C3CA98572F18CC5D1DA7 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2BAD893EC7E90121671F7BDB /* Assets.xcassets */; };
 		3D42ABE38DAA65311889C449 /* MacFeatureRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 540E9FF031B5425A4147DC64 /* MacFeatureRegistry.swift */; };
 		3DEC9F6A7A9FF704B88EFFF9 /* EvaluationHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2960F7D65E3A8DF5997306CD /* EvaluationHubView.swift */; };
@@ -445,6 +447,7 @@
 		9D93A76DF493650C1B4A2C09 /* ImportPreviewModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportPreviewModels.swift; sourceTree = "<group>"; };
 		9EA0ED7ACCCC1D3A0A73D045 /* MacStudentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacStudentsView.swift; sourceTree = "<group>"; };
 		9F06B84E53590F642FC31288 /* NotebookColumnVisibilityRules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookColumnVisibilityRules.swift; sourceTree = "<group>"; };
+		9FA4D40A51F6DA104CCFFE1E /* NotebookStructuredInstrumentSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookStructuredInstrumentSupport.swift; sourceTree = "<group>"; };
 		A000A844E2F1245DA5956673 /* NotebookViewModifiers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookViewModifiers.swift; sourceTree = "<group>"; };
 		A1BA1A353C3D0548CC0C2E8A /* NotebookColumnOrganizerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookColumnOrganizerSheet.swift; sourceTree = "<group>"; };
 		A593BC56B52D68974ADE4DAE /* IOSSelectionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSSelectionStore.swift; sourceTree = "<group>"; };
@@ -706,6 +709,7 @@
 				4BA9E95BA74B4D7D8AC2D362 /* NotebookModuleView.swift */,
 				C5BB221D33601136CB3F7F0F /* NotebookSeatingPlanView.swift */,
 				55519476F175FF4B59F1AB21 /* NotebookSkeletonGridView.swift */,
+				9FA4D40A51F6DA104CCFFE1E /* NotebookStructuredInstrumentSupport.swift */,
 				152F4A693C9E37077F51E2F8 /* NotebookStudentInspector.swift */,
 				834354958EC7B5CE22A3BA07 /* NotebookSupportViews.swift */,
 				1E112239AB1D009CECE6FC5F /* NotebookTabStrip.swift */,
@@ -1052,6 +1056,7 @@
 				774C8481CFDCFE2829E7ACA5 /* NotebookSeatingPlanView.swift in Sources */,
 				B82B37EE06DEB54E59585F17 /* NotebookSettingsView.swift in Sources */,
 				204C693F7C4A9D27F55AB19B /* NotebookSkeletonGridView.swift in Sources */,
+				2A132DCD2DEABBDD1A1E8DC8 /* NotebookStructuredInstrumentSupport.swift in Sources */,
 				E74AE25F006ADDD1045FE4F6 /* NotebookStudentInspector.swift in Sources */,
 				EE0C661D1602554402374D55 /* NotebookSupportViews.swift in Sources */,
 				26B8D3F18BA24C01F5F03275 /* NotebookTabStrip.swift in Sources */,
@@ -1193,6 +1198,7 @@
 				8177D8D46978C81F4594E4B4 /* NotebookSeatingPlanView.swift in Sources */,
 				753FCA184045EFF02028F2A5 /* NotebookSettingsView.swift in Sources */,
 				EBFA14CB12EE422338F2C3F5 /* NotebookSkeletonGridView.swift in Sources */,
+				3C4B4FC0834FCC529CBE0229 /* NotebookStructuredInstrumentSupport.swift in Sources */,
 				64ED5CF4B69A2A8645CA448C /* NotebookStudentInspector.swift in Sources */,
 				5BD12903E50D9BD88C05DD1F /* NotebookSupportViews.swift in Sources */,
 				4D9E5932EA17C6365467B154 /* NotebookTabStrip.swift in Sources */,

@@ -87,6 +87,7 @@ struct NotebookEditableTableCell: View {
     let onOpenFormula: () -> Void
     let onOpenRubricIndividual: () -> Void
     let onOpenRubricBulk: () -> Void
+    let onOpenStructuredInstrument: () -> Void
     var onGenerateSummary: (() -> Void)? = nil
     let onNavigate: (NotebookNavigationDirection) -> Void
     let onCellSaved: () -> Void
@@ -287,6 +288,9 @@ struct NotebookEditableTableCell: View {
     }
 
     private var hasPendingDraft: Bool {
+        if isStructuredInstrument {
+            return false
+        }
         switch column.type {
         case .numeric:
             return originalNumericDraft != numericDraft
@@ -307,6 +311,8 @@ struct NotebookEditableTableCell: View {
             } else {
                 attendancePicker
             }
+        } else if isStructuredInstrument {
+            structuredInstrumentButton
         } else {
             switch column.type {
             case .numeric:
@@ -500,6 +506,10 @@ struct NotebookEditableTableCell: View {
         column.type == .attendance || column.categoryKind == .attendance
     }
 
+    private var isStructuredInstrument: Bool {
+        column.inputKind.isStructuredInstrument
+    }
+
     private var isEmptySummaryCell: Bool {
         isNotebookIndividualSummaryColumn(column) &&
             textDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -591,6 +601,33 @@ struct NotebookEditableTableCell: View {
                 )
         }
         .buttonStyle(.plain)
+    }
+
+    private var structuredInstrumentButton: some View {
+        Button {
+            onSelect()
+            onOpenStructuredInstrument()
+        } label: {
+            HStack(spacing: 6) {
+                Text(structuredDisplayText)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(structuredDisplayText == "Pendiente" ? .tertiary : .primary)
+                    .lineLimit(1)
+                Image(systemName: "checklist")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Abrir instrumento")
+    }
+
+    private var structuredDisplayText: String {
+        let value = bridge.structuredCellDisplayText(studentId: item.student.id, columnId: column.id)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? "Pendiente" : value
     }
 
     private var choicePopoverBinding: Binding<Bool> {

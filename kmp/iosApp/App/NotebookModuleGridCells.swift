@@ -390,6 +390,7 @@ extension NotebookModuleView {
         return NotebookStyle.softBorder.opacity(0.26)
     }
 
+    @MainActor
     func rowCell(
         for segment: NotebookDisplaySegment,
         item: NotebookTableRow,
@@ -403,13 +404,17 @@ extension NotebookModuleView {
             return AnyView(fixedRowCell(for: fixed, item: item, data: data))
         case .column(let column):
             let isCellSelected = inspectorSelection == NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
+            let formulaCellDisplay = formulaDisplay(for: item, column: column, data: data)
+            let displaySnapshot = cellDisplaySnapshot(for: item, column: column, formulaDisplay: formulaCellDisplay)
+            let cellActions = notebookCellActions()
             return AnyView(
                 ZStack {
                     Rectangle()
                         .fill(notebookColumnCellFill(for: column, rowIndex: rowIndex, isActive: isCellSelected))
 
                     NotebookEditableTableCell(
-                        bridge: bridge,
+                        displaySnapshot: displaySnapshot,
+                        actions: cellActions,
                         item: item,
                         column: column,
                         classId: data.sheet.classId,
@@ -422,7 +427,7 @@ extension NotebookModuleView {
                         focusedCellId: $focusedCellId,
                         activeChoiceCellId: $activeChoiceCellId,
                         navigationDirection: navigationDirection,
-                        formulaDisplay: formulaDisplay(for: item, column: column, data: data),
+                        formulaDisplay: formulaCellDisplay,
                         isSelected: isCellSelected,
                         isAttendanceQuickMode: isAttendanceQuickMode,
                         reloadToken: rowReloadRevisions[item.student.id, default: 0],
@@ -560,6 +565,61 @@ extension NotebookModuleView {
                 .help(total == 0 ? "Categoría vacía." : "Resumen de categoría colapsada: \(filled) de \(total) columnas con datos.")
             )
         }
+    }
+
+    @MainActor
+    func cellDisplaySnapshot(
+        for item: NotebookTableRow,
+        column: NotebookColumnDefinition,
+        formulaDisplay: NotebookFormulaCellDisplay?
+    ) -> NotebookCellDisplaySnapshot {
+        let persistedCell = item.row.persistedCells.first(where: { $0.columnId == column.id })
+
+        switch column.type {
+        case .numeric:
+            return NotebookCellDisplaySnapshot(
+                numericText: bridge.numericGradeText(studentId: item.student.id, columnId: column.id)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+        case .check:
+            return NotebookCellDisplaySnapshot(checkValue: bridge.cellCheck(studentId: item.student.id, columnId: column.id))
+        case .calculated:
+            return NotebookCellDisplaySnapshot(
+                calculatedText: formulaDisplay?.text ?? bridge.numericGradeOnTenText(studentId: item.student.id, columnId: column.id)
+            )
+        case .rubric:
+            return NotebookCellDisplaySnapshot(
+                rubricText: bridge.rubricGradeOnTenText(studentId: item.student.id, column: column)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+        case .attendance:
+            return NotebookCellDisplaySnapshot(text: bridge.cellText(studentId: item.student.id, columnId: column.id))
+        default:
+            return NotebookCellDisplaySnapshot(text: persistedCell?.textValue ?? persistedCell?.displayValue ?? "")
+        }
+    }
+
+    @MainActor
+    func notebookCellActions() -> NotebookCellActions {
+        NotebookCellActions(
+            flushPendingColumnGradeSave: { studentId, columnId in
+                bridge.flushPendingColumnGradeSave(studentId: studentId, columnId: columnId)
+            },
+            saveColumnGrade: { studentId, column, value in
+                bridge.saveColumnGrade(studentId: studentId, column: column, value: value)
+            },
+            saveColumnGradeDebounced: { studentId, column, value in
+                bridge.saveColumnGradeDebounced(studentId: studentId, column: column, value: value)
+            },
+            saveAttendance: { studentId, classId, date, status in
+                try? await bridge.saveAttendance(
+                    studentId: studentId,
+                    classId: classId,
+                    on: date,
+                    status: status
+                )
+            }
+        )
     }
 
     func categoryFolderHeader(category: NotebookColumnCategory, data: NotebookUiStateData, width: CGFloat) -> some View {

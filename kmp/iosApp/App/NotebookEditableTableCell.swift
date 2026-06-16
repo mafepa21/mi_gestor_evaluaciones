@@ -22,8 +22,52 @@ private enum NotebookCellSaveFeedback: Equatable {
     case saved
 }
 
+struct NotebookCellDisplaySnapshot: Equatable {
+    let numericText: String
+    let text: String
+    let checkValue: Bool
+    let calculatedText: String
+    let rubricText: String
+
+    init(
+        numericText: String = "",
+        text: String = "",
+        checkValue: Bool = false,
+        calculatedText: String = "",
+        rubricText: String = ""
+    ) {
+        self.numericText = numericText
+        self.text = text
+        self.checkValue = checkValue
+        self.calculatedText = calculatedText
+        self.rubricText = rubricText
+    }
+
+}
+
+struct NotebookCellActions {
+    let flushPendingColumnGradeSave: @MainActor (_ studentId: Int64, _ columnId: String) -> Void
+    let saveColumnGrade: @MainActor (_ studentId: Int64, _ column: NotebookColumnDefinition, _ value: String) -> Void
+    let saveColumnGradeDebounced: @MainActor (_ studentId: Int64, _ column: NotebookColumnDefinition, _ value: String) -> Void
+    let saveAttendance: @MainActor (_ studentId: Int64, _ classId: Int64, _ date: Date, _ status: String) async -> Void
+
+    init(
+        flushPendingColumnGradeSave: @escaping @MainActor (_ studentId: Int64, _ columnId: String) -> Void,
+        saveColumnGrade: @escaping @MainActor (_ studentId: Int64, _ column: NotebookColumnDefinition, _ value: String) -> Void,
+        saveColumnGradeDebounced: @escaping @MainActor (_ studentId: Int64, _ column: NotebookColumnDefinition, _ value: String) -> Void,
+        saveAttendance: @escaping @MainActor (_ studentId: Int64, _ classId: Int64, _ date: Date, _ status: String) async -> Void
+    ) {
+        self.flushPendingColumnGradeSave = flushPendingColumnGradeSave
+        self.saveColumnGrade = saveColumnGrade
+        self.saveColumnGradeDebounced = saveColumnGradeDebounced
+        self.saveAttendance = saveAttendance
+    }
+}
+
+@MainActor
 struct NotebookEditableTableCell: View {
-    let bridge: KmpBridge
+    let displaySnapshot: NotebookCellDisplaySnapshot
+    let actions: NotebookCellActions
     let item: NotebookTableRow
     let column: NotebookColumnDefinition
     let classId: Int64?
@@ -321,7 +365,7 @@ struct NotebookEditableTableCell: View {
                     onOpenFormula()
                 } label: {
                     HStack(spacing: 5) {
-                        Text(formulaDisplay?.text ?? bridge.numericGradeOnTenText(studentId: item.student.id, columnId: column.id))
+                        Text(displaySnapshot.calculatedText)
                             .font(.system(size: 13, weight: .semibold, design: .rounded))
                             .italic()
                             .monospacedDigit()
@@ -741,7 +785,7 @@ struct NotebookEditableTableCell: View {
                     return
                 }
             }
-            checkDraft = bridge.cellCheck(studentId: item.student.id, columnId: column.id)
+            checkDraft = displaySnapshot.checkValue
             originalCheckDraft = checkDraft
         case .attendance:
             let textValue = cell?.textValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -749,8 +793,7 @@ struct NotebookEditableTableCell: View {
             let raw = textValue.isEmpty ? displayValue : textValue
             let canonical = NotebookAttendanceStatus.canonical(raw)
             if !raw.isEmpty, canonical.isEmpty {
-                let bridgeValue = bridge.cellText(studentId: item.student.id, columnId: column.id)
-                textDraft = NotebookAttendanceStatus.canonical(bridgeValue)
+                textDraft = NotebookAttendanceStatus.canonical(displaySnapshot.text)
             } else {
                 textDraft = canonical
             }
@@ -759,7 +802,7 @@ struct NotebookEditableTableCell: View {
             textDraft = cell?.textValue ?? cell?.displayValue ?? ""
             originalTextDraft = textDraft
         case .numeric:
-            numericDraft = bridge.numericGradeText(studentId: item.student.id, columnId: column.id).trimmingCharacters(in: .whitespacesAndNewlines)
+            numericDraft = displaySnapshot.numericText
             originalNumericDraft = numericDraft
         default:
             break
@@ -784,10 +827,10 @@ struct NotebookEditableTableCell: View {
             onPrepareUndo(originalNumericDraft, originalNumericDraft)
             originalNumericDraft = numericDraft
             if immediate {
-                bridge.flushPendingColumnGradeSave(studentId: item.student.id, columnId: column.id)
-                bridge.saveColumnGrade(studentId: item.student.id, column: column, value: numericDraft)
+                actions.flushPendingColumnGradeSave(item.student.id, column.id)
+                actions.saveColumnGrade(item.student.id, column, numericDraft)
             } else {
-                bridge.saveColumnGradeDebounced(studentId: item.student.id, column: column, value: numericDraft)
+                actions.saveColumnGradeDebounced(item.student.id, column, numericDraft)
             }
             markSaveInProgress()
             onCellSaved()
@@ -808,10 +851,10 @@ struct NotebookEditableTableCell: View {
             onPrepareUndo(originalTextDraft, originalTextDraft)
             originalTextDraft = textDraft
             if immediate {
-                bridge.flushPendingColumnGradeSave(studentId: item.student.id, columnId: column.id)
-                bridge.saveColumnGrade(studentId: item.student.id, column: column, value: textDraft)
+                actions.flushPendingColumnGradeSave(item.student.id, column.id)
+                actions.saveColumnGrade(item.student.id, column, textDraft)
             } else {
-                bridge.saveColumnGradeDebounced(studentId: item.student.id, column: column, value: textDraft)
+                actions.saveColumnGradeDebounced(item.student.id, column, textDraft)
             }
             markSaveInProgress()
             onCellSaved()
@@ -834,7 +877,7 @@ struct NotebookEditableTableCell: View {
             originalTextDraft = option
         }
         AppleInteractionFeedback.play(.selection)
-        bridge.saveColumnGrade(studentId: item.student.id, column: column, value: option)
+        actions.saveColumnGrade(item.student.id, column, option)
         markSaveInProgress()
         onCellSaved()
         onNavigate(navigationDirection)
@@ -853,7 +896,7 @@ struct NotebookEditableTableCell: View {
             originalCheckDraft = checkDraft
         }
         AppleInteractionFeedback.play(.lightImpact)
-        bridge.saveColumnGrade(studentId: item.student.id, column: column, value: nextValue)
+        actions.saveColumnGrade(item.student.id, column, nextValue)
         markSaveInProgress()
         onCellSaved()
         onNavigate(navigationDirection)
@@ -871,7 +914,7 @@ struct NotebookEditableTableCell: View {
             originalTextDraft = canonicalStatus
         }
         AppleInteractionFeedback.play(.selection)
-        bridge.saveColumnGrade(studentId: item.student.id, column: column, value: canonicalStatus)
+        actions.saveColumnGrade(item.student.id, column, canonicalStatus)
         markSaveInProgress()
         onCellSaved()
         onNavigate(navigationDirection)
@@ -881,12 +924,7 @@ struct NotebookEditableTableCell: View {
             .map { Date(timeIntervalSince1970: TimeInterval($0.int64Value) / 1000.0) } ?? Date()
 
         Task {
-            try? await bridge.saveAttendance(
-                studentId: item.student.id,
-                classId: classId,
-                on: attendanceDate,
-                status: canonicalStatus
-            )
+            await actions.saveAttendance(item.student.id, classId, attendanceDate, canonicalStatus)
             await MainActor.run {
                 onAttendanceSaved()
             }
@@ -919,7 +957,7 @@ struct NotebookEditableTableCell: View {
     }
 
     private func displayRubricText() -> String {
-        let value = bridge.rubricGradeOnTenText(studentId: item.student.id, column: column).trimmingCharacters(in: .whitespacesAndNewlines)
+        let value = displaySnapshot.rubricText
         return value.isEmpty ? "—" : value
     }
 

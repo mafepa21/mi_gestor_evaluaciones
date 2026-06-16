@@ -27,6 +27,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- El Cuaderno reduce trabajo de render en el grid SwiftUI usando filas lazy, fingerprints de fila precomputados por panel y snapshots/actions de celda para no pasar el bridge global dentro de `NotebookEditableTableCell`; el Dashboard cancela y debouncea recargas de filtros para evitar tareas solapadas durante transiciones.
 - El `EarlyWarning` del inspector del Cuaderno se presenta como señal preventiva revisable, con etiquetas de confianza cualitativas y nota de procedencia visible, evitando apariencia de diagnóstico o decisión automática.
 - `AppleAIOrchestrator` añade intents estructurados para insight de alumno, explicación docente de media y resumen de tutoría sin recalcular datos KMP ni modificar persistencia.
 - Los contratos Apple IA de insight, riesgo, media explicada, tutoría, alerta preventiva, informes y análisis EF pasan a ser modelos `Codable`/`Sendable` con normalización local de arrays, textos vacíos, severidad y confianza.
@@ -43,6 +44,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- Corrige errores de concurrencia Swift en `NotebookEditableTableCell` aislando snapshots/actions del bridge en `MainActor`, y limpia warnings de build en el refresco LAN de `KmpBridge` y el importador DOCX de situaciones de aprendizaje.
 - Corrige la compilación de `IPadWorkspaceShell.swift` en iOS 16.0 reemplazando el modificador `.searchable` programático por un helper compatible `appSearchable` que implementa fallback en [AppleViewCompatibility.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/AppleShared/AppleViewCompatibility.swift).
 - Corrige la compilación Apple del inspector del Cuaderno evitando una colisión de nombre entre el closure `isSummaryColumn` y su valor booleano local.
 - El Cuaderno macOS vuelve a mostrar la tira de pestañas y permite crear nuevas pestañas aunque la toolbar principal sea propiedad de la shell.
@@ -59,6 +61,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `scripts/verify_apple_builds.sh` regeneró el proyecto con XcodeGen, pero los builds macOS/iOS quedaron bloqueados porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y no hay Xcode completo visible en `/Applications`.
 - Auditoría acotada del flujo `EarlyWarning` en `NotebookStudentInspector.swift`, `AppleFoundationStudentInsightService.swift` y llamadas Apple directas: se mitigó el riesgo de tono diagnóstico sustituyendo “alerta/riesgo” por “señal/revisión”, confianza porcentual por etiqueta cualitativa y reglas de prompt centradas en señales observables.
 - Fixture DEBUG `AppleAIReadinessFixtures` añadido para comprobar contratos de readiness: clamp de confianza, límites de listas y render básico de insight/tutoría/EF sin depender del runtime Foundation Models.
 - `xcodegen generate`, `git diff --check`, `plutil -lint kmp/iosApp/MiGestorKMPiOS.xcodeproj/project.pbxproj` y verificación de inclusión de `AppleAIReadinessFixtures.swift` en ambos targets Apple completados correctamente tras el hardening de Foundation Models. `scripts/verify_apple_builds.sh` regeneró el proyecto, pero los builds macOS/iOS quedaron bloqueados porque `xcode-select` apunta a `/Library/Developer/CommandLineTools`.

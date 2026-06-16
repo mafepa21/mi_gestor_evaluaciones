@@ -107,6 +107,8 @@ struct DashboardView: View {
     @State private var isLoadingAIBriefing = false
     @State private var aiBriefingCache: [String: TeachingAssistantDraft] = [:]
     @State private var activeAIBriefingKey: String?
+    @State private var dashboardReloadTask: Task<Void, Never>? = nil
+    @State private var dashboardReloadGeneration = 0
 
     private let teachingAssistantService = AppleFoundationTeachingAssistantService()
 
@@ -173,9 +175,12 @@ struct DashboardView: View {
         .appOnChange(of: isInspectorPresented) { _ in scheduleToolbarStateSync() }
         .appOnChange(of: toolbarStateKey) { _ in scheduleToolbarStateSync() }
         .onDisappear {
+            dashboardReloadTask?.cancel()
+            dashboardReloadTask = nil
             layoutState.clearDashboardToolbar()
         }
         .refreshable {
+            cancelPendingDashboardReload()
             await applyFiltersAndReload()
             await bridge.pullMissingSyncChanges()
         }
@@ -191,9 +196,20 @@ struct DashboardView: View {
     }
 
     private func triggerDashboardReload() {
-        Task {
-            await applyFiltersAndReload()
+        dashboardReloadTask?.cancel()
+        dashboardReloadGeneration += 1
+        let generation = dashboardReloadGeneration
+        dashboardReloadTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 120_000_000)
+            guard !Task.isCancelled, generation == dashboardReloadGeneration else { return }
+            await applyFiltersAndReload(expectedReloadGeneration: generation)
         }
+    }
+
+    private func cancelPendingDashboardReload() {
+        dashboardReloadTask?.cancel()
+        dashboardReloadTask = nil
+        dashboardReloadGeneration += 1
     }
 
     private func handleInspectorSelectionChange() {
@@ -1143,6 +1159,7 @@ struct DashboardView: View {
                 toggleInspector()
             },
             onRefresh: {
+                cancelPendingDashboardReload()
                 Task { await applyFiltersAndReload() }
             },
             onPassList: {
@@ -1216,7 +1233,10 @@ struct DashboardView: View {
         isQuickEvaluationPresented = true
     }
 
-    private func applyFiltersAndReload() async {
+    private func applyFiltersAndReload(expectedReloadGeneration: Int? = nil) async {
+        if let expectedReloadGeneration, expectedReloadGeneration != dashboardReloadGeneration {
+            return
+        }
         bridge.updateDashboardFilters(
             classId: selectedClassId,
             severity: severityFilter.rawValue,
@@ -1224,7 +1244,15 @@ struct DashboardView: View {
             sessionStatus: sessionStatusFilter.rawValue
         )
         await bridge.refreshDashboard(mode: mode.kotlinMode)
+        guard !Task.isCancelled else { return }
+        if let expectedReloadGeneration, expectedReloadGeneration != dashboardReloadGeneration {
+            return
+        }
         await loadClassTrends()
+        guard !Task.isCancelled else { return }
+        if let expectedReloadGeneration, expectedReloadGeneration != dashboardReloadGeneration {
+            return
+        }
         rebuildProactiveRadar()
     }
 

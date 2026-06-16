@@ -4575,7 +4575,6 @@ final class KmpBridge: ObservableObject {
         )
         try await container.notebookInstrumentsRepository.saveTemplate(template: template, items: items)
     }
-
     private func ensureNotebookColumnForAssessmentInstrument(
         classId: Int64,
         evaluationId: Int64,
@@ -4784,7 +4783,6 @@ final class KmpBridge: ObservableObject {
             )
         }
     }
-
     private func repairAssessmentInstrumentRubricLevelPoints(classId: Int64) async throws -> Bool {
         let targetNames: Set<String> = ["Plan Design Rubric", "Peer-Coaching Rubric"]
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
@@ -4985,7 +4983,6 @@ final class KmpBridge: ObservableObject {
             return nil
         }
     }
-
     private func repairAssessmentInstrumentEvaluations(classId: Int64) async throws -> Bool {
         let evaluations = try await container.evaluationsRepository.listClassEvaluations(classId: classId)
         var didRepair = false

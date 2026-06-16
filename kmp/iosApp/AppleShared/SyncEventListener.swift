@@ -3,8 +3,18 @@ import Foundation
 final class SyncEventListener {
     private var eventTask: Task<Void, Never>?
     private var currentConnectionKey: String?
-    private let initialReconnectDelay: UInt64 = 2_000_000_000
-    private let maximumReconnectDelay: UInt64 = 30_000_000_000
+
+    /// Backoff sequence (nanoseconds): 250ms → 500ms → 1s → 2s → 5s → 10s → 30s.
+    /// Starts fast so reconnects after pairing are quick, then slows to avoid spam.
+    private let backoffSteps: [UInt64] = [
+        250_000_000,
+        500_000_000,
+        1_000_000_000,
+        2_000_000_000,
+        5_000_000_000,
+        10_000_000_000,
+        30_000_000_000
+    ]
 
     private struct OpenedStreamError: Error {
         let underlying: Error
@@ -45,7 +55,7 @@ final class SyncEventListener {
         pinnedFingerprint: String?,
         onEvent: @escaping @MainActor (LanSyncEvent?) async -> Void
     ) async {
-        var reconnectDelay = initialReconnectDelay
+        var backoffIndex = 0
         while !Task.isCancelled {
             do {
                 try await openStream(
@@ -54,16 +64,28 @@ final class SyncEventListener {
                     pinnedFingerprint: pinnedFingerprint,
                     onEvent: onEvent
                 )
-                reconnectDelay = initialReconnectDelay
+                // Stream opened and closed cleanly (server-side reset). Reconnect fast.
+                backoffIndex = 0
             } catch is CancellationError {
                 return
             } catch is OpenedStreamError {
-                reconnectDelay = initialReconnectDelay
-                try? await Task.sleep(nanoseconds: reconnectDelay)
-                reconnectDelay = min(reconnectDelay * 2, maximumReconnectDelay)
+                // Stream was open but then dropped mid-flight. Reconnect fast.
+                backoffIndex = 0
+                try? await Task.sleep(nanoseconds: backoffSteps[0])
             } catch {
-                try? await Task.sleep(nanoseconds: reconnectDelay)
-                reconnectDelay = min(reconnectDelay * 2, maximumReconnectDelay)
+                // Could not connect. Classify as debug if it is a transient startup error
+                // (connection refused, no route to host) so the log stays clean while the
+                // helper is still launching. Escalate to error only for unexpected failures.
+                if isTransientConnectionError(error) {
+                    print("[Sync:debug] endpoint not yet available (\(host)): \(error.localizedDescription)")
+                } else {
+                    print("[Sync:error] listener error (\(host)): \(error.localizedDescription)")
+                }
+                let delay = backoffSteps[min(backoffIndex, backoffSteps.count - 1)]
+                try? await Task.sleep(nanoseconds: delay)
+                if backoffIndex < backoffSteps.count - 1 {
+                    backoffIndex += 1
+                }
             }
         }
     }
@@ -153,5 +175,21 @@ final class SyncEventListener {
             throw URLError(.badURL)
         }
         return url
+    }
+
+    /// Returns `true` for errors that are expected while the helper is still starting:
+    /// connection refused, host unreachable, DNS failure on a local hostname, or timeout.
+    private func isTransientConnectionError(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        guard nsError.domain == NSURLErrorDomain else { return false }
+        let transientCodes: Set<Int> = [
+            NSURLErrorCannotConnectToHost,
+            NSURLErrorNetworkConnectionLost,
+            NSURLErrorNotConnectedToInternet,
+            NSURLErrorCannotFindHost,
+            NSURLErrorDNSLookupFailed,
+            NSURLErrorTimedOut
+        ]
+        return transientCodes.contains(nsError.code)
     }
 }

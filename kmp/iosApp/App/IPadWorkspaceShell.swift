@@ -1282,6 +1282,9 @@ struct AppWorkspaceShell: View {
             displayedComponents: .date
         )
         .labelsHidden()
+        #if os(macOS)
+        .controlSize(.small)
+        #endif
         .fixedSize()
     }
 
@@ -1298,7 +1301,9 @@ struct AppWorkspaceShell: View {
             Text("Historial").tag("Historial")
         }
         .pickerStyle(.segmented)
-        .frame(maxWidth: width)
+        // minWidth prevents AppKit from compressing below its intrinsic minimum,
+        // which causes SystemSegmentedControl 'maximum length' warnings.
+        .frame(minWidth: 80, maxWidth: width)
     }
 
     var attendanceFilterLabel: String {
@@ -1528,7 +1533,9 @@ struct AppWorkspaceShell: View {
                 Text("Plano").tag("seatingPlan")
             }
             .pickerStyle(.segmented)
-            .frame(width: 112)
+            // Use minWidth instead of exact width so AppKit can satisfy its minimum
+            // intrinsic size and avoids SystemSegmentedControl 'maximum length' warnings.
+            .frame(minWidth: 112)
         }
 
         ToolbarItem(placement: .navigationBarTrailing) {
@@ -1736,7 +1743,8 @@ struct AppWorkspaceShell: View {
                 Image(systemName: "rectangle.3.group").tag("seatingPlan")
             }
             .pickerStyle(.segmented)
-            .frame(width: 90)
+            // minWidth prevents AppKit from compressing below intrinsic minimum.
+            .frame(minWidth: 90)
 
             Button {
                 layoutState.showNotebookAddColumn()

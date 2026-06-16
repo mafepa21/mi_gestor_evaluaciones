@@ -928,7 +928,11 @@ final class KmpBridge: ObservableObject {
         self.pairedServerFingerprint = syncSecureStore.loadString(key: "sync.server.fingerprint")
         
         #if os(macOS)
-        self.pairedSyncHost = "127.0.0.1"
+        // On macOS the sync endpoint is the helper process, which is NOT running yet at
+        // init time. We intentionally leave pairedSyncHost as nil here so that
+        // startSyncEventListenerIfPaired() and syncNow() are no-ops until
+        // MacCommandCenterCoordinator calls notifyHelperReady(host:port:) once the
+        // helper has published a valid LAN IP address.
         self.syncToken = "loopback-token"
         self.pairedServerFingerprint = nil
         #endif
@@ -950,9 +954,12 @@ final class KmpBridge: ObservableObject {
             self.lanSyncDiscovery.start()
             self.startAutoSyncLoop()
             self.startSyncEventListenerIfPaired()
+            #if os(iOS)
+            // On iOS the persisted host/token come from a real pairing; rehydrate on launch.
             if self.hasPersistedLanPairing {
                 await self.syncNow(reason: "rehydrate", forceFullPull: false, silent: true)
             }
+            #endif
         }
 
         setupObservers()
@@ -969,6 +976,33 @@ final class KmpBridge: ObservableObject {
     }
 
     private func setupObservers() {
+        #if os(macOS)
+        // macOS: react to the helper process lifecycle via NotificationCenter so the
+        // SSE listener and auto-sync loop start only when the server is actually ready.
+        NotificationCenter.default.addObserver(
+            forName: .syncHelperBecameReady,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self else { return }
+            guard let host = notification.userInfo?["host"] as? String,
+                  let port = notification.userInfo?["port"] as? Int else { return }
+            Task { @MainActor in
+                self.notifyHelperReady(host: host, port: port)
+            }
+        }
+        NotificationCenter.default.addObserver(
+            forName: .syncHelperStopped,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            Task { @MainActor in
+                self.notifyHelperStopped()
+            }
+        }
+        #endif
+
         // Observe Notebook State with Debounce (to stabilize UI during typing)
         Task { @MainActor [weak self] in
             guard let self else { return }
@@ -8764,6 +8798,39 @@ final class KmpBridge: ObservableObject {
             }
             await self.applySyncEvent(event)
         }
+    }
+
+    // MARK: - Helper lifecycle notifications (macOS only)
+
+    /// Called by MacCommandCenterCoordinator (via Notification) when the helper process
+    /// has published a valid LAN IP address. At that point it is safe to start the
+    /// event listener and trigger an initial sync.
+    func notifyHelperReady(host: String, port: Int) {
+        #if os(macOS)
+        guard !host.isEmpty else { return }
+        print("[Sync] helper ready at \(host):\(port) — starting listener")
+        pairedSyncHost = host
+        syncEventListener.stop()
+        startSyncEventListenerIfPaired()
+        startAutoSyncLoop()
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.syncNow(reason: "helper_ready", forceFullPull: true, silent: true)
+        }
+        #endif
+    }
+
+    /// Called by MacCommandCenterCoordinator (via Notification) when the helper process
+    /// has stopped. Stops the event listener and periodic sync loop without clearing
+    /// the paired state, so the UI remains accurate.
+    func notifyHelperStopped() {
+        #if os(macOS)
+        print("[Sync] helper stopped — suspending listener")
+        syncEventListener.stop()
+        autoSyncLoopTask?.cancel()
+        autoSyncLoopTask = nil
+        pairedSyncHost = nil
+        #endif
     }
 
     private func getDatabaseURL() -> URL? {

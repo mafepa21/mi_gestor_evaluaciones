@@ -74,7 +74,7 @@ struct NotebookGridContainer<
         rows: [Row],
         @ViewBuilder rowContent: @escaping (Int, Row) -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+        LazyVStack(alignment: .leading, spacing: 0) {
             ForEach(Array(rows.enumerated()), id: \.element.id) { index, item in
                 let isHovered = hoveredRowId == item.id
                 rowContent(index, item)
@@ -83,7 +83,7 @@ struct NotebookGridContainer<
                     .contentShape(Rectangle())
                     #if os(macOS)
                     .onHover { hovering in
-                        withAnimation(.easeOut(duration: 0.15)) {
+                        withAnimation(.easeOut(duration: 0.12)) {
                             hoveredRowId = hovering ? item.id : nil
                         }
                     }

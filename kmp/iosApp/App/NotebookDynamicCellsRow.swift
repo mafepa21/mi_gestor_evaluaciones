@@ -1,6 +1,7 @@
 import SwiftUI
 import MiGestorKit
 
+@MainActor
 struct NotebookDynamicCellsRow: View {
     @ObservedObject var bridge: KmpBridge
     let item: NotebookTableRow
@@ -18,7 +19,8 @@ struct NotebookDynamicCellsRow: View {
                     EmptyView()
                 case .column(let column):
                     NotebookEditableTableCell(
-                        bridge: bridge,
+                        displaySnapshot: cellDisplaySnapshot(for: column),
+                        actions: notebookCellActions(),
                         item: item,
                         column: column,
                         classId: nil,
@@ -68,6 +70,54 @@ struct NotebookDynamicCellsRow: View {
                 }
             }
         }
+    }
+
+    @MainActor
+    private func cellDisplaySnapshot(for column: NotebookColumnDefinition) -> NotebookCellDisplaySnapshot {
+        let persistedCell = item.row.persistedCells.first(where: { $0.columnId == column.id })
+        switch column.type {
+        case .numeric:
+            return NotebookCellDisplaySnapshot(
+                numericText: bridge.numericGradeText(studentId: item.student.id, columnId: column.id)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+        case .check:
+            return NotebookCellDisplaySnapshot(checkValue: bridge.cellCheck(studentId: item.student.id, columnId: column.id))
+        case .calculated:
+            return NotebookCellDisplaySnapshot(calculatedText: bridge.numericGradeOnTenText(studentId: item.student.id, columnId: column.id))
+        case .rubric:
+            return NotebookCellDisplaySnapshot(
+                rubricText: bridge.rubricGradeOnTenText(studentId: item.student.id, column: column)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+        case .attendance:
+            return NotebookCellDisplaySnapshot(text: bridge.cellText(studentId: item.student.id, columnId: column.id))
+        default:
+            return NotebookCellDisplaySnapshot(text: persistedCell?.textValue ?? persistedCell?.displayValue ?? "")
+        }
+    }
+
+    @MainActor
+    private func notebookCellActions() -> NotebookCellActions {
+        NotebookCellActions(
+            flushPendingColumnGradeSave: { studentId, columnId in
+                bridge.flushPendingColumnGradeSave(studentId: studentId, columnId: columnId)
+            },
+            saveColumnGrade: { studentId, column, value in
+                bridge.saveColumnGrade(studentId: studentId, column: column, value: value)
+            },
+            saveColumnGradeDebounced: { studentId, column, value in
+                bridge.saveColumnGradeDebounced(studentId: studentId, column: column, value: value)
+            },
+            saveAttendance: { studentId, classId, date, status in
+                try? await bridge.saveAttendance(
+                    studentId: studentId,
+                    classId: classId,
+                    on: date,
+                    status: status
+                )
+            }
+        )
     }
 
     private func cellValue(for column: NotebookColumnDefinition) -> String {

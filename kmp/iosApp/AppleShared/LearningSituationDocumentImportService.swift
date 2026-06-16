@@ -566,7 +566,7 @@ struct LearningSituationSessionSequenceDocumentImportService {
         for paragraph in paragraphs {
             let normPara = normalized(paragraph)
             for label in normalizedLabels {
-                if let range = normPara.range(of: "\\b\(NSRegularExpression.escapedPattern(for: label))\\b", options: .regularExpression) {
+                if normPara.range(of: "\\b\(NSRegularExpression.escapedPattern(for: label))\\b", options: .regularExpression) != nil {
                     if let colonIndex = paragraph.firstIndex(of: ":") {
                         return String(paragraph[paragraph.index(after: colonIndex)...]).trimmingCharacters(in: .whitespacesAndNewlines)
                     }

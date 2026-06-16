@@ -23,6 +23,7 @@ Estado: casi cerrada.
 Prioridad: alta.
 
 - Cuaderno: carga rapida, grid estable, columnas ocultas seguras, medias explicables y categorias claras.
+  Avance: el grid SwiftUI reduce coste de scroll y actualizacion con filas lazy, fingerprints precomputados por panel y celdas desacopladas del bridge global mediante snapshots/actions.
   Avance: Media explicable con desglose de columnas incluidas, pendientes, exclusiones y aportaciones ponderadas ya integrada en KMP y SwiftUI.
   Avance: pruebas físicas separan dato bruto (`Marca`/`Nivel`) y nota baremada (`Nota`) para evitar contaminar la Media.
   Avance: inspector convertido en ficha rápida del alumno con Media, pendientes, observaciones, rúbricas y acciones.
@@ -32,6 +33,7 @@ Prioridad: alta.
 - Alumnado: perfiles utiles, busqueda y datos relevantes.
 - Planificacion: sesiones, situaciones de aprendizaje y continuidad docente.
 - Dashboard: Radar docente proactivo para priorizar que pasa ahora, por que importa y que accion diaria ejecutar.
+  Avance: las recargas por filtros del Dashboard se cancelan y debouncean para evitar tareas solapadas durante cambios rápidos de contexto.
   Avance: Dashboard macOS "Hoy" prioriza la clase actual o próxima, pendiente principal y acción recomendada antes que los paneles secundarios.
 
 ## Fase 2 - Apple premium

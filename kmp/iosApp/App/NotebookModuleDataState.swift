@@ -59,6 +59,7 @@ extension NotebookModuleView {
         }
     }
 
+    @MainActor
     func notebookRowView(
         item: NotebookTableRow,
         data: NotebookUiStateData,

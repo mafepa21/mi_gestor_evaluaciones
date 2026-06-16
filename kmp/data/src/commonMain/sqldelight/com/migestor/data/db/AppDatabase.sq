@@ -586,6 +586,63 @@ CREATE TABLE IF NOT EXISTS notebook_cell_entries (
 );
 CREATE INDEX IF NOT EXISTS idx_notebook_cell_entries_column ON notebook_cell_entries(column_id);
 
+CREATE TABLE IF NOT EXISTS notebook_instrument_templates (
+    id TEXT NOT NULL PRIMARY KEY,
+    class_id INTEGER NOT NULL,
+    column_id TEXT NOT NULL UNIQUE,
+    evaluation_id INTEGER,
+    title TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    input_kind TEXT NOT NULL,
+    source TEXT,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (column_id) REFERENCES notebook_columns(id) ON DELETE CASCADE,
+    FOREIGN KEY (evaluation_id) REFERENCES evaluations(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_notebook_instrument_templates_class ON notebook_instrument_templates(class_id);
+CREATE INDEX IF NOT EXISTS idx_notebook_instrument_templates_column ON notebook_instrument_templates(column_id);
+
+CREATE TABLE IF NOT EXISTS notebook_instrument_items (
+    id TEXT NOT NULL PRIMARY KEY,
+    template_id TEXT NOT NULL,
+    item_key TEXT NOT NULL,
+    title TEXT NOT NULL,
+    item_type TEXT NOT NULL,
+    options_csv TEXT NOT NULL DEFAULT '',
+    required INTEGER NOT NULL DEFAULT 1,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    help_text TEXT,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (template_id) REFERENCES notebook_instrument_templates(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_notebook_instrument_items_template ON notebook_instrument_items(template_id, sort_order, id);
+
+CREATE TABLE IF NOT EXISTS notebook_instrument_responses (
+    class_id INTEGER NOT NULL,
+    student_id INTEGER NOT NULL,
+    column_id TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    value_text TEXT,
+    value_bool INTEGER,
+    value_number REAL,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (class_id, student_id, column_id, item_id),
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    FOREIGN KEY (column_id) REFERENCES notebook_columns(id) ON DELETE CASCADE,
+    FOREIGN KEY (item_id) REFERENCES notebook_instrument_items(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_notebook_instrument_responses_cell ON notebook_instrument_responses(class_id, student_id, column_id);
+CREATE INDEX IF NOT EXISTS idx_notebook_instrument_responses_item ON notebook_instrument_responses(item_id);
+
 selectAllStudents:
 SELECT id, first_name, last_name, email, photo_path, is_injured, sex, sex_source, birth_date_iso, updated_at_epoch_ms, device_id, sync_version
 FROM students
@@ -1177,6 +1234,50 @@ INSERT OR REPLACE INTO notebook_cell_entries(
     class_id, student_id, column_id, value_text, value_bool, value_icon, value_ordinal, display_value, observed_at_epoch_ms, competency_criteria_ids_csv, effective_weight, counts_toward_average, note, color_hex, attachment_uris_csv, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
 )
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectInstrumentTemplateByColumn:
+SELECT id, class_id, column_id, evaluation_id, title, kind, input_kind, source, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM notebook_instrument_templates
+WHERE column_id = ?
+LIMIT 1;
+
+selectInstrumentItemsByTemplate:
+SELECT id, template_id, item_key, title, item_type, options_csv, required, sort_order, help_text, updated_at_epoch_ms, device_id, sync_version
+FROM notebook_instrument_items
+WHERE template_id = ?
+ORDER BY sort_order, id;
+
+selectInstrumentResponsesForCell:
+SELECT class_id, student_id, column_id, item_id, value_text, value_bool, value_number, updated_at_epoch_ms, device_id, sync_version
+FROM notebook_instrument_responses
+WHERE class_id = ? AND student_id = ? AND column_id = ?
+ORDER BY item_id;
+
+upsertInstrumentTemplate:
+INSERT OR REPLACE INTO notebook_instrument_templates(
+    id, class_id, column_id, evaluation_id, title, kind, input_kind, source, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteInstrumentItemsByTemplate:
+DELETE FROM notebook_instrument_items
+WHERE template_id = ?;
+
+upsertInstrumentItem:
+INSERT OR REPLACE INTO notebook_instrument_items(
+    id, template_id, item_key, title, item_type, options_csv, required, sort_order, help_text, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+upsertInstrumentResponse:
+INSERT OR REPLACE INTO notebook_instrument_responses(
+    class_id, student_id, column_id, item_id, value_text, value_bool, value_number, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteInstrumentByColumn:
+DELETE FROM notebook_instrument_templates
+WHERE column_id = ?;
 
 CREATE TABLE IF NOT EXISTS notebook_tabs (
     id          TEXT NOT NULL PRIMARY KEY,

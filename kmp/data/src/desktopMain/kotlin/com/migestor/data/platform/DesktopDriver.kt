@@ -106,6 +106,62 @@ private fun runRescueMigrations(driver: SqlDriver) {
             "sync_version INTEGER NOT NULL DEFAULT 0",
         )
     )
+    ensureStructuredInstrumentTables(driver)
+}
+
+private fun ensureStructuredInstrumentTables(driver: SqlDriver) {
+    driver.execute(null, """
+        CREATE TABLE IF NOT EXISTS notebook_instrument_templates (
+            id TEXT NOT NULL PRIMARY KEY,
+            class_id INTEGER NOT NULL,
+            column_id TEXT NOT NULL UNIQUE,
+            evaluation_id INTEGER,
+            title TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            input_kind TEXT NOT NULL,
+            source TEXT,
+            created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+            updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+            device_id TEXT,
+            sync_version INTEGER NOT NULL DEFAULT 0
+        )
+    """.trimIndent(), 0)
+    driver.execute(null, "CREATE INDEX IF NOT EXISTS idx_notebook_instrument_templates_class ON notebook_instrument_templates(class_id)", 0)
+    driver.execute(null, "CREATE INDEX IF NOT EXISTS idx_notebook_instrument_templates_column ON notebook_instrument_templates(column_id)", 0)
+    driver.execute(null, """
+        CREATE TABLE IF NOT EXISTS notebook_instrument_items (
+            id TEXT NOT NULL PRIMARY KEY,
+            template_id TEXT NOT NULL,
+            item_key TEXT NOT NULL,
+            title TEXT NOT NULL,
+            item_type TEXT NOT NULL,
+            options_csv TEXT NOT NULL DEFAULT '',
+            required INTEGER NOT NULL DEFAULT 1,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            help_text TEXT,
+            updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+            device_id TEXT,
+            sync_version INTEGER NOT NULL DEFAULT 0
+        )
+    """.trimIndent(), 0)
+    driver.execute(null, "CREATE INDEX IF NOT EXISTS idx_notebook_instrument_items_template ON notebook_instrument_items(template_id, sort_order, id)", 0)
+    driver.execute(null, """
+        CREATE TABLE IF NOT EXISTS notebook_instrument_responses (
+            class_id INTEGER NOT NULL,
+            student_id INTEGER NOT NULL,
+            column_id TEXT NOT NULL,
+            item_id TEXT NOT NULL,
+            value_text TEXT,
+            value_bool INTEGER,
+            value_number REAL,
+            updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+            device_id TEXT,
+            sync_version INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (class_id, student_id, column_id, item_id)
+        )
+    """.trimIndent(), 0)
+    driver.execute(null, "CREATE INDEX IF NOT EXISTS idx_notebook_instrument_responses_cell ON notebook_instrument_responses(class_id, student_id, column_id)", 0)
+    driver.execute(null, "CREATE INDEX IF NOT EXISTS idx_notebook_instrument_responses_item ON notebook_instrument_responses(item_id)", 0)
 }
 
 private fun ensureColumns(

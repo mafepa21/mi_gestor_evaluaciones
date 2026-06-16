@@ -31,7 +31,6 @@ class BuildNotebookSheetUseCase(
     private val getNotebookUseCase: GetNotebookUseCase,
     private val formulaEvaluator: FormulaEvaluator = FormulaEvaluator(),
     private val buildNotebookInsightsUseCase: BuildNotebookInsightsUseCase = BuildNotebookInsightsUseCase(),
-    private val sheetCache: NotebookSheetMemoryCache = NotebookSheetMemoryCache(),
     private val averageCache: AverageCache = AverageCache(),
 ) {
     suspend fun build(
@@ -46,16 +45,7 @@ class BuildNotebookSheetUseCase(
         insights: List<NotebookStudentInsight> = emptyList(),
         persistedGrades: List<Grade>? = null,
         persistedCells: List<PersistedNotebookCell>? = null,
-        cacheKey: NotebookSheetCacheKey? = null,
     ): NotebookSheet {
-        cacheKey?.let { key ->
-            sheetCache.get(key)?.let { cached ->
-                NotebookPerformanceDebug.event("sheetCache hit", "classId=$classId rows=${cached.rows.size} columns=${cached.columns.size}")
-                return cached
-            }
-            NotebookPerformanceDebug.event("sheetCache miss", "classId=$classId")
-        }
-
         return NotebookPerformanceDebug.measure("buildSheet classId=$classId") {
             val base = getNotebookUseCase(
                 classId,
@@ -89,9 +79,7 @@ class BuildNotebookSheetUseCase(
                 workGroups = resolvedSheet.workGroups,
                 workGroupMembers = resolvedSheet.workGroupMembers,
                 insights = if (insights.isEmpty()) buildNotebookInsightsUseCase.build(resolvedSheet) else insights,
-            ).also { sheet ->
-                cacheKey?.let { sheetCache.put(it, sheet) }
-            }
+            )
         }
     }
 
@@ -107,19 +95,21 @@ class BuildNotebookSheetUseCase(
 
         val generated = evaluations.map { evaluation ->
             val existing = existingByEval[evaluation.id]
-            val isRubric = evaluation.rubricId != null
+            val rubricId = evaluation.rubricId?.takeIf { it > 0L }
+            val isRubric = rubricId != null
+            val resolvedType = if (isRubric) NotebookColumnType.RUBRIC else existing?.type ?: NotebookColumnType.NUMERIC
             
             existing?.copy(
-                rubricId = if (isRubric) evaluation.rubricId else existing.rubricId,
-                type = if (isRubric) NotebookColumnType.RUBRIC else existing.type,
+                rubricId = rubricId,
+                type = resolvedType,
                 categoryKind = existing.categoryKind.takeUnless { it == NotebookColumnCategoryKind.CUSTOM }
                     ?: NotebookColumnCategoryKind.EVALUATION,
                 instrumentKind = existing.instrumentKind.takeUnless { it == NotebookInstrumentKind.CUSTOM }
-                    ?: if (isRubric) NotebookInstrumentKind.RUBRIC else NotebookInstrumentKind.WRITTEN_TEST,
-                inputKind = existing.inputKind.takeUnless { it == NotebookCellInputKind.TEXT }
-                    ?: if (isRubric) NotebookCellInputKind.RUBRIC else NotebookCellInputKind.NUMERIC_0_10,
+                    ?: defaultInstrumentKindFor(resolvedType),
+                inputKind = existing.inputKind.takeUnless { it == NotebookCellInputKind.TEXT && resolvedType != NotebookColumnType.TEXT }
+                    ?: defaultInputKindFor(resolvedType),
                 scaleKind = existing.scaleKind.takeUnless { it == NotebookScaleKind.CUSTOM }
-                    ?: NotebookScaleKind.TEN_POINT,
+                    ?: defaultScaleKindFor(resolvedType),
                 order = existing.order.takeIf { it >= 0 } ?: generatedOrderForEvaluation(evaluations, evaluation.id),
                 widthDp = existing.widthDp.takeIf { it > 0.0 } ?: 132.0
             ) ?: NotebookColumnDefinition(
@@ -132,7 +122,7 @@ class BuildNotebookSheetUseCase(
                 evaluationId = evaluation.id,
                 formula = evaluation.formula,
                 weight = evaluation.weight,
-                rubricId = evaluation.rubricId,
+                rubricId = rubricId,
                 scaleKind = NotebookScaleKind.TEN_POINT,
                 tabIds = tabs.map { it.id },
                 sharedAcrossTabs = true,
@@ -151,6 +141,36 @@ class BuildNotebookSheetUseCase(
         return (generated + orphanConfigured + extraConfigured)
             .distinctBy { it.id }
             .sortedWith(compareBy<NotebookColumnDefinition> { it.order }.thenBy { it.id })
+    }
+
+    private fun defaultInstrumentKindFor(type: NotebookColumnType): NotebookInstrumentKind {
+        return when (type) {
+            NotebookColumnType.RUBRIC -> NotebookInstrumentKind.RUBRIC
+            NotebookColumnType.CHECK -> NotebookInstrumentKind.CHECKLIST
+            NotebookColumnType.ORDINAL -> NotebookInstrumentKind.OBSERVATION_SCALE
+            NotebookColumnType.TEXT -> NotebookInstrumentKind.SYSTEMATIC_OBSERVATION
+            else -> NotebookInstrumentKind.WRITTEN_TEST
+        }
+    }
+
+    private fun defaultInputKindFor(type: NotebookColumnType): NotebookCellInputKind {
+        return when (type) {
+            NotebookColumnType.RUBRIC -> NotebookCellInputKind.RUBRIC
+            NotebookColumnType.CHECK -> NotebookCellInputKind.CHECK
+            NotebookColumnType.ORDINAL -> NotebookCellInputKind.NUMERIC_1_4
+            NotebookColumnType.TEXT -> NotebookCellInputKind.TEXT
+            else -> NotebookCellInputKind.NUMERIC_0_10
+        }
+    }
+
+    private fun defaultScaleKindFor(type: NotebookColumnType): NotebookScaleKind {
+        return when (type) {
+            NotebookColumnType.RUBRIC,
+            NotebookColumnType.NUMERIC,
+            NotebookColumnType.CALCULATED -> NotebookScaleKind.TEN_POINT
+            NotebookColumnType.ORDINAL -> NotebookScaleKind.FOUR_LEVEL
+            else -> NotebookScaleKind.CUSTOM
+        }
     }
 
     private fun generatedOrderForEvaluation(

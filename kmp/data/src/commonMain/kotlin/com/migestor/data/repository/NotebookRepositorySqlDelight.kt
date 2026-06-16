@@ -6,7 +6,6 @@ import com.migestor.data.db.AppDatabase
 import com.migestor.shared.domain.*
 import com.migestor.shared.repository.*
 import com.migestor.shared.usecase.BuildNotebookSheetUseCase
-import com.migestor.shared.usecase.notebookSheetCacheKey
 import com.migestor.shared.util.NotebookRefreshBus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -49,17 +48,6 @@ class NotebookRepositorySqlDelight(
         val members = notebookConfigRepository.listWorkGroupMembers(classId)
         val grades = gradesRepository.listGradesForClass(classId)
         val cells = notebookCellsRepository.listClassCells(classId)
-        val cacheKey = notebookSheetCacheKey(
-            classId = classId,
-            students = students,
-            tabs = tabs,
-            columns = columns,
-            categories = columnCategories,
-            groups = groups,
-            members = members,
-            grades = grades,
-            cells = cells,
-        )
         
         buildNotebookSheetUseCase.build(
             classId = classId,
@@ -72,7 +60,6 @@ class NotebookRepositorySqlDelight(
             workGroupMembers = members,
             persistedGrades = grades,
             persistedCells = cells,
-            cacheKey = cacheKey,
         )
     }
 

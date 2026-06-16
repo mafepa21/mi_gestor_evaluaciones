@@ -15,6 +15,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- Preparar evaluación de situaciones de aprendizaje permite adjuntar un DOCX de instrumentos, detectar rúbricas, grids de observación, logs, registros diagnósticos, hojas de ajuste, quizzes y checklists desde tablas o párrafos, previsualizarlos con selección y materializarlos como evaluaciones, rúbricas, columnas de Cuaderno y vínculos con la situación.
 - El inspector del Cuaderno incorpora una primera capa de Inteligencia Educativa local: `StudentInsightDraft`, `AverageExplanationDraft` y `TutorMeetingSummaryDraft` estructurados desde evidencia existente, con fallback determinista cuando Foundation Models no está disponible.
 - El inspector del Cuaderno muestra el resumen de tutoría local ya generado por Foundation Models/reglas, con trazabilidad visible mediante `AppleAIStatusBadge` y fixture DEBUG de readiness sin datos reales de alumnado.
 - Informes Apple IA incorpora `StudentReportSummary` como modelo estructurado para fortalezas, aspectos a vigilar, áreas de progreso, recomendaciones y versiones docente/familia, manteniendo `AIReportDraft` como envoltorio compatible.
@@ -44,6 +45,11 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- El Cuaderno normaliza `rubric_id = 0` como ausencia de rúbrica y deja de forzar instrumentos `CHECK`, `TEXT` u `ORDINAL` a mostrarse como columnas de rúbrica.
+- El builder del Cuaderno deriva `instrumentKind`, `inputKind` y `scaleKind` desde el tipo real de columna cuando los metadatos persistidos siguen en `CUSTOM/TEXT`, evitando errores de carga y subtítulos incorrectos tras importaciones antiguas.
+- El Cuaderno deja de reutilizar la caché mutable de `NotebookSheet`, evitando el fallo interno de hash al recargar snapshots tras cambios de columnas/evaluaciones.
+- La importación de instrumentos de situaciones permite elegir la pestaña destino del Cuaderno, materializa solo las rúbricas reales como columnas de rúbrica y corrige los niveles importados para que puntúen en orden ascendente.
+- Corrige el error HTTP 401 Unauthorized en la sincronización local y la importación de situaciones en macOS forzando el uso de `127.0.0.1` en `buildURL` (KmpBridge) y `buildEventsURL` (SyncEventListener) bajo esa plataforma, permitiendo el bypass de autenticación por loopback interno en el helper local.
 - Corrige la compilación de `IPadWorkspaceShell.swift` en iOS 16.0 reemplazando el modificador `.searchable` programático por un helper compatible `appSearchable` que implementa fallback en [AppleViewCompatibility.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/AppleShared/AppleViewCompatibility.swift).
 - Corrige la compilación Apple del inspector del Cuaderno evitando una colisión de nombre entre el closure `isSummaryColumn` y su valor booleano local.
 - El Cuaderno macOS vuelve a mostrar la tira de pestañas y permite crear nuevas pestañas aunque la toolbar principal sea propiedad de la shell.
@@ -56,6 +62,9 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Data
 
+- Reparación local aplicada a evaluaciones con `rubric_id = 0` y blindaje de lectura/escritura para tratarlas como `NULL`; los instrumentos importados de `1º BAC A` conservan rúbrica solo en `Plan Design Rubric` y `Peer-Coaching Rubric`.
+- Reparación local aplicada a los instrumentos ya importados: `Plan Design Rubric` y `Peer-Coaching Rubric` mantienen `rubric_id`, el resto queda sin rúbrica y con metadatos `CHECK`, `TEXT` u `ORDINAL` según su tipo.
+
 ### Docs
 
 - ADR `kmp/docs/architecture/ADR-2026-06-14-local-educational-intelligence.md` documenta la regla de arquitectura para IA educativa local: KMP calcula hechos y Foundation Models genera objetos renderizables.
@@ -63,6 +72,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `sqlite3` confirma `0` evaluaciones con `rubric_id = 0`; en `1º BAC A`, solo `Plan Design Rubric` y `Peer-Coaching Rubric` mantienen rúbrica, y el resto de instrumentos importados quedan como `ORDINAL`, `CHECK` o `TEXT`.
+- `./gradlew :shared:compileDebugKotlinAndroid` completado correctamente tras desactivar la caché de `NotebookSheet`. La reconstrucción del framework Apple con `scripts/build_apple_framework.sh` queda bloqueada porque `xcode-select` apunta a CommandLineTools y `xcrun xcodebuild -version` falla.
+- `swiftc -parse` completado correctamente para `LearningSituationsWorkspaceView.swift`, `KmpBridge.swift` y `LearningSituationAssessmentInstrumentsImportService.swift`; `git diff --check` y `plutil -lint kmp/iosApp/MiGestorKMPiOS.xcodeproj/project.pbxproj` completados correctamente. `xcodebuild -list -project kmp/iosApp/MiGestorKMPiOS.xcodeproj` sigue bloqueado porque `xcode-select` apunta a `/Library/Developer/CommandLineTools`.
+- `git diff --check`, `plutil -lint kmp/iosApp/MiGestorKMPiOS.xcodeproj/project.pbxproj` y `swiftc -parse kmp/iosApp/AppleShared/LearningSituationAssessmentInstrumentsImportService.swift` completados correctamente tras añadir el importador DOCX de instrumentos evaluativos. La extracción estructurada del DOCX `instrumentos_evaluacion.docx` reconoce 9 instrumentos esperados. `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -list` no pudo ejecutarse porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y no hay `Xcode.app` visible en `/Applications`; el `swiftc -typecheck` aislado no resuelve `ZIPFoundation` fuera del proyecto SPM.
 - `git diff --check` y `swiftc -parse kmp/iosApp/MacApp/MacLiquidGlassStyle.swift kmp/iosApp/MacApp/MacAppStyle.swift kmp/iosApp/MacApp/MacPremiumComponents.swift kmp/iosApp/MacApp/MacRootView.swift kmp/iosApp/MacApp/MacDashboardView.swift` completados correctamente tras ampliar Liquid Glass macOS. `xcodebuild -version` no pudo ejecutarse porque `xcode-select` apunta a `/Library/Developer/CommandLineTools`, por lo que `scripts/verify_apple_builds.sh` queda pendiente hasta activar Xcode completo.
 - Auditoría acotada del flujo `EarlyWarning` en `NotebookStudentInspector.swift`, `AppleFoundationStudentInsightService.swift` y llamadas Apple directas: se mitigó el riesgo de tono diagnóstico sustituyendo “alerta/riesgo” por “señal/revisión”, confianza porcentual por etiqueta cualitativa y reglas de prompt centradas en señales observables.
 - Fixture DEBUG `AppleAIReadinessFixtures` añadido para comprobar contratos de readiness: clamp de confianza, límites de listas y render básico de insight/tutoría/EF sin depender del runtime Foundation Models.

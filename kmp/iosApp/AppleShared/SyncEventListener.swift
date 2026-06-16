@@ -167,7 +167,11 @@ final class SyncEventListener {
     private func buildEventsURL(host: String) throws -> URL {
         var components = URLComponents()
         components.scheme = "https"
+        #if os(macOS)
+        components.host = "127.0.0.1"
+        #else
         components.host = host
+        #endif
         components.port = 8765
         components.path = "/sync/events"
 

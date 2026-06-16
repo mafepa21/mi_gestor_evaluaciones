@@ -31,6 +31,8 @@ import kotlinx.datetime.Clock
 class NotebookConfigRepositorySqlDelight(
     private val db: AppDatabase,
 ) : NotebookConfigRepository {
+    private fun Long?.validRubricId(): Long? = this?.takeIf { it > 0L }
+
     private fun String?.toLongIdList(): List<Long> {
         return this
             ?.split(",")
@@ -729,7 +731,7 @@ class NotebookConfigRepositorySqlDelight(
                 type = it.type,
                 weight = it.weight,
                 formula = it.formula,
-                rubricId = it.rubric_id,
+                rubricId = it.rubric_id.validRubricId(),
                 description = it.description,
                 trace = AuditTrace(
                     authorUserId = it.author_user_id,
@@ -848,7 +850,7 @@ class NotebookConfigRepositorySqlDelight(
                 evaluationId = newEvaluationId,
                 rubricId = sourceEvaluation?.rubricId ?: col.rubricId,
                 categoryId = col.categoryId?.let { categoryIdMap[it] },
-                type = if (newEvaluationId != null && sourceEvaluation?.rubricId != null) {
+                type = if (newEvaluationId != null && sourceEvaluation?.rubricId?.let { it > 0L } == true) {
                     NotebookColumnType.RUBRIC
                 } else {
                     col.type

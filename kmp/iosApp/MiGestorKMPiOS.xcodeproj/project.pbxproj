@@ -91,6 +91,7 @@
 		481456E6917D53DC0747A5FD /* NotebookModuleDialogs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 352EEB0A224407D7F429897D /* NotebookModuleDialogs.swift */; };
 		488764D78E28A742D70180A6 /* NotebookModuleDialogs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 352EEB0A224407D7F429897D /* NotebookModuleDialogs.swift */; };
 		4914568CE9DDEBCF1F7CFDF2 /* AppearanceSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C0172AFB78FC2D43D634B3D /* AppearanceSettingsView.swift */; };
+		4A5932D5157D5B56166B9246 /* LearningSituationAssessmentInstrumentsImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4A15D63AA4E7899412B1046 /* LearningSituationAssessmentInstrumentsImportService.swift */; };
 		4A94FBA079B366485372AFC6 /* AppleFoundationAnalyticsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2EB53505ACE7B6CA23A520F /* AppleFoundationAnalyticsService.swift */; };
 		4CD7B2F80D547E190781D9EC /* NotebookManualVerification.md in Resources */ = {isa = PBXBuildFile; fileRef = A5BA7E894D6807678659569D /* NotebookManualVerification.md */; };
 		4D5078D96AE3E5ECAEA922B5 /* AppleAIOrchestrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D47CE5CC1A1F907BFA2E477 /* AppleAIOrchestrator.swift */; };
@@ -113,6 +114,7 @@
 		59D57BFC6882311B3CE5FB2A /* NotebookFormulaKeyboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28F88ED1497646466866123A /* NotebookFormulaKeyboard.swift */; };
 		5A06D3FAE61109EBEA5791A2 /* LearningSituationsWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05FB1EEE057F9F3861BEECD8 /* LearningSituationsWorkspaceView.swift */; };
 		5AA56A1A703EDF8406F8B991 /* AttendanceWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 284EFC5D21CE71AE69E43094 /* AttendanceWorkspaceView.swift */; };
+		5AB3FE7CC733C2337A6B0624 /* LearningSituationAssessmentInstrumentsImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4A15D63AA4E7899412B1046 /* LearningSituationAssessmentInstrumentsImportService.swift */; };
 		5AEB04567FC583959C901083 /* MacBackupInspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C68F4452792ADF072EDE900 /* MacBackupInspectorView.swift */; };
 		5BD12903E50D9BD88C05DD1F /* NotebookSupportViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 834354958EC7B5CE22A3BA07 /* NotebookSupportViews.swift */; };
 		5C66DE9508311795F6FE0DF8 /* PendingEvaluationPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72D234C2A47232591178F898 /* PendingEvaluationPickerSheet.swift */; };
@@ -485,6 +487,7 @@
 		DC6FF32972AD484A9FAEABBC /* CoursesWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoursesWorkspaceView.swift; sourceTree = "<group>"; };
 		DDF85B72D878968E171D9F9C /* GeneralSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralSettingsView.swift; sourceTree = "<group>"; };
 		E44007C231E03029435B056F /* AppleBackupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleBackupService.swift; sourceTree = "<group>"; };
+		E4A15D63AA4E7899412B1046 /* LearningSituationAssessmentInstrumentsImportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearningSituationAssessmentInstrumentsImportService.swift; sourceTree = "<group>"; };
 		E57AA10D4F5A9A3199288A4C /* MacAppStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacAppStyle.swift; sourceTree = "<group>"; };
 		E6144B137C267EC5DEA266F2 /* NotebookModuleDataState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookModuleDataState.swift; sourceTree = "<group>"; };
 		EC0359FA7FD3BF06A0E300F5 /* AppleRoundedCorner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleRoundedCorner.swift; sourceTree = "<group>"; };
@@ -583,6 +586,7 @@
 				B8AD3A2E943A41407A974460 /* EvaluationSettingsView.swift */,
 				DDF85B72D878968E171D9F9C /* GeneralSettingsView.swift */,
 				9D93A76DF493650C1B4A2C09 /* ImportPreviewModels.swift */,
+				E4A15D63AA4E7899412B1046 /* LearningSituationAssessmentInstrumentsImportService.swift */,
 				61BED513E849E7CB7DA762A5 /* LearningSituationDocumentImportService.swift */,
 				365A0156DBB041D3F8FD72CC /* MacTrackpadSwipeHelper.swift */,
 				FAC46319C44007155F43DDDB /* NotebookAverageExplanationView.swift */,
@@ -983,6 +987,7 @@
 				A955FA3E7711CA5298A75589 /* IPadWorkspaceShell.swift in Sources */,
 				9886188422D810036E17FDCD /* ImportPreviewModels.swift in Sources */,
 				A891426FA79E3A7AB4670107 /* KmpBridge.swift in Sources */,
+				4A5932D5157D5B56166B9246 /* LearningSituationAssessmentInstrumentsImportService.swift in Sources */,
 				380C5B0861247861C8158E36 /* LearningSituationDocumentImportService.swift in Sources */,
 				A8C1A2062C3815D1FAC4C4BE /* LearningSituationsWorkspaceView.swift in Sources */,
 				AD204E79F58440E3B5FEAB9B /* LibraryAndPEWorkspaceViews.swift in Sources */,
@@ -1146,6 +1151,7 @@
 				86BC90A2A4604BC6B4545E27 /* IPadWorkspaceShell.swift in Sources */,
 				A917D167542448BDD9007211 /* ImportPreviewModels.swift in Sources */,
 				B7CB07BCB74E309D55528193 /* KmpBridge.swift in Sources */,
+				5AB3FE7CC733C2337A6B0624 /* LearningSituationAssessmentInstrumentsImportService.swift in Sources */,
 				3AB64143C70A452FF016C4BA /* LearningSituationDocumentImportService.swift in Sources */,
 				5A06D3FAE61109EBEA5791A2 /* LearningSituationsWorkspaceView.swift in Sources */,
 				0230F89B204872CC089E8B47 /* LibraryAndPEWorkspaceViews.swift in Sources */,

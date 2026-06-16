@@ -42,6 +42,7 @@ struct NotebookDynamicCellsRow: View {
                         onOpenFormula: {},
                         onOpenRubricIndividual: {},
                         onOpenRubricBulk: {},
+                        onOpenStructuredInstrument: {},
                         onNavigate: { _ in },
                         onCellSaved: {},
                         onAttendanceSaved: {}
@@ -121,6 +122,9 @@ struct NotebookDynamicCellsRow: View {
     }
 
     private func cellValue(for column: NotebookColumnDefinition) -> String {
+        if column.inputKind.isStructuredInstrument {
+            return bridge.structuredCellDisplayText(studentId: item.student.id, columnId: column.id)
+        }
         switch column.type {
         case .numeric, .calculated:
             return bridge.numericGradeText(studentId: item.student.id, columnId: column.id)

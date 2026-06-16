@@ -325,6 +325,21 @@ extension NotebookModuleView {
     }
 
     func columnHeaderMeta(for column: NotebookColumnDefinition) -> String {
+        if column.inputKind.isStructuredInstrument {
+            switch column.inputKind {
+            case .structuredChecklist:
+                return "Checklist"
+            case .structuredObservation:
+                return "Observación"
+            case .structuredForm:
+                return "Formulario"
+            case .structuredQuiz:
+                return "Quiz"
+            default:
+                break
+            }
+        }
+
         let typeText: String
         switch column.type {
         case .numeric:
@@ -457,6 +472,17 @@ extension NotebookModuleView {
                         onOpenRubricBulk: {
                             focusMode = .editing
                             openRubricBulk(column: column, data: data)
+                        },
+                        onOpenStructuredInstrument: {
+                            focusMode = .editing
+                            structuredInstrumentRequest = StructuredInstrumentEvaluationRequest(
+                                id: "\(data.sheet.classId)-\(item.student.id)-\(column.id)",
+                                classId: data.sheet.classId,
+                                studentId: item.student.id,
+                                studentName: "\(item.student.firstName) \(item.student.lastName)",
+                                columnId: column.id,
+                                title: column.title
+                            )
                         },
                         onGenerateSummary: {
                             inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)

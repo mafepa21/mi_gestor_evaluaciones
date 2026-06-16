@@ -180,7 +180,7 @@ struct MacPremiumFilterBar<Content: View>: View {
         }
         .padding(MacAppStyle.innerPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .macLiquidGlassPanel(.secondaryPanel)
+        .macLiquidGlassPanel(.chrome, isActive: true, isInteractive: true)
     }
 }
 
@@ -194,7 +194,7 @@ struct MacPremiumControlStrip<Content: View>: View {
         .padding(.horizontal, MacAppStyle.innerPadding)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .macLiquidGlassPanel(.secondaryPanel)
+        .macLiquidGlassPanel(.chrome, isActive: true, isInteractive: true)
     }
 }
 
@@ -249,7 +249,7 @@ struct MacPremiumTableContainer<Content: View>: View {
             .animation(MacAppStyle.smallStateAnimation, value: isLoading)
         }
         .padding(MacAppStyle.innerPadding)
-        .macLiquidGlassPanel(.primaryPanel)
+        .macLiquidGlassPanel(.primaryPanel, isActive: true)
     }
 }
 
@@ -274,7 +274,7 @@ struct MacPremiumInspectorSection<Content: View>: View {
         }
         .padding(MacAppStyle.innerPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .macLiquidGlassPanel(.secondaryPanel)
+        .macLiquidGlassPanel(.inspector, isActive: true)
     }
 }
 
@@ -317,7 +317,7 @@ struct MacPremiumInspectorHeader<Badges: View>: View {
         }
         .padding(MacAppStyle.innerPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .macLiquidGlassPanel(.secondaryPanel)
+        .macLiquidGlassPanel(.inspector, isActive: true)
     }
 }
 

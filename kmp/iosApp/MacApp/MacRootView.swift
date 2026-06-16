@@ -106,10 +106,11 @@ struct MacRootView: View {
                 .inspector(isPresented: $isInspectorVisible) {
                     featureInspector(for: selectedFeature)
                         .frame(minWidth: 320, idealWidth: 360, maxWidth: 440)
-                        .background(MacAppStyle.pageBackground)
+                        .background(.thinMaterial)
                 }
         }
         .navigationSplitViewStyle(.balanced)
+        .scrollEdgeEffectStyle(.soft, for: .top)
         .overlay(alignment: .topTrailing) {
             if let banner {
                 MacRootTransientBanner(banner: banner)
@@ -958,12 +959,13 @@ private struct MacRootTransientBanner: View {
             .foregroundStyle(banner.tint)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(.regularMaterial, in: Capsule(style: .continuous))
-            .overlay {
-                Capsule(style: .continuous)
-                    .stroke(MacAppStyle.cardBorder, lineWidth: 0.5)
-            }
-            .shadow(color: .black.opacity(0.12), radius: 12, y: 6)
+            .macLiquidGlassPanel(
+                .floatingBanner,
+                cornerRadius: 999,
+                isActive: true,
+                tint: banner.tint,
+                isInteractive: true
+            )
             .accessibilityLabel(banner.title)
     }
 }

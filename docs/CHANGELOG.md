@@ -27,6 +27,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- macOS amplía la base Liquid Glass con roles de chrome, panel, inspector y banner flotante usando `glassEffect`/`GlassEffectContainer` en el shell, componentes premium y Dashboard, manteniendo las superficies densas del Cuaderno fuera del efecto.
 - El `EarlyWarning` del inspector del Cuaderno se presenta como señal preventiva revisable, con etiquetas de confianza cualitativas y nota de procedencia visible, evitando apariencia de diagnóstico o decisión automática.
 - `AppleAIOrchestrator` añade intents estructurados para insight de alumno, explicación docente de media y resumen de tutoría sin recalcular datos KMP ni modificar persistencia.
 - Los contratos Apple IA de insight, riesgo, media explicada, tutoría, alerta preventiva, informes y análisis EF pasan a ser modelos `Codable`/`Sendable` con normalización local de arrays, textos vacíos, severidad y confianza.
@@ -59,6 +60,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `git diff --check` y `swiftc -parse kmp/iosApp/MacApp/MacLiquidGlassStyle.swift kmp/iosApp/MacApp/MacAppStyle.swift kmp/iosApp/MacApp/MacPremiumComponents.swift kmp/iosApp/MacApp/MacRootView.swift kmp/iosApp/MacApp/MacDashboardView.swift` completados correctamente tras ampliar Liquid Glass macOS. `xcodebuild -version` no pudo ejecutarse porque `xcode-select` apunta a `/Library/Developer/CommandLineTools`, por lo que `scripts/verify_apple_builds.sh` queda pendiente hasta activar Xcode completo.
 - Auditoría acotada del flujo `EarlyWarning` en `NotebookStudentInspector.swift`, `AppleFoundationStudentInsightService.swift` y llamadas Apple directas: se mitigó el riesgo de tono diagnóstico sustituyendo “alerta/riesgo” por “señal/revisión”, confianza porcentual por etiqueta cualitativa y reglas de prompt centradas en señales observables.
 - Fixture DEBUG `AppleAIReadinessFixtures` añadido para comprobar contratos de readiness: clamp de confianza, límites de listas y render básico de insight/tutoría/EF sin depender del runtime Foundation Models.
 - `xcodegen generate`, `git diff --check`, `plutil -lint kmp/iosApp/MiGestorKMPiOS.xcodeproj/project.pbxproj` y verificación de inclusión de `AppleAIReadinessFixtures.swift` en ambos targets Apple completados correctamente tras el hardening de Foundation Models. `scripts/verify_apple_builds.sh` regeneró el proyecto, pero los builds macOS/iOS quedaron bloqueados porque `xcode-select` apunta a `/Library/Developer/CommandLineTools`.

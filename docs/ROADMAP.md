@@ -45,6 +45,7 @@ Prioridad: alta.
   Avance: la toolbar del Cuaderno macOS queda centrada en acciones diarias y `⌘F` enfoca la búsqueda sin cambiar de módulo inesperadamente.
   Avance: el Cuaderno macOS usa una sola toolbar propiedad de la shell, evitando acciones duplicadas entre `MacRootView` y `NotebookModuleView`.
   Avance: las pestañas del Cuaderno vuelven a ser visibles y creables en macOS sin reintroducir botones duplicados en la toolbar.
+  Avance: la capa Liquid Glass macOS se concentra en shell, banners, inspectores, componentes premium y Dashboard, sin aplicar translucencia al grid del Cuaderno.
 - Dashboard Apple: briefing local no bloqueante con fallback determinista y acciones reales por plataforma.
   Avance: el briefing diario usa contrato estable de 3 alertas, 2 acciones, resumen evaluativo y aviso de datos incompletos.
 - Educación Física: análisis local de progreso físico por grupo.

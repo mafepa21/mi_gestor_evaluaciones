@@ -152,6 +152,31 @@ interface NotebookCellsRepository {
     fun observeCellAudit(classId: Long, studentId: Long, columnId: String): Flow<List<NotebookCellAuditEvent>>
 }
 
+interface NotebookInstrumentsRepository {
+    suspend fun saveTemplate(
+        template: NotebookInstrumentTemplate,
+        items: List<NotebookInstrumentItem>,
+    )
+
+    suspend fun getTemplateForColumn(columnId: String): NotebookInstrumentDetail?
+
+    suspend fun listResponsesForCell(
+        classId: Long,
+        studentId: Long,
+        columnId: String,
+    ): List<NotebookInstrumentResponse>
+
+    suspend fun saveResponses(
+        classId: Long,
+        studentId: Long,
+        columnId: String,
+        responses: List<NotebookInstrumentResponse>,
+        updatedAtEpochMs: Long = 0,
+        deviceId: String? = null,
+        syncVersion: Long = 0,
+    ): NotebookInstrumentCellSummary
+}
+
 interface NotebookRepository {
     suspend fun loadNotebookSnapshot(classId: Long): NotebookSheet
     fun observeStudentChanges(classId: Long): Flow<List<Student>>

@@ -863,6 +863,10 @@ enum class NotebookCellInputKind {
     EVIDENCE,
     ATTENDANCE_STATUS,
     CALCULATED,
+    STRUCTURED_CHECKLIST,
+    STRUCTURED_OBSERVATION,
+    STRUCTURED_FORM,
+    STRUCTURED_QUIZ,
     TEXT,
 }
 
@@ -1163,6 +1167,69 @@ data class PersistedNotebookCell(
     val countsTowardAverage: Boolean? = null,
     val annotation: NotebookCellAnnotation? = null,
     val trace: AuditTrace = AuditTrace(),
+)
+
+enum class NotebookInstrumentTemplateKind {
+    CHECKLIST,
+    OBSERVATION,
+    FORM,
+    QUIZ,
+}
+
+enum class NotebookInstrumentItemType {
+    CHECK,
+    TEXT,
+    NUMBER,
+    SCALE_1_4,
+    CHOICE,
+}
+
+data class NotebookInstrumentTemplate(
+    val id: String,
+    val classId: Long,
+    val columnId: String,
+    val evaluationId: Long? = null,
+    val title: String,
+    val kind: NotebookInstrumentTemplateKind,
+    val inputKind: NotebookCellInputKind,
+    val source: String? = null,
+    val trace: AuditTrace = AuditTrace(),
+)
+
+data class NotebookInstrumentItem(
+    val id: String,
+    val templateId: String,
+    val key: String,
+    val title: String,
+    val type: NotebookInstrumentItemType,
+    val options: List<String> = emptyList(),
+    val required: Boolean = true,
+    val order: Int = 0,
+    val helpText: String? = null,
+    val trace: AuditTrace = AuditTrace(),
+)
+
+data class NotebookInstrumentResponse(
+    val classId: Long,
+    val studentId: Long,
+    val columnId: String,
+    val itemId: String,
+    val textValue: String? = null,
+    val boolValue: Boolean? = null,
+    val numberValue: Double? = null,
+    val trace: AuditTrace = AuditTrace(),
+)
+
+data class NotebookInstrumentDetail(
+    val template: NotebookInstrumentTemplate,
+    val items: List<NotebookInstrumentItem>,
+)
+
+data class NotebookInstrumentCellSummary(
+    val completedCount: Int,
+    val totalCount: Int,
+    val displayValue: String,
+    val isComplete: Boolean,
 )
 
 data class NotebookReusableInstrument(

@@ -9,6 +9,11 @@ import com.migestor.shared.domain.LearningSituationSessionPlan
 import com.migestor.shared.domain.LearningSituationSessionSequenceVersion
 import com.migestor.shared.domain.LearningSituationStatus
 import com.migestor.shared.domain.LearningSituationVersion
+import com.migestor.shared.domain.NotebookColumnCategoryKind
+import com.migestor.shared.domain.NotebookInstrumentKind
+import com.migestor.shared.domain.NotebookCellInputKind
+import com.migestor.shared.domain.NotebookScaleKind
+import com.migestor.shared.domain.NotebookColumnVisibility
 import com.migestor.shared.domain.NotebookColumnDefinition
 import com.migestor.shared.domain.NotebookColumnType
 import com.migestor.shared.domain.NotebookTab
@@ -341,6 +346,23 @@ class SqlDelightSyncAdapter(
                             put("sharedAcrossTabs", JsonPrimitive(column.sharedAcrossTabs))
                             put("shared_across_tabs", JsonPrimitive(column.sharedAcrossTabs))
                             put("colorHex", column.colorHex?.let(::JsonPrimitive) ?: JsonPrimitive(""))
+                            put("categoryKind", JsonPrimitive(column.categoryKind.name))
+                            put("instrumentKind", JsonPrimitive(column.instrumentKind.name))
+                            put("inputKind", JsonPrimitive(column.inputKind.name))
+                            put("scaleKind", JsonPrimitive(column.scaleKind.name))
+                            put("dateEpochMs", column.dateEpochMs?.let(::JsonPrimitive) ?: JsonPrimitive(0))
+                            put("unitOrSituation", JsonPrimitive(column.unitOrSituation ?: ""))
+                            put("competencyCriteriaIds", JsonPrimitive(column.competencyCriteriaIds.joinToString(",")))
+                            put("iconName", JsonPrimitive(column.iconName ?: ""))
+                            put("order", JsonPrimitive(column.order))
+                            put("widthDp", JsonPrimitive(column.widthDp))
+                            put("categoryId", JsonPrimitive(column.categoryId ?: ""))
+                            put("countsTowardAverage", JsonPrimitive(column.countsTowardAverage))
+                            put("isPinned", JsonPrimitive(column.isPinned))
+                            put("isHidden", JsonPrimitive(column.isHidden))
+                            put("visibility", JsonPrimitive(column.visibility.name))
+                            put("isLocked", JsonPrimitive(column.isLocked))
+                            put("isTemplate", JsonPrimitive(column.isTemplate))
                         }.toString(),
                     )
                 }
@@ -1211,16 +1233,45 @@ class SqlDelightSyncAdapter(
                             ?.let { runCatching { NotebookColumnType.valueOf(it) }.getOrNull() }
                             ?: NotebookColumnType.NUMERIC
                         val tabIdsCsv = payload.string("tabIdsCsv") ?: payload.string("tab_ids_csv")
+                        
+                        val categoryKind = payload.string("categoryKind")
+                            ?.let { runCatching { NotebookColumnCategoryKind.valueOf(it) }.getOrNull() }
+                            ?: NotebookColumnCategoryKind.CUSTOM
+                        val instrumentKind = payload.string("instrumentKind")
+                            ?.let { runCatching { NotebookInstrumentKind.valueOf(it) }.getOrNull() }
+                            ?: NotebookInstrumentKind.CUSTOM
+                        val inputKind = payload.string("inputKind")
+                            ?.let { runCatching { NotebookCellInputKind.valueOf(it) }.getOrNull() }
+                            ?: NotebookCellInputKind.TEXT
+                        val scaleKind = payload.string("scaleKind")
+                            ?.let { runCatching { NotebookScaleKind.valueOf(it) }.getOrNull() }
+                            ?: NotebookScaleKind.CUSTOM
+                        val visibility = payload.string("visibility")
+                            ?.let { runCatching { NotebookColumnVisibility.valueOf(it) }.getOrNull() }
+                            ?: NotebookColumnVisibility.VISIBLE
+
+                        val competencyCriteriaIds = payload.string("competencyCriteriaIds")
+                            ?.split(",")
+                            ?.mapNotNull { it.trim().toLongOrNull() }
+                            ?: emptyList()
+
                         container.notebookConfigRepository.saveColumn(
                             classId = classId,
                             column = NotebookColumnDefinition(
                                 id = columnId,
                                 title = title,
                                 type = type,
+                                categoryKind = categoryKind,
+                                instrumentKind = instrumentKind,
+                                inputKind = inputKind,
                                 evaluationId = payload.long("evaluationId")?.takeIf { it > 0L },
                                 rubricId = payload.long("rubricId")?.takeIf { it > 0L },
                                 formula = payload.string("formula"),
                                 weight = payload.double("weight") ?: 1.0,
+                                dateEpochMs = payload.long("dateEpochMs")?.takeIf { it > 0L },
+                                unitOrSituation = payload.string("unitOrSituation"),
+                                competencyCriteriaIds = competencyCriteriaIds,
+                                scaleKind = scaleKind,
                                 tabIds = tabIdsCsv
                                     ?.split(",")
                                     ?.map { it.trim() }
@@ -1228,6 +1279,16 @@ class SqlDelightSyncAdapter(
                                     ?: emptyList(),
                                 sharedAcrossTabs = payload.bool("sharedAcrossTabs") ?: payload.bool("shared_across_tabs") ?: false,
                                 colorHex = payload.string("colorHex"),
+                                iconName = payload.string("iconName"),
+                                order = payload.int("order") ?: -1,
+                                widthDp = payload.double("widthDp") ?: 0.0,
+                                categoryId = payload.string("categoryId"),
+                                countsTowardAverage = payload.bool("countsTowardAverage") ?: true,
+                                isPinned = payload.bool("isPinned") ?: false,
+                                isHidden = payload.bool("isHidden") ?: false,
+                                visibility = visibility,
+                                isLocked = payload.bool("isLocked") ?: false,
+                                isTemplate = payload.bool("isTemplate") ?: false,
                                 trace = AuditTrace(
                                     updatedAt = Instant.fromEpochMilliseconds(change.updatedAtEpochMs),
                                     deviceId = change.deviceId,

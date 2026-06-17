@@ -39,8 +39,25 @@ struct CoursesWorkspaceView: View {
                         }
                         .padding(.vertical, 4)
                     } else {
-                        Text("Sin curso activo")
-                            .foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Sin curso activo")
+                                .font(.subheadline.weight(.semibold))
+                            Text("Restaura un curso del historial o crea uno nuevo para volver a ver grupos.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            if !bridge.archivedAcademicYears.isEmpty {
+                                Menu {
+                                    ForEach(bridge.archivedAcademicYears) { year in
+                                        Button(year.name) {
+                                            Task { await activateAcademicYear(year) }
+                                        }
+                                    }
+                                } label: {
+                                    Label("Restaurar curso", systemImage: "arrow.triangle.2.circlepath")
+                                }
+                            }
+                        }
+                        .padding(.vertical, 4)
                     }
 
                     Button {
@@ -51,36 +68,25 @@ struct CoursesWorkspaceView: View {
                 }
 
                 Section("Cursos") {
-                    ForEach(bridge.classes, id: \.id) { schoolClass in
-                        Button {
-                            selectedClassId = schoolClass.id
-                            Task { await loadSummary(for: schoolClass.id) }
-                        } label: {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(schoolClass.name)
-                                    .font(.headline)
-                                Text(classSubtitle(for: schoolClass))
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.secondary)
+                    if bridge.classes.isEmpty {
+                        Text(bridge.activeAcademicYear == nil ? "No hay curso activo." : "Este curso escolar no tiene grupos.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(bridge.classes, id: \.id) { schoolClass in
+                            Button {
+                                selectedClassId = schoolClass.id
+                                Task { await loadSummary(for: schoolClass.id) }
+                            } label: {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(schoolClass.name)
+                                        .font(.headline)
+                                    Text(classSubtitle(for: schoolClass))
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                }
                             }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
-                    }
-                }
-
-                Section {
-                    Button {
-                        editingClass = nil
-                        showingClassEditor = true
-                    } label: {
-                        Label("Nuevo grupo", systemImage: "plus.circle.fill")
-                    }
-                    .disabled(!isActiveAcademicYearWritable)
-
-                    Button {
-                        showingSubjectCatalog = true
-                    } label: {
-                        Label("Asignaturas", systemImage: "books.vertical.fill")
                     }
                 }
 
@@ -115,6 +121,22 @@ struct CoursesWorkspaceView: View {
                                 }
                             }
                         }
+                    }
+                }
+
+                Section {
+                    Button {
+                        editingClass = nil
+                        showingClassEditor = true
+                    } label: {
+                        Label("Nuevo grupo", systemImage: "plus.circle.fill")
+                    }
+                    .disabled(!isActiveAcademicYearWritable)
+
+                    Button {
+                        showingSubjectCatalog = true
+                    } label: {
+                        Label("Asignaturas", systemImage: "books.vertical.fill")
                     }
                 }
             }
@@ -290,9 +312,8 @@ struct CoursesWorkspaceView: View {
         }
         .sheet(isPresented: $showingSubjectCatalog) {
             SubjectCatalogSheet(
-                subjects: bridge.subjects,
                 onSave: { draft in
-                    Task { await saveSubjectDraft(draft) }
+                    await saveSubjectDraft(draft)
                 },
                 onDelete: { subject in
                     Task { await deleteSubject(subject) }
@@ -310,7 +331,7 @@ struct CoursesWorkspaceView: View {
         .sheet(isPresented: $showingAcademicYearWizard) {
             AcademicYearWizardSheet(
                 activeYear: bridge.activeAcademicYear,
-                archivedYears: bridge.archivedAcademicYears,
+                academicYears: bridge.academicYears,
                 onCreate: { draft in
                     Task { await createAcademicYear(draft) }
                 },
@@ -428,11 +449,13 @@ struct CoursesWorkspaceView: View {
     }
 
     @MainActor
-    private func saveSubjectDraft(_ draft: SubjectDraft) async {
+    private func saveSubjectDraft(_ draft: SubjectDraft) async -> Bool {
         do {
             _ = try await bridge.saveSubject(id: draft.id, code: draft.code, name: draft.name)
+            return true
         } catch {
             bridge.status = "No se pudo guardar la asignatura: \(error.localizedDescription)"
+            return false
         }
     }
 
@@ -595,7 +618,7 @@ private struct ArchivedAcademicYearDetailSheet: View {
 
 private struct AcademicYearWizardSheet: View {
     let activeYear: KmpBridge.AcademicYearSnapshot?
-    let archivedYears: [KmpBridge.AcademicYearSnapshot]
+    let academicYears: [KmpBridge.AcademicYearSnapshot]
     let onCreate: (AcademicYearDraft) -> Void
     let onArchiveActive: () -> Void
 
@@ -609,7 +632,7 @@ private struct AcademicYearWizardSheet: View {
     @State private var sourceAcademicYearId: Int64?
 
     var sourceOptions: [KmpBridge.AcademicYearSnapshot] {
-        ([activeYear].compactMap { $0 } + archivedYears).sorted { $0.name > $1.name }
+        academicYears.sorted { $0.name > $1.name }
     }
 
     var body: some View {
@@ -793,15 +816,17 @@ private struct CourseClassEditorSheet: View {
 }
 
 private struct SubjectCatalogSheet: View {
-    let subjects: [KmpSubject]
-    let onSave: (SubjectDraft) -> Void
+    let onSave: (SubjectDraft) async -> Bool
     let onDelete: (KmpSubject) -> Void
 
+    @EnvironmentObject private var bridge: KmpBridge
     @Environment(\.dismiss) private var dismiss
     @State private var editingSubject: KmpSubject?
     @State private var pendingDeleteSubject: KmpSubject?
     @State private var code = ""
     @State private var name = ""
+    @State private var isSaving = false
+    @State private var saveError: String?
 
     var body: some View {
         NavigationStack {
@@ -809,14 +834,19 @@ private struct SubjectCatalogSheet: View {
                 Section("Nueva asignatura") {
                     subjectFields
                     Button(editingSubject == nil ? "Añadir asignatura" : "Guardar cambios") {
-                        onSave(SubjectDraft(
-                            id: editingSubject?.id,
-                            code: code.trimmingCharacters(in: .whitespacesAndNewlines),
-                            name: name.trimmingCharacters(in: .whitespacesAndNewlines)
-                        ))
-                        resetDraft()
+                        Task { await saveCurrentDraft() }
                     }
-                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(isSaving || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                    if isSaving {
+                        ProgressView()
+                    }
+
+                    if let saveError {
+                        Text(saveError)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
 
                     if editingSubject != nil {
                         Button("Cancelar edición", role: .cancel) {
@@ -826,11 +856,11 @@ private struct SubjectCatalogSheet: View {
                 }
 
                 Section("Catálogo") {
-                    if subjects.isEmpty {
+                    if bridge.subjects.isEmpty {
                         Text("Todavía no hay asignaturas.")
                             .foregroundStyle(.secondary)
                     } else {
-                        ForEach(subjects, id: \.id) { subject in
+                        ForEach(bridge.subjects, id: \.id) { subject in
                             HStack(spacing: 12) {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(subject.name)
@@ -896,9 +926,28 @@ private struct SubjectCatalogSheet: View {
         }
     }
 
+    @MainActor
+    private func saveCurrentDraft() async {
+        isSaving = true
+        saveError = nil
+        let draft = SubjectDraft(
+            id: editingSubject?.id,
+            code: code.trimmingCharacters(in: .whitespacesAndNewlines),
+            name: name.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+        let didSave = await onSave(draft)
+        isSaving = false
+        if didSave {
+            resetDraft()
+        } else {
+            saveError = "No se pudo guardar. Revisa nombre y código."
+        }
+    }
+
     private func resetDraft() {
         editingSubject = nil
         code = ""
         name = ""
+        saveError = nil
     }
 }

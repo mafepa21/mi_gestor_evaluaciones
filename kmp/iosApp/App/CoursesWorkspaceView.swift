@@ -14,6 +14,10 @@ struct CoursesWorkspaceView: View {
     @State private var showingAcademicYearWizard = false
     @State private var archivedYearDetail: KmpBridge.AcademicYearSnapshot?
 
+    private var isActiveAcademicYearWritable: Bool {
+        bridge.activeAcademicYear?.isActive == true && bridge.activeAcademicYear?.status == "ACTIVE"
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             List(selection: Binding(
@@ -71,6 +75,7 @@ struct CoursesWorkspaceView: View {
                     } label: {
                         Label("Nuevo grupo", systemImage: "plus.circle.fill")
                     }
+                    .disabled(!isActiveAcademicYearWritable)
 
                     Button {
                         showingSubjectCatalog = true
@@ -220,6 +225,13 @@ struct CoursesWorkspaceView: View {
                                 Text("Acciones de grupo")
                                     .font(.headline)
 
+                                if !isActiveAcademicYearWritable {
+                                    Label("Curso archivado o no editable", systemImage: "lock.fill")
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                        .padding(.vertical, 4)
+                                }
+
                                 Button {
                                     onCreateStudent(summary.schoolClass.id)
                                 } label: {
@@ -227,6 +239,7 @@ struct CoursesWorkspaceView: View {
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                 }
                                 .buttonStyle(.borderedProminent)
+                                .disabled(!isActiveAcademicYearWritable)
 
                                 Button {
                                     editingClass = summary.schoolClass
@@ -236,6 +249,7 @@ struct CoursesWorkspaceView: View {
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                 }
                                 .buttonStyle(.bordered)
+                                .disabled(!isActiveAcademicYearWritable)
 
                                 if bridge.classes.contains(where: { $0.id != summary.schoolClass.id }) {
                                     Menu {
@@ -249,6 +263,7 @@ struct CoursesWorkspaceView: View {
                                             .frame(maxWidth: .infinity, alignment: .leading)
                                     }
                                     .buttonStyle(.bordered)
+                                    .disabled(!isActiveAcademicYearWritable)
                                 }
                             }
                         }

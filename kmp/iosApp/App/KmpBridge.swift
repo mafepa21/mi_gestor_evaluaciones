@@ -1451,8 +1451,8 @@ final class KmpBridge: ObservableObject {
         for sourceClass in sourceClasses {
             let targetClassId = try await container.classesRepository.saveClass(
                 id: nil,
-                name: promotedClassName(from: sourceClass.name, course: sourceClass.course),
-                course: sourceClass.course + 1,
+                name: sourceClass.name,
+                course: sourceClass.course,
                 description: sourceClass.description_,
                 centerId: sourceClass.centerId,
                 academicYearId: KotlinLong(value: targetYearId),
@@ -1466,13 +1466,17 @@ final class KmpBridge: ObservableObject {
         }
 
         if promoteStudents {
+            let targetClasses = try await container.classesRepository.listClassesForAcademicYear(academicYearId: targetYearId)
+            
             for sourceClass in sourceClasses {
-                guard let targetClassId = classMapping[sourceClass.id] else { continue }
+                guard let targetClassName = promotedStudentTargetClassName(from: sourceClass.name) else { continue }
+                guard let targetClass = targetClasses.first(where: { $0.name == targetClassName }) else { continue }
+                
                 let students = try await container.classesRepository.listStudentsInClass(classId: sourceClass.id)
                 for student in students {
                     try await container.classesRepository.promoteStudentToClass(
                         sourceClassId: sourceClass.id,
-                        targetClassId: targetClassId,
+                        targetClassId: targetClass.id,
                         studentId: student.id,
                         promotionStatus: PromotionStatus.promoted.name
                     )
@@ -1564,14 +1568,27 @@ final class KmpBridge: ObservableObject {
         return lines.joined(separator: "\n")
     }
 
-    private func promotedClassName(from name: String, course: Int32) -> String {
-        let nextCourse = course + 1
-        let currentPrefix = "\(course)"
-        if name.hasPrefix(currentPrefix) {
-            return "\(nextCourse)" + name.dropFirst(currentPrefix.count)
+    private func promotedStudentTargetClassName(from sourceName: String) -> String? {
+        // Cada entrada: posibles prefijos de origen → prefijo destino (nil = nivel terminal, se gradúan)
+        let levelsMap: [(origins: [String], target: String?)] = [
+            (["1º ESO", "1 ESO"],                  "2º ESO"),
+            (["2º ESO", "2 ESO"],                  "3º ESO"),
+            (["3º ESO", "3 ESO"],                  "4º ESO"),
+            (["4º ESO", "4 ESO"],                  "1º BAC"),
+            (["1º BAC", "1 BAC", "1º BACH", "1 BACH"], nil), // Graduados
+        ]
+        for level in levelsMap {
+            for origin in level.origins {
+                if sourceName.hasPrefix(origin) {
+                    guard let target = level.target else { return nil } // Graduado → no se promueve
+                    let suffix = String(sourceName.dropFirst(origin.count))
+                    return target + suffix
+                }
+            }
         }
-        return name
+        return nil // Nivel no reconocido → no se promueve
     }
+
 
     func previewStudentImport(tsv: String) async throws -> AppleStudentImportPreview {
         let preview = appleImportFacade.previewStudentsFromTsv(text: tsv)

@@ -304,11 +304,11 @@ struct CoursesWorkspaceView: View {
         .sheet(isPresented: $showingClassEditor) {
             CourseClassEditorSheet(
                 schoolClass: editingClass,
-                subjects: bridge.subjects,
                 onSave: { draft in
                     Task { await saveClassDraft(draft) }
                 }
             )
+            .environmentObject(bridge)
         }
         .sheet(isPresented: $showingSubjectCatalog) {
             SubjectCatalogSheet(
@@ -319,6 +319,7 @@ struct CoursesWorkspaceView: View {
                     Task { await deleteSubject(subject) }
                 }
             )
+            .environmentObject(bridge)
         }
         .sheet(item: $archivedYearDetail) { year in
             ArchivedAcademicYearDetailSheet(
@@ -752,8 +753,8 @@ private struct AcademicYearWizardSheet: View {
 }
 
 private struct CourseClassEditorSheet: View {
+    @EnvironmentObject var bridge: KmpBridge
     let schoolClass: SchoolClass?
-    let subjects: [KmpSubject]
     let onSave: (CourseClassDraft) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -761,9 +762,8 @@ private struct CourseClassEditorSheet: View {
     @State private var course: String
     @State private var subjectId: Int64?
 
-    init(schoolClass: SchoolClass?, subjects: [KmpSubject], onSave: @escaping (CourseClassDraft) -> Void) {
+    init(schoolClass: SchoolClass?, onSave: @escaping (CourseClassDraft) -> Void) {
         self.schoolClass = schoolClass
-        self.subjects = subjects
         self.onSave = onSave
         _name = State(initialValue: schoolClass?.name ?? "")
         _course = State(initialValue: schoolClass.map { "\($0.course)" } ?? "")
@@ -784,7 +784,7 @@ private struct CourseClassEditorSheet: View {
                 Section("Asignatura") {
                     Picker("Asignatura", selection: $subjectId) {
                         Text("Sin asignatura").tag(Int64?.none)
-                        ForEach(subjects, id: \.id) { subject in
+                        ForEach(bridge.subjects, id: \.id) { subject in
                             Text(subject.name).tag(Optional(subject.id))
                         }
                     }

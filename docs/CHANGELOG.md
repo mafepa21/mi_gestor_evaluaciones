@@ -35,6 +35,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- El asistente de creación de curso escolar mantiene la estructura de grupos idéntica (cursos estables) en el nuevo año escolar en lugar de incrementar el nivel en 1 en su nombre y curso.
 - La revisión de instrumentos importados desde DOCX pasa de un formulario saturado a una hoja premium con cabecera fija, métricas, lista compacta, editor de detalle, scroll real y footer de confirmación siempre visible.
 - macOS amplía la base Liquid Glass con roles de chrome, panel, inspector y banner flotante usando `glassEffect`/`GlassEffectContainer` en el shell, componentes premium y Dashboard, manteniendo las superficies densas del Cuaderno fuera del efecto.
 - El `EarlyWarning` del inspector del Cuaderno se presenta como señal preventiva revisable, con etiquetas de confianza cualitativas y nota de procedencia visible, evitando apariencia de diagnóstico o decisión automática.
@@ -53,6 +54,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- **Promoción de alumnos incorrecta**: Ahora realiza una asociación automática por nombre del grupo origen al siguiente nivel equivalente (ej. 1º ESO -> 2º ESO, 4º ESO -> 1º BAC) respetando los sufijos de centro (- Tavernes), graduando a los alumnos de 1º BAC (nivel terminal sin promoción) y soportando nombres con y sin 'º' (ej: '3 ESO A' o '3º ESO A').
+- **Asignaturas vacías al abrir el catálogo**: `SubjectCatalogSheet` usaba `@EnvironmentObject var bridge` internamente pero se presentaba sin `.environmentObject(bridge)` → la pantalla quedaba completamente en blanco. Añadido `.environmentObject(bridge)` al `.sheet` correspondiente en `CoursesWorkspaceView`.
+- **Pérdida de plantillas de instrumentos al duplicar cuaderno**: Al copiar la estructura del cuaderno, se copian también las plantillas structured en `notebook_instrument_templates` y sus ítems de `notebook_instrument_items` correspondientes para evitar columnas vacías o rotas.
+- **Selector de asignaturas no reactivo al crear grupo**: Se refactoriza `CourseClassEditorSheet` para utilizar `@EnvironmentObject var bridge` logrando que el listado de asignaturas se actualice inmediatamente tras crear una nueva asignatura.
 - Cursos muestra un estado accionable cuando no hay curso escolar activo, permite restaurar cursos archivados desde el bloque principal y mantiene la hoja de asignaturas sincronizada con `KmpBridge` sin limpiar el formulario si el guardado falla.
 - Se eliminan dos warnings SwiftUI detectados en macOS: el selector de pestaña destino para instrumentos DOCX ahora tiene tag `nil` explícito y el inspector del Cuaderno deja de pasar emojis como nombres de SF Symbols, normalizando también observaciones antiguas.
 - **Fallo de serialización JSON en snapshot local por KotlinLong (`KmpBridge.swift`)**: Se corrige el fallo silencioso al serializar los payloads del snapshot local para las columnas de evaluación, evaluaciones y notas de examen convirtiendo las propiedades de tipo `KotlinLong` (`evaluationId` y `rubricId`) a sus contrapartes `Int64` nativas de Swift mediante `.int64Value`. Esto evita que la sincronización en background degrade a texto simple (`TEXT`) las columnas importadas estructuradas desde el DOCX.

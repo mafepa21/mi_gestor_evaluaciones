@@ -625,7 +625,7 @@ struct NotebookEditableTableCell: View {
     }
 
     private var structuredDisplayText: String {
-        let value = bridge.structuredCellDisplayText(studentId: item.student.id, columnId: column.id)
+        let value = (persistedCell?.displayValue ?? persistedCell?.textValue ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return value.isEmpty ? "Pendiente" : value
     }

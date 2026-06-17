@@ -1355,7 +1355,7 @@ final class KmpBridge: ObservableObject {
             isActive: year.isActive,
             archivedAt: year.archivedAt.map { Date(timeIntervalSince1970: TimeInterval($0.toEpochMilliseconds()) / 1000) },
             classCount: classCount,
-            enrollmentCount: enrollmentCount
+            enrollmentCount: enrollmentCount.int64Value
         )
     }
 

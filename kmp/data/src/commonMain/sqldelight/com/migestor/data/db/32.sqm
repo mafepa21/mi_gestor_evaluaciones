@@ -1,0 +1,84 @@
+-- Repair academic year/enrollment consistency after introducing StudentEnrollment.
+
+UPDATE academic_years
+SET is_active = 1,
+    status = 'ACTIVE',
+    archived_at_epoch_ms = NULL,
+    updated_at_epoch_ms = CASE WHEN updated_at_epoch_ms > 0 THEN updated_at_epoch_ms ELSE 0 END
+WHERE id = (
+    SELECT id
+    FROM academic_years
+    WHERE status != 'TRASHED'
+    ORDER BY start_epoch_ms DESC, id DESC
+    LIMIT 1
+)
+AND NOT EXISTS (
+    SELECT 1
+    FROM academic_years
+    WHERE is_active = 1
+);
+
+INSERT OR IGNORE INTO student_enrollments(
+    student_id,
+    class_id,
+    academic_year_id,
+    status,
+    promotion_status,
+    previous_enrollment_id,
+    created_at_epoch_ms,
+    updated_at_epoch_ms,
+    device_id,
+    sync_version
+)
+SELECT
+    cs.student_id,
+    cs.class_id,
+    c.academic_year_id,
+    'ACTIVE',
+    'PENDING',
+    NULL,
+    0,
+    0,
+    NULL,
+    0
+FROM class_students cs
+JOIN classes c ON c.id = cs.class_id
+WHERE c.academic_year_id IS NOT NULL;
+
+INSERT OR IGNORE INTO student_enrollments(
+    student_id,
+    class_id,
+    academic_year_id,
+    status,
+    promotion_status,
+    previous_enrollment_id,
+    created_at_epoch_ms,
+    updated_at_epoch_ms,
+    device_id,
+    sync_version
+)
+SELECT
+    se.student_id,
+    se.class_id,
+    c.academic_year_id,
+    se.status,
+    se.promotion_status,
+    se.previous_enrollment_id,
+    se.created_at_epoch_ms,
+    se.updated_at_epoch_ms,
+    se.device_id,
+    se.sync_version
+FROM student_enrollments se
+JOIN classes c ON c.id = se.class_id
+WHERE c.academic_year_id IS NOT NULL
+  AND se.academic_year_id != c.academic_year_id;
+
+UPDATE student_enrollments
+SET status = 'WITHDRAWN'
+WHERE id IN (
+    SELECT se.id
+    FROM student_enrollments se
+    JOIN classes c ON c.id = se.class_id
+    WHERE c.academic_year_id IS NOT NULL
+      AND se.academic_year_id != c.academic_year_id
+);

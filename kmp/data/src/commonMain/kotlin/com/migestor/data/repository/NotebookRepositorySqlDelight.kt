@@ -65,7 +65,7 @@ class NotebookRepositorySqlDelight(
 
     override fun observeStudentChanges(classId: Long): Flow<List<Student>> {
         return db.appDatabaseQueries
-            .selectStudentsByClass(classId, classId)
+            .selectStudentsByClass(classId)
             .asFlow()
             .mapToList(Dispatchers.Default)
             .map { rows ->

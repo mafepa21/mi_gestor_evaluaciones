@@ -42,6 +42,7 @@ data class AcademicYear(
 enum class AcademicYearStatus {
     ACTIVE,
     ARCHIVED,
+    TRASHED,
 }
 
 data class StudentEnrollment(

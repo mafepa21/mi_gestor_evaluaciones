@@ -32,3 +32,7 @@ class SetActiveAcademicYearUseCase(private val repository: AcademicYearsReposito
 class ArchiveAcademicYearUseCase(private val repository: AcademicYearsRepository) {
     suspend operator fun invoke(academicYearId: Long) = repository.archiveAcademicYear(academicYearId)
 }
+
+class TrashAcademicYearUseCase(private val repository: AcademicYearsRepository) {
+    suspend operator fun invoke(academicYearId: Long) = repository.trashAcademicYear(academicYearId)
+}

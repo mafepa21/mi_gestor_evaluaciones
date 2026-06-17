@@ -67,7 +67,7 @@ struct CoursesWorkspaceView: View {
                     }
                 }
 
-                Section("Cursos") {
+                Section("Grupos") {
                     if bridge.classes.isEmpty {
                         Text(bridge.activeAcademicYear == nil ? "No hay curso activo." : "Este curso escolar no tiene grupos.")
                             .foregroundStyle(.secondary)
@@ -191,7 +191,7 @@ struct CoursesWorkspaceView: View {
                                 Text("Roster rápido")
                                     .font(.headline)
                                 if summary.rosterPreview.isEmpty {
-                                    Text("Todavía no hay alumnado asignado a este curso.")
+                                    Text("Todavía no hay alumnado matriculado en este grupo.")
                                         .foregroundStyle(.secondary)
                                 } else {
                                     ForEach(summary.rosterPreview, id: \.id) { student in
@@ -293,7 +293,7 @@ struct CoursesWorkspaceView: View {
                     }
                 } else {
                     WorkspaceEmptyState(
-                        title: "Selecciona un curso",
+                        title: "Selecciona un grupo",
                         subtitle: "Desde aquí centralizamos el acceso a cuaderno, asistencia, diario e informes."
                     )
                 }

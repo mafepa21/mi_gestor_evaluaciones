@@ -242,6 +242,11 @@ class AcademicYearsRepositorySqlDelight(
 
     override suspend fun setActiveAcademicYear(academicYearId: Long) = withContext(Dispatchers.Default) {
         val now = Clock.System.now().toEpochMilliseconds()
+        val target = db.appDatabaseQueries.selectAcademicYearById(academicYearId).executeAsOneOrNull()
+            ?: error("Curso escolar no encontrado.")
+        check(target.status != AcademicYearStatus.TRASHED.name) {
+            "No se puede activar un curso escolar en papelera."
+        }
         db.transaction {
             db.appDatabaseQueries.deactivateAcademicYears(now, now)
             db.appDatabaseQueries.activateAcademicYear(now, academicYearId)
@@ -250,14 +255,32 @@ class AcademicYearsRepositorySqlDelight(
 
     override suspend fun archiveAcademicYear(academicYearId: Long) = withContext(Dispatchers.Default) {
         val now = Clock.System.now().toEpochMilliseconds()
+        val year = db.appDatabaseQueries.selectAcademicYearById(academicYearId).executeAsOneOrNull()
+            ?: error("Curso escolar no encontrado.")
+        check(year.is_active == 0L) {
+            "No se puede archivar el curso activo. Activa primero otro curso escolar."
+        }
+        check(year.status != AcademicYearStatus.TRASHED.name) {
+            "No se puede archivar un curso escolar en papelera."
+        }
         db.appDatabaseQueries.archiveAcademicYear(now, now, academicYearId)
+    }
+
+    override suspend fun trashAcademicYear(academicYearId: Long) = withContext(Dispatchers.Default) {
+        val now = Clock.System.now().toEpochMilliseconds()
+        val year = db.appDatabaseQueries.selectAcademicYearById(academicYearId).executeAsOneOrNull()
+            ?: error("Curso escolar no encontrado.")
+        check(year.is_active == 0L) {
+            "No se puede mover a papelera el curso activo."
+        }
+        db.appDatabaseQueries.trashAcademicYear(now, academicYearId)
     }
 
     override suspend fun deleteArchivedAcademicYear(academicYearId: Long) = withContext(Dispatchers.Default) {
         val year = db.appDatabaseQueries.selectAcademicYearById(academicYearId).executeAsOneOrNull()
             ?: error("Curso escolar no encontrado.")
-        check(year.is_active == 0L && year.status == AcademicYearStatus.ARCHIVED.name) {
-            "Solo se pueden eliminar cursos archivados."
+        check(year.is_active == 0L && year.status != AcademicYearStatus.ACTIVE.name) {
+            "Solo se pueden eliminar cursos no activos."
         }
         db.transaction {
             db.appDatabaseQueries.deleteClassesByAcademicYear(academicYearId)
@@ -609,7 +632,7 @@ class ClassesRepositorySqlDelight(
     }
 
     override suspend fun listStudentsInClass(classId: Long): List<Student> = withContext(Dispatchers.Default) {
-        db.appDatabaseQueries.selectStudentsByClass(classId, classId).executeAsList().map {
+        db.appDatabaseQueries.selectStudentsByClass(classId).executeAsList().map {
             Student(
                 id = it.id,
                 firstName = it.first_name,
@@ -631,7 +654,7 @@ class ClassesRepositorySqlDelight(
 
     override fun observeStudentsInClass(classId: Long): Flow<List<Student>> {
         return db.appDatabaseQueries
-            .selectStudentsByClass(classId, classId)
+            .selectStudentsByClass(classId)
             .asFlow()
             .mapToList(Dispatchers.Default)
             .map { rows ->

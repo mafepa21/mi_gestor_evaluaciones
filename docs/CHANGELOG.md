@@ -35,6 +35,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- Cursos separa en la UI el curso escolar activo de la lista de grupos, evitando llamar "cursos" a clases como `1º ESO A`.
 - El asistente de creación de curso escolar mantiene la estructura de grupos idéntica (cursos estables) en el nuevo año escolar en lugar de incrementar el nivel en 1 en su nombre y curso.
 - La revisión de instrumentos importados desde DOCX pasa de un formulario saturado a una hoja premium con cabecera fija, métricas, lista compacta, editor de detalle, scroll real y footer de confirmación siempre visible.
 - macOS amplía la base Liquid Glass con roles de chrome, panel, inspector y banner flotante usando `glassEffect`/`GlassEffectContainer` en el shell, componentes premium y Dashboard, manteniendo las superficies densas del Cuaderno fuera del efecto.
@@ -54,6 +55,9 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- **Cursos escolares y matrículas inconsistentes**: `listStudentsInClass` y los observadores del Cuaderno dejan de leer `class_students` como fallback global y pasan a usar solo `student_enrollments` activas cuyo `academic_year_id` coincide con el año del grupo. Esto alinea contadores, roster del grupo y snapshot del Cuaderno.
+- **Bases sin curso escolar activo**: la migración `32.sqm` repara datos existentes reactivando el último `AcademicYear` no enviado a papelera cuando no hay ninguno activo, rellena matrículas desde `class_students` y retira matrículas con año distinto al del grupo.
+- **Eliminación de cursos escolares**: `AcademicYear` incorpora estado `TRASHED`; el repositorio bloquea activar cursos en papelera, archivar/mover a papelera cursos activos y permite borrado permanente solo de cursos no activos.
 - **Promoción de alumnos incorrecta**: Ahora realiza una asociación automática por nombre del grupo origen al siguiente nivel equivalente (ej. 1º ESO -> 2º ESO, 4º ESO -> 1º BAC) respetando los sufijos de centro (- Tavernes), graduando a los alumnos de 1º BAC (nivel terminal sin promoción) y soportando nombres con y sin 'º' (ej: '3 ESO A' o '3º ESO A').
 - **Asignaturas vacías al abrir el catálogo**: `SubjectCatalogSheet` usaba `@EnvironmentObject var bridge` internamente pero se presentaba sin `.environmentObject(bridge)` → la pantalla quedaba completamente en blanco. Añadido `.environmentObject(bridge)` al `.sheet` correspondiente en `CoursesWorkspaceView`.
 - **Pérdida de plantillas de instrumentos al duplicar cuaderno**: Al copiar la estructura del cuaderno, se copian también las plantillas structured en `notebook_instrument_templates` y sus ítems de `notebook_instrument_items` correspondientes para evitar columnas vacías o rotas.
@@ -101,6 +105,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `./gradlew :data:desktopTest`, `./gradlew :shared:test`, `git diff --check` y simulación de `32.sqm` sobre copia de `desktop_mi_gestor_kmp.db` completados correctamente tras corregir rosters por `student_enrollments`, reparación de curso activo y estado `TRASHED`.
 - `git diff --check` completado correctamente tras corregir el estado sin curso activo y la hoja de asignaturas en `CoursesWorkspaceView`. `scripts/verify_apple_builds.sh` regenera el proyecto con XcodeGen, pero macOS/iOS quedan bloqueados porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y `xcodebuild` requiere Xcode completo.
 - `git diff --check` completado correctamente tras exponer `Cursos` en la navegacion Apple. `scripts/verify_apple_builds.sh` regenera el proyecto con XcodeGen, pero macOS/iOS quedan bloqueados porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y `xcodebuild` requiere Xcode completo.
 - `./gradlew :data:desktopTest :shared:test` completado correctamente tras introducir curso escolar activo, matriculas por curso y migracion `31.sqm`. `scripts/verify_apple_builds.sh` y `PLATFORM_NAME=iphonesimulator ARCHS=arm64 CONFIGURATION=Debug ./scripts/build_ios_framework.sh` quedan bloqueados porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y `xcodebuild` requiere Xcode completo.

@@ -491,8 +491,12 @@ private struct AcademicYearDraft {
 private struct ArchivedAcademicYearDetailSheet: View {
     let year: KmpBridge.AcademicYearSnapshot
     let onDelete: () -> Void
+    @EnvironmentObject private var bridge: KmpBridge
     @Environment(\.dismiss) private var dismiss
     @State private var showingDeleteConfirmation = false
+    @State private var exportText = ""
+    @State private var exportError: String?
+    @State private var isLoadingExport = false
 
     var body: some View {
         NavigationStack {
@@ -507,8 +511,18 @@ private struct ArchivedAcademicYearDetailSheet: View {
                 }
 
                 Section {
-                    ShareLink(item: exportText) {
-                        Label("Exportar resumen", systemImage: "square.and.arrow.up")
+                    if isLoadingExport {
+                        ProgressView("Preparando exportacion")
+                    } else {
+                        ShareLink(item: resolvedExportText) {
+                            Label("Exportar resumen", systemImage: "square.and.arrow.up")
+                        }
+                    }
+
+                    if let exportError {
+                        Text(exportError)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
 
@@ -539,10 +553,17 @@ private struct ArchivedAcademicYearDetailSheet: View {
             } message: {
                 Text("Esta accion eliminara \(year.classCount) grupos y \(year.enrollmentCount) matriculas archivadas de \(year.name).")
             }
+            .task {
+                await loadExportText()
+            }
         }
     }
 
-    private var exportText: String {
+    private var resolvedExportText: String {
+        exportText.isEmpty ? fallbackExportText : exportText
+    }
+
+    private var fallbackExportText: String {
         """
         Curso escolar: \(year.name)
         Estado: Archivado
@@ -551,6 +572,20 @@ private struct ArchivedAcademicYearDetailSheet: View {
         Grupos: \(year.classCount)
         Matriculas: \(year.enrollmentCount)
         """
+    }
+
+    @MainActor
+    private func loadExportText() async {
+        guard exportText.isEmpty else { return }
+        isLoadingExport = true
+        defer { isLoadingExport = false }
+        do {
+            exportText = try await bridge.archivedAcademicYearExportText(id: year.id)
+            exportError = nil
+        } catch {
+            exportText = fallbackExportText
+            exportError = "No se pudo preparar el detalle completo. Se exportara el resumen."
+        }
     }
 
     private func formatted(_ date: Date) -> String {

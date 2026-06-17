@@ -1512,6 +1512,42 @@ final class KmpBridge: ObservableObject {
         status = "Curso escolar archivado eliminado."
     }
 
+    func archivedAcademicYearExportText(id: Int64) async throws -> String {
+        let years = try await container.academicYearsRepository.listAcademicYears()
+        guard let year = years.first(where: { $0.id == id }) else {
+            throw NSError(domain: "KmpBridge", code: -90, userInfo: [NSLocalizedDescriptionKey: "Curso escolar no encontrado."])
+        }
+
+        let classes = try await container.classesRepository.listClassesForAcademicYear(academicYearId: id)
+        var lines: [String] = [
+            "Curso escolar: \(year.name)",
+            "Estado: \(year.status.name)",
+            "Inicio: \(Date(timeIntervalSince1970: TimeInterval(year.startAt.toEpochMilliseconds()) / 1000).formatted(.dateTime.day().month().year()))",
+            "Fin: \(Date(timeIntervalSince1970: TimeInterval(year.endAt.toEpochMilliseconds()) / 1000).formatted(.dateTime.day().month().year()))",
+            "Grupos: \(classes.count)",
+            ""
+        ]
+
+        for schoolClass in classes {
+            let roster = try await container.classesRepository.listStudentsInClass(classId: schoolClass.id)
+            let subject = schoolClass.subjectId.flatMap { subjectId in
+                subjects.first(where: { $0.id == subjectId.int64Value })?.name
+            } ?? "Sin asignatura"
+            lines.append("## \(schoolClass.name) · Curso \(schoolClass.course) · \(subject)")
+            lines.append("Matriculas: \(roster.count)")
+            if roster.isEmpty {
+                lines.append("- Sin alumnado matriculado")
+            } else {
+                for student in roster.sorted(by: { $0.fullName.localizedCaseInsensitiveCompare($1.fullName) == .orderedAscending }) {
+                    lines.append("- \(student.fullName)")
+                }
+            }
+            lines.append("")
+        }
+
+        return lines.joined(separator: "\n")
+    }
+
     private func promotedClassName(from name: String, course: Int32) -> String {
         let nextCourse = course + 1
         let currentPrefix = "\(course)"

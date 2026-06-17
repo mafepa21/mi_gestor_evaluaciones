@@ -15,6 +15,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- Cursos incorpora una primera gestion estructural de curso escolar activo: selector en `Cursos`, historial de cursos archivados, asistente de nuevo curso con copia de grupos y promocion de alumnado por matriculas nuevas.
 - Preparar evaluación de situaciones de aprendizaje permite adjuntar un DOCX de instrumentos, detectar rúbricas, grids de observación, logs, registros diagnósticos, hojas de ajuste, quizzes y checklists desde tablas o párrafos, previsualizarlos con selección y materializarlos como evaluaciones, rúbricas, columnas de Cuaderno y vínculos con la situación.
 - El Cuaderno incorpora instrumentos estructurados no rúbrica: checklists multiítem, observaciones 1-4, formularios y quizzes se abren en un sheet específico por alumno, mientras el grid mantiene un resumen compacto (`Pendiente`, `0/7`, `5/7`, `Completo`).
 - El inspector del Cuaderno incorpora una primera capa de Inteligencia Educativa local: `StudentInsightDraft`, `AverageExplanationDraft` y `TutorMeetingSummaryDraft` estructurados desde evidencia existente, con fallback determinista cuando Foundation Models no está disponible.
@@ -76,17 +77,20 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Data
 
+- SQLDelight amplia `academic_years` con estado activo/archivado y añade `student_enrollments` para separar identidad de alumno y matricula por curso, con migracion `31.sqm`, backfill desde `class_students` y filtro de grupos por curso activo.
 - Reparación local aplicada a evaluaciones con `rubric_id = 0` y blindaje de lectura/escritura para tratarlas como `NULL`; los instrumentos importados de `1º BAC A` conservan rúbrica solo en `Plan Design Rubric` y `Peer-Coaching Rubric`.
 - Reparación local aplicada a los instrumentos ya importados: `Plan Design Rubric` y `Peer-Coaching Rubric` mantienen `rubric_id`, el resto queda sin rúbrica y con metadatos `CHECK`, `TEXT` u `ORDINAL` según su tipo.
 - SQLDelight añade `notebook_instrument_templates`, `notebook_instrument_items` y `notebook_instrument_responses` con migración `30.sqm`, rescue migrations Apple/Desktop y borrado explícito por columna para conservar respuestas estructuradas sin depender de JSON en celdas.
 
 ### Docs
 
+- ADR `kmp/docs/architecture/ADR-2026-06-17-active-academic-year-enrollments.md` documenta la decision de usar `AcademicYear` activo y `StudentEnrollment` como frontera historica.
 - ADR `kmp/docs/architecture/ADR-2026-06-14-local-educational-intelligence.md` documenta la regla de arquitectura para IA educativa local: KMP calcula hechos y Foundation Models genera objetos renderizables.
 - ADR `kmp/docs/architecture/ADR-2026-06-13-macos-auxiliary-windows.md` documenta la estrategia de ventanas auxiliares macOS compartiendo sesion, bridge, Command Center y store de backups.
 
 ### Verification
 
+- `./gradlew :data:desktopTest :shared:test` completado correctamente tras introducir curso escolar activo, matriculas por curso y migracion `31.sqm`. `scripts/verify_apple_builds.sh` y `PLATFORM_NAME=iphonesimulator ARCHS=arm64 CONFIGURATION=Debug ./scripts/build_ios_framework.sh` quedan bloqueados porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y `xcodebuild` requiere Xcode completo.
 - `git diff --check -- kmp/iosApp/App/LearningSituationsWorkspaceView.swift kmp/iosApp/App/NotebookModuleToolbarState.swift kmp/iosApp/App/NotebookSupportViews.swift kmp/iosApp/App/NotebookStudentInspector.swift docs/CHANGELOG.md` y `xcrun swiftc -parse kmp/iosApp/App/LearningSituationsWorkspaceView.swift kmp/iosApp/App/NotebookModuleToolbarState.swift kmp/iosApp/App/NotebookSupportViews.swift kmp/iosApp/App/NotebookStudentInspector.swift` completados correctamente tras rediseñar la revisión DOCX de instrumentos y corregir warnings SwiftUI del log. `xcodebuild -list -project kmp/iosApp/MiGestorKMPiOS.xcodeproj` sigue bloqueado porque `xcode-select` apunta a `/Library/Developer/CommandLineTools`.
 - `./gradlew :shared:test`, `git diff --check` y `xcrun swiftc -parse kmp/iosApp/App/LearningSituationsWorkspaceView.swift kmp/iosApp/AppleShared/LearningSituationAssessmentInstrumentsImportService.swift` completados correctamente tras añadir la conversión de Participación ordinal, los tests de media, la preview editable de instrumentos DOCX y el contrato/use case compartido de materialización. `scripts/verify_apple_builds.sh` regeneró el proyecto con XcodeGen, pero los builds macOS/iOS quedaron bloqueados porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y `xcodebuild` requiere Xcode completo.
 - `./gradlew :shared:test`, `git diff --check` y `xcrun swiftc -parse kmp/iosApp/App/KmpBridge.swift kmp/iosApp/AppleShared/LearningSituationAssessmentInstrumentsImportService.swift` completados correctamente tras mejorar el parser DOCX y añadir el primer blindaje de duplicados por recurso vinculado.

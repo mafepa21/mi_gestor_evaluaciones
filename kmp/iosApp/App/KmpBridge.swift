@@ -221,6 +221,9 @@ final class KmpBridge: ObservableObject {
     @Published var status: String = "Inicializando..."
     @Published var statsText: String = "-"
     @Published var classes: [SchoolClass] = []
+    @Published var academicYears: [AcademicYearSnapshot] = []
+    @Published var activeAcademicYear: AcademicYearSnapshot?
+    @Published var archivedAcademicYears: [AcademicYearSnapshot] = []
     @Published var subjects: [KmpSubject] = []
     @Published var studentsInClass: [Student] = []
     @Published var evaluationsInClass: [Evaluation] = []
@@ -295,6 +298,18 @@ final class KmpBridge: ObservableObject {
         let averageScore: Double
         let rosterPreview: [Student]
         let activeEvaluationNames: [String]
+    }
+
+    struct AcademicYearSnapshot: Identifiable, Equatable {
+        let id: Int64
+        let name: String
+        let startDate: Date
+        let endDate: Date
+        let status: String
+        let isActive: Bool
+        let archivedAt: Date?
+        let classCount: Int
+        let enrollmentCount: Int64
     }
 
     struct ClassroomCaptureContextSnapshot: Equatable {
@@ -1319,6 +1334,7 @@ final class KmpBridge: ObservableObject {
     }
 
     private func refreshClasses() async throws {
+        try await refreshAcademicYears()
         let classes = try await container.classesRepository.listClasses()
         self.classes = classes
         // If notebook has no class selected, pick the first one
@@ -1327,11 +1343,39 @@ final class KmpBridge: ObservableObject {
         }
     }
 
+    private func academicYearSnapshot(from year: AcademicYear) async throws -> AcademicYearSnapshot {
+        let classCount = try await container.classesRepository.listClassesForAcademicYear(academicYearId: year.id).count
+        let enrollmentCount = try await container.academicYearsRepository.enrollmentCount(academicYearId: year.id)
+        return AcademicYearSnapshot(
+            id: year.id,
+            name: year.name,
+            startDate: Date(timeIntervalSince1970: TimeInterval(year.startAt.toEpochMilliseconds()) / 1000),
+            endDate: Date(timeIntervalSince1970: TimeInterval(year.endAt.toEpochMilliseconds()) / 1000),
+            status: year.status.name,
+            isActive: year.isActive,
+            archivedAt: year.archivedAt.map { Date(timeIntervalSince1970: TimeInterval($0.toEpochMilliseconds()) / 1000) },
+            classCount: classCount,
+            enrollmentCount: enrollmentCount
+        )
+    }
+
+    func refreshAcademicYears() async throws {
+        let years = try await container.academicYearsRepository.listAcademicYears()
+        var snapshots: [AcademicYearSnapshot] = []
+        for year in years {
+            snapshots.append(try await academicYearSnapshot(from: year))
+        }
+        self.academicYears = snapshots
+        self.activeAcademicYear = snapshots.first(where: \.isActive)
+        self.archivedAcademicYears = snapshots.filter { !$0.isActive }
+    }
+
     private func refreshSubjects() async throws {
         subjects = try await container.subjectsRepository.listSubjects()
     }
 
     func ensureClassesLoaded() async {
+        try? await refreshAcademicYears()
         if classes.isEmpty {
             try? await refreshClasses()
         }
@@ -1379,6 +1423,94 @@ final class KmpBridge: ObservableObject {
 
     func students(forClassId classId: Int64) async throws -> [Student] {
         try await container.classesRepository.listStudentsInClass(classId: classId)
+    }
+
+    func createAcademicYear(
+        name: String,
+        startDate: Date,
+        endDate: Date,
+        copyGroupsFrom sourceAcademicYearId: Int64?,
+        promoteStudents: Bool
+    ) async throws -> Int64 {
+        let sourceClasses: [SchoolClass]
+        if let sourceAcademicYearId {
+            sourceClasses = try await container.classesRepository.listClassesForAcademicYear(academicYearId: sourceAcademicYearId)
+        } else {
+            sourceClasses = []
+        }
+
+        let targetYearId = try await container.academicYearsRepository.createAcademicYear(
+            name: name,
+            startEpochMs: Int64(startDate.timeIntervalSince1970 * 1000),
+            endEpochMs: Int64(endDate.timeIntervalSince1970 * 1000),
+            centerId: nil,
+            makeActive: true
+        ).int64Value
+
+        var classMapping: [Int64: Int64] = [:]
+        for sourceClass in sourceClasses {
+            let targetClassId = try await container.classesRepository.saveClass(
+                id: nil,
+                name: promotedClassName(from: sourceClass.name, course: sourceClass.course),
+                course: sourceClass.course + 1,
+                description: sourceClass.description_,
+                centerId: sourceClass.centerId,
+                academicYearId: KotlinLong(value: targetYearId),
+                stageCycleId: sourceClass.stageCycleId,
+                subjectId: sourceClass.subjectId,
+                updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+                deviceId: localDeviceId,
+                syncVersion: 1
+            ).int64Value
+            classMapping[sourceClass.id] = targetClassId
+        }
+
+        if promoteStudents {
+            for sourceClass in sourceClasses {
+                guard let targetClassId = classMapping[sourceClass.id] else { continue }
+                let students = try await container.classesRepository.listStudentsInClass(classId: sourceClass.id)
+                for student in students {
+                    try await container.classesRepository.promoteStudentToClass(
+                        sourceClassId: sourceClass.id,
+                        targetClassId: targetClassId,
+                        studentId: student.id,
+                        promotionStatus: PromotionStatus.promoted.name
+                    )
+                }
+            }
+        }
+
+        try await refreshAcademicYears()
+        try await refreshClasses()
+        try await refreshStudentsDirectory()
+        selectedStudentsClassId = classes.first?.id
+        status = promoteStudents ? "Curso escolar creado con alumnado promocionado." : "Curso escolar creado."
+        return targetYearId
+    }
+
+    func setActiveAcademicYear(id: Int64) async throws {
+        try await container.academicYearsRepository.setActiveAcademicYear(academicYearId: id)
+        selectedStudentsClassId = nil
+        try await refreshAcademicYears()
+        try await refreshClasses()
+        try await refreshStudentsDirectory()
+        status = "Curso escolar activo actualizado."
+    }
+
+    func archiveAcademicYear(id: Int64) async throws {
+        try await container.academicYearsRepository.archiveAcademicYear(academicYearId: id)
+        try await refreshAcademicYears()
+        try await refreshClasses()
+        status = "Curso escolar archivado."
+    }
+
+    private func promotedClassName(from name: String, course: Int32) -> String {
+        let nextCourse = course + 1
+        let currentPrefix = "\(course)"
+        if name.hasPrefix(currentPrefix) {
+            return "\(nextCourse)" + name.dropFirst(currentPrefix.count)
+        }
+        return name
     }
 
     func previewStudentImport(tsv: String) async throws -> AppleStudentImportPreview {
@@ -2456,7 +2588,7 @@ final class KmpBridge: ObservableObject {
             course: course,
             description: nil,
             centerId: nil,
-            academicYearId: nil,
+            academicYearId: kotlinLong(activeAcademicYear?.id),
             stageCycleId: nil,
             subjectId: kotlinLong(subjectId),
             updatedAtEpochMs: nowMs,

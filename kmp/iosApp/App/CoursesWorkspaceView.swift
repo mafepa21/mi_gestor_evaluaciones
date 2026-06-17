@@ -11,6 +11,7 @@ struct CoursesWorkspaceView: View {
     @State private var editingClass: SchoolClass?
     @State private var showingClassEditor = false
     @State private var showingSubjectCatalog = false
+    @State private var showingAcademicYearWizard = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -22,6 +23,28 @@ struct CoursesWorkspaceView: View {
                     Task { await loadSummary(for: newValue) }
                 }
             )) {
+                Section("Curso escolar activo") {
+                    if let activeYear = bridge.activeAcademicYear {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(activeYear.name)
+                                .font(.headline)
+                            Text("\(activeYear.classCount) grupos · \(activeYear.enrollmentCount) matriculas")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 4)
+                    } else {
+                        Text("Sin curso activo")
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Button {
+                        showingAcademicYearWizard = true
+                    } label: {
+                        Label("Nuevo curso escolar", systemImage: "calendar.badge.plus")
+                    }
+                }
+
                 Section("Cursos") {
                     ForEach(bridge.classes, id: \.id) { schoolClass in
                         Button {
@@ -52,6 +75,34 @@ struct CoursesWorkspaceView: View {
                         showingSubjectCatalog = true
                     } label: {
                         Label("Asignaturas", systemImage: "books.vertical.fill")
+                    }
+                }
+
+                if !bridge.archivedAcademicYears.isEmpty {
+                    Section("Historial") {
+                        ForEach(bridge.archivedAcademicYears) { year in
+                            Menu {
+                                Button {
+                                    Task { await activateAcademicYear(year) }
+                                } label: {
+                                    Label("Restaurar como activo", systemImage: "arrow.triangle.2.circlepath")
+                                }
+
+                                Button {
+                                    bridge.status = "Exportacion de curso escolar pendiente de conectar a backups."
+                                } label: {
+                                    Label("Exportar curso", systemImage: "square.and.arrow.up")
+                                }
+                            } label: {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(year.name)
+                                        .font(.subheadline.weight(.semibold))
+                                    Text("\(year.classCount) grupos · \(year.enrollmentCount) matriculas · Archivado")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -226,6 +277,18 @@ struct CoursesWorkspaceView: View {
                 }
             )
         }
+        .sheet(isPresented: $showingAcademicYearWizard) {
+            AcademicYearWizardSheet(
+                activeYear: bridge.activeAcademicYear,
+                archivedYears: bridge.archivedAcademicYears,
+                onCreate: { draft in
+                    Task { await createAcademicYear(draft) }
+                },
+                onArchiveActive: {
+                    Task { await archiveActiveAcademicYear() }
+                }
+            )
+        }
         .task {
             await bridge.ensureClassesLoaded()
             if selectedClassId == nil {
@@ -245,6 +308,56 @@ struct CoursesWorkspaceView: View {
     private func classSubtitle(for schoolClass: SchoolClass) -> String {
         let subject = subjectName(for: schoolClass.subjectId?.int64Value) ?? "Sin asignatura"
         return "Curso \(schoolClass.course) · \(subject)"
+    }
+
+    @MainActor
+    private func createAcademicYear(_ draft: AcademicYearDraft) async {
+        do {
+            let sourceYearId = draft.copyGroups ? draft.sourceAcademicYearId : nil
+            _ = try await bridge.createAcademicYear(
+                name: draft.name,
+                startDate: draft.startDate,
+                endDate: draft.endDate,
+                copyGroupsFrom: sourceYearId,
+                promoteStudents: draft.copyGroups && draft.promoteStudents
+            )
+            selectedClassId = bridge.classes.first?.id
+            if let selectedClassId {
+                await loadSummary(for: selectedClassId)
+            } else {
+                selectedSummary = nil
+            }
+            showingAcademicYearWizard = false
+        } catch {
+            bridge.status = "No se pudo crear el curso escolar: \(error.localizedDescription)"
+        }
+    }
+
+    @MainActor
+    private func activateAcademicYear(_ year: KmpBridge.AcademicYearSnapshot) async {
+        do {
+            try await bridge.setActiveAcademicYear(id: year.id)
+            selectedClassId = bridge.classes.first?.id
+            if let selectedClassId {
+                await loadSummary(for: selectedClassId)
+            } else {
+                selectedSummary = nil
+            }
+        } catch {
+            bridge.status = "No se pudo activar el curso escolar: \(error.localizedDescription)"
+        }
+    }
+
+    @MainActor
+    private func archiveActiveAcademicYear() async {
+        guard let activeYear = bridge.activeAcademicYear else { return }
+        do {
+            try await bridge.archiveAcademicYear(id: activeYear.id)
+            selectedClassId = bridge.classes.first?.id
+            selectedSummary = nil
+        } catch {
+            bridge.status = "No se pudo archivar el curso escolar: \(error.localizedDescription)"
+        }
     }
 
     @MainActor
@@ -324,6 +437,150 @@ private struct SubjectDraft {
     let id: Int64?
     let code: String
     let name: String
+}
+
+private struct AcademicYearDraft {
+    let name: String
+    let startDate: Date
+    let endDate: Date
+    let sourceAcademicYearId: Int64?
+    let copyGroups: Bool
+    let promoteStudents: Bool
+}
+
+private struct AcademicYearWizardSheet: View {
+    let activeYear: KmpBridge.AcademicYearSnapshot?
+    let archivedYears: [KmpBridge.AcademicYearSnapshot]
+    let onCreate: (AcademicYearDraft) -> Void
+    let onArchiveActive: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var step = 0
+    @State private var name = AcademicYearWizardSheet.defaultName()
+    @State private var startDate = AcademicYearWizardSheet.defaultStartDate()
+    @State private var endDate = AcademicYearWizardSheet.defaultEndDate()
+    @State private var copyGroups = false
+    @State private var promoteStudents = false
+    @State private var sourceAcademicYearId: Int64?
+
+    var sourceOptions: [KmpBridge.AcademicYearSnapshot] {
+        ([activeYear].compactMap { $0 } + archivedYears).sorted { $0.name > $1.name }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                if step == 0 {
+                    Section("Nuevo curso escolar") {
+                        TextField("Nombre", text: $name)
+                        DatePicker("Inicio", selection: $startDate, displayedComponents: .date)
+                        DatePicker("Fin", selection: $endDate, displayedComponents: .date)
+                    }
+                } else if step == 1 {
+                    Section("Estructura") {
+                        Toggle("Copiar grupos de otro curso", isOn: $copyGroups)
+                        if copyGroups {
+                            Picker("Curso origen", selection: $sourceAcademicYearId) {
+                                Text("Seleccionar").tag(Int64?.none)
+                                ForEach(sourceOptions) { year in
+                                    Text(year.name).tag(Optional(year.id))
+                                }
+                            }
+                            Toggle("Promocionar alumnado", isOn: $promoteStudents)
+                        }
+                    }
+
+                    Section {
+                        Toggle("Copiar instrumentos como plantillas", isOn: .constant(false))
+                            .disabled(true)
+                        Toggle("Copiar situaciones como plantillas", isOn: .constant(false))
+                            .disabled(true)
+                    } footer: {
+                        Text("Notas, asistencia, celdas, evaluaciones e informes no se copian al curso nuevo.")
+                    }
+                } else {
+                    Section("Resumen") {
+                        LabeledContent("Curso", value: name)
+                        LabeledContent("Grupos") {
+                            Text(copyGroups ? "Copiar estructura" : "Curso vacio")
+                        }
+                        LabeledContent("Alumnado") {
+                            Text(promoteStudents ? "Promocionar matriculas" : "Sin alumnado inicial")
+                        }
+                    }
+
+                    if activeYear != nil {
+                        Section("Curso actual") {
+                            Button(role: .destructive) {
+                                onArchiveActive()
+                                dismiss()
+                            } label: {
+                                Label("Archivar curso activo", systemImage: "archivebox")
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Curso escolar")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancelar") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(step < 2 ? "Continuar" : "Crear") {
+                        if step < 2 {
+                            step += 1
+                        } else {
+                            onCreate(AcademicYearDraft(
+                                name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+                                startDate: startDate,
+                                endDate: endDate,
+                                sourceAcademicYearId: sourceAcademicYearId,
+                                copyGroups: copyGroups,
+                                promoteStudents: promoteStudents
+                            ))
+                        }
+                    }
+                    .disabled(!canContinue)
+                }
+            }
+            .onAppear {
+                if sourceAcademicYearId == nil {
+                    sourceAcademicYearId = activeYear?.id
+                }
+            }
+        }
+    }
+
+    private var canContinue: Bool {
+        if step == 0 {
+            return !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && startDate < endDate
+        }
+        if step == 1 {
+            return !copyGroups || sourceAcademicYearId != nil
+        }
+        return true
+    }
+
+    private static func defaultName() -> String {
+        let calendar = Calendar.current
+        let year = calendar.component(.year, from: Date())
+        let month = calendar.component(.month, from: Date())
+        let startYear = month >= 8 ? year : year - 1
+        return "\(startYear)/\(startYear + 1)"
+    }
+
+    private static func defaultStartDate() -> Date {
+        let calendar = Calendar.current
+        let year = calendar.component(.month, from: Date()) >= 8 ? calendar.component(.year, from: Date()) : calendar.component(.year, from: Date()) - 1
+        return calendar.date(from: DateComponents(year: year, month: 9, day: 1)) ?? Date()
+    }
+
+    private static func defaultEndDate() -> Date {
+        let calendar = Calendar.current
+        let year = calendar.component(.month, from: Date()) >= 8 ? calendar.component(.year, from: Date()) + 1 : calendar.component(.year, from: Date())
+        return calendar.date(from: DateComponents(year: year, month: 6, day: 30)) ?? Date()
+    }
 }
 
 private struct CourseClassEditorSheet: View {

@@ -229,6 +229,9 @@ CREATE TABLE IF NOT EXISTS academic_years (
     name TEXT NOT NULL,
     start_epoch_ms INTEGER NOT NULL,
     end_epoch_ms INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'ACTIVE',
+    is_active INTEGER NOT NULL DEFAULT 0,
+    archived_at_epoch_ms INTEGER,
     author_user_id INTEGER,
     created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
     updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
@@ -237,6 +240,32 @@ CREATE TABLE IF NOT EXISTS academic_years (
     sync_version INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (center_id) REFERENCES centers(id) ON DELETE CASCADE
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_academic_years_active
+ON academic_years(is_active)
+WHERE is_active = 1;
+
+CREATE TABLE IF NOT EXISTS student_enrollments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER NOT NULL,
+    class_id INTEGER NOT NULL,
+    academic_year_id INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'ACTIVE',
+    promotion_status TEXT NOT NULL DEFAULT 'PENDING',
+    previous_enrollment_id INTEGER,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(student_id, class_id, academic_year_id),
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (academic_year_id) REFERENCES academic_years(id) ON DELETE CASCADE,
+    FOREIGN KEY (previous_enrollment_id) REFERENCES student_enrollments(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_student_enrollments_year_class
+ON student_enrollments(academic_year_id, class_id, status);
+CREATE INDEX IF NOT EXISTS idx_student_enrollments_student_year
+ON student_enrollments(student_id, academic_year_id);
 
 CREATE TABLE IF NOT EXISTS stage_cycles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -675,7 +704,25 @@ DELETE FROM subjects WHERE id = ?;
 selectAllClasses:
 SELECT id, name, course, description, center_id, academic_year_id, stage_cycle_id, subject_id, updated_at_epoch_ms, device_id, sync_version
 FROM classes
+WHERE academic_year_id = (SELECT id FROM academic_years WHERE is_active = 1 LIMIT 1)
+   OR (academic_year_id IS NULL AND NOT EXISTS (SELECT 1 FROM academic_years WHERE is_active = 1))
 ORDER BY course, name;
+
+selectAllClassesIncludingArchived:
+SELECT id, name, course, description, center_id, academic_year_id, stage_cycle_id, subject_id, updated_at_epoch_ms, device_id, sync_version
+FROM classes
+ORDER BY course, name;
+
+selectClassesByAcademicYear:
+SELECT id, name, course, description, center_id, academic_year_id, stage_cycle_id, subject_id, updated_at_epoch_ms, device_id, sync_version
+FROM classes
+WHERE academic_year_id = ?
+ORDER BY course, name;
+
+selectClassAcademicYearId:
+SELECT academic_year_id
+FROM classes
+WHERE id = ?;
 
 upsertClass:
 INSERT OR REPLACE INTO classes(id, name, course, description, center_id, academic_year_id, stage_cycle_id, subject_id, updated_at_epoch_ms, device_id, sync_version)
@@ -688,15 +735,39 @@ insertClassStudent:
 INSERT OR IGNORE INTO class_students(class_id, student_id)
 VALUES (?, ?);
 
+upsertStudentEnrollment:
+INSERT OR REPLACE INTO student_enrollments(
+    id, student_id, class_id, academic_year_id, status, promotion_status, previous_enrollment_id, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectActiveEnrollmentId:
+SELECT id
+FROM student_enrollments
+WHERE class_id = ? AND student_id = ? AND status = 'ACTIVE'
+ORDER BY id DESC
+LIMIT 1;
+
 removeClassStudent:
 DELETE FROM class_students
 WHERE class_id = ? AND student_id = ?;
 
+withdrawStudentEnrollment:
+UPDATE student_enrollments
+SET status = 'WITHDRAWN', updated_at_epoch_ms = ?
+WHERE class_id = ? AND student_id = ? AND status = 'ACTIVE';
+
 selectStudentsByClass:
 SELECT s.id, s.first_name, s.last_name, s.email, s.photo_path, s.is_injured, s.sex, s.sex_source, s.birth_date_iso, s.updated_at_epoch_ms, s.device_id, s.sync_version
 FROM students s
-INNER JOIN class_students cs ON cs.student_id = s.id
-WHERE cs.class_id = ?
+WHERE EXISTS (
+    SELECT 1 FROM student_enrollments se
+    WHERE se.student_id = s.id AND se.class_id = ? AND se.status = 'ACTIVE'
+)
+OR EXISTS (
+    SELECT 1 FROM class_students cs
+    WHERE cs.student_id = s.id AND cs.class_id = ?
+)
 ORDER BY s.last_name, s.first_name, s.id;
 
 selectEvaluationsByClass:
@@ -951,9 +1022,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 upsertAcademicYear:
 INSERT OR REPLACE INTO academic_years(
-    id, center_id, name, start_epoch_ms, end_epoch_ms, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+    id, center_id, name, start_epoch_ms, end_epoch_ms, status, is_active, archived_at_epoch_ms, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 selectAllAppUsers:
 SELECT id, external_id, display_name, email, role, center_id, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
@@ -961,9 +1032,35 @@ FROM app_users
 ORDER BY id;
 
 selectAllAcademicYears:
-SELECT id, center_id, name, start_epoch_ms, end_epoch_ms, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+SELECT id, center_id, name, start_epoch_ms, end_epoch_ms, status, is_active, archived_at_epoch_ms, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
 FROM academic_years
-ORDER BY start_epoch_ms DESC, id DESC;
+ORDER BY is_active DESC, start_epoch_ms DESC, id DESC;
+
+selectActiveAcademicYear:
+SELECT id, center_id, name, start_epoch_ms, end_epoch_ms, status, is_active, archived_at_epoch_ms, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+FROM academic_years
+WHERE is_active = 1
+LIMIT 1;
+
+deactivateAcademicYears:
+UPDATE academic_years
+SET is_active = 0, status = 'ARCHIVED', archived_at_epoch_ms = COALESCE(archived_at_epoch_ms, ?), updated_at_epoch_ms = ?
+WHERE is_active = 1;
+
+activateAcademicYear:
+UPDATE academic_years
+SET is_active = 1, status = 'ACTIVE', archived_at_epoch_ms = NULL, updated_at_epoch_ms = ?
+WHERE id = ?;
+
+archiveAcademicYear:
+UPDATE academic_years
+SET is_active = 0, status = 'ARCHIVED', archived_at_epoch_ms = ?, updated_at_epoch_ms = ?
+WHERE id = ?;
+
+countEnrollmentsByAcademicYear:
+SELECT COUNT(*)
+FROM student_enrollments
+WHERE academic_year_id = ? AND status = 'ACTIVE';
 
 selectAllCenters:
 SELECT id, code, name, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version

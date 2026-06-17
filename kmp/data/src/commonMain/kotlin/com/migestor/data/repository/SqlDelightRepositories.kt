@@ -5,6 +5,8 @@ import app.cash.sqldelight.coroutines.mapToList
 import app.cash.sqldelight.coroutines.mapToOne
 import com.migestor.data.db.AppDatabase
 import com.migestor.shared.domain.Attendance
+import com.migestor.shared.domain.AcademicYear
+import com.migestor.shared.domain.AcademicYearStatus
 import com.migestor.shared.domain.AuditTrace
 import com.migestor.shared.domain.BackupEntry
 import com.migestor.shared.domain.CalendarEvent
@@ -38,6 +40,7 @@ import com.migestor.shared.domain.Subject
 import com.migestor.shared.domain.TeachingUnit
 import com.migestor.shared.util.IsoWeekHelper
 import com.migestor.shared.repository.AttendanceRepository
+import com.migestor.shared.repository.AcademicYearsRepository
 import com.migestor.shared.repository.BackupMetadataRepository
 import com.migestor.shared.repository.CalendarRepository
 import com.migestor.shared.repository.ClassesRepository
@@ -76,6 +79,183 @@ private fun studentSexSourceOrDefault(value: String): StudentSexSource {
 
 private fun localDateOrNull(value: String?): LocalDate? {
     return value?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+}
+
+private fun academicYearStatusOrDefault(value: String): AcademicYearStatus {
+    return runCatching { AcademicYearStatus.valueOf(value) }.getOrDefault(AcademicYearStatus.ACTIVE)
+}
+
+private fun mapAcademicYearRow(
+    id: Long,
+    centerId: Long,
+    name: String,
+    startEpochMs: Long,
+    endEpochMs: Long,
+    status: String,
+    isActive: Long,
+    archivedAtEpochMs: Long?,
+    authorUserId: Long?,
+    createdAtEpochMs: Long,
+    updatedAtEpochMs: Long,
+    associatedGroupId: Long?,
+    deviceId: String?,
+    syncVersion: Long,
+): AcademicYear {
+    return AcademicYear(
+        id = id,
+        centerId = centerId,
+        name = name,
+        startAt = Instant.fromEpochMilliseconds(startEpochMs),
+        endAt = Instant.fromEpochMilliseconds(endEpochMs),
+        status = academicYearStatusOrDefault(status),
+        isActive = isActive != 0L,
+        archivedAt = archivedAtEpochMs?.let { Instant.fromEpochMilliseconds(it) },
+        trace = AuditTrace(
+            authorUserId = authorUserId,
+            createdAt = Instant.fromEpochMilliseconds(createdAtEpochMs),
+            updatedAt = Instant.fromEpochMilliseconds(updatedAtEpochMs),
+            associatedGroupId = associatedGroupId,
+            deviceId = deviceId,
+            syncVersion = syncVersion,
+        )
+    )
+}
+
+class AcademicYearsRepositorySqlDelight(
+    private val db: AppDatabase,
+) : AcademicYearsRepository {
+    override fun observeAcademicYears(): Flow<List<AcademicYear>> {
+        return db.appDatabaseQueries
+            .selectAllAcademicYears()
+            .asFlow()
+            .mapToList(Dispatchers.Default)
+            .map { rows ->
+                rows.map {
+                    mapAcademicYearRow(
+                        id = it.id,
+                        centerId = it.center_id,
+                        name = it.name,
+                        startEpochMs = it.start_epoch_ms,
+                        endEpochMs = it.end_epoch_ms,
+                        status = it.status,
+                        isActive = it.is_active,
+                        archivedAtEpochMs = it.archived_at_epoch_ms,
+                        authorUserId = it.author_user_id,
+                        createdAtEpochMs = it.created_at_epoch_ms,
+                        updatedAtEpochMs = it.updated_at_epoch_ms,
+                        associatedGroupId = it.associated_group_id,
+                        deviceId = it.device_id,
+                        syncVersion = it.sync_version,
+                    )
+                }
+            }
+    }
+
+    override suspend fun listAcademicYears(): List<AcademicYear> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectAllAcademicYears().executeAsList().map {
+            mapAcademicYearRow(
+                id = it.id,
+                centerId = it.center_id,
+                name = it.name,
+                startEpochMs = it.start_epoch_ms,
+                endEpochMs = it.end_epoch_ms,
+                status = it.status,
+                isActive = it.is_active,
+                archivedAtEpochMs = it.archived_at_epoch_ms,
+                authorUserId = it.author_user_id,
+                createdAtEpochMs = it.created_at_epoch_ms,
+                updatedAtEpochMs = it.updated_at_epoch_ms,
+                associatedGroupId = it.associated_group_id,
+                deviceId = it.device_id,
+                syncVersion = it.sync_version,
+            )
+        }
+    }
+
+    override suspend fun getActiveAcademicYear(): AcademicYear? = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectActiveAcademicYear().executeAsOneOrNull()?.let {
+            mapAcademicYearRow(
+                id = it.id,
+                centerId = it.center_id,
+                name = it.name,
+                startEpochMs = it.start_epoch_ms,
+                endEpochMs = it.end_epoch_ms,
+                status = it.status,
+                isActive = it.is_active,
+                archivedAtEpochMs = it.archived_at_epoch_ms,
+                authorUserId = it.author_user_id,
+                createdAtEpochMs = it.created_at_epoch_ms,
+                updatedAtEpochMs = it.updated_at_epoch_ms,
+                associatedGroupId = it.associated_group_id,
+                deviceId = it.device_id,
+                syncVersion = it.sync_version,
+            )
+        }
+    }
+
+    override suspend fun createAcademicYear(
+        name: String,
+        startEpochMs: Long,
+        endEpochMs: Long,
+        centerId: Long?,
+        makeActive: Boolean,
+    ): Long = withContext(Dispatchers.Default) {
+        val now = Clock.System.now().toEpochMilliseconds()
+        val resolvedCenterId = centerId ?: db.appDatabaseQueries.selectAllCenters().executeAsList().firstOrNull()?.id
+            ?: db.transactionWithResult {
+                db.appDatabaseQueries.upsertCenter(
+                    id = null,
+                    code = "default-center",
+                    name = "Centro principal",
+                    author_user_id = null,
+                    created_at_epoch_ms = now,
+                    updated_at_epoch_ms = now,
+                    associated_group_id = null,
+                    device_id = null,
+                    sync_version = 0L,
+                )
+                db.appDatabaseQueries.lastInsertedId().executeAsOne()
+            }
+        db.transactionWithResult {
+            if (makeActive) {
+                db.appDatabaseQueries.deactivateAcademicYears(now, now)
+            }
+            db.appDatabaseQueries.upsertAcademicYear(
+                id = null,
+                center_id = resolvedCenterId,
+                name = name,
+                start_epoch_ms = startEpochMs,
+                end_epoch_ms = endEpochMs,
+                status = if (makeActive) AcademicYearStatus.ACTIVE.name else AcademicYearStatus.ARCHIVED.name,
+                is_active = if (makeActive) 1L else 0L,
+                archived_at_epoch_ms = null,
+                author_user_id = null,
+                created_at_epoch_ms = now,
+                updated_at_epoch_ms = now,
+                associated_group_id = null,
+                device_id = null,
+                sync_version = 0L,
+            )
+            db.appDatabaseQueries.lastInsertedId().executeAsOne()
+        }
+    }
+
+    override suspend fun setActiveAcademicYear(academicYearId: Long) = withContext(Dispatchers.Default) {
+        val now = Clock.System.now().toEpochMilliseconds()
+        db.transaction {
+            db.appDatabaseQueries.deactivateAcademicYears(now, now)
+            db.appDatabaseQueries.activateAcademicYear(now, academicYearId)
+        }
+    }
+
+    override suspend fun archiveAcademicYear(academicYearId: Long) = withContext(Dispatchers.Default) {
+        val now = Clock.System.now().toEpochMilliseconds()
+        db.appDatabaseQueries.archiveAcademicYear(now, now, academicYearId)
+    }
+
+    override suspend fun enrollmentCount(academicYearId: Long): Long = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.countEnrollmentsByAcademicYear(academicYearId).executeAsOne()
+    }
 }
 
 class StudentsRepositorySqlDelight(
@@ -180,6 +360,83 @@ class StudentsRepositorySqlDelight(
 class ClassesRepositorySqlDelight(
     private val db: AppDatabase,
 ) : ClassesRepository {
+    private fun mapClassRow(
+        id: Long,
+        name: String,
+        course: Long,
+        description: String?,
+        centerId: Long?,
+        academicYearId: Long?,
+        stageCycleId: Long?,
+        subjectId: Long?,
+        updatedAtEpochMs: Long,
+        deviceId: String?,
+        syncVersion: Long,
+    ): SchoolClass {
+        return SchoolClass(
+            id = id,
+            name = name,
+            course = course.toInt(),
+            description = description,
+            centerId = centerId,
+            academicYearId = academicYearId,
+            stageCycleId = stageCycleId,
+            subjectId = subjectId,
+            trace = AuditTrace(
+                updatedAt = Instant.fromEpochMilliseconds(updatedAtEpochMs),
+                deviceId = deviceId,
+                syncVersion = syncVersion,
+            )
+        )
+    }
+
+    private fun activeAcademicYearId(): Long? {
+        return db.appDatabaseQueries.selectActiveAcademicYear().executeAsOneOrNull()?.id
+    }
+
+    private fun ensureActiveAcademicYearId(): Long {
+        activeAcademicYearId()?.let { return it }
+        val now = Clock.System.now().toEpochMilliseconds()
+        return db.transactionWithResult {
+            val centerId = db.appDatabaseQueries.selectAllCenters().executeAsList().firstOrNull()?.id
+                ?: run {
+                    db.appDatabaseQueries.upsertCenter(
+                        id = null,
+                        code = "default-center",
+                        name = "Centro principal",
+                        author_user_id = null,
+                        created_at_epoch_ms = now,
+                        updated_at_epoch_ms = now,
+                        associated_group_id = null,
+                        device_id = null,
+                        sync_version = 0L,
+                    )
+                    db.appDatabaseQueries.lastInsertedId().executeAsOne()
+                }
+            db.appDatabaseQueries.upsertAcademicYear(
+                id = null,
+                center_id = centerId,
+                name = "Curso actual",
+                start_epoch_ms = 0L,
+                end_epoch_ms = 4102444800000L,
+                status = AcademicYearStatus.ACTIVE.name,
+                is_active = 1L,
+                archived_at_epoch_ms = null,
+                author_user_id = null,
+                created_at_epoch_ms = now,
+                updated_at_epoch_ms = now,
+                associated_group_id = null,
+                device_id = null,
+                sync_version = 0L,
+            )
+            db.appDatabaseQueries.lastInsertedId().executeAsOne()
+        }
+    }
+
+    private fun academicYearIdForClass(classId: Long): Long? {
+        return db.appDatabaseQueries.selectClassAcademicYearId(classId).executeAsOneOrNull()?.academic_year_id ?: ensureActiveAcademicYearId()
+    }
+
     override fun observeClasses(): Flow<List<SchoolClass>> {
         return db.appDatabaseQueries
             .selectAllClasses()
@@ -187,20 +444,18 @@ class ClassesRepositorySqlDelight(
             .mapToList(Dispatchers.Default)
             .map { rows ->
                 rows.map {
-                    SchoolClass(
+                    mapClassRow(
                         id = it.id,
                         name = it.name,
-                        course = it.course.toInt(),
+                        course = it.course,
                         description = it.description,
                         centerId = it.center_id,
                         academicYearId = it.academic_year_id,
                         stageCycleId = it.stage_cycle_id,
                         subjectId = it.subject_id,
-                        trace = AuditTrace(
-                            updatedAt = Instant.fromEpochMilliseconds(it.updated_at_epoch_ms),
-                            deviceId = it.device_id,
-                            syncVersion = it.sync_version,
-                        )
+                        updatedAtEpochMs = it.updated_at_epoch_ms,
+                        deviceId = it.device_id,
+                        syncVersion = it.sync_version,
                     )
                 }
             }
@@ -208,20 +463,54 @@ class ClassesRepositorySqlDelight(
 
     override suspend fun listClasses(): List<SchoolClass> = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.selectAllClasses().executeAsList().map {
-            SchoolClass(
+            mapClassRow(
                 id = it.id,
                 name = it.name,
-                course = it.course.toInt(),
+                course = it.course,
                 description = it.description,
                 centerId = it.center_id,
                 academicYearId = it.academic_year_id,
                 stageCycleId = it.stage_cycle_id,
                 subjectId = it.subject_id,
-                trace = AuditTrace(
-                    updatedAt = Instant.fromEpochMilliseconds(it.updated_at_epoch_ms),
-                    deviceId = it.device_id,
-                    syncVersion = it.sync_version,
-                )
+                updatedAtEpochMs = it.updated_at_epoch_ms,
+                deviceId = it.device_id,
+                syncVersion = it.sync_version,
+            )
+        }
+    }
+
+    override suspend fun listAllClasses(): List<SchoolClass> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectAllClassesIncludingArchived().executeAsList().map {
+            mapClassRow(
+                id = it.id,
+                name = it.name,
+                course = it.course,
+                description = it.description,
+                centerId = it.center_id,
+                academicYearId = it.academic_year_id,
+                stageCycleId = it.stage_cycle_id,
+                subjectId = it.subject_id,
+                updatedAtEpochMs = it.updated_at_epoch_ms,
+                deviceId = it.device_id,
+                syncVersion = it.sync_version,
+            )
+        }
+    }
+
+    override suspend fun listClassesForAcademicYear(academicYearId: Long): List<SchoolClass> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectClassesByAcademicYear(academicYearId).executeAsList().map {
+            mapClassRow(
+                id = it.id,
+                name = it.name,
+                course = it.course,
+                description = it.description,
+                centerId = it.center_id,
+                academicYearId = it.academic_year_id,
+                stageCycleId = it.stage_cycle_id,
+                subjectId = it.subject_id,
+                updatedAtEpochMs = it.updated_at_epoch_ms,
+                deviceId = it.device_id,
+                syncVersion = it.sync_version,
             )
         }
     }
@@ -240,8 +529,9 @@ class ClassesRepositorySqlDelight(
         syncVersion: Long,
     ): Long = withContext(Dispatchers.Default) {
         val now = if (updatedAtEpochMs > 0) updatedAtEpochMs else Clock.System.now().toEpochMilliseconds()
+        val resolvedAcademicYearId = academicYearId ?: ensureActiveAcademicYearId()
         db.transactionWithResult {
-            db.appDatabaseQueries.upsertClass(id, name, course.toLong(), description, centerId, academicYearId, stageCycleId, subjectId, now, deviceId, syncVersion)
+            db.appDatabaseQueries.upsertClass(id, name, course.toLong(), description, centerId, resolvedAcademicYearId, stageCycleId, subjectId, now, deviceId, syncVersion)
             id ?: db.appDatabaseQueries.lastInsertedId().executeAsOne()
         }
     }
@@ -251,15 +541,63 @@ class ClassesRepositorySqlDelight(
     }
 
     override suspend fun addStudentToClass(classId: Long, studentId: Long) = withContext(Dispatchers.Default) {
-        db.appDatabaseQueries.insertClassStudent(classId, studentId)
+        val now = Clock.System.now().toEpochMilliseconds()
+        val academicYearId = academicYearIdForClass(classId) ?: return@withContext
+        db.transaction {
+            db.appDatabaseQueries.insertClassStudent(classId, studentId)
+            db.appDatabaseQueries.upsertStudentEnrollment(
+                id = null,
+                student_id = studentId,
+                class_id = classId,
+                academic_year_id = academicYearId,
+                status = "ACTIVE",
+                promotion_status = "PENDING",
+                previous_enrollment_id = null,
+                created_at_epoch_ms = now,
+                updated_at_epoch_ms = now,
+                device_id = null,
+                sync_version = 0L,
+            )
+        }
+    }
+
+    override suspend fun promoteStudentToClass(
+        sourceClassId: Long,
+        targetClassId: Long,
+        studentId: Long,
+        promotionStatus: String,
+    ) = withContext(Dispatchers.Default) {
+        val now = Clock.System.now().toEpochMilliseconds()
+        val academicYearId = academicYearIdForClass(targetClassId) ?: return@withContext
+        val previousEnrollmentId = db.appDatabaseQueries.selectActiveEnrollmentId(sourceClassId, studentId).executeAsOneOrNull()
+        db.transaction {
+            db.appDatabaseQueries.insertClassStudent(targetClassId, studentId)
+            db.appDatabaseQueries.upsertStudentEnrollment(
+                id = null,
+                student_id = studentId,
+                class_id = targetClassId,
+                academic_year_id = academicYearId,
+                status = "ACTIVE",
+                promotion_status = promotionStatus,
+                previous_enrollment_id = previousEnrollmentId,
+                created_at_epoch_ms = now,
+                updated_at_epoch_ms = now,
+                device_id = null,
+                sync_version = 0L,
+            )
+        }
     }
 
     override suspend fun removeStudentFromClass(classId: Long, studentId: Long) = withContext(Dispatchers.Default) {
-        db.appDatabaseQueries.removeClassStudent(classId, studentId)
+        val now = Clock.System.now().toEpochMilliseconds()
+        db.transaction {
+            db.appDatabaseQueries.removeClassStudent(classId, studentId)
+            db.appDatabaseQueries.withdrawStudentEnrollment(now, classId, studentId)
+        }
     }
 
     override suspend fun listStudentsInClass(classId: Long): List<Student> = withContext(Dispatchers.Default) {
-        db.appDatabaseQueries.selectStudentsByClass(classId).executeAsList().map {
+        db.appDatabaseQueries.selectStudentsByClass(classId, classId).executeAsList().map {
             Student(
                 id = it.id,
                 firstName = it.first_name,
@@ -281,7 +619,7 @@ class ClassesRepositorySqlDelight(
 
     override fun observeStudentsInClass(classId: Long): Flow<List<Student>> {
         return db.appDatabaseQueries
-            .selectStudentsByClass(classId)
+            .selectStudentsByClass(classId, classId)
             .asFlow()
             .mapToList(Dispatchers.Default)
             .map { rows ->

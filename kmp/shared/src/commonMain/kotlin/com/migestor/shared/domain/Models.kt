@@ -33,8 +33,42 @@ data class AcademicYear(
     val name: String,
     val startAt: Instant,
     val endAt: Instant,
+    val status: AcademicYearStatus = AcademicYearStatus.ACTIVE,
+    val isActive: Boolean = false,
+    val archivedAt: Instant? = null,
     val trace: AuditTrace = AuditTrace(),
 )
+
+enum class AcademicYearStatus {
+    ACTIVE,
+    ARCHIVED,
+}
+
+data class StudentEnrollment(
+    val id: Long,
+    val studentId: Long,
+    val classId: Long,
+    val academicYearId: Long,
+    val status: EnrollmentStatus = EnrollmentStatus.ACTIVE,
+    val promotionStatus: PromotionStatus = PromotionStatus.PENDING,
+    val previousEnrollmentId: Long? = null,
+    val trace: AuditTrace = AuditTrace(),
+)
+
+enum class EnrollmentStatus {
+    ACTIVE,
+    TRANSFERRED,
+    WITHDRAWN,
+    ARCHIVED,
+}
+
+enum class PromotionStatus {
+    PROMOTED,
+    REPEATING,
+    GROUP_CHANGED,
+    LEFT_SCHOOL,
+    PENDING,
+}
 
 data class StageCycle(
     val id: Long,

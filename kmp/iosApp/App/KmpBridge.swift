@@ -955,6 +955,7 @@ final class KmpBridge: ObservableObject {
         // MacCommandCenterCoordinator calls notifyHelperReady(host:port:) once the
         // helper has published a valid LAN IP address.
         self.syncToken = "loopback-token"
+        self.pairedSyncHost = nil
         self.pairedServerFingerprint = nil
         #endif
 
@@ -9657,10 +9658,16 @@ final class KmpBridge: ObservableObject {
     /// event listener and trigger an initial sync.
     func notifyHelperReady(host: String, port: Int) {
         #if os(macOS)
-        guard !host.isEmpty else { return }
-        print("[Sync] helper ready at \(host):\(port) — starting listener")
-        pairedSyncHost = host
+        let normalizedHost = LanSyncClient.normalizeHost(host)
+        guard !normalizedHost.isEmpty else { return }
+        print("[Sync] helper ready at \(normalizedHost):\(port) — starting listener")
+        autoSyncLoopTask?.cancel()
+        autoSyncLoopTask = nil
+        autoSyncDebounceTask?.cancel()
+        autoSyncDebounceTask = nil
+        syncNeedsAnotherPass = false
         syncEventListener.stop()
+        pairedSyncHost = normalizedHost
         startSyncEventListenerIfPaired()
         startAutoSyncLoop()
         Task { @MainActor [weak self] in
@@ -9679,6 +9686,9 @@ final class KmpBridge: ObservableObject {
         syncEventListener.stop()
         autoSyncLoopTask?.cancel()
         autoSyncLoopTask = nil
+        autoSyncDebounceTask?.cancel()
+        autoSyncDebounceTask = nil
+        syncNeedsAnotherPass = false
         pairedSyncHost = nil
         #endif
     }

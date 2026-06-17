@@ -1530,11 +1530,27 @@ final class KmpBridge: ObservableObject {
 
         for schoolClass in classes {
             let roster = try await container.classesRepository.listStudentsInClass(classId: schoolClass.id)
+            let evaluations = try await container.evaluationsRepository.listClassEvaluations(classId: schoolClass.id)
+            let grades = try await container.gradesRepository.listGradesForClass(classId: schoolClass.id)
+            let notebookCells = try await container.notebookCellsRepository.listClassCells(classId: schoolClass.id)
+            let attendance = try await container.attendanceRepository.listAttendance(classId: schoolClass.id)
+            let incidents = try await container.incidentsRepository.listIncidents(classId: schoolClass.id)
+            let physicalAssignments = try await container.physicalTestsRepository.listAssignmentsForClass(classId: schoolClass.id)
+            var physicalResultsCount = 0
+            for assignment in physicalAssignments {
+                physicalResultsCount += try await container.physicalTestsRepository.listResultsForAssignment(assignmentId: assignment.id).count
+            }
             let subject = schoolClass.subjectId.flatMap { subjectId in
                 subjects.first(where: { $0.id == subjectId.int64Value })?.name
             } ?? "Sin asignatura"
             lines.append("## \(schoolClass.name) · Curso \(schoolClass.course) · \(subject)")
             lines.append("Matriculas: \(roster.count)")
+            lines.append("Evaluaciones: \(evaluations.count)")
+            lines.append("Calificaciones: \(grades.count)")
+            lines.append("Celdas de cuaderno: \(notebookCells.count)")
+            lines.append("Registros de asistencia: \(attendance.count)")
+            lines.append("Incidencias: \(incidents.count)")
+            lines.append("Pruebas fisicas: \(physicalAssignments.count) asignaciones · \(physicalResultsCount) resultados")
             if roster.isEmpty {
                 lines.append("- Sin alumnado matriculado")
             } else {

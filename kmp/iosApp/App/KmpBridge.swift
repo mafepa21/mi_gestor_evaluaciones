@@ -4967,17 +4967,13 @@ final class KmpBridge: ObservableObject {
     private func importedAssessmentInstrumentDraft(for title: String) -> AssessmentInstrumentDraft? {
         switch title.trimmingCharacters(in: .whitespacesAndNewlines) {
         case "Daily Workout Log":
-            return AssessmentInstrumentDraft(title: title, kind: .observationGrid, criterionLabel: "CE 2.2", weightPercent: nil, isSelected: true, rubric: nil)
+            return repairAssessmentInstrumentDraft(title: title, kind: .observationGrid, criterionLabel: "CE 2.2")
         case "Diagnostic Record Sheet - Session 1":
-            return AssessmentInstrumentDraft(title: title, kind: .observationGrid, criterionLabel: nil, weightPercent: nil, isSelected: true, rubric: nil)
+            return repairAssessmentInstrumentDraft(title: title, kind: .observationGrid)
         case "Plan Safety Checklist - Session 2":
-            return AssessmentInstrumentDraft(
+            return repairAssessmentInstrumentDraft(
                 title: title,
                 kind: .checklist,
-                criterionLabel: nil,
-                weightPercent: nil,
-                isSelected: true,
-                rubric: nil,
                 checklistItems: [
                     ChecklistItemDraft(title: "The 4 exercises have bronze/silver/gold levels.", required: true),
                     ChecklistItemDraft(title: "Technique can be performed without pain or obvious risk.", required: true),
@@ -4988,19 +4984,15 @@ final class KmpBridge: ObservableObject {
                 ]
             )
         case "Teacher Observation Grid CE 2.2 - Execution and self-regulation":
-            return AssessmentInstrumentDraft(title: title, kind: .teacherObservation, criterionLabel: "CE 2.2", weightPercent: nil, isSelected: true, rubric: nil)
+            return repairAssessmentInstrumentDraft(title: title, kind: .teacherObservation, criterionLabel: "CE 2.2")
         case "Adjustment Sheet - Session 7":
-            return AssessmentInstrumentDraft(title: title, kind: .checklist, criterionLabel: nil, weightPercent: nil, isSelected: true, rubric: nil)
+            return repairAssessmentInstrumentDraft(title: title, kind: .checklist)
         case "Healthy Habits Quiz - Session 8":
-            return AssessmentInstrumentDraft(title: title, kind: .checklist, criterionLabel: nil, weightPercent: nil, isSelected: true, rubric: nil)
+            return repairAssessmentInstrumentDraft(title: title, kind: .checklist)
         case "Final Submission Checklist":
-            return AssessmentInstrumentDraft(
+            return repairAssessmentInstrumentDraft(
                 title: title,
                 kind: .submissionChecklist,
-                criterionLabel: nil,
-                weightPercent: nil,
-                isSelected: true,
-                rubric: nil,
                 checklistItems: [
                     ChecklistItemDraft(title: "Baseline diagnosis complete.", required: true),
                     ChecklistItemDraft(title: "FITT-PV plan validated.", required: true),
@@ -5015,6 +5007,26 @@ final class KmpBridge: ObservableObject {
             return nil
         }
     }
+
+    private func repairAssessmentInstrumentDraft(
+        title: String,
+        kind: AssessmentInstrumentKind,
+        criterionLabel: String? = nil,
+        checklistItems: [ChecklistItemDraft] = []
+    ) -> AssessmentInstrumentDraft {
+        AssessmentInstrumentDraft(
+            title: title,
+            kind: kind,
+            criterionLabel: criterionLabel,
+            weightPercent: nil,
+            isSelected: true,
+            countsTowardAverage: false,
+            scoreStrategy: .none,
+            rubric: nil,
+            checklistItems: checklistItems
+        )
+    }
+
     private func repairAssessmentInstrumentEvaluations(classId: Int64) async throws -> Bool {
         let evaluations = try await container.evaluationsRepository.listClassEvaluations(classId: classId)
         var didRepair = false

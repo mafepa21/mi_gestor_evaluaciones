@@ -12,6 +12,7 @@ struct CoursesWorkspaceView: View {
     @State private var showingClassEditor = false
     @State private var showingSubjectCatalog = false
     @State private var showingAcademicYearWizard = false
+    @State private var archivedYearDetail: KmpBridge.AcademicYearSnapshot?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -83,13 +84,19 @@ struct CoursesWorkspaceView: View {
                         ForEach(bridge.archivedAcademicYears) { year in
                             Menu {
                                 Button {
+                                    archivedYearDetail = year
+                                } label: {
+                                    Label("Ver resumen", systemImage: "doc.text.magnifyingglass")
+                                }
+
+                                Button {
                                     Task { await activateAcademicYear(year) }
                                 } label: {
                                     Label("Restaurar como activo", systemImage: "arrow.triangle.2.circlepath")
                                 }
 
                                 Button {
-                                    bridge.status = "Exportacion de curso escolar pendiente de conectar a backups."
+                                    archivedYearDetail = year
                                 } label: {
                                     Label("Exportar curso", systemImage: "square.and.arrow.up")
                                 }
@@ -277,6 +284,9 @@ struct CoursesWorkspaceView: View {
                 }
             )
         }
+        .sheet(item: $archivedYearDetail) { year in
+            ArchivedAcademicYearDetailSheet(year: year)
+        }
         .sheet(isPresented: $showingAcademicYearWizard) {
             AcademicYearWizardSheet(
                 activeYear: bridge.activeAcademicYear,
@@ -446,6 +456,55 @@ private struct AcademicYearDraft {
     let sourceAcademicYearId: Int64?
     let copyGroups: Bool
     let promoteStudents: Bool
+}
+
+private struct ArchivedAcademicYearDetailSheet: View {
+    let year: KmpBridge.AcademicYearSnapshot
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Curso escolar") {
+                    LabeledContent("Nombre", value: year.name)
+                    LabeledContent("Estado", value: "Archivado")
+                    LabeledContent("Grupos", value: "\(year.classCount)")
+                    LabeledContent("Matriculas", value: "\(year.enrollmentCount)")
+                    LabeledContent("Inicio", value: formatted(year.startDate))
+                    LabeledContent("Fin", value: formatted(year.endDate))
+                }
+
+                Section {
+                    ShareLink(item: exportText) {
+                        Label("Exportar resumen", systemImage: "square.and.arrow.up")
+                    }
+                }
+            }
+            .navigationTitle("Historial")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Cerrar") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+
+    private var exportText: String {
+        """
+        Curso escolar: \(year.name)
+        Estado: Archivado
+        Inicio: \(formatted(year.startDate))
+        Fin: \(formatted(year.endDate))
+        Grupos: \(year.classCount)
+        Matriculas: \(year.enrollmentCount)
+        """
+    }
+
+    private func formatted(_ date: Date) -> String {
+        date.formatted(.dateTime.day().month().year())
+    }
 }
 
 private struct AcademicYearWizardSheet: View {

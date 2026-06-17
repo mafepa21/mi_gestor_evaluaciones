@@ -16,6 +16,7 @@ El formato sigue una variante practica de Keep a Changelog:
 ### Added
 
 - Cursos incorpora una primera gestion estructural de curso escolar activo: selector en `Cursos`, historial de cursos archivados, asistente de nuevo curso con copia de grupos y promocion de alumnado por matriculas nuevas.
+- El historial de Cursos inicia la exportacion segura con un detalle de curso archivado y `ShareLink` de resumen, sin habilitar aun borrado destructivo.
 - Preparar evaluación de situaciones de aprendizaje permite adjuntar un DOCX de instrumentos, detectar rúbricas, grids de observación, logs, registros diagnósticos, hojas de ajuste, quizzes y checklists desde tablas o párrafos, previsualizarlos con selección y materializarlos como evaluaciones, rúbricas, columnas de Cuaderno y vínculos con la situación.
 - El Cuaderno incorpora instrumentos estructurados no rúbrica: checklists multiítem, observaciones 1-4, formularios y quizzes se abren en un sheet específico por alumno, mientras el grid mantiene un resumen compacto (`Pendiente`, `0/7`, `5/7`, `Completo`).
 - El inspector del Cuaderno incorpora una primera capa de Inteligencia Educativa local: `StudentInsightDraft`, `AverageExplanationDraft` y `TutorMeetingSummaryDraft` estructurados desde evidencia existente, con fallback determinista cuando Foundation Models no está disponible.

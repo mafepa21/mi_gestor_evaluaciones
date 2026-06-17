@@ -680,13 +680,27 @@ private struct NotebookInspectorPendingRow: View {
     }
 }
 
+private func notebookSystemIconName(for icon: String) -> String {
+    switch icon {
+    case "✅": return "checkmark.circle.fill"
+    case "⭐": return "star.fill"
+    case "⚠️": return "exclamationmark.triangle.fill"
+    case "🏠": return "house.fill"
+    case "🧩": return "puzzlepiece.extension.fill"
+    case "📌": return "pin.fill"
+    case "💬": return "bubble.left.fill"
+    case "": return "note.text"
+    default: return icon
+    }
+}
+
 private struct NotebookInspectorObservationRow: View {
     let observation: NotebookInspectorObservation
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Image(systemName: observation.icon.isEmpty ? "note.text" : observation.icon)
+                Image(systemName: notebookSystemIconName(for: observation.icon))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(NotebookStyle.primaryTint)
                     .frame(width: 24, height: 24)
@@ -842,6 +856,7 @@ private struct NotebookEducationalInsightView: View {
             }
         }
     }
+
 }
 
 private struct NotebookTutorMeetingSummaryView: View {

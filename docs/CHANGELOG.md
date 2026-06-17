@@ -55,6 +55,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- **Crash al archivar el curso activo desde macOS**: `KmpBridge.archiveAcademicYear` bloquea la llamada antes de cruzar a Kotlin cuando el curso es activo, evitando que una `IllegalStateException` no exportada como `NSError` termine la app. El asistente deshabilita esa accion si no hay otro curso disponible para activar primero.
 - **Promoción con grupo destino inexistente**: al crear un curso escolar con promoción, el flujo crea ahora el grupo destino en el nuevo año si no existe antes de matricular alumnado. Así `1º ESO - Tavernes` puede promocionar a `2º ESO - Tavernes`, `1º ESO B` a `2º ESO B` y `4º ESO` a `1º BAC` sin omitir alumnado.
 - **Cursos escolares y matrículas inconsistentes**: `listStudentsInClass` y los observadores del Cuaderno dejan de leer `class_students` como fallback global y pasan a usar solo `student_enrollments` activas cuyo `academic_year_id` coincide con el año del grupo. Esto alinea contadores, roster del grupo y snapshot del Cuaderno.
 - **Bases sin curso escolar activo**: la migración `32.sqm` repara datos existentes reactivando el último `AcademicYear` no enviado a papelera cuando no hay ninguno activo, rellena matrículas desde `class_students` y retira matrículas con año distinto al del grupo.

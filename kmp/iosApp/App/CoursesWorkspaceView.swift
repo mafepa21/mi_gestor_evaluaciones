@@ -686,6 +686,7 @@ private struct AcademicYearWizardSheet: View {
                             } label: {
                                 Label("Archivar curso activo", systemImage: "archivebox")
                             }
+                            .disabled(!canArchiveActiveYear)
                         }
                     }
                 }
@@ -729,6 +730,11 @@ private struct AcademicYearWizardSheet: View {
             return !copyGroups || sourceAcademicYearId != nil
         }
         return true
+    }
+
+    private var canArchiveActiveYear: Bool {
+        guard let activeYear else { return false }
+        return academicYears.contains { $0.id != activeYear.id && $0.status != "TRASHED" }
     }
 
     private static func defaultName() -> String {

@@ -1507,6 +1507,10 @@ final class KmpBridge: ObservableObject {
     }
 
     func archiveAcademicYear(id: Int64) async throws {
+        guard activeAcademicYear?.id != id else {
+            status = "Activa otro curso escolar antes de archivar el curso actual."
+            return
+        }
         try await container.academicYearsRepository.archiveAcademicYear(academicYearId: id)
         try await refreshAcademicYears()
         try await refreshClasses()
@@ -1514,6 +1518,10 @@ final class KmpBridge: ObservableObject {
     }
 
     func deleteArchivedAcademicYear(id: Int64) async throws {
+        guard activeAcademicYear?.id != id else {
+            status = "No se puede eliminar el curso escolar activo."
+            return
+        }
         try await container.academicYearsRepository.deleteArchivedAcademicYear(academicYearId: id)
         try await refreshAcademicYears()
         try await refreshClasses()

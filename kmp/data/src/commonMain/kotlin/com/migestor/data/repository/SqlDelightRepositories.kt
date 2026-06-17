@@ -253,6 +253,18 @@ class AcademicYearsRepositorySqlDelight(
         db.appDatabaseQueries.archiveAcademicYear(now, now, academicYearId)
     }
 
+    override suspend fun deleteArchivedAcademicYear(academicYearId: Long) = withContext(Dispatchers.Default) {
+        val year = db.appDatabaseQueries.selectAcademicYearById(academicYearId).executeAsOneOrNull()
+            ?: error("Curso escolar no encontrado.")
+        check(year.is_active == 0L && year.status == AcademicYearStatus.ARCHIVED.name) {
+            "Solo se pueden eliminar cursos archivados."
+        }
+        db.transaction {
+            db.appDatabaseQueries.deleteClassesByAcademicYear(academicYearId)
+            db.appDatabaseQueries.deleteArchivedAcademicYear(academicYearId)
+        }
+    }
+
     override suspend fun enrollmentCount(academicYearId: Long): Long = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.countEnrollmentsByAcademicYear(academicYearId).executeAsOne()
     }

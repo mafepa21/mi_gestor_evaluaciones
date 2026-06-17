@@ -285,7 +285,12 @@ struct CoursesWorkspaceView: View {
             )
         }
         .sheet(item: $archivedYearDetail) { year in
-            ArchivedAcademicYearDetailSheet(year: year)
+            ArchivedAcademicYearDetailSheet(
+                year: year,
+                onDelete: {
+                    Task { await deleteArchivedAcademicYear(year) }
+                }
+            )
         }
         .sheet(isPresented: $showingAcademicYearWizard) {
             AcademicYearWizardSheet(
@@ -318,6 +323,16 @@ struct CoursesWorkspaceView: View {
     private func classSubtitle(for schoolClass: SchoolClass) -> String {
         let subject = subjectName(for: schoolClass.subjectId?.int64Value) ?? "Sin asignatura"
         return "Curso \(schoolClass.course) · \(subject)"
+    }
+
+    @MainActor
+    private func deleteArchivedAcademicYear(_ year: KmpBridge.AcademicYearSnapshot) async {
+        do {
+            try await bridge.deleteArchivedAcademicYear(id: year.id)
+            archivedYearDetail = nil
+        } catch {
+            bridge.status = "No se pudo eliminar el curso escolar: \(error.localizedDescription)"
+        }
     }
 
     @MainActor
@@ -460,7 +475,9 @@ private struct AcademicYearDraft {
 
 private struct ArchivedAcademicYearDetailSheet: View {
     let year: KmpBridge.AcademicYearSnapshot
+    let onDelete: () -> Void
     @Environment(\.dismiss) private var dismiss
+    @State private var showingDeleteConfirmation = false
 
     var body: some View {
         NavigationStack {
@@ -479,6 +496,16 @@ private struct ArchivedAcademicYearDetailSheet: View {
                         Label("Exportar resumen", systemImage: "square.and.arrow.up")
                     }
                 }
+
+                Section {
+                    Button(role: .destructive) {
+                        showingDeleteConfirmation = true
+                    } label: {
+                        Label("Eliminar curso archivado", systemImage: "trash")
+                    }
+                } footer: {
+                    Text("Se eliminaran grupos, matriculas y datos vinculados a esos grupos. El alumnado global no se elimina.")
+                }
             }
             .navigationTitle("Historial")
             .toolbar {
@@ -487,6 +514,15 @@ private struct ArchivedAcademicYearDetailSheet: View {
                         dismiss()
                     }
                 }
+            }
+            .alert("Eliminar curso archivado", isPresented: $showingDeleteConfirmation) {
+                Button("Cancelar", role: .cancel) {}
+                Button("Eliminar", role: .destructive) {
+                    onDelete()
+                    dismiss()
+                }
+            } message: {
+                Text("Esta accion eliminara \(year.classCount) grupos y \(year.enrollmentCount) matriculas archivadas de \(year.name).")
             }
         }
     }

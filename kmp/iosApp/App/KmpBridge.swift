@@ -1504,6 +1504,14 @@ final class KmpBridge: ObservableObject {
         status = "Curso escolar archivado."
     }
 
+    func deleteArchivedAcademicYear(id: Int64) async throws {
+        try await container.academicYearsRepository.deleteArchivedAcademicYear(academicYearId: id)
+        try await refreshAcademicYears()
+        try await refreshClasses()
+        try await refreshStudentsDirectory()
+        status = "Curso escolar archivado eliminado."
+    }
+
     private func promotedClassName(from name: String, course: Int32) -> String {
         let nextCourse = course + 1
         let currentPrefix = "\(course)"

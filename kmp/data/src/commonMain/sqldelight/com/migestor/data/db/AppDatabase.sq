@@ -1042,6 +1042,11 @@ FROM academic_years
 WHERE is_active = 1
 LIMIT 1;
 
+selectAcademicYearById:
+SELECT id, center_id, name, start_epoch_ms, end_epoch_ms, status, is_active, archived_at_epoch_ms, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+FROM academic_years
+WHERE id = ?;
+
 deactivateAcademicYears:
 UPDATE academic_years
 SET is_active = 0, status = 'ARCHIVED', archived_at_epoch_ms = COALESCE(archived_at_epoch_ms, ?), updated_at_epoch_ms = ?
@@ -1061,6 +1066,14 @@ countEnrollmentsByAcademicYear:
 SELECT COUNT(*)
 FROM student_enrollments
 WHERE academic_year_id = ? AND status = 'ACTIVE';
+
+deleteClassesByAcademicYear:
+DELETE FROM classes
+WHERE academic_year_id = ?;
+
+deleteArchivedAcademicYear:
+DELETE FROM academic_years
+WHERE id = ? AND is_active = 0 AND status = 'ARCHIVED';
 
 selectAllCenters:
 SELECT id, code, name, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version

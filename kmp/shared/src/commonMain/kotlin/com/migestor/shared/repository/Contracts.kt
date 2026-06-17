@@ -70,6 +70,7 @@ interface AcademicYearsRepository {
     ): Long
     suspend fun setActiveAcademicYear(academicYearId: Long)
     suspend fun archiveAcademicYear(academicYearId: Long)
+    suspend fun deleteArchivedAcademicYear(academicYearId: Long)
     suspend fun enrollmentCount(academicYearId: Long): Long = 0
 }
 

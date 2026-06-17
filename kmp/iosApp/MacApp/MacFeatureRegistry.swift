@@ -10,6 +10,7 @@ struct MacFeatureDescriptor: Identifiable, Hashable {
     enum Feature: String, CaseIterable, Identifiable {
         case dashboard
         case teacherRadar
+        case courses
         case notebook
         case attendance
         case planner
@@ -39,6 +40,7 @@ enum MacFeatureRegistry {
     static let all: [MacFeatureDescriptor] = [
         .init(feature: .dashboard, title: "Dashboard", subtitle: "KPIs, agenda y pulso operativo", systemImage: "rectangle.3.group.bubble.left.fill", source: .parityIOS, enabledInV1: true),
         .init(feature: .teacherRadar, title: "Radar", subtitle: "Alertas docentes accionables", systemImage: "scope", source: .parityIOS, enabledInV1: true),
+        .init(feature: .courses, title: "Cursos", subtitle: "Curso escolar, grupos y promoción", systemImage: "calendar.badge.clock", source: .parityIOS, enabledInV1: true),
         .init(feature: .notebook, title: "Cuaderno", subtitle: "Vista de clase, edición y guardado", systemImage: "tablecells.fill", source: .parityIOS, enabledInV1: true),
         .init(feature: .attendance, title: "Asistencia", subtitle: "Pase e historial", systemImage: "checklist.checked", source: .parityIOS, enabledInV1: true),
         .init(feature: .planner, title: "Planificación", subtitle: "Sesiones, unidades y agenda docente", systemImage: "calendar.badge.clock", source: .parityIOS, enabledInV1: true),
@@ -70,7 +72,7 @@ enum MacFeatureSection: String, CaseIterable, Identifiable {
         case .hoy:
             return [.dashboard, .teacherRadar]
         case .evaluacion:
-            return [.notebook, .attendance, .rubrics, .physicalTests]
+            return [.courses, .notebook, .attendance, .rubrics, .physicalTests]
         case .planificacion:
             return [.planner, .situations, .students]
         case .sistema:
@@ -78,4 +80,3 @@ enum MacFeatureSection: String, CaseIterable, Identifiable {
         }
     }
 }
-

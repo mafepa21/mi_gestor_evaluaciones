@@ -246,6 +246,16 @@ struct MacRootView: View {
                 selectedStudentId: studentSelection.selectedStudentBinding,
                 onOpenModule: open(module:classId:studentId:)
             )
+        case .courses:
+            CoursesWorkspaceView(
+                selectedClassId: studentSelection.selectedClassBinding,
+                onOpenModule: open(module:classId:studentId:),
+                onCreateStudent: { classId in
+                    studentSelection.setClass(classId)
+                    selectFeature(.students)
+                }
+            )
+            .environmentObject(session.bridge)
         case .notebook:
             NotebookMacLayout(
                 bridge: session.bridge,
@@ -659,6 +669,7 @@ struct MacRootView: View {
         switch feature {
         case .dashboard: return .accentColor
         case .teacherRadar: return .red
+        case .courses: return .cyan
         case .notebook: return .purple
         case .attendance: return .green
         case .planner: return .orange
@@ -925,6 +936,8 @@ struct MacRootView: View {
         switch module {
         case .teacherRadar:
             selectFeature(.teacherRadar)
+        case .courses:
+            selectFeature(.courses)
         case .notebook:
             selectFeature(.notebook)
         case .students:

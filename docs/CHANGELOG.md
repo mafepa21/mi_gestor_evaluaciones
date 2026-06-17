@@ -55,6 +55,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- **Promoción con grupo destino inexistente**: al crear un curso escolar con promoción, el flujo crea ahora el grupo destino en el nuevo año si no existe antes de matricular alumnado. Así `1º ESO - Tavernes` puede promocionar a `2º ESO - Tavernes`, `1º ESO B` a `2º ESO B` y `4º ESO` a `1º BAC` sin omitir alumnado.
 - **Cursos escolares y matrículas inconsistentes**: `listStudentsInClass` y los observadores del Cuaderno dejan de leer `class_students` como fallback global y pasan a usar solo `student_enrollments` activas cuyo `academic_year_id` coincide con el año del grupo. Esto alinea contadores, roster del grupo y snapshot del Cuaderno.
 - **Bases sin curso escolar activo**: la migración `32.sqm` repara datos existentes reactivando el último `AcademicYear` no enviado a papelera cuando no hay ninguno activo, rellena matrículas desde `class_students` y retira matrículas con año distinto al del grupo.
 - **Eliminación de cursos escolares**: `AcademicYear` incorpora estado `TRASHED`; el repositorio bloquea activar cursos en papelera, archivar/mover a papelera cursos activos y permite borrado permanente solo de cursos no activos.
@@ -105,6 +106,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `scripts/verify_apple_builds.sh` completado correctamente con `DEVELOPER_DIR=/Users/mariofernandez/Downloads/Xcode-beta.app/Contents/Developer` tras corregir la creación de grupos destino durante la promoción.
 - `./gradlew :data:desktopTest`, `./gradlew :shared:test`, `git diff --check` y simulación de `32.sqm` sobre copia de `desktop_mi_gestor_kmp.db` completados correctamente tras corregir rosters por `student_enrollments`, reparación de curso activo y estado `TRASHED`.
 - `git diff --check` completado correctamente tras corregir el estado sin curso activo y la hoja de asignaturas en `CoursesWorkspaceView`. `scripts/verify_apple_builds.sh` regenera el proyecto con XcodeGen, pero macOS/iOS quedan bloqueados porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y `xcodebuild` requiere Xcode completo.
 - `git diff --check` completado correctamente tras exponer `Cursos` en la navegacion Apple. `scripts/verify_apple_builds.sh` regenera el proyecto con XcodeGen, pero macOS/iOS quedan bloqueados porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y `xcodebuild` requiere Xcode completo.

@@ -1466,13 +1466,18 @@ final class KmpBridge: ObservableObject {
         }
 
         if promoteStudents {
-            let targetClasses = try await container.classesRepository.listClassesForAcademicYear(academicYearId: targetYearId)
+            var targetClasses = try await container.classesRepository.listClassesForAcademicYear(academicYearId: targetYearId)
             
             for sourceClass in sourceClasses {
-                guard let targetClassName = promotedStudentTargetClassName(from: sourceClass.name) else { continue }
-                guard let targetClass = targetClasses.first(where: { $0.name == targetClassName }) else { continue }
-                
                 let students = try await container.classesRepository.listStudentsInClass(classId: sourceClass.id)
+                guard !students.isEmpty else { continue }
+                guard let targetPlan = promotedStudentTargetClass(from: sourceClass) else { continue }
+                let targetClass = try await ensurePromotionTargetClass(
+                    targetPlan,
+                    sourceClass: sourceClass,
+                    targetYearId: targetYearId,
+                    targetClasses: &targetClasses
+                )
                 for student in students {
                     try await container.classesRepository.promoteStudentToClass(
                         sourceClassId: sourceClass.id,
@@ -1568,25 +1573,63 @@ final class KmpBridge: ObservableObject {
         return lines.joined(separator: "\n")
     }
 
-    private func promotedStudentTargetClassName(from sourceName: String) -> String? {
-        // Cada entrada: posibles prefijos de origen → prefijo destino (nil = nivel terminal, se gradúan)
-        let levelsMap: [(origins: [String], target: String?)] = [
-            (["1º ESO", "1 ESO"],                  "2º ESO"),
-            (["2º ESO", "2 ESO"],                  "3º ESO"),
-            (["3º ESO", "3 ESO"],                  "4º ESO"),
-            (["4º ESO", "4 ESO"],                  "1º BAC"),
-            (["1º BAC", "1 BAC", "1º BACH", "1 BACH"], nil), // Graduados
+    private struct PromotionTargetClassPlan {
+        let name: String
+        let course: Int32
+    }
+
+    private func ensurePromotionTargetClass(
+        _ plan: PromotionTargetClassPlan,
+        sourceClass: SchoolClass,
+        targetYearId: Int64,
+        targetClasses: inout [SchoolClass]
+    ) async throws -> SchoolClass {
+        if let existing = targetClasses.first(where: { $0.name == plan.name }) {
+            return existing
+        }
+        let targetClassId = try await container.classesRepository.saveClass(
+            id: nil,
+            name: plan.name,
+            course: plan.course,
+            description: sourceClass.description_,
+            centerId: sourceClass.centerId,
+            academicYearId: KotlinLong(value: targetYearId),
+            stageCycleId: sourceClass.stageCycleId,
+            subjectId: sourceClass.subjectId,
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+            deviceId: localDeviceId,
+            syncVersion: 1
+        ).int64Value
+        let refreshed = try await container.classesRepository.listClassesForAcademicYear(academicYearId: targetYearId)
+        targetClasses = refreshed
+        guard let created = refreshed.first(where: { $0.id == targetClassId }) else {
+            throw NSError(
+                domain: "KmpBridge",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "No se pudo crear el grupo destino de promoción."]
+            )
+        }
+        return created
+    }
+
+    private func promotedStudentTargetClass(from sourceClass: SchoolClass) -> PromotionTargetClassPlan? {
+        let sourceName = sourceClass.name
+        let levelsMap: [(origins: [String], target: String?, course: Int32?)] = [
+            (["1º ESO", "1 ESO"], "2º ESO", 2),
+            (["2º ESO", "2 ESO"], "3º ESO", 3),
+            (["3º ESO", "3 ESO"], "4º ESO", 4),
+            (["4º ESO", "4 ESO"], "1º BAC", 1),
+            (["1º BAC", "1 BAC", "1º BACH", "1 BACH"], nil, nil),
+            (["2º BAC", "2 BAC", "2º BACH", "2 BACH"], nil, nil),
         ]
         for level in levelsMap {
-            for origin in level.origins {
-                if sourceName.hasPrefix(origin) {
-                    guard let target = level.target else { return nil } // Graduado → no se promueve
-                    let suffix = String(sourceName.dropFirst(origin.count))
-                    return target + suffix
-                }
+            for origin in level.origins where sourceName.hasPrefix(origin) {
+                guard let target = level.target, let course = level.course else { return nil }
+                let suffix = String(sourceName.dropFirst(origin.count))
+                return PromotionTargetClassPlan(name: target + suffix, course: course)
             }
         }
-        return nil // Nivel no reconocido → no se promueve
+        return nil
     }
 
 

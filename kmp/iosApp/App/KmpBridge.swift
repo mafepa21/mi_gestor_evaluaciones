@@ -4403,7 +4403,16 @@ final class KmpBridge: ObservableObject {
 
         try await repairLearningSituationAssessmentInstrumentImportIfNeeded(classId: classId)
 
-        for (index, instrument) in selectedInstruments.enumerated() {
+        let existingInstrumentTitles = try await existingLearningSituationAssessmentTitles(
+            situationId: situation.id,
+            classId: classId
+        )
+        let instrumentsToCreate = selectedInstruments.filter { instrument in
+            !existingInstrumentTitles.contains(normalizedAssessmentInstrumentTitle(instrument.title))
+        }
+        guard !instrumentsToCreate.isEmpty else { return }
+
+        for (index, instrument) in instrumentsToCreate.enumerated() {
             let rubricId = try await saveAssessmentInstrumentRubricIfNeeded(
                 instrument: instrument,
                 classId: classId,
@@ -4473,6 +4482,26 @@ final class KmpBridge: ObservableObject {
         }
         refreshCurrentNotebook()
         scheduleNotebookSnapshotSync(forClassId: classId)
+    }
+
+    private func existingLearningSituationAssessmentTitles(
+        situationId: Int64,
+        classId: Int64
+    ) async throws -> Set<String> {
+        let resources = try await container.learningSituationsRepository.listLinkedResources(learningSituationId: situationId)
+        return Set(resources.compactMap { resource in
+            guard resource.classId?.int64Value == classId else { return nil }
+            guard resource.kind == .evaluation || resource.kind == .notebookColumn else { return nil }
+            return normalizedAssessmentInstrumentTitle(resource.label)
+        })
+    }
+
+    private func normalizedAssessmentInstrumentTitle(_ value: String) -> String {
+        value
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .lowercased()
     }
 
     func learningSituationNotebookTabs(for classId: Int64) async throws -> [NotebookTab] {

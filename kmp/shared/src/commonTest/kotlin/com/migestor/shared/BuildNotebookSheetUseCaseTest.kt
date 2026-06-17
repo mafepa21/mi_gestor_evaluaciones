@@ -569,6 +569,99 @@ class BuildNotebookSheetUseCaseTest {
     }
 
     @Test
+    fun `participation ordinal chips count with achievement score mapping`() = runTest {
+        val classId = 1L
+        val student = Student(id = 1, firstName = "Ana", lastName = "Lopez")
+        val cells = listOf(
+            PersistedNotebookCell(
+                classId = classId,
+                studentId = 1,
+                columnId = "participation",
+                ordinalValue = "Bien",
+            )
+        )
+        val useCase = BuildNotebookSheetUseCase(
+            getNotebookUseCase = GetNotebookUseCase(
+                classesRepository = FakeClassesRepository2(student, classId),
+                evaluationsRepository = FakeEvaluationsRepository2(emptyList()),
+                gradesRepository = FakeGradesRepository2(emptyList()),
+                notebookCellsRepository = FakeNotebookCellsRepository2(cells)
+            )
+        )
+
+        val sheet = useCase.build(
+            classId = classId,
+            evaluations = emptyList(),
+            students = listOf(student),
+            tabs = listOf(NotebookTab(id = "eval", title = "Evaluación", order = 0)),
+            configuredColumns = listOf(
+                NotebookColumnDefinition(
+                    id = "participation",
+                    title = "Participación",
+                    type = NotebookColumnType.ORDINAL,
+                    instrumentKind = NotebookInstrumentKind.PARTICIPATION,
+                    scaleKind = NotebookScaleKind.ACHIEVEMENT,
+                    tabIds = listOf("eval"),
+                    weight = 5.0,
+                    countsTowardAverage = true,
+                ),
+            )
+        )
+
+        val explanation = sheet.rows.first().averageExplanation
+        assertEquals(7.5, sheet.rows.first().weightedAverage)
+        assertEquals(listOf("participation"), explanation?.includedColumns?.map { it.columnId })
+    }
+
+    @Test
+    fun `non participation ordinal columns remain non numeric for averages`() = runTest {
+        val classId = 1L
+        val student = Student(id = 1, firstName = "Ana", lastName = "Lopez")
+        val cells = listOf(
+            PersistedNotebookCell(
+                classId = classId,
+                studentId = 1,
+                columnId = "ordinal",
+                ordinalValue = "Bien",
+            )
+        )
+        val useCase = BuildNotebookSheetUseCase(
+            getNotebookUseCase = GetNotebookUseCase(
+                classesRepository = FakeClassesRepository2(student, classId),
+                evaluationsRepository = FakeEvaluationsRepository2(emptyList()),
+                gradesRepository = FakeGradesRepository2(emptyList()),
+                notebookCellsRepository = FakeNotebookCellsRepository2(cells)
+            )
+        )
+
+        val sheet = useCase.build(
+            classId = classId,
+            evaluations = emptyList(),
+            students = listOf(student),
+            tabs = listOf(NotebookTab(id = "eval", title = "Evaluación", order = 0)),
+            configuredColumns = listOf(
+                NotebookColumnDefinition(
+                    id = "ordinal",
+                    title = "Ordinal genérica",
+                    type = NotebookColumnType.ORDINAL,
+                    instrumentKind = NotebookInstrumentKind.SYSTEMATIC_OBSERVATION,
+                    scaleKind = NotebookScaleKind.ACHIEVEMENT,
+                    tabIds = listOf("eval"),
+                    weight = 5.0,
+                    countsTowardAverage = true,
+                ),
+            )
+        )
+
+        val explanation = sheet.rows.first().averageExplanation
+        assertEquals(null, sheet.rows.first().weightedAverage)
+        assertEquals(
+            NotebookAverageExclusionReason.NON_NUMERIC,
+            explanation?.excludedColumns?.single { it.columnId == "ordinal" }?.reason
+        )
+    }
+
+    @Test
     fun `hidden and rubric columns can count while archived columns are excluded`() = runTest {
         val classId = 1L
         val student = Student(id = 1, firstName = "Ana", lastName = "Lopez")

@@ -4619,13 +4619,15 @@ final class KmpBridge: ObservableObject {
             categoryId: nil,
             ordinalLevels: [],
             availableIcons: [],
-            countsTowardAverage: resolvedWeight > 0,
+            countsTowardAverage: instrument.countsTowardAverage &&
+                resolvedWeight > 0 &&
+                canMaterializeAverage(for: instrument.scoreStrategy),
             isPinned: false,
             isHidden: false,
             visibility: .visible,
             isLocked: false,
             isTemplate: false,
-            emptyCellPolicy: .excludeFromAverage,
+            emptyCellPolicy: notebookEmptyCellPolicy(for: instrument.emptyCellPolicy),
             trace: AuditTrace(
                 authorUserId: nil,
                 createdAt: nowInstant,
@@ -5042,11 +5044,24 @@ final class KmpBridge: ObservableObject {
 
     private func notebookColumnType(for instrument: AssessmentInstrumentDraft, rubricId: Int64?) -> NotebookColumnType {
         if rubricId != nil { return .rubric }
-        switch instrument.kind {
-        case .checklist, .submissionChecklist, .teacherObservation, .observationGrid:
-            return .text
+        switch instrument.scoreStrategy {
+        case .numeric0To10, .observationScale1To4:
+            return .numeric
+        case .checklistAllOrNothing:
+            return .check
         case .rubric:
             return .numeric
+        case .checklistProportional, .none:
+            return .text
+        }
+    }
+
+    private func canMaterializeAverage(for strategy: AssessmentInstrumentScoreStrategy) -> Bool {
+        switch strategy {
+        case .numeric0To10, .rubric, .checklistAllOrNothing, .observationScale1To4:
+            return true
+        case .checklistProportional, .none:
+            return false
         }
     }
 
@@ -5067,6 +5082,18 @@ final class KmpBridge: ObservableObject {
 
     private func notebookInputKind(for instrument: AssessmentInstrumentDraft, rubricId: Int64?) -> NotebookCellInputKind {
         if rubricId != nil { return .rubric }
+        switch instrument.scoreStrategy {
+        case .numeric0To10:
+            return .numeric010
+        case .observationScale1To4:
+            return .numeric14
+        case .checklistAllOrNothing:
+            return .check
+        case .rubric:
+            return .numeric010
+        case .checklistProportional, .none:
+            break
+        }
         switch instrument.kind {
         case .checklist, .submissionChecklist:
             return .structuredChecklist
@@ -5081,13 +5108,24 @@ final class KmpBridge: ObservableObject {
 
     private func notebookScaleKind(for instrument: AssessmentInstrumentDraft, rubricId: Int64?) -> NotebookScaleKind {
         if rubricId != nil { return .tenPoint }
-        switch instrument.kind {
-        case .observationGrid:
-            return .fourLevel
-        case .rubric:
+        switch instrument.scoreStrategy {
+        case .numeric0To10, .rubric:
             return .tenPoint
-        case .checklist, .submissionChecklist, .teacherObservation:
+        case .observationScale1To4:
+            return .fourLevel
+        case .checklistAllOrNothing:
+            return .yesNo
+        case .checklistProportional, .none:
             return .custom
+        }
+    }
+
+    private func notebookEmptyCellPolicy(for policy: AssessmentInstrumentEmptyCellPolicy) -> NotebookEmptyCellPolicy {
+        switch policy {
+        case .excludeFromAverage:
+            return .excludeFromAverage
+        case .countAsZero:
+            return .countAsZero
         }
     }
 
@@ -6500,7 +6538,11 @@ final class KmpBridge: ObservableObject {
             order: nextOrder,
             widthDp: 132,
             categoryId: finalCategory?.id ?? categoryId,
-            ordinalLevels: [],
+            ordinalLevels: defaultOrdinalLevels(
+                columnType: columnType,
+                instrumentKind: instrumentKind,
+                scaleKind: scaleKind
+            ),
             availableIcons: [],
             countsTowardAverage: countsTowardAverage,
             isPinned: isPinned,
@@ -6515,6 +6557,18 @@ final class KmpBridge: ObservableObject {
         refreshCurrentNotebook()
         scheduleNotebookSnapshotSync(forClassId: classId)
         return NotebookCreatedColumnResult(column: column, category: finalCategory)
+    }
+
+    private func defaultOrdinalLevels(
+        columnType: NotebookColumnType,
+        instrumentKind: NotebookInstrumentKind,
+        scaleKind: NotebookScaleKind
+    ) -> [String] {
+        guard columnType == .ordinal else { return [] }
+        if instrumentKind == .participation, scaleKind == .achievement {
+            return ["Excelente", "Bien", "En proceso", "No logrado"]
+        }
+        return []
     }
 
     func saveNotebookCellAnnotation(

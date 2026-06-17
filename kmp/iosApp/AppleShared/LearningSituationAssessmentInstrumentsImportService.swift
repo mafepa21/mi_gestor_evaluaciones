@@ -39,6 +39,9 @@ struct AssessmentInstrumentDraft: Identifiable, Codable {
     var criterionLabel: String?
     var weightPercent: Double?
     var isSelected: Bool
+    var countsTowardAverage: Bool
+    var scoreStrategy: AssessmentInstrumentScoreStrategy
+    var emptyCellPolicy: AssessmentInstrumentEmptyCellPolicy
     var rubric: RubricDraft?
     var checklistItems: [ChecklistItemDraft]
     var observationFields: [ObservationFieldDraft]
@@ -50,6 +53,9 @@ struct AssessmentInstrumentDraft: Identifiable, Codable {
         criterionLabel: String?,
         weightPercent: Double?,
         isSelected: Bool,
+        countsTowardAverage: Bool,
+        scoreStrategy: AssessmentInstrumentScoreStrategy,
+        emptyCellPolicy: AssessmentInstrumentEmptyCellPolicy = .excludeFromAverage,
         rubric: RubricDraft?,
         checklistItems: [ChecklistItemDraft] = [],
         observationFields: [ObservationFieldDraft] = [],
@@ -61,6 +67,9 @@ struct AssessmentInstrumentDraft: Identifiable, Codable {
         self.criterionLabel = criterionLabel
         self.weightPercent = weightPercent
         self.isSelected = isSelected
+        self.countsTowardAverage = countsTowardAverage
+        self.scoreStrategy = scoreStrategy
+        self.emptyCellPolicy = emptyCellPolicy
         self.rubric = rubric
         self.checklistItems = checklistItems
         self.observationFields = observationFields
@@ -68,7 +77,7 @@ struct AssessmentInstrumentDraft: Identifiable, Codable {
     }
 }
 
-enum AssessmentInstrumentKind: String, Codable {
+enum AssessmentInstrumentKind: String, Codable, CaseIterable {
     case rubric
     case observationGrid
     case checklist
@@ -82,6 +91,38 @@ enum AssessmentInstrumentKind: String, Codable {
         case .checklist: return "Checklist"
         case .teacherObservation: return "Observacion docente"
         case .submissionChecklist: return "Checklist final"
+        }
+    }
+}
+
+enum AssessmentInstrumentScoreStrategy: String, Codable, CaseIterable {
+    case none
+    case numeric0To10
+    case rubric
+    case checklistAllOrNothing
+    case checklistProportional
+    case observationScale1To4
+
+    var label: String {
+        switch self {
+        case .none: return "Auxiliar"
+        case .numeric0To10: return "Nota 0-10"
+        case .rubric: return "Rúbrica"
+        case .checklistAllOrNothing: return "Checklist todo/nada"
+        case .checklistProportional: return "Checklist proporcional"
+        case .observationScale1To4: return "Observación 1-4"
+        }
+    }
+}
+
+enum AssessmentInstrumentEmptyCellPolicy: String, Codable, CaseIterable {
+    case excludeFromAverage
+    case countAsZero
+
+    var label: String {
+        switch self {
+        case .excludeFromAverage: return "Vacías excluidas"
+        case .countAsZero: return "Vacías como 0"
         }
     }
 }
@@ -206,6 +247,12 @@ struct LearningSituationAssessmentInstrumentsImportService {
         let checklistItems = makeChecklistItems(kind: kind, tables: nonEmptyTables, paragraphs: paragraphs)
         let observationFields = makeObservationFields(kind: kind, tables: nonEmptyTables)
         let selectedByDefault = (heading.weightPercent ?? 0) > 0
+        let scoreStrategy = defaultScoreStrategy(
+            kind: kind,
+            weightPercent: heading.weightPercent,
+            observationFields: observationFields
+        )
+        let countsTowardAverage = scoreStrategy != .none && (heading.weightPercent ?? 0) > 0
 
         if rubric == nil, checklistItems.isEmpty, observationFields.isEmpty {
             return nil
@@ -216,11 +263,39 @@ struct LearningSituationAssessmentInstrumentsImportService {
             criterionLabel: heading.criterionLabel,
             weightPercent: heading.weightPercent,
             isSelected: selectedByDefault,
+            countsTowardAverage: countsTowardAverage,
+            scoreStrategy: scoreStrategy,
             rubric: rubric,
             checklistItems: checklistItems,
             observationFields: observationFields,
-            note: selectedByDefault ? nil : "Auxiliar sin ponderacion detectada"
+            note: countsTowardAverage ? nil : "Auxiliar o sin puntuación computable detectada"
         )
+    }
+
+    private func defaultScoreStrategy(
+        kind: AssessmentInstrumentKind,
+        weightPercent: Double?,
+        observationFields: [ObservationFieldDraft]
+    ) -> AssessmentInstrumentScoreStrategy {
+        guard (weightPercent ?? 0) > 0 else { return .none }
+        switch kind {
+        case .rubric:
+            return .rubric
+        case .observationGrid:
+            return hasObservationScale1To4(observationFields) ? .observationScale1To4 : .none
+        case .checklist, .submissionChecklist:
+            return .none
+        case .teacherObservation:
+            return .none
+        }
+    }
+
+    private func hasObservationScale1To4(_ fields: [ObservationFieldDraft]) -> Bool {
+        fields.contains { field in
+            guard let scale = field.scaleLabel else { return false }
+            let value = normalized(scale)
+            return value.contains("1") && value.contains("4")
+        }
     }
 
     private func makeRubric(kind: AssessmentInstrumentKind, tables: [[[String]]]) -> RubricDraft? {

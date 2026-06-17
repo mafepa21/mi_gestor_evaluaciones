@@ -1023,6 +1023,7 @@ data class NotebookColumnDefinition(
             NotebookColumnType.RUBRIC,
             NotebookColumnType.CALCULATED,
             NotebookColumnType.CHECK -> true
+            NotebookColumnType.ORDINAL -> hasAverageOrdinalScore()
             else -> false
         }
     }
@@ -1041,9 +1042,21 @@ data class NotebookColumnDefinition(
             NotebookColumnType.RUBRIC,
             NotebookColumnType.CALCULATED,
             NotebookColumnType.CHECK -> NotebookAverageExclusionReason.COLUMN_DOES_NOT_COUNT
+            NotebookColumnType.ORDINAL -> {
+                if (hasAverageOrdinalScore()) {
+                    NotebookAverageExclusionReason.COLUMN_DOES_NOT_COUNT
+                } else {
+                    NotebookAverageExclusionReason.NON_NUMERIC
+                }
+            }
             else -> NotebookAverageExclusionReason.NON_NUMERIC
         }
     }
+
+    fun hasAverageOrdinalScore(): Boolean =
+        type == NotebookColumnType.ORDINAL &&
+            instrumentKind == NotebookInstrumentKind.PARTICIPATION &&
+            scaleKind == NotebookScaleKind.ACHIEVEMENT
 }
 
 data class NotebookCellAnnotation(
@@ -1404,9 +1417,37 @@ fun NotebookRow.gradeValueFor(
         }
     if (persistedGrade != null) return persistedGrade
 
-    // 5. Check persisted cells check/bool value
-    return persistedCells.firstOrNull { it.columnId == column.id }?.boolValue?.let { if (it) 10.0 else 0.0 }
+    // 5. Check persisted cells check/bool/ordinal value
+    val persistedCell = persistedCells.firstOrNull { it.columnId == column.id }
+    return when (column.type) {
+        NotebookColumnType.CHECK -> persistedCell?.boolValue?.let { if (it) 10.0 else 0.0 }
+        NotebookColumnType.ORDINAL -> persistedCell?.ordinalValue?.let { column.ordinalScoreForAverage(it) }
+        else -> persistedCell?.boolValue?.let { if (it) 10.0 else 0.0 }
+    }
 }
+
+fun NotebookColumnDefinition.ordinalScoreForAverage(value: String): Double? {
+    if (!hasAverageOrdinalScore()) return null
+    return when (value.normalizedAverageOrdinal()) {
+        "excelente" -> 10.0
+        "bien" -> 7.5
+        "en proceso",
+        "en progreso",
+        "parcial" -> 5.0
+        "no logrado" -> 2.5
+        else -> null
+    }
+}
+
+private fun String.normalizedAverageOrdinal(): String =
+    lowercase()
+        .replace("á", "a")
+        .replace("é", "e")
+        .replace("í", "i")
+        .replace("ó", "o")
+        .replace("ú", "u")
+        .replace("ü", "u")
+        .trim()
 
 fun NotebookRow.computeAverageExplanation(
     columns: List<NotebookColumnDefinition>,

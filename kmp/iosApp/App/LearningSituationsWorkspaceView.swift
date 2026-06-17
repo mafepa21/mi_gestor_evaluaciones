@@ -1241,18 +1241,117 @@ private struct LearningSituationAssessmentImportPreviewSheet: View {
         editableDraft.instruments.filter(\.isSelected).count
     }
 
+    private var selectedInstruments: [AssessmentInstrumentDraft] {
+        editableDraft.instruments.filter(\.isSelected)
+    }
+
+    private var averageCount: Int {
+        selectedInstruments.filter(\.countsTowardAverage).count
+    }
+
+    private var auxiliaryCount: Int {
+        selectedInstruments.count - averageCount
+    }
+
+    private var weightedTotal: Double {
+        selectedInstruments
+            .filter(\.countsTowardAverage)
+            .compactMap(\.weightPercent)
+            .reduce(0, +)
+    }
+
+    private var validationErrors: [String] {
+        var errors: [String] = []
+        if selectedCount == 0 {
+            errors.append("Selecciona al menos un instrumento.")
+        }
+        for instrument in selectedInstruments {
+            let title = instrument.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            if title.isEmpty {
+                errors.append("Hay un instrumento seleccionado sin título.")
+            }
+            if let weight = instrument.weightPercent, weight < 0 {
+                errors.append("\(title.isEmpty ? "Instrumento" : title): el peso no puede ser negativo.")
+            }
+            if instrument.countsTowardAverage && (instrument.weightPercent ?? 0) <= 0 {
+                errors.append("\(title): marca peso mayor que 0 o desactiva la media.")
+            }
+            if instrument.kind == .rubric && (instrument.rubric?.criteria.isEmpty ?? true) {
+                errors.append("\(title): la rúbrica no tiene criterios.")
+            }
+            if instrument.countsTowardAverage && instrument.scoreStrategy == .none {
+                errors.append("\(title): elige una estrategia de puntuación.")
+            }
+            if instrument.countsTowardAverage && instrument.scoreStrategy == .checklistProportional {
+                errors.append("\(title): la checklist proporcional aún no genera nota automática.")
+            }
+            if instrument.countsTowardAverage &&
+                instrument.scoreStrategy == .observationScale1To4 &&
+                !hasObservationScale1To4(instrument) {
+                errors.append("\(title): la observación necesita escala 1-4.")
+            }
+        }
+        return errors
+    }
+
+    private var canConfirm: Bool {
+        validationErrors.isEmpty
+    }
+
     var body: some View {
         NavigationStack {
             Form {
+                Section("Resumen") {
+                    HStack {
+                        previewMetric("Detectados", value: "\(editableDraft.instruments.count)")
+                        previewMetric("Seleccionados", value: "\(selectedCount)")
+                        previewMetric("Computan", value: "\(averageCount)")
+                        previewMetric("Auxiliares", value: "\(auxiliaryCount)")
+                        previewMetric("Peso", value: "\(Int(weightedTotal.rounded()))%")
+                    }
+                    .font(.caption.weight(.semibold))
+                }
                 Section("Instrumentos detectados") {
                     ForEach(Array(editableDraft.instruments.indices), id: \.self) { index in
-                        Toggle(isOn: $editableDraft.instruments[index].isSelected) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(editableDraft.instruments[index].title)
-                                Text(subtitle(for: editableDraft.instruments[index]))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 12) {
+                            Toggle(isOn: $editableDraft.instruments[index].isSelected) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(editableDraft.instruments[index].title.isEmpty ? "Sin título" : editableDraft.instruments[index].title)
+                                    Text(subtitle(for: editableDraft.instruments[index]))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
                             }
+                            if editableDraft.instruments[index].isSelected {
+                                TextField("Título", text: $editableDraft.instruments[index].title)
+                                Picker("Tipo", selection: kindBinding(for: index)) {
+                                    ForEach(AssessmentInstrumentKind.allCases, id: \.self) { kind in
+                                        Text(kind.label).tag(kind)
+                                    }
+                                }
+                                HStack {
+                                    TextField("Peso %", text: weightBinding(for: index))
+                                    Toggle("Cuenta para la media", isOn: $editableDraft.instruments[index].countsTowardAverage)
+                                }
+                                Picker("Estrategia", selection: $editableDraft.instruments[index].scoreStrategy) {
+                                    ForEach(AssessmentInstrumentScoreStrategy.allCases, id: \.self) { strategy in
+                                        Text(strategy.label).tag(strategy)
+                                    }
+                                }
+                                Picker("Vacías", selection: $editableDraft.instruments[index].emptyCellPolicy) {
+                                    ForEach(AssessmentInstrumentEmptyCellPolicy.allCases, id: \.self) { policy in
+                                        Text(policy.label).tag(policy)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                if !validationErrors.isEmpty {
+                    Section("Validación") {
+                        ForEach(validationErrors, id: \.self) { error in
+                            Label(error, systemImage: "xmark.octagon.fill")
+                                .foregroundStyle(.red)
                         }
                     }
                 }
@@ -1272,17 +1371,81 @@ private struct LearningSituationAssessmentImportPreviewSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Usar seleccionados") { confirm(editableDraft) }
-                        .disabled(selectedCount == 0)
+                        .disabled(!canConfirm)
                 }
             }
         }
         .frame(minWidth: 620, minHeight: 520)
     }
 
+    private func previewMetric(_ title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .foregroundStyle(.primary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func kindBinding(for index: Int) -> Binding<AssessmentInstrumentKind> {
+        Binding {
+            editableDraft.instruments[index].kind
+        } set: { newKind in
+            editableDraft.instruments[index].kind = newKind
+            let strategy = defaultScoreStrategy(for: editableDraft.instruments[index])
+            editableDraft.instruments[index].scoreStrategy = strategy
+            editableDraft.instruments[index].countsTowardAverage = strategy != .none &&
+                (editableDraft.instruments[index].weightPercent ?? 0) > 0
+        }
+    }
+
+    private func weightBinding(for index: Int) -> Binding<String> {
+        Binding {
+            guard let weight = editableDraft.instruments[index].weightPercent else { return "" }
+            if weight.rounded() == weight {
+                return String(Int(weight))
+            }
+            return String(weight)
+        } set: { newValue in
+            let normalized = newValue.replacingOccurrences(of: ",", with: ".")
+            editableDraft.instruments[index].weightPercent = Double(normalized)
+            if (editableDraft.instruments[index].weightPercent ?? 0) <= 0 {
+                editableDraft.instruments[index].countsTowardAverage = false
+            }
+        }
+    }
+
+    private func defaultScoreStrategy(for instrument: AssessmentInstrumentDraft) -> AssessmentInstrumentScoreStrategy {
+        guard (instrument.weightPercent ?? 0) > 0 else { return .none }
+        switch instrument.kind {
+        case .rubric:
+            return .rubric
+        case .observationGrid:
+            return hasObservationScale1To4(instrument) ? .observationScale1To4 : .none
+        case .checklist, .submissionChecklist, .teacherObservation:
+            return .none
+        }
+    }
+
+    private func hasObservationScale1To4(_ instrument: AssessmentInstrumentDraft) -> Bool {
+        instrument.observationFields.contains { field in
+            guard let scale = field.scaleLabel else { return false }
+            return scale.contains("1") && scale.contains("4")
+        }
+    }
+
     private func subtitle(for instrument: AssessmentInstrumentDraft) -> String {
         var parts = [instrument.kind.label]
         if let criterion = instrument.criterionLabel, !criterion.isEmpty { parts.append(criterion) }
+        if instrument.countsTowardAverage {
+            parts.append("Cuenta")
+        } else {
+            parts.append("No cuenta")
+        }
         parts.append(instrument.weightPercent.map { "\(Int($0.rounded()))%" } ?? "Auxiliar")
+        parts.append(instrument.scoreStrategy.label)
+        parts.append(instrument.emptyCellPolicy.label)
         let detailCount = instrument.rubric?.criteria.count ?? instrument.checklistItems.count + instrument.observationFields.count
         if detailCount > 0 { parts.append("\(detailCount) items") }
         return parts.joined(separator: " · ")

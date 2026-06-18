@@ -31,7 +31,6 @@ class BuildNotebookSheetUseCase(
     private val getNotebookUseCase: GetNotebookUseCase,
     private val formulaEvaluator: FormulaEvaluator = FormulaEvaluator(),
     private val buildNotebookInsightsUseCase: BuildNotebookInsightsUseCase = BuildNotebookInsightsUseCase(),
-    private val averageCache: AverageCache = AverageCache(),
 ) {
     suspend fun build(
         classId: Long,
@@ -58,7 +57,12 @@ class BuildNotebookSheetUseCase(
                 mergeColumns(evaluations, tabs, configuredColumns)
             }
             val rows = NotebookPerformanceDebug.measure("recalculateAverages rows=${base.rows.size}") {
-                applyCalculatedColumns(base.rows, columns, evaluations)
+                applyCalculatedColumns(
+                    rows = base.rows,
+                    columns = columns,
+                    evaluations = evaluations,
+                    averageCache = AverageCache(),
+                )
             }
             val resolvedSheet = NotebookSheet(
                 classId = classId,
@@ -184,6 +188,7 @@ class BuildNotebookSheetUseCase(
         rows: List<NotebookRow>,
         columns: List<NotebookColumnDefinition>,
         evaluations: List<Evaluation>,
+        averageCache: AverageCache,
     ): List<NotebookRow> {
         val calculated = columns.filter { it.type == NotebookColumnType.CALCULATED && !it.formula.isNullOrBlank() }
         return rows.map { row ->

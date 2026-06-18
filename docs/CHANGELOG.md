@@ -45,6 +45,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- **Crash al recalcular medias del Cuaderno en macOS**: `BuildNotebookSheetUseCase` crea una caché de medias por cada build para no compartir un `LinkedHashMap` mutable entre cargas concurrentes, evitando el abort de Kotlin/Native en `AverageCache.getOrPut`.
 - El Cuaderno normaliza `rubric_id = 0` como ausencia de rúbrica y deja de forzar instrumentos `CHECK`, `TEXT` u `ORDINAL` a mostrarse como columnas de rúbrica.
 - El builder del Cuaderno deriva `instrumentKind`, `inputKind` y `scaleKind` desde el tipo real de columna cuando los metadatos persistidos siguen en `CUSTOM/TEXT`, evitando errores de carga y subtítulos incorrectos tras importaciones antiguas.
 - El Cuaderno deja de reutilizar la caché mutable de `NotebookSheet`, evitando el fallo interno de hash al recargar snapshots tras cambios de columnas/evaluaciones.
@@ -72,6 +73,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `./gradlew :shared:compileKotlinDesktop` y `./gradlew :shared:desktopTest --tests "com.migestor.shared.BuildNotebookSheetUseCaseTest.parallel sheet builds do not share mutable average cache"` completados correctamente tras aislar la caché de medias por build. `./gradlew :shared:desktopTest --tests com.migestor.shared.BuildNotebookSheetUseCaseTest` compila pero falla en 3 pruebas existentes de pesos/visibilidad por cambios previos de normalización de media.
 - `sqlite3` confirma `0` evaluaciones con `rubric_id = 0`; en `1º BAC A`, solo `Plan Design Rubric` y `Peer-Coaching Rubric` mantienen rúbrica, y el resto de instrumentos importados quedan como `ORDINAL`, `CHECK` o `TEXT`.
 - `./gradlew :shared:compileDebugKotlinAndroid` completado correctamente tras desactivar la caché de `NotebookSheet`. La reconstrucción del framework Apple con `scripts/build_apple_framework.sh` queda bloqueada porque `xcode-select` apunta a CommandLineTools y `xcrun xcodebuild -version` falla.
 - `swiftc -parse` completado correctamente para `LearningSituationsWorkspaceView.swift`, `KmpBridge.swift` y `LearningSituationAssessmentInstrumentsImportService.swift`; `git diff --check` y `plutil -lint kmp/iosApp/MiGestorKMPiOS.xcodeproj/project.pbxproj` completados correctamente. `xcodebuild -list -project kmp/iosApp/MiGestorKMPiOS.xcodeproj` sigue bloqueado porque `xcode-select` apunta a `/Library/Developer/CommandLineTools`.

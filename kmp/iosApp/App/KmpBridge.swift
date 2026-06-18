@@ -2786,6 +2786,24 @@ final class KmpBridge: ObservableObject {
         )
     }
 
+    func deleteClass(id: Int64) async throws {
+        try await container.classesRepository.deleteClass(classId: id)
+        try await refreshClasses()
+        if selectedStudentsClassId == id {
+            selectedStudentsClassId = classes.first?.id
+            try await refreshStudentsDirectory()
+        }
+        enqueueLocalChange(
+            entity: "class",
+            id: "\(id)",
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+            payload: [
+                "id": id
+            ],
+            op: "delete"
+        )
+    }
+
     func saveSubject(id: Int64? = nil, code: String, name: String, stageCycleId: Int64? = nil) async throws -> Int64 {
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
         let subjectId = try await container.saveSubject.invoke(

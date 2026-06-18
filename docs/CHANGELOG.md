@@ -16,6 +16,7 @@ El formato sigue una variante practica de Keep a Changelog:
 ### Added
 
 - Cursos incorpora una primera gestion estructural de curso escolar activo: selector en `Cursos`, historial de cursos archivados, asistente de nuevo curso con copia de grupos y promocion de alumnado por matriculas nuevas.
+- Cursos permite editar o eliminar grupos con swipe/context menu y añade accion destructiva en el menu de cursos historicos para eliminar cursos escolares archivados con confirmacion de impacto.
 - El historial de Cursos inicia la exportacion segura con un detalle de curso archivado y `ShareLink` de resumen, sin habilitar aun borrado destructivo.
 - El historial de Cursos permite eliminar cursos archivados con confirmacion de impacto; la operacion borra grupos/matriculas/datos vinculados al curso y conserva el alumnado global.
 - La pantalla Cursos bloquea acciones de escritura de grupo cuando el curso activo no esta en estado editable, preparando el modo solo lectura del historico.
@@ -108,6 +109,7 @@ El formato sigue una variante practica de Keep a Changelog:
 ### Verification
 
 - `scripts/verify_apple_builds.sh` completado correctamente con `DEVELOPER_DIR=/Users/mariofernandez/Downloads/Xcode-beta.app/Contents/Developer` tras corregir la creación de grupos destino durante la promoción.
+- `git diff --check -- kmp/iosApp/App/CoursesWorkspaceView.swift kmp/iosApp/App/KmpBridge.swift docs/CHANGELOG.md` completado correctamente tras añadir swipe de grupos y borrado de cursos historicos. `xcodebuild -list -project kmp/iosApp/MiGestorKMPiOS.xcodeproj` queda bloqueado porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y no hay `Xcode.app` visible en `/Applications`.
 - `./gradlew :data:desktopTest`, `./gradlew :shared:test`, `git diff --check` y simulación de `32.sqm` sobre copia de `desktop_mi_gestor_kmp.db` completados correctamente tras corregir rosters por `student_enrollments`, reparación de curso activo y estado `TRASHED`.
 - `git diff --check` completado correctamente tras corregir el estado sin curso activo y la hoja de asignaturas en `CoursesWorkspaceView`. `scripts/verify_apple_builds.sh` regenera el proyecto con XcodeGen, pero macOS/iOS quedan bloqueados porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y `xcodebuild` requiere Xcode completo.
 - `git diff --check` completado correctamente tras exponer `Cursos` en la navegacion Apple. `scripts/verify_apple_builds.sh` regenera el proyecto con XcodeGen, pero macOS/iOS quedan bloqueados porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y `xcodebuild` requiere Xcode completo.

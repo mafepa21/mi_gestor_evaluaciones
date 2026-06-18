@@ -13,6 +13,8 @@ struct CoursesWorkspaceView: View {
     @State private var showingSubjectCatalog = false
     @State private var showingAcademicYearWizard = false
     @State private var archivedYearDetail: KmpBridge.AcademicYearSnapshot?
+    @State private var pendingDeleteClass: SchoolClass?
+    @State private var pendingDeleteAcademicYear: KmpBridge.AcademicYearSnapshot?
 
     private var isActiveAcademicYearWritable: Bool {
         bridge.activeAcademicYear?.isActive == true && bridge.activeAcademicYear?.status == "ACTIVE"
@@ -86,6 +88,39 @@ struct CoursesWorkspaceView: View {
                                 }
                             }
                             .buttonStyle(.plain)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button(role: .destructive) {
+                                    pendingDeleteClass = schoolClass
+                                } label: {
+                                    Label("Eliminar", systemImage: "trash")
+                                }
+                                .disabled(!isActiveAcademicYearWritable)
+
+                                Button {
+                                    editingClass = schoolClass
+                                    showingClassEditor = true
+                                } label: {
+                                    Label("Editar", systemImage: "pencil")
+                                }
+                                .tint(.blue)
+                                .disabled(!isActiveAcademicYearWritable)
+                            }
+                            .contextMenu {
+                                Button {
+                                    editingClass = schoolClass
+                                    showingClassEditor = true
+                                } label: {
+                                    Label("Editar grupo", systemImage: "pencil")
+                                }
+                                .disabled(!isActiveAcademicYearWritable)
+
+                                Button(role: .destructive) {
+                                    pendingDeleteClass = schoolClass
+                                } label: {
+                                    Label("Eliminar grupo", systemImage: "trash")
+                                }
+                                .disabled(!isActiveAcademicYearWritable)
+                            }
                         }
                     }
                 }
@@ -110,6 +145,12 @@ struct CoursesWorkspaceView: View {
                                     archivedYearDetail = year
                                 } label: {
                                     Label("Exportar curso", systemImage: "square.and.arrow.up")
+                                }
+
+                                Button(role: .destructive) {
+                                    pendingDeleteAcademicYear = year
+                                } label: {
+                                    Label("Eliminar curso", systemImage: "trash")
                                 }
                             } label: {
                                 VStack(alignment: .leading, spacing: 4) {
@@ -325,9 +366,10 @@ struct CoursesWorkspaceView: View {
             ArchivedAcademicYearDetailSheet(
                 year: year,
                 onDelete: {
-                    Task { await deleteArchivedAcademicYear(year) }
+                    pendingDeleteAcademicYear = year
                 }
             )
+            .environmentObject(bridge)
         }
         .sheet(isPresented: $showingAcademicYearWizard) {
             AcademicYearWizardSheet(
@@ -340,6 +382,40 @@ struct CoursesWorkspaceView: View {
                     Task { await archiveActiveAcademicYear() }
                 }
             )
+        }
+        .confirmationDialog(
+            "Eliminar grupo",
+            isPresented: Binding(
+                get: { pendingDeleteClass != nil },
+                set: { if !$0 { pendingDeleteClass = nil } }
+            ),
+            presenting: pendingDeleteClass
+        ) { schoolClass in
+            Button("Eliminar \(schoolClass.name)", role: .destructive) {
+                Task { await deleteClass(schoolClass) }
+            }
+            Button("Cancelar", role: .cancel) {
+                pendingDeleteClass = nil
+            }
+        } message: { schoolClass in
+            Text("Se eliminará el grupo \(schoolClass.name) y sus datos vinculados. Esta acción no elimina el alumnado global.")
+        }
+        .confirmationDialog(
+            "Eliminar curso escolar",
+            isPresented: Binding(
+                get: { pendingDeleteAcademicYear != nil },
+                set: { if !$0 { pendingDeleteAcademicYear = nil } }
+            ),
+            presenting: pendingDeleteAcademicYear
+        ) { year in
+            Button("Eliminar \(year.name)", role: .destructive) {
+                Task { await deleteArchivedAcademicYear(year) }
+            }
+            Button("Cancelar", role: .cancel) {
+                pendingDeleteAcademicYear = nil
+            }
+        } message: { year in
+            Text("Se eliminarán \(year.classCount) grupos y \(year.enrollmentCount) matrículas archivadas de \(year.name).")
         }
         .task {
             await bridge.ensureClassesLoaded()
@@ -363,10 +439,29 @@ struct CoursesWorkspaceView: View {
     }
 
     @MainActor
+    private func deleteClass(_ schoolClass: SchoolClass) async {
+        do {
+            try await bridge.deleteClass(id: schoolClass.id)
+            pendingDeleteClass = nil
+            if selectedClassId == schoolClass.id {
+                selectedClassId = bridge.classes.first?.id
+            }
+            if let selectedClassId {
+                await loadSummary(for: selectedClassId)
+            } else {
+                selectedSummary = nil
+            }
+        } catch {
+            bridge.status = "No se pudo eliminar el grupo: \(error.localizedDescription)"
+        }
+    }
+
+    @MainActor
     private func deleteArchivedAcademicYear(_ year: KmpBridge.AcademicYearSnapshot) async {
         do {
             try await bridge.deleteArchivedAcademicYear(id: year.id)
             archivedYearDetail = nil
+            pendingDeleteAcademicYear = nil
         } catch {
             bridge.status = "No se pudo eliminar el curso escolar: \(error.localizedDescription)"
         }

@@ -56,6 +56,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- **Crash al recalcular medias del Cuaderno en macOS**: `BuildNotebookSheetUseCase` crea una caché de medias por cada build para no compartir un `LinkedHashMap` mutable entre cargas concurrentes, evitando el abort de Kotlin/Native en `AverageCache.getOrPut`.
 - **Crash al archivar el curso activo desde macOS**: `KmpBridge.archiveAcademicYear` bloquea la llamada antes de cruzar a Kotlin cuando el curso es activo, evitando que una `IllegalStateException` no exportada como `NSError` termine la app. El asistente deshabilita esa accion si no hay otro curso disponible para activar primero.
 - **Promoción con grupo destino inexistente**: al crear un curso escolar con promoción, el flujo crea ahora el grupo destino en el nuevo año si no existe antes de matricular alumnado. Así `1º ESO - Tavernes` puede promocionar a `2º ESO - Tavernes`, `1º ESO B` a `2º ESO B` y `4º ESO` a `1º BAC` sin omitir alumnado.
 - **Cursos escolares y matrículas inconsistentes**: `listStudentsInClass` y los observadores del Cuaderno dejan de leer `class_students` como fallback global y pasan a usar solo `student_enrollments` activas cuyo `academic_year_id` coincide con el año del grupo. Esto alinea contadores, roster del grupo y snapshot del Cuaderno.
@@ -108,6 +109,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `./gradlew :shared:compileKotlinDesktop` y `./gradlew :shared:desktopTest --tests "com.migestor.shared.BuildNotebookSheetUseCaseTest.parallel sheet builds do not share mutable average cache"` completados correctamente tras aislar la caché de medias por build. `./gradlew :shared:desktopTest --tests com.migestor.shared.BuildNotebookSheetUseCaseTest` compila pero falla en 3 pruebas existentes de pesos/visibilidad por cambios previos de normalización de media.
 - `scripts/verify_apple_builds.sh` completado correctamente con `DEVELOPER_DIR=/Users/mariofernandez/Downloads/Xcode-beta.app/Contents/Developer` tras corregir la creación de grupos destino durante la promoción.
 - `git diff --check -- kmp/iosApp/App/CoursesWorkspaceView.swift kmp/iosApp/App/KmpBridge.swift docs/CHANGELOG.md` completado correctamente tras añadir swipe de grupos y borrado de cursos historicos. `xcodebuild -list -project kmp/iosApp/MiGestorKMPiOS.xcodeproj` queda bloqueado porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y no hay `Xcode.app` visible en `/Applications`.
 - `./gradlew :data:desktopTest`, `./gradlew :shared:test`, `git diff --check` y simulación de `32.sqm` sobre copia de `desktop_mi_gestor_kmp.db` completados correctamente tras corregir rosters por `student_enrollments`, reparación de curso activo y estado `TRASHED`.

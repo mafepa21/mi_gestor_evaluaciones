@@ -20,6 +20,9 @@ import com.migestor.shared.repository.GradesRepository
 import com.migestor.shared.repository.NotebookCellsRepository
 import com.migestor.shared.usecase.BuildNotebookSheetUseCase
 import com.migestor.shared.usecase.GetNotebookUseCase
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
@@ -84,6 +87,47 @@ class BuildNotebookSheetUseCaseTest {
         assertNotNull(sheet.rows.first().weightedAverage)
         assertEquals(7.1, sheet.rows.first().weightedAverage)
         assertTrue(sheet.rows.first().averageExplanation?.included?.any { it.columnId == "calc_final" && it.value == 7.2 } == true)
+    }
+
+    @Test
+    fun `parallel sheet builds do not share mutable average cache`() = runTest {
+        val classId = 1L
+        val students = (1L..40L).map { id ->
+            Student(id = id, firstName = "Student", lastName = id.toString())
+        }
+        val evaluations = listOf(
+            Evaluation(id = 11, classId = classId, code = "EX1", name = "Examen", type = "EX", weight = 0.5),
+            Evaluation(id = 12, classId = classId, code = "TA1", name = "Tarea", type = "HW", weight = 0.5),
+        )
+        val grades = students.flatMap { student ->
+            listOf(
+                Grade(id = student.id * 10 + 1, classId = classId, studentId = student.id, columnId = "eval_11", evaluationId = 11, value = 6.0),
+                Grade(id = student.id * 10 + 2, classId = classId, studentId = student.id, columnId = "eval_12", evaluationId = 12, value = 8.0),
+            )
+        }
+
+        val getNotebook = GetNotebookUseCase(
+            classesRepository = FakeClassesRepository2(students.first(), classId),
+            evaluationsRepository = FakeEvaluationsRepository2(evaluations),
+            gradesRepository = FakeGradesRepository2(grades),
+            notebookCellsRepository = FakeNotebookCellsRepository2()
+        )
+        val useCase = BuildNotebookSheetUseCase(getNotebook)
+        val tabs = listOf(NotebookTab(id = "eval", title = "Evaluacion", order = 0))
+        val columns = listOf(
+            NotebookColumnDefinition(id = "eval_11", title = "Examen", type = NotebookColumnType.NUMERIC, evaluationId = 11L, tabIds = listOf("eval")),
+            NotebookColumnDefinition(id = "eval_12", title = "Tarea", type = NotebookColumnType.NUMERIC, evaluationId = 12L, tabIds = listOf("eval")),
+        )
+
+        val sheets = (1..24).map {
+            async(Dispatchers.Default) {
+                useCase.build(classId, evaluations, students, tabs, columns)
+            }
+        }.awaitAll()
+
+        assertEquals(24, sheets.size)
+        assertTrue(sheets.all { sheet -> sheet.rows.size == students.size })
+        assertTrue(sheets.all { sheet -> sheet.rows.all { it.weightedAverage == 7.0 } })
     }
 
     @Test

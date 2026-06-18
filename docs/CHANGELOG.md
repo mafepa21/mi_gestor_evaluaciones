@@ -36,6 +36,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Virtualización real de filas del Cuaderno** (`perf/notebook-lazy-rows`): `NotebookGridContainer` mantiene `LazyVStack(spacing: 0)` con altura estable por fila e itera directamente sobre modelos identificables, evitando materializar arrays enumerados dentro de cada panel sincronizado.
 - **Carga del Cuaderno más rápida** (`perf/notebook-snapshot-cache`): `NotebookRepositorySqlDelight.loadNotebookSnapshot` paraleliza las 9 queries de apertura con `coroutineScope/async` y activa `NotebookSheetMemoryCache` (ya existente en `NotebookPerformanceCaches.kt`) para devolver el sheet sin reconstrucción cuando los datos no han cambiado. Las operaciones mutantes invalidan solo la entrada afectada. Tres `selectClass(force=true)` redundantes eliminados del ViewModel para anchura de pestaña, colapso de categoría y anotación de celda.
 - Cursos separa en la UI el curso escolar activo de la lista de grupos, evitando llamar "cursos" a clases como `1º ESO A`.
 
@@ -115,6 +116,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `xcodebuild -list -project kmp/iosApp/MiGestorKMPiOS.xcodeproj` no pudo ejecutarse tras `perf/notebook-lazy-rows`: el `xcode-select` activo apunta a `/Library/Developer/CommandLineTools` y no hay `Xcode.app` instalado en `/Applications`.
+- `git diff --check -- kmp/iosApp/App/NotebookGridContainer.swift docs/CHANGELOG.md` completado correctamente tras introducir filas lazy identificables.
 - `git diff --check -- kmp/iosApp/App/KmpBridge.swift` y `xcrun swiftc -parse kmp/iosApp/App/KmpBridge.swift` completados correctamente tras robustecer la promoción de `4º ESO A/B` a `1º BAC A/B`.
 - `./gradlew :shared:compileKotlinDesktop` y `./gradlew :shared:desktopTest --tests "com.migestor.shared.BuildNotebookSheetUseCaseTest.parallel sheet builds do not share mutable average cache"` completados correctamente tras aislar la caché de medias por build. `./gradlew :shared:desktopTest --tests com.migestor.shared.BuildNotebookSheetUseCaseTest` compila pero falla en 3 pruebas existentes de pesos/visibilidad por cambios previos de normalización de media.
 - `./gradlew :shared:compileKotlinMetadata :data:compileKotlinMetadata` y `git diff --check` completados correctamente tras corregir Media del Cuaderno. `xcodebuild -list -project kmp/iosApp/MiGestorKMPiOS.xcodeproj` queda bloqueado porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y requiere Xcode completo.

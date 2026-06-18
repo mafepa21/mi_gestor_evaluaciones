@@ -74,10 +74,12 @@ struct NotebookGridContainer<
         rows: [Row],
         @ViewBuilder rowContent: @escaping (Int, Row) -> Content
     ) -> some View {
+        let rowIndexesById = Dictionary(uniqueKeysWithValues: rows.enumerated().map { ($0.element.id, $0.offset) })
+
         LazyVStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(rows.enumerated()), id: \.element.id) { index, item in
+            ForEach(rows) { item in
                 let isHovered = hoveredRowId == item.id
-                rowContent(index, item)
+                rowContent(rowIndexesById[item.id] ?? 0, item)
                     .frame(height: rowHeight)
                     .background(isHovered ? hoverColor : Color.clear)
                     .contentShape(Rectangle())

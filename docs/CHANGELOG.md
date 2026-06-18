@@ -36,7 +36,9 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Carga del Cuaderno más rápida** (`perf/notebook-snapshot-cache`): `NotebookRepositorySqlDelight.loadNotebookSnapshot` paraleliza las 9 queries de apertura con `coroutineScope/async` y activa `NotebookSheetMemoryCache` (ya existente en `NotebookPerformanceCaches.kt`) para devolver el sheet sin reconstrucción cuando los datos no han cambiado. Las operaciones mutantes invalidan solo la entrada afectada. Tres `selectClass(force=true)` redundantes eliminados del ViewModel para anchura de pestaña, colapso de categoría y anotación de celda.
 - Cursos separa en la UI el curso escolar activo de la lista de grupos, evitando llamar "cursos" a clases como `1º ESO A`.
+
 - El asistente de creación de curso escolar mantiene la estructura de grupos idéntica (cursos estables) en el nuevo año escolar en lugar de incrementar el nivel en 1 en su nombre y curso.
 - La revisión de instrumentos importados desde DOCX pasa de un formulario saturado a una hoja premium con cabecera fija, métricas, lista compacta, editor de detalle, scroll real y footer de confirmación siempre visible.
 - macOS amplía la base Liquid Glass con roles de chrome, panel, inspector y banner flotante usando `glassEffect`/`GlassEffectContainer` en el shell, componentes premium y Dashboard, manteniendo las superficies densas del Cuaderno fuera del efecto.
@@ -56,9 +58,12 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- **Configuración persistente de Media del Cuaderno**: la hoja de Media filtra columnas evaluables visibles de la clase activa, edita pesos como porcentaje, guarda internamente fracciones 0.0-1.0 y obliga a sumar 100% antes de persistir para evitar medias inconsistentes tras reabrir.
+- **Media con columnas ocultas o pesos heredados**: el cálculo KMP excluye columnas ocultas/archivadas, normaliza pesos heredados guardados como 60/40 y evita reutilizar explicaciones cacheadas cuando cambia visibilidad, peso o política de celdas vacías.
 - **Crash al recalcular medias del Cuaderno en macOS**: `BuildNotebookSheetUseCase` crea una caché de medias por cada build para no compartir un `LinkedHashMap` mutable entre cargas concurrentes, evitando el abort de Kotlin/Native en `AverageCache.getOrPut`.
 - **Crash al archivar el curso activo desde macOS**: `KmpBridge.archiveAcademicYear` bloquea la llamada antes de cruzar a Kotlin cuando el curso es activo, evitando que una `IllegalStateException` no exportada como `NSError` termine la app. El asistente deshabilita esa accion si no hay otro curso disponible para activar primero.
 - **Promoción con grupo destino inexistente**: al crear un curso escolar con promoción, el flujo crea ahora el grupo destino en el nuevo año si no existe antes de matricular alumnado. Así `1º ESO - Tavernes` puede promocionar a `2º ESO - Tavernes`, `1º ESO B` a `2º ESO B` y `4º ESO` a `1º BAC` sin omitir alumnado.
+- **Promoción de 4º ESO a 1º BAC en Mislata**: la detección de destinos normaliza variantes de nombre (`4 ESO`, `4º ESO`, grupos con paréntesis/guion y `BAC/BACH`) y reutiliza grupos destino equivalentes para que `4º ESO A/B` promocione a `1º BAC A/B` sin crear duplicados ni dejar el alumnado en el nivel anterior.
 - **Cursos escolares y matrículas inconsistentes**: `listStudentsInClass` y los observadores del Cuaderno dejan de leer `class_students` como fallback global y pasan a usar solo `student_enrollments` activas cuyo `academic_year_id` coincide con el año del grupo. Esto alinea contadores, roster del grupo y snapshot del Cuaderno.
 - **Bases sin curso escolar activo**: la migración `32.sqm` repara datos existentes reactivando el último `AcademicYear` no enviado a papelera cuando no hay ninguno activo, rellena matrículas desde `class_students` y retira matrículas con año distinto al del grupo.
 - **Eliminación de cursos escolares**: `AcademicYear` incorpora estado `TRASHED`; el repositorio bloquea activar cursos en papelera, archivar/mover a papelera cursos activos y permite borrado permanente solo de cursos no activos.
@@ -96,6 +101,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Data
 
+- Los pesos de configuración de Media se normalizan defensivamente al leer y guardar columnas de SQLDelight, conservando compatibilidad con datos antiguos en formato porcentaje y persistiendo nuevos cambios como fracciones.
 - SQLDelight amplia `academic_years` con estado activo/archivado y añade `student_enrollments` para separar identidad de alumno y matricula por curso, con migracion `31.sqm`, backfill desde `class_students` y filtro de grupos por curso activo.
 - Reparación local aplicada a evaluaciones con `rubric_id = 0` y blindaje de lectura/escritura para tratarlas como `NULL`; los instrumentos importados de `1º BAC A` conservan rúbrica solo en `Plan Design Rubric` y `Peer-Coaching Rubric`.
 - Reparación local aplicada a los instrumentos ya importados: `Plan Design Rubric` y `Peer-Coaching Rubric` mantienen `rubric_id`, el resto queda sin rúbrica y con metadatos `CHECK`, `TEXT` u `ORDINAL` según su tipo.
@@ -109,9 +115,11 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `git diff --check -- kmp/iosApp/App/KmpBridge.swift` y `xcrun swiftc -parse kmp/iosApp/App/KmpBridge.swift` completados correctamente tras robustecer la promoción de `4º ESO A/B` a `1º BAC A/B`.
 - `./gradlew :shared:compileKotlinDesktop` y `./gradlew :shared:desktopTest --tests "com.migestor.shared.BuildNotebookSheetUseCaseTest.parallel sheet builds do not share mutable average cache"` completados correctamente tras aislar la caché de medias por build. `./gradlew :shared:desktopTest --tests com.migestor.shared.BuildNotebookSheetUseCaseTest` compila pero falla en 3 pruebas existentes de pesos/visibilidad por cambios previos de normalización de media.
-- `scripts/verify_apple_builds.sh` completado correctamente con `DEVELOPER_DIR=/Users/mariofernandez/Downloads/Xcode-beta.app/Contents/Developer` tras corregir la creación de grupos destino durante la promoción.
+- `./gradlew :shared:compileKotlinMetadata :data:compileKotlinMetadata` y `git diff --check` completados correctamente tras corregir Media del Cuaderno. `xcodebuild -list -project kmp/iosApp/MiGestorKMPiOS.xcodeproj` queda bloqueado porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y requiere Xcode completo.
 - `git diff --check -- kmp/iosApp/App/CoursesWorkspaceView.swift kmp/iosApp/App/KmpBridge.swift docs/CHANGELOG.md` completado correctamente tras añadir swipe de grupos y borrado de cursos historicos. `xcodebuild -list -project kmp/iosApp/MiGestorKMPiOS.xcodeproj` queda bloqueado porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y no hay `Xcode.app` visible en `/Applications`.
+- `scripts/verify_apple_builds.sh` completado correctamente con `DEVELOPER_DIR=/Users/mariofernandez/Downloads/Xcode-beta.app/Contents/Developer` tras corregir la creación de grupos destino durante la promoción.
 - `./gradlew :data:desktopTest`, `./gradlew :shared:test`, `git diff --check` y simulación de `32.sqm` sobre copia de `desktop_mi_gestor_kmp.db` completados correctamente tras corregir rosters por `student_enrollments`, reparación de curso activo y estado `TRASHED`.
 - `git diff --check` completado correctamente tras corregir el estado sin curso activo y la hoja de asignaturas en `CoursesWorkspaceView`. `scripts/verify_apple_builds.sh` regenera el proyecto con XcodeGen, pero macOS/iOS quedan bloqueados porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y `xcodebuild` requiere Xcode completo.
 - `git diff --check` completado correctamente tras exponer `Cursos` en la navegacion Apple. `scripts/verify_apple_builds.sh` regenera el proyecto con XcodeGen, pero macOS/iOS quedan bloqueados porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y `xcodebuild` requiere Xcode completo.

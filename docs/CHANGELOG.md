@@ -28,6 +28,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Guardado inline del Cuaderno sin recarga completa** (`perf/notebook-inline-save-delta`): `NotebookViewModel` actualiza localmente celdas y notas persistidas, marca guardados inline en curso y evita que el eco inmediato del observador de notas dispare `loadNotebookSnapshot` tras cada edición de celda.
 - macOS amplía la base Liquid Glass con roles de chrome, panel, inspector y banner flotante usando `glassEffect`/`GlassEffectContainer` en el shell, componentes premium y Dashboard, manteniendo las superficies densas del Cuaderno fuera del efecto.
 - El `EarlyWarning` del inspector del Cuaderno se presenta como señal preventiva revisable, con etiquetas de confianza cualitativas y nota de procedencia visible, evitando apariencia de diagnóstico o decisión automática.
 - `AppleAIOrchestrator` añade intents estructurados para insight de alumno, explicación docente de media y resumen de tutoría sin recalcular datos KMP ni modificar persistencia.
@@ -72,6 +73,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `./gradlew :shared:testDebugUnitTest --tests com.migestor.shared.viewmodel.NotebookViewModelTest` completado correctamente tras optimizar el guardado inline del Cuaderno. Quedan warnings existentes de opt-in experimental en tests de coroutines.
 - `sqlite3` confirma `0` evaluaciones con `rubric_id = 0`; en `1º BAC A`, solo `Plan Design Rubric` y `Peer-Coaching Rubric` mantienen rúbrica, y el resto de instrumentos importados quedan como `ORDINAL`, `CHECK` o `TEXT`.
 - `./gradlew :shared:compileDebugKotlinAndroid` completado correctamente tras desactivar la caché de `NotebookSheet`. La reconstrucción del framework Apple con `scripts/build_apple_framework.sh` queda bloqueada porque `xcode-select` apunta a CommandLineTools y `xcrun xcodebuild -version` falla.
 - `swiftc -parse` completado correctamente para `LearningSituationsWorkspaceView.swift`, `KmpBridge.swift` y `LearningSituationAssessmentInstrumentsImportService.swift`; `git diff --check` y `plutil -lint kmp/iosApp/MiGestorKMPiOS.xcodeproj/project.pbxproj` completados correctamente. `xcodebuild -list -project kmp/iosApp/MiGestorKMPiOS.xcodeproj` sigue bloqueado porque `xcode-select` apunta a `/Library/Developer/CommandLineTools`.

@@ -39,6 +39,8 @@ class NotebookViewModel(
     private val _isDirty = MutableStateFlow(false)
     val isDirty: StateFlow<Boolean> = _isDirty.asStateFlow()
     private val _pendingInlineSaves = MutableStateFlow(0)
+    private val _pendingInlineCellSaves = MutableStateFlow<Set<Pair<Long, String>>>(emptySet())
+    private var lastInlineSaveCompletedAtEpochMs: Long = 0L
 
     val saveState: StateFlow<NotebookViewModelSaveState> = combine(_isDirty, _isSyncing) { dirty, syncing ->
         when {
@@ -55,6 +57,23 @@ class NotebookViewModel(
     private fun beginInlineSave() {
         _pendingInlineSaves.update { it + 1 }
         setSyncing(true)
+    }
+
+    private fun markCellAsSaving(studentId: Long, columnId: String) {
+        _pendingInlineCellSaves.update { it + (studentId to columnId) }
+        beginInlineSave()
+    }
+
+    private fun markCellAsSaved(studentId: Long, columnId: String): Int {
+        _pendingInlineCellSaves.update { it - (studentId to columnId) }
+        lastInlineSaveCompletedAtEpochMs = Clock.System.now().toEpochMilliseconds()
+        return endInlineSave()
+    }
+
+    private fun shouldSkipObserverReloadForInlineSave(): Boolean {
+        if (_pendingInlineCellSaves.value.isNotEmpty()) return true
+        val elapsed = Clock.System.now().toEpochMilliseconds() - lastInlineSaveCompletedAtEpochMs
+        return elapsed in 0..1_000
     }
 
     private fun endInlineSave(): Int {
@@ -257,6 +276,7 @@ class NotebookViewModel(
             .onEach {
                 val currentState = _state.value
                 if (currentState is NotebookUiState.Data) {
+                    if (shouldSkipObserverReloadForInlineSave()) return@onEach
                     try {
                         val updatedSnapshot = notebookRepository.loadNotebookSnapshot(classId)
                         val evaluations = evaluationsRepository.listClassEvaluations(classId)
@@ -341,36 +361,34 @@ class NotebookViewModel(
 
     fun saveGrade(studentId: Long, evaluationId: Long, value: Double?) {
         val classId = activeClassId ?: return
+        val columnId = "eval_$evaluationId"
+        _numericDrafts.update { drafts ->
+            val key = studentId to columnId
+            if (value == null) drafts - key else drafts + (key to value.toString())
+        }
+        updateEvaluationGradeLocally(
+            studentId = studentId,
+            columnId = columnId,
+            evaluationId = evaluationId,
+            value = value,
+            rubricSelections = null,
+        )
+        markCellAsSaving(studentId, columnId)
         scope.launch {
             try {
                 notebookRepository.saveGrade(
                     classId = classId,
                     studentId = studentId,
-                    columnId = "eval_$evaluationId",
+                    columnId = columnId,
                     evaluationId = evaluationId,
                     value = value
                 )
-                _numericDrafts.update { drafts ->
-                    val key = studentId to "eval_$evaluationId"
-                    if (value == null) drafts - key else drafts + (key to value.toString())
-                }
-                // Actualizamos localmente para feedback instantáneo
-                val currentState = _state.value
-                if (currentState is NotebookUiState.Data) {
-                    val updatedRows = currentState.sheet.rows.map { row ->
-                        if (row.student.id == studentId) {
-                            val updatedCells = row.cells.map { cell ->
-                                if (cell.evaluationId == evaluationId) cell.copy(value = value) else cell
-                            }
-                            row.copy(cells = updatedCells)
-                        } else row
-                    }
-                    _state.value = currentState.copy(sheet = currentState.sheet.copy(rows = updatedRows))
-                        .withActiveTabAverages()
-                    markClean()
-                }
             } catch (e: Exception) {
                 // Manejar error
+            } finally {
+                if (markCellAsSaved(studentId, columnId) == 0) {
+                    markClean()
+                }
             }
         }
     }
@@ -402,6 +420,17 @@ class NotebookViewModel(
     fun upsertRubricGrade(studentId: Long, columnId: String, numericValue: Double, rubricSelections: String, evaluationId: Long) {
         val classId = activeClassId ?: return
         val safeColumnId = columnId.ifBlank { "eval_$evaluationId" }
+        _numericDrafts.update { drafts ->
+            drafts + ((studentId to safeColumnId) to numericValue.toString())
+        }
+        updateEvaluationGradeLocally(
+            studentId = studentId,
+            columnId = safeColumnId,
+            evaluationId = evaluationId,
+            value = numericValue,
+            rubricSelections = rubricSelections,
+        )
+        markCellAsSaving(studentId, safeColumnId)
         scope.launch {
             try {
                 notebookRepository.upsertGrade(
@@ -413,14 +442,12 @@ class NotebookViewModel(
                     rubricSelections = rubricSelections,
                     evidence = null
                 )
-                _numericDrafts.update { drafts ->
-                    drafts + ((studentId to safeColumnId) to numericValue.toString())
-                }
-                markClean()
-                // Recargamos para ver la nueva nota en el cuaderno
-                selectClass(classId, force = true)
             } catch (e: Exception) {
                 // Manejar error
+            } finally {
+                if (markCellAsSaved(studentId, safeColumnId) == 0) {
+                    markClean()
+                }
             }
         }
     }
@@ -676,12 +703,16 @@ class NotebookViewModel(
         activeClassId ?: return
         // Optimistic update for immediate UI feedback without forcing full notebook reloads.
         updateDraft(studentId, column.id, column.type, value)
+        markCellAsSaving(studentId, column.id)
         scope.launch {
             try {
                 internalSaveGrade(studentId, column, value)
-                markClean()
             } catch (e: Exception) {
                 println("Error saving column grade: ${e.message}")
+            } finally {
+                if (markCellAsSaved(studentId, column.id) == 0) {
+                    markClean()
+                }
             }
         }
     }
@@ -815,16 +846,16 @@ class NotebookViewModel(
 
     fun updateDraft(studentId: Long, columnId: String, type: NotebookColumnType, value: Any) {
         val valStr = value.toString()
+        val boolValue = when(value) {
+            is Boolean -> value
+            is String -> value.toBoolean()
+            else -> false
+        }
         when (type) {
             NotebookColumnType.NUMERIC -> {
                 _numericDrafts.update { it + ((studentId to columnId) to valStr) }
             }
             NotebookColumnType.CHECK -> {
-                val boolValue = when(value) {
-                    is Boolean -> value
-                    is String -> value.toBoolean()
-                    else -> false
-                }
                 _checkDrafts.update { it + ((studentId to columnId) to boolValue) }
             }
             else -> {
@@ -845,7 +876,27 @@ class NotebookViewModel(
                             cell.copy(value = valStr.toDoubleOrNull())
                         } else cell
                     }
-                    row.copy(cells = updatedCells)
+                    val column = currentState.sheet.columns.firstOrNull { it.id == columnId }
+                    row.copy(
+                        cells = updatedCells,
+                        persistedGrades = row.persistedGrades.upsertLocalGrade(
+                            classId = currentState.sheet.classId,
+                            studentId = studentId,
+                            targetColumnId = columnId,
+                            targetEvaluationId = column?.evaluationId,
+                            type = type,
+                            value = valStr,
+                            rubricSelections = null,
+                        ),
+                        persistedCells = row.persistedCells.upsertLocalCell(
+                            classId = currentState.sheet.classId,
+                            studentId = studentId,
+                            columnId = columnId,
+                            type = type,
+                            value = valStr,
+                            boolValue = boolValue
+                        )
+                    )
                 } else row
             }
             currentState.copy(
@@ -855,6 +906,112 @@ class NotebookViewModel(
                 checkDrafts = _checkDrafts.value
             )
         }
+    }
+
+    private fun updateEvaluationGradeLocally(
+        studentId: Long,
+        columnId: String,
+        evaluationId: Long,
+        value: Double?,
+        rubricSelections: String?,
+    ) {
+        updateDataState { currentState ->
+            val updatedRows = currentState.sheet.rows.map { row ->
+                if (row.student.id != studentId) return@map row
+                val updatedCells = row.cells.map { cell ->
+                    if (cell.evaluationId == evaluationId) cell.copy(value = value) else cell
+                }
+                row.copy(
+                    cells = updatedCells,
+                    persistedGrades = row.persistedGrades.upsertLocalGrade(
+                        classId = currentState.sheet.classId,
+                        studentId = studentId,
+                        targetColumnId = columnId,
+                        targetEvaluationId = evaluationId,
+                        type = NotebookColumnType.NUMERIC,
+                        value = value?.toString().orEmpty(),
+                        rubricSelections = rubricSelections,
+                    )
+                )
+            }
+            currentState.copy(
+                sheet = currentState.sheet.copy(rows = updatedRows),
+                numericDrafts = _numericDrafts.value,
+                textDrafts = _textDrafts.value,
+                checkDrafts = _checkDrafts.value,
+            )
+        }
+    }
+
+    private fun List<Grade>.upsertLocalGrade(
+        classId: Long,
+        studentId: Long,
+        targetColumnId: String,
+        targetEvaluationId: Long?,
+        type: NotebookColumnType,
+        value: String,
+        rubricSelections: String?,
+    ): List<Grade> {
+        if (type != NotebookColumnType.NUMERIC && type != NotebookColumnType.RUBRIC) return this
+        val numericValue = value.trim().replace(",", ".").toDoubleOrNull()
+        fun Grade.matchesTarget(): Boolean {
+            return columnId == targetColumnId || (targetEvaluationId != null && evaluationId == targetEvaluationId)
+        }
+        val updated = map { grade ->
+            if (grade.matchesTarget()) {
+                grade.copy(
+                    columnId = targetColumnId,
+                    evaluationId = targetEvaluationId ?: grade.evaluationId,
+                    value = numericValue,
+                    rubricSelections = rubricSelections ?: grade.rubricSelections,
+                )
+            } else {
+                grade
+            }
+        }
+        if (updated.any { it.matchesTarget() }) return updated
+        return updated + Grade(
+            id = 0L,
+            classId = classId,
+            studentId = studentId,
+            columnId = targetColumnId,
+            evaluationId = targetEvaluationId,
+            value = numericValue,
+            rubricSelections = rubricSelections,
+        )
+    }
+
+    private fun List<PersistedNotebookCell>.upsertLocalCell(
+        classId: Long,
+        studentId: Long,
+        columnId: String,
+        type: NotebookColumnType,
+        value: String,
+        boolValue: Boolean,
+    ): List<PersistedNotebookCell> {
+        if (type == NotebookColumnType.NUMERIC || type == NotebookColumnType.RUBRIC || type == NotebookColumnType.CALCULATED) {
+            return this
+        }
+        fun PersistedNotebookCell.updated(): PersistedNotebookCell {
+            return when (type) {
+                NotebookColumnType.CHECK -> copy(boolValue = boolValue, displayValue = boolValue.toString())
+                NotebookColumnType.ICON -> copy(iconValue = value, displayValue = value)
+                NotebookColumnType.ORDINAL -> copy(ordinalValue = value, displayValue = value)
+                else -> copy(textValue = value, displayValue = value)
+            }
+        }
+
+        val updated = map { cell ->
+            if (cell.columnId == columnId) cell.updated() else cell
+        }
+        if (updated.any { it.columnId == columnId }) return updated
+
+        val newCell = PersistedNotebookCell(
+            classId = classId,
+            studentId = studentId,
+            columnId = columnId,
+        ).updated()
+        return updated + newCell
     }
 
     fun setActiveCell(studentIndex: Int, columnId: String) {
@@ -885,7 +1042,7 @@ class NotebookViewModel(
         ) }
 
         // 3. Persistent save in background
-        beginInlineSave()
+        markCellAsSaving(student.id, column.id)
         scope.launch {
             try {
                 internalSaveGrade(student.id, column, value)
@@ -893,7 +1050,7 @@ class NotebookViewModel(
                 println("Error in confirmAndAdvance: ${e.message}")
                 // In case of error, we might want to notify or revert
             } finally {
-                if (endInlineSave() == 0) {
+                if (markCellAsSaved(student.id, column.id) == 0) {
                     markClean()
                 }
             }

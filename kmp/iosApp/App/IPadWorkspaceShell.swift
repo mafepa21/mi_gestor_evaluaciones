@@ -675,6 +675,10 @@ struct AppWorkspaceShell: View {
     }
     @State var showingRubricBuilder = false
     @StateObject var layoutState = WorkspaceLayoutState()
+    @StateObject var notebookStore = NotebookBridgeStore()
+    @StateObject var dashboardStore = DashboardBridgeStore()
+    @StateObject var studentsBridgeStore = StudentsBridgeStore()
+    @StateObject var attendanceStore = AttendanceBridgeStore()
     @State var rootSplitVisibility: NavigationSplitViewVisibility = .all
     @State var debouncedSearchText = ""
     var contextualAISheetState: ContextualAISheetState? {
@@ -858,6 +862,11 @@ struct AppWorkspaceShell: View {
                 .environmentObject(bridge)
         }
         .task {
+            notebookStore.bind(to: bridge)
+            dashboardStore.bind(to: bridge)
+            studentsBridgeStore.bind(to: bridge)
+            attendanceStore.bind(to: bridge)
+
             activeModule = AppWorkspaceModule(rawValue: persistedActiveModule) ?? .dashboard
             
             await bridge.ensureClassesLoaded()

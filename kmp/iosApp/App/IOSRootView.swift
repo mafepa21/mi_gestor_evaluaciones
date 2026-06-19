@@ -29,6 +29,10 @@ struct IOSRootView: View {
 
     @StateObject private var layoutState = WorkspaceLayoutState()
     @StateObject private var selectionStore = IOSSelectionStore()
+    @StateObject private var notebookStore = NotebookBridgeStore()
+    @StateObject private var dashboardStore = DashboardBridgeStore()
+    @StateObject private var studentsBridgeStore = StudentsBridgeStore()
+    @StateObject private var attendanceStore = AttendanceBridgeStore()
 
     // Scene storage keeps state across scene lifecycle
     @SceneStorage("ios.root.sidebarVisible") private var sidebarVisible = true
@@ -68,6 +72,10 @@ struct IOSRootView: View {
                     activeModule: activeModule,
                     layoutState: layoutState,
                     selectionStore: selectionStore,
+                    notebookStore: notebookStore,
+                    dashboardStore: dashboardStore,
+                    studentsBridgeStore: studentsBridgeStore,
+                    attendanceStore: attendanceStore,
                     plannerContext: plannerContext,
                     activeSheet: $activeSheet,
                     showingRubricBuilder: $showingRubricBuilder,
@@ -104,6 +112,11 @@ struct IOSRootView: View {
                 .environmentObject(bridge)
         }
         .task {
+            notebookStore.bind(to: bridge)
+            dashboardStore.bind(to: bridge)
+            studentsBridgeStore.bind(to: bridge)
+            attendanceStore.bind(to: bridge)
+
             // Restore UI layout state immediately to show the sidebar/left menu right away
             restorePersistedUIState()
             
@@ -702,6 +715,10 @@ struct IOSWorkspaceContent: View {
     let activeModule: AppWorkspaceModule
     @ObservedObject var layoutState: WorkspaceLayoutState
     @ObservedObject var selectionStore: IOSSelectionStore
+    @ObservedObject var notebookStore: NotebookBridgeStore
+    @ObservedObject var dashboardStore: DashboardBridgeStore
+    @ObservedObject var studentsBridgeStore: StudentsBridgeStore
+    @ObservedObject var attendanceStore: AttendanceBridgeStore
     var plannerContext: PlannerNavigationContext
     @Binding var activeSheet: ActiveWorkspaceSheet?
     @Binding var showingRubricBuilder: Bool
@@ -732,7 +749,11 @@ struct IOSWorkspaceContent: View {
     private var academicContent: some View {
         switch activeModule {
         case .dashboard:
-            DashboardView(selectedClassId: $selectionStore.selectedClassId)
+            DashboardView(
+                bridge: bridge,
+                dashboardStore: dashboardStore,
+                selectedClassId: $selectionStore.selectedClassId
+            )
         case .courses:
             CoursesWorkspaceView(
                 selectedClassId: $selectionStore.selectedClassId,
@@ -745,11 +766,12 @@ struct IOSWorkspaceContent: View {
             .environmentObject(bridge)
         case .students:
             StudentProfilesWorkspaceView(
+                bridge: bridge,
+                studentsBridgeStore: studentsBridgeStore,
                 selectedClassId: $selectionStore.selectedClassId,
                 selectedStudentId: $selectionStore.selectedStudentId,
                 onOpenModule: onOpenModule
             )
-            .environmentObject(bridge)
         case .teacherRadar:
             TeacherRadarDetailView(
                 bridge: bridge,
@@ -760,6 +782,7 @@ struct IOSWorkspaceContent: View {
         case .notebook:
             NotebookModuleView(
                 bridge: bridge,
+                notebookStore: notebookStore,
                 selectedClassId: $selectionStore.selectedClassId,
                 selectedStudentId: $selectionStore.selectedStudentId,
                 onOpenModule: onOpenModule,
@@ -767,11 +790,12 @@ struct IOSWorkspaceContent: View {
             )
         case .attendance:
             AttendanceWorkspaceView(
+                bridge: bridge,
+                attendanceStore: attendanceStore,
                 selectedClassId: $selectionStore.selectedClassId,
                 preselectedStudentId: $selectionStore.selectedStudentId,
                 onOpenModule: onOpenModule
             )
-            .environmentObject(bridge)
         case .planner:
             PlannerWorkspaceIOS(
                 context: resolvedPlannerContext,

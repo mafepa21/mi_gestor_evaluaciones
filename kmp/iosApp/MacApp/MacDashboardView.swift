@@ -20,7 +20,8 @@ enum MacDashboardDestination {
 }
 
 struct MacDashboardView: View {
-    @ObservedObject var bridge: KmpBridge
+    let bridge: KmpBridge
+    @ObservedObject var dashboardStore: DashboardBridgeStore
     @ObservedObject var backupStore: MacBackupStore
     let bootstrap: AppleBridgeBootstrap
     var onNavigate: (MacDashboardDestination) -> Void = { _ in }
@@ -102,10 +103,10 @@ struct MacDashboardView: View {
         .appOnChange(of: toolbarKey) { _ in
             scheduleToolbarActionsSync()
         }
-        .appOnChange(of: bridge.syncPendingChanges) { _ in
+        .appOnChange(of: dashboardStore.syncPendingChanges) { _ in
             scheduleReload()
         }
-        .appOnChange(of: bridge.pairedSyncHost) { _ in
+        .appOnChange(of: dashboardStore.pairedSyncHost) { _ in
             scheduleReload()
         }
     }
@@ -172,7 +173,7 @@ struct MacDashboardView: View {
 
     private var toolbarKey: String {
         let context = activeContext
-        return "\(context?.classId ?? -1)|\(context?.status.rawValue ?? "none")|\(bridge.syncPendingChanges)|\(bridge.pairedSyncHost ?? "")"
+        return "\(context?.classId ?? -1)|\(context?.status.rawValue ?? "none")|\(dashboardStore.syncPendingChanges)|\(dashboardStore.pairedSyncHost ?? "")"
     }
 
     private func syncToolbarActions() {
@@ -206,7 +207,7 @@ struct MacDashboardView: View {
         loadState = .loading
         do {
             await bridge.ensureClassesLoaded()
-            guard !bridge.classes.isEmpty else {
+            guard !dashboardStore.classes.isEmpty else {
                 loadState = .empty(.noClasses)
                 return
             }
@@ -418,7 +419,7 @@ struct MacDashboardView: View {
         includeSession: Bool
     ) async throws -> CurrentClassDashboardContext {
         let classId = slot.schoolClassId
-        let schoolClass = bridge.classes.first(where: { $0.id == classId })
+        let schoolClass = dashboardStore.classes.first(where: { $0.id == classId })
         let session = includeSession ? try await plannedSession(for: slot, date: now) : nil
         let journalSummary: SessionJournalSummary?
         if let session {
@@ -490,11 +491,11 @@ struct MacDashboardView: View {
             }
         }
 
-        if bridge.syncPendingChanges > 0 {
+        if dashboardStore.syncPendingChanges > 0 {
             items.append(
                 DashboardPendingItem(
-                    title: "\(bridge.syncPendingChanges) cambios pendientes de sync",
-                    subtitle: bridge.pairedSyncHost.map { "Conectado a \($0)" } ?? "Sync local inactivo o desconectado.",
+                    title: "\(dashboardStore.syncPendingChanges) cambios pendientes de sync",
+                    subtitle: dashboardStore.pairedSyncHost.map { "Conectado a \($0)" } ?? "Sync local inactivo o desconectado.",
                     priority: .medium,
                     destination: nil
                 )

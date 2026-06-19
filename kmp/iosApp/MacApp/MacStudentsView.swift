@@ -33,7 +33,8 @@ final class MacStudentsStore: ObservableObject {
 }
 
 struct MacStudentsView: View {
-    @ObservedObject var bridge: KmpBridge
+    let bridge: KmpBridge
+    @ObservedObject var studentsBridgeStore: StudentsBridgeStore
     @ObservedObject var store: MacStudentsStore
     @Binding var selectedClassId: Int64?
     @Binding var selectedStudentId: Int64?
@@ -170,7 +171,7 @@ struct MacStudentsView: View {
                 store.localSelectedStudentId = visibleIds.first
             }
         }
-        .appOnChange(of: bridge.allStudents.map { "\($0.id):\($0.isInjured)" }.joined(separator: "|")) { _, _ in
+        .appOnChange(of: studentsBridgeStore.allStudents.map { "\($0.id):\($0.isInjured)" }.joined(separator: "|")) { _, _ in
             guard ownsStudentSideEffects, store.didBootstrap else { return }
             Task { await reloadRows(preferredStudentId: store.localSelectedStudentId, showsLoading: false) }
         }
@@ -262,7 +263,7 @@ struct MacStudentsView: View {
                     .foregroundStyle(.secondary)
                 Picker("Clase", selection: $selectedClassId) {
                     Text("Todas").tag(Optional<Int64>.none)
-                    ForEach(bridge.classes, id: \.id) { schoolClass in
+                    ForEach(studentsBridgeStore.classes, id: \.id) { schoolClass in
                         Text(schoolClass.name).tag(Optional(schoolClass.id))
                     }
                 }
@@ -691,7 +692,7 @@ struct MacStudentsView: View {
         store.isBootstrapping = true
         defer { store.isBootstrapping = false }
         if selectedClassId == nil {
-            selectedClassId = bridge.selectedStudentsClassId
+            selectedClassId = studentsBridgeStore.selectedStudentsClassId
         }
         await bridge.selectStudentsClass(classId: selectedClassId)
         await reloadRows(preferredStudentId: selectedStudentId)

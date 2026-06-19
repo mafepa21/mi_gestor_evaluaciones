@@ -4,6 +4,7 @@ import app.cash.sqldelight.db.SqlDriver
 import com.migestor.data.db.AppDatabase
 import com.migestor.data.repository.AttendanceRepositorySqlDelight
 import com.migestor.data.repository.AIAuditRepositorySqlDelight
+import com.migestor.data.repository.AcademicYearsRepositorySqlDelight
 import com.migestor.data.repository.BackupMetadataRepositorySqlDelight
 import com.migestor.data.repository.CalendarRepositorySqlDelight
 import com.migestor.data.repository.ClassesRepositorySqlDelight
@@ -54,6 +55,7 @@ class KmpContainer(val driver: SqlDriver) {
     val database = AppDatabase(driver)
 
     val studentsRepository = StudentsRepositorySqlDelight(database)
+    val academicYearsRepository = AcademicYearsRepositorySqlDelight(database)
     val classesRepository = ClassesRepositorySqlDelight(database)
     val subjectsRepository = SubjectsRepositorySqlDelight(database)
     val notebookConfigRepository = NotebookConfigRepositorySqlDelight(database)

@@ -20,13 +20,13 @@ enum IOSFeatureRegistry {
     static let daily: [IOSFeatureDescriptor] = [
         .init(module: .dashboard, title: "Hoy", subtitle: "Resumen operativo", systemImage: "rectangle.3.group", priority: .daily, visibleInDailyMode: true),
         .init(module: .teacherRadar, title: "Radar", subtitle: "Alertas docentes", systemImage: "scope", priority: .daily, visibleInDailyMode: true),
+        .init(module: .courses, title: "Cursos", subtitle: "Curso escolar y grupos", systemImage: "calendar.badge.clock", priority: .daily, visibleInDailyMode: true),
         .init(module: .notebook, title: "Cuaderno", subtitle: "Evaluación diaria", systemImage: "tablecells", priority: .daily, visibleInDailyMode: true),
         .init(module: .attendance, title: "Asistencia", subtitle: "Pase y seguimiento", systemImage: "checklist.checked", priority: .daily, visibleInDailyMode: true),
         .init(module: .planner, title: "Planificación", subtitle: "Sesiones y agenda", systemImage: "calendar", priority: .daily, visibleInDailyMode: true)
     ]
 
     static let secondary: [IOSFeatureDescriptor] = [
-        .init(module: .courses, title: "Cursos", subtitle: "Grupos y configuración", systemImage: "rectangle.3.group.bubble.left", priority: .teaching, visibleInDailyMode: false),
         .init(module: .students, title: "Alumnado", subtitle: "Perfiles y seguimiento", systemImage: "person.3", priority: .teaching, visibleInDailyMode: false),
         .init(module: .diary, title: "Diario de aula", subtitle: "Trazabilidad de sesión", systemImage: "doc.text", priority: .teaching, visibleInDailyMode: false),
         .init(module: .evaluationHub, title: "Evaluación", subtitle: "Instrumentos y calendario", systemImage: "chart.bar.doc.horizontal", priority: .teaching, visibleInDailyMode: false),

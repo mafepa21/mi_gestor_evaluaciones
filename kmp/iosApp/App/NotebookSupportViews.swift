@@ -12,17 +12,27 @@ struct FlexibleTagRow: View {
                 Button {
                     onTap(item)
                 } label: {
-                    Text(item.isEmpty ? "Sin icono" : item)
-                        .font(.system(size: item.isEmpty ? 11 : 18, weight: .bold, design: .rounded))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 9)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(selected == item ? NotebookStyle.primaryTint.opacity(0.16) : NotebookStyle.surface)
-                        )
+                    tagContent(for: item)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 9)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(selected == item ? NotebookStyle.primaryTint.opacity(0.16) : NotebookStyle.surface)
+                    )
                 }
                 .buttonStyle(.plain)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func tagContent(for item: String) -> some View {
+        if item.contains(".") {
+            Image(systemName: item)
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+        } else {
+            Text(item.isEmpty ? "Sin icono" : item)
+                .font(.system(size: item.isEmpty ? 11 : 18, weight: .bold, design: .rounded))
         }
     }
 }
@@ -104,5 +114,4 @@ struct NotebookStateCard<Accessory: View>: View {
         .padding(24)
     }
 }
-
 

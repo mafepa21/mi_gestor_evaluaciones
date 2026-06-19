@@ -6,8 +6,12 @@ import com.migestor.data.db.AppDatabase
 import com.migestor.shared.domain.*
 import com.migestor.shared.repository.*
 import com.migestor.shared.usecase.BuildNotebookSheetUseCase
+import com.migestor.shared.usecase.NotebookSheetMemoryCache
+import com.migestor.shared.usecase.notebookSheetCacheKey
 import com.migestor.shared.util.NotebookRefreshBus
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
@@ -35,32 +39,78 @@ class NotebookRepositorySqlDelight(
     private val notebookConfigRepository: NotebookConfigRepository,
     private val buildNotebookSheetUseCase: BuildNotebookSheetUseCase,
     private val gradesRepository: GradesRepository,
-    private val notebookCellsRepository: NotebookCellsRepository
+    private val notebookCellsRepository: NotebookCellsRepository,
+    private val sheetCache: NotebookSheetMemoryCache = NotebookSheetMemoryCache(),
 ) : NotebookRepository {
 
     override suspend fun loadNotebookSnapshot(classId: Long): NotebookSheet = withContext(Dispatchers.Default) {
-        val students = classesRepository.listStudentsInClass(classId)
-        val evaluations = evaluationsRepository.listClassEvaluations(classId)
-        val tabs = notebookConfigRepository.listTabs(classId)
-        val columns = notebookConfigRepository.listColumns(classId)
-        val columnCategories = notebookConfigRepository.listColumnCategories(classId)
-        val groups = notebookConfigRepository.listWorkGroups(classId)
-        val members = notebookConfigRepository.listWorkGroupMembers(classId)
-        val grades = gradesRepository.listGradesForClass(classId)
-        val cells = notebookCellsRepository.listClassCells(classId)
-        
-        buildNotebookSheetUseCase.build(
-            classId = classId,
-            evaluations = evaluations,
-            students = students,
-            tabs = tabs,
-            configuredColumns = columns,
-            columnCategories = columnCategories,
-            workGroups = groups,
-            workGroupMembers = members,
-            persistedGrades = grades,
-            persistedCells = cells,
+        // 1. Cargar las 9 fuentes de datos en paralelo para minimizar latencia de DB.
+        val students: List<Student>
+        val evaluations: List<Evaluation>
+        val tabs: List<NotebookTab>
+        val columns: List<NotebookColumnDefinition>
+        val columnCategories: List<NotebookColumnCategory>
+        val groups: List<NotebookWorkGroup>
+        val members: List<NotebookWorkGroupMember>
+        val grades: List<Grade>
+        val cells: List<PersistedNotebookCell>
+
+        coroutineScope {
+            val studentsD         = async { classesRepository.listStudentsInClass(classId) }
+            val evaluationsD      = async { evaluationsRepository.listClassEvaluations(classId) }
+            val tabsD             = async { notebookConfigRepository.listTabs(classId) }
+            val columnsD          = async { notebookConfigRepository.listColumns(classId) }
+            val columnCategoriesD = async { notebookConfigRepository.listColumnCategories(classId) }
+            val groupsD           = async { notebookConfigRepository.listWorkGroups(classId) }
+            val membersD          = async { notebookConfigRepository.listWorkGroupMembers(classId) }
+            val gradesD           = async { gradesRepository.listGradesForClass(classId) }
+            val cellsD            = async { notebookCellsRepository.listClassCells(classId) }
+            students         = studentsD.await()
+            evaluations      = evaluationsD.await()
+            tabs             = tabsD.await()
+            columns          = columnsD.await()
+            columnCategories = columnCategoriesD.await()
+            groups           = groupsD.await()
+            members          = membersD.await()
+            grades           = gradesD.await()
+            cells            = cellsD.await()
+        }
+
+        // 2. Comprobar si el sheet ya está en caché con la misma clave de versión.
+        val cacheKey = notebookSheetCacheKey(
+            classId    = classId,
+            students   = students,
+            tabs       = tabs,
+            columns    = columns,
+            categories = columnCategories,
+            groups     = groups,
+            members    = members,
+            grades     = grades,
+            cells      = cells,
         )
+        sheetCache.get(cacheKey)?.let { return@withContext it }
+
+        // 3. Cache miss → construir el sheet completo y almacenarlo.
+        val sheet = buildNotebookSheetUseCase.build(
+            classId           = classId,
+            evaluations       = evaluations,
+            students          = students,
+            tabs              = tabs,
+            configuredColumns = columns,
+            columnCategories  = columnCategories,
+            workGroups        = groups,
+            workGroupMembers  = members,
+            persistedGrades   = grades,
+            persistedCells    = cells,
+        )
+        sheetCache.put(cacheKey, sheet)
+        sheet
+    }
+
+
+    /** Invalida la caché de sheet para la clase indicada. Llamar tras cualquier mutación. */
+    private fun invalidateCache(classId: Long) {
+        sheetCache.invalidate(classId)
     }
 
     override fun observeStudentChanges(classId: Long): Flow<List<Student>> {
@@ -95,6 +145,7 @@ class NotebookRepositorySqlDelight(
     }
 
     override suspend fun addStudent(classId: Long, firstName: String, lastName: String, isInjured: Boolean): Student = withContext(Dispatchers.Default) {
+        invalidateCache(classId)
         val studentId = studentsRepository.saveStudent(
             firstName = firstName,
             lastName = lastName,
@@ -105,6 +156,7 @@ class NotebookRepositorySqlDelight(
     }
 
     override suspend fun removeStudent(classId: Long, studentId: Long) {
+        invalidateCache(classId)
         classesRepository.removeStudentFromClass(classId, studentId)
     }
 
@@ -113,6 +165,7 @@ class NotebookRepositorySqlDelight(
     }
 
     override suspend fun saveGrade(classId: Long, studentId: Long, columnId: String, evaluationId: Long?, value: Double?): Long {
+        invalidateCache(classId)
         return gradesRepository.saveGrade(
             classId = classId,
             studentId = studentId,
@@ -123,18 +176,23 @@ class NotebookRepositorySqlDelight(
     }
 
     override suspend fun saveTab(classId: Long, tab: NotebookTab) {
+        invalidateCache(classId)
         notebookConfigRepository.saveTab(classId, tab)
     }
 
     override suspend fun deleteTab(tabId: String) {
+        // tabId no incluye classId directamente; invalida toda la caché de forma conservadora.
+        sheetCache.clear()
         notebookConfigRepository.deleteTab(tabId)
     }
 
     override suspend fun saveColumn(classId: Long, column: NotebookColumnDefinition) {
+        invalidateCache(classId)
         notebookConfigRepository.saveColumn(classId, column)
     }
 
     override suspend fun saveAverageConfiguration(classId: Long, updates: List<NotebookAverageColumnConfig>) {
+        invalidateCache(classId)
         notebookConfigRepository.saveAverageConfiguration(classId, updates)
     }
 
@@ -200,6 +258,8 @@ class NotebookRepositorySqlDelight(
         val columnIdsToDelete = columnIdsLinkedTo(columnId, evaluationId)
 
         val classId = columnRow?.class_id
+        // Invalidar caché antes de eliminar datos.
+        classId?.let { invalidateCache(it) } ?: sheetCache.clear()
         columnIdsToDelete.forEach { id ->
             if (classId != null) {
                 db.appDatabaseQueries.deleteGradesByClassAndColumnId(classId, id)
@@ -222,6 +282,7 @@ class NotebookRepositorySqlDelight(
     }
 
     override suspend fun saveColumnCategory(classId: Long, category: NotebookColumnCategory) {
+        invalidateCache(classId)
         notebookConfigRepository.saveColumnCategory(classId, category)
     }
 
@@ -254,14 +315,17 @@ class NotebookRepositorySqlDelight(
     }
 
     override suspend fun toggleCategoryCollapsed(classId: Long, categoryId: String, isCollapsed: Boolean) {
+        invalidateCache(classId)
         notebookConfigRepository.toggleCategoryCollapsed(classId, categoryId, isCollapsed)
     }
 
     override suspend fun reorderCategory(classId: Long, tabId: String, categoryId: String, targetCategoryId: String) {
+        invalidateCache(classId)
         notebookConfigRepository.reorderCategory(classId, tabId, categoryId, targetCategoryId)
     }
 
     override suspend fun assignColumnToCategory(classId: Long, columnId: String, categoryId: String?) {
+        invalidateCache(classId)
         notebookConfigRepository.assignColumnToCategory(classId, columnId, categoryId)
     }
 
@@ -401,6 +465,7 @@ class NotebookRepositorySqlDelight(
         authorUserId: Long?,
         associatedGroupId: Long?
     ) {
+        invalidateCache(classId)
         notebookCellsRepository.saveCell(
             classId = classId,
             studentId = studentId,

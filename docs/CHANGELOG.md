@@ -36,6 +36,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Especialización de celdas del Cuaderno** (`perf/notebook-cell-specialization`): `NotebookEditableTableCell` pasa a actuar como router ligero por tipo de columna y envuelve variantes especializadas con `NotebookCellDisplaySnapshot` como frontera `.equatable()`, dejando fórmulas, rúbricas e instrumentos estructurados fuera del estado editable pesado.
 - Cursos separa en la UI el curso escolar activo de la lista de grupos, evitando llamar "cursos" a clases como `1º ESO A`.
 - El asistente de creación de curso escolar mantiene la estructura de grupos idéntica (cursos estables) en el nuevo año escolar en lugar de incrementar el nivel en 1 en su nombre y curso.
 - La revisión de instrumentos importados desde DOCX pasa de un formulario saturado a una hoja premium con cabecera fija, métricas, lista compacta, editor de detalle, scroll real y footer de confirmación siempre visible.

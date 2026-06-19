@@ -68,12 +68,18 @@ class NotebookSheetMemoryCache(
     }
 }
 
+data class AverageCacheKey(
+    val studentId: Long,
+    val includedColumnIdsHash: Int,
+    val valuesRevision: Long,
+)
+
 class AverageCache(
     private val maxEntries: Int = 512,
 ) {
-    private val entries = LinkedHashMap<String, NotebookAverageExplanation?>()
+    private val entries = LinkedHashMap<AverageCacheKey, NotebookAverageExplanation?>()
 
-    fun getOrPut(key: String, compute: () -> NotebookAverageExplanation?): NotebookAverageExplanation? {
+    fun getOrPut(key: AverageCacheKey, compute: () -> NotebookAverageExplanation?): NotebookAverageExplanation? {
         entries.remove(key)?.also {
             entries[key] = it
             NotebookPerformanceDebug.event("averageCache hit")
@@ -92,14 +98,53 @@ class AverageCache(
         row: NotebookRow,
         columns: List<NotebookColumnDefinition>,
         calculatedValuesByColumnId: Map<String, Double>,
-    ): String {
+        numericDrafts: Map<Pair<Long, String>, String> = emptyMap(),
+    ): AverageCacheKey {
+        val averageColumns = columns.filter { it.visibility == NotebookColumnVisibility.VISIBLE && !it.isHidden }
+        val includedColumnIdsHash = stableHashForAverage(
+            averageColumns.map { column ->
+                "${column.id}:${column.title}:${column.weight}:${column.countsTowardAverage}:${column.visibility.name}:${column.isHidden}:${column.emptyCellPolicy.name}:${column.type.name}:${column.inputKind.name}:${column.scaleKind.name}:${column.formula}:${column.rubricId}"
+            }
+        )
         val includedColumns = columns
             .filter { it.visibility == NotebookColumnVisibility.VISIBLE && !it.isHidden && it.countsTowardAverage() }
             .joinToString("|") { column ->
-                val value = row.gradeValueFor(column, calculatedValuesByColumnId)
-                "${column.id}:${column.weight}:${column.emptyCellPolicy.name}:${column.type.name}:${column.inputKind.name}:${column.scaleKind.name}:${value ?: "empty"}"
+                val value = row.gradeValueFor(column, calculatedValuesByColumnId, numericDrafts)
+                val persistedCell = row.persistedCells.firstOrNull { it.columnId == column.id }
+                val persistedGrade = row.persistedGrades.firstOrNull { it.columnId == column.id }
+                    ?: column.evaluationId?.let { evalId ->
+                        row.persistedGrades.firstOrNull { it.evaluationId == evalId }
+                    }
+                "${column.id}:${column.evaluationId}:${value ?: "empty"}:${persistedCell?.displayValue}:${persistedCell?.boolValue}:${persistedCell?.textValue}:${persistedCell?.ordinalValue}:${persistedCell?.trace?.updatedAt}:${persistedGrade?.value}:${persistedGrade?.rubricSelections}:${persistedGrade?.trace?.updatedAt}"
             }
-        return "${row.student.id}|$includedColumns"
+        return AverageCacheKey(
+            studentId = row.student.id,
+            includedColumnIdsHash = includedColumnIdsHash,
+            valuesRevision = stableLongHashForAverage(listOf(includedColumns)),
+        )
+    }
+
+    fun explanationsByStudent(
+        rows: List<NotebookRow>,
+        columns: List<NotebookColumnDefinition>,
+        calculatedValuesByStudentId: Map<Long, Map<String, Double>> = emptyMap(),
+        numericDrafts: Map<Pair<Long, String>, String> = emptyMap(),
+        compute: (NotebookRow, Map<String, Double>) -> NotebookAverageExplanation?,
+    ): Map<Long, NotebookAverageExplanation> {
+        return rows.mapNotNull { row ->
+            val calculatedValues = calculatedValuesByStudentId[row.student.id].orEmpty()
+            val explanation = getOrPut(
+                key(
+                    row = row,
+                    columns = columns,
+                    calculatedValuesByColumnId = calculatedValues,
+                    numericDrafts = numericDrafts,
+                )
+            ) {
+                compute(row, calculatedValues)
+            }
+            explanation?.let { row.student.id to it }
+        }.toMap()
     }
 }
 
@@ -137,6 +182,16 @@ private fun stableHash(parts: List<String>): Int {
     var result = 1
     parts.sorted().forEach { part ->
         result = 31 * result + part.hashCode()
+    }
+    return result
+}
+
+private fun stableHashForAverage(parts: List<String>): Int = stableHash(parts)
+
+private fun stableLongHashForAverage(parts: List<String>): Long {
+    var result = 1125899906842597L
+    parts.sorted().forEach { part ->
+        result = 31L * result + part.hashCode().toLong()
     }
     return result
 }

@@ -298,7 +298,7 @@ private struct NotebookNumericCell: View, Equatable {
 
     var body: some View { statefulCell }
 
-    static func == (lhs: Self, rhs: Self) -> Bool {
+    @MainActor static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
             lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
@@ -339,7 +339,7 @@ private struct NotebookTextCell: View, Equatable {
 
     var body: some View { statefulCell }
 
-    static func == (lhs: Self, rhs: Self) -> Bool {
+    @MainActor static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
             lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
@@ -380,7 +380,7 @@ private struct NotebookCheckCell: View, Equatable {
 
     var body: some View { statefulCell }
 
-    static func == (lhs: Self, rhs: Self) -> Bool {
+    @MainActor static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
             lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
@@ -421,7 +421,7 @@ private struct NotebookAttendanceCell: View, Equatable {
 
     var body: some View { statefulCell }
 
-    static func == (lhs: Self, rhs: Self) -> Bool {
+    @MainActor static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
             lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
@@ -1578,7 +1578,7 @@ private struct NotebookFormulaCell: View, Equatable {
         }
     }
 
-    static func == (lhs: Self, rhs: Self) -> Bool {
+    @MainActor static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
             lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
@@ -1644,7 +1644,7 @@ private struct NotebookRubricCell: View, Equatable {
         }
     }
 
-    static func == (lhs: Self, rhs: Self) -> Bool {
+    @MainActor static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
             lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
@@ -1710,7 +1710,7 @@ private struct NotebookReadOnlyCell: View, Equatable {
         }
     }
 
-    static func == (lhs: Self, rhs: Self) -> Bool {
+    @MainActor static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
             lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&

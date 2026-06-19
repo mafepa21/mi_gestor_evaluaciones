@@ -854,7 +854,6 @@ final class KmpBridge: ObservableObject {
     private var autoSyncDebounceTask: Task<Void, Never>? = nil
     private var pendingChangesPersistenceTask: Task<Void, Never>? = nil
     private var notebookSnapshotDebounceTask: Task<Void, Never>? = nil
-    private var pendingDebouncedGradeSaves: [String: Task<Void, Never>] = [:]
     private var pendingGradeSnapshotTask: Task<Void, Never>? = nil
     private var isPairingInFlight = false
     private var isSyncInFlight = false
@@ -1009,7 +1008,6 @@ final class KmpBridge: ObservableObject {
         syncEventListener.stop()
         notebookSnapshotDebounceTask?.cancel()
         pendingGradeSnapshotTask?.cancel()
-        pendingDebouncedGradeSaves.values.forEach { $0.cancel() }
     }
 
     private func setupObservers() {
@@ -1592,7 +1590,7 @@ final class KmpBridge: ObservableObject {
         targetYearId: Int64,
         targetClasses: inout [SchoolClass]
     ) async throws -> SchoolClass {
-        if let existing = targetClasses.first(where: { $0.name == plan.name }) {
+        if let existing = targetClasses.first(where: { promotionClassNamesEquivalent($0.name, plan.name) }) {
             return existing
         }
         let targetClassId = try await container.classesRepository.saveClass(
@@ -1622,22 +1620,83 @@ final class KmpBridge: ObservableObject {
 
     private func promotedStudentTargetClass(from sourceClass: SchoolClass) -> PromotionTargetClassPlan? {
         let sourceName = sourceClass.name
-        let levelsMap: [(origins: [String], target: String?, course: Int32?)] = [
-            (["1º ESO", "1 ESO"], "2º ESO", 2),
-            (["2º ESO", "2 ESO"], "3º ESO", 3),
-            (["3º ESO", "3 ESO"], "4º ESO", 4),
-            (["4º ESO", "4 ESO"], "1º BAC", 1),
-            (["1º BAC", "1 BAC", "1º BACH", "1 BACH"], nil, nil),
-            (["2º BAC", "2 BAC", "2º BACH", "2 BACH"], nil, nil),
+        let levelsMap: [(course: Int, stage: String, target: String?, targetCourse: Int32?)] = [
+            (1, "ESO", "2º ESO", 2),
+            (2, "ESO", "3º ESO", 3),
+            (3, "ESO", "4º ESO", 4),
+            (4, "ESO", "1º BAC", 1),
+            (1, "BAC", nil, nil),
+            (2, "BAC", nil, nil),
         ]
         for level in levelsMap {
-            for origin in level.origins where sourceName.hasPrefix(origin) {
-                guard let target = level.target, let course = level.course else { return nil }
-                let suffix = String(sourceName.dropFirst(origin.count))
+            if let suffix = promotionSuffix(from: sourceName, course: level.course, stage: level.stage) {
+                guard let target = level.target, let course = level.targetCourse else { return nil }
                 return PromotionTargetClassPlan(name: target + suffix, course: course)
             }
         }
         return nil
+    }
+
+    private func promotionSuffix(from sourceName: String, course: Int, stage: String) -> String? {
+        let stagePattern = stage == "BAC" ? "(?:BAC|BACH|BACHILLERATO)" : stage
+        let pattern = #"^\s*\#(course)\s*(?:º|°)?\s*\#(stagePattern)\b\s*"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return nil }
+        let fullRange = NSRange(sourceName.startIndex..<sourceName.endIndex, in: sourceName)
+        guard let match = regex.firstMatch(in: sourceName, range: fullRange),
+              match.range.location == 0,
+              let suffixStart = Range(match.range, in: sourceName)?.upperBound else {
+            return nil
+        }
+        let rawSuffix = String(sourceName[suffixStart...])
+        return normalizedPromotionSuffix(rawSuffix)
+    }
+
+    private func normalizedPromotionSuffix(_ suffix: String) -> String {
+        let trimmed = suffix.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+        if let letter = singleGroupLetter(in: trimmed) {
+            return " \(letter)"
+        }
+        return trimmed.hasPrefix("-") ? " \(trimmed)" : " \(trimmed)"
+    }
+
+    private func singleGroupLetter(in suffix: String) -> String? {
+        let pattern = #"^(?:[\(\[]\s*)?([A-Za-z])(?:\s*[\)\]])?$|^[-–—]\s*([A-Za-z])$"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let range = NSRange(suffix.startIndex..<suffix.endIndex, in: suffix)
+        guard let match = regex.firstMatch(in: suffix, range: range) else { return nil }
+        for index in 1..<match.numberOfRanges {
+            let groupRange = match.range(at: index)
+            if groupRange.location != NSNotFound, let swiftRange = Range(groupRange, in: suffix) {
+                return String(suffix[swiftRange]).uppercased()
+            }
+        }
+        return nil
+    }
+
+    private func promotionClassNamesEquivalent(_ lhs: String, _ rhs: String) -> Bool {
+        normalizedPromotionClassName(lhs) == normalizedPromotionClassName(rhs)
+    }
+
+    private func normalizedPromotionClassName(_ name: String) -> String {
+        var normalized = name
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .uppercased()
+            .replacingOccurrences(of: "BACHILLERATO", with: "BAC")
+            .replacingOccurrences(of: "BACH", with: "BAC")
+            .replacingOccurrences(of: "º", with: "")
+            .replacingOccurrences(of: "°", with: "")
+        normalized = normalized.replacingOccurrences(
+            of: #"[\(\)\[\]\-–—_/\\.]+"#,
+            with: " ",
+            options: .regularExpression
+        )
+        normalized = normalized.replacingOccurrences(
+            of: #"\s+"#,
+            with: " ",
+            options: .regularExpression
+        )
+        return normalized.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
 
@@ -6487,32 +6546,20 @@ final class KmpBridge: ObservableObject {
     func saveColumnGradeDebounced(
         studentId: Int64,
         column: NotebookColumnDefinition,
-        value: String,
-        debounceMs: UInt64 = 360
+        value: String
     ) {
-        let key = cellKey(studentId: studentId, columnId: column.id)
-        pendingDebouncedGradeSaves[key]?.cancel()
-        pendingDebouncedGradeSaves[key] = Task { @MainActor [weak self] in
-            guard let self else { return }
-            try? await Task.sleep(nanoseconds: debounceMs * 1_000_000)
-            guard !Task.isCancelled else { return }
-            self.saveColumnGrade(studentId: studentId, column: column, value: value)
-            self.pendingDebouncedGradeSaves[key] = nil
+        notebookViewModel.saveColumnGradeDebounced(studentId: studentId, column: column, value: value)
+        invalidateNotebookCellValueIndexCache()
+        if let classId = notebookViewModel.currentClassId?.int64Value {
+            scheduleGradeSnapshotSync(forClassId: classId)
         }
     }
 
     func flushPendingColumnGradeSave(studentId: Int64, columnId: String? = nil) {
-        if let columnId {
-            let key = cellKey(studentId: studentId, columnId: columnId)
-            pendingDebouncedGradeSaves[key]?.cancel()
-            pendingDebouncedGradeSaves[key] = nil
-            return
-        }
-
-        let prefix = "\(studentId)|"
-        for key in pendingDebouncedGradeSaves.keys where key.hasPrefix(prefix) {
-            pendingDebouncedGradeSaves[key]?.cancel()
-            pendingDebouncedGradeSaves[key] = nil
+        notebookViewModel.flushPendingColumnGradeSave(studentId: studentId, columnId: columnId)
+        invalidateNotebookCellValueIndexCache()
+        if let classId = notebookViewModel.currentClassId?.int64Value {
+            scheduleGradeSnapshotSync(forClassId: classId)
         }
     }
 

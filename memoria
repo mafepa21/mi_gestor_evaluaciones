@@ -3,6 +3,12 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-06-19 - Debounce real de guardado de celdas del Cuaderno
+
+Se añadió `NotebookSaveQueue` en KMP para que la edición rápida de celdas del Cuaderno actualice drafts locales sin persistir cada carácter. `saveColumnGradeDebounced` ahora encola el último valor, guarda tras 500 ms sin cambios y permite flush inmediato al perder foco o al cambiar de clase. La persistencia SQLDelight incorpora un batch transaccional para drafts de celda, conservando la auditoría de cambios.
+
+Validación realizada: `./gradlew :shared:compileKotlinDesktop`, `./gradlew :data:compileKotlinDesktop` y `./gradlew :shared:desktopTest --tests com.migestor.shared.viewmodel.NotebookViewModelTest` terminaron correctamente. La compilación iOS simulator no pudo completarse porque `xcrun xcodebuild -version` devuelve exit 72 en el entorno actual.
+
 ## 1. Visión del producto
 
 Mi Gestor Evaluaciones es una aplicación local-first para docentes, especialmente orientada a evaluación educativa, planificación didáctica, cuaderno del profesor, rúbricas, asistencia, diario de sesión, informes y módulos de Educación Física.

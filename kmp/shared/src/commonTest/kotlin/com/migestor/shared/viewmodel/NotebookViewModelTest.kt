@@ -25,10 +25,13 @@ import com.migestor.shared.repository.RubricsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -603,12 +606,92 @@ class NotebookViewModelTest {
         assertEquals(listOf(123L), repository.deletedEvaluationIds)
     }
 
-    private fun createViewModel(repository: FakeNotebookRepository): NotebookViewModel {
+    @Test
+    fun `debounced column grade save persists only the last fast edit`() = runTest {
+        val classId = 1L
+        val student = Student(id = 1L, firstName = "Ana", lastName = "Lopez")
+        val column = NotebookColumnDefinition(
+            id = "exam_1",
+            title = "Examen",
+            type = NotebookColumnType.NUMERIC,
+        )
+        val repository = FakeNotebookRepository(
+            snapshot = NotebookSheet(
+                classId = classId,
+                tabs = emptyList(),
+                columns = listOf(column),
+                rows = listOf(NotebookRow(student = student, cells = emptyList(), weightedAverage = null)),
+            )
+        )
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val viewModel = createViewModel(repository, scope = scope)
+        try {
+            viewModel.selectClass(classId)
+            advanceUntilIdle()
+
+            viewModel.saveColumnGradeDebounced(student.id, column, "8")
+            advanceTimeBy(200)
+            viewModel.saveColumnGradeDebounced(student.id, column, "8,5")
+            advanceTimeBy(499)
+            assertEquals(0, repository.saveGradeCalls.size)
+
+            advanceTimeBy(1)
+            advanceUntilIdle()
+
+            assertEquals(1, repository.saveGradeCalls.size)
+            assertEquals(8.5, repository.saveGradeCalls.single().value)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `pending debounced column grade save flushes immediately`() = runTest {
+        val classId = 1L
+        val student = Student(id = 1L, firstName = "Ana", lastName = "Lopez")
+        val column = NotebookColumnDefinition(
+            id = "exam_1",
+            title = "Examen",
+            type = NotebookColumnType.NUMERIC,
+        )
+        val repository = FakeNotebookRepository(
+            snapshot = NotebookSheet(
+                classId = classId,
+                tabs = emptyList(),
+                columns = listOf(column),
+                rows = listOf(NotebookRow(student = student, cells = emptyList(), weightedAverage = null)),
+            )
+        )
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val viewModel = createViewModel(repository, scope = scope)
+        try {
+            viewModel.selectClass(classId)
+            advanceUntilIdle()
+
+            viewModel.saveColumnGradeDebounced(student.id, column, "7")
+            advanceTimeBy(100)
+            viewModel.flushPendingColumnGradeSave(student.id, column.id)
+            advanceUntilIdle()
+
+            assertEquals(1, repository.saveGradeCalls.size)
+            assertEquals(7.0, repository.saveGradeCalls.single().value)
+            advanceTimeBy(500)
+            advanceUntilIdle()
+            assertEquals(1, repository.saveGradeCalls.size)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    private fun createViewModel(
+        repository: FakeNotebookRepository,
+        scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+    ): NotebookViewModel {
         return NotebookViewModel(
             notebookRepository = repository,
             evaluationsRepository = FakeEvaluationsRepository(),
             rubricsRepository = FakeRubricsRepository(),
-            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+            scope = scope,
         )
     }
 
@@ -623,6 +706,7 @@ private class FakeNotebookRepository(
     val savedAverageConfigurations = mutableListOf<List<NotebookAverageColumnConfig>>()
     val savedWorkGroups = mutableListOf<NotebookWorkGroup>()
     val upsertGradeCalls = mutableListOf<UpsertGradeCall>()
+    val saveGradeCalls = mutableListOf<SaveGradeCall>()
     val savedTabs = mutableListOf<NotebookTab>()
 
     val deletedColumnIds = mutableListOf<String>()
@@ -634,7 +718,10 @@ private class FakeNotebookRepository(
     override suspend fun addStudent(classId: Long, firstName: String, lastName: String, isInjured: Boolean): Student = Student(id = 1, firstName = firstName, lastName = lastName, isInjured = isInjured)
     override suspend fun removeStudent(classId: Long, studentId: Long) = Unit
     override suspend fun listStudentsInClass(classId: Long): List<Student> = emptyList()
-    override suspend fun saveGrade(classId: Long, studentId: Long, columnId: String, evaluationId: Long?, value: Double?): Long = 1
+    override suspend fun saveGrade(classId: Long, studentId: Long, columnId: String, evaluationId: Long?, value: Double?): Long {
+        saveGradeCalls += SaveGradeCall(classId, studentId, columnId, evaluationId, value)
+        return 1
+    }
     override suspend fun saveTab(classId: Long, tab: NotebookTab) {
         savedTabs += tab
     }
@@ -743,6 +830,14 @@ private class FakeNotebookRepository(
         columnId: String,
     ): Flow<List<com.migestor.shared.domain.NotebookCellAuditEvent>> = flowOf(emptyList())
 }
+
+private data class SaveGradeCall(
+    val classId: Long,
+    val studentId: Long,
+    val columnId: String,
+    val evaluationId: Long?,
+    val value: Double?,
+)
 
 private data class UpsertGradeCall(
     val classId: Long,

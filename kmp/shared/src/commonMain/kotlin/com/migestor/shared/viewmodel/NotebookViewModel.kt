@@ -26,6 +26,8 @@ class NotebookViewModel(
     private val _activeCell = MutableStateFlow<ActiveCell?>(null)
     private val _selectedTabId = MutableStateFlow<String?>(null)
     private val formulaEvaluator = FormulaEvaluator()
+    private val saveQueue = NotebookSaveQueue()
+    private var saveQueueJob: Job? = null
 
     init {
         loadInitialData()
@@ -191,6 +193,7 @@ class NotebookViewModel(
 
     fun selectClass(classId: Long, force: Boolean = false) {
         if (!force && activeClassId == classId) return
+        flushAllPendingColumnGradeSaves()
 
         // Nunca emitir Loading si ya tenemos datos para esta clase.
         // Esto evita que refrescos forzados (sync, addColumn, etc.) destruyan
@@ -685,14 +688,16 @@ class NotebookViewModel(
         activeClassId ?: return
         // Optimistic update for immediate UI feedback without forcing full notebook reloads.
         updateDraft(studentId, column.id, column.type, value)
-        scope.launch {
-            try {
-                internalSaveGrade(studentId, column, value)
-                markClean()
-            } catch (e: Exception) {
-                println("Error saving column grade: ${e.message}")
-            }
-        }
+        saveQueue.enqueue(studentId, column, value)
+        flushPendingColumnGradeSave(studentId, column.id)
+    }
+
+    fun saveColumnGradeDebounced(studentId: Long, column: NotebookColumnDefinition, value: String) {
+        activeClassId ?: return
+        updateDraft(studentId, column.id, column.type, value)
+        markDirty()
+        saveQueue.enqueue(studentId, column, value)
+        scheduleQueuedColumnGradeSave()
     }
 
     private suspend fun internalSaveGrade(studentId: Long, column: NotebookColumnDefinition, value: String) {
@@ -729,7 +734,51 @@ class NotebookViewModel(
         }
     }
 
+    fun flushPendingColumnGradeSave(studentId: Long, columnId: String? = null) {
+        flushQueuedColumnGradeDrafts(saveQueue.drain(studentId, columnId))
+    }
+
+    fun flushAllPendingColumnGradeSaves() {
+        flushQueuedColumnGradeDrafts(saveQueue.drainAll())
+    }
+
+    private fun scheduleQueuedColumnGradeSave() {
+        saveQueueJob?.cancel()
+        saveQueueJob = scope.launch {
+            delay(500)
+            flushAllPendingColumnGradeSaves()
+        }
+    }
+
+    private fun flushQueuedColumnGradeDrafts(drafts: List<Pair<CellKey, CellDraft>>) {
+        if (drafts.isEmpty()) return
+        saveQueueJob?.cancel()
+        saveQueueJob = null
+        val classId = activeClassId ?: return
+        val queuedDrafts = drafts.map { (key, draft) ->
+            NotebookQueuedCellDraft(
+                studentId = key.studentId,
+                columnId = key.columnId,
+                columnType = draft.column.type,
+                evaluationId = draft.column.evaluationId,
+                value = draft.value,
+            )
+        }
+        beginInlineSave()
+        scope.launch {
+            try {
+                notebookRepository.saveQueuedCellDrafts(classId, queuedDrafts)
+                markClean()
+            } catch (e: Exception) {
+                println("Error saving queued column grades: ${e.message}")
+            } finally {
+                endInlineSave()
+            }
+        }
+    }
+
     suspend fun saveCurrentNotebook(): Boolean {
+        flushAllPendingColumnGradeSaves()
         val classId = activeClassId ?: return false
         val currentState = _state.value as? NotebookUiState.Data ?: return false
 

@@ -175,6 +175,141 @@ class NotebookRepositorySqlDelight(
         )
     }
 
+    override suspend fun saveQueuedCellDrafts(classId: Long, drafts: List<NotebookQueuedCellDraft>) = withContext(Dispatchers.Default) {
+        if (drafts.isEmpty()) return@withContext
+        val now = Clock.System.now().toEpochMilliseconds()
+        db.transaction {
+            drafts.forEach { draft ->
+                when (draft.columnType) {
+                    NotebookColumnType.NUMERIC -> saveQueuedNumericDraft(classId, draft, now)
+                    NotebookColumnType.TEXT,
+                    NotebookColumnType.ATTENDANCE -> saveQueuedTextDraft(classId, draft, now)
+                    NotebookColumnType.CHECK -> saveQueuedBoolDraft(classId, draft, now)
+                    NotebookColumnType.ICON -> saveQueuedIconDraft(classId, draft, now)
+                    NotebookColumnType.ORDINAL -> saveQueuedOrdinalDraft(classId, draft, now)
+                    else -> Unit
+                }
+            }
+        }
+    }
+
+    private fun saveQueuedNumericDraft(classId: Long, draft: NotebookQueuedCellDraft, now: Long) {
+        val raw = draft.value.trim()
+        val numericValue = raw.replace(",", ".").toDoubleOrNull()
+        if (raw.isNotEmpty() && numericValue == null) return
+
+        val existing = db.appDatabaseQueries
+            .selectGradeByStudentClassAndColumn(classId, draft.studentId, draft.columnId)
+            .executeAsOneOrNull()
+        db.appDatabaseQueries.upsertGrade(
+            class_id = classId,
+            student_id = draft.studentId,
+            column_id = draft.columnId,
+            evaluation_id = draft.evaluationId,
+            value_ = numericValue,
+            evidence = null,
+            evidence_path = null,
+            rubric_selections = null,
+            created_at_epoch_ms = now,
+            updated_at_epoch_ms = now,
+            device_id = null,
+            sync_version = 0L,
+        )
+        if (existing?.value_ != numericValue) {
+            db.appDatabaseQueries.insertNotebookCellAudit(
+                class_id = classId,
+                student_id = draft.studentId,
+                column_id = draft.columnId,
+                previous_numeric_value = existing?.value_,
+                new_numeric_value = numericValue,
+                previous_text_value = null,
+                new_text_value = null,
+                action = if (existing == null) NotebookCellAuditAction.CREATED.name else NotebookCellAuditAction.UPDATED.name,
+                changed_at_epoch_ms = now,
+                author_user_id = null,
+                device_id = null,
+                sync_version = 0L,
+            )
+        }
+    }
+
+    private fun saveQueuedTextDraft(classId: Long, draft: NotebookQueuedCellDraft, now: Long) {
+        saveQueuedCellDraft(classId, draft, now, textValue = draft.value)
+    }
+
+    private fun saveQueuedBoolDraft(classId: Long, draft: NotebookQueuedCellDraft, now: Long) {
+        saveQueuedCellDraft(classId, draft, now, boolValue = draft.value.toBoolean())
+    }
+
+    private fun saveQueuedIconDraft(classId: Long, draft: NotebookQueuedCellDraft, now: Long) {
+        saveQueuedCellDraft(classId, draft, now, iconValue = draft.value)
+    }
+
+    private fun saveQueuedOrdinalDraft(classId: Long, draft: NotebookQueuedCellDraft, now: Long) {
+        saveQueuedCellDraft(classId, draft, now, ordinalValue = draft.value)
+    }
+
+    private fun saveQueuedCellDraft(
+        classId: Long,
+        draft: NotebookQueuedCellDraft,
+        now: Long,
+        textValue: String? = null,
+        boolValue: Boolean? = null,
+        iconValue: String? = null,
+        ordinalValue: String? = null,
+    ) {
+        val existing = db.appDatabaseQueries
+            .selectNotebookCellEntry(classId, draft.studentId, draft.columnId)
+            .executeAsOneOrNull()
+        val textChanged = textValue != null && textValue != existing?.value_text
+        val boolChanged = boolValue != null && boolValue != (existing?.value_bool == 1L)
+        val iconChanged = iconValue != null && iconValue != existing?.value_icon
+        val ordinalChanged = ordinalValue != null && ordinalValue != existing?.value_ordinal
+
+        db.appDatabaseQueries.upsertNotebookCellEntry(
+            class_id = classId,
+            student_id = draft.studentId,
+            column_id = draft.columnId,
+            value_text = textValue ?: existing?.value_text,
+            value_bool = boolValue?.let { if (it) 1L else 0L } ?: existing?.value_bool,
+            value_icon = iconValue ?: existing?.value_icon,
+            value_ordinal = ordinalValue ?: existing?.value_ordinal,
+            display_value = existing?.display_value,
+            observed_at_epoch_ms = existing?.observed_at_epoch_ms,
+            competency_criteria_ids_csv = existing?.competency_criteria_ids_csv ?: "",
+            effective_weight = existing?.effective_weight,
+            counts_toward_average = existing?.counts_toward_average,
+            note = existing?.note,
+            color_hex = existing?.color_hex,
+            attachment_uris_csv = existing?.attachment_uris_csv,
+            author_user_id = existing?.author_user_id,
+            created_at_epoch_ms = existing?.created_at_epoch_ms ?: now,
+            updated_at_epoch_ms = now,
+            associated_group_id = existing?.associated_group_id,
+            device_id = null,
+            sync_version = 0L,
+        )
+
+        if (textChanged || boolChanged || iconChanged || ordinalChanged) {
+            val prevText = listOfNotNull(existing?.value_text, existing?.value_icon, existing?.value_ordinal).joinToString(" | ")
+            val nextText = listOfNotNull(textValue, iconValue, ordinalValue).joinToString(" | ")
+            db.appDatabaseQueries.insertNotebookCellAudit(
+                class_id = classId,
+                student_id = draft.studentId,
+                column_id = draft.columnId,
+                previous_numeric_value = null,
+                new_numeric_value = null,
+                previous_text_value = prevText.takeIf { it.isNotBlank() },
+                new_text_value = nextText.takeIf { it.isNotBlank() },
+                action = if (existing == null) NotebookCellAuditAction.CREATED.name else NotebookCellAuditAction.UPDATED.name,
+                changed_at_epoch_ms = now,
+                author_user_id = null,
+                device_id = null,
+                sync_version = 0L,
+            )
+        }
+    }
+
     override suspend fun saveTab(classId: Long, tab: NotebookTab) {
         invalidateCache(classId)
         notebookConfigRepository.saveTab(classId, tab)

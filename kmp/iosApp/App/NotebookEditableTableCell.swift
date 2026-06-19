@@ -93,6 +93,506 @@ struct NotebookEditableTableCell: View {
     let onCellSaved: () -> Void
     let onAttendanceSaved: () -> Void
 
+    var body: some View {
+        if column.inputKind.isStructuredInstrument {
+            NotebookReadOnlyCell(
+                displaySnapshot: displaySnapshot,
+                item: item,
+                column: column,
+                width: width,
+                tint: tint,
+                categoryTint: categoryTint,
+                hasColumnColor: hasColumnColor,
+                formulaDisplay: formulaDisplay,
+                isSelected: isSelected,
+                onSelect: onSelect,
+                onOpenStructuredInstrument: onOpenStructuredInstrument
+            )
+            .equatable()
+        } else if column.type == .attendance || column.categoryKind == .attendance {
+            NotebookAttendanceCell(
+                displaySnapshot: displaySnapshot,
+                actions: actions,
+                item: item,
+                column: column,
+                classId: classId,
+                width: width,
+                tint: tint,
+                categoryTint: categoryTint,
+                hasColumnColor: hasColumnColor,
+                focusedCellId: focusedCellId,
+                activeChoiceCellId: $activeChoiceCellId,
+                navigationDirection: navigationDirection,
+                formulaDisplay: formulaDisplay,
+                isSelected: isSelected,
+                isAttendanceQuickMode: isAttendanceQuickMode,
+                reloadToken: reloadToken,
+                onSelect: onSelect,
+                onPrepareUndo: onPrepareUndo,
+                onOpenFormula: onOpenFormula,
+                onOpenRubricIndividual: onOpenRubricIndividual,
+                onOpenRubricBulk: onOpenRubricBulk,
+                onOpenStructuredInstrument: onOpenStructuredInstrument,
+                onGenerateSummary: onGenerateSummary,
+                onNavigate: onNavigate,
+                onCellSaved: onCellSaved,
+                onAttendanceSaved: onAttendanceSaved
+            )
+            .equatable()
+        } else {
+            switch column.type {
+            case .numeric:
+                NotebookNumericCell(
+                    displaySnapshot: displaySnapshot,
+                    actions: actions,
+                    item: item,
+                    column: column,
+                    classId: classId,
+                    width: width,
+                    tint: tint,
+                    categoryTint: categoryTint,
+                    hasColumnColor: hasColumnColor,
+                    focusedCellId: focusedCellId,
+                    activeChoiceCellId: $activeChoiceCellId,
+                    navigationDirection: navigationDirection,
+                    formulaDisplay: formulaDisplay,
+                    isSelected: isSelected,
+                    isAttendanceQuickMode: isAttendanceQuickMode,
+                    reloadToken: reloadToken,
+                    onSelect: onSelect,
+                    onPrepareUndo: onPrepareUndo,
+                    onOpenFormula: onOpenFormula,
+                    onOpenRubricIndividual: onOpenRubricIndividual,
+                    onOpenRubricBulk: onOpenRubricBulk,
+                    onOpenStructuredInstrument: onOpenStructuredInstrument,
+                    onGenerateSummary: onGenerateSummary,
+                    onNavigate: onNavigate,
+                    onCellSaved: onCellSaved,
+                    onAttendanceSaved: onAttendanceSaved
+                )
+                .equatable()
+            case .check:
+                NotebookCheckCell(
+                    displaySnapshot: displaySnapshot,
+                    actions: actions,
+                    item: item,
+                    column: column,
+                    classId: classId,
+                    width: width,
+                    tint: tint,
+                    categoryTint: categoryTint,
+                    hasColumnColor: hasColumnColor,
+                    focusedCellId: focusedCellId,
+                    activeChoiceCellId: $activeChoiceCellId,
+                    navigationDirection: navigationDirection,
+                    formulaDisplay: formulaDisplay,
+                    isSelected: isSelected,
+                    isAttendanceQuickMode: isAttendanceQuickMode,
+                    reloadToken: reloadToken,
+                    onSelect: onSelect,
+                    onPrepareUndo: onPrepareUndo,
+                    onOpenFormula: onOpenFormula,
+                    onOpenRubricIndividual: onOpenRubricIndividual,
+                    onOpenRubricBulk: onOpenRubricBulk,
+                    onOpenStructuredInstrument: onOpenStructuredInstrument,
+                    onGenerateSummary: onGenerateSummary,
+                    onNavigate: onNavigate,
+                    onCellSaved: onCellSaved,
+                    onAttendanceSaved: onAttendanceSaved
+                )
+                .equatable()
+            case .rubric:
+                NotebookRubricCell(
+                    displaySnapshot: displaySnapshot,
+                    item: item,
+                    column: column,
+                    width: width,
+                    tint: tint,
+                    categoryTint: categoryTint,
+                    hasColumnColor: hasColumnColor,
+                    formulaDisplay: formulaDisplay,
+                    isSelected: isSelected,
+                    onSelect: onSelect,
+                    onOpenRubricIndividual: onOpenRubricIndividual,
+                    onOpenRubricBulk: onOpenRubricBulk
+                )
+                .equatable()
+            case .calculated:
+                NotebookFormulaCell(
+                    displaySnapshot: displaySnapshot,
+                    item: item,
+                    column: column,
+                    width: width,
+                    tint: tint,
+                    categoryTint: categoryTint,
+                    hasColumnColor: hasColumnColor,
+                    formulaDisplay: formulaDisplay,
+                    isSelected: isSelected,
+                    onSelect: onSelect,
+                    onOpenFormula: onOpenFormula
+                )
+                .equatable()
+            default:
+                NotebookTextCell(
+                    displaySnapshot: displaySnapshot,
+                    actions: actions,
+                    item: item,
+                    column: column,
+                    classId: classId,
+                    width: width,
+                    tint: tint,
+                    categoryTint: categoryTint,
+                    hasColumnColor: hasColumnColor,
+                    focusedCellId: focusedCellId,
+                    activeChoiceCellId: $activeChoiceCellId,
+                    navigationDirection: navigationDirection,
+                    formulaDisplay: formulaDisplay,
+                    isSelected: isSelected,
+                    isAttendanceQuickMode: isAttendanceQuickMode,
+                    reloadToken: reloadToken,
+                    onSelect: onSelect,
+                    onPrepareUndo: onPrepareUndo,
+                    onOpenFormula: onOpenFormula,
+                    onOpenRubricIndividual: onOpenRubricIndividual,
+                    onOpenRubricBulk: onOpenRubricBulk,
+                    onOpenStructuredInstrument: onOpenStructuredInstrument,
+                    onGenerateSummary: onGenerateSummary,
+                    onNavigate: onNavigate,
+                    onCellSaved: onCellSaved,
+                    onAttendanceSaved: onAttendanceSaved
+                )
+                .equatable()
+            }
+        }
+    }
+}
+
+@MainActor
+private struct NotebookNumericCell: View, Equatable {
+    let displaySnapshot: NotebookCellDisplaySnapshot
+    let actions: NotebookCellActions
+    let item: NotebookTableRow
+    let column: NotebookColumnDefinition
+    let classId: Int64?
+    let width: CGFloat
+    let tint: Color
+    let categoryTint: Color?
+    let hasColumnColor: Bool
+    var focusedCellId: FocusState<String?>.Binding
+    @Binding var activeChoiceCellId: String?
+    let navigationDirection: NotebookNavigationDirection
+    let formulaDisplay: NotebookFormulaCellDisplay?
+    let isSelected: Bool
+    let isAttendanceQuickMode: Bool
+    let reloadToken: Int
+    let onSelect: () -> Void
+    let onPrepareUndo: (String, String?) -> Void
+    let onOpenFormula: () -> Void
+    let onOpenRubricIndividual: () -> Void
+    let onOpenRubricBulk: () -> Void
+    let onOpenStructuredInstrument: () -> Void
+    var onGenerateSummary: (() -> Void)? = nil
+    let onNavigate: (NotebookNavigationDirection) -> Void
+    let onCellSaved: () -> Void
+    let onAttendanceSaved: () -> Void
+
+    var body: some View { statefulCell }
+
+    @MainActor static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.displaySnapshot == rhs.displaySnapshot &&
+            lhs.item.student.id == rhs.item.student.id &&
+            lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
+            lhs.width == rhs.width &&
+            lhs.isSelected == rhs.isSelected &&
+            lhs.reloadToken == rhs.reloadToken
+    }
+}
+
+@MainActor
+private struct NotebookTextCell: View, Equatable {
+    let displaySnapshot: NotebookCellDisplaySnapshot
+    let actions: NotebookCellActions
+    let item: NotebookTableRow
+    let column: NotebookColumnDefinition
+    let classId: Int64?
+    let width: CGFloat
+    let tint: Color
+    let categoryTint: Color?
+    let hasColumnColor: Bool
+    var focusedCellId: FocusState<String?>.Binding
+    @Binding var activeChoiceCellId: String?
+    let navigationDirection: NotebookNavigationDirection
+    let formulaDisplay: NotebookFormulaCellDisplay?
+    let isSelected: Bool
+    let isAttendanceQuickMode: Bool
+    let reloadToken: Int
+    let onSelect: () -> Void
+    let onPrepareUndo: (String, String?) -> Void
+    let onOpenFormula: () -> Void
+    let onOpenRubricIndividual: () -> Void
+    let onOpenRubricBulk: () -> Void
+    let onOpenStructuredInstrument: () -> Void
+    var onGenerateSummary: (() -> Void)? = nil
+    let onNavigate: (NotebookNavigationDirection) -> Void
+    let onCellSaved: () -> Void
+    let onAttendanceSaved: () -> Void
+
+    var body: some View { statefulCell }
+
+    @MainActor static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.displaySnapshot == rhs.displaySnapshot &&
+            lhs.item.student.id == rhs.item.student.id &&
+            lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
+            lhs.width == rhs.width &&
+            lhs.isSelected == rhs.isSelected &&
+            lhs.reloadToken == rhs.reloadToken
+    }
+}
+
+@MainActor
+private struct NotebookCheckCell: View, Equatable {
+    let displaySnapshot: NotebookCellDisplaySnapshot
+    let actions: NotebookCellActions
+    let item: NotebookTableRow
+    let column: NotebookColumnDefinition
+    let classId: Int64?
+    let width: CGFloat
+    let tint: Color
+    let categoryTint: Color?
+    let hasColumnColor: Bool
+    var focusedCellId: FocusState<String?>.Binding
+    @Binding var activeChoiceCellId: String?
+    let navigationDirection: NotebookNavigationDirection
+    let formulaDisplay: NotebookFormulaCellDisplay?
+    let isSelected: Bool
+    let isAttendanceQuickMode: Bool
+    let reloadToken: Int
+    let onSelect: () -> Void
+    let onPrepareUndo: (String, String?) -> Void
+    let onOpenFormula: () -> Void
+    let onOpenRubricIndividual: () -> Void
+    let onOpenRubricBulk: () -> Void
+    let onOpenStructuredInstrument: () -> Void
+    var onGenerateSummary: (() -> Void)? = nil
+    let onNavigate: (NotebookNavigationDirection) -> Void
+    let onCellSaved: () -> Void
+    let onAttendanceSaved: () -> Void
+
+    var body: some View { statefulCell }
+
+    @MainActor static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.displaySnapshot == rhs.displaySnapshot &&
+            lhs.item.student.id == rhs.item.student.id &&
+            lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
+            lhs.width == rhs.width &&
+            lhs.isSelected == rhs.isSelected &&
+            lhs.reloadToken == rhs.reloadToken
+    }
+}
+
+@MainActor
+private struct NotebookAttendanceCell: View, Equatable {
+    let displaySnapshot: NotebookCellDisplaySnapshot
+    let actions: NotebookCellActions
+    let item: NotebookTableRow
+    let column: NotebookColumnDefinition
+    let classId: Int64?
+    let width: CGFloat
+    let tint: Color
+    let categoryTint: Color?
+    let hasColumnColor: Bool
+    var focusedCellId: FocusState<String?>.Binding
+    @Binding var activeChoiceCellId: String?
+    let navigationDirection: NotebookNavigationDirection
+    let formulaDisplay: NotebookFormulaCellDisplay?
+    let isSelected: Bool
+    let isAttendanceQuickMode: Bool
+    let reloadToken: Int
+    let onSelect: () -> Void
+    let onPrepareUndo: (String, String?) -> Void
+    let onOpenFormula: () -> Void
+    let onOpenRubricIndividual: () -> Void
+    let onOpenRubricBulk: () -> Void
+    let onOpenStructuredInstrument: () -> Void
+    var onGenerateSummary: (() -> Void)? = nil
+    let onNavigate: (NotebookNavigationDirection) -> Void
+    let onCellSaved: () -> Void
+    let onAttendanceSaved: () -> Void
+
+    var body: some View { statefulCell }
+
+    @MainActor static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.displaySnapshot == rhs.displaySnapshot &&
+            lhs.item.student.id == rhs.item.student.id &&
+            lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
+            lhs.width == rhs.width &&
+            lhs.isSelected == rhs.isSelected &&
+            lhs.isAttendanceQuickMode == rhs.isAttendanceQuickMode &&
+            lhs.reloadToken == rhs.reloadToken
+    }
+}
+
+extension NotebookNumericCell {
+    private var statefulCell: some View {
+        NotebookStatefulEditableTableCell(
+            displaySnapshot: displaySnapshot,
+            actions: actions,
+            item: item,
+            column: column,
+            classId: classId,
+            width: width,
+            tint: tint,
+            categoryTint: categoryTint,
+            hasColumnColor: hasColumnColor,
+            focusedCellId: focusedCellId,
+            activeChoiceCellId: $activeChoiceCellId,
+            navigationDirection: navigationDirection,
+            formulaDisplay: formulaDisplay,
+            isSelected: isSelected,
+            isAttendanceQuickMode: isAttendanceQuickMode,
+            reloadToken: reloadToken,
+            onSelect: onSelect,
+            onPrepareUndo: onPrepareUndo,
+            onOpenFormula: onOpenFormula,
+            onOpenRubricIndividual: onOpenRubricIndividual,
+            onOpenRubricBulk: onOpenRubricBulk,
+            onOpenStructuredInstrument: onOpenStructuredInstrument,
+            onGenerateSummary: onGenerateSummary,
+            onNavigate: onNavigate,
+            onCellSaved: onCellSaved,
+            onAttendanceSaved: onAttendanceSaved
+        )
+    }
+}
+
+extension NotebookTextCell {
+    private var statefulCell: some View {
+        NotebookStatefulEditableTableCell(
+            displaySnapshot: displaySnapshot,
+            actions: actions,
+            item: item,
+            column: column,
+            classId: classId,
+            width: width,
+            tint: tint,
+            categoryTint: categoryTint,
+            hasColumnColor: hasColumnColor,
+            focusedCellId: focusedCellId,
+            activeChoiceCellId: $activeChoiceCellId,
+            navigationDirection: navigationDirection,
+            formulaDisplay: formulaDisplay,
+            isSelected: isSelected,
+            isAttendanceQuickMode: isAttendanceQuickMode,
+            reloadToken: reloadToken,
+            onSelect: onSelect,
+            onPrepareUndo: onPrepareUndo,
+            onOpenFormula: onOpenFormula,
+            onOpenRubricIndividual: onOpenRubricIndividual,
+            onOpenRubricBulk: onOpenRubricBulk,
+            onOpenStructuredInstrument: onOpenStructuredInstrument,
+            onGenerateSummary: onGenerateSummary,
+            onNavigate: onNavigate,
+            onCellSaved: onCellSaved,
+            onAttendanceSaved: onAttendanceSaved
+        )
+    }
+}
+
+extension NotebookCheckCell {
+    private var statefulCell: some View {
+        NotebookStatefulEditableTableCell(
+            displaySnapshot: displaySnapshot,
+            actions: actions,
+            item: item,
+            column: column,
+            classId: classId,
+            width: width,
+            tint: tint,
+            categoryTint: categoryTint,
+            hasColumnColor: hasColumnColor,
+            focusedCellId: focusedCellId,
+            activeChoiceCellId: $activeChoiceCellId,
+            navigationDirection: navigationDirection,
+            formulaDisplay: formulaDisplay,
+            isSelected: isSelected,
+            isAttendanceQuickMode: isAttendanceQuickMode,
+            reloadToken: reloadToken,
+            onSelect: onSelect,
+            onPrepareUndo: onPrepareUndo,
+            onOpenFormula: onOpenFormula,
+            onOpenRubricIndividual: onOpenRubricIndividual,
+            onOpenRubricBulk: onOpenRubricBulk,
+            onOpenStructuredInstrument: onOpenStructuredInstrument,
+            onGenerateSummary: onGenerateSummary,
+            onNavigate: onNavigate,
+            onCellSaved: onCellSaved,
+            onAttendanceSaved: onAttendanceSaved
+        )
+    }
+}
+
+extension NotebookAttendanceCell {
+    private var statefulCell: some View {
+        NotebookStatefulEditableTableCell(
+            displaySnapshot: displaySnapshot,
+            actions: actions,
+            item: item,
+            column: column,
+            classId: classId,
+            width: width,
+            tint: tint,
+            categoryTint: categoryTint,
+            hasColumnColor: hasColumnColor,
+            focusedCellId: focusedCellId,
+            activeChoiceCellId: $activeChoiceCellId,
+            navigationDirection: navigationDirection,
+            formulaDisplay: formulaDisplay,
+            isSelected: isSelected,
+            isAttendanceQuickMode: isAttendanceQuickMode,
+            reloadToken: reloadToken,
+            onSelect: onSelect,
+            onPrepareUndo: onPrepareUndo,
+            onOpenFormula: onOpenFormula,
+            onOpenRubricIndividual: onOpenRubricIndividual,
+            onOpenRubricBulk: onOpenRubricBulk,
+            onOpenStructuredInstrument: onOpenStructuredInstrument,
+            onGenerateSummary: onGenerateSummary,
+            onNavigate: onNavigate,
+            onCellSaved: onCellSaved,
+            onAttendanceSaved: onAttendanceSaved
+        )
+    }
+}
+
+@MainActor
+private struct NotebookStatefulEditableTableCell: View {
+    let displaySnapshot: NotebookCellDisplaySnapshot
+    let actions: NotebookCellActions
+    let item: NotebookTableRow
+    let column: NotebookColumnDefinition
+    let classId: Int64?
+    let width: CGFloat
+    let tint: Color
+    let categoryTint: Color?
+    let hasColumnColor: Bool
+    var focusedCellId: FocusState<String?>.Binding
+    @Binding var activeChoiceCellId: String?
+    let navigationDirection: NotebookNavigationDirection
+    let formulaDisplay: NotebookFormulaCellDisplay?
+    let isSelected: Bool
+    let isAttendanceQuickMode: Bool
+    let reloadToken: Int
+    let onSelect: () -> Void
+    let onPrepareUndo: (String, String?) -> Void
+    let onOpenFormula: () -> Void
+    let onOpenRubricIndividual: () -> Void
+    let onOpenRubricBulk: () -> Void
+    let onOpenStructuredInstrument: () -> Void
+    var onGenerateSummary: (() -> Void)? = nil
+    let onNavigate: (NotebookNavigationDirection) -> Void
+    let onCellSaved: () -> Void
+    let onAttendanceSaved: () -> Void
+
     private var persistedCell: PersistedNotebookCell? {
         item.row.persistedCells.first(where: { $0.columnId == column.id })
     }
@@ -1027,6 +1527,395 @@ struct NotebookEditableTableCell: View {
             guard !Task.isCancelled else { return }
             saveFeedback = .idle
         }
+    }
+}
+
+@MainActor
+private struct NotebookFormulaCell: View, Equatable {
+    let displaySnapshot: NotebookCellDisplaySnapshot
+    let item: NotebookTableRow
+    let column: NotebookColumnDefinition
+    let width: CGFloat
+    let tint: Color
+    let categoryTint: Color?
+    let hasColumnColor: Bool
+    let formulaDisplay: NotebookFormulaCellDisplay?
+    let isSelected: Bool
+    let onSelect: () -> Void
+    let onOpenFormula: () -> Void
+
+    var body: some View {
+        NotebookReadOnlyCellChrome(
+            item: item,
+            column: column,
+            width: width,
+            tint: tint,
+            categoryTint: categoryTint,
+            hasColumnColor: hasColumnColor,
+            formulaDisplay: formulaDisplay,
+            isSelected: isSelected,
+            onSelect: onSelect
+        ) {
+            Button {
+                onSelect()
+                onOpenFormula()
+            } label: {
+                HStack(spacing: 5) {
+                    Text(displaySnapshot.calculatedText)
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .italic()
+                        .monospacedDigit()
+                        .foregroundStyle(formulaDisplay?.isError == true ? Color.orange : (isSelected ? Color.accentColor : Color.primary))
+                        .lineLimit(1)
+                    Image(systemName: formulaDisplay?.isError == true ? "exclamationmark.triangle.fill" : "function")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(formulaDisplay?.isError == true ? Color.orange : Color.accentColor.opacity(0.75))
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .buttonStyle(.plain)
+            .help(formulaDisplay?.isError == true ? (formulaDisplay?.text ?? "Error en la fórmula") : "Editar fórmula")
+        }
+    }
+
+    @MainActor static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.displaySnapshot == rhs.displaySnapshot &&
+            lhs.item.student.id == rhs.item.student.id &&
+            lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
+            lhs.width == rhs.width &&
+            lhs.isSelected == rhs.isSelected &&
+            lhs.formulaDisplay?.text == rhs.formulaDisplay?.text &&
+            lhs.formulaDisplay?.isError == rhs.formulaDisplay?.isError
+    }
+}
+
+@MainActor
+private struct NotebookRubricCell: View, Equatable {
+    let displaySnapshot: NotebookCellDisplaySnapshot
+    let item: NotebookTableRow
+    let column: NotebookColumnDefinition
+    let width: CGFloat
+    let tint: Color
+    let categoryTint: Color?
+    let hasColumnColor: Bool
+    let formulaDisplay: NotebookFormulaCellDisplay?
+    let isSelected: Bool
+    let onSelect: () -> Void
+    let onOpenRubricIndividual: () -> Void
+    let onOpenRubricBulk: () -> Void
+
+    private var rubricText: String {
+        displaySnapshot.rubricText.isEmpty ? "—" : displaySnapshot.rubricText
+    }
+
+    var body: some View {
+        NotebookReadOnlyCellChrome(
+            item: item,
+            column: column,
+            width: width,
+            tint: tint,
+            categoryTint: categoryTint,
+            hasColumnColor: hasColumnColor,
+            formulaDisplay: formulaDisplay,
+            isSelected: isSelected,
+            onSelect: onSelect
+        ) {
+            Button {
+                onSelect()
+                onOpenRubricIndividual()
+            } label: {
+                Text(rubricText)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(rubricText == "—" ? .tertiary : .primary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .contextMenu {
+                Button("Evaluar alumno…") {
+                    onSelect()
+                    onOpenRubricIndividual()
+                }
+                Button("Evaluar grupo…") {
+                    onSelect()
+                    onOpenRubricBulk()
+                }
+            }
+        }
+    }
+
+    @MainActor static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.displaySnapshot == rhs.displaySnapshot &&
+            lhs.item.student.id == rhs.item.student.id &&
+            lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
+            lhs.width == rhs.width &&
+            lhs.isSelected == rhs.isSelected
+    }
+}
+
+@MainActor
+private struct NotebookReadOnlyCell: View, Equatable {
+    let displaySnapshot: NotebookCellDisplaySnapshot
+    let item: NotebookTableRow
+    let column: NotebookColumnDefinition
+    let width: CGFloat
+    let tint: Color
+    let categoryTint: Color?
+    let hasColumnColor: Bool
+    let formulaDisplay: NotebookFormulaCellDisplay?
+    let isSelected: Bool
+    let onSelect: () -> Void
+    let onOpenStructuredInstrument: () -> Void
+
+    private var persistedCell: PersistedNotebookCell? {
+        item.row.persistedCells.first(where: { $0.columnId == column.id })
+    }
+
+    private var displayText: String {
+        let value = (persistedCell?.displayValue ?? persistedCell?.textValue ?? displaySnapshot.text)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? "Pendiente" : value
+    }
+
+    var body: some View {
+        NotebookReadOnlyCellChrome(
+            item: item,
+            column: column,
+            width: width,
+            tint: tint,
+            categoryTint: categoryTint,
+            hasColumnColor: hasColumnColor,
+            formulaDisplay: formulaDisplay,
+            isSelected: isSelected,
+            onSelect: onSelect
+        ) {
+            Button {
+                onSelect()
+                onOpenStructuredInstrument()
+            } label: {
+                HStack(spacing: 6) {
+                    Text(displayText)
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundStyle(displayText == "Pendiente" ? .tertiary : .primary)
+                        .lineLimit(1)
+                    Image(systemName: "checklist")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Abrir instrumento")
+        }
+    }
+
+    @MainActor static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.displaySnapshot == rhs.displaySnapshot &&
+            lhs.item.student.id == rhs.item.student.id &&
+            lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
+            lhs.width == rhs.width &&
+            lhs.isSelected == rhs.isSelected
+    }
+}
+
+@MainActor
+private struct NotebookReadOnlyCellChrome<Content: View>: View {
+    let item: NotebookTableRow
+    let column: NotebookColumnDefinition
+    let width: CGFloat
+    let tint: Color
+    let categoryTint: Color?
+    let hasColumnColor: Bool
+    let formulaDisplay: NotebookFormulaCellDisplay?
+    let isSelected: Bool
+    let onSelect: () -> Void
+    let content: Content
+
+    init(
+        item: NotebookTableRow,
+        column: NotebookColumnDefinition,
+        width: CGFloat,
+        tint: Color,
+        categoryTint: Color?,
+        hasColumnColor: Bool,
+        formulaDisplay: NotebookFormulaCellDisplay?,
+        isSelected: Bool,
+        onSelect: @escaping () -> Void,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.item = item
+        self.column = column
+        self.width = width
+        self.tint = tint
+        self.categoryTint = categoryTint
+        self.hasColumnColor = hasColumnColor
+        self.formulaDisplay = formulaDisplay
+        self.isSelected = isSelected
+        self.onSelect = onSelect
+        self.content = content()
+    }
+
+    private var persistedCell: PersistedNotebookCell? {
+        item.row.persistedCells.first(where: { $0.columnId == column.id })
+    }
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(cellFill)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(
+                            isSelected ? Color.accentColor.opacity(0.85) : cellBorder,
+                            lineWidth: isSelected ? 1.4 : 0.6
+                        )
+                )
+
+            content
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+
+            if let persistedCell, hasContextualSignal(in: persistedCell) {
+                VStack {
+                    HStack {
+                        Spacer()
+                        HStack(spacing: 4) {
+                            if let icon = persistedCell.annotation?.icon ?? persistedCell.iconValue, !icon.isEmpty {
+                                Text(icon)
+                            }
+                            let attachmentCount = persistedCell.annotation?.attachmentUris.count ?? 0
+                            if attachmentCount > 0 {
+                                Text("\(attachmentCount)")
+                                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                            }
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 4)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(tint.opacity(0.14))
+                        )
+                    }
+                    Spacer()
+                }
+                .padding(6)
+            }
+
+            cellStateOverlay
+        }
+        .frame(width: width, height: 44)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onSelect)
+    }
+
+    private var cellFill: Color {
+        if column.isLocked {
+            return NotebookStyle.surfaceMuted.opacity(0.45)
+        }
+        if column.type == .calculated {
+            #if os(macOS)
+            return Color.accentColor.opacity(isSelected ? 0.08 : 0.02)
+            #else
+            return Color.accentColor.opacity(isSelected ? 0.10 : 0.04)
+            #endif
+        }
+        if hasColumnColor {
+            return tint.opacity(isSelected ? 0.22 : 0.10)
+        }
+        return isSelected ? tint.opacity(0.14) : NotebookStyle.surfaceSoft.opacity(column.categoryId == nil ? 0.12 : 0.22)
+    }
+
+    private var cellBorder: Color {
+        if column.isLocked {
+            return NotebookStyle.softBorder.opacity(0.55)
+        }
+        if column.type == .calculated {
+            return Color.accentColor.opacity(isSelected ? 0.40 : 0.15)
+        }
+        if hasColumnColor {
+            return tint.opacity(0.28)
+        }
+        return (categoryTint ?? tint).opacity(column.categoryId == nil ? 0.05 : 0.12)
+    }
+
+    @ViewBuilder
+    private var cellStateOverlay: some View {
+        let states = cellStateBadges
+        if !states.isEmpty {
+            VStack {
+                Spacer()
+                HStack(spacing: 4) {
+                    Spacer()
+                    ForEach(states, id: \.id) { state in
+                        Image(systemName: state.systemImage)
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(state.tint)
+                            .frame(width: 16, height: 16)
+                            .background(
+                                Circle()
+                                    .fill(NotebookStyle.surface.opacity(0.96))
+                            )
+                            .help(state.label)
+                            .accessibilityLabel(state.label)
+                    }
+                }
+            }
+            .padding(5)
+        }
+    }
+
+    private var cellStateBadges: [NotebookCellStateBadge] {
+        if column.isLocked {
+            return [NotebookCellStateBadge(id: "locked", systemImage: "lock.fill", label: "Celda bloqueada", tint: .secondary)]
+        }
+
+        var badges: [NotebookCellStateBadge] = []
+        if !column.countsTowardAverage {
+            badges.append(NotebookCellStateBadge(id: "excluded", systemImage: "slash.circle", label: "No cuenta para media", tint: .secondary))
+        }
+        if formulaDisplay?.isError == true {
+            badges.append(NotebookCellStateBadge(id: "error", systemImage: "exclamationmark.triangle.fill", label: "Error", tint: NotebookStyle.warningTint))
+        }
+        return badges
+    }
+
+    private func hasContextualSignal(in cell: PersistedNotebookCell) -> Bool {
+        !(cell.annotation?.note?.isEmpty ?? true) ||
+            !((cell.annotation?.icon ?? cell.iconValue ?? "").isEmpty) ||
+            !(cell.annotation?.attachmentUris.isEmpty ?? true)
+    }
+}
+
+private struct NotebookCellColumnEquatableKey: Equatable {
+    let id: String
+    let type: String
+    let inputKind: String
+    let categoryKind: String
+    let categoryId: String
+    let colorHex: String
+    let isLocked: Bool
+    let countsTowardAverage: Bool
+    let unitOrSituation: String
+    let ordinalLevels: [String]
+    let dateEpochMs: String
+}
+
+private extension NotebookColumnDefinition {
+    var cellEquatableKey: NotebookCellColumnEquatableKey {
+        NotebookCellColumnEquatableKey(
+            id: id,
+            type: String(describing: type),
+            inputKind: String(describing: inputKind),
+            categoryKind: String(describing: categoryKind),
+            categoryId: String(describing: categoryId),
+            colorHex: colorHex ?? "",
+            isLocked: isLocked,
+            countsTowardAverage: countsTowardAverage,
+            unitOrSituation: unitOrSituation ?? "",
+            ordinalLevels: ordinalLevels,
+            dateEpochMs: String(describing: dateEpochMs)
+        )
     }
 }
 

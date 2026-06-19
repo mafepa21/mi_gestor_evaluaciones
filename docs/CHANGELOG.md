@@ -36,7 +36,14 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Debounce real de escritura en celdas del Cuaderno** (`perf/notebook-save-queue`): `NotebookViewModel` incorpora `NotebookSaveQueue` para que `saveColumnGradeDebounced` actualice drafts locales y retrase la persistencia 500 ms, con flush inmediato al perder foco o cambiar de clase.
+- **Especialización de celdas del Cuaderno** (`perf/notebook-cell-specialization`): `NotebookEditableTableCell` pasa a actuar como router ligero por tipo de columna y envuelve variantes especializadas con `NotebookCellDisplaySnapshot` como frontera `.equatable()`, dejando fórmulas, rúbricas e instrumentos estructurados fuera del estado editable pesado.
+- **Caché de medias del Cuaderno** (`perf/notebook-average-cache`): `AverageCache` usa `AverageCacheKey(studentId, includedColumnIdsHash, valuesRevision)` y `NotebookViewModel.withActiveTabAverages()` reutiliza explicaciones por alumno, recalculando solo cuando cambian valores del alumno o configuración de media.
 - **Virtualización real de filas del Cuaderno** (`perf/notebook-lazy-rows`): `NotebookGridContainer` mantiene `LazyVStack(spacing: 0)` con altura estable por fila e itera directamente sobre modelos identificables, evitando materializar arrays enumerados dentro de cada panel sincronizado.
+- **Render por fila del grid del Cuaderno** (`perf/notebook-row-render-models`): `NotebookGridContent` materializa `NotebookRowRenderModel`/`NotebookCellRenderModel` por alumno y envuelve cada fila con `.equatable().id(rowModel.id)`, reduciendo la invalidación del grid a la fila afectada sin tocar KMP ni SQLDelight.
+- **Caché de render del Cuaderno** (`perf/notebook-render-cache`): `NotebookGridLayoutModel` centraliza una clave `NotebookRenderCacheKey` para filas filtradas, render model y columnas visibles, evitando reconstrucciones por cambios de inspector, selección o foco que no alteran clase, pestaña, búsqueda, visibilidad ni estructura.
+- **Guardado inline del Cuaderno sin recarga completa** (`perf/notebook-inline-save-delta`): `NotebookViewModel` actualiza localmente celdas y notas persistidas, marca guardados inline en curso y evita que el eco inmediato del observador de notas dispare `loadNotebookSnapshot` tras cada edición de celda.
+- **Partición de estado SwiftUI del Cuaderno** (`refactor/notebook-state-partition`): `NotebookModuleView` extrae stores observables para interacción, estado de grid, toolbar, inspector y caché IA/riesgo, retirando de la View estado caliente como undo, asistencia del día, recargas por fila, sincronización de toolbar y precálculo de riesgo.
 - **Carga del Cuaderno más rápida** (`perf/notebook-snapshot-cache`): `NotebookRepositorySqlDelight.loadNotebookSnapshot` paraleliza las 9 queries de apertura con `coroutineScope/async` y activa `NotebookSheetMemoryCache` (ya existente en `NotebookPerformanceCaches.kt`) para devolver el sheet sin reconstrucción cuando los datos no han cambiado. Las operaciones mutantes invalidan solo la entrada afectada. Tres `selectClass(force=true)` redundantes eliminados del ViewModel para anchura de pestaña, colapso de categoría y anotación de celda.
 - Cursos separa en la UI el curso escolar activo de la lista de grupos, evitando llamar "cursos" a clases como `1º ESO A`.
 
@@ -59,6 +66,9 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- **Errores de conformidad a Equatable bajo Swift 6 en celdas del Cuaderno**: Se marcan con `@MainActor` las implementaciones del método `==` para los siete tipos de celdas aisladas en el hilo principal de `NotebookEditableTableCell.swift`, evitando errores de carrera de datos al acceder a propiedades del actor principal.
+- **Errores de compilación en el grid del Cuaderno**: Se corrige la declaración de tipo opaco sin retorno en `NotebookGridContainer.swift` añadiendo el `return` explícito a la función `rowStack`, y se adaptan las llamadas de clausura de fila en `NotebookGridContent.swift` para aceptar la signatura con el argumento de índice.
+- **Fallo de conformidad de tipo '()' con 'View' en NotebookGridContent.swift**: Se añade un inicializador personalizado con `@ViewBuilder` a `NotebookRowView`, permitiendo que el compilador de Swift maneje correctamente las bifurcaciones condicionales sin rama `else` (`if let`) en las clausuras de llamada.
 - **Configuración persistente de Media del Cuaderno**: la hoja de Media filtra columnas evaluables visibles de la clase activa, edita pesos como porcentaje, guarda internamente fracciones 0.0-1.0 y obliga a sumar 100% antes de persistir para evitar medias inconsistentes tras reabrir.
 - **Media con columnas ocultas o pesos heredados**: el cálculo KMP excluye columnas ocultas/archivadas, normaliza pesos heredados guardados como 60/40 y evita reutilizar explicaciones cacheadas cuando cambia visibilidad, peso o política de celdas vacías.
 - **Crash al recalcular medias del Cuaderno en macOS**: `BuildNotebookSheetUseCase` crea una caché de medias por cada build para no compartir un `LinkedHashMap` mutable entre cargas concurrentes, evitando el abort de Kotlin/Native en `AverageCache.getOrPut`.
@@ -102,6 +112,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Data
 
+- SQLDelight añade índices no destructivos para lecturas diarias de calificaciones, celdas del Cuaderno, evaluaciones, asistencia, incidencias y columnas por categoría mediante `34.sqm`.
+- `NotebookRepositorySqlDelight` añade guardado batch de drafts de celda en una transacción SQLDelight, conservando auditoría de cambios y evitando una escritura/refresh por carácter durante edición rápida.
 - Los pesos de configuración de Media se normalizan defensivamente al leer y guardar columnas de SQLDelight, conservando compatibilidad con datos antiguos en formato porcentaje y persistiendo nuevos cambios como fracciones.
 - SQLDelight amplia `academic_years` con estado activo/archivado y añade `student_enrollments` para separar identidad de alumno y matricula por curso, con migracion `31.sqm`, backfill desde `class_students` y filtro de grupos por curso activo.
 - Reparación local aplicada a evaluaciones con `rubric_id = 0` y blindaje de lectura/escritura para tratarlas como `NULL`; los instrumentos importados de `1º BAC A` conservan rúbrica solo en `Plan Design Rubric` y `Peer-Coaching Rubric`.
@@ -116,8 +128,16 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `./gradlew :data:generateCommonMainAppDatabaseInterface` completado correctamente tras añadir índices SQLDelight de lectura diaria.
+- Confirmación estática del patrón `@ViewBuilder` para clausuras de SwiftUI, alineándolo con la sintaxis del compilador de Swift y usos homólogos en la app.
+- `./gradlew :shared:compileKotlinDesktop`, `./gradlew :data:compileKotlinDesktop` y `./gradlew :shared:desktopTest --tests com.migestor.shared.viewmodel.NotebookViewModelTest` pasan tras `perf/notebook-save-queue`; `./gradlew :shared:compileKotlinIosSimulatorArm64` no pudo ejecutarse por configuración local de Xcode (`xcrun xcodebuild -version` devuelve exit 72).
+
+- `./gradlew :shared:compileKotlinMetadata` y `./gradlew :shared:desktopTest --tests com.migestor.shared.usecase.AverageCacheTest` completados correctamente tras añadir la caché de medias. `./gradlew :shared:allTests` queda bloqueado por `:xcodeVersion` porque `xcrun xcodebuild -version` no encuentra Xcode completo; `./gradlew :shared:desktopTest` compila pero mantiene 3 fallos existentes en `BuildNotebookSheetUseCaseTest` ligados a expectativas de pesos/visibilidad previas.
 - `xcodebuild -list -project kmp/iosApp/MiGestorKMPiOS.xcodeproj` no pudo ejecutarse tras `perf/notebook-lazy-rows`: el `xcode-select` activo apunta a `/Library/Developer/CommandLineTools` y no hay `Xcode.app` instalado en `/Applications`.
-- `git diff --check -- kmp/iosApp/App/NotebookGridContainer.swift docs/CHANGELOG.md` completado correctamente tras introducir filas lazy identificables.
+- `git diff --check -- kmp/iosApp/App/NotebookGridContent.swift`, `swiftc -parse kmp/iosApp/App/NotebookGridContent.swift` y búsqueda de símbolos obsoletos completados correctamente tras introducir render models por fila. `xcodebuild -list -project kmp/iosApp/MiGestorKMPiOS.xcodeproj` queda bloqueado porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y requiere Xcode completo.
+- `git diff --check -- kmp/iosApp/App/NotebookModuleColumnModel.swift kmp/iosApp/App/NotebookModuleDataState.swift kmp/iosApp/App/NotebookModuleView.swift docs/CHANGELOG.md` completado correctamente tras añadir caché de render del Cuaderno. `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -list` queda bloqueado porque `xcode-select` apunta a `/Library/Developer/CommandLineTools`.
+- `./gradlew :shared:testDebugUnitTest --tests com.migestor.shared.viewmodel.NotebookViewModelTest` completado correctamente tras optimizar el guardado inline del Cuaderno. Quedan warnings existentes de opt-in experimental en tests de coroutines.
+- `xcodebuild -list -project kmp/iosApp/MiGestorKMPiOS.xcodeproj` y `./gradlew :shared:compileKotlinIosSimulatorArm64` no pudieron completarse tras partir estado del Cuaderno porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y `xcrun xcodebuild -version` falla sin Xcode completo.
 - `git diff --check -- kmp/iosApp/App/KmpBridge.swift` y `xcrun swiftc -parse kmp/iosApp/App/KmpBridge.swift` completados correctamente tras robustecer la promoción de `4º ESO A/B` a `1º BAC A/B`.
 - `./gradlew :shared:compileKotlinDesktop` y `./gradlew :shared:desktopTest --tests "com.migestor.shared.BuildNotebookSheetUseCaseTest.parallel sheet builds do not share mutable average cache"` completados correctamente tras aislar la caché de medias por build. `./gradlew :shared:desktopTest --tests com.migestor.shared.BuildNotebookSheetUseCaseTest` compila pero falla en 3 pruebas existentes de pesos/visibilidad por cambios previos de normalización de media.
 - `./gradlew :shared:compileKotlinMetadata :data:compileKotlinMetadata` y `git diff --check` completados correctamente tras corregir Media del Cuaderno. `xcodebuild -list -project kmp/iosApp/MiGestorKMPiOS.xcodeproj` queda bloqueado porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y requiere Xcode completo.

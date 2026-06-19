@@ -44,8 +44,28 @@ extension NotebookModuleView {
             activeTabId: activeNotebookTabId(data: data),
             groupByWorkGroupMode: groupByWorkGroupMode,
             searchText: searchText,
-            selectedGroupId: selectedGroupId
+            selectedGroupId: selectedGroupId,
+            renderCacheKey: notebookRenderCacheKey(data: data)
         )
+    }
+
+    func notebookRenderCacheKey(data: NotebookUiStateData) -> NotebookRenderCacheKey {
+        NotebookRenderCacheKey(
+            classId: data.sheet.classId,
+            activeTabId: activeNotebookTabId(data: data),
+            searchText: searchText.trimmingCharacters(in: .whitespacesAndNewlines),
+            hiddenColumnsRevision: notebookHiddenColumnsRevision(data: data),
+            structuralRevision: structuralGridRevision
+        )
+    }
+
+    func notebookHiddenColumnsRevision(data: NotebookUiStateData) -> Int {
+        data.sheet.columns
+            .map { "\($0.id):\($0.visibility):\($0.isHidden):\($0.isArchived)" }
+            .sorted()
+            .reduce(17) { partial, part in
+                partial &* 31 &+ part.hashValue
+            }
     }
 
     func cellAlignment(for segment: NotebookDisplaySegment) -> Alignment {
@@ -185,7 +205,14 @@ extension NotebookModuleView {
     }
 
     func visibleNotebookSourceColumns(data: NotebookUiStateData) -> [NotebookColumnDefinition] {
-        displaySegments(data: data).compactMap { segment in
+        let renderModel = gridLayoutModel.renderModelCached(
+            key: notebookRenderCacheKey(data: data),
+            data: data,
+            viewPreset: viewPreset,
+            isCompact: isCompact
+        )
+        let segments = renderModel.fixedSegments + renderModel.scrollableSegments + renderModel.trailingFixedSegments
+        return segments.compactMap { segment in
             guard case .column(let column) = segment else { return nil }
             return column
         }

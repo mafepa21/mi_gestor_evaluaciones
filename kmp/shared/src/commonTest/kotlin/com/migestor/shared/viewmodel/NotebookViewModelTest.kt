@@ -11,6 +11,7 @@ import com.migestor.shared.domain.NotebookRow
 import com.migestor.shared.domain.NotebookScaleKind
 import com.migestor.shared.domain.NotebookColumnType
 import com.migestor.shared.domain.NotebookColumnVisibility
+import com.migestor.shared.domain.PersistedNotebookCell
 import com.migestor.shared.domain.NotebookSheet
 import com.migestor.shared.domain.NotebookWorkGroup
 import com.migestor.shared.domain.NotebookTab
@@ -27,6 +28,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -152,6 +154,7 @@ class NotebookViewModelTest {
         assertEquals("eval_123", call.columnId)
         assertEquals(123L, call.evaluationId)
         assertEquals(8.5, call.numericValue)
+        assertEquals(1, repository.loadNotebookSnapshotCount)
     }
 
     @Test
@@ -607,12 +610,12 @@ class NotebookViewModelTest {
     }
 
     @Test
-    fun `debounced column grade save persists only the last fast edit`() = runTest {
+    fun `inline numeric save updates local state without reloading the full notebook`() = runTest {
         val classId = 1L
         val student = Student(id = 1L, firstName = "Ana", lastName = "Lopez")
         val column = NotebookColumnDefinition(
-            id = "exam_1",
-            title = "Examen",
+            id = "custom_numeric",
+            title = "Proyecto",
             type = NotebookColumnType.NUMERIC,
         )
         val repository = FakeNotebookRepository(
@@ -620,7 +623,23 @@ class NotebookViewModelTest {
                 classId = classId,
                 tabs = emptyList(),
                 columns = listOf(column),
-                rows = listOf(NotebookRow(student = student, cells = emptyList(), weightedAverage = null)),
+                rows = listOf(
+                    NotebookRow(
+                        student = student,
+                        cells = emptyList(),
+                        weightedAverage = null,
+                        persistedGrades = listOf(
+                            Grade(
+                                id = 1L,
+                                classId = classId,
+                                studentId = student.id,
+                                columnId = column.id,
+                                evaluationId = null,
+                                value = 5.0,
+                            )
+                        ),
+                    )
+                ),
             )
         )
         val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
@@ -628,38 +647,46 @@ class NotebookViewModelTest {
         try {
             viewModel.selectClass(classId)
             advanceUntilIdle()
+            assertEquals(1, repository.loadNotebookSnapshotCount)
 
-            viewModel.saveColumnGradeDebounced(student.id, column, "8")
-            advanceTimeBy(200)
-            viewModel.saveColumnGradeDebounced(student.id, column, "8,5")
-            advanceTimeBy(499)
-            assertEquals(0, repository.saveGradeCalls.size)
-
-            advanceTimeBy(1)
+            viewModel.saveColumnGrade(student.id, column, "8,5")
+            advanceUntilIdle()
+            advanceTimeBy(500)
             advanceUntilIdle()
 
+            val data = viewModel.state.value as NotebookUiState.Data
+            val grade = data.sheet.rows.single().persistedGrades.single { it.columnId == column.id }
+            assertEquals(8.5, grade.value)
+            assertEquals(1, repository.loadNotebookSnapshotCount)
             assertEquals(1, repository.saveGradeCalls.size)
-            assertEquals(8.5, repository.saveGradeCalls.single().value)
         } finally {
             scope.cancel()
         }
     }
 
     @Test
-    fun `pending debounced column grade save flushes immediately`() = runTest {
+    fun `direct evaluation grade save updates local state without observer reload`() = runTest {
         val classId = 1L
+        val evaluationId = 9L
         val student = Student(id = 1L, firstName = "Ana", lastName = "Lopez")
         val column = NotebookColumnDefinition(
-            id = "exam_1",
+            id = "eval_$evaluationId",
             title = "Examen",
             type = NotebookColumnType.NUMERIC,
+            evaluationId = evaluationId,
         )
         val repository = FakeNotebookRepository(
             snapshot = NotebookSheet(
                 classId = classId,
                 tabs = emptyList(),
                 columns = listOf(column),
-                rows = listOf(NotebookRow(student = student, cells = emptyList(), weightedAverage = null)),
+                rows = listOf(
+                    NotebookRow(
+                        student = student,
+                        cells = listOf(NotebookCell(evaluationId = evaluationId, value = 5.0)),
+                        weightedAverage = null,
+                    )
+                ),
             )
         )
         val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
@@ -668,16 +695,67 @@ class NotebookViewModelTest {
             viewModel.selectClass(classId)
             advanceUntilIdle()
 
-            viewModel.saveColumnGradeDebounced(student.id, column, "7")
-            advanceTimeBy(100)
-            viewModel.flushPendingColumnGradeSave(student.id, column.id)
+            viewModel.saveGrade(student.id, evaluationId, 7.5)
             advanceUntilIdle()
-
-            assertEquals(1, repository.saveGradeCalls.size)
-            assertEquals(7.0, repository.saveGradeCalls.single().value)
             advanceTimeBy(500)
             advanceUntilIdle()
+
+            val data = viewModel.state.value as NotebookUiState.Data
+            val cell = data.sheet.rows.single().cells.single { it.evaluationId == evaluationId }
+            assertEquals(7.5, cell.value)
+            assertEquals(1, repository.loadNotebookSnapshotCount)
             assertEquals(1, repository.saveGradeCalls.size)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `inline text save reconciles persisted cell locally`() = runTest {
+        val classId = 1L
+        val student = Student(id = 1L, firstName = "Ana", lastName = "Lopez")
+        val column = NotebookColumnDefinition(
+            id = "notes",
+            title = "Observaciones",
+            type = NotebookColumnType.TEXT,
+        )
+        val repository = FakeNotebookRepository(
+            snapshot = NotebookSheet(
+                classId = classId,
+                tabs = emptyList(),
+                columns = listOf(column),
+                rows = listOf(
+                    NotebookRow(
+                        student = student,
+                        cells = emptyList(),
+                        weightedAverage = null,
+                        persistedCells = listOf(
+                            PersistedNotebookCell(
+                                classId = classId,
+                                studentId = student.id,
+                                columnId = column.id,
+                                textValue = "Anterior",
+                                displayValue = "Anterior",
+                            )
+                        ),
+                    )
+                ),
+            )
+        )
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val viewModel = createViewModel(repository, scope = scope)
+        try {
+            viewModel.selectClass(classId)
+            advanceUntilIdle()
+            viewModel.saveColumnGrade(student.id, column, "Mejora")
+            advanceUntilIdle()
+
+            val data = viewModel.state.value as NotebookUiState.Data
+            val cell = data.sheet.rows.single().persistedCells.single { it.columnId == column.id }
+            assertEquals("Mejora", cell.textValue)
+            assertEquals("Mejora", cell.displayValue)
+            assertEquals(1, repository.savedCellCalls.size)
+            assertEquals(1, repository.loadNotebookSnapshotCount)
         } finally {
             scope.cancel()
         }
@@ -702,24 +780,33 @@ class NotebookViewModelTest {
 private class FakeNotebookRepository(
     private val snapshot: NotebookSheet,
 ) : NotebookRepository {
+    private val studentChanges = MutableStateFlow<List<Student>>(emptyList())
+    private val gradeChanges = MutableStateFlow<List<Grade>>(emptyList())
+
     val savedColumns = mutableListOf<NotebookColumnDefinition>()
     val savedAverageConfigurations = mutableListOf<List<NotebookAverageColumnConfig>>()
     val savedWorkGroups = mutableListOf<NotebookWorkGroup>()
     val upsertGradeCalls = mutableListOf<UpsertGradeCall>()
     val saveGradeCalls = mutableListOf<SaveGradeCall>()
+    val savedCellCalls = mutableListOf<SaveCellCall>()
     val savedTabs = mutableListOf<NotebookTab>()
+    var loadNotebookSnapshotCount = 0
 
     val deletedColumnIds = mutableListOf<String>()
     val deletedEvaluationIds = mutableListOf<Long>()
 
-    override suspend fun loadNotebookSnapshot(classId: Long): NotebookSheet = snapshot
-    override fun observeStudentChanges(classId: Long): Flow<List<Student>> = flowOf(emptyList())
-    override fun observeGradesForClass(classId: Long): Flow<List<com.migestor.shared.domain.Grade>> = flowOf(emptyList())
+    override suspend fun loadNotebookSnapshot(classId: Long): NotebookSheet {
+        loadNotebookSnapshotCount += 1
+        return snapshot
+    }
+    override fun observeStudentChanges(classId: Long): Flow<List<Student>> = studentChanges
+    override fun observeGradesForClass(classId: Long): Flow<List<com.migestor.shared.domain.Grade>> = gradeChanges
     override suspend fun addStudent(classId: Long, firstName: String, lastName: String, isInjured: Boolean): Student = Student(id = 1, firstName = firstName, lastName = lastName, isInjured = isInjured)
     override suspend fun removeStudent(classId: Long, studentId: Long) = Unit
     override suspend fun listStudentsInClass(classId: Long): List<Student> = emptyList()
     override suspend fun saveGrade(classId: Long, studentId: Long, columnId: String, evaluationId: Long?, value: Double?): Long {
         saveGradeCalls += SaveGradeCall(classId, studentId, columnId, evaluationId, value)
+        gradeChanges.value = listOf(Grade(id = 1L, classId = classId, studentId = studentId, columnId = columnId, evaluationId = evaluationId, value = value))
         return 1
     }
     override suspend fun saveTab(classId: Long, tab: NotebookTab) {
@@ -789,7 +876,17 @@ private class FakeNotebookRepository(
         attachmentUris: List<String>,
         authorUserId: Long?,
         associatedGroupId: Long?,
-    ) = Unit
+    ) {
+        savedCellCalls += SaveCellCall(
+            classId = classId,
+            studentId = studentId,
+            columnId = columnId,
+            textValue = textValue,
+            boolValue = boolValue,
+            iconValue = iconValue,
+            ordinalValue = ordinalValue,
+        )
+    }
     override suspend fun getTabNamesForClass(classId: Long): List<String> = emptyList()
     override suspend fun createTab(classId: Long, tabName: String): String = ""
     override suspend fun addColumnToTab(classId: Long, tabName: String, columnName: String, columnType: NotebookColumnType, rubricId: Long?): String = ""
@@ -837,6 +934,16 @@ private data class SaveGradeCall(
     val columnId: String,
     val evaluationId: Long?,
     val value: Double?,
+)
+
+private data class SaveCellCall(
+    val classId: Long,
+    val studentId: Long,
+    val columnId: String,
+    val textValue: String?,
+    val boolValue: Boolean?,
+    val iconValue: String?,
+    val ordinalValue: String?,
 )
 
 private data class UpsertGradeCall(

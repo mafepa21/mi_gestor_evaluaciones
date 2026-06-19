@@ -36,6 +36,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Guardado inline del Cuaderno sin recarga completa** (`perf/notebook-inline-save-delta`): `NotebookViewModel` actualiza localmente celdas y notas persistidas, marca guardados inline en curso y evita que el eco inmediato del observador de notas dispare `loadNotebookSnapshot` tras cada edición de celda.
 - **Debounce real de escritura en celdas del Cuaderno** (`perf/notebook-save-queue`): `NotebookViewModel` incorpora `NotebookSaveQueue` para que `saveColumnGradeDebounced` actualice drafts locales y retrase la persistencia 500 ms, con flush inmediato al perder foco o cambiar de clase.
 - **Especialización de celdas del Cuaderno** (`perf/notebook-cell-specialization`): `NotebookEditableTableCell` pasa a actuar como router ligero por tipo de columna y envuelve variantes especializadas con `NotebookCellDisplaySnapshot` como frontera `.equatable()`, dejando fórmulas, rúbricas e instrumentos estructurados fuera del estado editable pesado.
 - **Caché de medias del Cuaderno** (`perf/notebook-average-cache`): `AverageCache` usa `AverageCacheKey(studentId, includedColumnIdsHash, valuesRevision)` y `NotebookViewModel.withActiveTabAverages()` reutiliza explicaciones por alumno, recalculando solo cuando cambian valores del alumno o configuración de media.
@@ -128,6 +129,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `./gradlew :shared:testDebugUnitTest --tests com.migestor.shared.viewmodel.NotebookViewModelTest` completado correctamente tras optimizar el guardado inline del Cuaderno. Quedan warnings existentes de opt-in experimental en tests de coroutines.
 - `./gradlew :data:generateCommonMainAppDatabaseInterface` completado correctamente tras añadir índices SQLDelight de lectura diaria.
 - Confirmación estática del patrón `@ViewBuilder` para clausuras de SwiftUI, alineándolo con la sintaxis del compilador de Swift y usos homólogos en la app.
 - `./gradlew :shared:compileKotlinDesktop`, `./gradlew :data:compileKotlinDesktop` y `./gradlew :shared:desktopTest --tests com.migestor.shared.viewmodel.NotebookViewModelTest` pasan tras `perf/notebook-save-queue`; `./gradlew :shared:compileKotlinIosSimulatorArm64` no pudo ejecutarse por configuración local de Xcode (`xcrun xcodebuild -version` devuelve exit 72).

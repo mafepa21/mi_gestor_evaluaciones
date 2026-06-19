@@ -191,52 +191,47 @@ class BuildNotebookSheetUseCase(
         averageCache: AverageCache,
     ): List<NotebookRow> {
         val calculated = columns.filter { it.type == NotebookColumnType.CALCULATED && !it.formula.isNullOrBlank() }
-        return rows.map { row ->
-            val calculatedValuesByColumnId = mutableMapOf<String, Double>()
+        val calculatedValuesByStudentId = mutableMapOf<Long, Map<String, Double>>()
 
-            if (calculated.isEmpty()) {
-                val explanation = averageCache.getOrPut(
-                    averageCache.key(row, columns, emptyMap())
-                ) {
-                    row.computeAverageExplanation(
-                        columns = columns,
-                        calculatedValuesByColumnId = emptyMap(),
-                    )
+        if (calculated.isNotEmpty()) {
+            rows.forEach { row ->
+                val calculatedValuesByColumnId = mutableMapOf<String, Double>()
+
+                // Do not default missing values to 0.0! Only put in variables map if value is not null.
+                val varsByCode = evaluations.mapNotNull { evaluation ->
+                    val value = row.cells.firstOrNull { it.evaluationId == evaluation.id }?.value
+                    value?.let { evaluation.code to it }
+                }.toMap()
+
+                val varsByColumnId = columns.mapNotNull { column ->
+                    val value = row.gradeValueFor(column)
+                    value?.let { column.id to it }
+                }.toMap()
+
+                val vars = varsByCode + varsByColumnId
+
+                calculated.forEach { column ->
+                    runCatching { formulaEvaluator.evaluate(column.formula!!, vars) }
+                        .getOrNull()
+                        ?.let { calculatedValuesByColumnId[column.id] = it }
                 }
-                return@map row.copy(
-                    weightedAverage = explanation?.average,
-                    averageExplanation = explanation,
-                    persistedCells = row.persistedCells,
-                    persistedGrades = row.persistedGrades
-                )
+                calculatedValuesByStudentId[row.student.id] = calculatedValuesByColumnId
             }
+        }
 
-            // Do not default missing values to 0.0! Only put in variables map if value is not null.
-            val varsByCode = evaluations.mapNotNull { evaluation ->
-                val value = row.cells.firstOrNull { it.evaluationId == evaluation.id }?.value
-                value?.let { evaluation.code to it }
-            }.toMap()
+        val explanationsByStudentId = averageCache.explanationsByStudent(
+            rows = rows,
+            columns = columns,
+            calculatedValuesByStudentId = calculatedValuesByStudentId,
+        ) { row, calculatedValuesByColumnId ->
+            row.computeAverageExplanation(
+                columns = columns,
+                calculatedValuesByColumnId = calculatedValuesByColumnId,
+            )
+        }
 
-            val varsByColumnId = columns.mapNotNull { column ->
-                val value = row.gradeValueFor(column)
-                value?.let { column.id to it }
-            }.toMap()
-
-            val vars = varsByCode + varsByColumnId
-
-            calculated.forEach { column ->
-                runCatching { formulaEvaluator.evaluate(column.formula!!, vars) }
-                    .getOrNull()
-                    ?.let { calculatedValuesByColumnId[column.id] = it }
-            }
-            val explanation = averageCache.getOrPut(
-                averageCache.key(row, columns, calculatedValuesByColumnId)
-            ) {
-                row.computeAverageExplanation(
-                    columns = columns,
-                    calculatedValuesByColumnId = calculatedValuesByColumnId,
-                )
-            }
+        return rows.map { row ->
+            val explanation = explanationsByStudentId[row.student.id]
             row.copy(
                 weightedAverage = explanation?.average,
                 averageExplanation = explanation,

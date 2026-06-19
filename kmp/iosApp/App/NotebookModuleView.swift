@@ -107,6 +107,7 @@ struct NotebookModuleView: View {
     @State var fixedZoneDragStartWidth: CGFloat = 0
     @State var fixedZoneLiveWidth: CGFloat? = nil
     @State var formulaEditRequest: NotebookFormulaEditRequest? = nil
+    @State var structuredInstrumentRequest: StructuredInstrumentEvaluationRequest? = nil
     @State var formulaDraft = ""
     @State var formulaAIPrompt = ""
     @State var formulaAIMessage: String? = nil
@@ -1166,6 +1167,24 @@ struct NotebookModuleView: View {
                 }
                 .sheet(item: $formulaEditRequest) { request in
                     formulaEditorSheet(request: request, data: data)
+                }
+                .sheet(item: $structuredInstrumentRequest) { request in
+                    StructuredInstrumentEvaluationSheet(
+                        bridge: bridge,
+                        request: request,
+                        onSaved: {
+                            reloadNotebookRow(request.studentId)
+                            showToast("Instrumento guardado", style: .success)
+                        },
+                        onClose: {
+                            structuredInstrumentRequest = nil
+                        }
+                    )
+                    #if os(macOS)
+                    .frame(minWidth: 680, minHeight: 620)
+                    #else
+                    .presentationDetents([.large])
+                    #endif
                 }
                 .sheet(isPresented: $isGroupManagementPresented) {
                     NotebookGroupManagementSheet(bridge: bridge) { message, style in

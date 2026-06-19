@@ -1,0 +1,122 @@
+CREATE TABLE IF NOT EXISTS centers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    author_user_id INTEGER,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    associated_group_id INTEGER,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS academic_years (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    center_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    start_epoch_ms INTEGER NOT NULL,
+    end_epoch_ms INTEGER NOT NULL,
+    author_user_id INTEGER,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    associated_group_id INTEGER,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (center_id) REFERENCES centers(id) ON DELETE CASCADE
+);
+
+ALTER TABLE academic_years ADD COLUMN status TEXT NOT NULL DEFAULT 'ACTIVE';
+ALTER TABLE academic_years ADD COLUMN is_active INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE academic_years ADD COLUMN archived_at_epoch_ms INTEGER;
+
+INSERT INTO centers(code, name, created_at_epoch_ms, updated_at_epoch_ms)
+SELECT 'default-center', 'Centro principal', 0, 0
+WHERE NOT EXISTS (SELECT 1 FROM centers);
+
+INSERT INTO academic_years(
+    center_id, name, start_epoch_ms, end_epoch_ms, status, is_active, created_at_epoch_ms, updated_at_epoch_ms
+)
+SELECT
+    (SELECT id FROM centers ORDER BY id LIMIT 1),
+    'Curso actual',
+    0,
+    4102444800000,
+    'ACTIVE',
+    1,
+    0,
+    0
+WHERE NOT EXISTS (SELECT 1 FROM academic_years);
+
+UPDATE academic_years
+SET status = 'ARCHIVED', is_active = 0
+WHERE id NOT IN (
+    SELECT id FROM academic_years ORDER BY start_epoch_ms DESC, id DESC LIMIT 1
+);
+
+UPDATE academic_years
+SET status = 'ACTIVE', is_active = 1, archived_at_epoch_ms = NULL
+WHERE id = (
+    SELECT id FROM academic_years ORDER BY start_epoch_ms DESC, id DESC LIMIT 1
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_academic_years_active
+ON academic_years(is_active)
+WHERE is_active = 1;
+
+UPDATE classes
+SET academic_year_id = (SELECT id FROM academic_years WHERE is_active = 1 LIMIT 1)
+WHERE academic_year_id IS NULL;
+
+CREATE TABLE IF NOT EXISTS students (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    first_name TEXT NOT NULL,
+    last_name TEXT NOT NULL,
+    email TEXT,
+    photo_path TEXT,
+    is_injured INTEGER NOT NULL DEFAULT 0,
+    sex TEXT NOT NULL DEFAULT 'UNSPECIFIED',
+    sex_source TEXT NOT NULL DEFAULT 'UNKNOWN',
+    birth_date_iso TEXT,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS class_students (
+    class_id INTEGER NOT NULL,
+    student_id INTEGER NOT NULL,
+    PRIMARY KEY (class_id, student_id),
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS student_enrollments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER NOT NULL,
+    class_id INTEGER NOT NULL,
+    academic_year_id INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'ACTIVE',
+    promotion_status TEXT NOT NULL DEFAULT 'PENDING',
+    previous_enrollment_id INTEGER,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(student_id, class_id, academic_year_id),
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (academic_year_id) REFERENCES academic_years(id) ON DELETE CASCADE,
+    FOREIGN KEY (previous_enrollment_id) REFERENCES student_enrollments(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_student_enrollments_year_class
+ON student_enrollments(academic_year_id, class_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_student_enrollments_student_year
+ON student_enrollments(student_id, academic_year_id);
+
+INSERT OR IGNORE INTO student_enrollments(student_id, class_id, academic_year_id, status, promotion_status, created_at_epoch_ms, updated_at_epoch_ms)
+SELECT cs.student_id, cs.class_id, c.academic_year_id, 'ACTIVE', 'PENDING', 0, 0
+FROM class_students cs
+INNER JOIN classes c ON c.id = cs.class_id
+WHERE c.academic_year_id IS NOT NULL;

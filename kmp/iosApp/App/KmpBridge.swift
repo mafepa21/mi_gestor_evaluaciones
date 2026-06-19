@@ -6,6 +6,26 @@ import CryptoKit
 
 typealias KmpSubject = MiGestorKit.Subject
 
+struct StructuredInstrumentEvaluationModel: Identifiable {
+    let id: String
+    let classId: Int64
+    let studentId: Int64
+    let columnId: String
+    let title: String
+    let kind: NotebookInstrumentTemplateKind
+    var items: [StructuredInstrumentEvaluationItem]
+}
+
+struct StructuredInstrumentEvaluationItem: Identifiable {
+    let id: String
+    let title: String
+    let type: NotebookInstrumentItemType
+    let options: [String]
+    var textValue: String
+    var boolValue: Bool
+    var numberValue: String
+}
+
 enum IosFormatting {
     private static let decimalFormatter: NumberFormatter = {
         let formatter = NumberFormatter()
@@ -201,6 +221,9 @@ final class KmpBridge: ObservableObject {
     @Published var status: String = "Inicializando..."
     @Published var statsText: String = "-"
     @Published var classes: [SchoolClass] = []
+    @Published var academicYears: [AcademicYearSnapshot] = []
+    @Published var activeAcademicYear: AcademicYearSnapshot?
+    @Published var archivedAcademicYears: [AcademicYearSnapshot] = []
     @Published var subjects: [KmpSubject] = []
     @Published var studentsInClass: [Student] = []
     @Published var evaluationsInClass: [Evaluation] = []
@@ -275,6 +298,18 @@ final class KmpBridge: ObservableObject {
         let averageScore: Double
         let rosterPreview: [Student]
         let activeEvaluationNames: [String]
+    }
+
+    struct AcademicYearSnapshot: Identifiable, Equatable {
+        let id: Int64
+        let name: String
+        let startDate: Date
+        let endDate: Date
+        let status: String
+        let isActive: Bool
+        let archivedAt: Date?
+        let classCount: Int
+        let enrollmentCount: Int64
     }
 
     struct ClassroomCaptureContextSnapshot: Equatable {
@@ -819,7 +854,6 @@ final class KmpBridge: ObservableObject {
     private var autoSyncDebounceTask: Task<Void, Never>? = nil
     private var pendingChangesPersistenceTask: Task<Void, Never>? = nil
     private var notebookSnapshotDebounceTask: Task<Void, Never>? = nil
-    private var pendingDebouncedGradeSaves: [String: Task<Void, Never>] = [:]
     private var pendingGradeSnapshotTask: Task<Void, Never>? = nil
     private var isPairingInFlight = false
     private var isSyncInFlight = false
@@ -866,6 +900,7 @@ final class KmpBridge: ObservableObject {
 
     private struct NotebookCellValueIndex {
         var textByKey: [String: String] = [:]
+        var displayByKey: [String: String] = [:]
         var checkByKey: [String: Bool] = [:]
         var numericByKey: [String: String] = [:]
         var numericByEvalKey: [String: String] = [:]
@@ -934,6 +969,7 @@ final class KmpBridge: ObservableObject {
         // MacCommandCenterCoordinator calls notifyHelperReady(host:port:) once the
         // helper has published a valid LAN IP address.
         self.syncToken = "loopback-token"
+        self.pairedSyncHost = nil
         self.pairedServerFingerprint = nil
         #endif
 
@@ -972,7 +1008,6 @@ final class KmpBridge: ObservableObject {
         syncEventListener.stop()
         notebookSnapshotDebounceTask?.cancel()
         pendingGradeSnapshotTask?.cancel()
-        pendingDebouncedGradeSaves.values.forEach { $0.cancel() }
     }
 
     private func setupObservers() {
@@ -1297,6 +1332,7 @@ final class KmpBridge: ObservableObject {
     }
 
     private func refreshClasses() async throws {
+        try await refreshAcademicYears()
         let classes = try await container.classesRepository.listClasses()
         self.classes = classes
         // If notebook has no class selected, pick the first one
@@ -1305,11 +1341,39 @@ final class KmpBridge: ObservableObject {
         }
     }
 
+    private func academicYearSnapshot(from year: AcademicYear) async throws -> AcademicYearSnapshot {
+        let classCount = try await container.classesRepository.listClassesForAcademicYear(academicYearId: year.id).count
+        let enrollmentCount = try await container.academicYearsRepository.enrollmentCount(academicYearId: year.id)
+        return AcademicYearSnapshot(
+            id: year.id,
+            name: year.name,
+            startDate: Date(timeIntervalSince1970: TimeInterval(year.startAt.toEpochMilliseconds()) / 1000),
+            endDate: Date(timeIntervalSince1970: TimeInterval(year.endAt.toEpochMilliseconds()) / 1000),
+            status: year.status.name,
+            isActive: year.isActive,
+            archivedAt: year.archivedAt.map { Date(timeIntervalSince1970: TimeInterval($0.toEpochMilliseconds()) / 1000) },
+            classCount: classCount,
+            enrollmentCount: enrollmentCount.int64Value
+        )
+    }
+
+    func refreshAcademicYears() async throws {
+        let years = try await container.academicYearsRepository.listAcademicYears()
+        var snapshots: [AcademicYearSnapshot] = []
+        for year in years {
+            snapshots.append(try await academicYearSnapshot(from: year))
+        }
+        self.academicYears = snapshots
+        self.activeAcademicYear = snapshots.first(where: \.isActive)
+        self.archivedAcademicYears = snapshots.filter { !$0.isActive }
+    }
+
     private func refreshSubjects() async throws {
         subjects = try await container.subjectsRepository.listSubjects()
     }
 
     func ensureClassesLoaded() async {
+        try? await refreshAcademicYears()
         if classes.isEmpty {
             try? await refreshClasses()
         }
@@ -1358,6 +1422,283 @@ final class KmpBridge: ObservableObject {
     func students(forClassId classId: Int64) async throws -> [Student] {
         try await container.classesRepository.listStudentsInClass(classId: classId)
     }
+
+    func createAcademicYear(
+        name: String,
+        startDate: Date,
+        endDate: Date,
+        copyGroupsFrom sourceAcademicYearId: Int64?,
+        promoteStudents: Bool
+    ) async throws -> Int64 {
+        let sourceClasses: [SchoolClass]
+        if let sourceAcademicYearId {
+            sourceClasses = try await container.classesRepository.listClassesForAcademicYear(academicYearId: sourceAcademicYearId)
+        } else {
+            sourceClasses = []
+        }
+
+        let targetYearId = try await container.academicYearsRepository.createAcademicYear(
+            name: name,
+            startEpochMs: Int64(startDate.timeIntervalSince1970 * 1000),
+            endEpochMs: Int64(endDate.timeIntervalSince1970 * 1000),
+            centerId: nil,
+            makeActive: true
+        ).int64Value
+
+        var classMapping: [Int64: Int64] = [:]
+        for sourceClass in sourceClasses {
+            let targetClassId = try await container.classesRepository.saveClass(
+                id: nil,
+                name: sourceClass.name,
+                course: sourceClass.course,
+                description: sourceClass.description_,
+                centerId: sourceClass.centerId,
+                academicYearId: KotlinLong(value: targetYearId),
+                stageCycleId: sourceClass.stageCycleId,
+                subjectId: sourceClass.subjectId,
+                updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+                deviceId: localDeviceId,
+                syncVersion: 1
+            ).int64Value
+            classMapping[sourceClass.id] = targetClassId
+        }
+
+        if promoteStudents {
+            var targetClasses = try await container.classesRepository.listClassesForAcademicYear(academicYearId: targetYearId)
+            
+            for sourceClass in sourceClasses {
+                let students = try await container.classesRepository.listStudentsInClass(classId: sourceClass.id)
+                guard !students.isEmpty else { continue }
+                guard let targetPlan = promotedStudentTargetClass(from: sourceClass) else { continue }
+                let targetClass = try await ensurePromotionTargetClass(
+                    targetPlan,
+                    sourceClass: sourceClass,
+                    targetYearId: targetYearId,
+                    targetClasses: &targetClasses
+                )
+                for student in students {
+                    try await container.classesRepository.promoteStudentToClass(
+                        sourceClassId: sourceClass.id,
+                        targetClassId: targetClass.id,
+                        studentId: student.id,
+                        promotionStatus: PromotionStatus.promoted.name
+                    )
+                }
+            }
+        }
+
+        try await refreshAcademicYears()
+        try await refreshClasses()
+        try await refreshStudentsDirectory()
+        selectedStudentsClassId = classes.first?.id
+        status = promoteStudents ? "Curso escolar creado con alumnado promocionado." : "Curso escolar creado."
+        return targetYearId
+    }
+
+    func setActiveAcademicYear(id: Int64) async throws {
+        try await container.academicYearsRepository.setActiveAcademicYear(academicYearId: id)
+        selectedStudentsClassId = nil
+        try await refreshAcademicYears()
+        try await refreshClasses()
+        try await refreshStudentsDirectory()
+        status = "Curso escolar activo actualizado."
+    }
+
+    func archiveAcademicYear(id: Int64) async throws {
+        guard activeAcademicYear?.id != id else {
+            status = "Activa otro curso escolar antes de archivar el curso actual."
+            return
+        }
+        try await container.academicYearsRepository.archiveAcademicYear(academicYearId: id)
+        try await refreshAcademicYears()
+        try await refreshClasses()
+        status = "Curso escolar archivado."
+    }
+
+    func deleteArchivedAcademicYear(id: Int64) async throws {
+        guard activeAcademicYear?.id != id else {
+            status = "No se puede eliminar el curso escolar activo."
+            return
+        }
+        try await container.academicYearsRepository.deleteArchivedAcademicYear(academicYearId: id)
+        try await refreshAcademicYears()
+        try await refreshClasses()
+        try await refreshStudentsDirectory()
+        status = "Curso escolar archivado eliminado."
+    }
+
+    func archivedAcademicYearExportText(id: Int64) async throws -> String {
+        let years = try await container.academicYearsRepository.listAcademicYears()
+        guard let year = years.first(where: { $0.id == id }) else {
+            throw NSError(domain: "KmpBridge", code: -90, userInfo: [NSLocalizedDescriptionKey: "Curso escolar no encontrado."])
+        }
+
+        let classes = try await container.classesRepository.listClassesForAcademicYear(academicYearId: id)
+        var lines: [String] = [
+            "Curso escolar: \(year.name)",
+            "Estado: \(year.status.name)",
+            "Inicio: \(Date(timeIntervalSince1970: TimeInterval(year.startAt.toEpochMilliseconds()) / 1000).formatted(.dateTime.day().month().year()))",
+            "Fin: \(Date(timeIntervalSince1970: TimeInterval(year.endAt.toEpochMilliseconds()) / 1000).formatted(.dateTime.day().month().year()))",
+            "Grupos: \(classes.count)",
+            ""
+        ]
+
+        for schoolClass in classes {
+            let roster = try await container.classesRepository.listStudentsInClass(classId: schoolClass.id)
+            let evaluations = try await container.evaluationsRepository.listClassEvaluations(classId: schoolClass.id)
+            let grades = try await container.gradesRepository.listGradesForClass(classId: schoolClass.id)
+            let notebookCells = try await container.notebookCellsRepository.listClassCells(classId: schoolClass.id)
+            let attendance = try await container.attendanceRepository.listAttendance(classId: schoolClass.id)
+            let incidents = try await container.incidentsRepository.listIncidents(classId: schoolClass.id)
+            let physicalAssignments = try await container.physicalTestsRepository.listAssignmentsForClass(classId: schoolClass.id)
+            var physicalResultsCount = 0
+            for assignment in physicalAssignments {
+                physicalResultsCount += try await container.physicalTestsRepository.listResultsForAssignment(assignmentId: assignment.id).count
+            }
+            let subject = schoolClass.subjectId.flatMap { subjectId in
+                subjects.first(where: { $0.id == subjectId.int64Value })?.name
+            } ?? "Sin asignatura"
+            lines.append("## \(schoolClass.name) · Curso \(schoolClass.course) · \(subject)")
+            lines.append("Matriculas: \(roster.count)")
+            lines.append("Evaluaciones: \(evaluations.count)")
+            lines.append("Calificaciones: \(grades.count)")
+            lines.append("Celdas de cuaderno: \(notebookCells.count)")
+            lines.append("Registros de asistencia: \(attendance.count)")
+            lines.append("Incidencias: \(incidents.count)")
+            lines.append("Pruebas fisicas: \(physicalAssignments.count) asignaciones · \(physicalResultsCount) resultados")
+            if roster.isEmpty {
+                lines.append("- Sin alumnado matriculado")
+            } else {
+                for student in roster.sorted(by: { $0.fullName.localizedCaseInsensitiveCompare($1.fullName) == .orderedAscending }) {
+                    lines.append("- \(student.fullName)")
+                }
+            }
+            lines.append("")
+        }
+
+        return lines.joined(separator: "\n")
+    }
+
+    private struct PromotionTargetClassPlan {
+        let name: String
+        let course: Int32
+    }
+
+    private func ensurePromotionTargetClass(
+        _ plan: PromotionTargetClassPlan,
+        sourceClass: SchoolClass,
+        targetYearId: Int64,
+        targetClasses: inout [SchoolClass]
+    ) async throws -> SchoolClass {
+        if let existing = targetClasses.first(where: { promotionClassNamesEquivalent($0.name, plan.name) }) {
+            return existing
+        }
+        let targetClassId = try await container.classesRepository.saveClass(
+            id: nil,
+            name: plan.name,
+            course: plan.course,
+            description: sourceClass.description_,
+            centerId: sourceClass.centerId,
+            academicYearId: KotlinLong(value: targetYearId),
+            stageCycleId: sourceClass.stageCycleId,
+            subjectId: sourceClass.subjectId,
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+            deviceId: localDeviceId,
+            syncVersion: 1
+        ).int64Value
+        let refreshed = try await container.classesRepository.listClassesForAcademicYear(academicYearId: targetYearId)
+        targetClasses = refreshed
+        guard let created = refreshed.first(where: { $0.id == targetClassId }) else {
+            throw NSError(
+                domain: "KmpBridge",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "No se pudo crear el grupo destino de promoción."]
+            )
+        }
+        return created
+    }
+
+    private func promotedStudentTargetClass(from sourceClass: SchoolClass) -> PromotionTargetClassPlan? {
+        let sourceName = sourceClass.name
+        let levelsMap: [(course: Int, stage: String, target: String?, targetCourse: Int32?)] = [
+            (1, "ESO", "2º ESO", 2),
+            (2, "ESO", "3º ESO", 3),
+            (3, "ESO", "4º ESO", 4),
+            (4, "ESO", "1º BAC", 1),
+            (1, "BAC", nil, nil),
+            (2, "BAC", nil, nil),
+        ]
+        for level in levelsMap {
+            if let suffix = promotionSuffix(from: sourceName, course: level.course, stage: level.stage) {
+                guard let target = level.target, let course = level.targetCourse else { return nil }
+                return PromotionTargetClassPlan(name: target + suffix, course: course)
+            }
+        }
+        return nil
+    }
+
+    private func promotionSuffix(from sourceName: String, course: Int, stage: String) -> String? {
+        let stagePattern = stage == "BAC" ? "(?:BAC|BACH|BACHILLERATO)" : stage
+        let pattern = #"^\s*\#(course)\s*(?:º|°)?\s*\#(stagePattern)\b\s*"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return nil }
+        let fullRange = NSRange(sourceName.startIndex..<sourceName.endIndex, in: sourceName)
+        guard let match = regex.firstMatch(in: sourceName, range: fullRange),
+              match.range.location == 0,
+              let suffixStart = Range(match.range, in: sourceName)?.upperBound else {
+            return nil
+        }
+        let rawSuffix = String(sourceName[suffixStart...])
+        return normalizedPromotionSuffix(rawSuffix)
+    }
+
+    private func normalizedPromotionSuffix(_ suffix: String) -> String {
+        let trimmed = suffix.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+        if let letter = singleGroupLetter(in: trimmed) {
+            return " \(letter)"
+        }
+        return trimmed.hasPrefix("-") ? " \(trimmed)" : " \(trimmed)"
+    }
+
+    private func singleGroupLetter(in suffix: String) -> String? {
+        let pattern = #"^(?:[\(\[]\s*)?([A-Za-z])(?:\s*[\)\]])?$|^[-–—]\s*([A-Za-z])$"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let range = NSRange(suffix.startIndex..<suffix.endIndex, in: suffix)
+        guard let match = regex.firstMatch(in: suffix, range: range) else { return nil }
+        for index in 1..<match.numberOfRanges {
+            let groupRange = match.range(at: index)
+            if groupRange.location != NSNotFound, let swiftRange = Range(groupRange, in: suffix) {
+                return String(suffix[swiftRange]).uppercased()
+            }
+        }
+        return nil
+    }
+
+    private func promotionClassNamesEquivalent(_ lhs: String, _ rhs: String) -> Bool {
+        normalizedPromotionClassName(lhs) == normalizedPromotionClassName(rhs)
+    }
+
+    private func normalizedPromotionClassName(_ name: String) -> String {
+        var normalized = name
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .uppercased()
+            .replacingOccurrences(of: "BACHILLERATO", with: "BAC")
+            .replacingOccurrences(of: "BACH", with: "BAC")
+            .replacingOccurrences(of: "º", with: "")
+            .replacingOccurrences(of: "°", with: "")
+        normalized = normalized.replacingOccurrences(
+            of: #"[\(\)\[\]\-–—_/\\.]+"#,
+            with: " ",
+            options: .regularExpression
+        )
+        normalized = normalized.replacingOccurrences(
+            of: #"\s+"#,
+            with: " ",
+            options: .regularExpression
+        )
+        return normalized.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
 
     func previewStudentImport(tsv: String) async throws -> AppleStudentImportPreview {
         let preview = appleImportFacade.previewStudentsFromTsv(text: tsv)
@@ -2434,7 +2775,7 @@ final class KmpBridge: ObservableObject {
             course: course,
             description: nil,
             centerId: nil,
-            academicYearId: nil,
+            academicYearId: kotlinLong(activeAcademicYear?.id),
             stageCycleId: nil,
             subjectId: kotlinLong(subjectId),
             updatedAtEpochMs: nowMs,
@@ -2501,6 +2842,24 @@ final class KmpBridge: ObservableObject {
                 "stageCycleId": stageCycleId.map { NSNumber(value: $0) } ?? NSNull(),
                 "subjectId": subjectId.map { NSNumber(value: $0) } ?? NSNull()
             ]
+        )
+    }
+
+    func deleteClass(id: Int64) async throws {
+        try await container.classesRepository.deleteClass(classId: id)
+        try await refreshClasses()
+        if selectedStudentsClassId == id {
+            selectedStudentsClassId = classes.first?.id
+            try await refreshStudentsDirectory()
+        }
+        enqueueLocalChange(
+            entity: "class",
+            id: "\(id)",
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+            payload: [
+                "id": id
+            ],
+            op: "delete"
         )
     }
 
@@ -4381,7 +4740,16 @@ final class KmpBridge: ObservableObject {
 
         try await repairLearningSituationAssessmentInstrumentImportIfNeeded(classId: classId)
 
-        for (index, instrument) in selectedInstruments.enumerated() {
+        let existingInstrumentTitles = try await existingLearningSituationAssessmentTitles(
+            situationId: situation.id,
+            classId: classId
+        )
+        let instrumentsToCreate = selectedInstruments.filter { instrument in
+            !existingInstrumentTitles.contains(normalizedAssessmentInstrumentTitle(instrument.title))
+        }
+        guard !instrumentsToCreate.isEmpty else { return }
+
+        for (index, instrument) in instrumentsToCreate.enumerated() {
             let rubricId = try await saveAssessmentInstrumentRubricIfNeeded(
                 instrument: instrument,
                 classId: classId,
@@ -4413,6 +4781,15 @@ final class KmpBridge: ObservableObject {
                 situationTitle: situation.title,
                 targetTabId: targetTabId
             )
+            if rubricId == nil {
+                try await saveAssessmentInstrumentTemplateIfNeeded(
+                    instrument: instrument,
+                    classId: classId,
+                    evaluationId: evaluationId,
+                    columnId: columnId,
+                    sourceFileName: draft.sourceFileName
+                )
+            }
             try await saveLearningSituationLinkedResource(
                 situationId: situation.id,
                 kind: .evaluation,
@@ -4444,6 +4821,26 @@ final class KmpBridge: ObservableObject {
         scheduleNotebookSnapshotSync(forClassId: classId)
     }
 
+    private func existingLearningSituationAssessmentTitles(
+        situationId: Int64,
+        classId: Int64
+    ) async throws -> Set<String> {
+        let resources = try await container.learningSituationsRepository.listLinkedResources(learningSituationId: situationId)
+        return Set(resources.compactMap { resource in
+            guard resource.classId?.int64Value == classId else { return nil }
+            guard resource.kind == .evaluation || resource.kind == .notebookColumn else { return nil }
+            return normalizedAssessmentInstrumentTitle(resource.label)
+        })
+    }
+
+    private func normalizedAssessmentInstrumentTitle(_ value: String) -> String {
+        value
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .lowercased()
+    }
+
     func learningSituationNotebookTabs(for classId: Int64) async throws -> [NotebookTab] {
         try await container.notebookConfigRepository.listTabs(classId: classId)
     }
@@ -4452,7 +4849,8 @@ final class KmpBridge: ObservableObject {
         let repairedLevels = try await repairAssessmentInstrumentRubricLevelPoints(classId: classId)
         let repairedColumns = try await repairAssessmentInstrumentNotebookColumns(classId: classId)
         let repairedEvaluations = try await repairAssessmentInstrumentEvaluations(classId: classId)
-        if repairedLevels || repairedColumns || repairedEvaluations {
+        let repairedTemplates = try await repairStructuredAssessmentInstrumentTemplates(classId: classId)
+        if repairedLevels || repairedColumns || repairedEvaluations || repairedTemplates {
             refreshCurrentNotebook()
             scheduleNotebookSnapshotSync(forClassId: classId)
         }
@@ -4513,6 +4911,37 @@ final class KmpBridge: ObservableObject {
         return rubricId
     }
 
+    private func saveAssessmentInstrumentTemplateIfNeeded(
+        instrument: AssessmentInstrumentDraft,
+        classId: Int64,
+        evaluationId: Int64,
+        columnId: String,
+        sourceFileName: String
+    ) async throws {
+        let items = assessmentInstrumentItems(for: instrument, columnId: columnId)
+        guard !items.isEmpty else { return }
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let nowInstant = Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMs)
+        let template = NotebookInstrumentTemplate(
+            id: "template_\(columnId)",
+            classId: classId,
+            columnId: columnId,
+            evaluationId: KotlinLong(value: evaluationId),
+            title: instrument.title,
+            kind: templateKind(for: instrument.kind),
+            inputKind: structuredInputKind(for: instrument.kind),
+            source: sourceFileName,
+            trace: AuditTrace(
+                authorUserId: nil,
+                createdAt: nowInstant,
+                updatedAt: nowInstant,
+                associatedGroupId: KotlinLong(value: classId),
+                deviceId: localDeviceId,
+                syncVersion: 1
+            )
+        )
+        try await container.notebookInstrumentsRepository.saveTemplate(template: template, items: items)
+    }
     private func ensureNotebookColumnForAssessmentInstrument(
         classId: Int64,
         evaluationId: Int64,
@@ -4556,13 +4985,15 @@ final class KmpBridge: ObservableObject {
             categoryId: nil,
             ordinalLevels: [],
             availableIcons: [],
-            countsTowardAverage: resolvedWeight > 0,
+            countsTowardAverage: instrument.countsTowardAverage &&
+                resolvedWeight > 0 &&
+                canMaterializeAverage(for: instrument.scoreStrategy),
             isPinned: false,
             isHidden: false,
             visibility: .visible,
             isLocked: false,
             isTemplate: false,
-            emptyCellPolicy: .excludeFromAverage,
+            emptyCellPolicy: notebookEmptyCellPolicy(for: instrument.emptyCellPolicy),
             trace: AuditTrace(
                 authorUserId: nil,
                 createdAt: nowInstant,
@@ -4589,6 +5020,138 @@ final class KmpBridge: ObservableObject {
         return refreshedTabs.first(where: { $0.title == createdTitle })?.id ?? refreshedTabs.first?.id ?? "TAB_\(classId)"
     }
 
+    private func templateKind(for kind: AssessmentInstrumentKind) -> NotebookInstrumentTemplateKind {
+        switch kind {
+        case .checklist, .submissionChecklist:
+            return .checklist
+        case .teacherObservation:
+            return .observation
+        case .observationGrid:
+            return .form
+        case .rubric:
+            return .form
+        }
+    }
+
+    private func structuredInputKind(for kind: AssessmentInstrumentKind) -> NotebookCellInputKind {
+        switch kind {
+        case .checklist, .submissionChecklist:
+            return .structuredChecklist
+        case .teacherObservation:
+            return .structuredObservation
+        case .observationGrid:
+            return .structuredForm
+        case .rubric:
+            return .structuredForm
+        }
+    }
+
+    private func assessmentInstrumentItems(for instrument: AssessmentInstrumentDraft, columnId: String) -> [NotebookInstrumentItem] {
+        let normalizedTitle = instrument.title.lowercased()
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+
+        if normalizedTitle == "daily workout log" {
+            var specs: [(String, String, NotebookInstrumentItemType, [String])] = []
+            for index in 1...4 {
+                specs.append(("exercise_\(index)_level", "Ejercicio \(index) · Nivel", .text, []))
+                specs.append(("exercise_\(index)_volume", "Ejercicio \(index) · Volumen / reps", .text, []))
+                specs.append(("exercise_\(index)_rpe", "Ejercicio \(index) · RPE 1-10", .number, []))
+                specs.append(("exercise_\(index)_safe", "Ejercicio \(index) · Técnica segura", .choice, ["Yes", "No"]))
+                specs.append(("exercise_\(index)_coach_note", "Ejercicio \(index) · Nota del coach", .text, []))
+            }
+            specs.append(("peak_hr", "Peak radial HR (6 seconds x 10)", .number, []))
+            specs.append(("hr_after_1_min", "Radial HR after 1 minute", .number, []))
+            specs.append(("net_recovery", "Net recovery", .number, []))
+            specs.append(("coach_signature", "Coach signature", .text, []))
+            return makeInstrumentItems(columnId: columnId, specs: specs)
+        }
+
+        if normalizedTitle == "diagnostic record sheet - session 1" {
+            return makeInstrumentItems(columnId: columnId, specs: [
+                ("adapted_pushups", "Adapted push-ups 1'", .number, []),
+                ("sit_and_reach", "Sit-and-reach", .text, []),
+                ("resting_radial_hr", "Resting radial HR", .number, []),
+                ("goal_chosen", "Goal chosen", .choice, ["Strength", "Cardio"]),
+                ("initial_observation", "Initial observation", .text, []),
+            ])
+        }
+
+        if normalizedTitle == "teacher observation grid ce 2.2 - execution and self-regulation" {
+            return makeInstrumentItems(columnId: columnId, specs: [
+                ("technique", "Technique", .scale14, []),
+                ("rpe_target", "RPE target", .scale14, []),
+                ("reliable_log", "Reliable log", .scale14, []),
+                ("intensity_adjustment", "Intensity adjustment", .scale14, []),
+                ("motor_engagement", "Motor engagement", .scale14, []),
+                ("mark", "Mark", .number, []),
+            ])
+        }
+
+        if normalizedTitle == "adjustment sheet - session 7" {
+            return makeInstrumentItems(columnId: columnId, specs: [
+                ("compared_data", "Compared data: HR / reps / RPE / recovery", .text, []),
+                ("change_applied", "Change applied", .choice, ["+10% volume", "shorter rest", "level change", "other"]),
+                ("reason", "Reason", .text, []),
+                ("technique_safe", "Is technique still safe?", .choice, ["Yes", "Needs adaptation"]),
+            ])
+        }
+
+        if normalizedTitle == "healthy habits quiz - session 8" {
+            return makeInstrumentItems(columnId: columnId, specs: [
+                ("hydration", "Best hydration option for normal PE", .choice, ["water", "energy drink", "soft drink"]),
+                ("sleep", "Recommended sleep duration for teenagers", .text, []),
+                ("protein_shakes", "Protein shakes are necessary for every active teenager", .choice, ["True", "False"]),
+                ("water_estimate", "Estimate daily water for 60 kg: 60 / 30", .number, []),
+                ("caffeine_effect", "A high-caffeine, high-sugar drink before PE may affect", .choice, ["sleep", "HR", "hydration habits", "all"]),
+            ])
+        }
+
+        if !instrument.checklistItems.isEmpty {
+            let specs = instrument.checklistItems.enumerated().map { index, item in
+                ("check_\(index + 1)", item.title, NotebookInstrumentItemType.check, [] as [String])
+            }
+            return makeInstrumentItems(columnId: columnId, specs: specs)
+        }
+
+        if !instrument.observationFields.isEmpty {
+            let specs = instrument.observationFields.enumerated().map { index, field in
+                ("field_\(index + 1)", field.title, NotebookInstrumentItemType.scale14, [] as [String])
+            }
+            return makeInstrumentItems(columnId: columnId, specs: specs)
+        }
+
+        return []
+    }
+
+    private func makeInstrumentItems(
+        columnId: String,
+        specs: [(String, String, NotebookInstrumentItemType, [String])]
+    ) -> [NotebookInstrumentItem] {
+        let templateId = "template_\(columnId)"
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let nowInstant = Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMs)
+        return specs.enumerated().map { index, spec in
+            NotebookInstrumentItem(
+                id: "\(templateId)_\(spec.0)",
+                templateId: templateId,
+                key: spec.0,
+                title: spec.1,
+                type: spec.2,
+                options: spec.3,
+                required: true,
+                order: Int32(index),
+                helpText: nil,
+                trace: AuditTrace(
+                    authorUserId: nil,
+                    createdAt: nowInstant,
+                    updatedAt: nowInstant,
+                    associatedGroupId: nil,
+                    deviceId: localDeviceId,
+                    syncVersion: 1
+                )
+            )
+        }
+    }
     private func repairAssessmentInstrumentRubricLevelPoints(classId: Int64) async throws -> Bool {
         let targetNames: Set<String> = ["Plan Design Rubric", "Peer-Coaching Rubric"]
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
@@ -4630,20 +5193,53 @@ final class KmpBridge: ObservableObject {
         var didRepair = false
 
         for column in columns {
-            guard let repair = assessmentInstrumentColumnRepair(for: column.title) else { continue }
-            guard column.type != repair.type ||
-                    column.instrumentKind != repair.instrumentKind ||
-                    column.inputKind != repair.inputKind ||
-                    column.scaleKind != repair.scaleKind else {
+            var repairType = column.type
+            var repairInstrumentKind = column.instrumentKind
+            var repairInputKind = column.inputKind
+            var repairScaleKind = column.scaleKind
+
+            if let repair = assessmentInstrumentColumnRepair(for: column.title) {
+                repairType = repair.type
+                repairInstrumentKind = repair.instrumentKind
+                repairInputKind = repair.inputKind
+                repairScaleKind = repair.scaleKind
+            } else if let detail = try? await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: column.id) {
+                repairType = .text
+                repairScaleKind = .custom
+                
+                let templateInputKind = detail.template_.inputKind
+                repairInputKind = templateInputKind
+                
+                switch detail.template_.kind {
+                case .checklist:
+                    repairInstrumentKind = .checklist
+                case .observation:
+                    repairInstrumentKind = .systematicObservation
+                case .form:
+                    if templateInputKind == NotebookCellInputKind.structuredQuiz {
+                        repairInstrumentKind = .checklist
+                    } else {
+                        repairInstrumentKind = .dailyWork
+                    }
+                default:
+                    break
+                }
+            }
+
+            guard column.type != repairType ||
+                    column.instrumentKind != repairInstrumentKind ||
+                    column.inputKind != repairInputKind ||
+                    column.scaleKind != repairScaleKind else {
                 continue
             }
+
             let repaired = NotebookColumnDefinition(
                 id: column.id,
                 title: column.title,
-                type: repair.type,
+                type: repairType,
                 categoryKind: .evaluation,
-                instrumentKind: repair.instrumentKind,
-                inputKind: repair.inputKind,
+                instrumentKind: repairInstrumentKind,
+                inputKind: repairInputKind,
                 evaluationId: column.evaluationId,
                 rubricId: nil,
                 formula: column.formula,
@@ -4651,7 +5247,7 @@ final class KmpBridge: ObservableObject {
                 dateEpochMs: column.dateEpochMs,
                 unitOrSituation: column.unitOrSituation,
                 competencyCriteriaIds: column.competencyCriteriaIds,
-                scaleKind: repair.scaleKind,
+                scaleKind: repairScaleKind,
                 tabIds: column.tabIds,
                 sessions: column.sessions,
                 sharedAcrossTabs: column.sharedAcrossTabs,
@@ -4682,6 +5278,90 @@ final class KmpBridge: ObservableObject {
             didRepair = true
         }
         return didRepair
+    }
+
+    private func repairStructuredAssessmentInstrumentTemplates(classId: Int64) async throws -> Bool {
+        let columns = try await container.notebookConfigRepository.listColumns(classId: classId)
+        var didRepair = false
+
+        for column in columns {
+            guard let instrument = importedAssessmentInstrumentDraft(for: column.title) else { continue }
+            let existing = try await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: column.id)
+            guard existing == nil else { continue }
+            try await saveAssessmentInstrumentTemplateIfNeeded(
+                instrument: instrument,
+                classId: classId,
+                evaluationId: column.evaluationId?.int64Value ?? 0,
+                columnId: column.id,
+                sourceFileName: "instrumentos_evaluacion.docx"
+            )
+            didRepair = true
+        }
+
+        return didRepair
+    }
+
+    private func importedAssessmentInstrumentDraft(for title: String) -> AssessmentInstrumentDraft? {
+        switch title.trimmingCharacters(in: .whitespacesAndNewlines) {
+        case "Daily Workout Log":
+            return repairAssessmentInstrumentDraft(title: title, kind: .observationGrid, criterionLabel: "CE 2.2")
+        case "Diagnostic Record Sheet - Session 1":
+            return repairAssessmentInstrumentDraft(title: title, kind: .observationGrid)
+        case "Plan Safety Checklist - Session 2":
+            return repairAssessmentInstrumentDraft(
+                title: title,
+                kind: .checklist,
+                checklistItems: [
+                    ChecklistItemDraft(title: "The 4 exercises have bronze/silver/gold levels.", required: true),
+                    ChecklistItemDraft(title: "Technique can be performed without pain or obvious risk.", required: true),
+                    ChecklistItemDraft(title: "Target RPE stays between 5 and 7 for the main part.", required: true),
+                    ChecklistItemDraft(title: "Warm-up and cool-down are included.", required: true),
+                    ChecklistItemDraft(title: "Rest time allows safe technique.", required: true),
+                    ChecklistItemDraft(title: "The teacher has reviewed any doubtful or risky plan.", required: true),
+                ]
+            )
+        case "Teacher Observation Grid CE 2.2 - Execution and self-regulation":
+            return repairAssessmentInstrumentDraft(title: title, kind: .teacherObservation, criterionLabel: "CE 2.2")
+        case "Adjustment Sheet - Session 7":
+            return repairAssessmentInstrumentDraft(title: title, kind: .checklist)
+        case "Healthy Habits Quiz - Session 8":
+            return repairAssessmentInstrumentDraft(title: title, kind: .checklist)
+        case "Final Submission Checklist":
+            return repairAssessmentInstrumentDraft(
+                title: title,
+                kind: .submissionChecklist,
+                checklistItems: [
+                    ChecklistItemDraft(title: "Baseline diagnosis complete.", required: true),
+                    ChecklistItemDraft(title: "FITT-PV plan validated.", required: true),
+                    ChecklistItemDraft(title: "Logs for S3, S4, S5, S6, S7 and S9.", required: true),
+                    ChecklistItemDraft(title: "Session 7 adjustment explained.", required: true),
+                    ChecklistItemDraft(title: "Habits quiz completed.", required: true),
+                    ChecklistItemDraft(title: "Peer Coach assessment signed.", required: true),
+                    ChecklistItemDraft(title: "Final self-assessment complete.", required: true),
+                ]
+            )
+        default:
+            return nil
+        }
+    }
+
+    private func repairAssessmentInstrumentDraft(
+        title: String,
+        kind: AssessmentInstrumentKind,
+        criterionLabel: String? = nil,
+        checklistItems: [ChecklistItemDraft] = []
+    ) -> AssessmentInstrumentDraft {
+        AssessmentInstrumentDraft(
+            title: title,
+            kind: kind,
+            criterionLabel: criterionLabel,
+            weightPercent: nil,
+            isSelected: true,
+            countsTowardAverage: false,
+            scoreStrategy: .none,
+            rubric: nil,
+            checklistItems: checklistItems
+        )
     }
 
     private func repairAssessmentInstrumentEvaluations(classId: Int64) async throws -> Bool {
@@ -4727,13 +5407,14 @@ final class KmpBridge: ObservableObject {
         case "Plan Design Rubric", "Peer-Coaching Rubric":
             return AssessmentInstrumentColumnRepair(type: .rubric, instrumentKind: .rubric, inputKind: .rubric, scaleKind: .tenPoint)
         case "Daily Workout Log", "Diagnostic Record Sheet - Session 1":
-            return AssessmentInstrumentColumnRepair(type: .ordinal, instrumentKind: .observationScale, inputKind: .numeric14, scaleKind: .fourLevel)
+            return AssessmentInstrumentColumnRepair(type: .text, instrumentKind: .dailyWork, inputKind: .structuredForm, scaleKind: .custom)
         case "Plan Safety Checklist - Session 2", "Adjustment Sheet - Session 7", "Healthy Habits Quiz - Session 8":
-            return AssessmentInstrumentColumnRepair(type: .check, instrumentKind: .checklist, inputKind: .check, scaleKind: .custom)
+            let inputKind: NotebookCellInputKind = title == "Healthy Habits Quiz - Session 8" ? .structuredQuiz : (title == "Adjustment Sheet - Session 7" ? .structuredForm : .structuredChecklist)
+            return AssessmentInstrumentColumnRepair(type: .text, instrumentKind: .checklist, inputKind: inputKind, scaleKind: .custom)
         case "Final Submission Checklist":
-            return AssessmentInstrumentColumnRepair(type: .check, instrumentKind: .finalProduct, inputKind: .check, scaleKind: .custom)
+            return AssessmentInstrumentColumnRepair(type: .text, instrumentKind: .finalProduct, inputKind: .structuredChecklist, scaleKind: .custom)
         case "Teacher Observation Grid CE 2.2 - Execution and self-regulation":
-            return AssessmentInstrumentColumnRepair(type: .text, instrumentKind: .systematicObservation, inputKind: .shortNote, scaleKind: .custom)
+            return AssessmentInstrumentColumnRepair(type: .text, instrumentKind: .systematicObservation, inputKind: .structuredObservation, scaleKind: .custom)
         default:
             return nil
         }
@@ -4741,15 +5422,24 @@ final class KmpBridge: ObservableObject {
 
     private func notebookColumnType(for instrument: AssessmentInstrumentDraft, rubricId: Int64?) -> NotebookColumnType {
         if rubricId != nil { return .rubric }
-        switch instrument.kind {
-        case .checklist, .submissionChecklist:
+        switch instrument.scoreStrategy {
+        case .numeric0To10, .observationScale1To4:
+            return .numeric
+        case .checklistAllOrNothing:
             return .check
-        case .teacherObservation:
-            return .text
-        case .observationGrid:
-            return .ordinal
         case .rubric:
             return .numeric
+        case .checklistProportional, .none:
+            return .text
+        }
+    }
+
+    private func canMaterializeAverage(for strategy: AssessmentInstrumentScoreStrategy) -> Bool {
+        switch strategy {
+        case .numeric0To10, .rubric, .checklistAllOrNothing, .observationScale1To4:
+            return true
+        case .checklistProportional, .none:
+            return false
         }
     }
 
@@ -4758,7 +5448,7 @@ final class KmpBridge: ObservableObject {
         case .rubric:
             return .rubric
         case .observationGrid:
-            return .observationScale
+            return .dailyWork
         case .checklist:
             return .checklist
         case .teacherObservation:
@@ -4770,13 +5460,25 @@ final class KmpBridge: ObservableObject {
 
     private func notebookInputKind(for instrument: AssessmentInstrumentDraft, rubricId: Int64?) -> NotebookCellInputKind {
         if rubricId != nil { return .rubric }
+        switch instrument.scoreStrategy {
+        case .numeric0To10:
+            return .numeric010
+        case .observationScale1To4:
+            return .numeric14
+        case .checklistAllOrNothing:
+            return .check
+        case .rubric:
+            return .numeric010
+        case .checklistProportional, .none:
+            break
+        }
         switch instrument.kind {
         case .checklist, .submissionChecklist:
-            return .check
+            return .structuredChecklist
         case .teacherObservation:
-            return .shortNote
+            return .structuredObservation
         case .observationGrid:
-            return .numeric14
+            return .structuredForm
         case .rubric:
             return .numeric010
         }
@@ -4784,13 +5486,24 @@ final class KmpBridge: ObservableObject {
 
     private func notebookScaleKind(for instrument: AssessmentInstrumentDraft, rubricId: Int64?) -> NotebookScaleKind {
         if rubricId != nil { return .tenPoint }
-        switch instrument.kind {
-        case .observationGrid:
-            return .fourLevel
-        case .rubric:
+        switch instrument.scoreStrategy {
+        case .numeric0To10, .rubric:
             return .tenPoint
-        case .checklist, .submissionChecklist, .teacherObservation:
+        case .observationScale1To4:
+            return .fourLevel
+        case .checklistAllOrNothing:
+            return .yesNo
+        case .checklistProportional, .none:
             return .custom
+        }
+    }
+
+    private func notebookEmptyCellPolicy(for policy: AssessmentInstrumentEmptyCellPolicy) -> NotebookEmptyCellPolicy {
+        switch policy {
+        case .excludeFromAverage:
+            return .excludeFromAverage
+        case .countAsZero:
+            return .countAsZero
         }
     }
 
@@ -5488,7 +6201,7 @@ final class KmpBridge: ObservableObject {
                 try await self.refreshRubrics()
                 try await self.refreshRubricClassLinks()
                 try await self.refreshPlanning()
-
+                
                 // Solo refrescar el cuaderno si alguno de los cambios sincronizados
                 // afecta a entidades del cuaderno (grades, columnas, celdas, rúbricas).
                 // Esto evita recargas innecesarias cuando solo cambian clases o alumnos.
@@ -5833,32 +6546,20 @@ final class KmpBridge: ObservableObject {
     func saveColumnGradeDebounced(
         studentId: Int64,
         column: NotebookColumnDefinition,
-        value: String,
-        debounceMs: UInt64 = 360
+        value: String
     ) {
-        let key = cellKey(studentId: studentId, columnId: column.id)
-        pendingDebouncedGradeSaves[key]?.cancel()
-        pendingDebouncedGradeSaves[key] = Task { @MainActor [weak self] in
-            guard let self else { return }
-            try? await Task.sleep(nanoseconds: debounceMs * 1_000_000)
-            guard !Task.isCancelled else { return }
-            self.saveColumnGrade(studentId: studentId, column: column, value: value)
-            self.pendingDebouncedGradeSaves[key] = nil
+        notebookViewModel.saveColumnGradeDebounced(studentId: studentId, column: column, value: value)
+        invalidateNotebookCellValueIndexCache()
+        if let classId = notebookViewModel.currentClassId?.int64Value {
+            scheduleGradeSnapshotSync(forClassId: classId)
         }
     }
 
     func flushPendingColumnGradeSave(studentId: Int64, columnId: String? = nil) {
-        if let columnId {
-            let key = cellKey(studentId: studentId, columnId: columnId)
-            pendingDebouncedGradeSaves[key]?.cancel()
-            pendingDebouncedGradeSaves[key] = nil
-            return
-        }
-
-        let prefix = "\(studentId)|"
-        for key in pendingDebouncedGradeSaves.keys where key.hasPrefix(prefix) {
-            pendingDebouncedGradeSaves[key]?.cancel()
-            pendingDebouncedGradeSaves[key] = nil
+        notebookViewModel.flushPendingColumnGradeSave(studentId: studentId, columnId: columnId)
+        invalidateNotebookCellValueIndexCache()
+        if let classId = notebookViewModel.currentClassId?.int64Value {
+            scheduleGradeSnapshotSync(forClassId: classId)
         }
     }
 
@@ -6203,7 +6904,11 @@ final class KmpBridge: ObservableObject {
             order: nextOrder,
             widthDp: 132,
             categoryId: finalCategory?.id ?? categoryId,
-            ordinalLevels: [],
+            ordinalLevels: defaultOrdinalLevels(
+                columnType: columnType,
+                instrumentKind: instrumentKind,
+                scaleKind: scaleKind
+            ),
             availableIcons: [],
             countsTowardAverage: countsTowardAverage,
             isPinned: isPinned,
@@ -6218,6 +6923,18 @@ final class KmpBridge: ObservableObject {
         refreshCurrentNotebook()
         scheduleNotebookSnapshotSync(forClassId: classId)
         return NotebookCreatedColumnResult(column: column, category: finalCategory)
+    }
+
+    private func defaultOrdinalLevels(
+        columnType: NotebookColumnType,
+        instrumentKind: NotebookInstrumentKind,
+        scaleKind: NotebookScaleKind
+    ) -> [String] {
+        guard columnType == .ordinal else { return [] }
+        if instrumentKind == .participation, scaleKind == .achievement {
+            return ["Excelente", "Bien", "En proceso", "No logrado"]
+        }
+        return []
     }
 
     func saveNotebookCellAnnotation(
@@ -6387,6 +7104,97 @@ final class KmpBridge: ObservableObject {
         closeBulkRubricEvaluation()
         isNotebookRubricAutoAdvanceActive = true
         rubricEvaluationViewModel.loadForNotebookCell(studentId: studentId, columnId: columnId, rubricId: rubricId, evaluationId: evaluationId)
+    }
+
+    func loadStructuredInstrumentEvaluation(
+        classId: Int64,
+        studentId: Int64,
+        columnId: String
+    ) async throws -> StructuredInstrumentEvaluationModel? {
+        guard let detail = try await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: columnId) else {
+            return nil
+        }
+        let responses = try await container.notebookInstrumentsRepository.listResponsesForCell(
+            classId: classId,
+            studentId: studentId,
+            columnId: columnId
+        )
+        let responseByItemId = Dictionary(uniqueKeysWithValues: responses.map { ($0.itemId, $0) })
+        let items = detail.items.map { item in
+            let response = responseByItemId[item.id]
+            return StructuredInstrumentEvaluationItem(
+                id: item.id,
+                title: item.title,
+                type: item.type,
+                options: item.options,
+                textValue: response?.textValue ?? "",
+                boolValue: response?.boolValue?.boolValue ?? false,
+                numberValue: response?.numberValue.map { IosFormatting.decimal(from: $0.doubleValue) } ?? ""
+            )
+        }
+        return StructuredInstrumentEvaluationModel(
+            id: "\(classId)-\(studentId)-\(columnId)",
+            classId: classId,
+            studentId: studentId,
+            columnId: columnId,
+            title: detail.template_.title,
+            kind: detail.template_.kind,
+            items: items
+        )
+    }
+
+    @discardableResult
+    func saveStructuredInstrumentEvaluation(_ model: StructuredInstrumentEvaluationModel) async throws -> NotebookInstrumentCellSummary {
+        let responses = model.items.map { item in
+            NotebookInstrumentResponse(
+                classId: model.classId,
+                studentId: model.studentId,
+                columnId: model.columnId,
+                itemId: item.id,
+                textValue: structuredTextValue(for: item),
+                boolValue: item.type == .check ? KotlinBoolean(value: item.boolValue) : nil,
+                numberValue: structuredNumberValue(for: item).map { KotlinDouble(value: $0) },
+                trace: AuditTrace(
+                    authorUserId: nil,
+                    createdAt: Instant.companion.fromEpochMilliseconds(epochMilliseconds: 0),
+                    updatedAt: Instant.companion.fromEpochMilliseconds(epochMilliseconds: Int64(Date().timeIntervalSince1970 * 1000)),
+                    associatedGroupId: nil,
+                    deviceId: localDeviceId,
+                    syncVersion: 1
+                )
+            )
+        }
+        let summary = try await container.notebookInstrumentsRepository.saveResponses(
+            classId: model.classId,
+            studentId: model.studentId,
+            columnId: model.columnId,
+            responses: responses,
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+            deviceId: localDeviceId,
+            syncVersion: 1
+        )
+        refreshCurrentNotebook()
+        scheduleNotebookSnapshotSync(forClassId: model.classId)
+        return summary
+    }
+
+    private func structuredTextValue(for item: StructuredInstrumentEvaluationItem) -> String? {
+        switch item.type {
+        case .text, .choice:
+            let value = item.textValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            return value.isEmpty ? nil : value
+        default:
+            return nil
+        }
+    }
+
+    private func structuredNumberValue(for item: StructuredInstrumentEvaluationItem) -> Double? {
+        switch item.type {
+        case .number, .scale14:
+            return Double(item.numberValue.replacingOccurrences(of: ",", with: "."))
+        default:
+            return nil
+        }
     }
 
     @MainActor
@@ -7394,7 +8202,7 @@ final class KmpBridge: ObservableObject {
                     "type": evaluation.type,
                     "weight": evaluation.weight,
                     "formula": evaluation.formula ?? "",
-                    "rubricId": evaluation.rubricId ?? 0,
+                    "rubricId": evaluation.rubricId?.int64Value ?? 0,
                     "description": evaluation.description
                 ],
                 shouldPersist: false,
@@ -7494,8 +8302,8 @@ final class KmpBridge: ObservableObject {
                     "title": column.title,
                     "type": column.type.name,
                     "column_type": column.type.name,
-                    "evaluationId": column.evaluationId ?? 0,
-                    "rubricId": column.rubricId ?? 0,
+                    "evaluationId": column.evaluationId?.int64Value ?? 0,
+                    "rubricId": column.rubricId?.int64Value ?? 0,
                     "formula": column.formula ?? "",
                     "weight": column.weight,
                     "tabIdsCsv": column.tabIds.joined(separator: ","),
@@ -7506,7 +8314,23 @@ final class KmpBridge: ObservableObject {
                     "category_id": column.categoryId ?? "",
                     "sharedAcrossTabs": column.sharedAcrossTabs,
                     "shared_across_tabs": column.sharedAcrossTabs,
-                    "colorHex": column.colorHex ?? ""
+                    "colorHex": column.colorHex ?? "",
+                    "categoryKind": column.categoryKind.name,
+                    "instrumentKind": column.instrumentKind.name,
+                    "inputKind": column.inputKind.name,
+                    "scaleKind": column.scaleKind.name,
+                    "dateEpochMs": column.dateEpochMs?.int64Value ?? 0,
+                    "unitOrSituation": column.unitOrSituation ?? "",
+                    "competencyCriteriaIds": column.competencyCriteriaIds.map { "\($0)" }.joined(separator: ","),
+                    "iconName": column.iconName ?? "",
+                    "order": Int(column.order),
+                    "widthDp": column.widthDp,
+                    "countsTowardAverage": column.countsTowardAverage,
+                    "isPinned": column.isPinned,
+                    "isHidden": column.isHidden,
+                    "visibility": column.visibility.name,
+                    "isLocked": column.isLocked,
+                    "isTemplate": column.isTemplate
                 ],
                 shouldPersist: false,
                 shouldScheduleAutoSync: false
@@ -7522,7 +8346,7 @@ final class KmpBridge: ObservableObject {
                     "classId": grade.classId,
                     "studentId": grade.studentId,
                     "columnId": grade.columnId,
-                    "evaluationId": grade.evaluationId ?? 0,
+                    "evaluationId": grade.evaluationId?.int64Value ?? 0,
                     "value": grade.value ?? NSNull(),
                     "evidence": grade.evidence ?? NSNull(),
                     "evidencePath": grade.evidencePath ?? NSNull(),
@@ -8701,6 +9525,9 @@ final class KmpBridge: ObservableObject {
 
             for persisted in row.persistedCells {
                 let key = cellKey(studentId: studentId, columnId: persisted.columnId)
+                if let display = persisted.displayValue, !display.isEmpty {
+                    index.displayByKey[key] = display
+                }
                 if let icon = persisted.iconValue, !icon.isEmpty {
                     index.textByKey[key] = icon
                 } else if let text = persisted.textValue, !text.isEmpty {
@@ -8757,6 +9584,12 @@ final class KmpBridge: ObservableObject {
         guard let index = notebookCellValueIndex() else { return "" }
         let key = cellKey(studentId: studentId, columnId: columnId)
         return index.textDraftByKey[key] ?? index.textByKey[key] ?? ""
+    }
+
+    func structuredCellDisplayText(studentId: Int64, columnId: String) -> String {
+        guard let index = notebookCellValueIndex() else { return "" }
+        let key = cellKey(studentId: studentId, columnId: columnId)
+        return index.displayByKey[key] ?? index.textByKey[key] ?? ""
     }
     
     func numericGradeText(studentId: Int64, columnId: String) -> String {
@@ -8969,6 +9802,10 @@ final class KmpBridge: ObservableObject {
         case "RUBRIC": return .rubric
         case "SYSTEMATIC_OBSERVATION": return .systematicObservation
         case "CHECKLIST": return .checklist
+        case "OBSERVATION_SCALE": return .observationScale
+        case "FINAL_PRODUCT": return .finalProduct
+        case "DAILY_WORK": return .dailyWork
+        case "TASK": return .task
         case "PARTICIPATION": return .participation
         case "PHYSICAL_TEST": return .physicalTest
         case "MULTIMEDIA_EVIDENCE": return .multimediaEvidence
@@ -8995,6 +9832,10 @@ final class KmpBridge: ObservableObject {
         case "EVIDENCE": return .evidence
         case "ATTENDANCE_STATUS": return .attendanceStatus
         case "CALCULATED": return .calculated
+        case "STRUCTURED_CHECKLIST": return .structuredChecklist
+        case "STRUCTURED_OBSERVATION": return .structuredObservation
+        case "STRUCTURED_FORM": return .structuredForm
+        case "STRUCTURED_QUIZ": return .structuredQuiz
         default: return .text
         }
     }
@@ -9237,10 +10078,16 @@ final class KmpBridge: ObservableObject {
     /// event listener and trigger an initial sync.
     func notifyHelperReady(host: String, port: Int) {
         #if os(macOS)
-        guard !host.isEmpty else { return }
-        print("[Sync] helper ready at \(host):\(port) — starting listener")
-        pairedSyncHost = host
+        let normalizedHost = LanSyncClient.normalizeHost(host)
+        guard !normalizedHost.isEmpty else { return }
+        print("[Sync] helper ready at \(normalizedHost):\(port) — starting listener")
+        autoSyncLoopTask?.cancel()
+        autoSyncLoopTask = nil
+        autoSyncDebounceTask?.cancel()
+        autoSyncDebounceTask = nil
+        syncNeedsAnotherPass = false
         syncEventListener.stop()
+        pairedSyncHost = normalizedHost
         startSyncEventListenerIfPaired()
         startAutoSyncLoop()
         Task { @MainActor [weak self] in
@@ -9259,6 +10106,9 @@ final class KmpBridge: ObservableObject {
         syncEventListener.stop()
         autoSyncLoopTask?.cancel()
         autoSyncLoopTask = nil
+        autoSyncDebounceTask?.cancel()
+        autoSyncDebounceTask = nil
+        syncNeedsAnotherPass = false
         pairedSyncHost = nil
         #endif
     }

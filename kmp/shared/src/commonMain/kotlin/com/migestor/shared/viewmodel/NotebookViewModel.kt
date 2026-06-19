@@ -438,10 +438,19 @@ class NotebookViewModel(
         val classId = activeClassId ?: return
         val currentState = _state.value as? NotebookUiState.Data ?: return
         val tab = currentState.sheet.tabs.firstOrNull { it.id == tabId } ?: return
-        
+
+        // Optimismo local: actualizar el ancho en el estado sin recargar el sheet completo.
+        // El observer de cambios detectará la persistencia en background.
+        updateDataState { state ->
+            val updatedTabs = state.sheet.tabs.map {
+                if (it.id == tabId) it.copy(fixedColumnWidth = widthDp) else it
+            }
+            state.copy(sheet = state.sheet.copy(tabs = updatedTabs))
+        }
+
         scope.launch {
             notebookRepository.saveTab(classId, tab.copy(fixedColumnWidth = widthDp))
-            selectClass(classId, force = true)
+            // No selectClass: cambio puramente presentacional, el observer lo recogerá.
         }
     }
 
@@ -1141,7 +1150,8 @@ class NotebookViewModel(
                     iconValue = iconValue,
                     attachmentUris = attachmentUris
                 )
-                selectClass(classId, force = true)
+                // No selectClass: la anotación es metadata de celda.
+                // El observer de grades/cells detectará el cambio y actualizará el estado.
             } catch (e: Exception) {
                 println("Error saving notebook cell annotation: ${e.message}")
             }
@@ -1193,9 +1203,18 @@ class NotebookViewModel(
 
     fun toggleColumnCategoryCollapsed(categoryId: String, isCollapsed: Boolean) {
         val classId = activeClassId ?: return
+
+        // Optimismo local: reflejar el estado colapsado sin recargar el sheet completo.
+        updateDataState { state ->
+            val updatedCategories = state.sheet.columnCategories.map {
+                if (it.id == categoryId) it.copy(isCollapsed = isCollapsed) else it
+            }
+            state.copy(sheet = state.sheet.copy(columnCategories = updatedCategories))
+        }
+
         scope.launch {
             notebookRepository.toggleCategoryCollapsed(classId, categoryId, isCollapsed)
-            selectClass(classId, force = true)
+            // No selectClass: cambio presentacional, el observer lo recogerá.
         }
     }
 

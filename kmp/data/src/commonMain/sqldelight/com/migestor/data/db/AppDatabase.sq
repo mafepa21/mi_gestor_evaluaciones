@@ -229,6 +229,9 @@ CREATE TABLE IF NOT EXISTS academic_years (
     name TEXT NOT NULL,
     start_epoch_ms INTEGER NOT NULL,
     end_epoch_ms INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'ACTIVE',
+    is_active INTEGER NOT NULL DEFAULT 0,
+    archived_at_epoch_ms INTEGER,
     author_user_id INTEGER,
     created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
     updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
@@ -237,6 +240,32 @@ CREATE TABLE IF NOT EXISTS academic_years (
     sync_version INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (center_id) REFERENCES centers(id) ON DELETE CASCADE
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_academic_years_active
+ON academic_years(is_active)
+WHERE is_active = 1;
+
+CREATE TABLE IF NOT EXISTS student_enrollments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER NOT NULL,
+    class_id INTEGER NOT NULL,
+    academic_year_id INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'ACTIVE',
+    promotion_status TEXT NOT NULL DEFAULT 'PENDING',
+    previous_enrollment_id INTEGER,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(student_id, class_id, academic_year_id),
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (academic_year_id) REFERENCES academic_years(id) ON DELETE CASCADE,
+    FOREIGN KEY (previous_enrollment_id) REFERENCES student_enrollments(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_student_enrollments_year_class
+ON student_enrollments(academic_year_id, class_id, status);
+CREATE INDEX IF NOT EXISTS idx_student_enrollments_student_year
+ON student_enrollments(student_id, academic_year_id);
 
 CREATE TABLE IF NOT EXISTS stage_cycles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -586,6 +615,63 @@ CREATE TABLE IF NOT EXISTS notebook_cell_entries (
 );
 CREATE INDEX IF NOT EXISTS idx_notebook_cell_entries_column ON notebook_cell_entries(column_id);
 
+CREATE TABLE IF NOT EXISTS notebook_instrument_templates (
+    id TEXT NOT NULL PRIMARY KEY,
+    class_id INTEGER NOT NULL,
+    column_id TEXT NOT NULL UNIQUE,
+    evaluation_id INTEGER,
+    title TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    input_kind TEXT NOT NULL,
+    source TEXT,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (column_id) REFERENCES notebook_columns(id) ON DELETE CASCADE,
+    FOREIGN KEY (evaluation_id) REFERENCES evaluations(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_notebook_instrument_templates_class ON notebook_instrument_templates(class_id);
+CREATE INDEX IF NOT EXISTS idx_notebook_instrument_templates_column ON notebook_instrument_templates(column_id);
+
+CREATE TABLE IF NOT EXISTS notebook_instrument_items (
+    id TEXT NOT NULL PRIMARY KEY,
+    template_id TEXT NOT NULL,
+    item_key TEXT NOT NULL,
+    title TEXT NOT NULL,
+    item_type TEXT NOT NULL,
+    options_csv TEXT NOT NULL DEFAULT '',
+    required INTEGER NOT NULL DEFAULT 1,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    help_text TEXT,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (template_id) REFERENCES notebook_instrument_templates(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_notebook_instrument_items_template ON notebook_instrument_items(template_id, sort_order, id);
+
+CREATE TABLE IF NOT EXISTS notebook_instrument_responses (
+    class_id INTEGER NOT NULL,
+    student_id INTEGER NOT NULL,
+    column_id TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    value_text TEXT,
+    value_bool INTEGER,
+    value_number REAL,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (class_id, student_id, column_id, item_id),
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    FOREIGN KEY (column_id) REFERENCES notebook_columns(id) ON DELETE CASCADE,
+    FOREIGN KEY (item_id) REFERENCES notebook_instrument_items(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_notebook_instrument_responses_cell ON notebook_instrument_responses(class_id, student_id, column_id);
+CREATE INDEX IF NOT EXISTS idx_notebook_instrument_responses_item ON notebook_instrument_responses(item_id);
+
 selectAllStudents:
 SELECT id, first_name, last_name, email, photo_path, is_injured, sex, sex_source, birth_date_iso, updated_at_epoch_ms, device_id, sync_version
 FROM students
@@ -618,7 +704,25 @@ DELETE FROM subjects WHERE id = ?;
 selectAllClasses:
 SELECT id, name, course, description, center_id, academic_year_id, stage_cycle_id, subject_id, updated_at_epoch_ms, device_id, sync_version
 FROM classes
+WHERE academic_year_id = (SELECT id FROM academic_years WHERE is_active = 1 LIMIT 1)
+   OR (academic_year_id IS NULL AND NOT EXISTS (SELECT 1 FROM academic_years WHERE is_active = 1))
 ORDER BY course, name;
+
+selectAllClassesIncludingArchived:
+SELECT id, name, course, description, center_id, academic_year_id, stage_cycle_id, subject_id, updated_at_epoch_ms, device_id, sync_version
+FROM classes
+ORDER BY course, name;
+
+selectClassesByAcademicYear:
+SELECT id, name, course, description, center_id, academic_year_id, stage_cycle_id, subject_id, updated_at_epoch_ms, device_id, sync_version
+FROM classes
+WHERE academic_year_id = ?
+ORDER BY course, name;
+
+selectClassAcademicYearId:
+SELECT academic_year_id
+FROM classes
+WHERE id = ?;
 
 upsertClass:
 INSERT OR REPLACE INTO classes(id, name, course, description, center_id, academic_year_id, stage_cycle_id, subject_id, updated_at_epoch_ms, device_id, sync_version)
@@ -631,15 +735,39 @@ insertClassStudent:
 INSERT OR IGNORE INTO class_students(class_id, student_id)
 VALUES (?, ?);
 
+upsertStudentEnrollment:
+INSERT OR REPLACE INTO student_enrollments(
+    id, student_id, class_id, academic_year_id, status, promotion_status, previous_enrollment_id, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectActiveEnrollmentId:
+SELECT id
+FROM student_enrollments
+WHERE class_id = ? AND student_id = ? AND status = 'ACTIVE'
+ORDER BY id DESC
+LIMIT 1;
+
 removeClassStudent:
 DELETE FROM class_students
 WHERE class_id = ? AND student_id = ?;
 
+withdrawStudentEnrollment:
+UPDATE student_enrollments
+SET status = 'WITHDRAWN', updated_at_epoch_ms = ?
+WHERE class_id = ? AND student_id = ? AND status = 'ACTIVE';
+
 selectStudentsByClass:
 SELECT s.id, s.first_name, s.last_name, s.email, s.photo_path, s.is_injured, s.sex, s.sex_source, s.birth_date_iso, s.updated_at_epoch_ms, s.device_id, s.sync_version
 FROM students s
-INNER JOIN class_students cs ON cs.student_id = s.id
-WHERE cs.class_id = ?
+WHERE EXISTS (
+    SELECT 1 FROM student_enrollments se
+    JOIN classes c ON c.id = se.class_id
+    WHERE se.student_id = s.id
+      AND se.class_id = ?
+      AND se.status = 'ACTIVE'
+      AND se.academic_year_id = c.academic_year_id
+)
 ORDER BY s.last_name, s.first_name, s.id;
 
 selectEvaluationsByClass:
@@ -894,9 +1022,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 upsertAcademicYear:
 INSERT OR REPLACE INTO academic_years(
-    id, center_id, name, start_epoch_ms, end_epoch_ms, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+    id, center_id, name, start_epoch_ms, end_epoch_ms, status, is_active, archived_at_epoch_ms, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 selectAllAppUsers:
 SELECT id, external_id, display_name, email, role, center_id, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
@@ -904,9 +1032,53 @@ FROM app_users
 ORDER BY id;
 
 selectAllAcademicYears:
-SELECT id, center_id, name, start_epoch_ms, end_epoch_ms, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+SELECT id, center_id, name, start_epoch_ms, end_epoch_ms, status, is_active, archived_at_epoch_ms, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
 FROM academic_years
-ORDER BY start_epoch_ms DESC, id DESC;
+ORDER BY is_active DESC, start_epoch_ms DESC, id DESC;
+
+selectActiveAcademicYear:
+SELECT id, center_id, name, start_epoch_ms, end_epoch_ms, status, is_active, archived_at_epoch_ms, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+FROM academic_years
+WHERE is_active = 1
+LIMIT 1;
+
+selectAcademicYearById:
+SELECT id, center_id, name, start_epoch_ms, end_epoch_ms, status, is_active, archived_at_epoch_ms, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+FROM academic_years
+WHERE id = ?;
+
+deactivateAcademicYears:
+UPDATE academic_years
+SET is_active = 0, status = 'ARCHIVED', archived_at_epoch_ms = COALESCE(archived_at_epoch_ms, ?), updated_at_epoch_ms = ?
+WHERE is_active = 1;
+
+activateAcademicYear:
+UPDATE academic_years
+SET is_active = 1, status = 'ACTIVE', archived_at_epoch_ms = NULL, updated_at_epoch_ms = ?
+WHERE id = ?;
+
+archiveAcademicYear:
+UPDATE academic_years
+SET is_active = 0, status = 'ARCHIVED', archived_at_epoch_ms = ?, updated_at_epoch_ms = ?
+WHERE id = ?;
+
+trashAcademicYear:
+UPDATE academic_years
+SET is_active = 0, status = 'TRASHED', updated_at_epoch_ms = ?
+WHERE id = ? AND is_active = 0;
+
+countEnrollmentsByAcademicYear:
+SELECT COUNT(*)
+FROM student_enrollments
+WHERE academic_year_id = ? AND status = 'ACTIVE';
+
+deleteClassesByAcademicYear:
+DELETE FROM classes
+WHERE academic_year_id = ?;
+
+deleteArchivedAcademicYear:
+DELETE FROM academic_years
+WHERE id = ? AND is_active = 0 AND status IN ('ARCHIVED', 'TRASHED');
 
 selectAllCenters:
 SELECT id, code, name, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
@@ -1177,6 +1349,50 @@ INSERT OR REPLACE INTO notebook_cell_entries(
     class_id, student_id, column_id, value_text, value_bool, value_icon, value_ordinal, display_value, observed_at_epoch_ms, competency_criteria_ids_csv, effective_weight, counts_toward_average, note, color_hex, attachment_uris_csv, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
 )
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectInstrumentTemplateByColumn:
+SELECT id, class_id, column_id, evaluation_id, title, kind, input_kind, source, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+FROM notebook_instrument_templates
+WHERE column_id = ?
+LIMIT 1;
+
+selectInstrumentItemsByTemplate:
+SELECT id, template_id, item_key, title, item_type, options_csv, required, sort_order, help_text, updated_at_epoch_ms, device_id, sync_version
+FROM notebook_instrument_items
+WHERE template_id = ?
+ORDER BY sort_order, id;
+
+selectInstrumentResponsesForCell:
+SELECT class_id, student_id, column_id, item_id, value_text, value_bool, value_number, updated_at_epoch_ms, device_id, sync_version
+FROM notebook_instrument_responses
+WHERE class_id = ? AND student_id = ? AND column_id = ?
+ORDER BY item_id;
+
+upsertInstrumentTemplate:
+INSERT OR REPLACE INTO notebook_instrument_templates(
+    id, class_id, column_id, evaluation_id, title, kind, input_kind, source, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteInstrumentItemsByTemplate:
+DELETE FROM notebook_instrument_items
+WHERE template_id = ?;
+
+upsertInstrumentItem:
+INSERT OR REPLACE INTO notebook_instrument_items(
+    id, template_id, item_key, title, item_type, options_csv, required, sort_order, help_text, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+upsertInstrumentResponse:
+INSERT OR REPLACE INTO notebook_instrument_responses(
+    class_id, student_id, column_id, item_id, value_text, value_bool, value_number, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteInstrumentByColumn:
+DELETE FROM notebook_instrument_templates
+WHERE column_id = ?;
 
 CREATE TABLE IF NOT EXISTS notebook_tabs (
     id          TEXT NOT NULL PRIMARY KEY,

@@ -11,6 +11,14 @@ struct CoursesWorkspaceView: View {
     @State private var editingClass: SchoolClass?
     @State private var showingClassEditor = false
     @State private var showingSubjectCatalog = false
+    @State private var showingAcademicYearWizard = false
+    @State private var archivedYearDetail: KmpBridge.AcademicYearSnapshot?
+    @State private var pendingDeleteClass: SchoolClass?
+    @State private var pendingDeleteAcademicYear: KmpBridge.AcademicYearSnapshot?
+
+    private var isActiveAcademicYearWritable: Bool {
+        bridge.activeAcademicYear?.isActive == true && bridge.activeAcademicYear?.status == "ACTIVE"
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -22,21 +30,138 @@ struct CoursesWorkspaceView: View {
                     Task { await loadSummary(for: newValue) }
                 }
             )) {
-                Section("Cursos") {
-                    ForEach(bridge.classes, id: \.id) { schoolClass in
-                        Button {
-                            selectedClassId = schoolClass.id
-                            Task { await loadSummary(for: schoolClass.id) }
-                        } label: {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(schoolClass.name)
-                                    .font(.headline)
-                                Text(classSubtitle(for: schoolClass))
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.secondary)
+                Section("Curso escolar activo") {
+                    if let activeYear = bridge.activeAcademicYear {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(activeYear.name)
+                                .font(.headline)
+                            Text("\(activeYear.classCount) grupos · \(activeYear.enrollmentCount) matriculas")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 4)
+                    } else {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Sin curso activo")
+                                .font(.subheadline.weight(.semibold))
+                            Text("Restaura un curso del historial o crea uno nuevo para volver a ver grupos.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            if !bridge.archivedAcademicYears.isEmpty {
+                                Menu {
+                                    ForEach(bridge.archivedAcademicYears) { year in
+                                        Button(year.name) {
+                                            Task { await activateAcademicYear(year) }
+                                        }
+                                    }
+                                } label: {
+                                    Label("Restaurar curso", systemImage: "arrow.triangle.2.circlepath")
+                                }
                             }
                         }
-                        .buttonStyle(.plain)
+                        .padding(.vertical, 4)
+                    }
+
+                    Button {
+                        showingAcademicYearWizard = true
+                    } label: {
+                        Label("Nuevo curso escolar", systemImage: "calendar.badge.plus")
+                    }
+                }
+
+                Section("Grupos") {
+                    if bridge.classes.isEmpty {
+                        Text(bridge.activeAcademicYear == nil ? "No hay curso activo." : "Este curso escolar no tiene grupos.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(bridge.classes, id: \.id) { schoolClass in
+                            Button {
+                                selectedClassId = schoolClass.id
+                                Task { await loadSummary(for: schoolClass.id) }
+                            } label: {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(schoolClass.name)
+                                        .font(.headline)
+                                    Text(classSubtitle(for: schoolClass))
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button(role: .destructive) {
+                                    pendingDeleteClass = schoolClass
+                                } label: {
+                                    Label("Eliminar", systemImage: "trash")
+                                }
+                                .disabled(!isActiveAcademicYearWritable)
+
+                                Button {
+                                    editingClass = schoolClass
+                                    showingClassEditor = true
+                                } label: {
+                                    Label("Editar", systemImage: "pencil")
+                                }
+                                .tint(.blue)
+                                .disabled(!isActiveAcademicYearWritable)
+                            }
+                            .contextMenu {
+                                Button {
+                                    editingClass = schoolClass
+                                    showingClassEditor = true
+                                } label: {
+                                    Label("Editar grupo", systemImage: "pencil")
+                                }
+                                .disabled(!isActiveAcademicYearWritable)
+
+                                Button(role: .destructive) {
+                                    pendingDeleteClass = schoolClass
+                                } label: {
+                                    Label("Eliminar grupo", systemImage: "trash")
+                                }
+                                .disabled(!isActiveAcademicYearWritable)
+                            }
+                        }
+                    }
+                }
+
+                if !bridge.archivedAcademicYears.isEmpty {
+                    Section("Historial") {
+                        ForEach(bridge.archivedAcademicYears) { year in
+                            Menu {
+                                Button {
+                                    archivedYearDetail = year
+                                } label: {
+                                    Label("Ver resumen", systemImage: "doc.text.magnifyingglass")
+                                }
+
+                                Button {
+                                    Task { await activateAcademicYear(year) }
+                                } label: {
+                                    Label("Restaurar como activo", systemImage: "arrow.triangle.2.circlepath")
+                                }
+
+                                Button {
+                                    archivedYearDetail = year
+                                } label: {
+                                    Label("Exportar curso", systemImage: "square.and.arrow.up")
+                                }
+
+                                Button(role: .destructive) {
+                                    pendingDeleteAcademicYear = year
+                                } label: {
+                                    Label("Eliminar curso", systemImage: "trash")
+                                }
+                            } label: {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(year.name)
+                                        .font(.subheadline.weight(.semibold))
+                                    Text("\(year.classCount) grupos · \(year.enrollmentCount) matriculas · Archivado")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -47,6 +172,7 @@ struct CoursesWorkspaceView: View {
                     } label: {
                         Label("Nuevo grupo", systemImage: "plus.circle.fill")
                     }
+                    .disabled(!isActiveAcademicYearWritable)
 
                     Button {
                         showingSubjectCatalog = true
@@ -106,7 +232,7 @@ struct CoursesWorkspaceView: View {
                                 Text("Roster rápido")
                                     .font(.headline)
                                 if summary.rosterPreview.isEmpty {
-                                    Text("Todavía no hay alumnado asignado a este curso.")
+                                    Text("Todavía no hay alumnado matriculado en este grupo.")
                                         .foregroundStyle(.secondary)
                                 } else {
                                     ForEach(summary.rosterPreview, id: \.id) { student in
@@ -162,6 +288,13 @@ struct CoursesWorkspaceView: View {
                                 Text("Acciones de grupo")
                                     .font(.headline)
 
+                                if !isActiveAcademicYearWritable {
+                                    Label("Curso archivado o no editable", systemImage: "lock.fill")
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                        .padding(.vertical, 4)
+                                }
+
                                 Button {
                                     onCreateStudent(summary.schoolClass.id)
                                 } label: {
@@ -169,6 +302,7 @@ struct CoursesWorkspaceView: View {
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                 }
                                 .buttonStyle(.borderedProminent)
+                                .disabled(!isActiveAcademicYearWritable)
 
                                 Button {
                                     editingClass = summary.schoolClass
@@ -178,6 +312,7 @@ struct CoursesWorkspaceView: View {
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                 }
                                 .buttonStyle(.bordered)
+                                .disabled(!isActiveAcademicYearWritable)
 
                                 if bridge.classes.contains(where: { $0.id != summary.schoolClass.id }) {
                                     Menu {
@@ -191,6 +326,7 @@ struct CoursesWorkspaceView: View {
                                             .frame(maxWidth: .infinity, alignment: .leading)
                                     }
                                     .buttonStyle(.bordered)
+                                    .disabled(!isActiveAcademicYearWritable)
                                 }
                             }
                         }
@@ -198,7 +334,7 @@ struct CoursesWorkspaceView: View {
                     }
                 } else {
                     WorkspaceEmptyState(
-                        title: "Selecciona un curso",
+                        title: "Selecciona un grupo",
                         subtitle: "Desde aquí centralizamos el acceso a cuaderno, asistencia, diario e informes."
                     )
                 }
@@ -209,22 +345,77 @@ struct CoursesWorkspaceView: View {
         .sheet(isPresented: $showingClassEditor) {
             CourseClassEditorSheet(
                 schoolClass: editingClass,
-                subjects: bridge.subjects,
                 onSave: { draft in
                     Task { await saveClassDraft(draft) }
                 }
             )
+            .environmentObject(bridge)
         }
         .sheet(isPresented: $showingSubjectCatalog) {
             SubjectCatalogSheet(
-                subjects: bridge.subjects,
                 onSave: { draft in
-                    Task { await saveSubjectDraft(draft) }
+                    await saveSubjectDraft(draft)
                 },
                 onDelete: { subject in
                     Task { await deleteSubject(subject) }
                 }
             )
+            .environmentObject(bridge)
+        }
+        .sheet(item: $archivedYearDetail) { year in
+            ArchivedAcademicYearDetailSheet(
+                year: year,
+                onDelete: {
+                    pendingDeleteAcademicYear = year
+                }
+            )
+            .environmentObject(bridge)
+        }
+        .sheet(isPresented: $showingAcademicYearWizard) {
+            AcademicYearWizardSheet(
+                activeYear: bridge.activeAcademicYear,
+                academicYears: bridge.academicYears,
+                onCreate: { draft in
+                    Task { await createAcademicYear(draft) }
+                },
+                onArchiveActive: {
+                    Task { await archiveActiveAcademicYear() }
+                }
+            )
+        }
+        .confirmationDialog(
+            "Eliminar grupo",
+            isPresented: Binding(
+                get: { pendingDeleteClass != nil },
+                set: { if !$0 { pendingDeleteClass = nil } }
+            ),
+            presenting: pendingDeleteClass
+        ) { schoolClass in
+            Button("Eliminar \(schoolClass.name)", role: .destructive) {
+                Task { await deleteClass(schoolClass) }
+            }
+            Button("Cancelar", role: .cancel) {
+                pendingDeleteClass = nil
+            }
+        } message: { schoolClass in
+            Text("Se eliminará el grupo \(schoolClass.name) y sus datos vinculados. Esta acción no elimina el alumnado global.")
+        }
+        .confirmationDialog(
+            "Eliminar curso escolar",
+            isPresented: Binding(
+                get: { pendingDeleteAcademicYear != nil },
+                set: { if !$0 { pendingDeleteAcademicYear = nil } }
+            ),
+            presenting: pendingDeleteAcademicYear
+        ) { year in
+            Button("Eliminar \(year.name)", role: .destructive) {
+                Task { await deleteArchivedAcademicYear(year) }
+            }
+            Button("Cancelar", role: .cancel) {
+                pendingDeleteAcademicYear = nil
+            }
+        } message: { year in
+            Text("Se eliminarán \(year.classCount) grupos y \(year.enrollmentCount) matrículas archivadas de \(year.name).")
         }
         .task {
             await bridge.ensureClassesLoaded()
@@ -245,6 +436,85 @@ struct CoursesWorkspaceView: View {
     private func classSubtitle(for schoolClass: SchoolClass) -> String {
         let subject = subjectName(for: schoolClass.subjectId?.int64Value) ?? "Sin asignatura"
         return "Curso \(schoolClass.course) · \(subject)"
+    }
+
+    @MainActor
+    private func deleteClass(_ schoolClass: SchoolClass) async {
+        do {
+            try await bridge.deleteClass(id: schoolClass.id)
+            pendingDeleteClass = nil
+            if selectedClassId == schoolClass.id {
+                selectedClassId = bridge.classes.first?.id
+            }
+            if let selectedClassId {
+                await loadSummary(for: selectedClassId)
+            } else {
+                selectedSummary = nil
+            }
+        } catch {
+            bridge.status = "No se pudo eliminar el grupo: \(error.localizedDescription)"
+        }
+    }
+
+    @MainActor
+    private func deleteArchivedAcademicYear(_ year: KmpBridge.AcademicYearSnapshot) async {
+        do {
+            try await bridge.deleteArchivedAcademicYear(id: year.id)
+            archivedYearDetail = nil
+            pendingDeleteAcademicYear = nil
+        } catch {
+            bridge.status = "No se pudo eliminar el curso escolar: \(error.localizedDescription)"
+        }
+    }
+
+    @MainActor
+    private func createAcademicYear(_ draft: AcademicYearDraft) async {
+        do {
+            let sourceYearId = draft.copyGroups ? draft.sourceAcademicYearId : nil
+            _ = try await bridge.createAcademicYear(
+                name: draft.name,
+                startDate: draft.startDate,
+                endDate: draft.endDate,
+                copyGroupsFrom: sourceYearId,
+                promoteStudents: draft.copyGroups && draft.promoteStudents
+            )
+            selectedClassId = bridge.classes.first?.id
+            if let selectedClassId {
+                await loadSummary(for: selectedClassId)
+            } else {
+                selectedSummary = nil
+            }
+            showingAcademicYearWizard = false
+        } catch {
+            bridge.status = "No se pudo crear el curso escolar: \(error.localizedDescription)"
+        }
+    }
+
+    @MainActor
+    private func activateAcademicYear(_ year: KmpBridge.AcademicYearSnapshot) async {
+        do {
+            try await bridge.setActiveAcademicYear(id: year.id)
+            selectedClassId = bridge.classes.first?.id
+            if let selectedClassId {
+                await loadSummary(for: selectedClassId)
+            } else {
+                selectedSummary = nil
+            }
+        } catch {
+            bridge.status = "No se pudo activar el curso escolar: \(error.localizedDescription)"
+        }
+    }
+
+    @MainActor
+    private func archiveActiveAcademicYear() async {
+        guard let activeYear = bridge.activeAcademicYear else { return }
+        do {
+            try await bridge.archiveAcademicYear(id: activeYear.id)
+            selectedClassId = bridge.classes.first?.id
+            selectedSummary = nil
+        } catch {
+            bridge.status = "No se pudo archivar el curso escolar: \(error.localizedDescription)"
+        }
     }
 
     @MainActor
@@ -275,11 +545,13 @@ struct CoursesWorkspaceView: View {
     }
 
     @MainActor
-    private func saveSubjectDraft(_ draft: SubjectDraft) async {
+    private func saveSubjectDraft(_ draft: SubjectDraft) async -> Bool {
         do {
             _ = try await bridge.saveSubject(id: draft.id, code: draft.code, name: draft.name)
+            return true
         } catch {
             bridge.status = "No se pudo guardar la asignatura: \(error.localizedDescription)"
+            return false
         }
     }
 
@@ -326,9 +598,264 @@ private struct SubjectDraft {
     let name: String
 }
 
+private struct AcademicYearDraft {
+    let name: String
+    let startDate: Date
+    let endDate: Date
+    let sourceAcademicYearId: Int64?
+    let copyGroups: Bool
+    let promoteStudents: Bool
+}
+
+private struct ArchivedAcademicYearDetailSheet: View {
+    let year: KmpBridge.AcademicYearSnapshot
+    let onDelete: () -> Void
+    @EnvironmentObject private var bridge: KmpBridge
+    @Environment(\.dismiss) private var dismiss
+    @State private var showingDeleteConfirmation = false
+    @State private var exportText = ""
+    @State private var exportError: String?
+    @State private var isLoadingExport = false
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Curso escolar") {
+                    LabeledContent("Nombre", value: year.name)
+                    LabeledContent("Estado", value: "Archivado")
+                    LabeledContent("Grupos", value: "\(year.classCount)")
+                    LabeledContent("Matriculas", value: "\(year.enrollmentCount)")
+                    LabeledContent("Inicio", value: formatted(year.startDate))
+                    LabeledContent("Fin", value: formatted(year.endDate))
+                }
+
+                Section {
+                    if isLoadingExport {
+                        ProgressView("Preparando exportacion")
+                    } else {
+                        ShareLink(item: resolvedExportText) {
+                            Label("Exportar resumen", systemImage: "square.and.arrow.up")
+                        }
+                    }
+
+                    if let exportError {
+                        Text(exportError)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Section {
+                    Button(role: .destructive) {
+                        showingDeleteConfirmation = true
+                    } label: {
+                        Label("Eliminar curso archivado", systemImage: "trash")
+                    }
+                } footer: {
+                    Text("Se eliminaran grupos, matriculas y datos vinculados a esos grupos. El alumnado global no se elimina.")
+                }
+            }
+            .navigationTitle("Historial")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Cerrar") {
+                        dismiss()
+                    }
+                }
+            }
+            .alert("Eliminar curso archivado", isPresented: $showingDeleteConfirmation) {
+                Button("Cancelar", role: .cancel) {}
+                Button("Eliminar", role: .destructive) {
+                    onDelete()
+                    dismiss()
+                }
+            } message: {
+                Text("Esta accion eliminara \(year.classCount) grupos y \(year.enrollmentCount) matriculas archivadas de \(year.name).")
+            }
+            .task {
+                await loadExportText()
+            }
+        }
+    }
+
+    private var resolvedExportText: String {
+        exportText.isEmpty ? fallbackExportText : exportText
+    }
+
+    private var fallbackExportText: String {
+        """
+        Curso escolar: \(year.name)
+        Estado: Archivado
+        Inicio: \(formatted(year.startDate))
+        Fin: \(formatted(year.endDate))
+        Grupos: \(year.classCount)
+        Matriculas: \(year.enrollmentCount)
+        """
+    }
+
+    @MainActor
+    private func loadExportText() async {
+        guard exportText.isEmpty else { return }
+        isLoadingExport = true
+        defer { isLoadingExport = false }
+        do {
+            exportText = try await bridge.archivedAcademicYearExportText(id: year.id)
+            exportError = nil
+        } catch {
+            exportText = fallbackExportText
+            exportError = "No se pudo preparar el detalle completo. Se exportara el resumen."
+        }
+    }
+
+    private func formatted(_ date: Date) -> String {
+        date.formatted(.dateTime.day().month().year())
+    }
+}
+
+private struct AcademicYearWizardSheet: View {
+    let activeYear: KmpBridge.AcademicYearSnapshot?
+    let academicYears: [KmpBridge.AcademicYearSnapshot]
+    let onCreate: (AcademicYearDraft) -> Void
+    let onArchiveActive: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var step = 0
+    @State private var name = AcademicYearWizardSheet.defaultName()
+    @State private var startDate = AcademicYearWizardSheet.defaultStartDate()
+    @State private var endDate = AcademicYearWizardSheet.defaultEndDate()
+    @State private var copyGroups = false
+    @State private var promoteStudents = false
+    @State private var sourceAcademicYearId: Int64?
+
+    var sourceOptions: [KmpBridge.AcademicYearSnapshot] {
+        academicYears.sorted { $0.name > $1.name }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                if step == 0 {
+                    Section("Nuevo curso escolar") {
+                        TextField("Nombre", text: $name)
+                        DatePicker("Inicio", selection: $startDate, displayedComponents: .date)
+                        DatePicker("Fin", selection: $endDate, displayedComponents: .date)
+                    }
+                } else if step == 1 {
+                    Section("Estructura") {
+                        Toggle("Copiar grupos de otro curso", isOn: $copyGroups)
+                        if copyGroups {
+                            Picker("Curso origen", selection: $sourceAcademicYearId) {
+                                Text("Seleccionar").tag(Int64?.none)
+                                ForEach(sourceOptions) { year in
+                                    Text(year.name).tag(Optional(year.id))
+                                }
+                            }
+                            Toggle("Promocionar alumnado", isOn: $promoteStudents)
+                        }
+                    }
+
+                    Section {
+                        Toggle("Copiar instrumentos como plantillas", isOn: .constant(false))
+                            .disabled(true)
+                        Toggle("Copiar situaciones como plantillas", isOn: .constant(false))
+                            .disabled(true)
+                    } footer: {
+                        Text("Notas, asistencia, celdas, evaluaciones e informes no se copian al curso nuevo.")
+                    }
+                } else {
+                    Section("Resumen") {
+                        LabeledContent("Curso", value: name)
+                        LabeledContent("Grupos") {
+                            Text(copyGroups ? "Copiar estructura" : "Curso vacio")
+                        }
+                        LabeledContent("Alumnado") {
+                            Text(promoteStudents ? "Promocionar matriculas" : "Sin alumnado inicial")
+                        }
+                    }
+
+                    if activeYear != nil {
+                        Section("Curso actual") {
+                            Button(role: .destructive) {
+                                onArchiveActive()
+                                dismiss()
+                            } label: {
+                                Label("Archivar curso activo", systemImage: "archivebox")
+                            }
+                            .disabled(!canArchiveActiveYear)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Curso escolar")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancelar") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(step < 2 ? "Continuar" : "Crear") {
+                        if step < 2 {
+                            step += 1
+                        } else {
+                            onCreate(AcademicYearDraft(
+                                name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+                                startDate: startDate,
+                                endDate: endDate,
+                                sourceAcademicYearId: sourceAcademicYearId,
+                                copyGroups: copyGroups,
+                                promoteStudents: promoteStudents
+                            ))
+                        }
+                    }
+                    .disabled(!canContinue)
+                }
+            }
+            .onAppear {
+                if sourceAcademicYearId == nil {
+                    sourceAcademicYearId = activeYear?.id
+                }
+            }
+        }
+    }
+
+    private var canContinue: Bool {
+        if step == 0 {
+            return !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && startDate < endDate
+        }
+        if step == 1 {
+            return !copyGroups || sourceAcademicYearId != nil
+        }
+        return true
+    }
+
+    private var canArchiveActiveYear: Bool {
+        guard let activeYear else { return false }
+        return academicYears.contains { $0.id != activeYear.id && $0.status != "TRASHED" }
+    }
+
+    private static func defaultName() -> String {
+        let calendar = Calendar.current
+        let year = calendar.component(.year, from: Date())
+        let month = calendar.component(.month, from: Date())
+        let startYear = month >= 8 ? year : year - 1
+        return "\(startYear)/\(startYear + 1)"
+    }
+
+    private static func defaultStartDate() -> Date {
+        let calendar = Calendar.current
+        let year = calendar.component(.month, from: Date()) >= 8 ? calendar.component(.year, from: Date()) : calendar.component(.year, from: Date()) - 1
+        return calendar.date(from: DateComponents(year: year, month: 9, day: 1)) ?? Date()
+    }
+
+    private static func defaultEndDate() -> Date {
+        let calendar = Calendar.current
+        let year = calendar.component(.month, from: Date()) >= 8 ? calendar.component(.year, from: Date()) + 1 : calendar.component(.year, from: Date())
+        return calendar.date(from: DateComponents(year: year, month: 6, day: 30)) ?? Date()
+    }
+}
+
 private struct CourseClassEditorSheet: View {
+    @EnvironmentObject var bridge: KmpBridge
     let schoolClass: SchoolClass?
-    let subjects: [KmpSubject]
     let onSave: (CourseClassDraft) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -336,9 +863,8 @@ private struct CourseClassEditorSheet: View {
     @State private var course: String
     @State private var subjectId: Int64?
 
-    init(schoolClass: SchoolClass?, subjects: [KmpSubject], onSave: @escaping (CourseClassDraft) -> Void) {
+    init(schoolClass: SchoolClass?, onSave: @escaping (CourseClassDraft) -> Void) {
         self.schoolClass = schoolClass
-        self.subjects = subjects
         self.onSave = onSave
         _name = State(initialValue: schoolClass?.name ?? "")
         _course = State(initialValue: schoolClass.map { "\($0.course)" } ?? "")
@@ -359,7 +885,7 @@ private struct CourseClassEditorSheet: View {
                 Section("Asignatura") {
                     Picker("Asignatura", selection: $subjectId) {
                         Text("Sin asignatura").tag(Int64?.none)
-                        ForEach(subjects, id: \.id) { subject in
+                        ForEach(bridge.subjects, id: \.id) { subject in
                             Text(subject.name).tag(Optional(subject.id))
                         }
                     }
@@ -391,15 +917,17 @@ private struct CourseClassEditorSheet: View {
 }
 
 private struct SubjectCatalogSheet: View {
-    let subjects: [KmpSubject]
-    let onSave: (SubjectDraft) -> Void
+    let onSave: (SubjectDraft) async -> Bool
     let onDelete: (KmpSubject) -> Void
 
+    @EnvironmentObject private var bridge: KmpBridge
     @Environment(\.dismiss) private var dismiss
     @State private var editingSubject: KmpSubject?
     @State private var pendingDeleteSubject: KmpSubject?
     @State private var code = ""
     @State private var name = ""
+    @State private var isSaving = false
+    @State private var saveError: String?
 
     var body: some View {
         NavigationStack {
@@ -407,14 +935,19 @@ private struct SubjectCatalogSheet: View {
                 Section("Nueva asignatura") {
                     subjectFields
                     Button(editingSubject == nil ? "Añadir asignatura" : "Guardar cambios") {
-                        onSave(SubjectDraft(
-                            id: editingSubject?.id,
-                            code: code.trimmingCharacters(in: .whitespacesAndNewlines),
-                            name: name.trimmingCharacters(in: .whitespacesAndNewlines)
-                        ))
-                        resetDraft()
+                        Task { await saveCurrentDraft() }
                     }
-                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(isSaving || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                    if isSaving {
+                        ProgressView()
+                    }
+
+                    if let saveError {
+                        Text(saveError)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
 
                     if editingSubject != nil {
                         Button("Cancelar edición", role: .cancel) {
@@ -424,11 +957,11 @@ private struct SubjectCatalogSheet: View {
                 }
 
                 Section("Catálogo") {
-                    if subjects.isEmpty {
+                    if bridge.subjects.isEmpty {
                         Text("Todavía no hay asignaturas.")
                             .foregroundStyle(.secondary)
                     } else {
-                        ForEach(subjects, id: \.id) { subject in
+                        ForEach(bridge.subjects, id: \.id) { subject in
                             HStack(spacing: 12) {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(subject.name)
@@ -494,9 +1027,28 @@ private struct SubjectCatalogSheet: View {
         }
     }
 
+    @MainActor
+    private func saveCurrentDraft() async {
+        isSaving = true
+        saveError = nil
+        let draft = SubjectDraft(
+            id: editingSubject?.id,
+            code: code.trimmingCharacters(in: .whitespacesAndNewlines),
+            name: name.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+        let didSave = await onSave(draft)
+        isSaving = false
+        if didSave {
+            resetDraft()
+        } else {
+            saveError = "No se pudo guardar. Revisa nombre y código."
+        }
+    }
+
     private func resetDraft() {
         editingSubject = nil
         code = ""
         name = ""
+        saveError = nil
     }
 }

@@ -15,6 +15,7 @@ targets:
   MiGestorKMPiOS:
     type: application
     platform: iOS
+    scheme: {}
     sources:
       - App
       - AppleShared
@@ -75,6 +76,7 @@ targets:
   MiGestorKMPMac:
     type: application
     platform: macOS
+    scheme: {}
     sources:
       - path: AppleShared
       - path: MacApp

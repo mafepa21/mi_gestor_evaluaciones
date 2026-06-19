@@ -39,6 +39,9 @@ struct AssessmentInstrumentDraft: Identifiable, Codable {
     var criterionLabel: String?
     var weightPercent: Double?
     var isSelected: Bool
+    var countsTowardAverage: Bool
+    var scoreStrategy: AssessmentInstrumentScoreStrategy
+    var emptyCellPolicy: AssessmentInstrumentEmptyCellPolicy
     var rubric: RubricDraft?
     var checklistItems: [ChecklistItemDraft]
     var observationFields: [ObservationFieldDraft]
@@ -50,6 +53,9 @@ struct AssessmentInstrumentDraft: Identifiable, Codable {
         criterionLabel: String?,
         weightPercent: Double?,
         isSelected: Bool,
+        countsTowardAverage: Bool,
+        scoreStrategy: AssessmentInstrumentScoreStrategy,
+        emptyCellPolicy: AssessmentInstrumentEmptyCellPolicy = .excludeFromAverage,
         rubric: RubricDraft?,
         checklistItems: [ChecklistItemDraft] = [],
         observationFields: [ObservationFieldDraft] = [],
@@ -61,6 +67,9 @@ struct AssessmentInstrumentDraft: Identifiable, Codable {
         self.criterionLabel = criterionLabel
         self.weightPercent = weightPercent
         self.isSelected = isSelected
+        self.countsTowardAverage = countsTowardAverage
+        self.scoreStrategy = scoreStrategy
+        self.emptyCellPolicy = emptyCellPolicy
         self.rubric = rubric
         self.checklistItems = checklistItems
         self.observationFields = observationFields
@@ -68,7 +77,7 @@ struct AssessmentInstrumentDraft: Identifiable, Codable {
     }
 }
 
-enum AssessmentInstrumentKind: String, Codable {
+enum AssessmentInstrumentKind: String, Codable, CaseIterable {
     case rubric
     case observationGrid
     case checklist
@@ -82,6 +91,38 @@ enum AssessmentInstrumentKind: String, Codable {
         case .checklist: return "Checklist"
         case .teacherObservation: return "Observacion docente"
         case .submissionChecklist: return "Checklist final"
+        }
+    }
+}
+
+enum AssessmentInstrumentScoreStrategy: String, Codable, CaseIterable {
+    case none
+    case numeric0To10
+    case rubric
+    case checklistAllOrNothing
+    case checklistProportional
+    case observationScale1To4
+
+    var label: String {
+        switch self {
+        case .none: return "Auxiliar"
+        case .numeric0To10: return "Nota 0-10"
+        case .rubric: return "Rúbrica"
+        case .checklistAllOrNothing: return "Checklist todo/nada"
+        case .checklistProportional: return "Checklist proporcional"
+        case .observationScale1To4: return "Observación 1-4"
+        }
+    }
+}
+
+enum AssessmentInstrumentEmptyCellPolicy: String, Codable, CaseIterable {
+    case excludeFromAverage
+    case countAsZero
+
+    var label: String {
+        switch self {
+        case .excludeFromAverage: return "Vacías excluidas"
+        case .countAsZero: return "Vacías como 0"
         }
     }
 }
@@ -206,6 +247,12 @@ struct LearningSituationAssessmentInstrumentsImportService {
         let checklistItems = makeChecklistItems(kind: kind, tables: nonEmptyTables, paragraphs: paragraphs)
         let observationFields = makeObservationFields(kind: kind, tables: nonEmptyTables)
         let selectedByDefault = (heading.weightPercent ?? 0) > 0
+        let scoreStrategy = defaultScoreStrategy(
+            kind: kind,
+            weightPercent: heading.weightPercent,
+            observationFields: observationFields
+        )
+        let countsTowardAverage = scoreStrategy != .none && (heading.weightPercent ?? 0) > 0
 
         if rubric == nil, checklistItems.isEmpty, observationFields.isEmpty {
             return nil
@@ -216,11 +263,39 @@ struct LearningSituationAssessmentInstrumentsImportService {
             criterionLabel: heading.criterionLabel,
             weightPercent: heading.weightPercent,
             isSelected: selectedByDefault,
+            countsTowardAverage: countsTowardAverage,
+            scoreStrategy: scoreStrategy,
             rubric: rubric,
             checklistItems: checklistItems,
             observationFields: observationFields,
-            note: selectedByDefault ? nil : "Auxiliar sin ponderacion detectada"
+            note: countsTowardAverage ? nil : "Auxiliar o sin puntuación computable detectada"
         )
+    }
+
+    private func defaultScoreStrategy(
+        kind: AssessmentInstrumentKind,
+        weightPercent: Double?,
+        observationFields: [ObservationFieldDraft]
+    ) -> AssessmentInstrumentScoreStrategy {
+        guard (weightPercent ?? 0) > 0 else { return .none }
+        switch kind {
+        case .rubric:
+            return .rubric
+        case .observationGrid:
+            return hasObservationScale1To4(observationFields) ? .observationScale1To4 : .none
+        case .checklist, .submissionChecklist:
+            return .none
+        case .teacherObservation:
+            return .none
+        }
+    }
+
+    private func hasObservationScale1To4(_ fields: [ObservationFieldDraft]) -> Bool {
+        fields.contains { field in
+            guard let scale = field.scaleLabel else { return false }
+            let value = normalized(scale)
+            return value.contains("1") && value.contains("4")
+        }
     }
 
     private func makeRubric(kind: AssessmentInstrumentKind, tables: [[[String]]]) -> RubricDraft? {
@@ -234,16 +309,54 @@ struct LearningSituationAssessmentInstrumentsImportService {
         }
         let rows = table.dropFirst().filter { row in row.first?.isEmpty == false }
         guard !rows.isEmpty else { return nil }
-        let equalWeight = 1.0 / Double(rows.count)
-        let criteria = rows.map { row in
+        let rawWeights = rows.map { criterionWeight(from: $0) }
+        let normalizedWeights = normalizedCriterionWeights(rawWeights, count: rows.count)
+        let criteria = rows.enumerated().map { index, row in
             let descriptors = Array(row.dropFirst()).map(clean)
             return RubricCriterionDraft(
-                title: row.first ?? "Criterio",
+                title: criterionTitle(from: row.first ?? "Criterio"),
                 descriptors: descriptors,
-                weight: equalWeight
+                weight: normalizedWeights[index]
             )
         }
         return RubricDraft(levels: levels, criteria: criteria)
+    }
+
+    private func criterionWeight(from row: [String]) -> Double? {
+        guard let first = row.first else { return nil }
+        if let percent = firstDouble(in: first, pattern: #"([0-9]+(?:[.,][0-9]+)?)\s*%"#) {
+            return percent
+        }
+        if let points = firstDouble(in: first, pattern: #"([0-9]+(?:[.,][0-9]+)?)\s*(?:puntos?|pts?\.?)"#) {
+            return points
+        }
+        if let decimal = firstDouble(in: first, pattern: #"\b(0[.,][0-9]+|1[.,]0+)\b"#) {
+            return decimal
+        }
+        return nil
+    }
+
+    private func normalizedCriterionWeights(_ rawWeights: [Double?], count: Int) -> [Double] {
+        guard count > 0 else { return [] }
+        let equalWeight = 1.0 / Double(count)
+        guard rawWeights.allSatisfy({ $0 != nil }) else {
+            return Array(repeating: equalWeight, count: count)
+        }
+        let values = rawWeights.compactMap { $0 }
+        let sum = values.reduce(0, +)
+        guard sum > 0 else { return Array(repeating: equalWeight, count: count) }
+        if sum > 1.5 {
+            return values.map { $0 / sum }
+        }
+        return values.map { $0 / sum }
+    }
+
+    private func criterionTitle(from value: String) -> String {
+        clean(value)
+            .replacingOccurrences(of: #"\s*[\(\[]?\s*[0-9]+(?:[.,][0-9]+)?\s*%\s*[\)\]]?\s*"#, with: " ", options: .regularExpression)
+            .replacingOccurrences(of: #"\s*[\(\[]?\s*[0-9]+(?:[.,][0-9]+)?\s*(?:puntos?|pts?\.?)\s*[\)\]]?\s*"#, with: " ", options: [.regularExpression, .caseInsensitive])
+            .replacingOccurrences(of: #"\s*[\(\[]?\s*(?:0[.,][0-9]+|1[.,]0+)\s*[\)\]]?\s*"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: " -–—\t\n\r"))
     }
 
     private func makeChecklistItems(kind: AssessmentInstrumentKind, tables: [[[String]]], paragraphs: [String]) -> [ChecklistItemDraft] {
@@ -272,16 +385,25 @@ struct LearningSituationAssessmentInstrumentsImportService {
     }
 
     private func inferKind(title: String, tables: [[[String]]]) -> AssessmentInstrumentKind {
-        if title.contains("submission") || title.contains("entrega") || title.contains("final checklist") {
+        if title.contains("submission") || title.contains("entrega") || title.contains("final checklist") || title.contains("producto final") {
             return .submissionChecklist
         }
-        if title.contains("passport") || title.contains("pasaporte") || title.contains("checklist") {
+        if title.contains("passport") ||
+            title.contains("pasaporte") ||
+            title.contains("checklist") ||
+            title.contains("lista de cotejo") ||
+            title.contains("lista de control") ||
+            title.contains("autoevaluacion") ||
+            title.contains("coevaluacion") {
             return .checklist
         }
-        if title.contains("quiz") || title.contains("safety") || title.contains("adjustment") {
+        if title.contains("quiz") || title.contains("safety") || title.contains("adjustment") || title.contains("tarea competencial") {
             return .checklist
         }
-        if title.contains("teacher") || title.contains("docente") {
+        if title.contains("teacher") ||
+            title.contains("docente") ||
+            title.contains("registro anecdotico") ||
+            title.contains("observacion docente") {
             return .teacherObservation
         }
         if title.contains("grid") ||
@@ -289,6 +411,9 @@ struct LearningSituationAssessmentInstrumentsImportService {
             title.contains("log") ||
             title.contains("record sheet") ||
             title.contains("diagnostic") ||
+            title.contains("escala de valoracion") ||
+            title.contains("diana de evaluacion") ||
+            title.contains("observacion sistematica") ||
             tableHeaders(tables).contains(where: { $0.contains("student") || $0.contains("alumno") || $0.contains("exercise") }) {
             return .observationGrid
         }
@@ -305,10 +430,7 @@ struct LearningSituationAssessmentInstrumentsImportService {
     private func parseHeading(_ text: String) -> ParsedInstrumentHeading? {
         let cleanText = clean(text)
         let normalizedText = normalized(cleanText)
-        let isExplicitUnnumberedHeading = normalizedText.contains("rubric") ||
-                normalizedText.contains("grid") ||
-                normalizedText.contains("checklist") ||
-                normalizedText.contains("passport")
+        let isExplicitUnnumberedHeading = instrumentHeadingKeywords.contains { normalizedText.contains($0) }
         guard isNumberedInstrumentHeading(cleanText) || isExplicitUnnumberedHeading else {
             return nil
         }
@@ -375,12 +497,7 @@ struct LearningSituationAssessmentInstrumentsImportService {
     private func isNumberedInstrumentHeading(_ text: String) -> Bool {
         guard text.range(of: #"^\s*\d+[\.\)]\s+"#, options: .regularExpression) != nil else { return false }
         let value = normalized(text)
-        let keywords = [
-            "rubric", "grid", "checklist", "passport", "quiz", "log", "record sheet",
-            "diagnostic", "adjustment", "observation", "safety", "submission",
-            "rubrica", "rúbrica", "rejilla", "lista", "registro", "diagnostico", "diagnóstico"
-        ]
-        return keywords.contains { value.contains(normalized($0)) }
+        return instrumentHeadingKeywords.contains { value.contains($0) }
     }
 
     private func tableHeaders(_ tables: [[[String]]]) -> [String] {
@@ -411,6 +528,18 @@ struct LearningSituationAssessmentInstrumentsImportService {
 
     private func formatPercent(_ value: Double) -> String {
         "\(Int(value.rounded()))%"
+    }
+
+    private var instrumentHeadingKeywords: [String] {
+        [
+            "instrumento", "rubric", "rubrica", "grid", "rejilla", "checklist",
+            "passport", "pasaporte", "quiz", "log", "record sheet", "diagnostic",
+            "diagnostico", "adjustment", "observation", "observacion", "safety",
+            "submission", "entrega", "lista de cotejo", "lista de control",
+            "rubrica analitica", "escala de valoracion", "diana de evaluacion",
+            "registro anecdotico", "observacion sistematica", "autoevaluacion",
+            "coevaluacion", "producto final", "tarea competencial"
+        ].map(normalized)
     }
 }
 

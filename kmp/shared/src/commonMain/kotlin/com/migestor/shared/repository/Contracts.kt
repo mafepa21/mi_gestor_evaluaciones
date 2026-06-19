@@ -29,6 +29,9 @@ interface ClassesRepository {
     fun observeClasses(): Flow<List<SchoolClass>>
     fun observeStudentsInClass(classId: Long): Flow<List<Student>>
     suspend fun listClasses(): List<SchoolClass>
+    suspend fun listAllClasses(): List<SchoolClass> = listClasses()
+    suspend fun listClassesForAcademicYear(academicYearId: Long): List<SchoolClass> =
+        listAllClasses().filter { it.academicYearId == academicYearId }
     suspend fun saveClass(
         id: Long? = null,
         name: String,
@@ -44,8 +47,32 @@ interface ClassesRepository {
     ): Long
     suspend fun deleteClass(classId: Long)
     suspend fun addStudentToClass(classId: Long, studentId: Long)
+    suspend fun promoteStudentToClass(
+        sourceClassId: Long,
+        targetClassId: Long,
+        studentId: Long,
+        promotionStatus: String = "PROMOTED",
+    ) = addStudentToClass(targetClassId, studentId)
     suspend fun removeStudentFromClass(classId: Long, studentId: Long)
     suspend fun listStudentsInClass(classId: Long): List<Student>
+}
+
+interface AcademicYearsRepository {
+    fun observeAcademicYears(): Flow<List<AcademicYear>>
+    suspend fun listAcademicYears(): List<AcademicYear>
+    suspend fun getActiveAcademicYear(): AcademicYear?
+    suspend fun createAcademicYear(
+        name: String,
+        startEpochMs: Long,
+        endEpochMs: Long,
+        centerId: Long? = null,
+        makeActive: Boolean = true,
+    ): Long
+    suspend fun setActiveAcademicYear(academicYearId: Long)
+    suspend fun archiveAcademicYear(academicYearId: Long)
+    suspend fun trashAcademicYear(academicYearId: Long) = archiveAcademicYear(academicYearId)
+    suspend fun deleteArchivedAcademicYear(academicYearId: Long)
+    suspend fun enrollmentCount(academicYearId: Long): Long = 0
 }
 
 interface SubjectsRepository {
@@ -150,6 +177,31 @@ interface NotebookCellsRepository {
         syncVersion: Long = 0,
     )
     fun observeCellAudit(classId: Long, studentId: Long, columnId: String): Flow<List<NotebookCellAuditEvent>>
+}
+
+interface NotebookInstrumentsRepository {
+    suspend fun saveTemplate(
+        template: NotebookInstrumentTemplate,
+        items: List<NotebookInstrumentItem>,
+    )
+
+    suspend fun getTemplateForColumn(columnId: String): NotebookInstrumentDetail?
+
+    suspend fun listResponsesForCell(
+        classId: Long,
+        studentId: Long,
+        columnId: String,
+    ): List<NotebookInstrumentResponse>
+
+    suspend fun saveResponses(
+        classId: Long,
+        studentId: Long,
+        columnId: String,
+        responses: List<NotebookInstrumentResponse>,
+        updatedAtEpochMs: Long = 0,
+        deviceId: String? = null,
+        syncVersion: Long = 0,
+    ): NotebookInstrumentCellSummary
 }
 
 interface NotebookRepository {

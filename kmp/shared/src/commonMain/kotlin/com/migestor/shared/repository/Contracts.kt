@@ -8,6 +8,16 @@ interface StudentsRepository {
     fun observeStudents(): Flow<List<Student>>
     suspend fun listStudents(): List<Student>
     suspend fun getStudent(studentId: Long): Student? = listStudents().find { it.id == studentId }
+    suspend fun getStudentProfileSnapshot(studentId: Long): StudentProfileSnapshot? =
+        getStudent(studentId)?.let { student ->
+            StudentProfileSnapshot(
+                studentId = student.id,
+                fullName = student.fullName,
+                classCount = 0,
+                activeEvaluationCount = 0,
+                latestActivityEpochMs = null,
+            )
+        }
     suspend fun saveStudent(
         id: Long? = null,
         firstName: String,
@@ -29,6 +39,17 @@ interface ClassesRepository {
     fun observeClasses(): Flow<List<SchoolClass>>
     fun observeStudentsInClass(classId: Long): Flow<List<Student>>
     suspend fun listClasses(): List<SchoolClass>
+    suspend fun listCourseOverviews(): List<CourseOverview> = listClasses().map {
+        CourseOverview(
+            classId = it.id,
+            name = it.name,
+            course = it.course,
+            studentCount = 0,
+            visibleColumnCount = 0,
+            pendingCellCount = 0,
+            averageScore = null,
+        )
+    }
     suspend fun listAllClasses(): List<SchoolClass> = listClasses()
     suspend fun listClassesForAcademicYear(academicYearId: Long): List<SchoolClass> =
         listAllClasses().filter { it.academicYearId == academicYearId }
@@ -93,6 +114,8 @@ interface SubjectsRepository {
 interface EvaluationsRepository {
     fun observeClassEvaluations(classId: Long): Flow<List<Evaluation>>
     suspend fun listClassEvaluations(classId: Long): List<Evaluation>
+    suspend fun getPendingEvaluationsSummary(classId: Long): PendingEvaluationsSummary =
+        PendingEvaluationsSummary(classId = classId)
     suspend fun getEvaluation(evaluationId: Long): Evaluation?
     suspend fun saveEvaluation(
         id: Long? = null,
@@ -156,6 +179,82 @@ interface GradesRepository {
     )
 }
 
+data class NotebookQueuedCellDraft(
+    val studentId: Long,
+    val columnId: String,
+    val columnType: NotebookColumnType,
+    val evaluationId: Long?,
+    val value: String,
+)
+
+data class CourseOverview(
+    val classId: Long,
+    val name: String,
+    val course: Int,
+    val studentCount: Int,
+    val visibleColumnCount: Int,
+    val pendingCellCount: Int,
+    val averageScore: Double?,
+)
+
+data class NotebookSummary(
+    val classId: Long,
+    val studentCount: Int = 0,
+    val visibleColumnCount: Int = 0,
+    val pendingCellCount: Int = 0,
+    val averageScore: Double? = null,
+)
+
+data class NotebookVisibleColumnSummary(
+    val id: String,
+    val title: String,
+    val type: NotebookColumnType,
+    val evaluationId: Long?,
+    val categoryId: String?,
+    val order: Int,
+    val widthDp: Double?,
+    val isPinned: Boolean,
+)
+
+data class NotebookRowPageItem(
+    val studentId: Long,
+    val firstName: String,
+    val lastName: String,
+    val isInjured: Boolean,
+    val filledCellCount: Int,
+    val averageScore: Double?,
+) {
+    val fullName: String get() = listOf(firstName, lastName).joinToString(" ").trim()
+}
+
+data class StudentProfileSnapshot(
+    val studentId: Long,
+    val fullName: String,
+    val email: String? = null,
+    val photoPath: String? = null,
+    val isInjured: Boolean = false,
+    val classCount: Int,
+    val activeEvaluationCount: Int,
+    val latestActivityEpochMs: Long?,
+    val averageScore: Double? = null,
+)
+
+data class DashboardTodaySnapshot(
+    val activeClassCount: Int = 0,
+    val activeStudentCount: Int = 0,
+    val todaySessionCount: Int = 0,
+    val pendingEvaluationCount: Int = 0,
+    val incidentCount: Int = 0,
+)
+
+data class PendingEvaluationsSummary(
+    val classId: Long,
+    val evaluationCount: Int = 0,
+    val pendingCellCount: Int = 0,
+    val completedCellCount: Int = 0,
+    val completionPct: Int = 0,
+)
+
 interface NotebookCellsRepository {
     fun observeClassCells(classId: Long): Flow<List<PersistedNotebookCell>>
     suspend fun listClassCells(classId: Long): List<PersistedNotebookCell>
@@ -206,6 +305,11 @@ interface NotebookInstrumentsRepository {
 
 interface NotebookRepository {
     suspend fun loadNotebookSnapshot(classId: Long): NotebookSheet
+    suspend fun loadNotebookSummary(classId: Long): NotebookSummary = NotebookSummary(classId = classId)
+    suspend fun listNotebookVisibleColumns(classId: Long, tabId: String? = null): List<NotebookVisibleColumnSummary> =
+        emptyList()
+    suspend fun listNotebookRowsPage(classId: Long, limit: Long, offset: Long): List<NotebookRowPageItem> =
+        emptyList()
     fun observeStudentChanges(classId: Long): Flow<List<Student>>
     fun observeGradesForClass(classId: Long): Flow<List<Grade>>
     suspend fun addStudent(
@@ -309,6 +413,7 @@ interface PhysicalTestsRepository {
     suspend fun saveResult(result: PhysicalTestResult, attempts: List<PhysicalTestAttempt>)
     suspend fun listResultsForAssignment(assignmentId: String): List<PhysicalTestResult>
     suspend fun listResultsForStudent(studentId: Long, testId: String): List<PhysicalTestResult>
+    suspend fun listPhysicalTestHistoryForStudent(studentId: Long): List<PhysicalTestHistoryPoint> = emptyList()
 }
 
 interface PlannerRepository {
@@ -550,6 +655,8 @@ interface LearningSituationsRepository {
 interface DashboardRepository {
     fun observeStats(): Flow<DashboardStats>
     suspend fun getStats(): DashboardStats
+    suspend fun getTodaySnapshot(dayStartEpochMs: Long, dayEndEpochMs: Long): DashboardTodaySnapshot =
+        DashboardTodaySnapshot()
 }
 
 interface DashboardOperationalRepository {
@@ -710,4 +817,15 @@ data class CompetencyCoveragePoint(
     val code: String,
     val name: String,
     val columnsCount: Long
+)
+
+data class PhysicalTestHistoryPoint(
+    val resultId: String,
+    val testId: String,
+    val testName: String,
+    val classId: Long,
+    val rawValue: Double?,
+    val rawText: String,
+    val score: Double?,
+    val observedAtEpochMs: Long,
 )

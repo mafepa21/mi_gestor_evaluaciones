@@ -719,6 +719,79 @@ FROM classes
 WHERE academic_year_id = ?
 ORDER BY course, name;
 
+selectCourseOverview:
+SELECT
+  c.id AS class_id,
+  c.name,
+  c.course,
+  (
+    SELECT COUNT(*)
+    FROM students s
+    WHERE EXISTS (
+      SELECT 1 FROM student_enrollments se
+      WHERE se.student_id = s.id
+        AND se.class_id = c.id
+        AND se.status = 'ACTIVE'
+        AND se.academic_year_id = c.academic_year_id
+    )
+  ) AS student_count,
+  (
+    SELECT COUNT(*)
+    FROM notebook_columns nc
+    WHERE nc.class_id = c.id
+      AND nc.visibility = 'VISIBLE'
+      AND nc.is_hidden = 0
+      AND nc.is_template = 0
+  ) AS visible_column_count,
+  (
+    (
+      SELECT COUNT(*)
+      FROM students s
+      WHERE EXISTS (
+        SELECT 1 FROM student_enrollments se
+        WHERE se.student_id = s.id
+          AND se.class_id = c.id
+          AND se.status = 'ACTIVE'
+          AND se.academic_year_id = c.academic_year_id
+      )
+    ) * (
+      SELECT COUNT(*)
+      FROM notebook_columns nc
+      WHERE nc.class_id = c.id
+        AND nc.visibility = 'VISIBLE'
+        AND nc.is_hidden = 0
+        AND nc.is_template = 0
+        AND nc.counts_toward_average = 1
+    )
+  ) - (
+    SELECT COUNT(*)
+    FROM grades g
+    JOIN notebook_columns nc ON nc.id = g.column_id
+    WHERE g.class_id = c.id
+      AND g.value IS NOT NULL
+      AND nc.class_id = c.id
+      AND nc.visibility = 'VISIBLE'
+      AND nc.is_hidden = 0
+      AND nc.is_template = 0
+      AND nc.counts_toward_average = 1
+  ) AS pending_cell_count,
+  (
+    SELECT AVG(g.value)
+    FROM grades g
+    JOIN notebook_columns nc ON nc.id = g.column_id
+    WHERE g.class_id = c.id
+      AND g.value IS NOT NULL
+      AND nc.class_id = c.id
+      AND nc.visibility = 'VISIBLE'
+      AND nc.is_hidden = 0
+      AND nc.is_template = 0
+      AND nc.counts_toward_average = 1
+  ) AS average_score
+FROM classes c
+WHERE c.academic_year_id = (SELECT id FROM academic_years WHERE is_active = 1 LIMIT 1)
+   OR (c.academic_year_id IS NULL AND NOT EXISTS (SELECT 1 FROM academic_years WHERE is_active = 1))
+ORDER BY c.course, c.name;
+
 selectClassAcademicYearId:
 SELECT academic_year_id
 FROM classes
@@ -770,11 +843,134 @@ WHERE EXISTS (
 )
 ORDER BY s.last_name, s.first_name, s.id;
 
+selectStudentProfileSnapshot:
+SELECT
+  s.id AS student_id,
+  s.first_name || ' ' || s.last_name AS full_name,
+  s.email,
+  s.photo_path,
+  s.is_injured,
+  (
+    SELECT COUNT(*)
+    FROM student_enrollments se
+    WHERE se.student_id = s.id
+      AND se.status = 'ACTIVE'
+  ) AS class_count,
+  (
+    SELECT COUNT(DISTINCT e.id)
+    FROM student_enrollments se
+    JOIN evaluations e ON e.class_id = se.class_id
+    WHERE se.student_id = s.id
+      AND se.status = 'ACTIVE'
+  ) AS active_evaluation_count,
+  (
+    SELECT MAX(activity_epoch_ms)
+    FROM (
+      SELECT g.updated_at_epoch_ms AS activity_epoch_ms
+      FROM grades g
+      WHERE g.student_id = s.id
+      UNION ALL
+      SELECT n.updated_at_epoch_ms AS activity_epoch_ms
+      FROM notebook_cell_entries n
+      WHERE n.student_id = s.id
+      UNION ALL
+      SELECT a.updated_at_epoch_ms AS activity_epoch_ms
+      FROM attendance a
+      WHERE a.student_id = s.id
+      UNION ALL
+      SELECT p.updated_at_epoch_ms AS activity_epoch_ms
+      FROM physical_test_results p
+      WHERE p.student_id = s.id
+    )
+  ) AS latest_activity_epoch_ms,
+  (
+    SELECT AVG(g.value)
+    FROM grades g
+    WHERE g.student_id = s.id
+      AND g.value IS NOT NULL
+  ) AS average_score
+FROM students s
+WHERE s.id = :studentId
+LIMIT 1;
+
 selectEvaluationsByClass:
 SELECT id, class_id, code, name, type, weight, formula, rubric_id, description, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
 FROM evaluations
 WHERE class_id = ?
 ORDER BY id;
+
+selectPendingEvaluationsSummary:
+SELECT
+  c.id AS class_id,
+  (SELECT COUNT(*) FROM evaluations e WHERE e.class_id = c.id) AS evaluation_count,
+  (
+    (SELECT COUNT(*) FROM evaluations e WHERE e.class_id = c.id) *
+    (
+      SELECT COUNT(*)
+      FROM students s
+      WHERE EXISTS (
+        SELECT 1 FROM student_enrollments se
+        WHERE se.student_id = s.id
+          AND se.class_id = c.id
+          AND se.status = 'ACTIVE'
+          AND se.academic_year_id = c.academic_year_id
+      )
+    )
+  ) - (
+    SELECT COUNT(*)
+    FROM grades g
+    JOIN evaluations e ON e.id = g.evaluation_id
+    WHERE e.class_id = c.id
+      AND g.class_id = c.id
+      AND g.value IS NOT NULL
+  ) AS pending_cell_count,
+  (
+    SELECT COUNT(*)
+    FROM grades g
+    JOIN evaluations e ON e.id = g.evaluation_id
+    WHERE e.class_id = c.id
+      AND g.class_id = c.id
+      AND g.value IS NOT NULL
+  ) AS completed_cell_count,
+  CASE
+    WHEN (
+      (SELECT COUNT(*) FROM evaluations e WHERE e.class_id = c.id) *
+      (
+        SELECT COUNT(*)
+        FROM students s
+        WHERE EXISTS (
+          SELECT 1 FROM student_enrollments se
+          WHERE se.student_id = s.id
+            AND se.class_id = c.id
+            AND se.status = 'ACTIVE'
+            AND se.academic_year_id = c.academic_year_id
+        )
+      )
+    ) = 0 THEN 100
+    ELSE CAST(ROUND(100.0 * (
+      SELECT COUNT(*)
+      FROM grades g
+      JOIN evaluations e ON e.id = g.evaluation_id
+      WHERE e.class_id = c.id
+        AND g.class_id = c.id
+        AND g.value IS NOT NULL
+    ) / (
+      (SELECT COUNT(*) FROM evaluations e WHERE e.class_id = c.id) *
+      (
+        SELECT COUNT(*)
+        FROM students s
+        WHERE EXISTS (
+          SELECT 1 FROM student_enrollments se
+          WHERE se.student_id = s.id
+            AND se.class_id = c.id
+            AND se.status = 'ACTIVE'
+            AND se.academic_year_id = c.academic_year_id
+        )
+      )
+    )) AS INTEGER)
+  END AS completion_pct
+FROM classes c
+WHERE c.id = :classId;
 
 selectEvaluationById:
 SELECT id, class_id, code, name, type, weight, formula, rubric_id, description, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
@@ -1007,6 +1203,24 @@ SELECT
   (SELECT COUNT(*) FROM evaluations) AS total_evaluations,
   (SELECT COUNT(*) FROM rubrics) AS total_rubrics,
   (SELECT COUNT(*) FROM sessions) AS total_sessions;
+
+selectDashboardTodaySnapshot:
+SELECT
+  (SELECT COUNT(*) FROM classes) AS active_class_count,
+  (SELECT COUNT(*) FROM students) AS active_student_count,
+  (SELECT COUNT(*) FROM sessions WHERE date_epoch_ms >= :dayStartEpochMs AND date_epoch_ms < :dayEndEpochMs) AS today_session_count,
+  (
+    SELECT COUNT(*)
+    FROM evaluations e
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM grades g
+      WHERE g.evaluation_id = e.id
+        AND g.class_id = e.class_id
+        AND g.value IS NOT NULL
+    )
+  ) AS pending_evaluation_count,
+  (SELECT COUNT(*) FROM incidents WHERE date_epoch_ms >= :dayStartEpochMs AND date_epoch_ms < :dayEndEpochMs) AS incident_count;
 
 upsertCenter:
 INSERT OR REPLACE INTO centers(
@@ -1694,6 +1908,135 @@ FROM notebook_columns
 WHERE class_id = ?
 ORDER BY sort_order, id;
 
+selectNotebookVisibleColumns:
+SELECT id, title, type, evaluation_id, category_id, sort_order, width_dp, is_pinned
+FROM notebook_columns
+WHERE class_id = :classId
+  AND visibility = 'VISIBLE'
+  AND is_hidden = 0
+  AND is_template = 0
+  AND (:tabId IS NULL OR shared_across_tabs = 1 OR (',' || tab_ids_csv || ',') LIKE '%,' || :tabId || ',%')
+ORDER BY is_pinned DESC, sort_order, id;
+
+selectNotebookRowsPage:
+SELECT
+  s.id AS student_id,
+  s.first_name,
+  s.last_name,
+  s.is_injured,
+  (
+    SELECT COUNT(*)
+    FROM grades g
+    WHERE g.class_id = c.id
+      AND g.student_id = s.id
+      AND g.value IS NOT NULL
+  ) + (
+    SELECT COUNT(*)
+    FROM notebook_cell_entries n
+    WHERE n.class_id = c.id
+      AND n.student_id = s.id
+      AND (
+        n.value_text IS NOT NULL OR
+        n.value_bool IS NOT NULL OR
+        n.value_icon IS NOT NULL OR
+        n.value_ordinal IS NOT NULL OR
+        n.display_value IS NOT NULL
+      )
+  ) AS filled_cell_count,
+  (
+    SELECT AVG(g.value)
+    FROM grades g
+    JOIN notebook_columns nc ON nc.id = g.column_id
+    WHERE g.class_id = c.id
+      AND g.student_id = s.id
+      AND g.value IS NOT NULL
+      AND nc.class_id = c.id
+      AND nc.visibility = 'VISIBLE'
+      AND nc.is_hidden = 0
+      AND nc.is_template = 0
+      AND nc.counts_toward_average = 1
+  ) AS average_score
+FROM students s
+JOIN classes c ON c.id = :classId
+WHERE EXISTS (
+    SELECT 1 FROM student_enrollments se
+    WHERE se.student_id = s.id
+      AND se.class_id = c.id
+      AND se.status = 'ACTIVE'
+      AND se.academic_year_id = c.academic_year_id
+)
+ORDER BY s.last_name, s.first_name, s.id
+LIMIT :limit OFFSET :offset;
+
+selectNotebookSummary:
+SELECT
+  c.id AS class_id,
+  (
+    SELECT COUNT(*)
+    FROM students s
+    WHERE EXISTS (
+      SELECT 1 FROM student_enrollments se
+      WHERE se.student_id = s.id
+        AND se.class_id = c.id
+        AND se.status = 'ACTIVE'
+        AND se.academic_year_id = c.academic_year_id
+    )
+  ) AS student_count,
+  (
+    SELECT COUNT(*)
+    FROM notebook_columns nc
+    WHERE nc.class_id = c.id
+      AND nc.visibility = 'VISIBLE'
+      AND nc.is_hidden = 0
+      AND nc.is_template = 0
+  ) AS visible_column_count,
+  (
+    (
+      SELECT COUNT(*)
+      FROM students s
+      WHERE EXISTS (
+        SELECT 1 FROM student_enrollments se
+        WHERE se.student_id = s.id
+          AND se.class_id = c.id
+          AND se.status = 'ACTIVE'
+          AND se.academic_year_id = c.academic_year_id
+      )
+    ) * (
+      SELECT COUNT(*)
+      FROM notebook_columns nc
+      WHERE nc.class_id = c.id
+        AND nc.visibility = 'VISIBLE'
+        AND nc.is_hidden = 0
+        AND nc.is_template = 0
+        AND nc.counts_toward_average = 1
+    )
+  ) - (
+    SELECT COUNT(*)
+    FROM grades g
+    JOIN notebook_columns nc ON nc.id = g.column_id
+    WHERE g.class_id = c.id
+      AND g.value IS NOT NULL
+      AND nc.class_id = c.id
+      AND nc.visibility = 'VISIBLE'
+      AND nc.is_hidden = 0
+      AND nc.is_template = 0
+      AND nc.counts_toward_average = 1
+  ) AS pending_cell_count,
+  (
+    SELECT AVG(g.value)
+    FROM grades g
+    JOIN notebook_columns nc ON nc.id = g.column_id
+    WHERE g.class_id = c.id
+      AND g.value IS NOT NULL
+      AND nc.class_id = c.id
+      AND nc.visibility = 'VISIBLE'
+      AND nc.is_hidden = 0
+      AND nc.is_template = 0
+      AND nc.counts_toward_average = 1
+  ) AS average_score
+FROM classes c
+WHERE c.id = :classId;
+
 selectColumnById:
 SELECT id, class_id, title, type, category_kind, instrument_kind, input_kind, evaluation_id, formula, weight, date_epoch_ms, unit_name, competency_criteria_ids_csv, scale_kind, tab_ids_csv, shared_across_tabs, color_hex, icon_name, sort_order, width_dp, category_id, visibility, is_locked, counts_toward_average, is_pinned, is_hidden, is_template, empty_cell_policy, updated_at_epoch_ms, device_id, sync_version
 FROM notebook_columns
@@ -1960,6 +2303,21 @@ SELECT id, assignment_id, test_id, class_id, student_id, raw_value, raw_text, sc
 FROM physical_test_results
 WHERE student_id = ? AND test_id = ?
 ORDER BY observed_at_epoch_ms DESC;
+
+selectPhysicalTestHistoryForStudent:
+SELECT
+  r.id AS result_id,
+  r.test_id,
+  d.name AS test_name,
+  r.class_id,
+  r.raw_value,
+  r.raw_text,
+  r.score,
+  r.observed_at_epoch_ms
+FROM physical_test_results r
+JOIN physical_test_definitions d ON d.id = r.test_id
+WHERE r.student_id = :studentId
+ORDER BY r.observed_at_epoch_ms DESC, d.name;
 
 selectAiAuditTotalsByUseCase:
 SELECT use_case, COUNT(*) AS total_count, SUM(success) AS success_count, MAX(created_at_epoch_ms) AS last_created_at_epoch_ms

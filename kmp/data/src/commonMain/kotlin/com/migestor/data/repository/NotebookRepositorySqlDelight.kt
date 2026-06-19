@@ -107,6 +107,57 @@ class NotebookRepositorySqlDelight(
         sheet
     }
 
+    override suspend fun loadNotebookSummary(classId: Long): NotebookSummary = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectNotebookSummary(classId).executeAsOne().let {
+            NotebookSummary(
+                classId = it.class_id,
+                studentCount = it.student_count.toInt(),
+                visibleColumnCount = it.visible_column_count.toInt(),
+                pendingCellCount = it.pending_cell_count.toInt(),
+                averageScore = it.average_score,
+            )
+        }
+    }
+
+    override suspend fun listNotebookVisibleColumns(
+        classId: Long,
+        tabId: String?,
+    ): List<NotebookVisibleColumnSummary> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectNotebookVisibleColumns(classId, tabId).executeAsList().map {
+            NotebookVisibleColumnSummary(
+                id = it.id,
+                title = it.title,
+                type = NotebookColumnType.valueOf(it.type),
+                evaluationId = it.evaluation_id,
+                categoryId = it.category_id,
+                order = it.sort_order.toInt(),
+                widthDp = it.width_dp,
+                isPinned = it.is_pinned == 1L,
+            )
+        }
+    }
+
+    override suspend fun listNotebookRowsPage(
+        classId: Long,
+        limit: Long,
+        offset: Long,
+    ): List<NotebookRowPageItem> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectNotebookRowsPage(
+            classId = classId,
+            limit = limit.coerceAtLeast(0),
+            offset = offset.coerceAtLeast(0),
+        ).executeAsList().map {
+            NotebookRowPageItem(
+                studentId = it.student_id,
+                firstName = it.first_name,
+                lastName = it.last_name,
+                isInjured = it.is_injured != 0L,
+                filledCellCount = it.filled_cell_count.toInt(),
+                averageScore = it.average_score,
+            )
+        }
+    }
+
 
     /** Invalida la caché de sheet para la clase indicada. Llamar tras cualquier mutación. */
     private fun invalidateCache(classId: Long) {

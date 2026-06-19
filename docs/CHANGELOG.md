@@ -113,6 +113,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Data
 
+- SQLDelight añade snapshots ligeros para Dashboard, Cursos, ficha de alumno, Cuaderno paginado, evaluaciones pendientes e histórico EF, evitando abrir el `NotebookSheet` completo en vistas resumidas.
 - SQLDelight añade índices no destructivos para lecturas diarias de calificaciones, celdas del Cuaderno, evaluaciones, asistencia, incidencias y columnas por categoría mediante `34.sqm`.
 - `NotebookRepositorySqlDelight` añade guardado batch de drafts de celda en una transacción SQLDelight, conservando auditoría de cambios y evitando una escritura/refresh por carácter durante edición rápida.
 - Los pesos de configuración de Media se normalizan defensivamente al leer y guardar columnas de SQLDelight, conservando compatibilidad con datos antiguos en formato porcentaje y persistiendo nuevos cambios como fracciones.
@@ -129,6 +130,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `./gradlew :data:compileKotlinMetadata :shared:compileKotlinMetadata` completado correctamente tras añadir las queries ligeras SQLDelight.
 - `./gradlew :shared:testDebugUnitTest --tests com.migestor.shared.viewmodel.NotebookViewModelTest` completado correctamente tras optimizar el guardado inline del Cuaderno. Quedan warnings existentes de opt-in experimental en tests de coroutines.
 - `./gradlew :data:generateCommonMainAppDatabaseInterface` completado correctamente tras añadir índices SQLDelight de lectura diaria.
 - Confirmación estática del patrón `@ViewBuilder` para clausuras de SwiftUI, alineándolo con la sintaxis del compilador de Swift y usos homólogos en la app.

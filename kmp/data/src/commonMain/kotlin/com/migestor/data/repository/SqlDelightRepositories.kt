@@ -46,14 +46,18 @@ import com.migestor.shared.repository.CalendarRepository
 import com.migestor.shared.repository.ClassesRepository
 import com.migestor.shared.repository.CompetenciesRepository
 import com.migestor.shared.repository.ConfigurationTemplateRepository
+import com.migestor.shared.repository.CourseOverview
 import com.migestor.shared.repository.DashboardRepository
+import com.migestor.shared.repository.DashboardTodaySnapshot
 import com.migestor.shared.repository.EvaluationsRepository
 import com.migestor.shared.repository.GradesRepository
 import com.migestor.shared.repository.IncidentsRepository
 import com.migestor.shared.repository.NotebookCellsRepository
+import com.migestor.shared.repository.PendingEvaluationsSummary
 import com.migestor.shared.repository.PlannerRepository
 import com.migestor.shared.repository.RubricsRepository
 import com.migestor.shared.repository.StudentsRepository
+import com.migestor.shared.repository.StudentProfileSnapshot
 import com.migestor.shared.repository.AITrendsRepository
 import com.migestor.shared.repository.StudentGradeHistoryPoint
 import com.migestor.shared.repository.StudentAttendanceStats
@@ -365,6 +369,22 @@ class StudentsRepositorySqlDelight(
         }
     }
 
+    override suspend fun getStudentProfileSnapshot(studentId: Long): StudentProfileSnapshot? = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectStudentProfileSnapshot(studentId).executeAsOneOrNull()?.let {
+            StudentProfileSnapshot(
+                studentId = it.student_id,
+                fullName = it.full_name,
+                email = it.email,
+                photoPath = it.photo_path,
+                isInjured = it.is_injured != 0L,
+                classCount = it.class_count.toInt(),
+                activeEvaluationCount = it.active_evaluation_count.toInt(),
+                latestActivityEpochMs = it.latest_activity_epoch_ms,
+                averageScore = it.average_score,
+            )
+        }
+    }
+
     override suspend fun saveStudent(
         id: Long?,
         firstName: String,
@@ -546,6 +566,20 @@ class ClassesRepositorySqlDelight(
                 updatedAtEpochMs = it.updated_at_epoch_ms,
                 deviceId = it.device_id,
                 syncVersion = it.sync_version,
+            )
+        }
+    }
+
+    override suspend fun listCourseOverviews(): List<CourseOverview> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectCourseOverview().executeAsList().map {
+            CourseOverview(
+                classId = it.class_id,
+                name = it.name,
+                course = it.course.toInt(),
+                studentCount = it.student_count.toInt(),
+                visibleColumnCount = it.visible_column_count.toInt(),
+                pendingCellCount = it.pending_cell_count.toInt(),
+                averageScore = it.average_score,
             )
         }
     }
@@ -735,6 +769,18 @@ class EvaluationsRepositorySqlDelight(
                     syncVersion = it.sync_version,
                     associatedGroupId = it.associated_group_id,
                 )
+            )
+        }
+    }
+
+    override suspend fun getPendingEvaluationsSummary(classId: Long): PendingEvaluationsSummary = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectPendingEvaluationsSummary(classId).executeAsOne().let {
+            PendingEvaluationsSummary(
+                classId = it.class_id,
+                evaluationCount = it.evaluation_count.toInt(),
+                pendingCellCount = it.pending_cell_count.toInt(),
+                completedCellCount = it.completed_cell_count.toInt(),
+                completionPct = it.completion_pct.toInt(),
             )
         }
     }
@@ -2209,6 +2255,18 @@ class DashboardRepositorySqlDelight(
             totalRubrics = row.total_rubrics.toInt(),
             totalSessions = row.total_sessions.toInt(),
         )
+    }
+
+    override suspend fun getTodaySnapshot(dayStartEpochMs: Long, dayEndEpochMs: Long): DashboardTodaySnapshot = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectDashboardTodaySnapshot(dayStartEpochMs, dayEndEpochMs).executeAsOne().let {
+            DashboardTodaySnapshot(
+                activeClassCount = it.active_class_count.toInt(),
+                activeStudentCount = it.active_student_count.toInt(),
+                todaySessionCount = it.today_session_count.toInt(),
+                pendingEvaluationCount = it.pending_evaluation_count.toInt(),
+                incidentCount = it.incident_count.toInt(),
+            )
+        }
     }
 }
 

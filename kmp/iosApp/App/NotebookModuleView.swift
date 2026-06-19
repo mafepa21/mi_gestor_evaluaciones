@@ -35,7 +35,8 @@ struct NotebookModuleView: View {
     #if os(iOS)
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
     #endif
-    @ObservedObject var bridge: KmpBridge
+    let bridge: KmpBridge
+    @ObservedObject var notebookStore: NotebookBridgeStore
     @Binding var selectedClassId: Int64?
     @Binding var selectedStudentId: Int64?
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
@@ -130,6 +131,7 @@ struct NotebookModuleView: View {
 
     init(
         bridge: KmpBridge,
+        notebookStore: NotebookBridgeStore,
         selectedClassId: Binding<Int64?>,
         selectedStudentId: Binding<Int64?>,
         onOpenModule: @escaping (AppWorkspaceModule, Int64?, Int64?) -> Void,
@@ -138,7 +140,8 @@ struct NotebookModuleView: View {
         macInspectorState: NotebookMacInspectorState? = nil,
         macToolbarActions: NotebookMacToolbarActions? = nil
     ) {
-        self._bridge = ObservedObject(wrappedValue: bridge)
+        self.bridge = bridge
+        self.notebookStore = notebookStore
         self._selectedClassId = selectedClassId
         self._selectedStudentId = selectedStudentId
         self.onOpenModule = onOpenModule
@@ -584,7 +587,7 @@ struct NotebookModuleView: View {
     }
 
     var activeTabFixedWidth: CGFloat? {
-        if let data = bridge.notebookState as? NotebookUiStateData,
+        if let data = notebookStore.notebookState as? NotebookUiStateData,
            let tabId = activeNotebookTabId(data: data),
            let tab = data.sheet.tabs.first(where: { $0.id == tabId }),
            let width = tab.fixedColumnWidth?.doubleValue {
@@ -999,7 +1002,7 @@ struct NotebookModuleView: View {
         transaction.animation = nil
         withTransaction(transaction) {
             fixedZoneLiveWidth = snappedWidth
-            if let data = bridge.notebookState as? NotebookUiStateData,
+            if let data = notebookStore.notebookState as? NotebookUiStateData,
                let tabId = activeNotebookTabId(data: data) {
                 bridge.saveTabFixedWidth(tabId: tabId, widthDp: Double(snappedWidth))
             } else {
@@ -1016,7 +1019,7 @@ struct NotebookModuleView: View {
         transaction.animation = nil
         withTransaction(transaction) {
             fixedZoneLiveWidth = recommendedWidth
-            if let data = bridge.notebookState as? NotebookUiStateData,
+            if let data = notebookStore.notebookState as? NotebookUiStateData,
                let tabId = activeNotebookTabId(data: data) {
                 bridge.saveTabFixedWidth(tabId: tabId, widthDp: Double(recommendedWidth))
             } else {
@@ -1195,7 +1198,7 @@ struct NotebookModuleView: View {
                     #endif
                 }
                 .appFullScreenCover(isPresented: Binding(
-                    get: { bridge.showingBulkRubricEvaluation },
+                    get: { notebookStore.showingBulkRubricEvaluation },
                     set: { isPresented in
                         if !isPresented {
                             bridge.closeBulkRubricEvaluation()
@@ -1258,8 +1261,8 @@ struct NotebookModuleView: View {
                 .appOnChange(of: toolbarStateKey(data: data)) { _ in
                     scheduleToolbarStateSync(data: data)
                 }
-                .appOnChange(of: bridge.rubricEvaluationState.isSaveSuccessful) { saved in
-                    guard saved, bridge.isNotebookRubricAutoAdvanceActive else { return }
+                .appOnChange(of: notebookStore.rubricEvaluationState.isSaveSuccessful) { saved in
+                    guard saved, notebookStore.isNotebookRubricAutoAdvanceActive else { return }
                     openNextRubricStudentIfPossible()
                 }
                 .toolbar {
@@ -1419,7 +1422,7 @@ struct NotebookModuleView: View {
                                 HStack(spacing: 4) {
                                     if #available(iOS 18.0, macOS 14.0, *) {
                                         Image(systemName: saveBadge.icon)
-                                            .symbolEffect(.rotate, isActive: bridge.notebookSaveState == .saving)
+                                            .symbolEffect(.rotate, isActive: notebookStore.notebookSplitSaveState.isSaving)
                                     } else {
                                         Image(systemName: saveBadge.icon)
                                     }
@@ -1431,8 +1434,8 @@ struct NotebookModuleView: View {
                                     .foregroundStyle(.secondary)
 
                                 // Sincronización
-                                if bridge.syncPendingChanges > 0 {
-                                    Text("\(bridge.syncPendingChanges) pnd.")
+                                if notebookStore.syncPendingChanges > 0 {
+                                    Text("\(notebookStore.syncPendingChanges) pnd.")
                                         .foregroundStyle(Color.orange)
                                 } else {
                                     Text("Sincronizado")
@@ -1578,10 +1581,10 @@ struct NotebookModuleView: View {
     }
 
     var isRubricEvaluationPresented: Bool {
-        guard !bridge.showingBulkRubricEvaluation else { return false }
-        return bridge.rubricEvaluationState.isLoading ||
-            bridge.rubricEvaluationState.rubricDetail != nil ||
-            bridge.rubricEvaluationState.error != nil
+        guard !notebookStore.showingBulkRubricEvaluation else { return false }
+        return notebookStore.rubricEvaluationState.isLoading ||
+            notebookStore.rubricEvaluationState.rubricDetail != nil ||
+            notebookStore.rubricEvaluationState.error != nil
     }
 
     @ViewBuilder
@@ -1609,7 +1612,7 @@ struct NotebookModuleView: View {
 
     func handleCreatedColumn(_ columnId: String) {
         highlightedColumnId = columnId
-        if let data = bridge.notebookState as? NotebookUiStateData,
+        if let data = notebookStore.notebookState as? NotebookUiStateData,
            let column = data.sheet.columns.first(where: { $0.id == columnId }) {
             highlightedCategoryId = column.categoryId
         }
@@ -1618,7 +1621,7 @@ struct NotebookModuleView: View {
             if highlightedColumnId == columnId {
                 highlightedColumnId = nil
             }
-            if let data = bridge.notebookState as? NotebookUiStateData,
+            if let data = notebookStore.notebookState as? NotebookUiStateData,
                highlightedCategoryId == data.sheet.columns.first(where: { $0.id == columnId })?.categoryId {
                 highlightedCategoryId = nil
             }
@@ -1635,7 +1638,7 @@ struct NotebookModuleView: View {
         Task { @MainActor in
             var attempts = 0
             while attempts < 20 {
-                if let data = bridge.notebookState as? NotebookUiStateData,
+                if let data = notebookStore.notebookState as? NotebookUiStateData,
                    data.sheet.columns.contains(where: { $0.id == columnId }) {
                     await Task.yield()
                     notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: columnId)

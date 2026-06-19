@@ -56,7 +56,8 @@ private struct MacAttendanceHistorySelection: Identifiable {
 }
 
 struct MacAttendanceView: View {
-    @ObservedObject var bridge: KmpBridge
+    let bridge: KmpBridge
+    @ObservedObject var attendanceStore: AttendanceBridgeStore
     @Binding var selectedClassId: Int64?
     @Binding var selectedStudentId: Int64?
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
@@ -83,12 +84,12 @@ struct MacAttendanceView: View {
     @State private var isFilterPopoverPresented = false
 
     private var selectedClass: SchoolClass? {
-        selectedClassId.flatMap { id in bridge.classes.first(where: { $0.id == id }) }
+        selectedClassId.flatMap { id in attendanceStore.classes.first(where: { $0.id == id }) }
     }
 
     private var selectedStudent: Student? {
         guard let selectedStudentId else { return nil }
-        return bridge.studentsInClass.first(where: { $0.id == selectedStudentId })
+        return attendanceStore.studentsInClass.first(where: { $0.id == selectedStudentId })
     }
 
     private var selectedAttendance: KmpBridge.AttendanceRecordSnapshot? {
@@ -105,7 +106,7 @@ struct MacAttendanceView: View {
     }
 
     private var filteredRows: [MacAttendanceEntryRow] {
-        bridge.studentsInClass
+        attendanceStore.studentsInClass
             .map { student in
                 MacAttendanceEntryRow(
                     id: student.id,
@@ -123,7 +124,7 @@ struct MacAttendanceView: View {
     }
 
     private var visibleHistoryStudents: [Student] {
-        bridge.studentsInClass.filter { student in
+        attendanceStore.studentsInClass.filter { student in
             let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
             let matchesSearch = query.isEmpty || student.fullName.localizedCaseInsensitiveContains(query)
             let matchesStatus = selectedStatusFilter == "TODOS" || history.contains {
@@ -146,7 +147,7 @@ struct MacAttendanceView: View {
         let present = recordsByStudentId.values.filter { Self.isPresentStatus($0.status) }.count
         let absent = recordsByStudentId.values.filter { Self.isAbsentStatus($0.status) }.count
         let late = recordsByStudentId.values.filter { Self.isLateStatus($0.status) }.count
-        let pending = max(bridge.studentsInClass.count - recordsByStudentId.count, 0)
+        let pending = max(attendanceStore.studentsInClass.count - recordsByStudentId.count, 0)
         return (present, absent, late, pending)
     }
 
@@ -276,7 +277,7 @@ struct MacAttendanceView: View {
                     mode = .courses
                 }
                 Divider()
-                ForEach(bridge.classes, id: \.id) { schoolClass in
+                ForEach(attendanceStore.classes, id: \.id) { schoolClass in
                     Button {
                         selectedClassId = schoolClass.id
                         if mode == .courses {
@@ -742,7 +743,7 @@ struct MacAttendanceView: View {
         isLoading = true
         await bridge.ensureClassesLoaded()
         if selectedClassId == nil {
-            selectedClassId = bridge.selectedStudentsClassId ?? bridge.classes.first?.id
+            selectedClassId = attendanceStore.selectedStudentsClassId ?? attendanceStore.classes.first?.id
         }
         await reloadClassOverviews()
         await syncClassSelection()
@@ -791,7 +792,7 @@ struct MacAttendanceView: View {
         await bridge.ensureClassesLoaded()
         let range = monthRange(for: selectedDate)
         classOverviews = (try? await bridge.attendanceOverview(
-            for: bridge.classes.map(\.id),
+            for: attendanceStore.classes.map(\.id),
             from: range.start,
             to: range.end
         )) ?? []

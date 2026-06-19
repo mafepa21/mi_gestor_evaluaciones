@@ -222,6 +222,7 @@ class NotebookConfigRepositorySqlDelight(
                     .filter { it.evaluation_id == evalId }
                 existing.forEach { ext ->
                     if (ext.id != column.id) {
+                        db.appDatabaseQueries.deleteInstrumentByColumn(ext.id)
                         db.appDatabaseQueries.deleteColumn(ext.id)
                     }
                 }
@@ -328,7 +329,10 @@ class NotebookConfigRepositorySqlDelight(
     }
 
     override suspend fun deleteColumn(columnId: String) = withContext(Dispatchers.Default) {
-        db.appDatabaseQueries.deleteColumn(columnId)
+        db.transaction {
+            db.appDatabaseQueries.deleteInstrumentByColumn(columnId)
+            db.appDatabaseQueries.deleteColumn(columnId)
+        }
     }
 
     override fun observeColumnCategories(classId: Long, tabId: String?): Flow<List<NotebookColumnCategory>> {
@@ -440,6 +444,7 @@ class NotebookConfigRepositorySqlDelight(
                 }
             } else {
                 categoryColumns.forEach { row ->
+                    db.appDatabaseQueries.deleteInstrumentByColumn(row.id)
                     db.appDatabaseQueries.deleteColumn(row.id)
                 }
             }

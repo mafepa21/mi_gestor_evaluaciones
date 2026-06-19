@@ -2,6 +2,7 @@ package com.migestor.data.repository
 
 import com.migestor.data.db.AppDatabase
 import com.migestor.shared.domain.AcademicYear
+import com.migestor.shared.domain.AcademicYearStatus
 import com.migestor.shared.domain.AppUser
 import com.migestor.shared.domain.AuditTrace
 import com.migestor.shared.domain.PlannerEvaluationPeriod
@@ -395,6 +396,9 @@ class TeacherScheduleRepositorySqlDelight(
                 name = existing.name,
                 startAt = Instant.fromEpochMilliseconds(existing.start_epoch_ms),
                 endAt = Instant.fromEpochMilliseconds(existing.end_epoch_ms),
+                status = runCatching { AcademicYearStatus.valueOf(existing.status) }.getOrDefault(AcademicYearStatus.ACTIVE),
+                isActive = existing.is_active != 0L,
+                archivedAt = existing.archived_at_epoch_ms?.let { Instant.fromEpochMilliseconds(it) },
                 trace = AuditTrace(
                     authorUserId = existing.author_user_id,
                     createdAt = Instant.fromEpochMilliseconds(existing.created_at_epoch_ms),
@@ -418,6 +422,9 @@ class TeacherScheduleRepositorySqlDelight(
             name = "${startYear}/${endYear}",
             start_epoch_ms = startDate.atStartOfDayIn(TimeZone.currentSystemDefault()).toEpochMilliseconds(),
             end_epoch_ms = endDate.atStartOfDayIn(TimeZone.currentSystemDefault()).toEpochMilliseconds(),
+            status = AcademicYearStatus.ACTIVE.name,
+            is_active = 1L,
+            archived_at_epoch_ms = null,
             author_user_id = 1L,
             created_at_epoch_ms = now,
             updated_at_epoch_ms = now,

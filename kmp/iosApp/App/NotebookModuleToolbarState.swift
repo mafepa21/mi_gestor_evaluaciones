@@ -11,7 +11,7 @@ extension NotebookModuleView {
     }
 
     var semanticInspectorIcons: [String] {
-        ["", "✅", "⭐", "⚠️", "🏠", "🧩", "📌", "💬"]
+        ["", "checkmark.circle.fill", "star.fill", "exclamationmark.triangle.fill", "house.fill", "puzzlepiece.extension.fill", "pin.fill", "bubble.left.fill"]
     }
 
     var saveBadge: (text: String, icon: String, color: Color) {

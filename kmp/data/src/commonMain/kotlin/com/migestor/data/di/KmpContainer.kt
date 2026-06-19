@@ -4,6 +4,7 @@ import app.cash.sqldelight.db.SqlDriver
 import com.migestor.data.db.AppDatabase
 import com.migestor.data.repository.AttendanceRepositorySqlDelight
 import com.migestor.data.repository.AIAuditRepositorySqlDelight
+import com.migestor.data.repository.AcademicYearsRepositorySqlDelight
 import com.migestor.data.repository.BackupMetadataRepositorySqlDelight
 import com.migestor.data.repository.CalendarRepositorySqlDelight
 import com.migestor.data.repository.ClassesRepositorySqlDelight
@@ -15,6 +16,7 @@ import com.migestor.data.repository.EvaluationsRepositorySqlDelight
 import com.migestor.data.repository.GradesRepositorySqlDelight
 import com.migestor.data.repository.IncidentsRepositorySqlDelight
 import com.migestor.data.repository.NotebookCellsRepositorySqlDelight
+import com.migestor.data.repository.NotebookInstrumentsRepositorySqlDelight
 import com.migestor.data.repository.RubricsRepositorySqlDelight
 import com.migestor.data.repository.StudentsRepositorySqlDelight
 import com.migestor.data.repository.SubjectsRepositorySqlDelight
@@ -53,12 +55,14 @@ class KmpContainer(val driver: SqlDriver) {
     val database = AppDatabase(driver)
 
     val studentsRepository = StudentsRepositorySqlDelight(database)
+    val academicYearsRepository = AcademicYearsRepositorySqlDelight(database)
     val classesRepository = ClassesRepositorySqlDelight(database)
     val subjectsRepository = SubjectsRepositorySqlDelight(database)
     val notebookConfigRepository = NotebookConfigRepositorySqlDelight(database)
     val evaluationsRepository = EvaluationsRepositorySqlDelight(database)
     val gradesRepository = GradesRepositorySqlDelight(database)
     val notebookCellsRepository = NotebookCellsRepositorySqlDelight(database)
+    val notebookInstrumentsRepository = NotebookInstrumentsRepositorySqlDelight(database)
     val rubricsRepository = RubricsRepositorySqlDelight(database)
     val attendanceRepository = AttendanceRepositorySqlDelight(database)
     val aiAuditRepository = AIAuditRepositorySqlDelight(database)

@@ -41,8 +41,10 @@ Prioridad: alta.
 Prioridad: alta.
 
 - iPad: shell de trabajo clara, inspector no invasivo y acciones principales visibles.
+  Avance: `Cursos` queda como acceso visible de primer nivel en iOS/iPadOS para gestionar curso escolar activo, grupos e historico.
 - macOS: paridad progresiva con convenciones desktop reales.
   Avance: la barra lateral de macOS se organiza en secciones agrupadas (Hoy, Evaluación, Planificación, Sistema) para una experiencia de escritorio real.
+  Avance: `Cursos` aparece en la barra lateral macOS y abre la misma gestion de curso escolar activo que iOS/iPadOS.
   Avance: Informes, Backups y Sync LAN pueden abrirse como ventanas auxiliares nativas para trabajar en paralelo con el Cuaderno.
   Avance: la toolbar del Cuaderno macOS queda centrada en acciones diarias y `⌘F` enfoca la búsqueda sin cambiar de módulo inesperadamente.
   Avance: el Cuaderno macOS usa una sola toolbar propiedad de la shell, evitando acciones duplicadas entre `MacRootView` y `NotebookModuleView`.
@@ -65,6 +67,7 @@ Prioridad: alta.
 Prioridad: media-alta.
 
 - SQLDelight: migraciones seguras y pruebas de repositorio.
+- Curso escolar activo: `AcademicYear` pasa a ser frontera estructural de trabajo diario y `StudentEnrollment` conserva historico de matriculas sin duplicar alumnado.
 - Multi-asignatura: relación real grupo-asignatura con catálogo visible y presets aplicables por materia; siguiente paso, usarla en filtros y onboarding.
 - Backups: restauracion fiable y trazable.
 - Sync: estrategia clara para LAN/local y futuras opciones.

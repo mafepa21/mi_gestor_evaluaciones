@@ -4,6 +4,7 @@ import com.migestor.shared.domain.Grade
 import com.migestor.shared.domain.NotebookAverageExplanation
 import com.migestor.shared.domain.NotebookColumnCategory
 import com.migestor.shared.domain.NotebookColumnDefinition
+import com.migestor.shared.domain.NotebookColumnVisibility
 import com.migestor.shared.domain.NotebookRow
 import com.migestor.shared.domain.NotebookSheet
 import com.migestor.shared.domain.NotebookTab
@@ -57,6 +58,11 @@ class NotebookSheetMemoryCache(
         }
     }
 
+    fun invalidate(classId: Long) {
+        val toRemove = entries.keys.filter { it.classId == classId }
+        toRemove.forEach { entries.remove(it) }
+    }
+
     fun clear() {
         entries.clear()
     }
@@ -88,10 +94,10 @@ class AverageCache(
         calculatedValuesByColumnId: Map<String, Double>,
     ): String {
         val includedColumns = columns
-            .filter { it.countsTowardAverage() }
+            .filter { it.visibility == NotebookColumnVisibility.VISIBLE && !it.isHidden && it.countsTowardAverage() }
             .joinToString("|") { column ->
                 val value = row.gradeValueFor(column, calculatedValuesByColumnId)
-                "${column.id}:${column.weight}:${column.type.name}:${column.inputKind.name}:${column.scaleKind.name}:${value ?: "empty"}"
+                "${column.id}:${column.weight}:${column.emptyCellPolicy.name}:${column.type.name}:${column.inputKind.name}:${column.scaleKind.name}:${value ?: "empty"}"
             }
         return "${row.student.id}|$includedColumns"
     }

@@ -335,6 +335,9 @@ extension NotebookModuleView {
     }
 
     func displayValue(for item: NotebookTableRow, column: NotebookColumnDefinition) -> String {
+        if column.inputKind.isStructuredInstrument {
+            return bridge.structuredCellDisplayText(studentId: item.student.id, columnId: column.id)
+        }
         switch column.type {
         case .numeric, .calculated:
             return bridge.numericGradeText(studentId: item.student.id, columnId: column.id)

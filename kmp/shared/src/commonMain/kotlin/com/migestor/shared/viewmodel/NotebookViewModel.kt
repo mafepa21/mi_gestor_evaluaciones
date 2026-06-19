@@ -26,6 +26,7 @@ class NotebookViewModel(
     private val _activeCell = MutableStateFlow<ActiveCell?>(null)
     private val _selectedTabId = MutableStateFlow<String?>(null)
     private val formulaEvaluator = FormulaEvaluator()
+    private val averageCache = AverageCache()
 
     init {
         loadInitialData()
@@ -925,11 +926,18 @@ class NotebookViewModel(
     private fun NotebookUiState.Data.withActiveTabAverages(): NotebookUiState.Data {
         val tabId = activeAverageTabId(sheet.tabs)
         val averageColumns = sheet.columns.filter { columnIsVisibleInAverageTab(it, tabId) }
-        val updatedRows = sheet.rows.map { row ->
-            val explanation = row.computeAverageExplanation(
+        val explanationsByStudentId = averageCache.explanationsByStudent(
+            rows = sheet.rows,
+            columns = averageColumns,
+            numericDrafts = numericDrafts,
+        ) { row, _ ->
+            row.computeAverageExplanation(
                 columns = averageColumns,
                 numericDrafts = numericDrafts,
             )
+        }
+        val updatedRows = sheet.rows.map { row ->
+            val explanation = explanationsByStudentId[row.student.id]
             row.copy(
                 weightedAverage = explanation?.average,
                 averageExplanation = explanation,

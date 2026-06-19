@@ -1,6 +1,14 @@
 import SwiftUI
 import MiGestorKit
 
+struct NotebookRenderCacheKey: Hashable {
+    let classId: Int64
+    let activeTabId: String?
+    let searchText: String
+    let hiddenColumnsRevision: Int
+    let structuralRevision: Int
+}
+
 final class NotebookGridLayoutModel: ObservableObject {
     private enum Metrics {
         static let fixedZoneHorizontalPadding: CGFloat = 32
@@ -47,7 +55,35 @@ final class NotebookGridLayoutModel: ObservableObject {
         viewPreset: NotebookViewPreset,
         isCompact: Bool
     ) -> NotebookGridRenderModel {
+        let key = legacyRenderCacheKey(data: data, activeTabId: activeTabId, viewPreset: viewPreset, isCompact: isCompact)
+        return buildRenderModelIfNeeded(key: key, data: data, activeTabId: activeTabId, viewPreset: viewPreset, isCompact: isCompact)
+    }
+
+    func renderModelCached(
+        key renderCacheKey: NotebookRenderCacheKey,
+        data: NotebookUiStateData,
+        viewPreset: NotebookViewPreset,
+        isCompact: Bool
+    ) -> NotebookGridRenderModel {
         let key = NotebookGridRenderModel.Key(
+            renderCacheKey: renderCacheKey,
+            viewPreset: viewPreset.rawValue,
+            isCompact: isCompact,
+            columnsVersion: Self.version(data.sheet.columns.map { "\($0.id):\($0.order):\($0.visibility):\($0.isPinned):\($0.categoryId ?? ""):\($0.widthDp)" }),
+            categoriesVersion: Self.version(data.sheet.columnCategories.map { "\($0.id):\($0.tabId):\($0.order):\($0.isCollapsed)" }),
+            collapsedCategoriesVersion: Self.version(Array(collapsedCategoryIds)),
+            fixedMode: UserDefaults.standard.string(forKey: "notebook.groupByWorkGroupMode") ?? "none"
+        )
+        return buildRenderModelIfNeeded(key: key, data: data, activeTabId: renderCacheKey.activeTabId, viewPreset: viewPreset, isCompact: isCompact)
+    }
+
+    private func legacyRenderCacheKey(
+        data: NotebookUiStateData,
+        activeTabId: String?,
+        viewPreset: NotebookViewPreset,
+        isCompact: Bool
+    ) -> NotebookGridRenderModel.Key {
+        NotebookGridRenderModel.Key(
             classId: data.sheet.classId,
             activeTabId: activeTabId,
             viewPreset: viewPreset.rawValue,
@@ -57,6 +93,15 @@ final class NotebookGridLayoutModel: ObservableObject {
             collapsedCategoriesVersion: Self.version(Array(collapsedCategoryIds)),
             fixedMode: UserDefaults.standard.string(forKey: "notebook.groupByWorkGroupMode") ?? "none"
         )
+    }
+
+    private func buildRenderModelIfNeeded(
+        key: NotebookGridRenderModel.Key,
+        data: NotebookUiStateData,
+        activeTabId: String?,
+        viewPreset: NotebookViewPreset,
+        isCompact: Bool
+    ) -> NotebookGridRenderModel {
         if let renderCache, renderCache.key == key {
             NotebookGridPerformanceDebug.event("renderModel hit")
             return renderCache
@@ -90,7 +135,8 @@ final class NotebookGridLayoutModel: ObservableObject {
         activeTabId: String?,
         groupByWorkGroupMode: String,
         searchText: String,
-        selectedGroupId: Int64?
+        selectedGroupId: Int64?,
+        renderCacheKey: NotebookRenderCacheKey? = nil
     ) -> [NotebookTableRow] {
         let key = NotebookVisibleRowsCache.Key(
             classId: data.sheet.classId,
@@ -98,6 +144,8 @@ final class NotebookGridLayoutModel: ObservableObject {
             groupByWorkGroupMode: groupByWorkGroupMode,
             searchText: searchText.trimmingCharacters(in: .whitespacesAndNewlines),
             selectedGroupId: selectedGroupId,
+            hiddenColumnsRevision: renderCacheKey?.hiddenColumnsRevision ?? 0,
+            structuralRevision: renderCacheKey?.structuralRevision ?? 0,
             rowsVersion: Self.version(data.sheet.rows.map { "\($0.student.id):\($0.student.firstName):\($0.student.lastName):\($0.weightedAverage ?? -1)" }),
             groupsVersion: Self.version(data.sheet.workGroups.map { "\($0.id):\($0.tabId):\($0.order):\($0.learningSituationId?.int64Value ?? -1)" }),
             membersVersion: Self.version(data.sheet.workGroupMembers.map { "\($0.tabId):\($0.groupId):\($0.studentId)" })
@@ -527,12 +575,60 @@ struct NotebookGridRenderModel {
     struct Key: Equatable {
         let classId: Int64
         let activeTabId: String?
+        let searchText: String
+        let hiddenColumnsRevision: Int
+        let structuralRevision: Int
         let viewPreset: String
         let isCompact: Bool
         let columnsVersion: Int
         let categoriesVersion: Int
         let collapsedCategoriesVersion: Int
         let fixedMode: String
+
+        init(
+            classId: Int64,
+            activeTabId: String?,
+            viewPreset: String,
+            isCompact: Bool,
+            columnsVersion: Int,
+            categoriesVersion: Int,
+            collapsedCategoriesVersion: Int,
+            fixedMode: String
+        ) {
+            self.classId = classId
+            self.activeTabId = activeTabId
+            self.searchText = ""
+            self.hiddenColumnsRevision = 0
+            self.structuralRevision = 0
+            self.viewPreset = viewPreset
+            self.isCompact = isCompact
+            self.columnsVersion = columnsVersion
+            self.categoriesVersion = categoriesVersion
+            self.collapsedCategoriesVersion = collapsedCategoriesVersion
+            self.fixedMode = fixedMode
+        }
+
+        init(
+            renderCacheKey: NotebookRenderCacheKey,
+            viewPreset: String,
+            isCompact: Bool,
+            columnsVersion: Int,
+            categoriesVersion: Int,
+            collapsedCategoriesVersion: Int,
+            fixedMode: String
+        ) {
+            self.classId = renderCacheKey.classId
+            self.activeTabId = renderCacheKey.activeTabId
+            self.searchText = renderCacheKey.searchText
+            self.hiddenColumnsRevision = renderCacheKey.hiddenColumnsRevision
+            self.structuralRevision = renderCacheKey.structuralRevision
+            self.viewPreset = viewPreset
+            self.isCompact = isCompact
+            self.columnsVersion = columnsVersion
+            self.categoriesVersion = categoriesVersion
+            self.collapsedCategoriesVersion = collapsedCategoriesVersion
+            self.fixedMode = fixedMode
+        }
     }
 
     let key: Key
@@ -550,6 +646,8 @@ private struct NotebookVisibleRowsCache {
         let groupByWorkGroupMode: String
         let searchText: String
         let selectedGroupId: Int64?
+        let hiddenColumnsRevision: Int
+        let structuralRevision: Int
         let rowsVersion: Int
         let groupsVersion: Int
         let membersVersion: Int

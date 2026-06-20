@@ -15,11 +15,11 @@ extension NotebookModuleView {
     }
 
     var saveBadge: (text: String, icon: String, color: Color) {
-        if bridge.notebookSaveState == .saved {
+        if bridge.notebookSplitSaveState.isSaved {
             return ("Guardado", "checkmark.circle.fill", .secondary)
-        } else if bridge.notebookSaveState == .saving {
+        } else if bridge.notebookSplitSaveState.isSaving {
             return ("Guardando…", "arrow.triangle.2.circlepath", .secondary)
-        } else if bridge.notebookSaveState == .unsaved {
+        } else if bridge.notebookSplitSaveState.isDirty {
             return ("Sin guardar", "circle.dotted", Color.orange)
         }
         return ("Estado pendiente", "circle", .secondary)
@@ -270,7 +270,7 @@ extension NotebookModuleView {
         let classKey = currentClass?.id ?? -1
         let groupKey = selectedGroupId ?? -1
         let inspectorKey = inspectorSelection?.id ?? "none"
-        return "\(classKey)|\(groupKey)|\(surfaceMode.rawValue)|\(managedColumns(data: data).count)|\(filteredRows(data: data).count)|\(inspectorKey)|\(isInspectorPresented)|\(undoStack.count)|\(isAttendanceQuickMode)|\(bridge.notebookSaveState)"
+        return "\(classKey)|\(groupKey)|\(surfaceMode.rawValue)|\(managedColumns(data: data).count)|\(filteredRows(data: data).count)|\(inspectorKey)|\(isInspectorPresented)|\(undoStack.count)|\(isAttendanceQuickMode)|\(bridge.notebookSplitSaveState.state)"
     }
 
     var notebookRiskRefreshKey: String {

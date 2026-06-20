@@ -237,7 +237,13 @@ final class KmpBridge: ObservableObject {
     
     // Notebook State (Bridged from NotebookViewModel)
     @Published var notebookState: NotebookUiState = NotebookUiStateLoading()
+    @Published var notebookStructureState = KmpBridge.emptyNotebookStructureState()
+    @Published var notebookRowsState = KmpBridge.emptyNotebookRowsState()
+    @Published var notebookSelectionState = KmpBridge.emptyNotebookSelectionState()
     @Published var notebookSaveState: NotebookViewModelSaveState = NotebookViewModelSaveState.saved
+    @Published var notebookSplitSaveState = KmpBridge.emptyNotebookSaveState()
+    @Published var notebookInspectorState = KmpBridge.emptyNotebookInspectorState()
+    @Published var notebookAverageState = KmpBridge.emptyNotebookAverageState()
     
     // Rubric Evaluation State (Bridged from RubricEvaluationViewModel)
     @Published var rubricEvaluationState: RubricEvaluationUiState = RubricEvaluationUiState.companion.default()
@@ -896,6 +902,7 @@ final class KmpBridge: ObservableObject {
     private let notebookStateSubject = CurrentValueSubject<NotebookUiState, Never>(NotebookUiStateLoading())
     private var cachedNotebookStateIdentity: ObjectIdentifier? = nil
     private var cachedNotebookCellValueIndex: NotebookCellValueIndex? = nil
+    private var lastNotebookAggregateSignature: String? = nil
     private var gradeOnTenFormatCache: [String: String] = [:]
 
     private struct NotebookCellValueIndex {
@@ -1010,6 +1017,129 @@ final class KmpBridge: ObservableObject {
         pendingGradeSnapshotTask?.cancel()
     }
 
+    private static func emptyNotebookStructureState() -> NotebookStructureState {
+        NotebookStructureState(
+            classId: nil,
+            tabs: [],
+            columns: [],
+            categories: [],
+            workGroups: [],
+            workGroupMembers: [],
+            isLoading: true,
+            errorMessage: nil
+        )
+    }
+
+    private static func emptyNotebookRowsState() -> NotebookRowsState {
+        NotebookRowsState(
+            classId: nil,
+            rows: [],
+            numericDrafts: [:],
+            textDrafts: [:],
+            checkDrafts: [:],
+            isLoading: true,
+            errorMessage: nil
+        )
+    }
+
+    private static func emptyNotebookSelectionState() -> NotebookSelectionState {
+        NotebookSelectionState(
+            selectedColumnIds: [],
+            isColumnSelectionMode: false,
+            activeCell: nil,
+            activeCellEditor: nil,
+            isLoading: true,
+            errorMessage: nil
+        )
+    }
+
+    private static func emptyNotebookSaveState() -> NotebookSaveState {
+        NotebookSaveState(
+            state: NotebookViewModelSaveState.saved,
+            isDirty: false,
+            isSaving: false,
+            isSaved: true
+        )
+    }
+
+    private static func emptyNotebookInspectorState() -> NotebookInspectorState {
+        NotebookInspectorState(
+            rubricEvaluationTarget: nil,
+            activeCellEditor: nil,
+            activeCell: nil,
+            isLoading: true,
+            errorMessage: nil
+        )
+    }
+
+    private static func emptyNotebookAverageState() -> NotebookAverageState {
+        NotebookAverageState(
+            classId: nil,
+            averagesByStudentId: [:],
+            explanationsByStudentId: [:],
+            isLoading: true,
+            errorMessage: nil
+        )
+    }
+
+    private func notebookAggregateSignature(for state: NotebookUiState) -> String? {
+        guard let data = state as? NotebookUiStateData else {
+            return String(describing: type(of: state))
+        }
+
+        let sheet = data.sheet
+        let columnsSignature = sheet.columns.map { column in
+            [
+                column.id,
+                column.title,
+                "\(column.order)",
+                "\(column.widthDp)",
+                "\(column.visibility)",
+                "\(column.isHidden)",
+                column.categoryId ?? "",
+                column.tabIds.joined(separator: ","),
+                "\(column.weight)",
+                "\(column.countsTowardAverage)"
+            ].joined(separator: ":")
+        }.joined(separator: "|")
+
+        let categoriesSignature = sheet.columnCategories.map { category in
+            "\(category.id):\(category.tabId):\(category.name):\(category.order):\(category.isCollapsed)"
+        }.joined(separator: "|")
+
+        let rowsSignature = sheet.rows.map { row in
+            let cells = row.cells.map { cell in
+                "\(String(describing: cell.evaluationId)):\(String(describing: cell.value))"
+            }.joined(separator: ",")
+            let persistedCells = row.persistedCells.map { cell in
+                [
+                    cell.columnId,
+                    cell.textValue ?? "",
+                    String(describing: cell.boolValue),
+                    cell.iconValue ?? "",
+                    cell.ordinalValue ?? "",
+                    cell.displayValue ?? ""
+                ].joined(separator: ":")
+            }.joined(separator: ",")
+            let grades = row.persistedGrades.map { grade in
+                "\(grade.columnId):\(String(describing: grade.value)):\(String(describing: grade.evaluationId))"
+            }.joined(separator: ",")
+            return "\(row.student.id):\(String(describing: row.weightedAverage)):\(cells):\(persistedCells):\(grades)"
+        }.joined(separator: "|")
+
+        return [
+            "class:\(sheet.classId)",
+            "tabs:\(sheet.tabs.map { "\($0.id):\($0.title):\($0.order)" }.joined(separator: "|"))",
+            "columns:\(columnsSignature)",
+            "categories:\(categoriesSignature)",
+            "rows:\(rowsSignature)",
+            "numeric:\(data.numericDrafts.description)",
+            "text:\(data.textDrafts.description)",
+            "check:\(data.checkDrafts.description)",
+            "groups:\(sheet.workGroups.count):\(sheet.workGroupMembers.count)"
+        ].joined(separator: "¬")
+    }
+
     private func setupObservers() {
         #if os(macOS)
         // macOS: react to the helper process lifecycle via NotificationCenter so the
@@ -1054,7 +1184,11 @@ final class KmpBridge: ObservableObject {
                     // Si ya teníamos datos, ignoramos el Loading: el ViewModel
                     // emitirá Data de vuelta cuando termine la recarga silenciosa.
                 } else {
-                    notebookStateSubject.send(state)
+                    let signature = self.notebookAggregateSignature(for: state)
+                    if signature == nil || signature != self.lastNotebookAggregateSignature {
+                        self.lastNotebookAggregateSignature = signature
+                        notebookStateSubject.send(state)
+                    }
                 }
             }
         }
@@ -1074,6 +1208,54 @@ final class KmpBridge: ObservableObject {
             let sequence = notebookViewModel.saveState.asAsyncSequence(type: NotebookViewModelSaveState.self)
             for await saveState in sequence {
                 self.notebookSaveState = saveState
+            }
+        }
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let sequence = notebookViewModel.structureState.asAsyncSequence(type: NotebookStructureState.self)
+            for await state in sequence {
+                self.notebookStructureState = state
+            }
+        }
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let sequence = notebookViewModel.rowsState.asAsyncSequence(type: NotebookRowsState.self)
+            for await state in sequence {
+                self.notebookRowsState = state
+            }
+        }
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let sequence = notebookViewModel.selectionState.asAsyncSequence(type: NotebookSelectionState.self)
+            for await state in sequence {
+                self.notebookSelectionState = state
+            }
+        }
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let sequence = notebookViewModel.notebookSaveState.asAsyncSequence(type: NotebookSaveState.self)
+            for await state in sequence {
+                self.notebookSplitSaveState = state
+            }
+        }
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let sequence = notebookViewModel.inspectorState.asAsyncSequence(type: NotebookInspectorState.self)
+            for await state in sequence {
+                self.notebookInspectorState = state
+            }
+        }
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let sequence = notebookViewModel.averageState.asAsyncSequence(type: NotebookAverageState.self)
+            for await state in sequence {
+                self.notebookAverageState = state
             }
         }
         
@@ -1220,6 +1402,14 @@ final class KmpBridge: ObservableObject {
             try await loadDashboard(mode: mode)
         } catch {
             status = "Error dashboard operativo: \(error.localizedDescription)"
+        }
+    }
+
+    func preloadClassWorkspace(classId: Int64) async {
+        do {
+            _ = try await container.preloadClassWorkspace.invoke(classId: classId)
+        } catch {
+            status = "Error precargando clase: \(error.localizedDescription)"
         }
     }
 
@@ -6548,7 +6738,7 @@ final class KmpBridge: ObservableObject {
         column: NotebookColumnDefinition,
         value: String
     ) {
-        notebookViewModel.saveColumnGradeDebounced(studentId: studentId, column: column, value: value)
+        notebookViewModel.saveColumnGrade(studentId: studentId, column: column, value: value)
         invalidateNotebookCellValueIndexCache()
         if let classId = notebookViewModel.currentClassId?.int64Value {
             scheduleGradeSnapshotSync(forClassId: classId)
@@ -6556,7 +6746,6 @@ final class KmpBridge: ObservableObject {
     }
 
     func flushPendingColumnGradeSave(studentId: Int64, columnId: String? = nil) {
-        notebookViewModel.flushPendingColumnGradeSave(studentId: studentId, columnId: columnId)
         invalidateNotebookCellValueIndexCache()
         if let classId = notebookViewModel.currentClassId?.int64Value {
             scheduleGradeSnapshotSync(forClassId: classId)

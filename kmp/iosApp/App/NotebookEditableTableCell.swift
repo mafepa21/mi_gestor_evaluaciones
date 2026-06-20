@@ -267,7 +267,6 @@ struct NotebookEditableTableCell: View {
     }
 }
 
-@MainActor
 private struct NotebookNumericCell: View, Equatable {
     let displaySnapshot: NotebookCellDisplaySnapshot
     let actions: NotebookCellActions
@@ -298,7 +297,7 @@ private struct NotebookNumericCell: View, Equatable {
 
     var body: some View { statefulCell }
 
-    @MainActor static func == (lhs: Self, rhs: Self) -> Bool {
+    static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
             lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
@@ -308,7 +307,6 @@ private struct NotebookNumericCell: View, Equatable {
     }
 }
 
-@MainActor
 private struct NotebookTextCell: View, Equatable {
     let displaySnapshot: NotebookCellDisplaySnapshot
     let actions: NotebookCellActions
@@ -339,7 +337,7 @@ private struct NotebookTextCell: View, Equatable {
 
     var body: some View { statefulCell }
 
-    @MainActor static func == (lhs: Self, rhs: Self) -> Bool {
+    static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
             lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
@@ -349,7 +347,6 @@ private struct NotebookTextCell: View, Equatable {
     }
 }
 
-@MainActor
 private struct NotebookCheckCell: View, Equatable {
     let displaySnapshot: NotebookCellDisplaySnapshot
     let actions: NotebookCellActions
@@ -380,7 +377,7 @@ private struct NotebookCheckCell: View, Equatable {
 
     var body: some View { statefulCell }
 
-    @MainActor static func == (lhs: Self, rhs: Self) -> Bool {
+    static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
             lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
@@ -390,7 +387,6 @@ private struct NotebookCheckCell: View, Equatable {
     }
 }
 
-@MainActor
 private struct NotebookAttendanceCell: View, Equatable {
     let displaySnapshot: NotebookCellDisplaySnapshot
     let actions: NotebookCellActions
@@ -421,7 +417,7 @@ private struct NotebookAttendanceCell: View, Equatable {
 
     var body: some View { statefulCell }
 
-    @MainActor static func == (lhs: Self, rhs: Self) -> Bool {
+    static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
             lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
@@ -1530,7 +1526,6 @@ private struct NotebookStatefulEditableTableCell: View {
     }
 }
 
-@MainActor
 private struct NotebookFormulaCell: View, Equatable {
     let displaySnapshot: NotebookCellDisplaySnapshot
     let item: NotebookTableRow
@@ -1578,7 +1573,7 @@ private struct NotebookFormulaCell: View, Equatable {
         }
     }
 
-    @MainActor static func == (lhs: Self, rhs: Self) -> Bool {
+    static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
             lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
@@ -1589,7 +1584,6 @@ private struct NotebookFormulaCell: View, Equatable {
     }
 }
 
-@MainActor
 private struct NotebookRubricCell: View, Equatable {
     let displaySnapshot: NotebookCellDisplaySnapshot
     let item: NotebookTableRow
@@ -1644,7 +1638,7 @@ private struct NotebookRubricCell: View, Equatable {
         }
     }
 
-    @MainActor static func == (lhs: Self, rhs: Self) -> Bool {
+    static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
             lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&
@@ -1653,7 +1647,6 @@ private struct NotebookRubricCell: View, Equatable {
     }
 }
 
-@MainActor
 private struct NotebookReadOnlyCell: View, Equatable {
     let displaySnapshot: NotebookCellDisplaySnapshot
     let item: NotebookTableRow
@@ -1710,7 +1703,7 @@ private struct NotebookReadOnlyCell: View, Equatable {
         }
     }
 
-    @MainActor static func == (lhs: Self, rhs: Self) -> Bool {
+    static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.displaySnapshot == rhs.displaySnapshot &&
             lhs.item.student.id == rhs.item.student.id &&
             lhs.column.cellEquatableKey == rhs.column.cellEquatableKey &&

@@ -155,6 +155,10 @@ struct IOSRootView: View {
                 bridge.selectClass(id: newId)
             }
         }
+        .task(id: selectionStore.selectedClassId) {
+            guard let classId = selectionStore.selectedClassId else { return }
+            await bridge.preloadClassWorkspace(classId: classId)
+        }
         .appOnChange(of: selectionStore.selectedStudentId) { newId in
             persistedStudentId = Int(newId ?? 0)
         }

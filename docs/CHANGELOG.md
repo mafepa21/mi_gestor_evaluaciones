@@ -36,6 +36,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Carga progresiva por pantalla** (`ui/progressive-module-loading`): Dashboard iOS y Educación Física muestran shell, skeletons, métricas, listas y análisis IA por fases para reducir bloqueo visual sin tocar KMP ni persistencia.
+- **Precarga ligera de clase** (`perf/class-workspace-preload`): al seleccionar una clase se calientan dashboard operativo, estructura ligera del Cuaderno, alumnado y asistencia de hoy sin cargar celdas historicas, informes IA, adjuntos ni historico completo.
 - **Guardado inline del Cuaderno sin recarga completa** (`perf/notebook-inline-save-delta`): `NotebookViewModel` actualiza localmente celdas y notas persistidas, marca guardados inline en curso y evita que el eco inmediato del observador de notas dispare `loadNotebookSnapshot` tras cada edición de celda.
 - **Debounce real de escritura en celdas del Cuaderno** (`perf/notebook-save-queue`): `NotebookViewModel` incorpora `NotebookSaveQueue` para que `saveColumnGradeDebounced` actualice drafts locales y retrase la persistencia 500 ms, con flush inmediato al perder foco o cambiar de clase.
 - **Especialización de celdas del Cuaderno** (`perf/notebook-cell-specialization`): `NotebookEditableTableCell` pasa a actuar como router ligero por tipo de columna y envuelve variantes especializadas con `NotebookCellDisplaySnapshot` como frontera `.equatable()`, dejando fórmulas, rúbricas e instrumentos estructurados fuera del estado editable pesado.

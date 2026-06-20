@@ -76,7 +76,7 @@ struct NotebookGridContainer<
     ) -> some View {
         let rowIndexesById = Dictionary(uniqueKeysWithValues: rows.enumerated().map { ($0.element.id, $0.offset) })
 
-        LazyVStack(alignment: .leading, spacing: 0) {
+        return LazyVStack(alignment: .leading, spacing: 0) {
             ForEach(rows) { item in
                 let isHovered = hoveredRowId == item.id
                 rowContent(rowIndexesById[item.id] ?? 0, item)

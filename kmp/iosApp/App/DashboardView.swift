@@ -116,9 +116,8 @@ struct DashboardView: View {
     @State private var isLoadingClassTrends = false
     @State private var proactiveInsights: [DashboardProactiveInsight] = []
     @State private var aiBriefing: TeachingAssistantDraft? = nil
-    @State private var isLoadingAIBriefing = false
-    @State private var aiBriefingCache: [String: TeachingAssistantDraft] = [:]
-    @State private var activeAIBriefingKey: String?
+    @State private var aiBriefingState: DashboardAIBriefingState = .deterministic
+    @State private var activeAIBriefingKey: DashboardAIBriefingCacheKey?
     @State private var dashboardReloadTask: Task<Void, Never>? = nil
     @State private var dashboardReloadGeneration = 0
     @State private var loadPhase: DashboardLoadPhase = .shell
@@ -604,7 +603,7 @@ struct DashboardView: View {
         DashboardProactiveInsightCard(
             insights: proactiveInsights,
             aiBriefing: aiBriefing,
-            isLoadingAIBriefing: isLoadingAIBriefing,
+            aiBriefingState: aiBriefingState,
             actionAvailability: { action in
                 proactiveActionAvailable(action, snapshot: snapshot)
             },
@@ -1411,6 +1410,7 @@ struct DashboardView: View {
         loadPhase = .shell
         proactiveInsights = []
         aiBriefing = nil
+        aiBriefingState = .deterministic
         bridge.updateDashboardFilters(
             classId: selectedClassId,
             severity: severityFilter.rawValue,
@@ -1437,6 +1437,7 @@ struct DashboardView: View {
         guard let snapshot = dashboardStore.dashboardSnapshot else {
             proactiveInsights = []
             aiBriefing = nil
+            aiBriefingState = .deterministic
             return
         }
         proactiveInsights = DashboardProactiveInsightEngine.build(
@@ -1457,43 +1458,42 @@ struct DashboardView: View {
     private func loadAIBriefingIfNeeded(snapshot: DashboardSnapshot) {
         let key = aiBriefingKey(snapshot: snapshot)
         activeAIBriefingKey = key
-        if let cached = aiBriefingCache[key] {
+        if let cached = DashboardAIBriefingCache.shared.cachedDraft(for: key) {
             aiBriefing = cached
+            aiBriefingState = .cached
             return
         }
         aiBriefing = DashboardProactiveInsightEngine.fallbackBriefing(from: proactiveInsights, className: selectedClassLabel)
-        guard !isLoadingAIBriefing else { return }
-        isLoadingAIBriefing = true
+        aiBriefingState = .updating
+        guard DashboardAIBriefingCache.shared.beginRefresh(for: key) else { return }
         let classId = selectedClassId
         Task { @MainActor in
-            defer { isLoadingAIBriefing = false }
+            defer { DashboardAIBriefingCache.shared.finishRefresh(for: key) }
             do {
-                let context = try await bridge.buildDashboardAIContext(classId: classId)
-                let draft = try await teachingAssistantService.generateDraft(
-                    for: .dailyBriefing,
+                let draft = try await teachingAssistantService.generateDailyBriefingDraft(
                     bridge: bridge,
-                    context: context,
+                    classId: classId,
                     audience: .docente,
                     tone: .breve,
                     customPrompt: nil
                 )
                 guard activeAIBriefingKey == key else { return }
-                aiBriefingCache[key] = draft
+                DashboardAIBriefingCache.shared.store(draft, for: key)
                 aiBriefing = draft
+                aiBriefingState = .fresh
             } catch {
                 guard activeAIBriefingKey == key else { return }
                 let fallback = DashboardProactiveInsightEngine.fallbackBriefing(from: proactiveInsights, className: selectedClassLabel)
                 if let fallback {
-                    aiBriefingCache[key] = fallback
                     aiBriefing = fallback
                 }
+                aiBriefingState = .failed
             }
         }
     }
 
-    private func aiBriefingKey(snapshot: DashboardSnapshot) -> String {
-        let day = Calendar.current.startOfDay(for: Date()).timeIntervalSince1970
-        return "\(selectedClassId ?? -1)|\(modeRawValue)|\(day)|\(snapshot.pendingCount)|\(snapshot.alertsCount)|\(dashboardStore.syncPendingChanges)"
+    private func aiBriefingKey(snapshot: DashboardSnapshot) -> DashboardAIBriefingCacheKey {
+        DashboardAIBriefingCacheKey(classId: selectedClassId, scope: "iOS-\(modeRawValue)")
     }
 
     private func proactiveActionAvailable(_ action: DashboardProactiveAction, snapshot: DashboardSnapshot) -> Bool {

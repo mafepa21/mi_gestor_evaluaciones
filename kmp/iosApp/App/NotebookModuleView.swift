@@ -86,6 +86,7 @@ struct NotebookModuleView: View {
     @State var undoStack: [NotebookCellUndoEntry] = []
     @State var structuralGridRevision = 0
     @State var rowReloadRevisions: [Int64: Int] = [:]
+    @State var displayValueCache = DisplayValueCache()
     @State var highlightedCategoryId: String? = nil
     @State var highlightedColumnId: String? = nil
     @State var expandedEmptyCategoryIds: Set<String> = []

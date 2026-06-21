@@ -32,9 +32,8 @@ struct MacDashboardView: View {
     @State private var activeSheet: DashboardSheet?
     @State private var proactiveInsights: [DashboardProactiveInsight] = []
     @State private var aiBriefing: TeachingAssistantDraft? = nil
-    @State private var isLoadingAIBriefing = false
-    @State private var aiBriefingCache: [String: TeachingAssistantDraft] = [:]
-    @State private var activeAIBriefingKey: String?
+    @State private var aiBriefingState: DashboardAIBriefingState = .deterministic
+    @State private var activeAIBriefingKey: DashboardAIBriefingCacheKey?
 
     @State private var teachingAssistantService = AppleFoundationTeachingAssistantService()
 
@@ -140,7 +139,7 @@ struct MacDashboardView: View {
                     DashboardProactiveInsightCard(
                         insights: proactiveInsights,
                         aiBriefing: aiBriefing,
-                        isLoadingAIBriefing: isLoadingAIBriefing,
+                        aiBriefingState: aiBriefingState,
                         actionAvailability: proactiveActionAvailable,
                         onAction: handleProactiveAction
                     )
@@ -155,7 +154,7 @@ struct MacDashboardView: View {
                 DashboardProactiveInsightCard(
                     insights: proactiveInsights,
                     aiBriefing: aiBriefing,
-                    isLoadingAIBriefing: isLoadingAIBriefing,
+                    aiBriefingState: aiBriefingState,
                     actionAvailability: proactiveActionAvailable,
                     onAction: handleProactiveAction
                 )
@@ -265,6 +264,7 @@ struct MacDashboardView: View {
         guard case .ready(let snapshot) = loadState else {
             proactiveInsights = []
             aiBriefing = nil
+            aiBriefingState = .deterministic
             return
         }
         let context = snapshot.currentClassContext ?? snapshot.nextClassContext
@@ -293,45 +293,44 @@ struct MacDashboardView: View {
     private func loadAIBriefingIfNeeded(snapshot: MacDashboardSnapshot) {
         let key = aiBriefingKey(snapshot: snapshot)
         activeAIBriefingKey = key
-        if let cached = aiBriefingCache[key] {
+        if let cached = DashboardAIBriefingCache.shared.cachedDraft(for: key) {
             aiBriefing = cached
+            aiBriefingState = .cached
             return
         }
         let context = snapshot.currentClassContext ?? snapshot.nextClassContext
         aiBriefing = DashboardProactiveInsightEngine.fallbackBriefing(from: proactiveInsights, className: context?.className)
-        guard !isLoadingAIBriefing else { return }
-        isLoadingAIBriefing = true
+        aiBriefingState = .updating
+        guard DashboardAIBriefingCache.shared.beginRefresh(for: key) else { return }
         let classId = context?.classId
         Task { @MainActor in
-            defer { isLoadingAIBriefing = false }
+            defer { DashboardAIBriefingCache.shared.finishRefresh(for: key) }
             do {
-                let screenContext = try await bridge.buildDashboardAIContext(classId: classId)
-                let draft = try await teachingAssistantService.generateDraft(
-                    for: .dailyBriefing,
+                let draft = try await teachingAssistantService.generateDailyBriefingDraft(
                     bridge: bridge,
-                    context: screenContext,
+                    classId: classId,
                     audience: .docente,
                     tone: .breve,
                     customPrompt: nil
                 )
                 guard activeAIBriefingKey == key else { return }
-                aiBriefingCache[key] = draft
+                DashboardAIBriefingCache.shared.store(draft, for: key)
                 aiBriefing = draft
+                aiBriefingState = .fresh
             } catch {
                 guard activeAIBriefingKey == key else { return }
                 let fallback = DashboardProactiveInsightEngine.fallbackBriefing(from: proactiveInsights, className: context?.className)
                 if let fallback {
-                    aiBriefingCache[key] = fallback
                     aiBriefing = fallback
                 }
+                aiBriefingState = .failed
             }
         }
     }
 
-    private func aiBriefingKey(snapshot: MacDashboardSnapshot) -> String {
+    private func aiBriefingKey(snapshot: MacDashboardSnapshot) -> DashboardAIBriefingCacheKey {
         let context = snapshot.currentClassContext ?? snapshot.nextClassContext
-        let day = Calendar.current.startOfDay(for: Date()).timeIntervalSince1970
-        return "\(context?.classId ?? -1)|macOS|\(day)|\(snapshot.pendingItems.count)|\(snapshot.syncStatus.pendingChanges)"
+        return DashboardAIBriefingCacheKey(classId: context?.classId, scope: "macOS")
     }
 
     private func proactiveActionAvailable(_ action: DashboardProactiveAction) -> Bool {

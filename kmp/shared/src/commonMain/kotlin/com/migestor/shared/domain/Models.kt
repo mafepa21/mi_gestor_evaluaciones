@@ -846,6 +846,23 @@ enum class NotebookColumnCategoryKind {
     CUSTOM,
 }
 
+enum class CellSemanticKind {
+    NUMERIC,
+    PERCENTAGE,
+    DATE,
+    ATTENDANCE,
+    AVERAGE,
+    RUBRIC,
+    CHECK,
+    TEXT,
+    EMPTY,
+}
+
+data class CellDisplayValue(
+    val text: String,
+    val semanticKind: CellSemanticKind,
+)
+
 enum class NotebookInstrumentKind {
     WRITTEN_TEST,
     RUBRIC,

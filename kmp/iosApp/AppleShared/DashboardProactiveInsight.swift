@@ -1,6 +1,85 @@
 import SwiftUI
 import MiGestorKit
 
+struct DashboardAIBriefingCacheKey: Hashable {
+    let classId: Int64?
+    let scope: String
+    let dayStart: TimeInterval
+
+    init(classId: Int64?, scope: String, date: Date = Date(), calendar: Calendar = .current) {
+        self.classId = classId
+        self.scope = scope
+        self.dayStart = calendar.startOfDay(for: date).timeIntervalSince1970
+    }
+}
+
+enum DashboardAIBriefingState: Equatable {
+    case deterministic
+    case updating
+    case cached
+    case fresh
+    case failed
+
+    var isUpdating: Bool {
+        self == .updating
+    }
+
+    var statusText: String? {
+        switch self {
+        case .deterministic:
+            return nil
+        case .updating:
+            return "Actualizando análisis"
+        case .cached:
+            return "Último análisis de hoy"
+        case .fresh:
+            return "Análisis actualizado"
+        case .failed:
+            return "Análisis local no disponible"
+        }
+    }
+}
+
+@MainActor
+final class DashboardAIBriefingCache {
+    static let shared = DashboardAIBriefingCache()
+
+    private struct Entry {
+        let draft: TeachingAssistantDraft
+        let createdAt: Date
+    }
+
+    private let maxAge: TimeInterval = 24 * 60 * 60
+    private var entries: [DashboardAIBriefingCacheKey: Entry] = [:]
+    private var refreshesInFlight: Set<DashboardAIBriefingCacheKey> = []
+
+    private init() {}
+
+    func cachedDraft(for key: DashboardAIBriefingCacheKey, now: Date = Date()) -> TeachingAssistantDraft? {
+        guard let entry = entries[key] else { return nil }
+        guard now.timeIntervalSince(entry.createdAt) < maxAge else {
+            entries[key] = nil
+            return nil
+        }
+        return entry.draft
+    }
+
+    func beginRefresh(for key: DashboardAIBriefingCacheKey) -> Bool {
+        guard !refreshesInFlight.contains(key) else { return false }
+        refreshesInFlight.insert(key)
+        return true
+    }
+
+    func store(_ draft: TeachingAssistantDraft, for key: DashboardAIBriefingCacheKey, at date: Date = Date()) {
+        entries[key] = Entry(draft: draft, createdAt: date)
+        refreshesInFlight.remove(key)
+    }
+
+    func finishRefresh(for key: DashboardAIBriefingCacheKey) {
+        refreshesInFlight.remove(key)
+    }
+}
+
 struct DashboardProactiveInsight: Identifiable, Hashable {
     enum Kind: String, Hashable {
         case now
@@ -637,7 +716,7 @@ enum DashboardProactiveInsightEngine {
 struct DashboardProactiveInsightCard: View {
     let insights: [DashboardProactiveInsight]
     let aiBriefing: TeachingAssistantDraft?
-    let isLoadingAIBriefing: Bool
+    let aiBriefingState: DashboardAIBriefingState
     let actionAvailability: (DashboardProactiveAction) -> Bool
     let onAction: (DashboardProactiveAction) -> Void
 
@@ -646,7 +725,7 @@ struct DashboardProactiveInsightCard: View {
             header
             if let aiBriefing {
                 briefingBlock(aiBriefing)
-            } else if isLoadingAIBriefing {
+            } else if aiBriefingState.isUpdating {
                 briefingLoadingBlock
             }
             if insights.isEmpty {
@@ -673,10 +752,17 @@ struct DashboardProactiveInsightCard: View {
             Label("Radar docente", systemImage: "scope")
                 .font(.headline)
             Spacer()
-            if isLoadingAIBriefing {
+            if let statusText = aiBriefingState.statusText {
+                Text(statusText)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }
+            if aiBriefingState.isUpdating {
                 ProgressView()
                     .controlSize(.small)
-                    .accessibilityLabel("Generando briefing docente")
+                    .accessibilityLabel("Actualizando análisis")
             }
         }
     }

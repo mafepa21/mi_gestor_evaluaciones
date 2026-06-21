@@ -604,22 +604,22 @@ extension NotebookModuleView {
         switch column.type {
         case .numeric:
             return NotebookCellDisplaySnapshot(
-                numericText: bridge.numericGradeText(studentId: item.student.id, columnId: column.id)
+                numericText: displayValue(for: item, column: column)
                     .trimmingCharacters(in: .whitespacesAndNewlines)
             )
         case .check:
-            return NotebookCellDisplaySnapshot(checkValue: bridge.cellCheck(studentId: item.student.id, columnId: column.id))
+            return NotebookCellDisplaySnapshot(checkValue: displayValue(for: item, column: column) == "Sí")
         case .calculated:
             return NotebookCellDisplaySnapshot(
-                calculatedText: formulaDisplay?.text ?? bridge.numericGradeOnTenText(studentId: item.student.id, columnId: column.id)
+                calculatedText: formulaDisplay?.text ?? displayValue(for: item, column: column)
             )
         case .rubric:
             return NotebookCellDisplaySnapshot(
-                rubricText: bridge.rubricGradeOnTenText(studentId: item.student.id, column: column)
+                rubricText: displayValue(for: item, column: column)
                     .trimmingCharacters(in: .whitespacesAndNewlines)
             )
         case .attendance:
-            return NotebookCellDisplaySnapshot(text: bridge.cellText(studentId: item.student.id, columnId: column.id))
+            return NotebookCellDisplaySnapshot(text: displayValue(for: item, column: column))
         default:
             return NotebookCellDisplaySnapshot(text: persistedCell?.textValue ?? persistedCell?.displayValue ?? "")
         }

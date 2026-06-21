@@ -630,6 +630,11 @@ final class AppleFoundationTeachingAssistantService {
         }
     }
 
+    func generateDailyBriefingDraft(bridge: KmpBridge, classId: Int64?, audience: AIReportAudience, tone: AIReportTone, customPrompt: String?) async throws -> TeachingAssistantDraft {
+        let pack = try await DailyBriefEvidenceBuilder.build(bridge: bridge, classId: classId)
+        return try await tracedTeachingDraft(pack, audience: audience, tone: tone, customPrompt: customPrompt)
+    }
+
     func refineActiveDraft(with followUp: String) async throws -> TeachingAssistantDraft {
         do {
             return try await contextualService.refineActiveTeachingDraft(with: followUp)

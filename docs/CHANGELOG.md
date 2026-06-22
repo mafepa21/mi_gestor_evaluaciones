@@ -15,6 +15,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- El detalle de sesión del planificador permite abrir una previsualización nativa del DOCX original asociado a una secuenciación importada cuando el archivo está disponible localmente.
 - Cursos incorpora una primera gestion estructural de curso escolar activo: selector en `Cursos`, historial de cursos archivados, asistente de nuevo curso con copia de grupos y promocion de alumnado por matriculas nuevas.
 - Cursos permite editar o eliminar grupos con swipe/context menu y añade accion destructiva en el menu de cursos historicos para eliminar cursos escolares archivados con confirmacion de impacto.
 - El historial de Cursos inicia la exportacion segura con un detalle de curso archivado y `ShareLink` de resumen, sin habilitar aun borrado destructivo.
@@ -36,6 +37,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- El detalle de sesión del planificador se reorganiza como briefing docente en una ventana flotante más ancha, con cabecera fija, CTA de inicio, tarjetas de objetivo/material/evaluación, timeline de desarrollo y origen del documento.
+- La hoja para programar sesiones desde una situación de aprendizaje pasa a una experiencia premium con cabecera fija, scroll vertical real, métricas del DOCX, tarjetas de sesión expandibles y footer de programación siempre visible.
 - **Caché de textos visibles del Cuaderno** (`perf/display-value-cache`): SwiftUI reutiliza formato de decimales, fechas, medias y textos de celda mediante `DisplayValueCache`, y KMP añade el contrato `CellDisplayValue`/`CellSemanticKind` para representar valores ya preparados sin tocar persistencia ni SQLDelight.
 - **Cache IA no bloqueante del Dashboard** (`perf/ai-dashboard-cache`): Dashboard iOS y macOS pintan primero datos deterministas reales, muestran "Actualizando análisis" mientras Foundation Models trabaja en segundo plano y reutilizan una cache Apple en memoria por clase/día para evitar recalcular el briefing al reabrir.
 - **Carga progresiva por pantalla** (`ui/progressive-module-loading`): Dashboard iOS y Educación Física muestran shell, skeletons, métricas, listas y análisis IA por fases para reducir bloqueo visual sin tocar KMP ni persistencia.
@@ -73,6 +76,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- La importación DOCX de secuenciaciones de sesiones reconoce títulos desde cabeceras, sesiones agrupadas, tipos simple/doble, minutos globales por tipo y desarrollos por bloques o rangos horarios.
 - El Cuaderno deja de mutar `@State` durante el render en macOS/iOS al retirar el cache mutable `displayValueCache` de los textos visibles de celdas, fechas y medias, evitando el warning SwiftUI `Modifying state during view update`.
 - Las pestañas del Cuaderno pasan a aislar columnas por pestaña: una pestaña nueva queda vacía y las columnas nuevas se asignan solo a la pestaña activa.
 - **Fallo de inicialización de base de datos en macOS/iOS por versión de base de datos superior (downgrade/desarrollo)**: Se añade una lógica de recuperación ante fallos de bootstrap del driver de base de datos (como la excepción `Database version X newer than config version Y` o corrupción de archivos sqlite) en `AppleDriver.kt`. Al fallar la inicialización inicial del driver, el archivo incompatible/corrupto se renombra a un archivo de copia de seguridad (`.backup_<timestamp>`) y se limpian los archivos sidecar (`-wal` y `-shm`), permitiendo que el driver se vuelva a crear con éxito como una base de datos nueva y compatible, evitando crashes con trap `SIGABRT` en el arranque.

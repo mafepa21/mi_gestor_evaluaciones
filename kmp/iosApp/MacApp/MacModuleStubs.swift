@@ -1131,7 +1131,7 @@ struct MacPlannerView: View {
                     }
                 )
                 .environmentObject(bridge)
-                .frame(minWidth: 550, minHeight: 650)
+                .frame(minWidth: 760, idealWidth: 860, minHeight: 720, idealHeight: 820)
             }
         }
     }

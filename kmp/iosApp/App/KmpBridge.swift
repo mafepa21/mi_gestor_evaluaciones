@@ -4554,6 +4554,12 @@ final class KmpBridge: ObservableObject {
         try await container.learningSituationsRepository.getSessionPlan(id: id)
     }
 
+    func learningSituationSessionSequenceVersion(id: Int64, learningSituationId: Int64) async throws -> LearningSituationSessionSequenceVersion? {
+        try await container.learningSituationsRepository
+            .listSessionSequenceVersions(learningSituationId: learningSituationId)
+            .first { $0.id == id }
+    }
+
     func confirmLearningSituationImport(
         draft: LearningSituationImportDraft,
         existingSituationId: Int64? = nil

@@ -37,6 +37,13 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- Planner iOS/iPadOS centra la planificación diaria en la situación activa: cabecera con progreso, tarjetas semanales con estados docentes, agenda cronológica y diario por capas de pulso rápido, observación breve y reflexión completa.
+- **Optimizaciones de Rendimiento y Transiciones Visuales** (`perf/ui-transitions-polish`):
+  - Añadida animación de desvanecimiento suave (`.transition(.opacity)`) y clave de estado estable (`notebookStateKey`) en el Cuaderno al cambiar de esqueleto a datos reales para eliminar el layout flash visual.
+  - Implementada transición de crossfade asimétrica rápida (150 ms entrada / 100 ms salida) con `.id(activeModule)` en el Workspace Shell Principal para suavizar los cambios de módulo desde la barra lateral.
+  - Conformada a `Equatable` la cuadrícula de sesiones del Planificador Semanal (`PlannerWeekCellCard`) para reducir invalidaciones de renderizado O(N) a O(1) ante actualizaciones de sesión.
+  - Optimizado el renderizado del Cuaderno (`NotebookDynamicCellsRow`) realizando búsquedas de celdas y notas directamente en el array local en Swift (`persistedCells`/`persistedGrades`) para evitar la reconstrucción síncrona del índice global en el Main Thread durante el scroll y la edición de celdas.
+  - Carga diferida por fases (fase 1: estructura y clases locales; fase 2: tendencias y radar de IA después de 150 ms) en el Dashboard (`DashboardView`) para asegurar transiciones de entrada al instante sin bloqueos del hilo de UI.
 - El detalle de sesión del planificador se reorganiza como briefing docente en una ventana flotante más ancha, con cabecera fija, CTA de inicio, tarjetas de objetivo/material/evaluación, timeline de desarrollo y origen del documento.
 - La hoja para programar sesiones desde una situación de aprendizaje pasa a una experiencia premium con cabecera fija, scroll vertical real, métricas del DOCX, tarjetas de sesión expandibles y footer de programación siempre visible.
 - **Caché de textos visibles del Cuaderno** (`perf/display-value-cache`): SwiftUI reutiliza formato de decimales, fechas, medias y textos de celda mediante `DisplayValueCache`, y KMP añade el contrato `CellDisplayValue`/`CellSemanticKind` para representar valores ya preparados sin tocar persistencia ni SQLDelight.
@@ -147,6 +154,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `git diff --check -- kmp/iosApp/App/PlannerWorkspaceIOS.swift` completado correctamente. `xcodebuild -list -project kmp/iosApp/MiGestorKMPiOS.xcodeproj` queda bloqueado con el `xcode-select` global porque apunta a `/Library/Developer/CommandLineTools`; usando `DEVELOPER_DIR=/Users/mariofernandez/Downloads/Xcode-beta.app/Contents/Developer`, `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` completó correctamente.
 - `git diff --check` completado correctamente tras retirar el cache mutable SwiftUI del Cuaderno. `PLATFORM_NAME=macosx ARCHS=arm64 CONFIGURATION=Debug ./scripts/build_apple_framework.sh` queda bloqueado en `:xcodeVersion` por `MissingXcodeException`: `xcode-select` apunta a `/Library/Developer/CommandLineTools` y `xcrun xcodebuild -version` no encuentra Xcode completo.
 - `xcodegen generate` completado desde `kmp/iosApp`, registrando `KmpBridgeObservationStores.swift` en el proyecto Xcode versionado.
 - `git diff --check` completado correctamente tras dividir la observacion Apple de `KmpBridge` en stores derivados.

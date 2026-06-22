@@ -211,6 +211,7 @@ class NotebookViewModel(
 
     fun selectClass(classId: Long, force: Boolean = false) {
         if (!force && activeClassId == classId) return
+        flushAllPendingColumnGradeSaves()
 
         // Nunca emitir Loading si ya tenemos datos para esta clase.
         // Esto evita que refrescos forzados (sync, addColumn, etc.) destruyan
@@ -761,7 +762,51 @@ class NotebookViewModel(
         }
     }
 
+    fun flushPendingColumnGradeSave(studentId: Long, columnId: String? = null) {
+        flushQueuedColumnGradeDrafts(saveQueue.drain(studentId, columnId))
+    }
+
+    fun flushAllPendingColumnGradeSaves() {
+        flushQueuedColumnGradeDrafts(saveQueue.drainAll())
+    }
+
+    private fun scheduleQueuedColumnGradeSave() {
+        saveQueueJob?.cancel()
+        saveQueueJob = scope.launch {
+            delay(500)
+            flushAllPendingColumnGradeSaves()
+        }
+    }
+
+    private fun flushQueuedColumnGradeDrafts(drafts: List<Pair<CellKey, CellDraft>>) {
+        if (drafts.isEmpty()) return
+        saveQueueJob?.cancel()
+        saveQueueJob = null
+        val classId = activeClassId ?: return
+        val queuedDrafts = drafts.map { (key, draft) ->
+            NotebookQueuedCellDraft(
+                studentId = key.studentId,
+                columnId = key.columnId,
+                columnType = draft.column.type,
+                evaluationId = draft.column.evaluationId,
+                value = draft.value,
+            )
+        }
+        beginInlineSave()
+        scope.launch {
+            try {
+                notebookRepository.saveQueuedCellDrafts(classId, queuedDrafts)
+                markClean()
+            } catch (e: Exception) {
+                println("Error saving queued column grades: ${e.message}")
+            } finally {
+                endInlineSave()
+            }
+        }
+    }
+
     suspend fun saveCurrentNotebook(): Boolean {
+        flushAllPendingColumnGradeSaves()
         val classId = activeClassId ?: return false
         val currentState = _state.value as? NotebookUiState.Data ?: return false
 

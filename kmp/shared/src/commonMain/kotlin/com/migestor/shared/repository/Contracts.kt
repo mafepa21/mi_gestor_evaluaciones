@@ -179,6 +179,14 @@ interface NotebookCellsRepository {
     fun observeCellAudit(classId: Long, studentId: Long, columnId: String): Flow<List<NotebookCellAuditEvent>>
 }
 
+data class NotebookQueuedCellDraft(
+    val studentId: Long,
+    val columnId: String,
+    val columnType: NotebookColumnType,
+    val evaluationId: Long?,
+    val value: String,
+)
+
 interface NotebookInstrumentsRepository {
     suspend fun saveTemplate(
         template: NotebookInstrumentTemplate,
@@ -213,6 +221,25 @@ interface NotebookRepository {
     suspend fun removeStudent(classId: Long, studentId: Long)
     suspend fun listStudentsInClass(classId: Long): List<Student>
     suspend fun saveGrade(classId: Long, studentId: Long, columnId: String, evaluationId: Long?, value: Double?): Long
+    suspend fun saveQueuedCellDrafts(classId: Long, drafts: List<NotebookQueuedCellDraft>) {
+        drafts.forEach { draft ->
+            when (draft.columnType) {
+                NotebookColumnType.NUMERIC -> {
+                    val raw = draft.value.trim()
+                    val numericValue = raw.replace(",", ".").toDoubleOrNull()
+                    if (raw.isEmpty() || numericValue != null) {
+                        saveGrade(classId, draft.studentId, draft.columnId, draft.evaluationId, numericValue)
+                    }
+                }
+                NotebookColumnType.TEXT -> saveCell(classId, draft.studentId, draft.columnId, textValue = draft.value)
+                NotebookColumnType.CHECK -> saveCell(classId, draft.studentId, draft.columnId, boolValue = draft.value.toBoolean())
+                NotebookColumnType.ICON -> saveCell(classId, draft.studentId, draft.columnId, iconValue = draft.value)
+                NotebookColumnType.ORDINAL -> saveCell(classId, draft.studentId, draft.columnId, ordinalValue = draft.value)
+                NotebookColumnType.ATTENDANCE -> saveCell(classId, draft.studentId, draft.columnId, textValue = draft.value)
+                else -> Unit
+            }
+        }
+    }
     suspend fun saveTab(classId: Long, tab: NotebookTab)
     suspend fun deleteTab(tabId: String)
     suspend fun saveColumn(classId: Long, column: NotebookColumnDefinition)

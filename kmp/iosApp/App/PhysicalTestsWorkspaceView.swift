@@ -79,6 +79,21 @@ private enum PhysicalTestsWorkspaceTab: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+private enum PhysicalTestsLoadPhase: Int, Comparable {
+    case shell
+    case metrics
+    case lists
+    case ai
+
+    static func < (lhs: PhysicalTestsLoadPhase, rhs: PhysicalTestsLoadPhase) -> Bool {
+        lhs.rawValue < rhs.rawValue
+    }
+
+    func includes(_ phase: PhysicalTestsLoadPhase) -> Bool {
+        rawValue >= phase.rawValue
+    }
+}
+
 private enum PhysicalCompletionFilter: String, CaseIterable, Identifiable {
     case all = "Todos"
     case pending = "Pendiente"
@@ -179,6 +194,8 @@ struct PhysicalTestsWorkspaceView: View {
     @State private var isGeneratingProgressAnalysis = false
     @State private var progressAnalysisError: String?
     @State private var aiOrchestrator = AppleAIOrchestrator()
+    @State private var loadPhase: PhysicalTestsLoadPhase = .shell
+    @State private var reloadGeneration = 0
 
     private var selectedClassName: String {
         selectedClassId.flatMap { id in bridge.classes.first(where: { $0.id == id })?.name } ?? "Clase global"
@@ -329,24 +346,7 @@ struct PhysicalTestsWorkspaceView: View {
 
                 Divider()
 
-                Group {
-                    switch selectedTab {
-                    case .bank:
-                        bankView
-                    case .scales:
-                        scalesView
-                    case .batteries:
-                        batteriesView
-                    case .assignments:
-                        assignmentsView
-                    case .capture:
-                        captureDashboard
-                    case .history:
-                        historyView
-                    case .reports:
-                        reportsView
-                    }
-                }
+                physicalContent
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .background(EvaluationBackdrop())
@@ -367,6 +367,7 @@ struct PhysicalTestsWorkspaceView: View {
             .appOnChange(of: selectedFilterTestId) { _ in resetScaleDraftForActiveTest() }
             .appOnChange(of: selectedTab) { tab in
                 if tab == .reports, progressAnalysis == nil {
+                    loadPhase = max(loadPhase, .lists)
                     Task { await generateProgressAnalysis() }
                 }
             }
@@ -412,6 +413,30 @@ struct PhysicalTestsWorkspaceView: View {
                 .presentationDragIndicator(.visible)
                 #endif
             }
+        }
+    }
+
+    @ViewBuilder
+    private var physicalContent: some View {
+        if loadPhase.includes(.lists) {
+            switch selectedTab {
+            case .bank:
+                bankView
+            case .scales:
+                scalesView
+            case .batteries:
+                batteriesView
+            case .assignments:
+                assignmentsView
+            case .capture:
+                captureDashboard
+            case .history:
+                historyView
+            case .reports:
+                reportsView
+            }
+        } else {
+            physicalTabSkeleton
         }
     }
 
@@ -496,14 +521,116 @@ struct PhysicalTestsWorkspaceView: View {
                 .buttonStyle(.bordered)
             }
 
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
-                PhysicalStatCard(title: "Pruebas", value: "\(tests.count)", tint: .blue)
-                PhysicalStatCard(title: "Registros", value: "\(recordedCount)", tint: .green)
-                PhysicalStatCard(title: "Banco", value: "\(max(definitions.count, PhysicalTestTemplate.defaults.count))", tint: .orange)
-                PhysicalStatCard(title: "Baterías", value: "\(batteries.count)", tint: .purple)
+            if loadPhase.includes(.metrics) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
+                    PhysicalStatCard(title: "Pruebas", value: "\(tests.count)", tint: .blue)
+                    PhysicalStatCard(title: "Registros", value: "\(recordedCount)", tint: .green)
+                    PhysicalStatCard(title: "Banco", value: "\(max(definitions.count, PhysicalTestTemplate.defaults.count))", tint: .orange)
+                    PhysicalStatCard(title: "Baterías", value: "\(batteries.count)", tint: .purple)
+                }
+            } else {
+                physicalMetricsSkeleton
             }
         }
         .padding(20)
+    }
+
+    private var physicalMetricsSkeleton: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
+            ForEach(0..<4, id: \.self) { index in
+                VStack(alignment: .leading, spacing: 8) {
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(Color.primary.opacity(0.10))
+                        .frame(width: index == 2 ? 64 : 72, height: 10)
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.primary.opacity(0.08))
+                        .frame(width: 48, height: 20)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
+                .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.primary.opacity(0.08)))
+            }
+        }
+        .redacted(reason: .placeholder)
+        .accessibilityLabel("Cargando métricas de condición física")
+    }
+
+    private var physicalTabSkeleton: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                if selectedTab == .capture {
+                    physicalCaptureSkeleton
+                } else {
+                    ForEach(0..<4, id: \.self) { index in
+                        NotebookSurface {
+                            VStack(alignment: .leading, spacing: 12) {
+                                HStack {
+                                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                        .fill(Color.primary.opacity(0.12))
+                                        .frame(width: index == 0 ? 176 : 136, height: 14)
+                                    Spacer()
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .fill(Color.primary.opacity(0.08))
+                                        .frame(width: 72, height: 20)
+                                }
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .fill(Color.primary.opacity(0.08))
+                                    .frame(maxWidth: .infinity, minHeight: 10, maxHeight: 10)
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .fill(Color.primary.opacity(0.06))
+                                    .frame(width: 220, height: 10)
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(20)
+        }
+        .redacted(reason: .placeholder)
+        .accessibilityLabel("Cargando sección de condición física")
+    }
+
+    private var physicalCaptureSkeleton: some View {
+        HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(0..<6, id: \.self) { index in
+                    VStack(alignment: .leading, spacing: 6) {
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(Color.primary.opacity(0.12))
+                            .frame(width: index == 0 ? 160 : 128, height: 12)
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(Color.primary.opacity(0.07))
+                            .frame(width: 180, height: 10)
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+            }
+            .frame(minWidth: 320, maxWidth: 380)
+
+            VStack(alignment: .leading, spacing: 18) {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.primary.opacity(0.12))
+                    .frame(width: 220, height: 28)
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 14)], spacing: 14) {
+                    ForEach(0..<3, id: \.self) { _ in
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(Color.primary.opacity(0.08))
+                            .frame(height: 88)
+                    }
+                }
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color.primary.opacity(0.08))
+                    .frame(height: 48)
+                ForEach(0..<5, id: \.self) { _ in
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color.primary.opacity(0.06))
+                        .frame(height: 44)
+                }
+            }
+        }
     }
 
     private var bankView: some View {
@@ -842,6 +969,11 @@ struct PhysicalTestsWorkspaceView: View {
 
     @MainActor
     private func reload() async {
+        reloadGeneration += 1
+        let generation = reloadGeneration
+        loadPhase = .shell
+        progressAnalysis = nil
+        progressAnalysisError = nil
         guard let selectedClassId else {
             tests = []
             selectedTestId = nil
@@ -850,18 +982,20 @@ struct PhysicalTestsWorkspaceView: View {
             notebookLinks = []
             assignmentNotebookTabs = []
             selectedAssignmentNotebookTabId = nil
+            loadPhase = .lists
             return
         }
         await refreshAssignmentNotebookTabs()
-        definitions = (try? await bridge.listPhysicalDefinitions()) ?? []
-        batteries = (try? await bridge.listPhysicalBatteries()) ?? []
-        assignments = (try? await bridge.listPhysicalAssignmentsForClass(classId: selectedClassId)) ?? []
-        notebookLinks = []
-        for assignment in assignments {
-            let links = (try? await bridge.listPhysicalNotebookLinksForAssignment(assignmentId: assignment.id)) ?? []
-            notebookLinks.append(contentsOf: links)
-        }
-        tests = (try? await bridge.loadPhysicalTests(classId: selectedClassId)) ?? []
+        guard generation == reloadGeneration else { return }
+        let loadedDefinitions = (try? await bridge.listPhysicalDefinitions()) ?? []
+        guard generation == reloadGeneration else { return }
+        definitions = loadedDefinitions
+        let loadedBatteries = (try? await bridge.listPhysicalBatteries()) ?? []
+        guard generation == reloadGeneration else { return }
+        batteries = loadedBatteries
+        let loadedTests = (try? await bridge.loadPhysicalTests(classId: selectedClassId)) ?? []
+        guard generation == reloadGeneration else { return }
+        tests = loadedTests
         if selectedBatteryId == nil || !batteries.contains(where: { $0.id == selectedBatteryId }) {
             selectedBatteryId = batteries.first?.id
         }
@@ -871,8 +1005,23 @@ struct PhysicalTestsWorkspaceView: View {
         if selectedStudentId == nil || !(selectedTest?.results.contains(where: { $0.student.id == selectedStudentId }) ?? false) {
             selectedStudentId = selectedTest?.results.first?.student.id
         }
+        loadPhase = .metrics
+        let loadedAssignments = (try? await bridge.listPhysicalAssignmentsForClass(classId: selectedClassId)) ?? []
+        guard generation == reloadGeneration else { return }
+        var loadedNotebookLinks: [MiGestorKit.PhysicalTestNotebookLink] = []
+        for assignment in loadedAssignments {
+            let links = (try? await bridge.listPhysicalNotebookLinksForAssignment(assignmentId: assignment.id)) ?? []
+            guard generation == reloadGeneration else { return }
+            loadedNotebookLinks.append(contentsOf: links)
+        }
+        assignments = loadedAssignments
+        notebookLinks = loadedNotebookLinks
         syncSelectedClassDefaults()
         resetScaleDraftForActiveTest()
+        loadPhase = .lists
+        if selectedTab == .reports {
+            Task { await generateProgressAnalysis() }
+        }
     }
 
     @MainActor
@@ -1092,15 +1241,20 @@ struct PhysicalTestsWorkspaceView: View {
 
     @MainActor
     private func generateProgressAnalysis() async {
+        loadPhase = max(loadPhase, .lists)
         let evidence = physicalProgressEvidence
         guard evidence.hasEnoughData else {
             progressAnalysis = nil
             progressAnalysisError = "Registra al menos una marca para analizar la condición física."
+            loadPhase = .ai
             return
         }
         isGeneratingProgressAnalysis = true
         progressAnalysisError = nil
-        defer { isGeneratingProgressAnalysis = false }
+        defer {
+            isGeneratingProgressAnalysis = false
+            loadPhase = .ai
+        }
         do {
             let result = try await aiOrchestrator.generate(
                 capability: .physicalProgressAnalysis,

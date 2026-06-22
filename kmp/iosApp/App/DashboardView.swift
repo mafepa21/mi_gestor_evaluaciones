@@ -49,6 +49,17 @@ private enum DashboardBlock: Hashable {
     case lomloeAudit
 }
 
+private enum DashboardLoadPhase: Int {
+    case shell
+    case metrics
+    case lists
+    case ai
+
+    func includes(_ phase: DashboardLoadPhase) -> Bool {
+        rawValue >= phase.rawValue
+    }
+}
+
 private enum DashboardFilterOption: String, CaseIterable, Identifiable {
     case all = ""
     case high
@@ -105,11 +116,11 @@ struct DashboardView: View {
     @State private var isLoadingClassTrends = false
     @State private var proactiveInsights: [DashboardProactiveInsight] = []
     @State private var aiBriefing: TeachingAssistantDraft? = nil
-    @State private var isLoadingAIBriefing = false
-    @State private var aiBriefingCache: [String: TeachingAssistantDraft] = [:]
-    @State private var activeAIBriefingKey: String?
+    @State private var aiBriefingState: DashboardAIBriefingState = .deterministic
+    @State private var activeAIBriefingKey: DashboardAIBriefingCacheKey?
     @State private var dashboardReloadTask: Task<Void, Never>? = nil
     @State private var dashboardReloadGeneration = 0
+    @State private var loadPhase: DashboardLoadPhase = .shell
 
     private let teachingAssistantService = AppleFoundationTeachingAssistantService()
 
@@ -266,46 +277,76 @@ struct DashboardView: View {
     private var dashboardContent: some View {
         ScrollView {
             if let snapshot = dashboardStore.dashboardSnapshot {
-                VStack(alignment: .leading, spacing: EvaluationDesign.sectionSpacing) {
-                    dashboardProactiveRadar(snapshot: snapshot)
-                    dashboardWorkCenter(snapshot: snapshot)
-
-                    let blocks: [DashboardBlock] = mode == .classroom
-                        ? [.quickEvaluation, .groupSummary, .agenda, .lomloeAudit]
-                        : [.lomloeAudit, .groupSummary, .agenda, .quickEvaluation]
-
-                    ForEach(blocks, id: \.self) { block in
-                        switch block {
-                        case .today:
-                            dashboardTodayBlock(snapshot: snapshot)
-                        case .pending:
-                            dashboardPendingBlock(snapshot: snapshot)
-                        case .risk:
-                            dashboardRiskBlock(snapshot: snapshot)
-                        case .system:
-                            dashboardSystemBlock()
-                        case .alerts:
-                            dashboardAlertsBlock(snapshot: snapshot)
-                        case .quickEvaluation:
-                            dashboardQuickEvalBlock(snapshot: snapshot)
-                        case .groupSummary:
-                            dashboardGroupSummaryBlock(snapshot: snapshot)
-                        case .agenda:
-                            dashboardAgendaBlock(snapshot: snapshot)
-                        case .physicalEducation:
-                            dashboardPEBlock(snapshot: snapshot)
-                        case .lomloeAudit:
-                            dashboardLomloeAuditBlock(snapshot: snapshot)
-                        }
-                    }
-                }
+                dashboardLoadedContent(snapshot: snapshot)
                 .padding(EvaluationDesign.screenPadding)
             } else {
-                ProgressView("Cargando dashboard operativo...")
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.top, 40)
+                dashboardSkeletonContent
+                    .padding(EvaluationDesign.screenPadding)
             }
         }
+    }
+
+    @ViewBuilder
+    private func dashboardLoadedContent(snapshot: DashboardSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: EvaluationDesign.sectionSpacing) {
+            if loadPhase.includes(.ai) {
+                dashboardProactiveRadar(snapshot: snapshot)
+            } else {
+                dashboardRadarSkeleton
+            }
+
+            if loadPhase.includes(.metrics) {
+                dashboardKpiRow(snapshot: snapshot)
+            } else {
+                dashboardMetricsSkeleton
+            }
+
+            if loadPhase.includes(.lists) {
+                dashboardWorkCenter(snapshot: snapshot)
+
+                let blocks: [DashboardBlock] = mode == .classroom
+                    ? [.quickEvaluation, .groupSummary, .agenda, .lomloeAudit]
+                    : [.lomloeAudit, .groupSummary, .agenda, .quickEvaluation]
+
+                ForEach(blocks, id: \.self) { block in
+                    switch block {
+                    case .today:
+                        dashboardTodayBlock(snapshot: snapshot)
+                    case .pending:
+                        dashboardPendingBlock(snapshot: snapshot)
+                    case .risk:
+                        dashboardRiskBlock(snapshot: snapshot)
+                    case .system:
+                        dashboardSystemBlock()
+                    case .alerts:
+                        dashboardAlertsBlock(snapshot: snapshot)
+                    case .quickEvaluation:
+                        dashboardQuickEvalBlock(snapshot: snapshot)
+                    case .groupSummary:
+                        dashboardGroupSummaryBlock(snapshot: snapshot)
+                    case .agenda:
+                        dashboardAgendaBlock(snapshot: snapshot)
+                    case .physicalEducation:
+                        dashboardPEBlock(snapshot: snapshot)
+                    case .lomloeAudit:
+                        dashboardLomloeAuditBlock(snapshot: snapshot)
+                    }
+                }
+            } else {
+                dashboardListSkeleton
+            }
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.82), value: loadPhase.rawValue)
+    }
+
+    private var dashboardSkeletonContent: some View {
+        VStack(alignment: .leading, spacing: EvaluationDesign.sectionSpacing) {
+            dashboardRadarSkeleton
+            dashboardMetricsSkeleton
+            dashboardListSkeleton
+        }
+        .redacted(reason: .placeholder)
+        .accessibilityLabel("Cargando dashboard operativo")
     }
 
     private var dashboardInspector: some View {
@@ -412,6 +453,124 @@ struct DashboardView: View {
         .cornerRadius(12)
     }
 
+    private var dashboardMetricsSkeleton: some View {
+        HStack(spacing: 12) {
+            ForEach(0..<4, id: \.self) { index in
+                VStack(alignment: .leading, spacing: 8) {
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(Color.primary.opacity(0.10))
+                        .frame(width: index == 3 ? 96 : 56, height: 10)
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.primary.opacity(0.08))
+                        .frame(width: index == 3 ? 132 : 64, height: 18)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .background(appCardBackground(for: colorScheme))
+                .cornerRadius(12)
+            }
+        }
+        .redacted(reason: .placeholder)
+    }
+
+    private var dashboardRadarSkeleton: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(Color.primary.opacity(0.12))
+                    .frame(width: 128, height: 14)
+                Spacer()
+                ProgressView()
+                    .controlSize(.small)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(Color.primary.opacity(0.10))
+                    .frame(width: 180, height: 10)
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(Color.primary.opacity(0.08))
+                    .frame(maxWidth: .infinity, minHeight: 10, maxHeight: 10)
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(Color.primary.opacity(0.06))
+                    .frame(width: 240, height: 10)
+            }
+            .padding(16)
+            .background(EvaluationDesign.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .padding(16)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.08), radius: 12, x: 0, y: 4)
+        .redacted(reason: .placeholder)
+    }
+
+    private var dashboardListSkeleton: some View {
+        VStack(spacing: EvaluationDesign.cardSpacing) {
+            dashboardSkeletonBlock(rowCount: 3)
+
+            let columns = [
+                GridItem(.flexible(), spacing: EvaluationDesign.cardSpacing, alignment: .top),
+                GridItem(.flexible(), spacing: EvaluationDesign.cardSpacing, alignment: .top),
+                GridItem(.flexible(), spacing: EvaluationDesign.cardSpacing, alignment: .top)
+            ]
+
+            if isCompactWidth {
+                VStack(spacing: EvaluationDesign.cardSpacing) {
+                    dashboardSkeletonBlock(rowCount: 3)
+                    dashboardSkeletonBlock(rowCount: 3)
+                    dashboardSkeletonBlock(rowCount: 3)
+                }
+            } else {
+                LazyVGrid(columns: columns, alignment: .center, spacing: EvaluationDesign.cardSpacing) {
+                    dashboardSkeletonBlock(rowCount: 3)
+                    dashboardSkeletonBlock(rowCount: 3)
+                    dashboardSkeletonBlock(rowCount: 3)
+                }
+            }
+        }
+        .redacted(reason: .placeholder)
+    }
+
+    private func dashboardSkeletonBlock(rowCount: Int) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(Color.primary.opacity(0.12))
+                    .frame(width: 112, height: 14)
+                Spacer()
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(Color.primary.opacity(0.08))
+                    .frame(width: 28, height: 12)
+            }
+
+            ForEach(0..<rowCount, id: \.self) { index in
+                VStack(alignment: .leading, spacing: 6) {
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(Color.primary.opacity(0.10))
+                        .frame(width: index == 0 ? 180 : 140, height: 12)
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(Color.primary.opacity(0.07))
+                        .frame(maxWidth: .infinity, minHeight: 10, maxHeight: 10)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(appMutedCardBackground(for: colorScheme))
+                .cornerRadius(EvaluationDesign.pillRadius)
+            }
+        }
+        .padding(EvaluationDesign.cardSpacing)
+        .background(.regularMaterial)
+        .cornerRadius(EvaluationDesign.innerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
+                .stroke(Color.primary.opacity(colorScheme == .dark ? 0.15 : 0.06), lineWidth: 1)
+        )
+    }
+
     @ViewBuilder
     private func dashboardWorkCenter(snapshot: DashboardSnapshot) -> some View {
         if isCompactWidth {
@@ -444,7 +603,7 @@ struct DashboardView: View {
         DashboardProactiveInsightCard(
             insights: proactiveInsights,
             aiBriefing: aiBriefing,
-            isLoadingAIBriefing: isLoadingAIBriefing,
+            aiBriefingState: aiBriefingState,
             actionAvailability: { action in
                 proactiveActionAvailable(action, snapshot: snapshot)
             },
@@ -1248,6 +1407,10 @@ struct DashboardView: View {
         if let expectedReloadGeneration, expectedReloadGeneration != dashboardReloadGeneration {
             return
         }
+        loadPhase = .shell
+        proactiveInsights = []
+        aiBriefing = nil
+        aiBriefingState = .deterministic
         bridge.updateDashboardFilters(
             classId: selectedClassId,
             severity: severityFilter.rawValue,
@@ -1259,18 +1422,22 @@ struct DashboardView: View {
         if let expectedReloadGeneration, expectedReloadGeneration != dashboardReloadGeneration {
             return
         }
+        loadPhase = dashboardStore.dashboardSnapshot == nil ? .shell : .metrics
         await loadClassTrends()
         guard !Task.isCancelled else { return }
         if let expectedReloadGeneration, expectedReloadGeneration != dashboardReloadGeneration {
             return
         }
+        loadPhase = dashboardStore.dashboardSnapshot == nil ? .shell : .lists
         rebuildProactiveRadar()
+        loadPhase = dashboardStore.dashboardSnapshot == nil ? .shell : .ai
     }
 
     private func rebuildProactiveRadar() {
         guard let snapshot = dashboardStore.dashboardSnapshot else {
             proactiveInsights = []
             aiBriefing = nil
+            aiBriefingState = .deterministic
             return
         }
         proactiveInsights = DashboardProactiveInsightEngine.build(
@@ -1291,43 +1458,42 @@ struct DashboardView: View {
     private func loadAIBriefingIfNeeded(snapshot: DashboardSnapshot) {
         let key = aiBriefingKey(snapshot: snapshot)
         activeAIBriefingKey = key
-        if let cached = aiBriefingCache[key] {
+        if let cached = DashboardAIBriefingCache.shared.cachedDraft(for: key) {
             aiBriefing = cached
+            aiBriefingState = .cached
             return
         }
         aiBriefing = DashboardProactiveInsightEngine.fallbackBriefing(from: proactiveInsights, className: selectedClassLabel)
-        guard !isLoadingAIBriefing else { return }
-        isLoadingAIBriefing = true
+        aiBriefingState = .updating
+        guard DashboardAIBriefingCache.shared.beginRefresh(for: key) else { return }
         let classId = selectedClassId
         Task { @MainActor in
-            defer { isLoadingAIBriefing = false }
+            defer { DashboardAIBriefingCache.shared.finishRefresh(for: key) }
             do {
-                let context = try await bridge.buildDashboardAIContext(classId: classId)
-                let draft = try await teachingAssistantService.generateDraft(
-                    for: .dailyBriefing,
+                let draft = try await teachingAssistantService.generateDailyBriefingDraft(
                     bridge: bridge,
-                    context: context,
+                    classId: classId,
                     audience: .docente,
                     tone: .breve,
                     customPrompt: nil
                 )
                 guard activeAIBriefingKey == key else { return }
-                aiBriefingCache[key] = draft
+                DashboardAIBriefingCache.shared.store(draft, for: key)
                 aiBriefing = draft
+                aiBriefingState = .fresh
             } catch {
                 guard activeAIBriefingKey == key else { return }
                 let fallback = DashboardProactiveInsightEngine.fallbackBriefing(from: proactiveInsights, className: selectedClassLabel)
                 if let fallback {
-                    aiBriefingCache[key] = fallback
                     aiBriefing = fallback
                 }
+                aiBriefingState = .failed
             }
         }
     }
 
-    private func aiBriefingKey(snapshot: DashboardSnapshot) -> String {
-        let day = Calendar.current.startOfDay(for: Date()).timeIntervalSince1970
-        return "\(selectedClassId ?? -1)|\(modeRawValue)|\(day)|\(snapshot.pendingCount)|\(snapshot.alertsCount)|\(dashboardStore.syncPendingChanges)"
+    private func aiBriefingKey(snapshot: DashboardSnapshot) -> DashboardAIBriefingCacheKey {
+        DashboardAIBriefingCacheKey(classId: selectedClassId, scope: "iOS-\(modeRawValue)")
     }
 
     private func proactiveActionAvailable(_ action: DashboardProactiveAction, snapshot: DashboardSnapshot) -> Bool {

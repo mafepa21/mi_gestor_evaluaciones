@@ -89,6 +89,42 @@ class NotebookViewModel(
     private val _state = MutableStateFlow<NotebookUiState>(NotebookUiState.Loading)
     val state: StateFlow<NotebookUiState> = _state.asStateFlow()
 
+    val structureState: StateFlow<NotebookStructureState> = state
+        .map { it.toStructureState() }
+        .distinctUntilChanged()
+        .stateIn(scope, SharingStarted.Eagerly, NotebookStructureState())
+
+    val rowsState: StateFlow<NotebookRowsState> = state
+        .map { it.toRowsState() }
+        .distinctUntilChanged()
+        .stateIn(scope, SharingStarted.Eagerly, NotebookRowsState())
+
+    val selectionState: StateFlow<NotebookSelectionState> = state
+        .map { it.toSelectionState() }
+        .distinctUntilChanged()
+        .stateIn(scope, SharingStarted.Eagerly, NotebookSelectionState())
+
+    val notebookSaveState: StateFlow<NotebookSaveState> = combine(saveState, _isDirty, _isSyncing) { saveState, dirty, syncing ->
+        NotebookSaveState(
+            state = saveState,
+            isDirty = dirty,
+            isSaving = syncing,
+            isSaved = saveState == NotebookViewModelSaveState.Saved,
+        )
+    }
+        .distinctUntilChanged()
+        .stateIn(scope, SharingStarted.Eagerly, NotebookSaveState())
+
+    val inspectorState: StateFlow<NotebookInspectorState> = state
+        .map { it.toInspectorState() }
+        .distinctUntilChanged()
+        .stateIn(scope, SharingStarted.Eagerly, NotebookInspectorState())
+
+    val averageState: StateFlow<NotebookAverageState> = state
+        .map { it.toAverageState() }
+        .distinctUntilChanged()
+        .stateIn(scope, SharingStarted.Eagerly, NotebookAverageState())
+
     private val _importResult = MutableStateFlow<ImportResult?>(null)
     val importResult: StateFlow<ImportResult?> = _importResult.asStateFlow()
 
@@ -1902,4 +1938,122 @@ sealed interface NotebookUiState {
         val workGroupMembers: List<NotebookWorkGroupMember> = emptyList(),
     ) : NotebookUiState
     data class Error(val message: String) : NotebookUiState
+}
+
+data class NotebookStructureState(
+    val classId: Long? = null,
+    val tabs: List<NotebookTab> = emptyList(),
+    val columns: List<NotebookColumnDefinition> = emptyList(),
+    val categories: List<NotebookColumnCategory> = emptyList(),
+    val workGroups: List<NotebookWorkGroup> = emptyList(),
+    val workGroupMembers: List<NotebookWorkGroupMember> = emptyList(),
+    val isLoading: Boolean = true,
+    val errorMessage: String? = null,
+)
+
+data class NotebookRowsState(
+    val classId: Long? = null,
+    val rows: List<NotebookRow> = emptyList(),
+    val numericDrafts: Map<Pair<Long, String>, String> = emptyMap(),
+    val textDrafts: Map<Pair<Long, String>, String> = emptyMap(),
+    val checkDrafts: Map<Pair<Long, String>, Boolean> = emptyMap(),
+    val isLoading: Boolean = true,
+    val errorMessage: String? = null,
+)
+
+data class NotebookSelectionState(
+    val selectedColumnIds: Set<String> = emptySet(),
+    val isColumnSelectionMode: Boolean = false,
+    val activeCell: ActiveCell? = null,
+    val activeCellEditor: ActiveCellEditor? = null,
+    val isLoading: Boolean = true,
+    val errorMessage: String? = null,
+)
+
+data class NotebookSaveState(
+    val state: NotebookViewModelSaveState = NotebookViewModelSaveState.Saved,
+    val isDirty: Boolean = false,
+    val isSaving: Boolean = false,
+    val isSaved: Boolean = true,
+)
+
+data class NotebookInspectorState(
+    val rubricEvaluationTarget: RubricEvaluationTarget? = null,
+    val activeCellEditor: ActiveCellEditor? = null,
+    val activeCell: ActiveCell? = null,
+    val isLoading: Boolean = true,
+    val errorMessage: String? = null,
+)
+
+data class NotebookAverageState(
+    val classId: Long? = null,
+    val averagesByStudentId: Map<Long, Double> = emptyMap(),
+    val explanationsByStudentId: Map<Long, NotebookAverageExplanation> = emptyMap(),
+    val isLoading: Boolean = true,
+    val errorMessage: String? = null,
+)
+
+private fun NotebookUiState.toStructureState(): NotebookStructureState = when (this) {
+    is NotebookUiState.Data -> NotebookStructureState(
+        classId = sheet.classId,
+        tabs = sheet.tabs,
+        columns = sheet.columns,
+        categories = sheet.columnCategories,
+        workGroups = workGroups,
+        workGroupMembers = workGroupMembers,
+        isLoading = false,
+    )
+    is NotebookUiState.Error -> NotebookStructureState(isLoading = false, errorMessage = message)
+    NotebookUiState.Loading -> NotebookStructureState()
+}
+
+private fun NotebookUiState.toRowsState(): NotebookRowsState = when (this) {
+    is NotebookUiState.Data -> NotebookRowsState(
+        classId = sheet.classId,
+        rows = sheet.rows,
+        numericDrafts = numericDrafts,
+        textDrafts = textDrafts,
+        checkDrafts = checkDrafts,
+        isLoading = false,
+    )
+    is NotebookUiState.Error -> NotebookRowsState(isLoading = false, errorMessage = message)
+    NotebookUiState.Loading -> NotebookRowsState()
+}
+
+private fun NotebookUiState.toSelectionState(): NotebookSelectionState = when (this) {
+    is NotebookUiState.Data -> NotebookSelectionState(
+        selectedColumnIds = selectedColumnIds,
+        isColumnSelectionMode = isColumnSelectionMode,
+        activeCell = activeCell,
+        activeCellEditor = activeCellEditor,
+        isLoading = false,
+    )
+    is NotebookUiState.Error -> NotebookSelectionState(isLoading = false, errorMessage = message)
+    NotebookUiState.Loading -> NotebookSelectionState()
+}
+
+private fun NotebookUiState.toInspectorState(): NotebookInspectorState = when (this) {
+    is NotebookUiState.Data -> NotebookInspectorState(
+        rubricEvaluationTarget = rubricEvaluationTarget,
+        activeCellEditor = activeCellEditor,
+        activeCell = activeCell,
+        isLoading = false,
+    )
+    is NotebookUiState.Error -> NotebookInspectorState(isLoading = false, errorMessage = message)
+    NotebookUiState.Loading -> NotebookInspectorState()
+}
+
+private fun NotebookUiState.toAverageState(): NotebookAverageState = when (this) {
+    is NotebookUiState.Data -> NotebookAverageState(
+        classId = sheet.classId,
+        averagesByStudentId = sheet.rows.mapNotNull { row ->
+            row.weightedAverage?.let { average -> row.student.id to average }
+        }.toMap(),
+        explanationsByStudentId = sheet.rows.mapNotNull { row ->
+            row.averageExplanation?.let { explanation -> row.student.id to explanation }
+        }.toMap(),
+        isLoading = false,
+    )
+    is NotebookUiState.Error -> NotebookAverageState(isLoading = false, errorMessage = message)
+    NotebookUiState.Loading -> NotebookAverageState()
 }

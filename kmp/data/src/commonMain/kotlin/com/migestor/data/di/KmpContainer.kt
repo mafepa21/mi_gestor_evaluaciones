@@ -135,6 +135,12 @@ class KmpContainer(val driver: SqlDriver) {
         gradesRepository = gradesRepository,
         notebookCellsRepository = notebookCellsRepository
     )
+    val preloadClassWorkspace = PreloadClassWorkspaceUseCase(
+        dashboardOperationalRepository = dashboardOperationalRepository,
+        notebookRepository = notebookRepository,
+        classesRepository = classesRepository,
+        attendanceRepository = attendanceRepository,
+    )
 
     suspend fun seedDemoDataIfEmpty() {
         val now = Clock.System.now().toEpochMilliseconds()

@@ -376,7 +376,7 @@ extension NotebookModuleView {
             .appOnChange(of: inspectorSelection) { _ in
                 scheduleToolbarStateSyncIfLoaded()
             }
-            .appOnChange(of: bridge.notebookState is NotebookUiStateData) { _ in
+            .appOnChange(of: notebookLoadedStateKey) { _ in
                 Task { @MainActor in
                     restoreSeatPositions()
                     riskComputationKey = nil
@@ -393,5 +393,15 @@ extension NotebookModuleView {
                     macToolbarActions?.clear()
                 }
             }
+    }
+
+    var notebookLoadedStateKey: String {
+        [
+            String(describing: bridge.notebookStructureState.classId),
+            "\(bridge.notebookStructureState.columns.count)",
+            "\(bridge.notebookRowsState.rows.count)",
+            "\(bridge.notebookRowsState.isLoading)",
+            bridge.notebookStructureState.errorMessage ?? bridge.notebookRowsState.errorMessage ?? ""
+        ].joined(separator: "|")
     }
 }

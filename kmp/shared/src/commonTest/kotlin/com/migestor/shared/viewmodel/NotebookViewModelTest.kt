@@ -41,6 +41,44 @@ import kotlin.test.assertTrue
 
 class NotebookViewModelTest {
     @Test
+    fun `column selection updates selection state without changing rows or structure states`() = runTest {
+        val classId = 1L
+        val column = NotebookColumnDefinition(
+            id = "col_1",
+            title = "Control",
+            type = NotebookColumnType.NUMERIC,
+        )
+        val student = Student(id = 10L, firstName = "Ada", lastName = "Lovelace")
+        val repository = FakeNotebookRepository(
+            snapshot = NotebookSheet(
+                classId = classId,
+                tabs = listOf(NotebookTab(id = "TAB_1", title = "Evaluación")),
+                columns = listOf(column),
+                rows = listOf(
+                    NotebookRow(
+                        student = student,
+                        cells = listOf(NotebookCell(evaluationId = 100L, value = 7.5)),
+                        weightedAverage = 7.5,
+                    )
+                ),
+            )
+        )
+        val viewModel = createViewModel(repository)
+
+        viewModel.selectClass(classId)
+        advanceUntilIdle()
+        val rowsBefore = viewModel.rowsState.value
+        val structureBefore = viewModel.structureState.value
+
+        viewModel.toggleColumnSelection(column.id)
+
+        assertEquals(rowsBefore, viewModel.rowsState.value)
+        assertEquals(structureBefore, viewModel.structureState.value)
+        assertEquals(setOf(column.id), viewModel.selectionState.value.selectedColumnIds)
+        assertTrue(viewModel.selectionState.value.isColumnSelectionMode)
+    }
+
+    @Test
     fun `addColumn assigns the selected tab to the saved column`() = runTest {
         val classId = 1L
         val tabs = listOf(

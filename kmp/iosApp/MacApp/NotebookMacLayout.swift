@@ -2,7 +2,8 @@ import SwiftUI
 import MiGestorKit
 
 struct NotebookMacLayout: View {
-    @ObservedObject var bridge: KmpBridge
+    let bridge: KmpBridge
+    @ObservedObject var notebookStore: NotebookBridgeStore
     @ObservedObject var layoutState: WorkspaceLayoutState
     @ObservedObject var toolbarActions: NotebookMacToolbarActions
     @ObservedObject var inspectorState: NotebookMacInspectorState
@@ -18,6 +19,7 @@ struct NotebookMacLayout: View {
 
     init(
         bridge: KmpBridge,
+        notebookStore: NotebookBridgeStore,
         layoutState: WorkspaceLayoutState,
         toolbarActions: NotebookMacToolbarActions,
         inspectorState: NotebookMacInspectorState,
@@ -28,6 +30,7 @@ struct NotebookMacLayout: View {
         onToggleInspectorColumn: (() -> Void)? = nil
     ) {
         self.bridge = bridge
+        self.notebookStore = notebookStore
         self.layoutState = layoutState
         self.toolbarActions = toolbarActions
         self.inspectorState = inspectorState
@@ -65,6 +68,7 @@ struct NotebookMacLayout: View {
     private var notebookContent: some View {
         NotebookModuleView(
             bridge: bridge,
+            notebookStore: notebookStore,
             selectedClassId: $selectedClassId,
             selectedStudentId: $selectedStudentId,
             onOpenModule: onOpenModule,
@@ -74,11 +78,11 @@ struct NotebookMacLayout: View {
             macToolbarActions: showsNotebookToolbar ? toolbarActions : nil
         )
         .environmentObject(layoutState)
-        .navigationTitle(selectedClassId.flatMap { id in bridge.classes.first(where: { $0.id == id })?.name } ?? "Cuaderno")
+        .navigationTitle(selectedClassId.flatMap { id in notebookStore.classes.first(where: { $0.id == id })?.name } ?? "Cuaderno")
     }
 
     private var sortedClasses: [SchoolClass] {
-        let uniqueClasses = Dictionary(grouping: bridge.classes, by: \.id)
+        let uniqueClasses = Dictionary(grouping: notebookStore.classes, by: \.id)
             .compactMap { $0.value.first }
         return uniqueClasses.sorted {
             if $0.course != $1.course { return $0.course < $1.course }

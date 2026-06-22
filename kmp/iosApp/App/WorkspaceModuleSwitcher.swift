@@ -8,7 +8,11 @@ extension AppWorkspaceShell {
     var activeWorkspace: some View {
         switch activeModule {
         case .dashboard:
-            DashboardView(selectedClassId: $selectedClassId)
+            DashboardView(
+                bridge: bridge,
+                dashboardStore: dashboardStore,
+                selectedClassId: $selectedClassId
+            )
         case .courses:
             CoursesWorkspaceView(
                 selectedClassId: $selectedClassId,
@@ -21,11 +25,12 @@ extension AppWorkspaceShell {
             .environmentObject(bridge)
         case .students:
             StudentProfilesWorkspaceView(
+                bridge: bridge,
+                studentsBridgeStore: studentsBridgeStore,
                 selectedClassId: $selectedClassId,
                 selectedStudentId: $selectedStudentId,
                 onOpenModule: open(module:classId:studentId:)
             )
-            .environmentObject(bridge)
         case .teacherRadar:
             TeacherRadarDetailView(
                 bridge: bridge,
@@ -36,6 +41,7 @@ extension AppWorkspaceShell {
         case .notebook:
             NotebookModuleView(
                 bridge: bridge,
+                notebookStore: notebookStore,
                 selectedClassId: $selectedClassId,
                 selectedStudentId: $selectedStudentId,
                 onOpenModule: open(module:classId:studentId:),
@@ -43,11 +49,12 @@ extension AppWorkspaceShell {
             )
         case .attendance:
             AttendanceWorkspaceView(
+                bridge: bridge,
+                attendanceStore: attendanceStore,
                 selectedClassId: $selectedClassId,
                 preselectedStudentId: $selectedStudentId,
                 onOpenModule: open(module:classId:studentId:)
             )
-            .environmentObject(bridge)
         case .planner:
             PlannerWorkspaceIOS(
                 context: resolvedPlannerContext,

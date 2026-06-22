@@ -86,7 +86,8 @@ private enum DashboardSessionFilterOption: String, CaseIterable, Identifiable {
 }
 
 struct DashboardView: View {
-    @EnvironmentObject var bridge: KmpBridge
+    let bridge: KmpBridge
+    @ObservedObject var dashboardStore: DashboardBridgeStore
     @EnvironmentObject private var layoutState: WorkspaceLayoutState
     @Environment(\.colorScheme) private var colorScheme
 #if os(iOS)
@@ -111,6 +112,16 @@ struct DashboardView: View {
     @State private var dashboardReloadGeneration = 0
 
     private let teachingAssistantService = AppleFoundationTeachingAssistantService()
+
+    init(
+        bridge: KmpBridge,
+        dashboardStore: DashboardBridgeStore,
+        selectedClassId: Binding<Int64?>
+    ) {
+        self.bridge = bridge
+        self.dashboardStore = dashboardStore
+        self._selectedClassId = selectedClassId
+    }
 
     private var mode: OperationalDashboardMode {
         OperationalDashboardMode(rawValue: modeRawValue) ?? .office
@@ -161,7 +172,7 @@ struct DashboardView: View {
         .task {
             await bridge.ensureClassesLoaded()
             if selectedClassId == nil {
-                selectedClassId = bridge.classes.first?.id
+                selectedClassId = dashboardStore.classes.first?.id
             }
             await applyFiltersAndReload()
         }
@@ -232,7 +243,7 @@ struct DashboardView: View {
 
                 Spacer()
 
-                if let snapshot = bridge.dashboardSnapshot {
+                if let snapshot = dashboardStore.dashboardSnapshot {
                     dashboardExportMenu(snapshot: snapshot)
                 }
 
@@ -254,7 +265,7 @@ struct DashboardView: View {
 
     private var dashboardContent: some View {
         ScrollView {
-            if let snapshot = bridge.dashboardSnapshot {
+            if let snapshot = dashboardStore.dashboardSnapshot {
                 VStack(alignment: .leading, spacing: EvaluationDesign.sectionSpacing) {
                     dashboardProactiveRadar(snapshot: snapshot)
                     dashboardWorkCenter(snapshot: snapshot)
@@ -302,7 +313,7 @@ struct DashboardView: View {
             Text("Detalle")
                 .font(.title3.bold())
 
-            if let snapshot = bridge.dashboardSnapshot {
+            if let snapshot = dashboardStore.dashboardSnapshot {
                 switch inspectorSelection {
                 case .session(let id):
                     if let item = snapshot.todaySessions.first(where: { $0.id == id }) {
@@ -345,14 +356,14 @@ struct DashboardView: View {
 
     private var selectedClassLabel: String {
         guard let selectedClassId,
-              let schoolClass = bridge.classes.first(where: { $0.id == selectedClassId }) else {
+              let schoolClass = dashboardStore.classes.first(where: { $0.id == selectedClassId }) else {
             return "Clase global activa"
         }
         return "\(schoolClass.name) · \(schoolClass.course)º"
     }
 
     private var dashboardActionClassId: Int64? {
-        selectedClassId ?? bridge.classes.first?.id
+        selectedClassId ?? dashboardStore.classes.first?.id
     }
 
     private var toolbarStateKey: String {
@@ -635,14 +646,14 @@ struct DashboardView: View {
                 Spacer()
             }
             dashboardStaticRow(
-                title: bridge.pairedSyncHost == nil ? "Sync LAN inactivo" : "Sync LAN activo",
-                subtitle: bridge.syncPendingChanges == 0 ? bridge.syncStatusMessage : "\(bridge.syncPendingChanges) cambios pendientes",
+                title: dashboardStore.pairedSyncHost == nil ? "Sync LAN inactivo" : "Sync LAN activo",
+                subtitle: dashboardStore.syncPendingChanges == 0 ? dashboardStore.syncStatusMessage : "\(dashboardStore.syncPendingChanges) cambios pendientes",
                 systemImage: "arrow.triangle.2.circlepath",
-                tint: bridge.syncPendingChanges == 0 && bridge.pairedSyncHost != nil ? .green : .orange
+                tint: dashboardStore.syncPendingChanges == 0 && dashboardStore.pairedSyncHost != nil ? .green : .orange
             )
             dashboardStaticRow(
                 title: "Última sync",
-                subtitle: bridge.syncLastRunAt.map(shortSystemDate) ?? "Sin registro",
+                subtitle: dashboardStore.syncLastRunAt.map(shortSystemDate) ?? "Sin registro",
                 systemImage: "clock",
                 tint: .secondary
             )
@@ -1152,7 +1163,7 @@ struct DashboardView: View {
 
     private func syncToolbarState() {
         layoutState.configureDashboardToolbar(
-            inspectorAvailable: bridge.dashboardSnapshot != nil,
+            inspectorAvailable: dashboardStore.dashboardSnapshot != nil,
             isInspectorPresented: isInspectorPresented,
             actionsAvailable: dashboardActionClassId != nil,
             onToggleInspector: {
@@ -1196,7 +1207,7 @@ struct DashboardView: View {
     }
 
     private func openInspectorForCurrentSnapshot() {
-        guard let snapshot = bridge.dashboardSnapshot else { return }
+        guard let snapshot = dashboardStore.dashboardSnapshot else { return }
         if let firstSession = snapshot.todaySessions.first {
             inspectorSelection = .session(firstSession.id)
         } else if let firstAlert = snapshot.alerts.first {
@@ -1257,7 +1268,7 @@ struct DashboardView: View {
     }
 
     private func rebuildProactiveRadar() {
-        guard let snapshot = bridge.dashboardSnapshot else {
+        guard let snapshot = dashboardStore.dashboardSnapshot else {
             proactiveInsights = []
             aiBriefing = nil
             return
@@ -1268,8 +1279,8 @@ struct DashboardView: View {
             context: DashboardProactiveContext(
                 className: selectedClassLabel,
                 modeLabel: mode == .classroom ? "Clase" : "Despacho",
-                syncPendingChanges: bridge.syncPendingChanges,
-                pairedSyncHost: bridge.pairedSyncHost,
+                syncPendingChanges: dashboardStore.syncPendingChanges,
+                pairedSyncHost: dashboardStore.pairedSyncHost,
                 platformName: "iOS"
             ),
             limit: 5
@@ -1316,7 +1327,7 @@ struct DashboardView: View {
 
     private func aiBriefingKey(snapshot: DashboardSnapshot) -> String {
         let day = Calendar.current.startOfDay(for: Date()).timeIntervalSince1970
-        return "\(selectedClassId ?? -1)|\(modeRawValue)|\(day)|\(snapshot.pendingCount)|\(snapshot.alertsCount)|\(bridge.syncPendingChanges)"
+        return "\(selectedClassId ?? -1)|\(modeRawValue)|\(day)|\(snapshot.pendingCount)|\(snapshot.alertsCount)|\(dashboardStore.syncPendingChanges)"
     }
 
     private func proactiveActionAvailable(_ action: DashboardProactiveAction, snapshot: DashboardSnapshot) -> Bool {

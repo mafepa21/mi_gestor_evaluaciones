@@ -11,6 +11,10 @@ struct MacRootView: View {
     @StateObject private var layoutState = WorkspaceLayoutState()
     @StateObject private var notebookInspectorState = NotebookMacInspectorState()
     @StateObject private var notebookToolbarActions = NotebookMacToolbarActions()
+    @StateObject private var notebookStore = NotebookBridgeStore()
+    @StateObject private var dashboardStore = DashboardBridgeStore()
+    @StateObject private var studentsBridgeStore = StudentsBridgeStore()
+    @StateObject private var attendanceStore = AttendanceBridgeStore()
     @StateObject private var physicalTestsToolbarActions = MacPhysicalTestsToolbarActions()
     @StateObject private var physicalTestsInspectorState = PhysicalTestsMacInspectorState()
     @StateObject private var studentsStore = MacStudentsStore()
@@ -60,6 +64,11 @@ struct MacRootView: View {
             isInspectorVisible = storedInspectorVisible && session.inspectorVisible
         }
         .task {
+            notebookStore.bind(to: session.bridge)
+            dashboardStore.bind(to: session.bridge)
+            studentsBridgeStore.bind(to: session.bridge)
+            attendanceStore.bind(to: session.bridge)
+
             session.start()
             await startCommandCenterAfterInitialLayout()
         }
@@ -234,6 +243,7 @@ struct MacRootView: View {
         case .dashboard:
             MacDashboardView(
                 bridge: session.bridge,
+                dashboardStore: dashboardStore,
                 backupStore: backupStore,
                 bootstrap: session.bootstrap,
                 onNavigate: navigateFromDashboard,
@@ -259,6 +269,7 @@ struct MacRootView: View {
         case .notebook:
             NotebookMacLayout(
                 bridge: session.bridge,
+                notebookStore: notebookStore,
                 layoutState: layoutState,
                 toolbarActions: notebookToolbarActions,
                 inspectorState: notebookInspectorState,
@@ -271,6 +282,7 @@ struct MacRootView: View {
         case .attendance:
             MacAttendanceView(
                 bridge: session.bridge,
+                attendanceStore: attendanceStore,
                 selectedClassId: studentSelection.selectedClassBinding,
                 selectedStudentId: studentSelection.selectedStudentBinding,
                 onOpenModule: open(module:classId:studentId:),
@@ -279,6 +291,7 @@ struct MacRootView: View {
         case .students:
             MacStudentsView(
                 bridge: session.bridge,
+                studentsBridgeStore: studentsBridgeStore,
                 store: studentsStore,
                 selectedClassId: studentSelection.selectedClassBinding,
                 selectedStudentId: studentSelection.selectedStudentBinding,
@@ -328,6 +341,7 @@ struct MacRootView: View {
         case .notebook:
             NotebookMacLayout(
                 bridge: session.bridge,
+                notebookStore: notebookStore,
                 layoutState: layoutState,
                 toolbarActions: notebookToolbarActions,
                 inspectorState: notebookInspectorState,
@@ -339,6 +353,7 @@ struct MacRootView: View {
         case .students:
             MacStudentsView(
                 bridge: session.bridge,
+                studentsBridgeStore: studentsBridgeStore,
                 store: studentsStore,
                 selectedClassId: studentSelection.selectedClassBinding,
                 selectedStudentId: studentSelection.selectedStudentBinding,

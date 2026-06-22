@@ -9,12 +9,27 @@ private enum StudentTrackingFilter: String, CaseIterable {
 }
 
 struct StudentProfilesWorkspaceView: View {
-    @EnvironmentObject var bridge: KmpBridge
+    let bridge: KmpBridge
+    @ObservedObject var studentsBridgeStore: StudentsBridgeStore
     @Environment(\.colorScheme) var colorScheme
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     @Binding var selectedClassId: Int64?
     @Binding var selectedStudentId: Int64?
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
+
+    init(
+        bridge: KmpBridge,
+        studentsBridgeStore: StudentsBridgeStore,
+        selectedClassId: Binding<Int64?>,
+        selectedStudentId: Binding<Int64?>,
+        onOpenModule: @escaping (AppWorkspaceModule, Int64?, Int64?) -> Void
+    ) {
+        self.bridge = bridge
+        self.studentsBridgeStore = studentsBridgeStore
+        self._selectedClassId = selectedClassId
+        self._selectedStudentId = selectedStudentId
+        self.onOpenModule = onOpenModule
+    }
 
     @State private var searchText = ""
     @State private var trackingFilter: StudentTrackingFilter = .todos
@@ -28,7 +43,7 @@ struct StudentProfilesWorkspaceView: View {
 
     private var filteredStudents: [Student] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let base = bridge.studentsInClass.isEmpty ? bridge.allStudents : bridge.studentsInClass
+        let base = studentsBridgeStore.studentsInClass.isEmpty ? studentsBridgeStore.allStudents : studentsBridgeStore.studentsInClass
 
         let tracked: [Student]
         switch trackingFilter {
@@ -62,7 +77,7 @@ struct StudentProfilesWorkspaceView: View {
             await bridge.ensureClassesLoaded()
             await bridge.selectStudentsClass(classId: selectedClassId)
             if selectedStudentId == nil {
-                selectedStudentId = bridge.studentsInClass.first?.id ?? bridge.allStudents.first?.id
+                selectedStudentId = studentsBridgeStore.studentsInClass.first?.id ?? studentsBridgeStore.allStudents.first?.id
             }
             await reloadProfile()
         }
@@ -70,7 +85,7 @@ struct StudentProfilesWorkspaceView: View {
             Task {
                 await bridge.selectStudentsClass(classId: selectedClassId)
                 if selectedStudentId == nil {
-                    selectedStudentId = bridge.studentsInClass.first?.id
+                    selectedStudentId = studentsBridgeStore.studentsInClass.first?.id
                 }
                 await reloadProfile()
             }
@@ -177,7 +192,7 @@ struct StudentProfilesWorkspaceView: View {
 
             Picker("Grupo", selection: $selectedClassId) {
                 Text("Todos los grupos").tag(Optional<Int64>.none)
-                ForEach(bridge.classes, id: \.id) { schoolClass in
+                ForEach(studentsBridgeStore.classes, id: \.id) { schoolClass in
                     Text(schoolClass.name).tag(Optional(schoolClass.id))
                 }
             }

@@ -42,13 +42,28 @@ struct AttendanceHistorySelection: Identifiable {
 }
 
 struct AttendanceWorkspaceView: View {
-    @EnvironmentObject var bridge: KmpBridge
+    let bridge: KmpBridge
+    @ObservedObject var attendanceStore: AttendanceBridgeStore
     @Environment(\.colorScheme) var colorScheme
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     @EnvironmentObject var layoutState: WorkspaceLayoutState
     @Binding var selectedClassId: Int64?
     @Binding var preselectedStudentId: Int64?
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
+
+    init(
+        bridge: KmpBridge,
+        attendanceStore: AttendanceBridgeStore,
+        selectedClassId: Binding<Int64?>,
+        preselectedStudentId: Binding<Int64?>,
+        onOpenModule: @escaping (AppWorkspaceModule, Int64?, Int64?) -> Void
+    ) {
+        self.bridge = bridge
+        self.attendanceStore = attendanceStore
+        self._selectedClassId = selectedClassId
+        self._preselectedStudentId = preselectedStudentId
+        self.onOpenModule = onOpenModule
+    }
 
     @State var selectedDate = Date()
     @State var boardMode: AttendanceBoardMode = .day
@@ -68,16 +83,16 @@ struct AttendanceWorkspaceView: View {
     @State var noteDraft = ""
 
     var boardSummary: (present: Int, absent: Int, late: Int, untracked: Int) {
-        let rows = bridge.studentsInClass.map { recordsByStudentId[$0.id] }
+        let rows = attendanceStore.studentsInClass.map { recordsByStudentId[$0.id] }
         let present = rows.filter { Self.isPresentStatus($0?.status) }.count
         let absent = rows.filter { Self.isAbsentStatus($0?.status) }.count
         let late = rows.filter { Self.isLateStatus($0?.status) }.count
-        let untracked = max(bridge.studentsInClass.count - present - absent - late, 0)
+        let untracked = max(attendanceStore.studentsInClass.count - present - absent - late, 0)
         return (present, absent, late, untracked)
     }
 
     var filteredRows: [AttendanceEntryRow] {
-        bridge.studentsInClass
+        attendanceStore.studentsInClass
             .map { student in AttendanceEntryRow(id: student.id, student: student, record: recordsByStudentId[student.id]) }
             .filter {
                 let matchesStatus = selectedStatusFilter == "TODOS" || $0.record?.status == selectedStatusFilter
@@ -89,7 +104,7 @@ struct AttendanceWorkspaceView: View {
     }
 
     var selectedStudent: Student? {
-        bridge.studentsInClass.first(where: { $0.id == selectedStudentId })
+        attendanceStore.studentsInClass.first(where: { $0.id == selectedStudentId })
     }
 
     var selectedAttendance: KmpBridge.AttendanceRecordSnapshot? {
@@ -106,7 +121,7 @@ struct AttendanceWorkspaceView: View {
     }
 
     var selectedClass: SchoolClass? {
-        selectedClassId.flatMap { classId in bridge.classes.first(where: { $0.id == classId }) }
+        selectedClassId.flatMap { classId in attendanceStore.classes.first(where: { $0.id == classId }) }
     }
 
     var monthDates: [Date] {
@@ -119,7 +134,7 @@ struct AttendanceWorkspaceView: View {
     }
 
     var visibleHistoryRows: [Student] {
-        bridge.studentsInClass.filter { student in
+        attendanceStore.studentsInClass.filter { student in
             let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
             let matchesSearch = query.isEmpty || student.fullName.localizedCaseInsensitiveContains(query)
             let matchesStatus = selectedStatusFilter == "TODOS" || history.contains {
@@ -173,7 +188,7 @@ struct AttendanceWorkspaceView: View {
         .task {
             await bridge.ensureClassesLoaded()
             if selectedClassId == nil {
-                selectedClassId = bridge.classes.first?.id
+                selectedClassId = attendanceStore.classes.first?.id
             }
             await reloadClassOverviews()
             await syncClassSelection()
@@ -623,7 +638,7 @@ struct AttendanceWorkspaceView: View {
         await bridge.ensureClassesLoaded()
         let range = monthRange(for: selectedDate)
         classOverviews = (try? await bridge.attendanceOverview(
-            for: bridge.classes.map(\.id),
+            for: attendanceStore.classes.map(\.id),
             from: range.start,
             to: range.end
         )) ?? []

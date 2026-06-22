@@ -278,14 +278,6 @@ interface NotebookCellsRepository {
     fun observeCellAudit(classId: Long, studentId: Long, columnId: String): Flow<List<NotebookCellAuditEvent>>
 }
 
-data class NotebookQueuedCellDraft(
-    val studentId: Long,
-    val columnId: String,
-    val columnType: NotebookColumnType,
-    val evaluationId: Long?,
-    val value: String,
-)
-
 interface NotebookInstrumentsRepository {
     suspend fun saveTemplate(
         template: NotebookInstrumentTemplate,

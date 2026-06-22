@@ -73,6 +73,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- El Cuaderno deja de mutar `@State` durante el render en macOS/iOS al retirar el cache mutable `displayValueCache` de los textos visibles de celdas, fechas y medias, evitando el warning SwiftUI `Modifying state during view update`.
 - Las pestañas del Cuaderno pasan a aislar columnas por pestaña: una pestaña nueva queda vacía y las columnas nuevas se asignan solo a la pestaña activa.
 - **Fallo de inicialización de base de datos en macOS/iOS por versión de base de datos superior (downgrade/desarrollo)**: Se añade una lógica de recuperación ante fallos de bootstrap del driver de base de datos (como la excepción `Database version X newer than config version Y` o corrupción de archivos sqlite) en `AppleDriver.kt`. Al fallar la inicialización inicial del driver, el archivo incompatible/corrupto se renombra a un archivo de copia de seguridad (`.backup_<timestamp>`) y se limpian los archivos sidecar (`-wal` y `-shm`), permitiendo que el driver se vuelva a crear con éxito como una base de datos nueva y compatible, evitando crashes con trap `SIGABRT` en el arranque.
 - **Compilación Swift 6 del Cuaderno**: `KmpBridge.saveColumnGradeDebounced` degrada al guardado directo disponible en el `NotebookViewModel` actual y `flushPendingColumnGradeSave` deja de invocar un método KMP inexistente. Las celdas equatable del Cuaderno eliminan el aislamiento de actor de la conformidad `Equatable`, evitando errores Swift 6 de cruce con `MainActor`.
@@ -142,6 +143,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `git diff --check` completado correctamente tras retirar el cache mutable SwiftUI del Cuaderno. `PLATFORM_NAME=macosx ARCHS=arm64 CONFIGURATION=Debug ./scripts/build_apple_framework.sh` queda bloqueado en `:xcodeVersion` por `MissingXcodeException`: `xcode-select` apunta a `/Library/Developer/CommandLineTools` y `xcrun xcodebuild -version` no encuentra Xcode completo.
 - `xcodegen generate` completado desde `kmp/iosApp`, registrando `KmpBridgeObservationStores.swift` en el proyecto Xcode versionado.
 - `git diff --check` completado correctamente tras dividir la observacion Apple de `KmpBridge` en stores derivados.
 - `DEVELOPER_DIR=/Users/mariofernandez/Downloads/Xcode-beta.app/Contents/Developer xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` completado correctamente.

@@ -14,8 +14,8 @@ struct PlannerNavigationContext: Equatable {
 
 enum PlannerWorkspaceSection: String, CaseIterable, Identifiable {
     case week = "Semana"
-    case sessions = "Sesiones"
-    case schedule = "Agenda"
+    case sessions = "Agenda"
+    case schedule = "Horario"
 
     var id: String { rawValue }
 
@@ -262,6 +262,23 @@ struct PlannerWeekCellEntry: Identifiable, Hashable {
     let journalStatus: SessionJournalStatus?
     let scheduledSlotId: Int64?
     let isCompleted: Bool
+}
+
+struct PlannerSituationProgress: Equatable {
+    let title: String
+    let total: Int
+    let completed: Int
+    let pending: Int
+    let review: Int
+
+    var completionRatio: Double {
+        guard total > 0 else { return 0 }
+        return Double(completed) / Double(total)
+    }
+
+    var percentLabel: String {
+        "\(Int((completionRatio * 100).rounded()))%"
+    }
 }
 
 struct PlannerScheduleGenerationPreviewRow: Identifiable, Hashable {
@@ -681,6 +698,57 @@ final class PlannerWorkspaceViewModel: ObservableObject {
 
     func summary(for sessionId: Int64) -> SessionJournalSummary? {
         journalSummaryBySessionId[sessionId]
+    }
+
+    func situationProgress(for session: PlanningSession?) -> PlannerSituationProgress? {
+        guard let session else { return nil }
+        let situationTitle = normalizedSituationTitle(session.teachingUnitName)
+        let relatedSessions = sessions.filter {
+            normalizedSituationTitle($0.teachingUnitName) == situationTitle
+                && $0.groupId == session.groupId
+        }
+        guard !relatedSessions.isEmpty else { return nil }
+
+        let completed = relatedSessions.count { candidate in
+            candidate.status == .completed || summary(for: candidate.id)?.status == .completed
+        }
+        let review = relatedSessions.count { candidate in
+            guard let summary = summary(for: candidate.id) else { return false }
+            return summary.status == .draft || !summary.incidentTags.isEmpty
+        }
+
+        return PlannerSituationProgress(
+            title: session.teachingUnitName.nilIfBlank ?? "Situación sin título",
+            total: relatedSessions.count,
+            completed: completed,
+            pending: max(relatedSessions.count - completed, 0),
+            review: review
+        )
+    }
+
+    func sessionStateLabel(for session: PlanningSession) -> String {
+        sessionStateLabel(sessionStatus: session.status, journalStatus: summary(for: session.id)?.status)
+    }
+
+    func sessionStateLabel(sessionStatus: SessionStatus?, journalStatus: SessionJournalStatus?) -> String {
+        if journalStatus == .completed { return "Cerrada" }
+        if journalStatus == .draft { return "Borrador" }
+        if sessionStatus == .completed { return "Diario pendiente" }
+        return "Planificada"
+    }
+
+    func sessionStateIcon(sessionStatus: SessionStatus?, journalStatus: SessionJournalStatus?) -> String {
+        if journalStatus == .completed { return "checkmark.seal.fill" }
+        if journalStatus == .draft { return "doc.text.fill" }
+        if sessionStatus == .completed { return "checkmark.circle.fill" }
+        return "calendar"
+    }
+
+    func sessionStateTint(sessionStatus: SessionStatus?, journalStatus: SessionJournalStatus?) -> Color {
+        if journalStatus == .completed { return EvaluationDesign.success }
+        if journalStatus == .draft { return EvaluationDesign.accent }
+        if sessionStatus == .completed { return IOSAppStyle.warning }
+        return .secondary
     }
 
     func classColorHex(for classId: Int64) -> String {
@@ -1692,6 +1760,10 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         return sessionEntries + scheduledEntries
     }
 
+    private func normalizedSituationTitle(_ title: String) -> String {
+        title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
     private func preferredPreviewText(objective: String, activity: String, evaluation: String) -> String {
         if let objective = objective.nilIfBlank { return objective }
         if let activity = activity.nilIfBlank { return activity }
@@ -2030,31 +2102,47 @@ private struct PlannerToolbar: View {
     @State private var isClearSchedulelessWeekConfirmationPresented = false
 
     var body: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(vm.weekLabel)
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(toolbarTitle)
                         .font(.system(size: 28, weight: .black, design: .rounded))
-                    Text(vm.dateRangeLabel)
+                        .lineLimit(2)
+                    Text(toolbarSubtitle)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
+
                 Spacer()
-                Button { Task { await vm.previousWeek() } } label: {
-                    Image(systemName: "chevron.left")
+
+                HStack(spacing: 8) {
+                    Button { Task { await vm.previousWeek() } } label: {
+                        Image(systemName: "chevron.left")
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityLabel("Semana anterior")
+
+                    Button { Task { await vm.nextWeek() } } label: {
+                        Image(systemName: "chevron.right")
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityLabel("Semana siguiente")
+
+                    ShareLink(item: vm.exportText()) {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityLabel("Compartir planificación")
                 }
-                .buttonStyle(.bordered)
-                Button { Task { await vm.nextWeek() } } label: {
-                    Image(systemName: "chevron.right")
-                }
-                .buttonStyle(.bordered)
-                ShareLink(item: vm.exportText()) {
-                    Image(systemName: "square.and.arrow.up")
-                }
-                .buttonStyle(.bordered)
             }
 
-            HStack(spacing: 10) {
+            if let progress = vm.situationProgress(for: vm.selectedSession) {
+                PlannerSituationProgressStrip(progress: progress)
+            } else {
+                PlannerWeekProgressStrip(vm: vm)
+            }
+
+            HStack(spacing: 8) {
                 IOSSearchField(text: $vm.searchText, placeholder: "Buscar sesión, unidad, objetivo…")
                     .appOnChange(of: vm.searchText) { _ in vm.applySearch() }
 
@@ -2091,7 +2179,7 @@ private struct PlannerToolbar: View {
 
                 if vm.selectedSession != nil {
                     Button(action: onOpenDiary) {
-                        Label("Abrir diario", systemImage: "doc.text")
+                        Label("Abrir sesión", systemImage: "play.rectangle.fill")
                     }
                     .buttonStyle(.borderedProminent)
                 }
@@ -2106,7 +2194,92 @@ private struct PlannerToolbar: View {
         }
         .padding(.horizontal, EvaluationDesign.screenPadding)
         .padding(.top, 8)
-        .padding(.bottom, 10)
+        .padding(.bottom, 16)
+    }
+
+    private var toolbarTitle: String {
+        vm.selectedSession?.teachingUnitName.nilIfBlank ?? vm.weekLabel
+    }
+
+    private var toolbarSubtitle: String {
+        if let session = vm.selectedSession {
+            return "\(vm.weekLabel) · \(vm.dateRangeLabel) · \(session.groupName)"
+        }
+        return vm.dateRangeLabel
+    }
+}
+
+private struct PlannerSituationProgressStrip: View {
+    let progress: PlannerSituationProgress
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("\(progress.completed) de \(progress.total) sesiones completadas")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text(progress.percentLabel)
+                    .font(.headline.weight(.black))
+                    .foregroundStyle(EvaluationDesign.accent)
+            }
+
+            ProgressView(value: progress.completionRatio)
+                .tint(EvaluationDesign.accent)
+
+            HStack(spacing: 12) {
+                PlannerProgressMetric(title: "Completadas", value: "\(progress.completed)", tint: EvaluationDesign.success)
+                PlannerProgressMetric(title: "Pendientes", value: "\(progress.pending)", tint: .secondary)
+                PlannerProgressMetric(title: "Revisión", value: "\(progress.review)", tint: IOSAppStyle.warning)
+            }
+        }
+        .padding(16)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(EvaluationDesign.border, lineWidth: 1))
+    }
+}
+
+private struct PlannerWeekProgressStrip: View {
+    @ObservedObject var vm: PlannerWorkspaceViewModel
+
+    private var totals: (total: Int, completed: Int, pending: Int, review: Int) {
+        let total = vm.filteredSessions.count
+        let completed = vm.filteredSessions.count { session in
+            session.status == .completed || vm.summary(for: session.id)?.status == .completed
+        }
+        let review = vm.filteredSessions.count { session in
+            guard let summary = vm.summary(for: session.id) else { return false }
+            return summary.status == .draft || !summary.incidentTags.isEmpty
+        }
+        return (total, completed, max(total - completed, 0), review)
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            PlannerProgressMetric(title: "Sesiones", value: "\(totals.total)", tint: EvaluationDesign.accent)
+            PlannerProgressMetric(title: "Completadas", value: "\(totals.completed)", tint: EvaluationDesign.success)
+            PlannerProgressMetric(title: "Pendientes", value: "\(totals.pending)", tint: .secondary)
+            PlannerProgressMetric(title: "Revisión", value: "\(totals.review)", tint: IOSAppStyle.warning)
+        }
+    }
+}
+
+private struct PlannerProgressMetric: View {
+    let title: String
+    let value: String
+    let tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(value)
+                .font(.title3.weight(.black))
+                .foregroundStyle(tint)
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 
@@ -2190,6 +2363,7 @@ private struct PlannerWeekBoard: View {
                                     onOpenDiary(session)
                                 }
                             )
+                            .equatable()
                         }
                     }
                 }
@@ -2206,7 +2380,7 @@ private struct PlannerWeekBoard: View {
     }
 }
 
-private struct PlannerWeekCellCard: View {
+private struct PlannerWeekCellCard: View, Equatable {
     let entries: [PlannerWeekCellEntry]
     let isHoliday: Bool
     let onCreate: () -> Void
@@ -2215,6 +2389,11 @@ private struct PlannerWeekCellCard: View {
     let onDuplicateEntry: (PlannerWeekCellEntry) -> Void
     let onCompleteEntry: (PlannerWeekCellEntry) -> Void
     let onOpenDiaryEntry: (PlannerWeekCellEntry) -> Void
+
+    static func == (lhs: PlannerWeekCellCard, rhs: PlannerWeekCellCard) -> Bool {
+        lhs.isHoliday == rhs.isHoliday &&
+        lhs.entries == rhs.entries
+    }
 
     var body: some View {
         let singleRichEntry = entries.count == 1 && entries.first?.kind == .session
@@ -2313,48 +2492,41 @@ private struct PlannerWeekEntryCard: View {
                 HStack(spacing: 8) {
                     Capsule()
                         .fill(tint)
-                        .frame(width: 10, height: 24)
-                    Text(entry.className)
-                        .font(.caption2.weight(.bold))
-                        .lineLimit(1)
-                    Spacer(minLength: 4)
-                    if entry.isCompleted {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(EvaluationDesign.success)
-                    } else if entry.kind == .session {
-                        Text("Planificada")
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(tint.opacity(0.9))
+                        .frame(width: 8, height: 32)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(entry.title)
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(2)
+                        Text(entry.className)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
+
+                    Spacer(minLength: 4)
                 }
 
-                ScrollView(.vertical, showsIndicators: fillsCell) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(entry.sectionPreviews) { section in
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(section.title)
-                                    .font(.system(size: 10, weight: .bold, design: .rounded))
-                                    .foregroundStyle(.secondary)
-                                    .textCase(.uppercase)
-                                Text(section.value)
-                                    .font(section.title == "SA" ? .caption.weight(.bold) : .caption2)
-                                    .foregroundColor(entry.isCompleted ? Color.primary.opacity(0.92) : Color.primary.opacity(0.86))
-                                    .multilineTextAlignment(.leading)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                        }
-                        if entry.sectionPreviews.isEmpty {
-                            Text(entry.preview)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                HStack(spacing: 6) {
+                    Image(systemName: stateIcon)
+                        .font(.caption.weight(.bold))
+                    Text(stateLabel)
+                        .font(.caption2.weight(.bold))
                 }
+                .foregroundStyle(stateTint)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Capsule(style: .continuous).fill(stateTint.opacity(0.12)))
+
+                Text(entry.preview)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(fillsCell ? 4 : 2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .padding(10)
+            .padding(12)
             .background(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(backgroundFill)
@@ -2373,6 +2545,30 @@ private struct PlannerWeekEntryCard: View {
                 Button("Marcar impartida", action: onComplete)
             }
         }
+    }
+
+    private var stateLabel: String {
+        if entry.kind == .scheduledSlot { return "Crear sesión" }
+        if entry.journalStatus == .completed { return "Cerrada" }
+        if entry.journalStatus == .draft { return "Borrador" }
+        if entry.sessionStatus == .completed { return "Diario pendiente" }
+        return "Planificada"
+    }
+
+    private var stateIcon: String {
+        if entry.kind == .scheduledSlot { return "plus.circle.fill" }
+        if entry.journalStatus == .completed { return "checkmark.seal.fill" }
+        if entry.journalStatus == .draft { return "doc.text.fill" }
+        if entry.sessionStatus == .completed { return "checkmark.circle.fill" }
+        return "calendar"
+    }
+
+    private var stateTint: Color {
+        if entry.kind == .scheduledSlot { return tint }
+        if entry.journalStatus == .completed { return EvaluationDesign.success }
+        if entry.journalStatus == .draft { return EvaluationDesign.accent }
+        if entry.sessionStatus == .completed { return IOSAppStyle.warning }
+        return tint.opacity(0.9)
     }
 
     private var backgroundFill: Color {
@@ -2430,50 +2626,118 @@ private struct PlannerSessionsList: View {
     let source: [PlanningSession]
     let onOpenDiary: (PlanningSession) -> Void
 
-    var body: some View {
-        List(source, id: \.id) { session in
-            Button {
-                Task { await vm.select(session: session) }
-            } label: {
-                HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(session.teachingUnitName)
-                            .font(.headline)
-                        Text("\(session.groupName) · \(vm.timeLabel(for: Int(session.period)))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(session.objectives)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
+    private var groupedSessions: [(day: Int, sessions: [PlanningSession])] {
+        Dictionary(grouping: source, by: { Int($0.dayOfWeek) })
+            .map { day, sessions in
+                (
+                    day: day,
+                    sessions: sessions.sorted {
+                        if $0.period == $1.period {
+                            return ($0.startTime ?? "") < ($1.startTime ?? "")
+                        }
+                        return $0.period < $1.period
                     }
-                    Spacer()
-                    PlannerStatusPill(status: vm.summary(for: session.id)?.status ?? .empty)
+                )
+            }
+            .sorted { $0.day < $1.day }
+    }
+
+    var body: some View {
+        List {
+            ForEach(groupedSessions, id: \.day) { group in
+                Section(vm.dayLabel(for: group.day)) {
+                    ForEach(group.sessions, id: \.id) { session in
+                        PlannerAgendaSessionRow(
+                            vm: vm,
+                            session: session,
+                            onSelect: {
+                                Task { await vm.select(session: session) }
+                            },
+                            onOpen: {
+                                onOpenDiary(session)
+                            },
+                            onComplete: {
+                                Task { await vm.markCompleted(session) }
+                            }
+                        )
+                    }
                 }
             }
-            .buttonStyle(.plain)
-            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                Button("Diario") {
-                    onOpenDiary(session)
+        }
+    }
+}
+
+private struct PlannerAgendaSessionRow: View {
+    @ObservedObject var vm: PlannerWorkspaceViewModel
+    let session: PlanningSession
+    let onSelect: () -> Void
+    let onOpen: () -> Void
+    let onComplete: () -> Void
+
+    private var stateTint: Color {
+        vm.sessionStateTint(sessionStatus: session.status, journalStatus: vm.summary(for: session.id)?.status)
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(vm.timeLabel(for: Int(session.period)))
+                    .font(.caption.weight(.bold))
+                Text("P\(session.period)")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(width: 72, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(session.teachingUnitName)
+                        .font(.headline)
+                        .lineLimit(2)
+                    Spacer()
+                    Label(vm.sessionStateLabel(for: session), systemImage: vm.sessionStateIcon(sessionStatus: session.status, journalStatus: vm.summary(for: session.id)?.status))
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(stateTint)
+                        .labelStyle(.titleAndIcon)
                 }
+
+                Text(session.groupName)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                if let objective = session.objectives.nilIfBlank {
+                    Text(objective)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+
+                HStack(spacing: 8) {
+                    Button("Abrir sesión", action: onOpen)
+                        .buttonStyle(.borderedProminent)
+                    Button("Impartida", action: onComplete)
+                        .buttonStyle(.bordered)
+                        .disabled(session.status == .completed)
+                    Button("Observación", action: onOpen)
+                        .buttonStyle(.bordered)
+                }
+                .font(.caption.weight(.semibold))
+            }
+        }
+        .padding(.vertical, 8)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onSelect)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button("Observación", action: onOpen)
                 .tint(EvaluationDesign.accent)
 
-                Button("Impartida") {
-                    Task { await vm.markCompleted(session) }
-                }
+            Button("Impartida", action: onComplete)
                 .tint(EvaluationDesign.success)
-            }
-            .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                Button("Seleccionar") {
-                    Task { await vm.select(session: session) }
-                }
-                .tint(.secondary)
-            }
-            .contextMenu {
-                Button("Abrir diario") {
-                    onOpenDiary(session)
-                }
-            }
+        }
+        .contextMenu {
+            Button("Abrir sesión", action: onOpen)
+            Button("Marcar impartida", action: onComplete)
+            Button("Registrar observación", action: onOpen)
         }
     }
 }
@@ -2633,30 +2897,49 @@ enum SessionJournalEFVisibility {
     case hidden
 }
 
+enum PlannerJournalPresentationMode {
+    case minimal
+    case full
+}
+
 struct PlannerJournalDetailPane: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
     var efVisibility: SessionJournalEFVisibility = .always
+    var presentationMode: PlannerJournalPresentationMode = .minimal
     @StateObject private var recorder = PlannerAudioRecorder()
     @State private var selectedPhoto: PhotosPickerItem?
+    @State private var isAdvancedReflectionPresented = false
 
     var body: some View {
         Group {
             if let session = vm.selectedSession {
                 ScrollView {
                     VStack(alignment: .leading, spacing: EvaluationDesign.cardSpacing) {
-                        SessionJournalHeaderCard(vm: vm, session: session)
-                        SessionJournalDevelopmentCard(vm: vm)
-                        SessionJournalEvaluationCard(vm: vm)
-                        SessionJournalClosingCard(vm: vm)
-                        JournalIndividualNotesList(vm: vm)
-                        JournalActionBar(vm: vm)
-                        JournalMediaDock(
-                            vm: vm,
-                            recorder: recorder,
-                            selectedPhoto: $selectedPhoto
-                        )
-                        if shouldShowEFCard(for: session) {
-                            SessionJournalEFCard(vm: vm)
+                        SessionJournalQuickPulseCard(vm: vm)
+                        SessionJournalQuickObservationCard(vm: vm)
+                        SessionJournalQuickNextStepCard(vm: vm)
+
+                        if presentationMode == .full {
+                            advancedJournalContent(for: session)
+                        } else {
+                            DisclosureGroup(isExpanded: $isAdvancedReflectionPresented) {
+                                VStack(alignment: .leading, spacing: EvaluationDesign.cardSpacing) {
+                                    advancedJournalContent(for: session)
+                                }
+                                .padding(.top, 12)
+                            } label: {
+                                HStack {
+                                    Label("Reflexión avanzada", systemImage: "slider.horizontal.3")
+                                        .font(.headline.weight(.semibold))
+                                    Spacer()
+                                    Text("Opcional")
+                                        .font(.caption.weight(.bold))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .padding(16)
+                            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(EvaluationDesign.border, lineWidth: 1))
                         }
                     }
                     .padding(EvaluationDesign.screenPadding)
@@ -2686,6 +2969,24 @@ struct PlannerJournalDetailPane: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .padding(EvaluationDesign.screenPadding)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func advancedJournalContent(for session: PlanningSession) -> some View {
+        SessionJournalHeaderCard(vm: vm, session: session)
+        SessionJournalDevelopmentCard(vm: vm)
+        SessionJournalEvaluationCard(vm: vm)
+        SessionJournalClosingCard(vm: vm)
+        JournalIndividualNotesList(vm: vm)
+        JournalActionBar(vm: vm)
+        JournalMediaDock(
+            vm: vm,
+            recorder: recorder,
+            selectedPhoto: $selectedPhoto
+        )
+        if shouldShowEFCard(for: session) {
+            SessionJournalEFCard(vm: vm)
         }
     }
 
@@ -2800,14 +3101,130 @@ private struct SessionJournalHeaderCard: View {
     }
 }
 
+private struct SessionJournalQuickPulseCard: View {
+    @ObservedObject var vm: PlannerWorkspaceViewModel
+
+    var body: some View {
+        EvaluationGlassCard {
+            VStack(alignment: .leading, spacing: 16) {
+                EvaluationSectionTitle(
+                    eyebrow: "10 segundos",
+                    title: "Pulso de la sesión",
+                    subtitle: "Cierra lo esencial sin convertir el diario en un informe."
+                )
+
+                HStack(spacing: 8) {
+                    pulseButton("Muy bien", icon: "checkmark.circle.fill", climate: 5, usefulTime: 5, difficulty: 1, tint: EvaluationDesign.success)
+                    pulseButton("Normal", icon: "circle.lefthalf.filled", climate: 3, usefulTime: 3, difficulty: 3, tint: EvaluationDesign.accent)
+                    pulseButton("Revisar", icon: "exclamationmark.triangle.fill", climate: 2, usefulTime: 2, difficulty: 5, tint: IOSAppStyle.warning)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Participación")
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                    HStack(spacing: 8) {
+                        participationButton("Baja", value: 2)
+                        participationButton("Media", value: 3)
+                        participationButton("Alta", value: 5)
+                    }
+                }
+            }
+        }
+    }
+
+    private func pulseButton(_ title: String, icon: String, climate: Int, usefulTime: Int, difficulty: Int, tint: Color) -> some View {
+        let isSelected = vm.journalDraft.climateScore == climate
+            && vm.journalDraft.usefulTimeScore == usefulTime
+            && vm.journalDraft.perceivedDifficultyScore == difficulty
+        Button {
+            vm.journalDraft.climateScore = climate
+            vm.journalDraft.usefulTimeScore = usefulTime
+            vm.journalDraft.perceivedDifficultyScore = difficulty
+            if title == "Revisar", !vm.journalDraft.incidentTags.contains("Revisión") {
+                vm.journalDraft.incidentTags.append("Revisión")
+            }
+        } label: {
+            Label(title, systemImage: icon)
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .foregroundStyle(isSelected ? Color.white : tint)
+        }
+        .buttonStyle(.plain)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(isSelected ? tint : tint.opacity(0.12))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(tint.opacity(isSelected ? 0 : 0.25), lineWidth: 1)
+        )
+    }
+
+    private func participationButton(_ title: String, value: Int) -> some View {
+        let isSelected = vm.journalDraft.participationScore == value
+        Button {
+            vm.journalDraft.participationScore = value
+        } label: {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .foregroundStyle(isSelected ? Color.white : EvaluationDesign.accent)
+        }
+        .buttonStyle(.plain)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(isSelected ? EvaluationDesign.accent : EvaluationDesign.accent.opacity(0.10))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(EvaluationDesign.accent.opacity(isSelected ? 0 : 0.22), lineWidth: 1)
+        )
+    }
+}
+
+private struct SessionJournalQuickObservationCard: View {
+    @ObservedObject var vm: PlannerWorkspaceViewModel
+
+    var body: some View {
+        SessionJournalSectionCard(
+            eyebrow: "30 segundos",
+            title: "Observación rápida",
+            subtitle: "Una nota breve basta para mantener trazabilidad diaria."
+        ) {
+            TextField("Han necesitado más tiempo para la actividad 2…", text: $vm.journalDraft.groupObservations, axis: .vertical)
+                .lineLimit(2...4)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+        }
+    }
+}
+
+private struct SessionJournalQuickNextStepCard: View {
+    @ObservedObject var vm: PlannerWorkspaceViewModel
+
+    var body: some View {
+        SessionJournalSectionCard(
+            eyebrow: "Siguiente sesión",
+            title: "Próximo paso",
+            subtitle: "Una decisión breve para no perder continuidad."
+        ) {
+            TextField("Repetir actividad 2, avanzar, adaptar material…", text: $vm.journalDraft.nextStepText, axis: .vertical)
+                .lineLimit(2...4)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+        }
+    }
+}
+
 private struct SessionJournalDevelopmentCard: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
 
     var body: some View {
         SessionJournalSectionCard(
-            eyebrow: "Desarrollo",
+            eyebrow: "Reflexión completa",
             title: "Lo planificado y lo realizado",
-            subtitle: "Registro estructurado de la sesión, no bloc libre."
+            subtitle: "Completar solo cuando haga falta más detalle pedagógico."
         ) {
             JournalTextBlock(title: "Qué estaba planificado", text: $vm.journalDraft.plannedText)
             JournalTextBlock(title: "Qué se ha hecho realmente", text: $vm.journalDraft.actualText)
@@ -3989,7 +4406,7 @@ struct PlannerSessionDetailSheet: View {
                 }
             }
             .background(appPageBackground(for: colorScheme).ignoresSafeArea())
-            .navigationTitle("Detalle de Sesión")
+            .navigationTitle("Sesión")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
@@ -4052,7 +4469,7 @@ struct PlannerSessionDetailSheet: View {
     private var quickActionBar: some View {
         HStack(spacing: 16) {
             Button(action: onOpenDiary) {
-                Label("Iniciar clase (Diario)", systemImage: "play.fill")
+                Label("Abrir ejecución", systemImage: "play.rectangle.fill")
                     .font(.headline.weight(.semibold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)

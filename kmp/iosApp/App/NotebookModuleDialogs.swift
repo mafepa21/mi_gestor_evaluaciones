@@ -3,12 +3,21 @@ import PhotosUI
 import MiGestorKit
 
 extension NotebookModuleView {
+    private var notebookStateKey: String {
+        if bridge.notebookState is NotebookUiStateLoading { return "loading" }
+        if bridge.notebookState is NotebookUiStateData { return "data" }
+        if bridge.notebookState is NotebookUiStateError { return "error" }
+        return "empty"
+    }
+
     var notebookContentWithDialogs: some View {
         Group {
             if let data = bridge.notebookState as? NotebookUiStateData {
                 notebookLoadedContent(data: data)
+                    .transition(.opacity.combined(with: .scale(scale: 0.99)))
             } else if bridge.notebookState is NotebookUiStateLoading {
                 NotebookSkeletonGridView(rowCount: 14, columnCount: 7)
+                    .transition(.opacity)
             } else if let error = bridge.notebookState as? NotebookUiStateError {
                 NotebookStateCard(
                     systemImage: "exclamationmark.triangle",
@@ -16,14 +25,17 @@ extension NotebookModuleView {
                     message: error.message,
                     tint: NotebookStyle.warningTint
                 )
+                .transition(.opacity)
             } else {
                 NotebookStateCard(
                     systemImage: "tablecells",
                     title: "Sin datos del cuaderno",
                     message: "Selecciona una clase para empezar."
                 )
+                .transition(.opacity)
             }
         }
+        .animation(.easeInOut(duration: 0.22), value: notebookStateKey)
         .background(EvaluationBackdrop())
         .overlay(alignment: .bottom) {
             if let toast {

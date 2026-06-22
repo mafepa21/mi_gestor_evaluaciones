@@ -1422,6 +1422,14 @@ struct DashboardView: View {
         if let expectedReloadGeneration, expectedReloadGeneration != dashboardReloadGeneration {
             return
         }
+        
+        // Postergar la carga pesada de tendencias e IA brevemente para dar prioridad a la animación de entrada
+        try? await Task.sleep(nanoseconds: 150_000_000)
+        guard !Task.isCancelled else { return }
+        if let expectedReloadGeneration, expectedReloadGeneration != dashboardReloadGeneration {
+            return
+        }
+        
         loadPhase = dashboardStore.dashboardSnapshot == nil ? .shell : .metrics
         await loadClassTrends()
         guard !Task.isCancelled else { return }

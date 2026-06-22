@@ -1543,10 +1543,26 @@ WHERE learning_situation_id = ?
 ORDER BY resource_kind, label;
 
 selectNotebookCellsByClass:
-SELECT class_id, student_id, column_id, value_text, value_bool, value_icon, value_ordinal, display_value, observed_at_epoch_ms, competency_criteria_ids_csv, effective_weight, counts_toward_average, note, color_hex, attachment_uris_csv, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
+SELECT class_id, student_id, column_id, value_text, value_bool, value_icon, value_ordinal, display_value, observed_at_epoch_ms, competency_criteria_ids_csv, effective_weight, counts_toward_average, note, color_hex,
+CASE
+    WHEN attachment_uris_csv IS NULL OR TRIM(attachment_uris_csv) = '' THEN 0
+    ELSE length(attachment_uris_csv) - length(replace(attachment_uris_csv, '|', '')) + 1
+END AS attachment_count,
+CASE
+    WHEN attachment_uris_csv IS NULL OR TRIM(attachment_uris_csv) = '' THEN 0
+    ELSE 1
+END AS has_attachments,
+value_icon AS main_icon,
+author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
 FROM notebook_cell_entries
 WHERE class_id = ?
 ORDER BY student_id, column_id;
+
+selectNotebookCellAttachmentUris:
+SELECT attachment_uris_csv
+FROM notebook_cell_entries
+WHERE class_id = ? AND student_id = ? AND column_id = ?
+LIMIT 1;
 
 selectNotebookCellEntry:
 SELECT class_id, student_id, column_id, value_text, value_bool, value_icon, value_ordinal, display_value, observed_at_epoch_ms, competency_criteria_ids_csv, effective_weight, counts_toward_average, note, color_hex, attachment_uris_csv, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version

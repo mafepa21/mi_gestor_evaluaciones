@@ -455,8 +455,8 @@ extension NotebookModuleView {
     }
 
     func evidenceLabel(for persistedCell: PersistedNotebookCell?) -> String {
-        let count = persistedCell?.annotation?.attachmentUris.count ?? 0
-        let icon = persistedCell?.annotation?.icon ?? persistedCell?.iconValue ?? ""
+        let count = Int(persistedCell?.attachmentCount ?? 0)
+        let icon = persistedCell?.annotation?.icon ?? persistedCell?.mainIcon ?? persistedCell?.iconValue ?? ""
         if count == 0 && icon.isEmpty { return "Sin evidencia" }
         if count == 0 { return "Icono \(icon)" }
         return icon.isEmpty ? "\(count) archivo(s)" : "\(count) archivo(s) · \(icon)"

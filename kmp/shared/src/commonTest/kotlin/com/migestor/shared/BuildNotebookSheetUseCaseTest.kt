@@ -781,8 +781,9 @@ class BuildNotebookSheetUseCaseTest {
                     columnId = "obs_1",
                     annotation = NotebookCellAnnotation(
                         note = "Seguimiento",
-                        attachmentUris = listOf("/tmp/note.png")
                     ),
+                    attachmentCount = 1,
+                    hasAttachments = true,
                     competencyCriteriaIds = listOf(101L)
                 )
             )

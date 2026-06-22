@@ -258,6 +258,7 @@ data class PendingEvaluationsSummary(
 interface NotebookCellsRepository {
     fun observeClassCells(classId: Long): Flow<List<PersistedNotebookCell>>
     suspend fun listClassCells(classId: Long): List<PersistedNotebookCell>
+    suspend fun loadCellAttachmentUris(classId: Long, studentId: Long, columnId: String): List<String> = emptyList()
     suspend fun saveCell(
         classId: Long,
         studentId: Long,

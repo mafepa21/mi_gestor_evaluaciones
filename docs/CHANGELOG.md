@@ -36,6 +36,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- **Render ligero de celdas del Cuaderno** (`ui/notebook-cell-render-lightweight`): las celdas repetidas del grid sustituyen chrome redondeado/overlays anidados por un fill rectangular con borde simple, eliminan material por celda y reservan badges solo para estados reales como guardado, bloqueo, error de fórmula o evidencia adjunta.
 - **Caché de textos visibles del Cuaderno** (`perf/display-value-cache`): SwiftUI reutiliza formato de decimales, fechas, medias y textos de celda mediante `DisplayValueCache`, y KMP añade el contrato `CellDisplayValue`/`CellSemanticKind` para representar valores ya preparados sin tocar persistencia ni SQLDelight.
 - **Cache IA no bloqueante del Dashboard** (`perf/ai-dashboard-cache`): Dashboard iOS y macOS pintan primero datos deterministas reales, muestran "Actualizando análisis" mientras Foundation Models trabaja en segundo plano y reutilizan una cache Apple en memoria por clase/día para evitar recalcular el briefing al reabrir.
 - **Carga progresiva por pantalla** (`ui/progressive-module-loading`): Dashboard iOS y Educación Física muestran shell, skeletons, métricas, listas y análisis IA por fases para reducir bloqueo visual sin tocar KMP ni persistencia.
@@ -123,6 +124,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Data
 
+- **Adjuntos diferidos del Cuaderno** (`data/lazy-load-cell-attachments`): `PersistedNotebookCell` pasa a transportar solo `attachmentCount`, `hasAttachments` y `mainIcon` en el grid; SQLDelight deja de proyectar `attachment_uris_csv` en `selectNotebookCellsByClass` y añade una consulta puntual para hidratar URIs completas al abrir el inspector o serializar sync/export.
 - SQLDelight añade snapshots ligeros para Dashboard, Cursos, ficha de alumno, Cuaderno paginado, evaluaciones pendientes e histórico EF, evitando abrir el `NotebookSheet` completo en vistas resumidas.
 - SQLDelight añade índices no destructivos para lecturas diarias de calificaciones, celdas del Cuaderno, evaluaciones, asistencia, incidencias y columnas por categoría mediante `34.sqm`.
 - `NotebookRepositorySqlDelight` añade guardado batch de drafts de celda en una transacción SQLDelight, conservando auditoría de cambios y evitando una escritura/refresh por carácter durante edición rápida.
@@ -134,6 +136,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Docs
 
+- ADR `kmp/docs/architecture/ADR-2026-06-22-lazy-notebook-cell-attachments.md` documenta la decision de diferir URIs de adjuntos del Cuaderno fuera del snapshot de grid y cargarlas bajo demanda.
 - ADR `kmp/docs/architecture/ADR-2026-06-19-notebook-split-ui-state.md` documenta la separación del estado observable del Cuaderno entre estructura, filas, selección, guardado, inspector y medias.
 - ADR `kmp/docs/architecture/ADR-2026-06-17-active-academic-year-enrollments.md` documenta la decision de usar `AcademicYear` activo y `StudentEnrollment` como frontera historica.
 - ADR `kmp/docs/architecture/ADR-2026-06-14-local-educational-intelligence.md` documenta la regla de arquitectura para IA educativa local: KMP calcula hechos y Foundation Models genera objetos renderizables.
@@ -141,6 +144,12 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `./gradlew :data:desktopTest :shared:desktopTest` completado correctamente tras diferir adjuntos del Cuaderno.
+- `xcrun swiftc -parse kmp/iosApp/App/NotebookModuleSupportActions.swift kmp/iosApp/App/NotebookEditableTableCell.swift kmp/iosApp/App/NotebookModuleDisplayFormatting.swift kmp/iosApp/App/NotebookInspectorPanel.swift kmp/iosApp/App/TeacherRadarCard.swift kmp/iosApp/App/KmpBridge.swift` completado correctamente.
+- `scripts/verify_apple_builds.sh` regenero el proyecto con XcodeGen, pero los builds macOS e iOS quedaron bloqueados porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y `xcodebuild` requiere Xcode completo. `./gradlew :data:compileKotlinIosSimulatorArm64 :shared:compileKotlinIosSimulatorArm64` queda bloqueado por la misma configuracion de Xcode (`xcrun xcodebuild -version` exit 72).
+- `git diff --check` completado correctamente tras aligerar el render de celdas del Cuaderno.
+- `xcrun swiftc -parse kmp/iosApp/App/NotebookEditableTableCell.swift kmp/iosApp/App/NotebookModuleGridCells.swift` completado correctamente.
+- `scripts/verify_apple_builds.sh` regeneró el proyecto con XcodeGen, pero los builds macOS e iOS quedaron bloqueados porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y `xcodebuild` requiere Xcode completo.
 - `xcodegen generate` completado desde `kmp/iosApp`, registrando `KmpBridgeObservationStores.swift` en el proyecto Xcode versionado.
 - `git diff --check` completado correctamente tras dividir la observacion Apple de `KmpBridge` en stores derivados.
 - `DEVELOPER_DIR=/Users/mariofernandez/Downloads/Xcode-beta.app/Contents/Developer xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` completado correctamente.

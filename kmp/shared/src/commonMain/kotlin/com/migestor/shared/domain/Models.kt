@@ -1231,6 +1231,9 @@ data class PersistedNotebookCell(
     val effectiveWeight: Double? = null,
     val countsTowardAverage: Boolean? = null,
     val annotation: NotebookCellAnnotation? = null,
+    val attachmentCount: Int = 0,
+    val hasAttachments: Boolean = attachmentCount > 0,
+    val mainIcon: String? = iconValue,
     val trace: AuditTrace = AuditTrace(),
 )
 

@@ -574,11 +574,11 @@ extension NotebookModuleView {
                         .padding(.horizontal, 12)
                         .frame(width: segmentWidth(segment), height: 40)
                         .background(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            Rectangle()
                                 .fill(categoryTint.opacity(0.055))
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            Rectangle()
                                 .stroke(categoryTint.opacity(0.12), lineWidth: 1)
                         )
                         .contentShape(Rectangle())

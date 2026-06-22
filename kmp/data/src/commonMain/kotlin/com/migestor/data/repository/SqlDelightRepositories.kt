@@ -1081,7 +1081,7 @@ class NotebookCellsRepositorySqlDelight(
 ) : NotebookCellsRepository {
     override fun observeClassCells(classId: Long): Flow<List<PersistedNotebookCell>> {
         return db.appDatabaseQueries
-            .selectNotebookCellsByClass(classId) { classIdDb, studentId, columnId, valueText, valueBool, valueIcon, valueOrdinal, displayValue, observedAtEpochMs, competencyCriteriaIdsCsv, effectiveWeight, countsTowardAverage, note, colorHex, attachmentUrisCsv, authorUserId, createdAt, updatedAt, associatedGroupId, device_id, sync_version ->
+            .selectNotebookCellsByClass(classId) { classIdDb, studentId, columnId, valueText, valueBool, valueIcon, valueOrdinal, displayValue, observedAtEpochMs, competencyCriteriaIdsCsv, effectiveWeight, countsTowardAverage, note, colorHex, attachmentCount, hasAttachments, mainIcon, authorUserId, createdAt, updatedAt, associatedGroupId, device_id, sync_version ->
                 PersistedNotebookCell(
                     classId = classIdDb,
                     studentId = studentId,
@@ -1098,8 +1098,10 @@ class NotebookCellsRepositorySqlDelight(
                     annotation = com.migestor.shared.domain.NotebookCellAnnotation(
                         note = note,
                         colorHex = colorHex,
-                        attachmentUris = attachmentUrisCsv?.split("|")?.filter { it.isNotBlank() } ?: emptyList(),
                     ),
+                    attachmentCount = attachmentCount.toInt(),
+                    hasAttachments = hasAttachments != 0L,
+                    mainIcon = mainIcon,
                     trace = AuditTrace(
                         authorUserId = authorUserId,
                         createdAt = Instant.fromEpochMilliseconds(createdAt),
@@ -1115,7 +1117,7 @@ class NotebookCellsRepositorySqlDelight(
     }
 
     override suspend fun listClassCells(classId: Long): List<PersistedNotebookCell> = withContext(Dispatchers.Default) {
-        db.appDatabaseQueries.selectNotebookCellsByClass(classId) { classIdDb, studentId, columnId, valueText, valueBool, valueIcon, valueOrdinal, displayValue, observedAtEpochMs, competencyCriteriaIdsCsv, effectiveWeight, countsTowardAverage, note, colorHex, attachmentUrisCsv, authorUserId, createdAt, updatedAt, associatedGroupId, device_id, sync_version ->
+        db.appDatabaseQueries.selectNotebookCellsByClass(classId) { classIdDb, studentId, columnId, valueText, valueBool, valueIcon, valueOrdinal, displayValue, observedAtEpochMs, competencyCriteriaIdsCsv, effectiveWeight, countsTowardAverage, note, colorHex, attachmentCount, hasAttachments, mainIcon, authorUserId, createdAt, updatedAt, associatedGroupId, device_id, sync_version ->
             PersistedNotebookCell(
                 classId = classIdDb,
                 studentId = studentId,
@@ -1132,8 +1134,10 @@ class NotebookCellsRepositorySqlDelight(
                 annotation = com.migestor.shared.domain.NotebookCellAnnotation(
                     note = note,
                     colorHex = colorHex,
-                    attachmentUris = attachmentUrisCsv?.split("|")?.filter { it.isNotBlank() } ?: emptyList(),
                 ),
+                attachmentCount = attachmentCount.toInt(),
+                hasAttachments = hasAttachments != 0L,
+                mainIcon = mainIcon,
                 trace = AuditTrace(
                     authorUserId = authorUserId,
                     createdAt = Instant.fromEpochMilliseconds(createdAt),
@@ -1144,6 +1148,19 @@ class NotebookCellsRepositorySqlDelight(
                 ),
             )
         }.executeAsList()
+    }
+
+    override suspend fun loadCellAttachmentUris(
+        classId: Long,
+        studentId: Long,
+        columnId: String,
+    ): List<String> = withContext(Dispatchers.Default) {
+        splitNotebookAttachmentUris(
+            db.appDatabaseQueries
+                .selectNotebookCellAttachmentUris(classId, studentId, columnId)
+                .executeAsOneOrNull()
+                ?.attachment_uris_csv,
+        )
     }
 
     override suspend fun saveCell(
@@ -1241,6 +1258,9 @@ class NotebookCellsRepositorySqlDelight(
         }.asFlow().mapToList(Dispatchers.Default)
     }
 }
+
+private fun splitNotebookAttachmentUris(value: String?): List<String> =
+    value?.split("|")?.map { it.trim() }?.filter { it.isNotBlank() } ?: emptyList()
 
 class RubricsRepositorySqlDelight(
     private val db: AppDatabase,

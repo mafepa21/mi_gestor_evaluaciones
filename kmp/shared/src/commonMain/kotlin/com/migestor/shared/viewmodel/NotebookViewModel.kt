@@ -1041,7 +1041,7 @@ class NotebookViewModel(
         fun PersistedNotebookCell.updated(): PersistedNotebookCell {
             return when (type) {
                 NotebookColumnType.CHECK -> copy(boolValue = boolValue, displayValue = boolValue.toString())
-                NotebookColumnType.ICON -> copy(iconValue = value, displayValue = value)
+                NotebookColumnType.ICON -> copy(iconValue = value, displayValue = value, mainIcon = value)
                 NotebookColumnType.ORDINAL -> copy(ordinalValue = value, displayValue = value)
                 else -> copy(textValue = value, displayValue = value)
             }

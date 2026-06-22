@@ -388,6 +388,11 @@ class SqlDelightSyncAdapter(
             container.notebookCellsRepository.listClassCells(schoolClass.id).forEach { cell ->
                 val cellUpdatedAt = cell.trace.updatedAt.toEpochMilliseconds()
                 if (cellUpdatedAt > sinceEpochMs) {
+                    val attachmentUris = container.notebookCellsRepository.loadCellAttachmentUris(
+                        classId = cell.classId,
+                        studentId = cell.studentId,
+                        columnId = cell.columnId,
+                    )
                     changes += SyncChange(
                         entity = "notebook_cell",
                         id = "${cell.classId}-${cell.studentId}-${cell.columnId}",
@@ -406,7 +411,7 @@ class SqlDelightSyncAdapter(
                             put(
                                 "attachmentUris",
                                 buildJsonArray {
-                                    (cell.annotation?.attachmentUris ?: emptyList()).forEach { add(JsonPrimitive(it)) }
+                                    attachmentUris.forEach { add(JsonPrimitive(it)) }
                                 },
                             )
                         }.toString(),

@@ -205,7 +205,13 @@ class RepositoriesIntegrationTest {
         assertEquals(1, listed.size)
         assertEquals("Necesita refuerzo", listed.first().textValue)
         assertEquals(true, listed.first().boolValue)
-        assertTrue(listed.first().annotation?.attachmentUris?.isNotEmpty() == true)
+        assertEquals(1, listed.first().attachmentCount)
+        assertEquals(true, listed.first().hasAttachments)
+        assertEquals(emptyList(), listed.first().annotation?.attachmentUris)
+        assertEquals(
+            listOf("file://nota1.pdf"),
+            cells.loadCellAttachmentUris(classId, studentId, "obs_docente"),
+        )
     }
 
     @Test

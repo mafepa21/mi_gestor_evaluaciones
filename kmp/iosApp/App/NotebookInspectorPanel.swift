@@ -203,8 +203,8 @@ struct NotebookInspectorPanel: View {
             .compactMap { cell -> NotebookInspectorObservation? in
                 guard let annotation = cell.annotation else { return nil }
                 let note = annotation.note?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                let attachmentCount = annotation.attachmentUris.count
-                let icon = annotation.icon ?? cell.iconValue ?? ""
+                let attachmentCount = Int(cell.attachmentCount)
+                let icon = annotation.icon ?? cell.mainIcon ?? cell.iconValue ?? ""
                 guard !note.isEmpty || attachmentCount > 0 || !icon.isEmpty else { return nil }
                 let title = data.sheet.columns.first(where: { $0.id == cell.columnId })?.title ?? cell.columnId
                 return NotebookInspectorObservation(

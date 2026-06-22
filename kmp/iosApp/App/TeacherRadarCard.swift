@@ -250,7 +250,7 @@ enum TeacherRadarBuilder {
 
     private static func evidenceCount(for item: NotebookTableRow) -> Int {
         item.row.persistedGrades.filter { !($0.evidence ?? "").isEmpty || !($0.evidencePath ?? "").isEmpty }.count +
-            item.row.persistedCells.map { $0.annotation?.attachmentUris.count ?? 0 }.reduce(0, +)
+            item.row.persistedCells.map { Int($0.attachmentCount) }.reduce(0, +)
     }
 
     private static func attendanceRateEstimate(for item: NotebookTableRow) -> Int? {

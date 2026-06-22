@@ -7146,6 +7146,18 @@ final class KmpBridge: ObservableObject {
         }
     }
 
+    func loadNotebookCellAttachmentUris(
+        classId: Int64,
+        studentId: Int64,
+        columnId: String
+    ) async throws -> [String] {
+        try await container.notebookCellsRepository.loadCellAttachmentUris(
+            classId: classId,
+            studentId: studentId,
+            columnId: columnId
+        )
+    }
+
     func saveColumnCategory(name: String, categoryId: String? = nil) {
         notebookViewModel.saveColumnCategory(name: name, categoryId: categoryId)
         if let classId = notebookViewModel.currentClassId?.int64Value {
@@ -8546,7 +8558,12 @@ final class KmpBridge: ObservableObject {
             )
         }
 
-        cells.forEach { cell in
+        for cell in cells {
+            let attachmentUris = try await container.notebookCellsRepository.loadCellAttachmentUris(
+                classId: cell.classId,
+                studentId: cell.studentId,
+                columnId: cell.columnId
+            )
             enqueueLocalChange(
                 entity: "notebook_cell",
                 id: "\(cell.classId)-\(cell.studentId)-\(cell.columnId)",
@@ -8561,7 +8578,7 @@ final class KmpBridge: ObservableObject {
                     "ordinalValue": cell.ordinalValue ?? NSNull(),
                     "note": cell.annotation?.note ?? NSNull(),
                     "colorHex": cell.annotation?.colorHex ?? NSNull(),
-                    "attachmentUris": cell.annotation?.attachmentUris ?? []
+                    "attachmentUris": attachmentUris
                 ],
                 shouldPersist: false,
                 shouldScheduleAutoSync: false

@@ -614,45 +614,17 @@ private struct NotebookStatefulEditableTableCell: View {
     }
 
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(editableCellFill)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(
-                            isSelected ? Color.accentColor.opacity(0.85) : editableCellBorder,
-                            lineWidth: isSelected ? 1.4 : 0.6
-                        )
-                )
-
+        NotebookLightweightCellChrome(
+            width: width,
+            fill: editableCellFill,
+            border: isSelected ? Color.accentColor.opacity(0.85) : editableCellBorder,
+            lineWidth: isSelected ? 1.4 : 0.6,
+            onSelect: onSelect
+        ) {
             content
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-
+        } indicators: {
             if let persistedCell, hasContextualSignal(in: persistedCell) {
-                VStack {
-                    HStack {
-                        Spacer()
-                        HStack(spacing: 4) {
-                            if let icon = persistedCell.annotation?.icon ?? persistedCell.iconValue, !icon.isEmpty {
-                                Text(icon)
-                            }
-                            let attachmentCount = persistedCell.annotation?.attachmentUris.count ?? 0
-                            if attachmentCount > 0 {
-                                Text("\(attachmentCount)")
-                                    .font(.system(size: 10, weight: .bold, design: .rounded))
-                            }
-                        }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 4)
-                        .background(
-                            Capsule(style: .continuous)
-                                .fill(tint.opacity(0.14))
-                        )
-                    }
-                    Spacer()
-                }
-                .padding(6)
+                NotebookCellEvidenceIndicator(cell: persistedCell, tint: tint)
             }
 
             cellStateOverlay
@@ -663,13 +635,10 @@ private struct NotebookStatefulEditableTableCell: View {
                     .foregroundStyle(Color.accentColor)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 4)
-                    .background(.thinMaterial, in: Capsule())
+                    .background(NotebookStyle.surface.opacity(0.96), in: Capsule(style: .continuous))
                     .transition(.opacity)
             }
         }
-        .frame(width: width, height: 44)
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onSelect)
         .onAppear(perform: loadDrafts)
         .onDisappear {
             saveFeedbackTask?.cancel()
@@ -761,9 +730,6 @@ private struct NotebookStatefulEditableTableCell: View {
         }
 
         var badges: [NotebookCellStateBadge] = []
-        if !column.countsTowardAverage {
-            badges.append(NotebookCellStateBadge(id: "excluded", systemImage: "slash.circle", label: "No cuenta para media", tint: .secondary))
-        }
 
         switch saveFeedback {
         case .saving:
@@ -1091,10 +1057,6 @@ private struct NotebookStatefulEditableTableCell: View {
                 .font(.system(size: 20, weight: .bold, design: .rounded))
                 .frame(maxWidth: .infinity, minHeight: 32)
                 .foregroundStyle(checkDraft ? NotebookStyle.successTint : .secondary)
-                .background(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(checkDraft ? NotebookStyle.successTint.opacity(0.12) : Color.clear)
-                )
         }
         .buttonStyle(.plain)
     }
@@ -1496,8 +1458,8 @@ private struct NotebookStatefulEditableTableCell: View {
 
     private func hasContextualSignal(in cell: PersistedNotebookCell) -> Bool {
         !(cell.annotation?.note?.isEmpty ?? true) ||
-            !((cell.annotation?.icon ?? cell.iconValue ?? "").isEmpty) ||
-            !(cell.annotation?.attachmentUris.isEmpty ?? true)
+            !((cell.annotation?.icon ?? cell.mainIcon ?? cell.iconValue ?? "").isEmpty) ||
+            cell.hasAttachments
     }
 
     private var shouldOfferTextPopover: Bool {
@@ -1754,52 +1716,21 @@ private struct NotebookReadOnlyCellChrome<Content: View>: View {
     }
 
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(cellFill)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(
-                            isSelected ? Color.accentColor.opacity(0.85) : cellBorder,
-                            lineWidth: isSelected ? 1.4 : 0.6
-                        )
-                )
-
+        NotebookLightweightCellChrome(
+            width: width,
+            fill: cellFill,
+            border: isSelected ? Color.accentColor.opacity(0.85) : cellBorder,
+            lineWidth: isSelected ? 1.4 : 0.6,
+            onSelect: onSelect
+        ) {
             content
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-
+        } indicators: {
             if let persistedCell, hasContextualSignal(in: persistedCell) {
-                VStack {
-                    HStack {
-                        Spacer()
-                        HStack(spacing: 4) {
-                            if let icon = persistedCell.annotation?.icon ?? persistedCell.iconValue, !icon.isEmpty {
-                                Text(icon)
-                            }
-                            let attachmentCount = persistedCell.annotation?.attachmentUris.count ?? 0
-                            if attachmentCount > 0 {
-                                Text("\(attachmentCount)")
-                                    .font(.system(size: 10, weight: .bold, design: .rounded))
-                            }
-                        }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 4)
-                        .background(
-                            Capsule(style: .continuous)
-                                .fill(tint.opacity(0.14))
-                        )
-                    }
-                    Spacer()
-                }
-                .padding(6)
+                NotebookCellEvidenceIndicator(cell: persistedCell, tint: tint)
             }
 
             cellStateOverlay
         }
-        .frame(width: width, height: 44)
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onSelect)
     }
 
     private var cellFill: Color {
@@ -1864,9 +1795,6 @@ private struct NotebookReadOnlyCellChrome<Content: View>: View {
         }
 
         var badges: [NotebookCellStateBadge] = []
-        if !column.countsTowardAverage {
-            badges.append(NotebookCellStateBadge(id: "excluded", systemImage: "slash.circle", label: "No cuenta para media", tint: .secondary))
-        }
         if formulaDisplay?.isError == true {
             badges.append(NotebookCellStateBadge(id: "error", systemImage: "exclamationmark.triangle.fill", label: "Error", tint: NotebookStyle.warningTint))
         }
@@ -1875,8 +1803,8 @@ private struct NotebookReadOnlyCellChrome<Content: View>: View {
 
     private func hasContextualSignal(in cell: PersistedNotebookCell) -> Bool {
         !(cell.annotation?.note?.isEmpty ?? true) ||
-            !((cell.annotation?.icon ?? cell.iconValue ?? "").isEmpty) ||
-            !(cell.annotation?.attachmentUris.isEmpty ?? true)
+            !((cell.annotation?.icon ?? cell.mainIcon ?? cell.iconValue ?? "").isEmpty) ||
+            cell.hasAttachments
     }
 }
 
@@ -1917,4 +1845,113 @@ private struct NotebookCellStateBadge: Identifiable {
     let systemImage: String
     let label: String
     let tint: Color
+}
+
+private struct NotebookLightweightCellChrome<Content: View, Indicators: View>: View {
+    let width: CGFloat
+    let fill: Color
+    let border: Color
+    let lineWidth: CGFloat
+    let onSelect: () -> Void
+    let content: Content
+    let indicators: Indicators
+
+    init(
+        width: CGFloat,
+        fill: Color,
+        border: Color,
+        lineWidth: CGFloat,
+        onSelect: @escaping () -> Void,
+        @ViewBuilder content: () -> Content,
+        @ViewBuilder indicators: () -> Indicators
+    ) {
+        self.width = width
+        self.fill = fill
+        self.border = border
+        self.lineWidth = lineWidth
+        self.onSelect = onSelect
+        self.content = content()
+        self.indicators = indicators()
+    }
+
+    var body: some View {
+        ZStack {
+            Rectangle()
+                .fill(fill)
+
+            content
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+
+            indicators
+        }
+        .frame(width: width, height: 44)
+        .overlay(
+            Rectangle()
+                .stroke(border, lineWidth: lineWidth)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onSelect)
+    }
+}
+
+private struct NotebookCellEvidenceIndicator: View {
+    let cell: PersistedNotebookCell
+    let tint: Color
+
+    private var trimmedNote: String {
+        cell.annotation?.note?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    private var icon: String {
+        (cell.annotation?.icon ?? cell.mainIcon ?? cell.iconValue ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var attachmentCount: Int {
+        Int(cell.attachmentCount)
+    }
+
+    var body: some View {
+        VStack {
+            HStack {
+                Spacer()
+                HStack(spacing: 4) {
+                    if !icon.isEmpty {
+                        Text(icon)
+                    } else if !trimmedNote.isEmpty {
+                        Image(systemName: "note.text")
+                            .font(.system(size: 9, weight: .bold))
+                    }
+                    if attachmentCount > 0 {
+                        Text("\(attachmentCount)")
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                    }
+                }
+                .foregroundStyle(tint)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(tint.opacity(0.12))
+                )
+            }
+            Spacer()
+        }
+        .padding(6)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var accessibilityLabel: String {
+        var parts: [String] = []
+        if !trimmedNote.isEmpty {
+            parts.append("Nota")
+        }
+        if !icon.isEmpty {
+            parts.append("Icono")
+        }
+        if attachmentCount > 0 {
+            parts.append("\(attachmentCount) adjunto\(attachmentCount == 1 ? "" : "s")")
+        }
+        return parts.joined(separator: ", ")
+    }
 }

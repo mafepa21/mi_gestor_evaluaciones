@@ -37,7 +37,7 @@ class BuildNotebookInsightsUseCase {
                 followUpCount = followUpCount,
                 incidentCount = studentIncidents.size,
                 evidenceCount = row.persistedGrades.count { !it.evidence.isNullOrBlank() || !it.evidencePath.isNullOrBlank() } +
-                    persistedCells.sumOf { it.annotation?.attachmentUris?.size ?: 0 },
+                    persistedCells.sumOf { it.attachmentCount },
                 linkedCompetencyIds = linkedCompetencyIds,
                 linkedCompetencyLabels = linkedCompetencyIds.mapNotNull(competencyNamesById::get),
             )

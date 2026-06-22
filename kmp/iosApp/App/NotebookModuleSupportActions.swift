@@ -12,8 +12,25 @@ extension NotebookModuleView {
         }
         let persisted = item.row.persistedCells.first(where: { $0.columnId == selection.columnId })
         inspectorNoteDraft = persisted?.annotation?.note ?? ""
-        inspectorIconDraft = persisted?.annotation?.icon ?? persisted?.iconValue ?? ""
-        inspectorAttachmentUris = persisted?.annotation?.attachmentUris ?? []
+        inspectorIconDraft = persisted?.annotation?.icon ?? persisted?.mainIcon ?? persisted?.iconValue ?? ""
+        inspectorAttachmentUris = []
+
+        guard persisted?.hasAttachments == true,
+              let classId = selectedClassId ?? bridge.notebookViewModel.currentClassId?.int64Value else {
+            return
+        }
+
+        Task {
+            let attachmentUris = (try? await bridge.loadNotebookCellAttachmentUris(
+                classId: classId,
+                studentId: selection.studentId,
+                columnId: selection.columnId
+            )) ?? []
+            await MainActor.run {
+                guard inspectorSelection == selection else { return }
+                inspectorAttachmentUris = attachmentUris
+            }
+        }
     }
 
     func refreshNotebookSignals() async {

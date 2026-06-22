@@ -25,7 +25,7 @@ class BuildTeacherRadarUseCase {
             val average = row.weightedAverage
             val attendanceRate = attendanceRate(attendanceByStudentId[student.id].orEmpty())
             val evidenceCount = row.persistedGrades.count { !it.evidence.isNullOrBlank() || !it.evidencePath.isNullOrBlank() } +
-                row.persistedCells.sumOf { it.annotation?.attachmentUris?.size ?: 0 }
+                row.persistedCells.sumOf { it.attachmentCount }
             val missingRubrics = rubricColumns.count { column ->
                 val grade = row.persistedGrades.firstOrNull { it.columnId == column.id || it.evaluationId == column.evaluationId }
                 grade?.rubricSelections.isNullOrBlank() && grade?.value == null

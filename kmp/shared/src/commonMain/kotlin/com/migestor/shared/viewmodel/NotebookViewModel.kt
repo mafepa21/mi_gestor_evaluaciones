@@ -27,6 +27,8 @@ class NotebookViewModel(
     private val _selectedTabId = MutableStateFlow<String?>(null)
     private val formulaEvaluator = FormulaEvaluator()
     private val averageCache = AverageCache()
+    private val saveQueue = NotebookSaveQueue()
+    private var saveQueueJob: Job? = null
 
     init {
         loadInitialData()
@@ -1354,7 +1356,7 @@ class NotebookViewModel(
                     competencyCriteriaIds = competencyCriteriaIds,
                     scaleKind = scaleKind,
                     tabIds = resolvedTabIds,
-                    sharedAcrossTabs = resolvedTabIds.isNotEmpty() && resolvedTabIds.size == tabs.size,
+                    sharedAcrossTabs = false,
                     iconName = iconName,
                     order = -1,
                     widthDp = 132.0,
@@ -1728,7 +1730,7 @@ class NotebookViewModel(
 
         return when {
             validSelectedTabId != null -> listOf(validSelectedTabId)
-            tabs.isNotEmpty() -> tabs.map { it.id }
+            tabs.isNotEmpty() -> listOf(tabs.first().id)
             else -> emptyList()
         }
     }
@@ -1759,8 +1761,7 @@ class NotebookViewModel(
 
         return column.copy(
             tabIds = resolvedTabIds,
-            sharedAcrossTabs = resolvedTabIds.isNotEmpty() && resolvedTabIds.size == tabs.size
-                && tabs.isNotEmpty(),
+            sharedAcrossTabs = column.sharedAcrossTabs && column.tabIds.isEmpty(),
             order = resolvedOrder,
             widthDp = resolvedWidth
         )

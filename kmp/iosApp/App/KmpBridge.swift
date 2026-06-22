@@ -7010,7 +7010,7 @@ final class KmpBridge: ObservableObject {
         let currentData = notebookState as? NotebookUiStateData
         let tabs = currentData?.sheet.tabs ?? []
         let selectedTab = selectedNotebookTabId ?? tabs.first?.id
-        let resolvedTabIds = selectedTab.map { [$0] } ?? tabs.map { $0.id }
+        let resolvedTabIds = selectedTab.map { [$0] } ?? []
         let existingCategories = currentData?.sheet.columnCategories ?? []
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
         let nowInstant = Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMs)
@@ -7087,7 +7087,7 @@ final class KmpBridge: ObservableObject {
             scaleKind: scaleKind,
             tabIds: resolvedTabIds,
             sessions: [],
-            sharedAcrossTabs: !tabs.isEmpty && resolvedTabIds.count == tabs.count,
+            sharedAcrossTabs: false,
             colorHex: nil,
             iconName: iconName,
             order: nextOrder,

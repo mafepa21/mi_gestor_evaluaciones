@@ -128,8 +128,8 @@ class BuildNotebookSheetUseCase(
                 weight = evaluation.weight,
                 rubricId = rubricId,
                 scaleKind = NotebookScaleKind.TEN_POINT,
-                tabIds = tabs.map { it.id },
-                sharedAcrossTabs = true,
+                tabIds = tabs.firstOrNull()?.let { listOf(it.id) }.orEmpty(),
+                sharedAcrossTabs = false,
                 order = generatedOrderForEvaluation(evaluations, evaluation.id),
                 widthDp = 132.0,
             )

@@ -29,15 +29,55 @@ internal fun createAppleDriver(
         legacySourcePaths = legacySourcePaths,
     )
 
-    val driver = NativeSqliteDriver(
-        schema = AppleAppDatabaseSchema,
-        name = databaseName,
-        onConfiguration = { config ->
-            config.copy(
-                extendedConfig = DatabaseConfiguration.Extended(basePath = basePath)
-            )
-        },
-    )
+    var firstAttemptDriver: NativeSqliteDriver? = null
+    val driver = try {
+        val d = NativeSqliteDriver(
+            schema = AppleAppDatabaseSchema,
+            name = databaseName,
+            onConfiguration = { config ->
+                config.copy(
+                    extendedConfig = DatabaseConfiguration.Extended(basePath = basePath)
+                )
+            },
+        )
+        firstAttemptDriver = d
+        getVersion(d)
+        d
+    } catch (e: Throwable) {
+        println("[AppleDriver] Error initializing NativeSqliteDriver: ${e.message}")
+        try {
+            firstAttemptDriver?.close()
+        } catch (closeEx: Throwable) {
+            println("[AppleDriver] Error closing failed driver: ${closeEx.message}")
+        }
+
+        val fileManager = NSFileManager.defaultManager
+        if (fileManager.fileExistsAtPath(databasePath)) {
+            val timestamp = platform.posix.time(null)
+            val backupPath = "$databasePath.backup_$timestamp"
+            println("[AppleDriver] Renaming database $databasePath -> $backupPath to recover")
+            fileManager.moveItemAtPath(databasePath, backupPath, null)
+
+            val walPath = "$databasePath-wal"
+            if (fileManager.fileExistsAtPath(walPath)) {
+                fileManager.removeItemAtPath(walPath, null)
+            }
+            val shmPath = "$databasePath-shm"
+            if (fileManager.fileExistsAtPath(shmPath)) {
+                fileManager.removeItemAtPath(shmPath, null)
+            }
+        }
+
+        NativeSqliteDriver(
+            schema = AppleAppDatabaseSchema,
+            name = databaseName,
+            onConfiguration = { config ->
+                config.copy(
+                    extendedConfig = DatabaseConfiguration.Extended(basePath = basePath)
+                )
+            },
+        )
+    }
 
     val currentVersion = getVersion(driver)
     val latestVersion = AppDatabase.Schema.version

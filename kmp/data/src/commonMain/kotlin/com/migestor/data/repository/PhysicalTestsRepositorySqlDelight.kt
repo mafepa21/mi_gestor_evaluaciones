@@ -16,6 +16,7 @@ import com.migestor.shared.domain.PhysicalTestScale
 import com.migestor.shared.domain.PhysicalTestScaleRange
 import com.migestor.shared.domain.StudentSex
 import com.migestor.shared.domain.normalizedStudentSex
+import com.migestor.shared.repository.PhysicalTestHistoryPoint
 import com.migestor.shared.repository.PhysicalTestsRepository
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
@@ -362,6 +363,21 @@ class PhysicalTestsRepositorySqlDelight(
                 rawColumnId = row.raw_column_id,
                 scoreColumnId = row.score_column_id,
                 trace = trace(row.created_at_epoch_ms, row.updated_at_epoch_ms, row.device_id, row.sync_version),
+            )
+        }
+    }
+
+    override suspend fun listPhysicalTestHistoryForStudent(studentId: Long): List<PhysicalTestHistoryPoint> {
+        return db.appDatabaseQueries.selectPhysicalTestHistoryForStudent(studentId).executeAsList().map { row ->
+            PhysicalTestHistoryPoint(
+                resultId = row.result_id,
+                testId = row.test_id,
+                testName = row.test_name,
+                classId = row.class_id,
+                rawValue = row.raw_value,
+                rawText = row.raw_text,
+                score = row.score,
+                observedAtEpochMs = row.observed_at_epoch_ms,
             )
         }
     }

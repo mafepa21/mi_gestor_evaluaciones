@@ -411,6 +411,16 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-06-19 - Mecanismo de recuperación ante incompatibilidad de versión de base de datos en arranque (macOS/iOS)
+
+Resumen:
+- **Causa raíz**: El bootstrap del driver SQLDelight en macOS/iOS (`createMacosDriver`/`createAppleDriver` en `AppleDriver.kt`) fallaba con un crash `SIGABRT` (`trapOnUndeclaredException`) debido a una excepción `IllegalStateException: Database version 35 newer than config version 33`. Esto ocurre cuando un desarrollador o usuario ejecuta una compilación anterior del código (que espera versión de esquema 33) sobre una base de datos local en disco que ya fue migrada a una versión superior (por ejemplo, versión 35 en `main` u otra rama de desarrollo). Dado que la inicialización de la conexión de base de datos (`getVersion` que gatilla la apertura en SQLiter) ocurre de forma perezosa en el arranque y fuera de bloques de try-catch Swift, se abortaba la aplicación de manera inmediata.
+- **Cambios realizados**: Se movió la inicialización real y la consulta de versión (`getVersion(d)`) dentro de un bloque try-catch de Kotlin Native en `AppleDriver.kt`. Si la creación del driver o la migración fallan con cualquier excepción, el driver fallido se cierra de forma segura, el archivo sqlite en disco se renombra a un archivo de copia de seguridad (`.db.backup_<timestamp>`) junto con la eliminación de sus sidecars (`-wal` y `-shm`), y se crea una nueva base de datos limpia compatible con la versión actual de la app.
+- **Validación**: Compilado y verificado con éxito en macOS Native y Catalyst, y en iOS Simulator utilizando `./scripts/verify_apple_builds.sh` con el Xcode instalado en la máquina (`Xcode-beta`). Ejecución manual del binario de macOS verificó que ante el fallo por versión 35, el archivo se respalda a `.backup_1781873394` y la app arranca limpia sin crashes.
+
+Notas para futuras conversaciones:
+- Este mecanismo previene bucles de crash durante el desarrollo al cambiar entre ramas con diferentes esquemas de base de datos en macOS/iOS.
+
 ### 2026-06-16 - Solución al fallo de serialización JSON de snapshots en Swift por tipos KotlinLong
 
 Resumen:

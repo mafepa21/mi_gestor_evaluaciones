@@ -858,6 +858,7 @@ final class KmpBridge: ObservableObject {
     private var discoveredPeersByHost: [String: LanDiscoveredPeer] = [:]
     private var autoSyncLoopTask: Task<Void, Never>? = nil
     private var autoSyncDebounceTask: Task<Void, Never>? = nil
+    private var localChangesNotifyTask: Task<Void, Never>? = nil
     private var pendingChangesPersistenceTask: Task<Void, Never>? = nil
     private var notebookSnapshotDebounceTask: Task<Void, Never>? = nil
     private var pendingGradeSnapshotTask: Task<Void, Never>? = nil
@@ -890,6 +891,7 @@ final class KmpBridge: ObservableObject {
         else { return [] }
         return decoded
     }()
+    private var pendingLocalSseChanges: [LanSyncChange] = []
     private var notebookSyncCache: NotebookSyncCache = {
         guard let data = UserDefaults.standard.data(forKey: "sync.notebook.cache.v1"),
               let decoded = try? JSONDecoder().decode(NotebookSyncCache.self, from: data)
@@ -1680,6 +1682,9 @@ final class KmpBridge: ObservableObject {
         try await refreshAcademicYears()
         try await refreshClasses()
         try await refreshStudentsDirectory()
+        try await enqueueAcademicYearSnapshots()
+        enqueueClassSnapshots()
+        try await enqueueRosterSnapshotsForClasses(classes)
         selectedStudentsClassId = classes.first?.id
         status = promoteStudents ? "Curso escolar creado con alumnado promocionado." : "Curso escolar creado."
         return targetYearId
@@ -1691,6 +1696,7 @@ final class KmpBridge: ObservableObject {
         try await refreshAcademicYears()
         try await refreshClasses()
         try await refreshStudentsDirectory()
+        try await enqueueAcademicYearSnapshots()
         status = "Curso escolar activo actualizado."
     }
 
@@ -1702,6 +1708,7 @@ final class KmpBridge: ObservableObject {
         try await container.academicYearsRepository.archiveAcademicYear(academicYearId: id)
         try await refreshAcademicYears()
         try await refreshClasses()
+        try await enqueueAcademicYearSnapshots()
         status = "Curso escolar archivado."
     }
 
@@ -1714,7 +1721,74 @@ final class KmpBridge: ObservableObject {
         try await refreshAcademicYears()
         try await refreshClasses()
         try await refreshStudentsDirectory()
+        enqueueLocalChange(
+            entity: "academic_year",
+            id: "\(id)",
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+            payload: ["id": id],
+            op: "delete"
+        )
         status = "Curso escolar archivado eliminado."
+    }
+
+    private func enqueueAcademicYearSnapshots() async throws {
+        let years = try await container.academicYearsRepository.listAcademicYears()
+        for year in years {
+            enqueueLocalChange(
+                entity: "academic_year",
+                id: "\(year.id)",
+                updatedAtEpochMs: year.trace.updatedAt.toEpochMilliseconds(),
+                payload: [
+                    "id": year.id,
+                    "centerId": year.centerId,
+                    "name": year.name,
+                    "startEpochMs": year.startAt.toEpochMilliseconds(),
+                    "endEpochMs": year.endAt.toEpochMilliseconds(),
+                    "status": year.status.name,
+                    "isActive": year.isActive,
+                    "archivedAtEpochMs": year.archivedAt?.toEpochMilliseconds() ?? 0
+                ]
+            )
+        }
+    }
+
+    private func enqueueClassSnapshots() {
+        for schoolClass in classes {
+            enqueueLocalChange(
+                entity: "class",
+                id: "\(schoolClass.id)",
+                updatedAtEpochMs: schoolClass.trace.updatedAt.toEpochMilliseconds(),
+                payload: [
+                    "id": schoolClass.id,
+                    "name": schoolClass.name,
+                    "course": Int(schoolClass.course),
+                    "description": schoolClass.description_ ?? NSNull(),
+                    "centerId": schoolClass.centerId?.int64Value ?? 0,
+                    "academicYearId": schoolClass.academicYearId?.int64Value ?? 0,
+                    "stageCycleId": schoolClass.stageCycleId?.int64Value ?? 0,
+                    "subjectId": schoolClass.subjectId?.int64Value ?? 0
+                ]
+            )
+        }
+    }
+
+    private func enqueueRosterSnapshotsForClasses(_ schoolClasses: [SchoolClass]) async throws {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        for schoolClass in schoolClasses {
+            let studentIds = try await container.classesRepository
+                .listStudentsInClass(classId: schoolClass.id)
+                .map { $0.id }
+                .sorted()
+            enqueueLocalChange(
+                entity: "class_roster",
+                id: "\(schoolClass.id)",
+                updatedAtEpochMs: nowMs,
+                payload: [
+                    "classId": schoolClass.id,
+                    "studentIds": studentIds
+                ]
+            )
+        }
     }
 
     func archivedAcademicYearExportText(id: Int64) async throws -> String {
@@ -2984,6 +3058,9 @@ final class KmpBridge: ObservableObject {
                 "name": name,
                 "course": Int(course),
                 "description": NSNull(),
+                "centerId": NSNull(),
+                "academicYearId": activeAcademicYear?.id ?? 0,
+                "stageCycleId": NSNull(),
                 "subjectId": subjectId.map { NSNumber(value: $0) } ?? NSNull()
             ]
         )
@@ -6402,7 +6479,7 @@ final class KmpBridge: ObservableObject {
                 // afecta a entidades del cuaderno (grades, columnas, celdas, rúbricas).
                 // Esto evita recargas innecesarias cuando solo cambian clases o alumnos.
                 let notebookEntityTypes: Set<String> = [
-                    "grade", "notebook_tab", "notebook_column", "notebook_column_category", "notebook_cell", "rubric_assessment", "student", "class_roster", "evaluation", "notebook_group", "notebook_group_member"
+                    "grade", "notebook_tab", "notebook_column", "notebook_column_category", "notebook_cell", "rubric_assessment", "student", "class", "class_roster", "evaluation", "notebook_group", "notebook_group_member"
                 ]
                 let hasNotebookChangesFromRemote = capturedChanges.contains {
                     notebookEntityTypes.contains($0.entity) && $0.deviceId != capturedLocalDeviceId
@@ -8287,9 +8364,41 @@ final class KmpBridge: ObservableObject {
         if shouldPersist {
             persistPendingChanges()
         }
+        enqueueLocalSseNotification(newChange)
         if shouldScheduleAutoSync {
             triggerAutoSyncSoon(delayNanoseconds: autoSyncDelayNanoseconds)
         }
+    }
+
+    private func enqueueLocalSseNotification(_ change: LanSyncChange) {
+        #if os(macOS)
+        guard pairedSyncHost != nil else { return }
+        if let idx = pendingLocalSseChanges.firstIndex(where: { $0.entity == change.entity && $0.id == change.id }) {
+            pendingLocalSseChanges[idx] = change
+        } else {
+            pendingLocalSseChanges.append(change)
+        }
+        localChangesNotifyTask?.cancel()
+        localChangesNotifyTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await Task.sleep(nanoseconds: 200_000_000)
+                let changes = self.pendingLocalSseChanges
+                self.pendingLocalSseChanges.removeAll()
+                guard !changes.isEmpty else { return }
+                try await self.lanSyncClient.notifyLocalChanges(
+                    host: self.pairedSyncHost ?? "127.0.0.1",
+                    changes: changes,
+                    pinnedFingerprint: self.pairedServerFingerprint
+                )
+            } catch is CancellationError {
+                return
+            } catch {
+                // Best-effort: the periodic LAN sync loop and helper DB monitor remain
+                // as fallbacks, so local editing should never fail because SSE notify did.
+            }
+        }
+        #endif
     }
 
     private func publishSyncState(_ update: @escaping @MainActor (KmpBridge) -> Void) {
@@ -8727,6 +8836,27 @@ final class KmpBridge: ObservableObject {
             }
 
             switch change.entity {
+            case "academic_year":
+                guard
+                    let yearId = int64Value(payloadObject["id"]),
+                    let name = payloadObject["name"] as? String,
+                    let startEpochMs = int64Value(payloadObject["startEpochMs"]),
+                    let endEpochMs = int64Value(payloadObject["endEpochMs"])
+                else { continue }
+                _ = try await container.academicYearsRepository.upsertAcademicYear(
+                    id: yearId,
+                    centerId: int64Value(payloadObject["centerId"]) ?? 1,
+                    name: name,
+                    startEpochMs: startEpochMs,
+                    endEpochMs: endEpochMs,
+                    status: payloadObject["status"] as? String ?? "ACTIVE",
+                    isActive: payloadObject["isActive"] as? Bool ?? false,
+                    archivedAtEpochMs: kotlinLong(positiveInt64Value(payloadObject["archivedAtEpochMs"])),
+                    updatedAtEpochMs: change.updatedAtEpochMs,
+                    deviceId: change.deviceId,
+                    syncVersion: 1
+                )
+
             case "class":
                 guard
                     let name = payloadObject["name"] as? String,
@@ -9541,6 +9671,11 @@ final class KmpBridge: ObservableObject {
 
     private func applyDeletedChange(change: LanSyncChange, payloadObject: [String: Any]) async throws {
         switch change.entity {
+        case "academic_year":
+            let yearId = int64Value(payloadObject["id"]) ?? Int64(change.id) ?? 0
+            if yearId > 0 {
+                try? await container.academicYearsRepository.deleteArchivedAcademicYear(academicYearId: yearId)
+            }
         case "student_deleted", "student":
             let studentId = int64Value(payloadObject["id"]) ?? Int64(change.id) ?? 0
             if studentId > 0 {
@@ -9691,16 +9826,18 @@ final class KmpBridge: ObservableObject {
 
     private func syncApplyPriority(for entity: String) -> Int {
         switch entity {
-        case "class", "student", "rubric_bundle", "teaching_unit", "calendar_event", "teacher_schedule", "learning_situation":
+        case "academic_year":
             return 0
-        case "evaluation", "weekly_slot", "teacher_schedule_slot", "planner_evaluation_period", "notebook_tab", "notebook_column", "notebook_column_category", "notebook_group", "notebook_group_member", "learning_situation_version", "learning_situation_class_link", "learning_situation_link":
+        case "class", "student", "rubric_bundle", "teaching_unit", "calendar_event", "teacher_schedule", "learning_situation":
             return 1
-        case "class_roster", "attendance", "incident":
+        case "evaluation", "weekly_slot", "teacher_schedule_slot", "planner_evaluation_period", "notebook_tab", "notebook_column", "notebook_column_category", "notebook_group", "notebook_group_member", "learning_situation_version", "learning_situation_class_link", "learning_situation_link":
             return 2
-        case "grade", "notebook_cell", "rubric_assessment", "planning_session":
+        case "class_roster", "attendance", "incident":
             return 3
-        case "student_deleted":
+        case "grade", "notebook_cell", "rubric_assessment", "planning_session":
             return 4
+        case "student_deleted":
+            return 5
         default:
             return 5
         }
@@ -10240,6 +10377,9 @@ final class KmpBridge: ObservableObject {
         guard pairedSyncHost != nil, syncToken != nil else {
             autoSyncLoopTask?.cancel()
             autoSyncLoopTask = nil
+            localChangesNotifyTask?.cancel()
+            localChangesNotifyTask = nil
+            pendingLocalSseChanges.removeAll()
             syncEventListener.stop()
             return
         }
@@ -10280,6 +10420,9 @@ final class KmpBridge: ObservableObject {
         autoSyncLoopTask = nil
         autoSyncDebounceTask?.cancel()
         autoSyncDebounceTask = nil
+        localChangesNotifyTask?.cancel()
+        localChangesNotifyTask = nil
+        pendingLocalSseChanges.removeAll()
         syncNeedsAnotherPass = false
         syncEventListener.stop()
         pairedSyncHost = normalizedHost
@@ -10303,6 +10446,9 @@ final class KmpBridge: ObservableObject {
         autoSyncLoopTask = nil
         autoSyncDebounceTask?.cancel()
         autoSyncDebounceTask = nil
+        localChangesNotifyTask?.cancel()
+        localChangesNotifyTask = nil
+        pendingLocalSseChanges.removeAll()
         syncNeedsAnotherPass = false
         pairedSyncHost = nil
         #endif
@@ -10792,6 +10938,34 @@ final class LanSyncClient {
             serverEpochMs: decoded.serverEpochMs,
             desktopAuthoritative: decoded.desktopAuthoritative ?? false
         )
+    }
+
+    func notifyLocalChanges(
+        host: String,
+        changes: [LanSyncChange],
+        pinnedFingerprint: String?
+    ) async throws {
+        guard !changes.isEmpty else { return }
+        let normalizedHost = Self.normalizeHost(host)
+        let url = try buildURL(host: normalizedHost.isEmpty ? "127.0.0.1" : normalizedHost, path: "/sync/local-changes")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 8
+        request.httpBody = try JSONEncoder().encode(changes)
+
+        let (data, response) = try await executeDataTask(
+            request: request,
+            pinnedFingerprint: pinnedFingerprint,
+            operation: "local-changes",
+            host: host
+        )
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? "(sin cuerpo)"
+            throw NSError(domain: "Sync", code: -215, userInfo: [
+                NSLocalizedDescriptionKey: "Notificación local LAN fallida: \(body)"
+            ])
+        }
     }
 
     func unpair(host: String, token: String, pinnedFingerprint: String?) async throws -> Bool {

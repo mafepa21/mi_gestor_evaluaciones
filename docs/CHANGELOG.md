@@ -15,6 +15,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Added
 
+- SyncLAN macOS incorpora notificacion local inmediata al helper: `KmpBridge` agrupa mutaciones locales con debounce corto y el helper acepta `POST /sync/local-changes` solo desde loopback para emitir SSE a los iPad enlazados sin esperar al polling de fallback.
 - El detalle de sesión del planificador permite abrir una previsualización nativa del DOCX original asociado a una secuenciación importada cuando el archivo está disponible localmente.
 - Cursos incorpora una primera gestion estructural de curso escolar activo: selector en `Cursos`, historial de cursos archivados, asistente de nuevo curso con copia de grupos y promocion de alumnado por matriculas nuevas.
 - Cursos permite editar o eliminar grupos con swipe/context menu y añade accion destructiva en el menu de cursos historicos para eliminar cursos escolares archivados con confirmacion de impacto.
@@ -37,7 +38,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- El monitor de BD del helper SyncLAN queda como red de seguridad y filtra cambios cuyo `deviceId` coincide con el iPad emparejado antes de retransmitir SSE, evitando ecos innecesarios de cambios originados en el cliente.
 - Planner iOS/iPadOS centra la planificación diaria en la situación activa: cabecera con progreso, tarjetas semanales con estados docentes, agenda cronológica y diario por capas de pulso rápido, observación breve y reflexión completa.
+- Planner macOS saca el diario del inspector, añade ejecución central de sesión, reduce el diario inicial a pulso/observación/próximo paso y enriquece el grid semanal con tarjetas amplias y progreso de situación.
+- La barra de progreso de situación del Planner usa la secuencia DOCX vinculada cuando existe para representar la posición real de la sesión actual dentro del total de sesiones de la situación (`1/10`, `10/10`), manteniendo completadas y pendientes como métricas auxiliares.
 - **Optimizaciones de Rendimiento y Transiciones Visuales** (`perf/ui-transitions-polish`):
   - Añadida animación de desvanecimiento suave (`.transition(.opacity)`) y clave de estado estable (`notebookStateKey`) en el Cuaderno al cambiar de esqueleto a datos reales para eliminar el layout flash visual.
   - Implementada transición de crossfade asimétrica rápida (150 ms entrada / 100 ms salida) con `.id(activeModule)` en el Workspace Shell Principal para suavizar los cambios de módulo desde la barra lateral.
@@ -83,6 +87,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- SyncLAN alinea cursos escolares y grupos entre macOS/iPadOS: se sincroniza `academic_year` como entidad de primer orden y los payloads de `class` preservan `academicYearId`, evitando que los grupos aparezcan bajo cursos escolares distintos en cada dispositivo.
 - La importación DOCX de secuenciaciones de sesiones reconoce títulos desde cabeceras, sesiones agrupadas, tipos simple/doble, minutos globales por tipo y desarrollos por bloques o rangos horarios.
 - El Cuaderno deja de mutar `@State` durante el render en macOS/iOS al retirar el cache mutable `displayValueCache` de los textos visibles de celdas, fechas y medias, evitando el warning SwiftUI `Modifying state during view update`.
 - Las pestañas del Cuaderno pasan a aislar columnas por pestaña: una pestaña nueva queda vacía y las columnas nuevas se asignan solo a la pestaña activa.
@@ -136,6 +141,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Data
 
+- `AcademicYearsRepository` expone `upsertAcademicYear` y `SqlDelightSyncAdapter` recoge/aplica snapshots de `academic_year` sin cambios de esquema, reutilizando la query SQLDelight existente.
 - SQLDelight añade snapshots ligeros para Dashboard, Cursos, ficha de alumno, Cuaderno paginado, evaluaciones pendientes e histórico EF, evitando abrir el `NotebookSheet` completo en vistas resumidas.
 - SQLDelight añade índices no destructivos para lecturas diarias de calificaciones, celdas del Cuaderno, evaluaciones, asistencia, incidencias y columnas por categoría mediante `34.sqm`.
 - `NotebookRepositorySqlDelight` añade guardado batch de drafts de celda en una transacción SQLDelight, conservando auditoría de cambios y evitando una escritura/refresh por carácter durante edición rápida.
@@ -154,6 +160,9 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Verification
 
+- `./gradlew :data:desktopTest` completado correctamente tras añadir sincronización de `academic_year`. `DEVELOPER_DIR=/Users/mariofernandez/Downloads/Xcode-beta.app/Contents/Developer xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -configuration Debug -destination generic/platform=macOS ARCHS=arm64 ONLY_ACTIVE_ARCH=YES build` completado correctamente, compilando `KmpBridge.swift` contra el framework KMP actualizado.
+- `./gradlew :data:desktopTest` completado correctamente tras añadir el endpoint local-only de SyncLAN y sus tests. `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -configuration Debug -destination generic/platform=macOS ARCHS=arm64 ONLY_ACTIVE_ARCH=YES build` queda bloqueado con `xcode-select` apuntando a `/Library/Developer/CommandLineTools`; usando `DEVELOPER_DIR=/Users/mariofernandez/Downloads/Xcode-beta.app/Contents/Developer`, la misma build macOS completó correctamente y compiló `KmpBridge.swift` junto al helper.
+- `git diff --check -- kmp/iosApp/MacApp/MacModuleStubs.swift kmp/iosApp/App/PlannerWorkspaceIOS.swift docs/CHANGELOG.md` completado correctamente. `DEVELOPER_DIR=/Users/mariofernandez/Downloads/Xcode-beta.app/Contents/Developer xcodebuild -quiet -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPMac -configuration Debug -destination 'generic/platform=macOS' ARCHS=arm64 ONLY_ACTIVE_ARCH=YES build` completado correctamente tras ajustar el Planner macOS centrado en ejecución.
 - `git diff --check -- kmp/iosApp/App/PlannerWorkspaceIOS.swift` completado correctamente. `xcodebuild -list -project kmp/iosApp/MiGestorKMPiOS.xcodeproj` queda bloqueado con el `xcode-select` global porque apunta a `/Library/Developer/CommandLineTools`; usando `DEVELOPER_DIR=/Users/mariofernandez/Downloads/Xcode-beta.app/Contents/Developer`, `xcodebuild -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` completó correctamente.
 - `git diff --check` completado correctamente tras retirar el cache mutable SwiftUI del Cuaderno. `PLATFORM_NAME=macosx ARCHS=arm64 CONFIGURATION=Debug ./scripts/build_apple_framework.sh` queda bloqueado en `:xcodeVersion` por `MissingXcodeException`: `xcode-select` apunta a `/Library/Developer/CommandLineTools` y `xcrun xcodebuild -version` no encuentra Xcode completo.
 - `xcodegen generate` completado desde `kmp/iosApp`, registrando `KmpBridgeObservationStores.swift` en el proyecto Xcode versionado.

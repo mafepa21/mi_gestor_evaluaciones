@@ -89,6 +89,25 @@ interface AcademicYearsRepository {
         centerId: Long? = null,
         makeActive: Boolean = true,
     ): Long
+    suspend fun upsertAcademicYear(
+        id: Long,
+        centerId: Long,
+        name: String,
+        startEpochMs: Long,
+        endEpochMs: Long,
+        status: String,
+        isActive: Boolean,
+        archivedAtEpochMs: Long? = null,
+        updatedAtEpochMs: Long = 0,
+        deviceId: String? = null,
+        syncVersion: Long = 0,
+    ): Long = createAcademicYear(
+        name = name,
+        startEpochMs = startEpochMs,
+        endEpochMs = endEpochMs,
+        centerId = centerId,
+        makeActive = isActive,
+    )
     suspend fun setActiveAcademicYear(academicYearId: Long)
     suspend fun archiveAcademicYear(academicYearId: Long)
     suspend fun trashAcademicYear(academicYearId: Long) = archiveAcademicYear(academicYearId)

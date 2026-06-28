@@ -1137,14 +1137,11 @@ struct MacPlannerView: View {
     }
 
     private func openMacSession(_ session: PlanningSession) {
-        if hasSessionPassed(session) {
-            Task {
-                await vm.select(session: session)
-                isInspectorVisible = true
-            }
-        } else {
-            selectedDetailSession = session
+        Task {
+            await vm.select(session: session)
+            isInspectorVisible = true
         }
+        selectedDetailSession = session
     }
 
     private func applySessionIdFromRoot(_ sessionId: Int64) async {
@@ -1158,12 +1155,9 @@ struct MacPlannerView: View {
             )
             selectedSessionIdFromRoot = nil
             
-            if hasSessionPassed(session) {
-                await vm.select(session: session)
-                isInspectorVisible = true
-            } else {
-                selectedDetailSession = session
-            }
+            await vm.select(session: session)
+            isInspectorVisible = true
+            selectedDetailSession = session
         } catch {
             print("Error getting session from root: \(error)")
         }
@@ -1241,12 +1235,7 @@ struct MacPlannerView: View {
                 }
             }
             .padding(12)
-            .background(MacAppStyle.cardBackground)
-            .overlay {
-                RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous)
-                    .stroke(MacAppStyle.cardBorder, lineWidth: 0.5)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
+            .macLiquidGlassPanel(.secondaryPanel, isActive: true)
 
             VStack(alignment: .leading, spacing: 12) {
                 Text("Filtros")
@@ -1278,12 +1267,7 @@ struct MacPlannerView: View {
                 }
             }
             .padding(MacAppStyle.innerPadding)
-            .background(MacAppStyle.cardBackground)
-            .overlay {
-                RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous)
-                    .stroke(MacAppStyle.cardBorder, lineWidth: 0.5)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
+            .macLiquidGlassPanel(.secondaryPanel, isActive: true)
 
             VStack(alignment: .leading, spacing: 10) {
                 Text("Acciones")
@@ -1323,17 +1307,12 @@ struct MacPlannerView: View {
                 .buttonStyle(.bordered)
             }
             .padding(MacAppStyle.innerPadding)
-            .background(MacAppStyle.cardBackground)
-            .overlay {
-                RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous)
-                    .stroke(MacAppStyle.cardBorder, lineWidth: 0.5)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
+            .macLiquidGlassPanel(.secondaryPanel, isActive: true)
 
             Spacer(minLength: 0)
         }
         .padding(MacAppStyle.pagePadding)
-        .background(MacAppStyle.cardBackground)
+        .background(.clear)
     }
 
     private var plannerHeader: some View {
@@ -1407,6 +1386,10 @@ struct MacPlannerView: View {
                     Task { await receiveCascadeDrop(sessionId: sessionId, day: day, period: period) }
                 }
             )
+        case .day:
+            PlannerDayView(vm: vm, onOpenSession: openMacSession)
+        case .sequence:
+            PlannerSequenceView(vm: vm, onOpenSession: openMacSession)
         case .sessions:
             MacPlannerSessionsTable(
                 rows: displayedRows,
@@ -1481,18 +1464,13 @@ struct MacPlannerView: View {
                 
                 Divider()
                     .padding(.top, 8)
+            } else {
+                PlannerJournalDetailPane(vm: vm)
+                    .environmentObject(bridge)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
-
-            PlannerJournalDetailPane(vm: vm)
-                .environmentObject(bridge)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .background(MacAppStyle.cardBackground)
-        .overlay(alignment: .leading) {
-            Rectangle()
-                .fill(MacAppStyle.cardBorder)
-                .frame(width: 0.5)
-        }
+        .macLiquidGlassPanel(.inspector, cornerRadius: 0, isActive: true)
     }
 
     private var displayedSessions: [PlanningSession] {
@@ -1659,6 +1637,8 @@ private struct MacPlannerPendingDrop {
 
 private enum MacPlannerSection: String, CaseIterable, Identifiable {
     case week
+    case day
+    case sequence
     case sessions
     case agenda
 
@@ -1667,6 +1647,8 @@ private enum MacPlannerSection: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .week: return "Semana"
+        case .day: return "Día"
+        case .sequence: return "Secuencia"
         case .sessions: return "Sesiones"
         case .agenda: return "Agenda"
         }
@@ -1675,6 +1657,8 @@ private enum MacPlannerSection: String, CaseIterable, Identifiable {
     var systemImage: String {
         switch self {
         case .week: return "calendar"
+        case .day: return "calendar.day.timeline.left"
+        case .sequence: return "point.3.connected.trianglepath.dotted"
         case .sessions: return "tablecells"
         case .agenda: return "clock.badge.checkmark"
         }

@@ -72,7 +72,13 @@ struct StructuredInstrumentEvaluationSheet: View {
                 }
             }
         }
+#if os(macOS)
         .frame(minWidth: 620, minHeight: 560)
+#else
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+#endif
         .task { await load() }
     }
 

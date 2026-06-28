@@ -16,19 +16,44 @@ struct ScheduleImportPreviewSheet: View {
             Divider()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    summary
-                    emptySlotControl
-                    diagnostics
-                    slotsByDay
-                }
+                importPreviewContent
                 .padding(24)
             }
 
             Divider()
             footer
         }
+        #if os(macOS)
         .frame(minWidth: 720, minHeight: 620)
+        #else
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+        #endif
+    }
+
+    @ViewBuilder
+    private var importPreviewContent: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 24) {
+                VStack(alignment: .leading, spacing: 16) {
+                    summary
+                    emptySlotControl
+                    diagnostics
+                }
+                .frame(width: 304, alignment: .topLeading)
+
+                slotsByDay
+                    .frame(minWidth: 360, maxWidth: .infinity, alignment: .topLeading)
+            }
+            .frame(minWidth: 688, alignment: .topLeading)
+
+            VStack(alignment: .leading, spacing: 18) {
+                summary
+                emptySlotControl
+                diagnostics
+                slotsByDay
+            }
+        }
     }
 
     private var header: some View {
@@ -67,6 +92,18 @@ struct ScheduleImportPreviewSheet: View {
 
     private var summary: some View {
         VStack(alignment: .leading, spacing: 14) {
+            metricGrid
+
+            flowLine(title: "Grupos", values: preview.groupCodes.map { knownGroupNames[$0] ?? groupDisplayName(for: $0) })
+            flowLine(title: "Materias", values: preview.subjectNames)
+        }
+        .padding(16)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var metricGrid: some View {
+        ViewThatFits(in: .horizontal) {
             HStack(spacing: 12) {
                 metric("Sesiones", "\(preview.teachingSlots.count)")
                 metric("Tutorías", "\(preview.tutoringSlots.count)")
@@ -75,11 +112,14 @@ struct ScheduleImportPreviewSheet: View {
                 metric("Grupos", "\(preview.groupCodes.count)")
             }
 
-            flowLine(title: "Grupos", values: preview.groupCodes.map { knownGroupNames[$0] ?? groupDisplayName(for: $0) })
-            flowLine(title: "Materias", values: preview.subjectNames)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 116), spacing: 12)], alignment: .leading, spacing: 12) {
+                metric("Sesiones", "\(preview.teachingSlots.count)")
+                metric("Tutorías", "\(preview.tutoringSlots.count)")
+                metric("Recreos", "\(preview.breakSlots.count)")
+                metric("Huecos vacíos", "\(preview.emptyCandidates.count)")
+                metric("Grupos", "\(preview.groupCodes.count)")
+            }
         }
-        .padding(16)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private var emptySlotControl: some View {

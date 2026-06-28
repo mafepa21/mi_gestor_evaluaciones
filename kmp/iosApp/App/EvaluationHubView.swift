@@ -64,141 +64,162 @@ struct EvaluationHubView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 0) {
+                evaluationListPane
+                    .frame(minWidth: 336, idealWidth: 360, maxWidth: 384)
+
+                Color.clear.frame(width: 8)
+
+                evaluationDetailPane
+            }
+
             VStack(spacing: 0) {
-                VStack(spacing: 12) {
-                    HStack(spacing: 10) {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundStyle(.secondary)
-                        TextField("Buscar evaluación o código…", text: $searchText)
-                            .textFieldStyle(.plain)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-
-                    Picker("Tipo", selection: $selectedTypeFilter) {
-                        ForEach(availableTypes, id: \.self) { type in
-                            Text(type).tag(type)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-
-                    HStack(spacing: 10) {
-                        WorkspaceCompactStat(title: "Total", value: "\(evaluationMetrics.total)", tint: .blue)
-                        WorkspaceCompactStat(title: "Con rúbrica", value: "\(evaluationMetrics.linkedRubrics)", tint: .green)
-                        WorkspaceCompactStat(title: "Peso medio", value: String(format: "%.1f", evaluationMetrics.averageWeight), tint: .orange)
-                    }
-                }
-                .padding(16)
-
-                List {
-                    Section("Evaluaciones") {
-                        ForEach(filteredEvaluations, id: \.id) { evaluation in
-                            Button {
-                                selectedEvaluationId = evaluation.id
-                            } label: {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(evaluation.name)
-                                        .font(.headline)
-                                    Text("\(evaluation.type) · Peso \(String(format: "%.1f", evaluation.weight))")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-                .listStyle(.plain)
+                evaluationListPane
+                    .frame(maxHeight: 420)
+                evaluationDetailPane
             }
-            .frame(minWidth: 320, maxWidth: 360)
-
-            Divider().opacity(0.2)
-
-            Group {
-                if selectedEvaluation != nil, let presentation = selectedPresentation {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 18) {
-                            WorkspaceInspectorHero(title: presentation.title, subtitle: presentation.subtitle)
-                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 16)], spacing: 16) {
-                                WorkspaceMetricCard(title: "Peso", value: presentation.weightText, systemImage: "scalemass")
-                                WorkspaceMetricCard(title: "Código", value: presentation.code, systemImage: "number")
-                                WorkspaceMetricCard(title: "Rúbrica", value: presentation.rubricName, systemImage: "checklist")
-                                WorkspaceMetricCard(
-                                    title: "Clases con rúbrica",
-                                    value: presentation.linkedClassCountText,
-                                    systemImage: "rectangle.3.group"
-                                )
-                            }
-
-                            HStack(spacing: 12) {
-                                Button("Abrir cuaderno") {
-                                    onOpenModule(.notebook, selectedClassId, nil)
-                                }
-                                .buttonStyle(.borderedProminent)
-                                Button("Ir a rúbricas") {
-                                    onOpenModule(.rubrics, selectedClassId, nil)
-                                }
-                                .buttonStyle(.bordered)
-                            }
-
-                            WorkspaceDetailBlock(title: "Resumen del instrumento", content: presentation.summary)
-
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text("Contexto evaluativo")
-                                    .font(.headline)
-                                WorkspaceFlowLayout(spacing: 10) {
-                                    WorkspaceTag(text: selectedClassId == nil ? "Clase global" : "Clase activa", systemImage: "rectangle.3.group")
-                                    ForEach(Array(presentation.readinessTags.enumerated()), id: \.offset) { _, tag in
-                                        WorkspaceTag(text: tag, systemImage: "tag.fill")
-                                    }
-                                }
-                            }
-
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text("Acciones rápidas")
-                                    .font(.headline)
-                                WorkspaceActionRow(title: "Abrir cuaderno del grupo", systemImage: "book.closed.fill") {
-                                    onOpenModule(.notebook, selectedClassId, nil)
-                                }
-                                WorkspaceActionRow(title: "Ir a banco de rúbricas", systemImage: "checklist") {
-                                    onOpenModule(.rubrics, selectedClassId, nil)
-                                }
-                            }
-                        }
-                        .padding(24)
-                    }
-                } else {
-                    VStack(spacing: 18) {
-                        WorkspaceEmptyState(
-                            title: "Selecciona una evaluación",
-                            subtitle: "Revisa instrumentos, peso, rúbrica asociada y acceso directo a cuaderno o banco de rúbricas."
-                        )
-                        HStack(spacing: 12) {
-                            Button("Crear evaluación") {
-                                bridge.status = "Usa el botón superior para crear una evaluación nueva."
-                            }
-                            .buttonStyle(.borderedProminent)
-                            Button("Abrir cuaderno") {
-                                onOpenModule(.notebook, selectedClassId, nil)
-                            }
-                            .buttonStyle(.bordered)
-                            Button("Abrir rúbricas") {
-                                onOpenModule(.rubrics, selectedClassId, nil)
-                            }
-                            .buttonStyle(.bordered)
-                        }
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(appPageBackground(for: colorScheme))
         }
+        .background(appPageBackground(for: colorScheme))
         .task { await reload() }
         .appOnChange(of: selectedClassId) { _ in
             Task { await reload() }
         }
+    }
+
+    private var evaluationListPane: some View {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
+                    TextField("Buscar evaluación o código…", text: $searchText)
+                        .textFieldStyle(.plain)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                Picker("Tipo", selection: $selectedTypeFilter) {
+                    ForEach(availableTypes, id: \.self) { type in
+                        Text(type).tag(type)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                    WorkspaceCompactStat(title: "Total", value: "\(evaluationMetrics.total)", tint: .blue)
+                    WorkspaceCompactStat(title: "Rúbricas", value: "\(evaluationMetrics.linkedRubrics)", tint: .green)
+                    WorkspaceCompactStat(title: "Peso medio", value: String(format: "%.1f", evaluationMetrics.averageWeight), tint: .orange)
+                    WorkspaceCompactStat(title: "Tipos", value: "\(max(availableTypes.count - 1, 0))", tint: EvaluationDesign.accent)
+                }
+            }
+            .padding(24)
+
+            List {
+                Section("Evaluaciones") {
+                    ForEach(filteredEvaluations, id: \.id) { evaluation in
+                        Button {
+                            selectedEvaluationId = evaluation.id
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(evaluation.name)
+                                    .font(.headline)
+                                    .lineLimit(2)
+                                Text("\(evaluation.type) · Peso \(String(format: "%.1f", evaluation.weight))")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.vertical, 4)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .listStyle(.plain)
+        }
+        .background(appMutedCardBackground(for: colorScheme))
+    }
+
+    private var evaluationDetailPane: some View {
+        Group {
+            if selectedEvaluation != nil, let presentation = selectedPresentation {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 24) {
+                        WorkspaceInspectorHero(title: presentation.title, subtitle: presentation.subtitle)
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 16)], spacing: 16) {
+                            WorkspaceMetricCard(title: "Peso", value: presentation.weightText, systemImage: "scalemass")
+                            WorkspaceMetricCard(title: "Código", value: presentation.code, systemImage: "number")
+                            WorkspaceMetricCard(title: "Rúbrica", value: presentation.rubricName, systemImage: "checklist")
+                            WorkspaceMetricCard(
+                                title: "Clases con rúbrica",
+                                value: presentation.linkedClassCountText,
+                                systemImage: "rectangle.3.group"
+                            )
+                        }
+
+                        HStack(spacing: 12) {
+                            Button("Abrir cuaderno") {
+                                onOpenModule(.notebook, selectedClassId, nil)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            Button("Ir a rúbricas") {
+                                onOpenModule(.rubrics, selectedClassId, nil)
+                            }
+                            .buttonStyle(.bordered)
+                        }
+
+                        WorkspaceDetailBlock(title: "Resumen del instrumento", content: presentation.summary)
+
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("Contexto evaluativo")
+                                .font(.headline)
+                            WorkspaceFlowLayout(spacing: 10) {
+                                WorkspaceTag(text: selectedClassId == nil ? "Clase global" : "Clase activa", systemImage: "rectangle.3.group")
+                                ForEach(Array(presentation.readinessTags.enumerated()), id: \.offset) { _, tag in
+                                    WorkspaceTag(text: tag, systemImage: "tag.fill")
+                                }
+                            }
+                        }
+
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("Acciones rápidas")
+                                .font(.headline)
+                            WorkspaceActionRow(title: "Abrir cuaderno del grupo", systemImage: "book.closed.fill") {
+                                onOpenModule(.notebook, selectedClassId, nil)
+                            }
+                            WorkspaceActionRow(title: "Ir a banco de rúbricas", systemImage: "checklist") {
+                                onOpenModule(.rubrics, selectedClassId, nil)
+                            }
+                        }
+                    }
+                    .padding(24)
+                }
+            } else {
+                VStack(spacing: 24) {
+                    WorkspaceEmptyState(
+                        title: "Selecciona una evaluación",
+                        subtitle: "Revisa instrumentos, peso, rúbrica asociada y acceso directo a cuaderno o banco de rúbricas."
+                    )
+                    HStack(spacing: 12) {
+                        Button("Crear evaluación") {
+                            bridge.status = "Usa el botón superior para crear una evaluación nueva."
+                        }
+                        .buttonStyle(.borderedProminent)
+                        Button("Abrir cuaderno") {
+                            onOpenModule(.notebook, selectedClassId, nil)
+                        }
+                        .buttonStyle(.bordered)
+                        Button("Abrir rúbricas") {
+                            onOpenModule(.rubrics, selectedClassId, nil)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(appPageBackground(for: colorScheme))
     }
 
     @MainActor
@@ -216,4 +237,3 @@ struct EvaluationHubView: View {
         }
     }
 }
-

@@ -532,7 +532,11 @@ struct AddColumnSheet: View {
             .presentationDragIndicator(.hidden)
             #endif
         }
+#if os(macOS)
         .frame(minWidth: 520, idealWidth: 560, maxWidth: 640, minHeight: 560, idealHeight: 620)
+#else
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+#endif
     }
 
     private var sheetHeader: some View {

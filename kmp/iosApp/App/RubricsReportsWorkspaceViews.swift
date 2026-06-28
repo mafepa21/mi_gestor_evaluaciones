@@ -116,7 +116,7 @@ struct RubricsWorkspaceView: View {
     var body: some View {
         HStack(spacing: 0) {
             VStack(spacing: 0) {
-                VStack(spacing: 16) {
+                VStack(alignment: .leading, spacing: 16) {
                     HStack(spacing: 8) {
                         Image(systemName: "magnifyingglass")
                             .foregroundStyle(.secondary)
@@ -127,39 +127,37 @@ struct RubricsWorkspaceView: View {
                     .padding(.vertical, 16)
                     .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-                    HStack(spacing: 16) {
-                        Picker("Curso", selection: $selectedClassId) {
-                            Text("Todas").tag(Optional<Int64>.none)
-                            ForEach(bridge.classes, id: \.id) { schoolClass in
-                                Text(schoolClass.name).tag(Optional(schoolClass.id))
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                        WorkspaceCompactStat(title: "Rúbricas", value: "\(rubricMetrics.total)", tint: EvaluationDesign.accent)
+                        WorkspaceCompactStat(title: "Vinculadas", value: "\(rubricMetrics.linked)", tint: EvaluationDesign.success)
+                        WorkspaceCompactStat(title: "Criterios", value: String(format: "%.1f", rubricMetrics.avgCriteria), tint: IOSAppStyle.warning)
+                        WorkspaceCompactStat(title: "Situaciones", value: "\(availableTeachingUnits.count)", tint: .purple)
+                    }
+
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 16) {
+                            rubricFilterControls
+
+                            Spacer()
+
+                            Button {
+                                onOpenBuilder()
+                            } label: {
+                                Label("Nueva rúbrica", systemImage: "plus")
                             }
+                            .buttonStyle(.borderedProminent)
                         }
-                        .pickerStyle(.menu)
 
-                        Picker("SA", selection: $selectedTeachingUnitId) {
-                            Text("Todas las SA").tag(Optional<Int64>.none)
-                            ForEach(availableTeachingUnits, id: \.id) { unit in
-                                Text(unit.name).tag(Optional(unit.id))
+                        VStack(alignment: .leading, spacing: 12) {
+                            rubricFilterControls
+
+                            Button {
+                                onOpenBuilder()
+                            } label: {
+                                Label("Nueva rúbrica", systemImage: "plus")
                             }
-                            Text("Sin SA").tag(Optional(Int64.min))
+                            .buttonStyle(.borderedProminent)
                         }
-                        .pickerStyle(.menu)
-
-                        Picker("Filtro", selection: $selectedFilter) {
-                            ForEach(availableFilters, id: \.self) { filter in
-                                Text(filter).tag(filter)
-                            }
-                        }
-                        .pickerStyle(.menu)
-
-                        Spacer()
-
-                        Button {
-                            onOpenBuilder()
-                        } label: {
-                            Label("Nueva rúbrica", systemImage: "plus")
-                        }
-                        .buttonStyle(.borderedProminent)
                     }
                 }
                 .padding(24)
@@ -220,7 +218,7 @@ struct RubricsWorkspaceView: View {
                                         bridge.startAssignRubric(rubric.rubric)
                                     }
                                     Button("Evaluación masiva", systemImage: "square.grid.3x3") {
-                                        onOpenModule(.evaluationHub, selectedClassId, nil)
+                                        Task { await openBulkEvaluation(for: rubric) }
                                     }
                                     Button("Eliminar", systemImage: "trash", role: .destructive) {
                                         bridge.deleteRubric(id: rubric.rubric.id)
@@ -340,6 +338,34 @@ struct RubricsWorkspaceView: View {
         }
     }
 
+    private var rubricFilterControls: some View {
+        HStack(spacing: 12) {
+            Picker("Curso", selection: $selectedClassId) {
+                Text("Todas").tag(Optional<Int64>.none)
+                ForEach(bridge.classes, id: \.id) { schoolClass in
+                    Text(schoolClass.name).tag(Optional(schoolClass.id))
+                }
+            }
+            .pickerStyle(.menu)
+
+            Picker("SA", selection: $selectedTeachingUnitId) {
+                Text("Todas las SA").tag(Optional<Int64>.none)
+                ForEach(availableTeachingUnits, id: \.id) { unit in
+                    Text(unit.name).tag(Optional(unit.id))
+                }
+                Text("Sin SA").tag(Optional(Int64.min))
+            }
+            .pickerStyle(.menu)
+
+            Picker("Filtro", selection: $selectedFilter) {
+                ForEach(availableFilters, id: \.self) { filter in
+                    Text(filter).tag(filter)
+                }
+            }
+            .pickerStyle(.menu)
+        }
+    }
+
     func rubricListRow(_ rubric: RubricDetail) -> some View {
         Button {
             selectedRubricId = rubric.rubric.id
@@ -379,7 +405,7 @@ struct RubricsWorkspaceView: View {
             .buttonStyle(.borderedProminent)
         } else if evaluationCount > 0 {
             Button {
-                onOpenModule(.evaluationHub, selectedClassId, nil)
+                Task { await openBulkEvaluation(for: rubric) }
             } label: {
                 Label(evaluationCount > 1 ? "Continuar evaluación" : "Evaluar grupo", systemImage: "square.grid.3x3")
             }
@@ -414,21 +440,33 @@ struct RubricsWorkspaceView: View {
 
             if let usageSummary, !usageSummary.evaluationUsages.isEmpty {
                 ForEach(Array(usageSummary.evaluationUsages.prefix(4))) { usage in
-                    HStack(spacing: 12) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(usage.evaluationName)
-                                .font(.subheadline.weight(.bold))
-                            Text("\(usage.className) · \(usage.evaluationType)")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
+                    Button {
+                        Task { await openBulkEvaluation(for: usage, rubric: rubric) }
+                    } label: {
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(usage.evaluationName)
+                                    .font(.subheadline.weight(.bold))
+                                    .foregroundStyle(.primary)
+                                Text("\(usage.className) · \(usage.evaluationType)")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            VStack(alignment: .trailing, spacing: 4) {
+                                Text("Peso \(String(format: "%.1f", usage.weight))")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                Label("Evaluar", systemImage: "square.grid.3x3")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(EvaluationDesign.accent)
+                            }
                         }
-                        Spacer()
-                        Text("Peso \(String(format: "%.1f", usage.weight))")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
                     }
+                    .buttonStyle(.plain)
                     .padding(16)
                     .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .accessibilityLabel("Evaluar \(usage.evaluationName) en \(usage.className)")
                 }
             } else {
                 WorkspaceDetailBlock(
@@ -488,6 +526,29 @@ struct RubricsWorkspaceView: View {
     @MainActor
     func reloadTeachingUnits() async {
         teachingUnits = (try? await bridge.plannerTeachingUnits(for: selectedClassId)) ?? []
+    }
+
+    @MainActor
+    func openBulkEvaluation(for rubric: RubricDetail) async {
+        let opened = await bridge.launchBulkRubricEvaluationFromRubric(
+            rubricId: rubric.rubric.id,
+            preferredClassId: selectedClassId
+        )
+        if !opened {
+            onOpenModule(.evaluationHub, selectedClassId, nil)
+        }
+    }
+
+    @MainActor
+    func openBulkEvaluation(for usage: KmpBridge.RubricUsageSnapshot.EvaluationUsage, rubric: RubricDetail) async {
+        let opened = await bridge.launchBulkRubricEvaluationFromUsage(
+            rubricId: rubric.rubric.id,
+            classId: usage.classId,
+            evaluationId: usage.evaluationId
+        )
+        if !opened {
+            onOpenModule(.evaluationHub, usage.classId, nil)
+        }
     }
 
     func ensureExpandedGroups() {
@@ -673,15 +734,26 @@ struct ReportsWorkspaceView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            sidebar
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 0) {
+                sidebar
 
-            Divider().opacity(0.2)
+                Color.clear.frame(width: 8)
 
-            detail
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(appPageBackground(for: colorScheme))
+                detail
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(appPageBackground(for: colorScheme))
+            }
+
+            VStack(spacing: 0) {
+                sidebar
+                    .frame(maxHeight: 440)
+                detail
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(appPageBackground(for: colorScheme))
+            }
         }
+        .background(appPageBackground(for: colorScheme))
         .task {
             refreshAvailability()
             await refreshWorkspaceContext()
@@ -739,14 +811,14 @@ struct ReportsWorkspaceView: View {
 
     var sidebar: some View {
         VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 16) {
                 Picker("Superficie", selection: $activeSurface) {
                     Text("Informes").tag(WorkspaceSurface.reports)
                     Text("Analítica IA").tag(WorkspaceSurface.analytics)
                 }
                 .pickerStyle(.segmented)
 
-                HStack(spacing: 10) {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                     WorkspaceCompactStat(title: "Alumnado", value: "\(reportMetrics.students)", tint: .blue)
                     WorkspaceCompactStat(
                         title: activeSurface == .reports ? "Evaluaciones" : "Gráficos",
@@ -758,9 +830,14 @@ struct ReportsWorkspaceView: View {
                         value: activeSurface == .reports ? "\(reportMetrics.rubrics)" : (analyticsAvailability.isAvailable ? "On" : "Off"),
                         tint: .green
                     )
+                    WorkspaceCompactStat(
+                        title: "Superficie",
+                        value: activeSurface == .reports ? "Doc" : "IA",
+                        tint: EvaluationDesign.accent
+                    )
                 }
             }
-            .padding(16)
+            .padding(24)
 
             List {
                 if activeSurface == .reports {
@@ -771,7 +848,8 @@ struct ReportsWorkspaceView: View {
             }
             .listStyle(.plain)
         }
-        .frame(minWidth: 320, maxWidth: 360)
+        .frame(minWidth: 336, idealWidth: 360, maxWidth: 384)
+        .background(appMutedCardBackground(for: colorScheme))
     }
 
     @ViewBuilder

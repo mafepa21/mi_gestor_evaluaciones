@@ -197,7 +197,13 @@ struct AppleAIPreviewSheet: View {
                 }
             }
         }
+#if os(macOS)
         .frame(minWidth: 560, minHeight: 560)
+#else
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+#endif
     }
 }
 

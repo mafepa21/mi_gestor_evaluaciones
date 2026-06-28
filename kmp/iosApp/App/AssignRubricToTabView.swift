@@ -17,8 +17,10 @@ struct AssignRubricToTabView: View {
             .background(sheetBackground)
 #else
         content
-            .frame(minWidth: 680, idealWidth: 720, minHeight: 520, idealHeight: 560)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(sheetBackground)
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
 #endif
     }
 

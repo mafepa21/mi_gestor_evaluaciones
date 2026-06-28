@@ -14,18 +14,29 @@ struct PlannerNavigationContext: Equatable {
 
 enum PlannerWorkspaceSection: String, CaseIterable, Identifiable {
     case week = "Semana"
+    case day = "Día"
+    case sequence = "Secuencia"
     case sessions = "Agenda"
-    case schedule = "Horario"
+    case schedule = "Cobertura"
 
     var id: String { rawValue }
 
     var systemImage: String {
         switch self {
         case .week: return "calendar"
+        case .day: return "calendar.day.timeline.left"
+        case .sequence: return "point.3.connected.trianglepath.dotted"
         case .sessions: return "list.bullet.rectangle"
-        case .schedule: return "clock"
+        case .schedule: return "chart.bar.xaxis"
         }
     }
+}
+
+enum PlannerDensity: String, CaseIterable, Identifiable {
+    case compact = "Compacta"
+    case standard = "Estándar"
+
+    var id: String { rawValue }
 }
 
 struct PlannerJournalDraftNote: Identifiable, Equatable {
@@ -264,6 +275,20 @@ struct PlannerWeekCellEntry: Identifiable, Hashable {
     let isCompleted: Bool
 }
 
+struct PlannerCellKey: Hashable {
+    let day: Int
+    let period: Int
+}
+
+struct PlannerWeekRenderModel: Equatable {
+    var entriesByCell: [PlannerCellKey: [PlannerWeekCellEntry]] = [:]
+    var visibleSlots: [PlannerVisibleSlot] = []
+    var visibleDays: [Int] = []
+    var holidays: Set<Int> = []
+
+    static let empty = PlannerWeekRenderModel()
+}
+
 struct PlannerSituationProgress: Equatable {
     let title: String
     let total: Int
@@ -467,6 +492,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
 
     @Published var isLoaded = false
     @Published var activeSection: PlannerWorkspaceSection = .week
+    @Published var density: PlannerDensity = .standard
     @Published var week = 1
     @Published var year = 2026
     @Published var groups: [SchoolClass] = []
@@ -518,6 +544,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     @Published var isGeneratingScheduleSessions = false
     @Published var lastCascadeMove: SessionCascadeMoveResult?
     @Published var holidayDays: Set<Int> = []
+    @Published var weekRenderModel: PlannerWeekRenderModel = .empty
 
     private weak var bridge: KmpBridge?
     private var autosaveTask: Task<Void, Never>?
@@ -617,6 +644,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         rebuildVisiblePlannerStructure()
         await reloadJournalSummaries()
         await reloadHolidays()
+        rebuildWeekRenderModel()
         applySearch()
 
         if keepSelection, let selectedSession {
@@ -636,6 +664,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         guard let bridge else { return }
         await journalStore.reloadSummaries(bridge: bridge, sessionIds: sessions.map(\.id))
         journalSummaryBySessionId = journalStore.journalSummaryBySessionId
+        rebuildWeekRenderModel()
     }
 
     private func reloadSelectedJournal() async {
@@ -684,6 +713,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
 
     func selectGroup(_ id: Int64?) {
         selectedGroupId = id
+        rebuildWeekRenderModel()
     }
 
     func timeLabel(for period: Int) -> String {
@@ -1680,10 +1710,91 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         if !visibleSlots.contains(where: { $0.period == composerDraft.period }) {
             composerDraft.period = visibleSlots.first?.period ?? 1
         }
+        rebuildWeekRenderModel()
     }
 
     func entries(for day: Int, period: Int) -> [PlannerWeekCellEntry] {
-        let sessionEntries = sessions
+        weekRenderModel.entriesByCell[PlannerCellKey(day: day, period: period)] ?? buildEntries(for: day, period: period)
+    }
+
+    func daySessions(for day: Int? = nil) -> [PlanningSession] {
+        let targetDay = day ?? selectedDayForDayView
+        return filteredPlannerSessions()
+            .filter { Int($0.dayOfWeek) == targetDay }
+            .sorted {
+                let lhsStart = $0.startTime ?? timeLabel(for: Int($0.period))
+                let rhsStart = $1.startTime ?? timeLabel(for: Int($1.period))
+                if lhsStart == rhsStart { return $0.groupName < $1.groupName }
+                return lhsStart < rhsStart
+            }
+    }
+
+    var selectedDayForDayView: Int {
+        if let selectedSession {
+            return Int(selectedSession.dayOfWeek)
+        }
+        let current = IsoWeekHelper.shared.current()
+        let currentWeek = Int(truncating: current.first ?? KotlinInt(value: 1))
+        let currentYear = Int(truncating: current.second ?? KotlinInt(value: 2026))
+        if week == currentWeek, year == currentYear {
+            var calendar = Calendar(identifier: .iso8601)
+            calendar.locale = Locale.current
+            let today = ((calendar.component(.weekday, from: Date()) + 5) % 7) + 1
+            if visibleWeekdays.contains(today) { return today }
+        }
+        return visibleWeekdays.first ?? 1
+    }
+
+    func sequenceGroups() -> [(key: String, title: String, groupName: String, sessions: [PlanningSession])] {
+        let grouped = Dictionary(grouping: filteredPlannerSessions()) { session in
+            "\(session.groupId)-\(session.teachingUnitId)-\(normalizedSituationTitle(session.teachingUnitName))"
+        }
+        return grouped.compactMap { key, sessions in
+            guard let first = sessions.first else { return nil }
+            return (
+                key: key,
+                title: first.teachingUnitName.nilIfBlank ?? "Situación sin título",
+                groupName: first.groupName,
+                sessions: sessions.sorted {
+                    if $0.weekNumber == $1.weekNumber {
+                        if $0.dayOfWeek == $1.dayOfWeek { return $0.period < $1.period }
+                        return $0.dayOfWeek < $1.dayOfWeek
+                    }
+                    return $0.weekNumber < $1.weekNumber
+                }
+            )
+        }
+        .sorted { lhs, rhs in
+            lhs.groupName == rhs.groupName ? lhs.title < rhs.title : lhs.groupName < rhs.groupName
+        }
+    }
+
+    func rebuildWeekRenderModel() {
+        var entriesByCell: [PlannerCellKey: [PlannerWeekCellEntry]] = [:]
+        for day in visibleWeekdays {
+            for slot in visibleSlots {
+                let entries = buildEntries(for: day, period: Int(slot.period))
+                if !entries.isEmpty {
+                    entriesByCell[PlannerCellKey(day: day, period: Int(slot.period))] = entries
+                }
+            }
+        }
+        weekRenderModel = PlannerWeekRenderModel(
+            entriesByCell: entriesByCell,
+            visibleSlots: visibleSlots,
+            visibleDays: visibleWeekdays,
+            holidays: holidayDays
+        )
+    }
+
+    private func filteredPlannerSessions() -> [PlanningSession] {
+        sessions.filter { session in
+            selectedGroupId.map { session.groupId == $0 } ?? true
+        }
+    }
+
+    private func buildEntries(for day: Int, period: Int) -> [PlannerWeekCellEntry] {
+        let sessionEntries = filteredPlannerSessions()
             .filter { Int($0.dayOfWeek) == day && Int($0.period) == period }
             .sorted {
                 if $0.groupName == $1.groupName { return $0.teachingUnitName < $1.teachingUnitName }
@@ -1726,6 +1837,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         let scheduledEntries = teacherScheduleSlots
             .filter { slot in
                 guard Int(slot.dayOfWeek) == day else { return false }
+                if let selectedGroupId, slot.schoolClassId != selectedGroupId { return false }
                 guard let visibleSlot = visibleSlots.first(where: { $0.period == period }) else { return false }
                 return slot.startTime == visibleSlot.startTime && slot.endTime == visibleSlot.endTime && !existingClassIds.contains(slot.schoolClassId)
             }
@@ -1829,6 +1941,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
                 }
             }
             self.holidayDays = holidays
+            rebuildWeekRenderModel()
         } catch {
             print("Error al cargar festivos: \(error)")
         }
@@ -2002,14 +2115,16 @@ struct PlannerWorkspaceIOS: View {
 
     private var plannerMainContent: some View {
         VStack(spacing: 0) {
-            if vm.activeSection != .schedule {
-                PlannerToolbar(vm: vm, onOpenDiary: openSelectedSessionInDiary)
-                Divider().opacity(0.18)
-            }
+            PlannerToolbar(vm: vm, onOpenDiary: openSelectedSessionInDiary)
+            Divider().opacity(0.18)
             Group {
                 switch vm.activeSection {
                 case .week:
                     PlannerWeekBoard(vm: vm, onOpenDiary: openSessionInDiary)
+                case .day:
+                    PlannerDayView(vm: vm, onOpenSession: openSessionInDiary)
+                case .sequence:
+                    PlannerSequenceView(vm: vm, onOpenSession: openSessionInDiary)
                 case .sessions:
                     PlannerSessionsList(vm: vm, source: vm.filteredSessions, onOpenDiary: openSessionInDiary)
                 case .schedule:
@@ -2032,18 +2147,8 @@ struct PlannerWorkspaceIOS: View {
     }
 
     private func openSessionInDiary(_ session: PlanningSession) {
-        if hasSessionPassed(session) {
-            onOpenDiary?(
-                PlannerNavigationContext(
-                    week: vm.week,
-                    year: vm.year,
-                    groupId: session.groupId,
-                    sessionId: session.id
-                )
-            )
-        } else {
-            selectedDetailSession = session
-        }
+        Task { await vm.select(session: session) }
+        selectedDetailSession = session
     }
 
     private func hasSessionPassed(_ session: PlanningSession) -> Bool {
@@ -2143,6 +2248,35 @@ private struct PlannerToolbar: View {
             }
 
             HStack(spacing: 8) {
+                Picker("Vista", selection: $vm.activeSection) {
+                    ForEach([PlannerWorkspaceSection.week, PlannerWorkspaceSection.day, PlannerWorkspaceSection.sequence, PlannerWorkspaceSection.schedule], id: \.self) { section in
+                        Label(section.rawValue, systemImage: section.systemImage)
+                            .tag(section)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 420)
+
+                Picker("Grupo", selection: Binding(
+                    get: { vm.selectedGroupId },
+                    set: { vm.selectGroup($0) }
+                )) {
+                    Text("Todos").tag(Optional<Int64>.none)
+                    ForEach(vm.groups, id: \.id) { group in
+                        Text(group.name).tag(Optional(group.id))
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(maxWidth: 180)
+
+                Picker("Densidad", selection: $vm.density) {
+                    ForEach(PlannerDensity.allCases) { density in
+                        Text(density.rawValue).tag(density)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(maxWidth: 128)
+
                 IOSSearchField(text: $vm.searchText, placeholder: "Buscar sesión, unidad, objetivo…")
                     .appOnChange(of: vm.searchText) { _ in vm.applySearch() }
 
@@ -2287,15 +2421,26 @@ private struct PlannerWeekBoard: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
     let onOpenDiary: (PlanningSession) -> Void
 
+    private var columnWidth: CGFloat { vm.density == .compact ? 200 : 248 }
+    private var timeAxisWidth: CGFloat { vm.density == .compact ? 96 : 112 }
+
     var body: some View {
         ScrollView([.horizontal, .vertical]) {
             VStack(spacing: 0) {
                 HStack(spacing: 0) {
-                    cellHeader("Franja", width: 110)
-                    ForEach(vm.visibleWeekdays, id: \.self) { day in
+                    cellHeader("Franja", width: timeAxisWidth)
+                    ForEach(vm.weekRenderModel.visibleDays, id: \.self) { day in
                         let isHoliday = vm.holidayDays.contains(day)
-                        cellHeader(vm.dayHeaderLabel(for: day) + (isHoliday ? " 🌴" : ""), width: 230)
+                        cellHeader(vm.dayHeaderLabel(for: day), width: columnWidth)
                             .foregroundStyle(isHoliday ? EvaluationDesign.danger : Color.primary)
+                            .overlay(alignment: .trailing) {
+                                if isHoliday {
+                                    Image(systemName: "calendar.badge.minus")
+                                        .font(.caption.weight(.bold))
+                                        .foregroundStyle(EvaluationDesign.danger)
+                                        .padding(.trailing, 8)
+                                }
+                            }
                             .contextMenu {
                                 Button {
                                     Task { await vm.toggleHoliday(for: day) }
@@ -2309,7 +2454,8 @@ private struct PlannerWeekBoard: View {
                     }
                 }
 
-                ForEach(vm.visibleSlots, id: \.period) { slot in
+                ForEach(vm.weekRenderModel.visibleSlots, id: \.period) { slot in
+                    let rowHeight = rowHeight(for: slot)
                     HStack(spacing: 0) {
                         VStack(spacing: 4) {
                             Text(slot.period > 9 ? "Fx" : "P\(slot.period)")
@@ -2318,13 +2464,16 @@ private struct PlannerWeekBoard: View {
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
-                        .frame(width: 110, height: 150)
+                        .frame(width: timeAxisWidth, height: rowHeight)
                         .background(EvaluationDesign.surfaceSoft)
 
-                        ForEach(vm.visibleWeekdays, id: \.self) { day in
+                        ForEach(vm.weekRenderModel.visibleDays, id: \.self) { day in
                             PlannerWeekCellCard(
-                                entries: vm.entries(for: day, period: Int(slot.period)),
+                                entries: vm.weekRenderModel.entriesByCell[PlannerCellKey(day: day, period: Int(slot.period))] ?? [],
                                 isHoliday: vm.holidayDays.contains(day),
+                                isCompact: vm.density == .compact,
+                                cellWidth: columnWidth,
+                                cellHeight: rowHeight,
                                 onCreate: {
                                     vm.openComposer(day: day, period: Int(slot.period))
                                 },
@@ -2378,11 +2527,30 @@ private struct PlannerWeekBoard: View {
             .frame(width: width, height: 42)
             .background(EvaluationDesign.surfaceSoft)
     }
+
+    private func rowHeight(for slot: PlannerVisibleSlot) -> CGFloat {
+        guard let start = minutes(from: slot.startTime), let end = minutes(from: slot.endTime), end > start else {
+            return vm.density == .compact ? 112 : 144
+        }
+        let duration = end - start
+        let base = vm.density == .compact ? 104.0 : 136.0
+        let extra = CGFloat(max(duration - 55, 0)) * (vm.density == .compact ? 0.7 : 0.9)
+        return min(max(base + extra, base), vm.density == .compact ? 176 : 232)
+    }
+
+    private func minutes(from value: String) -> Int? {
+        let parts = value.split(separator: ":")
+        guard parts.count == 2, let hour = Int(parts[0]), let minute = Int(parts[1]) else { return nil }
+        return hour * 60 + minute
+    }
 }
 
 private struct PlannerWeekCellCard: View, Equatable {
     let entries: [PlannerWeekCellEntry]
     let isHoliday: Bool
+    let isCompact: Bool
+    let cellWidth: CGFloat
+    let cellHeight: CGFloat
     let onCreate: () -> Void
     let onOpenEntry: (PlannerWeekCellEntry) -> Void
     let onEditEntry: (PlannerWeekCellEntry) -> Void
@@ -2392,11 +2560,14 @@ private struct PlannerWeekCellCard: View, Equatable {
 
     static func == (lhs: PlannerWeekCellCard, rhs: PlannerWeekCellCard) -> Bool {
         lhs.isHoliday == rhs.isHoliday &&
-        lhs.entries == rhs.entries
+        lhs.entries == rhs.entries &&
+        lhs.isCompact == rhs.isCompact &&
+        lhs.cellWidth == rhs.cellWidth &&
+        lhs.cellHeight == rhs.cellHeight
     }
 
     var body: some View {
-        let singleRichEntry = entries.count == 1 && entries.first?.kind == .session
+        let singleRichEntry = entries.count == 1 && entries.first?.kind == .session && !isCompact
         VStack(alignment: .leading, spacing: 8) {
             if isHoliday {
                 ZStack {
@@ -2432,7 +2603,7 @@ private struct PlannerWeekCellCard: View, Equatable {
                     VStack(alignment: .leading, spacing: 6) {
                         Image(systemName: "plus.circle")
                             .font(.subheadline.weight(.semibold))
-                        Text("Libre")
+                        Text("Sin concretar")
                             .font(.caption.weight(.bold))
                         Text("Añadir sesión")
                             .font(.caption2)
@@ -2444,15 +2615,26 @@ private struct PlannerWeekCellCard: View, Equatable {
                 .buttonStyle(.plain)
             } else {
                 ForEach(entries.prefix(singleRichEntry ? 1 : 3)) { entry in
-                    PlannerWeekEntryCard(
-                        entry: entry,
-                        fillsCell: singleRichEntry,
-                        onTap: { onOpenEntry(entry) },
-                        onEdit: { onEditEntry(entry) },
-                        onDuplicate: { onDuplicateEntry(entry) },
-                        onComplete: { onCompleteEntry(entry) },
-                        onOpenDiary: { onOpenDiaryEntry(entry) }
-                    )
+                    if singleRichEntry {
+                        PlannerWeekEntryCard(
+                            entry: entry,
+                            fillsCell: true,
+                            onTap: { onOpenEntry(entry) },
+                            onEdit: { onEditEntry(entry) },
+                            onDuplicate: { onDuplicateEntry(entry) },
+                            onComplete: { onCompleteEntry(entry) },
+                            onOpenDiary: { onOpenDiaryEntry(entry) }
+                        )
+                    } else {
+                        PlannerWeekCompactEntryRow(
+                            entry: entry,
+                            onTap: { onOpenEntry(entry) },
+                            onEdit: { onEditEntry(entry) },
+                            onDuplicate: { onDuplicateEntry(entry) },
+                            onComplete: { onCompleteEntry(entry) },
+                            onOpenDiary: { onOpenDiaryEntry(entry) }
+                        )
+                    }
                 }
                 if !singleRichEntry && entries.count > 3 {
                     Text("+\(entries.count - 3) más")
@@ -2462,7 +2644,7 @@ private struct PlannerWeekCellCard: View, Equatable {
                 }
             }
         }
-        .frame(width: 230, height: 150, alignment: .topLeading)
+        .frame(width: cellWidth, height: cellHeight, alignment: .topLeading)
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -2470,8 +2652,82 @@ private struct PlannerWeekCellCard: View, Equatable {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(isHoliday ? EvaluationDesign.danger.opacity(0.15) : EvaluationDesign.border, lineWidth: 1)
+                .strokeBorder(
+                    isHoliday ? EvaluationDesign.danger.opacity(0.15) : EvaluationDesign.border,
+                    style: StrokeStyle(lineWidth: 1, dash: entries.isEmpty && !isHoliday ? [6, 5] : [])
+                )
         )
+    }
+}
+
+private struct PlannerWeekCompactEntryRow: View {
+    let entry: PlannerWeekCellEntry
+    let onTap: () -> Void
+    let onEdit: () -> Void
+    let onDuplicate: () -> Void
+    let onComplete: () -> Void
+    let onOpenDiary: () -> Void
+
+    private var tint: Color { Color(hex: entry.classColorHex) }
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 8) {
+                Capsule()
+                    .fill(tint)
+                    .frame(width: 5, height: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(entry.className) · \(entry.title)")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(stateLabel)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(stateTint)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 4)
+                Image(systemName: stateIcon)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(stateTint)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(tint.opacity(entry.kind == .session ? 0.10 : 0.07), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            if entry.sessionId != nil {
+                Button("Abrir ficha", action: onTap)
+                Button("Completar diario", action: onOpenDiary)
+                Button("Editar", action: onEdit)
+                Button("Duplicar próxima semana", action: onDuplicate)
+                Button("Marcar impartida", action: onComplete)
+            }
+        }
+    }
+
+    private var stateLabel: String {
+        if entry.kind == .scheduledSlot { return "Sin concretar" }
+        if entry.journalStatus == .completed { return "Diario cerrado" }
+        if entry.journalStatus == .draft { return "Diario pendiente" }
+        if entry.sessionStatus == .completed { return "Impartida" }
+        return "Planificada"
+    }
+
+    private var stateIcon: String {
+        if entry.kind == .scheduledSlot { return "plus.circle.fill" }
+        if entry.journalStatus == .completed { return "checkmark.seal.fill" }
+        if entry.journalStatus == .draft { return "doc.text.fill" }
+        if entry.sessionStatus == .completed { return "checkmark.circle.fill" }
+        return "circle"
+    }
+
+    private var stateTint: Color {
+        if entry.kind == .scheduledSlot { return tint }
+        if entry.journalStatus == .completed { return EvaluationDesign.success }
+        if entry.journalStatus == .draft || entry.sessionStatus == .completed { return IOSAppStyle.warning }
+        return .secondary
     }
 }
 
@@ -2618,6 +2874,311 @@ private struct PlannerStatusPill: View {
         case .completed: return EvaluationDesign.success
         default: return EvaluationDesign.accent
         }
+    }
+}
+
+struct PlannerDayView: View {
+    @ObservedObject var vm: PlannerWorkspaceViewModel
+    let onOpenSession: (PlanningSession) -> Void
+
+    private var sessions: [PlanningSession] { vm.daySessions() }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(vm.dayHeaderLabel(for: vm.selectedDayForDayView))
+                            .font(.title2.weight(.black))
+                        Text(daySubtitle)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button {
+                        vm.openComposer(day: vm.selectedDayForDayView, period: vm.visibleSlots.first?.period ?? 1)
+                    } label: {
+                        Label("Nueva sesión", systemImage: "plus")
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+
+                if sessions.isEmpty {
+                    PlannerEmptyState(
+                        title: "Sin sesiones este día",
+                        systemImage: "calendar.badge.plus",
+                        message: "Usa Nueva sesión o vuelve a Semana para concretar una franja."
+                    )
+                } else {
+                    LazyVStack(alignment: .leading, spacing: 12) {
+                        ForEach(sessions, id: \.id) { session in
+                            PlannerDaySessionRow(
+                                vm: vm,
+                                session: session,
+                                isCurrent: isCurrent(session),
+                                isNext: session.id == nextSession?.id,
+                                onOpen: { onOpenSession(session) },
+                                onComplete: { Task { await vm.markCompleted(session) } }
+                            )
+                        }
+                    }
+                }
+            }
+            .padding(EvaluationDesign.screenPadding)
+        }
+    }
+
+    private var daySubtitle: String {
+        if let nextSession {
+            return "Próxima: \(nextSession.groupName) · \(nextSession.startTime ?? vm.timeLabel(for: Int(nextSession.period)))"
+        }
+        return "\(sessions.count) sesiones planificadas"
+    }
+
+    private var nextSession: PlanningSession? {
+        sessions.first { session in
+            session.status != .completed && vm.summary(for: session.id)?.status != .completed
+        }
+    }
+
+    private func isCurrent(_ session: PlanningSession) -> Bool {
+        guard let start = session.startTime, let end = session.endTime else { return false }
+        let current = IsoWeekHelper.shared.current()
+        let currentWeek = Int(truncating: current.first ?? KotlinInt(value: 1))
+        let currentYear = Int(truncating: current.second ?? KotlinInt(value: 2026))
+        guard Int(session.weekNumber) == currentWeek, Int(session.year) == currentYear else { return false }
+        var calendar = Calendar(identifier: .iso8601)
+        calendar.locale = Locale.current
+        let today = ((calendar.component(.weekday, from: Date()) + 5) % 7) + 1
+        guard Int(session.dayOfWeek) == today else { return false }
+        let now = calendar.component(.hour, from: Date()) * 60 + calendar.component(.minute, from: Date())
+        guard let startMinutes = minutes(from: start), let endMinutes = minutes(from: end) else { return false }
+        return now >= startMinutes && now <= endMinutes
+    }
+
+    private func minutes(from value: String) -> Int? {
+        let parts = value.split(separator: ":")
+        guard parts.count == 2, let hour = Int(parts[0]), let minute = Int(parts[1]) else { return nil }
+        return hour * 60 + minute
+    }
+}
+
+private struct PlannerDaySessionRow: View {
+    @ObservedObject var vm: PlannerWorkspaceViewModel
+    let session: PlanningSession
+    let isCurrent: Bool
+    let isNext: Bool
+    let onOpen: () -> Void
+    let onComplete: () -> Void
+
+    private var tint: Color { Color(hex: vm.classColorHex(for: session.groupId)) }
+    private var stateTint: Color { vm.sessionStateTint(sessionStatus: session.status, journalStatus: vm.summary(for: session.id)?.status) }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(timeRange)
+                    .font(.headline.monospacedDigit())
+                Text(isCurrent ? "Ahora" : (isNext ? "Próxima" : ""))
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(isCurrent ? EvaluationDesign.success : EvaluationDesign.accent)
+            }
+            .frame(width: 104, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(session.groupName)
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(tint)
+                    Spacer()
+                    Label(vm.sessionStateLabel(for: session), systemImage: vm.sessionStateIcon(sessionStatus: session.status, journalStatus: vm.summary(for: session.id)?.status))
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(stateTint)
+                }
+
+                Text(session.teachingUnitName.nilIfBlank ?? "Sesión sin título")
+                    .font(.headline.weight(.semibold))
+                    .lineLimit(2)
+
+                if let objective = session.objectives.nilIfBlank ?? session.activities.nilIfBlank {
+                    Text(objective)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+
+                HStack(spacing: 8) {
+                    Button("Abrir ficha", action: onOpen)
+                        .buttonStyle(.borderedProminent)
+                    Button("Impartida", action: onComplete)
+                        .buttonStyle(.bordered)
+                        .disabled(session.status == .completed)
+                    Button("Observación", action: onOpen)
+                        .buttonStyle(.bordered)
+                }
+                .font(.caption.weight(.semibold))
+            }
+        }
+        .padding(16)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(isCurrent ? EvaluationDesign.success.opacity(0.55) : EvaluationDesign.border, lineWidth: isCurrent ? 1.5 : 1)
+        }
+    }
+
+    private var timeRange: String {
+        if let start = session.startTime, let end = session.endTime {
+            return "\(start)-\(end)"
+        }
+        return vm.timeLabel(for: Int(session.period))
+    }
+}
+
+struct PlannerSequenceView: View {
+    @ObservedObject var vm: PlannerWorkspaceViewModel
+    let onOpenSession: (PlanningSession) -> Void
+
+    private var groups: [(key: String, title: String, groupName: String, sessions: [PlanningSession])] {
+        vm.sequenceGroups()
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Secuencias didácticas")
+                            .font(.title2.weight(.black))
+                        Text("Progresión por grupo y situación usando las sesiones ya planificadas.")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+
+                if groups.isEmpty {
+                    PlannerEmptyState(
+                        title: "Sin secuencias",
+                        systemImage: "point.3.connected.trianglepath.dotted",
+                        message: "Selecciona otro grupo o crea sesiones vinculadas a una situación."
+                    )
+                } else {
+                    LazyVStack(alignment: .leading, spacing: 16) {
+                        ForEach(groups, id: \.key) { group in
+                            PlannerSequenceCard(
+                                vm: vm,
+                                title: group.title,
+                                groupName: group.groupName,
+                                sessions: group.sessions,
+                                onOpenSession: onOpenSession
+                            )
+                        }
+                    }
+                }
+            }
+            .padding(EvaluationDesign.screenPadding)
+        }
+    }
+}
+
+private struct PlannerSequenceCard: View {
+    @ObservedObject var vm: PlannerWorkspaceViewModel
+    let title: String
+    let groupName: String
+    let sessions: [PlanningSession]
+    let onOpenSession: (PlanningSession) -> Void
+
+    private var completedCount: Int {
+        sessions.count { session in
+            session.status == .completed || vm.summary(for: session.id)?.status == .completed
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.headline.weight(.bold))
+                    Text("\(groupName) · \(completedCount) de \(sessions.count) sesiones cerradas")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                ProgressView(value: sessions.isEmpty ? 0 : Double(completedCount) / Double(sessions.count))
+                    .frame(width: 120)
+                    .tint(EvaluationDesign.accent)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(sessions.enumerated()), id: \.element.id) { index, session in
+                    Button {
+                        onOpenSession(session)
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: icon(for: session))
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(tint(for: session))
+                                .frame(width: 20)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("\(index + 1). \(session.teachingUnitName.nilIfBlank ?? "Sesión")")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+                                Text("\(vm.dayLabel(for: Int(session.dayOfWeek))) · \(vm.timeLabel(for: Int(session.period))) · \(vm.sessionStateLabel(for: session))")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(.tertiary)
+                        }
+                        .padding(.vertical, 6)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(16)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(EvaluationDesign.border, lineWidth: 1))
+    }
+
+    private func icon(for session: PlanningSession) -> String {
+        if vm.summary(for: session.id)?.status == .completed { return "checkmark.seal.fill" }
+        if vm.summary(for: session.id)?.status == .draft { return "circle.lefthalf.filled" }
+        if session.status == .completed { return "checkmark.circle.fill" }
+        return "circle"
+    }
+
+    private func tint(for session: PlanningSession) -> Color {
+        vm.sessionStateTint(sessionStatus: session.status, journalStatus: vm.summary(for: session.id)?.status)
+    }
+}
+
+private struct PlannerEmptyState: View {
+    let title: String
+    let systemImage: String
+    let message: String
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.system(size: 36, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text(title)
+                .font(.headline.weight(.bold))
+            Text(message)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 360)
+        }
+        .frame(maxWidth: .infinity, minHeight: 280)
+        .padding(24)
     }
 }
 
@@ -2875,19 +3436,33 @@ private struct PlannerForecastRowView: View {
         row.remainingSessions > 0 ? EvaluationDesign.danger : EvaluationDesign.success
     }
 
+    private var progress: Double {
+        guard row.expectedSessions > 0 else { return 0 }
+        return min(Double(row.plannedSessions) / Double(row.expectedSessions), 1)
+    }
+
     var body: some View {
-        HStack {
-            Text(row.className)
-                .font(.subheadline.weight(.semibold))
-            Spacer()
-            Text("Previstas \(row.expectedSessions)")
-                .font(.caption.weight(.bold))
-            Text("Creadas \(row.plannedSessions)")
-                .font(.caption.weight(.bold))
-            Text("Δ \(row.remainingSessions)")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(deltaColor)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(row.className)
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text("\(row.plannedSessions) / \(row.expectedSessions)")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(deltaColor)
+            }
+
+            ProgressView(value: progress)
+                .tint(deltaColor)
+
+            if row.remainingSessions > 0 {
+                Label("Faltan \(row.remainingSessions) sesiones para completar la previsión", systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(deltaColor)
+            }
         }
+        .padding(12)
+        .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 
@@ -3137,7 +3712,7 @@ private struct SessionJournalQuickPulseCard: View {
         let isSelected = vm.journalDraft.climateScore == climate
             && vm.journalDraft.usefulTimeScore == usefulTime
             && vm.journalDraft.perceivedDifficultyScore == difficulty
-        Button {
+        return Button {
             vm.journalDraft.climateScore = climate
             vm.journalDraft.usefulTimeScore = usefulTime
             vm.journalDraft.perceivedDifficultyScore = difficulty
@@ -3164,7 +3739,7 @@ private struct SessionJournalQuickPulseCard: View {
 
     private func participationButton(_ title: String, value: Int) -> some View {
         let isSelected = vm.journalDraft.participationScore == value
-        Button {
+        return Button {
             vm.journalDraft.participationScore = value
         } label: {
             Text(title)
@@ -4423,7 +4998,13 @@ struct PlannerSessionDetailSheet: View {
             }
             .quickLookPreview($sourceDocumentURL)
         }
+#if os(macOS)
         .frame(minWidth: 760, idealWidth: 860, minHeight: 720, idealHeight: 820)
+#else
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+#endif
     }
     
     private var sessionBriefHeader: some View {

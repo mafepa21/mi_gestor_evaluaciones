@@ -96,7 +96,13 @@ extension NotebookModuleView {
                     pendingDeletionImpact = nil
                 }
             )
+#if os(macOS)
             .frame(minWidth: 520, minHeight: 460)
+#else
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+#endif
         }
         .confirmationDialog(
             "Eliminar pestaña",
@@ -218,7 +224,13 @@ extension NotebookModuleView {
                             }
                         }
                     )
+#if os(macOS)
                     .frame(minWidth: 520, minHeight: 620)
+#else
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+#endif
                 } else {
                     NotebookContentUnavailableView(
                         "Sin datos del cuaderno",

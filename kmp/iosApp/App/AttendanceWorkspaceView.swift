@@ -167,14 +167,58 @@ struct AttendanceWorkspaceView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            VStack(spacing: 0) {
-                attendanceHeader
-                attendanceToolbar
-                attendanceMainContent
+        attendanceWorkspaceContent
+            .task {
+                await bridge.ensureClassesLoaded()
+                if selectedClassId == nil {
+                    selectedClassId = attendanceStore.classes.first?.id
+                }
+                await reloadClassOverviews()
+                await syncClassSelection()
+                if let preselectedStudentId {
+                    selectedStudentId = preselectedStudentId
+                    self.preselectedStudentId = nil
+                }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(appPageBackground(for: colorScheme))
+            .appOnChange(of: selectedClassId) { _ in
+                Task { await syncClassSelection() }
+            }
+            .appOnChange(of: selectedDate) { _ in
+                Task {
+                    await reloadClassOverviews()
+                    await reloadAttendance()
+                }
+            }
+            .appOnChange(of: boardMode) { _ in
+                if boardMode == .courses {
+                    selectedStudentId = nil
+                    historySelection = nil
+                }
+            }
+            .appOnChange(of: selectedStudentId) { _ in
+                noteDraft = selectedInspectionAttendance?.note ?? ""
+            }
+            .onAppear(perform: syncAttendanceToolbar)
+            .appOnChange(of: toolbarStateKey) { _ in
+                syncAttendanceToolbar()
+            }
+            .onDisappear {
+                layoutState.clearAttendanceToolbar()
+            }
+            .animation(uiFeatureFlags.interactionAnimation, value: isInspectorPresented)
+    }
+
+    @ViewBuilder
+    var attendanceWorkspaceContent: some View {
+        ViewThatFits(in: .horizontal) {
+            regularAttendanceWorkspace
+            compactAttendanceWorkspace
+        }
+    }
+
+    var regularAttendanceWorkspace: some View {
+        HStack(spacing: 0) {
+            attendanceWorkspacePrimaryPane
 
             if isInspectorPresented {
                 Divider().opacity(0.12)
@@ -185,44 +229,33 @@ struct AttendanceWorkspaceView: View {
                     .transition(uiFeatureFlags.inspectorTransition)
             }
         }
-        .task {
-            await bridge.ensureClassesLoaded()
-            if selectedClassId == nil {
-                selectedClassId = attendanceStore.classes.first?.id
-            }
-            await reloadClassOverviews()
-            await syncClassSelection()
-            if let preselectedStudentId {
-                selectedStudentId = preselectedStudentId
-                self.preselectedStudentId = nil
-            }
-        }
-        .appOnChange(of: selectedClassId) { _ in
-            Task { await syncClassSelection() }
-        }
-        .appOnChange(of: selectedDate) { _ in
-            Task {
-                await reloadClassOverviews()
-                await reloadAttendance()
+        .frame(minWidth: isInspectorPresented ? 1040 : 720)
+    }
+
+    var compactAttendanceWorkspace: some View {
+        VStack(spacing: 0) {
+            attendanceWorkspacePrimaryPane
+
+            if isInspectorPresented {
+                Divider().opacity(0.12)
+
+                attendanceInspector
+                    .frame(maxWidth: .infinity, maxHeight: 520)
+                    .background(appMutedCardBackground(for: colorScheme))
+                    .transition(uiFeatureFlags.inspectorTransition)
             }
         }
-        .appOnChange(of: boardMode) { _ in
-            if boardMode == .courses {
-                selectedStudentId = nil
-                historySelection = nil
-            }
+        .background(appPageBackground(for: colorScheme))
+    }
+
+    var attendanceWorkspacePrimaryPane: some View {
+        VStack(spacing: 0) {
+            attendanceHeader
+            attendanceToolbar
+            attendanceMainContent
         }
-        .appOnChange(of: selectedStudentId) { _ in
-            noteDraft = selectedInspectionAttendance?.note ?? ""
-        }
-        .onAppear(perform: syncAttendanceToolbar)
-        .appOnChange(of: toolbarStateKey) { _ in
-            syncAttendanceToolbar()
-        }
-        .onDisappear {
-            layoutState.clearAttendanceToolbar()
-        }
-        .animation(uiFeatureFlags.interactionAnimation, value: isInspectorPresented)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(appPageBackground(for: colorScheme))
     }
 
     var attendanceHeader: some View {

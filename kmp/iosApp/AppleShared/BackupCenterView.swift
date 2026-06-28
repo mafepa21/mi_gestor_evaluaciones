@@ -9,77 +9,7 @@ struct BackupCenterView: View {
             BackupBackdrop()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: IOSAppStyle.sectionSpacing) {
-
-                    // MARK: Page Header
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("MÓDULO DE SEGURIDAD")
-                            .font(IOSAppStyle.captionText)
-                            .tracking(1.2)
-                            .foregroundStyle(IOSAppStyle.info)
-
-                        Text("Copias de Seguridad")
-                            .font(IOSAppStyle.pageTitle)
-                            .foregroundStyle(.primary)
-
-                        Text("Protege, valida y restaura tus datos locales de forma segura.")
-                            .font(IOSAppStyle.bodyText)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.horizontal, 4)
-
-                    // MARK: Error Banner
-                    if let error = service.lastError {
-                        HStack(spacing: 12) {
-                            Image(systemName: "exclamationmark.octagon.fill")
-                                .foregroundStyle(IOSAppStyle.danger)
-                                .font(.title3)
-                            Text(error)
-                                .font(IOSAppStyle.bodyText)
-                                .foregroundStyle(.primary)
-                            Spacer()
-                            Button(action: { service.lastError = nil }) {
-                                Image(systemName: "xmark.circle")
-                                    .foregroundStyle(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .padding()
-                        .background(
-                            IOSAppStyle.danger.opacity(0.08),
-                            in: RoundedRectangle(cornerRadius: IOSAppStyle.controlRadius)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: IOSAppStyle.controlRadius)
-                                .stroke(IOSAppStyle.danger.opacity(0.18), lineWidth: 1)
-                        )
-                    }
-
-                    // MARK: Status Hero
-                    BackupStatusHero(service: service)
-
-                    // MARK: Quick Actions Bar
-                    BackupActionsBar(service: service)
-
-                    // MARK: Security Summary Card
-                    BackupSecurityCard(service: service)
-
-                    // MARK: History
-                    VStack(alignment: .leading, spacing: 14) {
-                        HStack {
-                            Text("Copias Guardadas")
-                                .font(IOSAppStyle.sectionTitle)
-                            Spacer()
-                            if service.operationState == .scanning {
-                                ProgressView()
-                                    .controlSize(.small)
-                            }
-                        }
-                        .padding(.horizontal, 4)
-
-                        BackupHistoryList(service: service)
-                    }
-                }
+                backupWorkspaceContent
                 .padding(IOSAppStyle.pagePadding)
             }
         }
@@ -87,6 +17,119 @@ struct BackupCenterView: View {
         .appInlineNavigationBarTitleDisplayMode()
         .task {
             await service.scanBackups()
+        }
+    }
+
+    @ViewBuilder
+    private var backupWorkspaceContent: some View {
+        ViewThatFits(in: .horizontal) {
+            regularBackupWorkspace
+            compactBackupWorkspace
+        }
+    }
+
+    private var regularBackupWorkspace: some View {
+        HStack(alignment: .top, spacing: 24) {
+            VStack(alignment: .leading, spacing: 16) {
+                backupHeader
+                errorBanner
+                BackupStatusHero(service: service)
+                BackupActionsBar(service: service)
+                BackupSecurityCard(service: service)
+            }
+            .frame(minWidth: 320, idealWidth: 344, maxWidth: 376, alignment: .topLeading)
+
+            VStack(alignment: .leading, spacing: 16) {
+                historyHeader
+                BackupHistoryList(service: service)
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+        .frame(minWidth: 840, alignment: .topLeading)
+    }
+
+    private var compactBackupWorkspace: some View {
+        VStack(alignment: .leading, spacing: IOSAppStyle.sectionSpacing) {
+            backupHeader
+            errorBanner
+            BackupStatusHero(service: service)
+            BackupActionsBar(service: service)
+            BackupSecurityCard(service: service)
+
+            VStack(alignment: .leading, spacing: 16) {
+                historyHeader
+                BackupHistoryList(service: service)
+            }
+        }
+    }
+
+    private var backupHeader: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("MÓDULO DE SEGURIDAD")
+                .font(IOSAppStyle.captionText)
+                .tracking(1.2)
+                .foregroundStyle(IOSAppStyle.info)
+
+            Text("Copias de Seguridad")
+                .font(IOSAppStyle.pageTitle)
+                .foregroundStyle(.primary)
+
+            Text("Protege, valida y restaura tus datos locales de forma segura.")
+                .font(IOSAppStyle.bodyText)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private var errorBanner: some View {
+        if let error = service.lastError {
+            HStack(spacing: 16) {
+                Image(systemName: "exclamationmark.octagon.fill")
+                    .foregroundStyle(IOSAppStyle.danger)
+                    .font(.title3)
+
+                Text(error)
+                    .font(IOSAppStyle.bodyText)
+                    .foregroundStyle(.primary)
+
+                Spacer()
+
+                Button(action: { service.lastError = nil }) {
+                    Image(systemName: "xmark.circle")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Cerrar aviso de error")
+            }
+            .padding(16)
+            .background(
+                IOSAppStyle.danger.opacity(0.08),
+                in: RoundedRectangle(cornerRadius: IOSAppStyle.controlRadius)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: IOSAppStyle.controlRadius)
+                    .stroke(IOSAppStyle.danger.opacity(0.18), lineWidth: 1)
+            )
+        }
+    }
+
+    private var historyHeader: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Copias Guardadas")
+                    .font(IOSAppStyle.sectionTitle)
+
+                Text("Valida, exporta o restaura desde el historial local.")
+                    .font(IOSAppStyle.captionText)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            if service.operationState == .scanning {
+                ProgressView()
+                    .controlSize(.small)
+            }
         }
     }
 }
@@ -100,7 +143,7 @@ struct BackupActionsBar: View {
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 // Crear — siempre disponible
                 BackupActionChip(
                     label: service.operationState == .creating ? "Creando…" : "Crear copia",
@@ -168,7 +211,7 @@ private struct BackupActionChip: View {
         Button {
             action?()
         } label: {
-            HStack(spacing: 7) {
+            HStack(spacing: 8) {
                 if isLoading {
                     ProgressView()
                         .controlSize(.mini)
@@ -181,8 +224,8 @@ private struct BackupActionChip: View {
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
             }
             .foregroundStyle(style == .primary ? .white : tint)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 9)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
             .background {
                 RoundedRectangle(cornerRadius: IOSAppStyle.controlRadius, style: .continuous)
                     .fill(style == .primary
@@ -194,7 +237,7 @@ private struct BackupActionChip: View {
                     )
                     .shadow(
                         color: (style == .primary ? tint : Color.clear).opacity(0.25),
-                        radius: 6, x: 0, y: 3
+                        radius: 8, x: 0, y: 4
                     )
             }
         }
@@ -220,7 +263,7 @@ struct BackupSecurityCard: View {
         IOSSectionCard(title: "Estado de seguridad", systemImage: "lock.shield.fill") {
             LazyVGrid(
                 columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())],
-                spacing: 10
+                spacing: 16
             ) {
                 SecurityMetric(
                     title: "Copias",
@@ -252,7 +295,7 @@ private struct SecurityMetric: View {
     let tint: Color
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 8) {
             Image(systemName: systemImage)
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(tint)
@@ -265,7 +308,7 @@ private struct SecurityMetric: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
+        .padding(.vertical, 16)
         .background(tint.opacity(0.07), in: RoundedRectangle(cornerRadius: IOSAppStyle.innerRadius, style: .continuous))
     }
 }

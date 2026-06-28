@@ -21,174 +21,298 @@ struct CoursesWorkspaceView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            List(selection: Binding(
-                get: { selectedClassId },
-                set: { newValue in
-                    selectedClassId = newValue
-                    guard let newValue else { return }
-                    Task { await loadSummary(for: newValue) }
+        courseWorkspaceContent
+            .sheet(isPresented: $showingClassEditor) {
+                CourseClassEditorSheet(
+                    schoolClass: editingClass,
+                    onSave: { draft in
+                        Task { await saveClassDraft(draft) }
+                    }
+                )
+                .environmentObject(bridge)
+            }
+            .sheet(isPresented: $showingSubjectCatalog) {
+                SubjectCatalogSheet(
+                    onSave: { draft in
+                        await saveSubjectDraft(draft)
+                    },
+                    onDelete: { subject in
+                        Task { await deleteSubject(subject) }
+                    }
+                )
+                .environmentObject(bridge)
+            }
+            .sheet(item: $archivedYearDetail) { year in
+                ArchivedAcademicYearDetailSheet(
+                    year: year,
+                    onDelete: {
+                        pendingDeleteAcademicYear = year
+                    }
+                )
+                .environmentObject(bridge)
+            }
+            .sheet(isPresented: $showingAcademicYearWizard) {
+                AcademicYearWizardSheet(
+                    activeYear: bridge.activeAcademicYear,
+                    academicYears: bridge.academicYears,
+                    onCreate: { draft in
+                        Task { await createAcademicYear(draft) }
+                    },
+                    onArchiveActive: {
+                        Task { await archiveActiveAcademicYear() }
+                    }
+                )
+            }
+            .confirmationDialog(
+                "Eliminar grupo",
+                isPresented: Binding(
+                    get: { pendingDeleteClass != nil },
+                    set: { if !$0 { pendingDeleteClass = nil } }
+                ),
+                presenting: pendingDeleteClass
+            ) { schoolClass in
+                Button("Eliminar \(schoolClass.name)", role: .destructive) {
+                    Task { await deleteClass(schoolClass) }
                 }
-            )) {
-                Section("Curso escolar activo") {
-                    if let activeYear = bridge.activeAcademicYear {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(activeYear.name)
-                                .font(.headline)
-                            Text("\(activeYear.classCount) grupos · \(activeYear.enrollmentCount) matriculas")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding(.vertical, 4)
-                    } else {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Sin curso activo")
-                                .font(.subheadline.weight(.semibold))
-                            Text("Restaura un curso del historial o crea uno nuevo para volver a ver grupos.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            if !bridge.archivedAcademicYears.isEmpty {
-                                Menu {
-                                    ForEach(bridge.archivedAcademicYears) { year in
-                                        Button(year.name) {
-                                            Task { await activateAcademicYear(year) }
-                                        }
-                                    }
-                                } label: {
-                                    Label("Restaurar curso", systemImage: "arrow.triangle.2.circlepath")
-                                }
-                            }
-                        }
-                        .padding(.vertical, 4)
-                    }
-
-                    Button {
-                        showingAcademicYearWizard = true
-                    } label: {
-                        Label("Nuevo curso escolar", systemImage: "calendar.badge.plus")
-                    }
+                Button("Cancelar", role: .cancel) {
+                    pendingDeleteClass = nil
                 }
-
-                Section("Grupos") {
-                    if bridge.classes.isEmpty {
-                        Text(bridge.activeAcademicYear == nil ? "No hay curso activo." : "Este curso escolar no tiene grupos.")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(bridge.classes, id: \.id) { schoolClass in
-                            Button {
-                                selectedClassId = schoolClass.id
-                                Task { await loadSummary(for: schoolClass.id) }
-                            } label: {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(schoolClass.name)
-                                        .font(.headline)
-                                    Text(classSubtitle(for: schoolClass))
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            .buttonStyle(.plain)
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                Button(role: .destructive) {
-                                    pendingDeleteClass = schoolClass
-                                } label: {
-                                    Label("Eliminar", systemImage: "trash")
-                                }
-                                .disabled(!isActiveAcademicYearWritable)
-
-                                Button {
-                                    editingClass = schoolClass
-                                    showingClassEditor = true
-                                } label: {
-                                    Label("Editar", systemImage: "pencil")
-                                }
-                                .tint(.blue)
-                                .disabled(!isActiveAcademicYearWritable)
-                            }
-                            .contextMenu {
-                                Button {
-                                    editingClass = schoolClass
-                                    showingClassEditor = true
-                                } label: {
-                                    Label("Editar grupo", systemImage: "pencil")
-                                }
-                                .disabled(!isActiveAcademicYearWritable)
-
-                                Button(role: .destructive) {
-                                    pendingDeleteClass = schoolClass
-                                } label: {
-                                    Label("Eliminar grupo", systemImage: "trash")
-                                }
-                                .disabled(!isActiveAcademicYearWritable)
-                            }
-                        }
-                    }
+            } message: { schoolClass in
+                Text("Se eliminará el grupo \(schoolClass.name) y sus datos vinculados. Esta acción no elimina el alumnado global.")
+            }
+            .confirmationDialog(
+                "Eliminar curso escolar",
+                isPresented: Binding(
+                    get: { pendingDeleteAcademicYear != nil },
+                    set: { if !$0 { pendingDeleteAcademicYear = nil } }
+                ),
+                presenting: pendingDeleteAcademicYear
+            ) { year in
+                Button("Eliminar \(year.name)", role: .destructive) {
+                    Task { await deleteArchivedAcademicYear(year) }
                 }
-
-                if !bridge.archivedAcademicYears.isEmpty {
-                    Section("Historial") {
-                        ForEach(bridge.archivedAcademicYears) { year in
-                            Menu {
-                                Button {
-                                    archivedYearDetail = year
-                                } label: {
-                                    Label("Ver resumen", systemImage: "doc.text.magnifyingglass")
-                                }
-
-                                Button {
-                                    Task { await activateAcademicYear(year) }
-                                } label: {
-                                    Label("Restaurar como activo", systemImage: "arrow.triangle.2.circlepath")
-                                }
-
-                                Button {
-                                    archivedYearDetail = year
-                                } label: {
-                                    Label("Exportar curso", systemImage: "square.and.arrow.up")
-                                }
-
-                                Button(role: .destructive) {
-                                    pendingDeleteAcademicYear = year
-                                } label: {
-                                    Label("Eliminar curso", systemImage: "trash")
-                                }
-                            } label: {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(year.name)
-                                        .font(.subheadline.weight(.semibold))
-                                    Text("\(year.classCount) grupos · \(year.enrollmentCount) matriculas · Archivado")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                    }
+                Button("Cancelar", role: .cancel) {
+                    pendingDeleteAcademicYear = nil
                 }
-
-                Section {
-                    Button {
-                        editingClass = nil
-                        showingClassEditor = true
-                    } label: {
-                        Label("Nuevo grupo", systemImage: "plus.circle.fill")
-                    }
-                    .disabled(!isActiveAcademicYearWritable)
-
-                    Button {
-                        showingSubjectCatalog = true
-                    } label: {
-                        Label("Asignaturas", systemImage: "books.vertical.fill")
-                    }
+            } message: { year in
+                Text("Se eliminarán \(year.classCount) grupos y \(year.enrollmentCount) matrículas archivadas de \(year.name).")
+            }
+            .task {
+                await bridge.ensureClassesLoaded()
+                if selectedClassId == nil {
+                    selectedClassId = bridge.classes.first?.id
+                }
+                if let selectedClassId {
+                    await loadSummary(for: selectedClassId)
                 }
             }
-            .frame(minWidth: 320, maxWidth: 360)
+    }
+
+    @ViewBuilder
+    private var courseWorkspaceContent: some View {
+        ViewThatFits(in: .horizontal) {
+            regularCourseWorkspace
+            compactCourseWorkspace
+        }
+        .background(appPageBackground(for: colorScheme))
+    }
+
+    private var regularCourseWorkspace: some View {
+        HStack(spacing: 0) {
+            courseListPane
+                .frame(minWidth: 320, maxWidth: 360)
 
             Divider().opacity(0.2)
 
-            Group {
-                if let summary = selectedSummary {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 20) {
+            courseDetailPane
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .frame(minWidth: 760)
+    }
+
+    private var compactCourseWorkspace: some View {
+        VStack(spacing: 16) {
+            courseListPane
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 360, maxHeight: 520)
+
+            courseDetailPane
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .padding(16)
+    }
+
+    private var courseListPane: some View {
+        List(selection: Binding(
+            get: { selectedClassId },
+            set: { newValue in
+                selectedClassId = newValue
+                guard let newValue else { return }
+                Task { await loadSummary(for: newValue) }
+            }
+        )) {
+            Section("Curso escolar activo") {
+                if let activeYear = bridge.activeAcademicYear {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(activeYear.name)
+                            .font(.headline)
+                        Text("\(activeYear.classCount) grupos · \(activeYear.enrollmentCount) matriculas")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 8)
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Sin curso activo")
+                            .font(.subheadline.weight(.semibold))
+                        Text("Restaura un curso del historial o crea uno nuevo para volver a ver grupos.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        if !bridge.archivedAcademicYears.isEmpty {
+                            Menu {
+                                ForEach(bridge.archivedAcademicYears) { year in
+                                    Button(year.name) {
+                                        Task { await activateAcademicYear(year) }
+                                    }
+                                }
+                            } label: {
+                                Label("Restaurar curso", systemImage: "arrow.triangle.2.circlepath")
+                            }
+                        }
+                    }
+                    .padding(.vertical, 8)
+                }
+
+                Button {
+                    showingAcademicYearWizard = true
+                } label: {
+                    Label("Nuevo curso escolar", systemImage: "calendar.badge.plus")
+                }
+            }
+
+            Section("Grupos") {
+                if bridge.classes.isEmpty {
+                    Text(bridge.activeAcademicYear == nil ? "No hay curso activo." : "Este curso escolar no tiene grupos.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(bridge.classes, id: \.id) { schoolClass in
+                        Button {
+                            selectedClassId = schoolClass.id
+                            Task { await loadSummary(for: schoolClass.id) }
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(schoolClass.name)
+                                    .font(.headline)
+                                Text(classSubtitle(for: schoolClass))
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.vertical, 4)
+                        }
+                        .buttonStyle(.plain)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                pendingDeleteClass = schoolClass
+                            } label: {
+                                Label("Eliminar", systemImage: "trash")
+                            }
+                            .disabled(!isActiveAcademicYearWritable)
+
+                            Button {
+                                editingClass = schoolClass
+                                showingClassEditor = true
+                            } label: {
+                                Label("Editar", systemImage: "pencil")
+                            }
+                            .tint(.blue)
+                            .disabled(!isActiveAcademicYearWritable)
+                        }
+                        .contextMenu {
+                            Button {
+                                editingClass = schoolClass
+                                showingClassEditor = true
+                            } label: {
+                                Label("Editar grupo", systemImage: "pencil")
+                            }
+                            .disabled(!isActiveAcademicYearWritable)
+
+                            Button(role: .destructive) {
+                                pendingDeleteClass = schoolClass
+                            } label: {
+                                Label("Eliminar grupo", systemImage: "trash")
+                            }
+                            .disabled(!isActiveAcademicYearWritable)
+                        }
+                    }
+                }
+            }
+
+            if !bridge.archivedAcademicYears.isEmpty {
+                Section("Historial") {
+                    ForEach(bridge.archivedAcademicYears) { year in
+                        Menu {
+                            Button {
+                                archivedYearDetail = year
+                            } label: {
+                                Label("Ver resumen", systemImage: "doc.text.magnifyingglass")
+                            }
+
+                            Button {
+                                Task { await activateAcademicYear(year) }
+                            } label: {
+                                Label("Restaurar como activo", systemImage: "arrow.triangle.2.circlepath")
+                            }
+
+                            Button {
+                                archivedYearDetail = year
+                            } label: {
+                                Label("Exportar curso", systemImage: "square.and.arrow.up")
+                            }
+
+                            Button(role: .destructive) {
+                                pendingDeleteAcademicYear = year
+                            } label: {
+                                Label("Eliminar curso", systemImage: "trash")
+                            }
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(year.name)
+                                    .font(.subheadline.weight(.semibold))
+                                Text("\(year.classCount) grupos · \(year.enrollmentCount) matriculas · Archivado")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Section {
+                Button {
+                    editingClass = nil
+                    showingClassEditor = true
+                } label: {
+                    Label("Nuevo grupo", systemImage: "plus.circle.fill")
+                }
+                .disabled(!isActiveAcademicYearWritable)
+
+                Button {
+                    showingSubjectCatalog = true
+                } label: {
+                    Label("Asignaturas", systemImage: "books.vertical.fill")
+                }
+            }
+        }
+        .listStyle(.sidebar)
+        .background(appCardBackground(for: colorScheme))
+    }
+
+    @ViewBuilder
+    private var courseDetailPane: some View {
+        Group {
+            if let summary = selectedSummary {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 24) {
                             WorkspaceInspectorHero(
                                 title: summary.schoolClass.name,
                                 subtitle: summary.schoolClass.description_?.isEmpty == false ? summary.schoolClass.description_! : classSubtitle(for: summary.schoolClass)
@@ -331,101 +455,16 @@ struct CoursesWorkspaceView: View {
                             }
                         }
                         .padding(24)
-                    }
-                } else {
-                    WorkspaceEmptyState(
-                        title: "Selecciona un grupo",
-                        subtitle: "Desde aquí centralizamos el acceso a cuaderno, asistencia, diario e informes."
-                    )
                 }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(appPageBackground(for: colorScheme))
-        }
-        .sheet(isPresented: $showingClassEditor) {
-            CourseClassEditorSheet(
-                schoolClass: editingClass,
-                onSave: { draft in
-                    Task { await saveClassDraft(draft) }
-                }
-            )
-            .environmentObject(bridge)
-        }
-        .sheet(isPresented: $showingSubjectCatalog) {
-            SubjectCatalogSheet(
-                onSave: { draft in
-                    await saveSubjectDraft(draft)
-                },
-                onDelete: { subject in
-                    Task { await deleteSubject(subject) }
-                }
-            )
-            .environmentObject(bridge)
-        }
-        .sheet(item: $archivedYearDetail) { year in
-            ArchivedAcademicYearDetailSheet(
-                year: year,
-                onDelete: {
-                    pendingDeleteAcademicYear = year
-                }
-            )
-            .environmentObject(bridge)
-        }
-        .sheet(isPresented: $showingAcademicYearWizard) {
-            AcademicYearWizardSheet(
-                activeYear: bridge.activeAcademicYear,
-                academicYears: bridge.academicYears,
-                onCreate: { draft in
-                    Task { await createAcademicYear(draft) }
-                },
-                onArchiveActive: {
-                    Task { await archiveActiveAcademicYear() }
-                }
-            )
-        }
-        .confirmationDialog(
-            "Eliminar grupo",
-            isPresented: Binding(
-                get: { pendingDeleteClass != nil },
-                set: { if !$0 { pendingDeleteClass = nil } }
-            ),
-            presenting: pendingDeleteClass
-        ) { schoolClass in
-            Button("Eliminar \(schoolClass.name)", role: .destructive) {
-                Task { await deleteClass(schoolClass) }
-            }
-            Button("Cancelar", role: .cancel) {
-                pendingDeleteClass = nil
-            }
-        } message: { schoolClass in
-            Text("Se eliminará el grupo \(schoolClass.name) y sus datos vinculados. Esta acción no elimina el alumnado global.")
-        }
-        .confirmationDialog(
-            "Eliminar curso escolar",
-            isPresented: Binding(
-                get: { pendingDeleteAcademicYear != nil },
-                set: { if !$0 { pendingDeleteAcademicYear = nil } }
-            ),
-            presenting: pendingDeleteAcademicYear
-        ) { year in
-            Button("Eliminar \(year.name)", role: .destructive) {
-                Task { await deleteArchivedAcademicYear(year) }
-            }
-            Button("Cancelar", role: .cancel) {
-                pendingDeleteAcademicYear = nil
-            }
-        } message: { year in
-            Text("Se eliminarán \(year.classCount) grupos y \(year.enrollmentCount) matrículas archivadas de \(year.name).")
-        }
-        .task {
-            await bridge.ensureClassesLoaded()
-            if selectedClassId == nil {
-                selectedClassId = bridge.classes.first?.id
-            }
-            if let selectedClassId {
-                await loadSummary(for: selectedClassId)
+            } else {
+                WorkspaceEmptyState(
+                    title: "Selecciona un grupo",
+                    subtitle: "Desde aquí centralizamos el acceso a cuaderno, asistencia, diario e informes."
+                )
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(appPageBackground(for: colorScheme))
     }
 
     private func subjectName(for subjectId: Int64?) -> String? {
@@ -607,6 +646,116 @@ private struct AcademicYearDraft {
     let promoteStudents: Bool
 }
 
+private struct CourseSheetScaffold<Content: View>: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+    let primaryTitle: String
+    let canPrimary: Bool
+    let onCancel: () -> Void
+    let onPrimary: () -> Void
+    @ViewBuilder let content: Content
+
+    init(
+        title: String,
+        subtitle: String,
+        systemImage: String,
+        primaryTitle: String,
+        canPrimary: Bool = true,
+        onCancel: @escaping () -> Void,
+        onPrimary: @escaping () -> Void,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.systemImage = systemImage
+        self.primaryTitle = primaryTitle
+        self.canPrimary = canPrimary
+        self.onCancel = onCancel
+        self.onPrimary = onPrimary
+        self.content = content()
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    CourseSheetHero(title: title, subtitle: subtitle, systemImage: systemImage)
+                    content
+                }
+                .padding(24)
+                .frame(maxWidth: 760, alignment: .topLeading)
+                .frame(maxWidth: .infinity, alignment: .top)
+            }
+            .background(EvaluationDesign.surface.opacity(0.4))
+            .navigationTitle(title)
+#if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+#endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancelar", action: onCancel)
+                        .keyboardShortcut(.cancelAction)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(primaryTitle, action: onPrimary)
+                        .fontWeight(.semibold)
+                        .disabled(!canPrimary)
+                        .keyboardShortcut(.defaultAction)
+                }
+            }
+        }
+#if os(macOS)
+        .frame(minWidth: 580, idealWidth: 680, maxWidth: 800, minHeight: 520, idealHeight: 660)
+#else
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+#endif
+    }
+}
+
+private struct CourseSheetHero: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 16) {
+            Image(systemName: systemImage)
+                .font(.title2.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(width: 48, height: 48)
+                .background(EvaluationDesign.accent, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(title)
+                    .font(.title2.weight(.bold))
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
+private struct CourseSheetTextField: View {
+    let title: String
+    let placeholder: String
+    @Binding var text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            TextField(placeholder, text: $text)
+                .textFieldStyle(.roundedBorder)
+        }
+    }
+}
+
 private struct ArchivedAcademicYearDetailSheet: View {
     let year: KmpBridge.AcademicYearSnapshot
     let onDelete: () -> Void
@@ -618,9 +767,16 @@ private struct ArchivedAcademicYearDetailSheet: View {
     @State private var isLoadingExport = false
 
     var body: some View {
-        NavigationStack {
-            List {
-                Section("Curso escolar") {
+        CourseSheetScaffold(
+            title: "Historial",
+            subtitle: "Consulta el resumen del curso archivado antes de exportarlo o eliminarlo.",
+            systemImage: "archivebox.fill",
+            primaryTitle: "Cerrar",
+            onCancel: { dismiss() },
+            onPrimary: { dismiss() }
+        ) {
+            IOSSectionCard(title: "Curso escolar", systemImage: "calendar.badge.clock") {
+                VStack(alignment: .leading, spacing: 12) {
                     LabeledContent("Nombre", value: year.name)
                     LabeledContent("Estado", value: "Archivado")
                     LabeledContent("Grupos", value: "\(year.classCount)")
@@ -628,8 +784,10 @@ private struct ArchivedAcademicYearDetailSheet: View {
                     LabeledContent("Inicio", value: formatted(year.startDate))
                     LabeledContent("Fin", value: formatted(year.endDate))
                 }
+            }
 
-                Section {
+            IOSSectionCard(title: "Exportación", systemImage: "square.and.arrow.up") {
+                VStack(alignment: .leading, spacing: 12) {
                     if isLoadingExport {
                         ProgressView("Preparando exportacion")
                     } else {
@@ -644,37 +802,34 @@ private struct ArchivedAcademicYearDetailSheet: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+            }
 
-                Section {
+            IOSSectionCard(title: "Zona sensible", systemImage: "exclamationmark.triangle") {
+                VStack(alignment: .leading, spacing: 12) {
                     Button(role: .destructive) {
                         showingDeleteConfirmation = true
                     } label: {
                         Label("Eliminar curso archivado", systemImage: "trash")
                     }
-                } footer: {
+                    .buttonStyle(.bordered)
+
                     Text("Se eliminaran grupos, matriculas y datos vinculados a esos grupos. El alumnado global no se elimina.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
-            .navigationTitle("Historial")
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Cerrar") {
-                        dismiss()
-                    }
-                }
+        }
+        .alert("Eliminar curso archivado", isPresented: $showingDeleteConfirmation) {
+            Button("Cancelar", role: .cancel) {}
+            Button("Eliminar", role: .destructive) {
+                onDelete()
+                dismiss()
             }
-            .alert("Eliminar curso archivado", isPresented: $showingDeleteConfirmation) {
-                Button("Cancelar", role: .cancel) {}
-                Button("Eliminar", role: .destructive) {
-                    onDelete()
-                    dismiss()
-                }
-            } message: {
-                Text("Esta accion eliminara \(year.classCount) grupos y \(year.enrollmentCount) matriculas archivadas de \(year.name).")
-            }
-            .task {
-                await loadExportText()
-            }
+        } message: {
+            Text("Esta accion eliminara \(year.classCount) grupos y \(year.enrollmentCount) matriculas archivadas de \(year.name).")
+        }
+        .task {
+            await loadExportText()
         }
     }
 
@@ -732,16 +887,34 @@ private struct AcademicYearWizardSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Form {
+        CourseSheetScaffold(
+            title: "Curso escolar",
+            subtitle: "Prepara el curso activo con fechas, estructura y traspaso controlado.",
+            systemImage: "calendar.badge.plus",
+            primaryTitle: step < 2 ? "Continuar" : "Crear",
+            canPrimary: canContinue,
+            onCancel: { dismiss() },
+            onPrimary: continueOrCreate
+        ) {
+            VStack(alignment: .leading, spacing: 16) {
+                Picker("Paso", selection: $step) {
+                    Text("Fechas").tag(0)
+                    Text("Estructura").tag(1)
+                    Text("Resumen").tag(2)
+                }
+                .pickerStyle(.segmented)
+
                 if step == 0 {
-                    Section("Nuevo curso escolar") {
-                        TextField("Nombre", text: $name)
+                    IOSSectionCard(title: "Nuevo curso escolar", systemImage: "calendar") {
+                        VStack(alignment: .leading, spacing: 16) {
+                            CourseSheetTextField(title: "Nombre", placeholder: "2026/2027", text: $name)
                         DatePicker("Inicio", selection: $startDate, displayedComponents: .date)
                         DatePicker("Fin", selection: $endDate, displayedComponents: .date)
                     }
+                    }
                 } else if step == 1 {
-                    Section("Estructura") {
+                    IOSSectionCard(title: "Estructura", systemImage: "rectangle.stack.badge.plus") {
+                        VStack(alignment: .leading, spacing: 16) {
                         Toggle("Copiar grupos de otro curso", isOn: $copyGroups)
                         if copyGroups {
                             Picker("Curso origen", selection: $sourceAcademicYearId) {
@@ -753,17 +926,22 @@ private struct AcademicYearWizardSheet: View {
                             Toggle("Promocionar alumnado", isOn: $promoteStudents)
                         }
                     }
+                    }
 
-                    Section {
+                    IOSSectionCard(title: "No se copia", systemImage: "lock.doc") {
+                        VStack(alignment: .leading, spacing: 12) {
                         Toggle("Copiar instrumentos como plantillas", isOn: .constant(false))
                             .disabled(true)
                         Toggle("Copiar situaciones como plantillas", isOn: .constant(false))
                             .disabled(true)
-                    } footer: {
                         Text("Notas, asistencia, celdas, evaluaciones e informes no se copian al curso nuevo.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 } else {
-                    Section("Resumen") {
+                    IOSSectionCard(title: "Resumen", systemImage: "checkmark.seal") {
+                        VStack(alignment: .leading, spacing: 12) {
                         LabeledContent("Curso", value: name)
                         LabeledContent("Grupos") {
                             Text(copyGroups ? "Copiar estructura" : "Curso vacio")
@@ -772,47 +950,28 @@ private struct AcademicYearWizardSheet: View {
                             Text(promoteStudents ? "Promocionar matriculas" : "Sin alumnado inicial")
                         }
                     }
+                    }
 
                     if activeYear != nil {
-                        Section("Curso actual") {
+                        IOSSectionCard(title: "Curso actual", systemImage: "archivebox") {
+                            VStack(alignment: .leading, spacing: 12) {
                             Button(role: .destructive) {
                                 onArchiveActive()
                                 dismiss()
                             } label: {
                                 Label("Archivar curso activo", systemImage: "archivebox")
                             }
+                                .buttonStyle(.bordered)
                             .disabled(!canArchiveActiveYear)
                         }
                     }
                 }
-            }
-            .navigationTitle("Curso escolar")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancelar") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(step < 2 ? "Continuar" : "Crear") {
-                        if step < 2 {
-                            step += 1
-                        } else {
-                            onCreate(AcademicYearDraft(
-                                name: name.trimmingCharacters(in: .whitespacesAndNewlines),
-                                startDate: startDate,
-                                endDate: endDate,
-                                sourceAcademicYearId: sourceAcademicYearId,
-                                copyGroups: copyGroups,
-                                promoteStudents: promoteStudents
-                            ))
-                        }
-                    }
-                    .disabled(!canContinue)
                 }
             }
-            .onAppear {
-                if sourceAcademicYearId == nil {
-                    sourceAcademicYearId = activeYear?.id
-                }
+        }
+        .onAppear {
+            if sourceAcademicYearId == nil {
+                sourceAcademicYearId = activeYear?.id
             }
         }
     }
@@ -830,6 +989,21 @@ private struct AcademicYearWizardSheet: View {
     private var canArchiveActiveYear: Bool {
         guard let activeYear else { return false }
         return academicYears.contains { $0.id != activeYear.id && $0.status != "TRASHED" }
+    }
+
+    private func continueOrCreate() {
+        if step < 2 {
+            step += 1
+        } else {
+            onCreate(AcademicYearDraft(
+                name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+                startDate: startDate,
+                endDate: endDate,
+                sourceAcademicYearId: sourceAcademicYearId,
+                copyGroups: copyGroups,
+                promoteStudents: promoteStudents
+            ))
+        }
     }
 
     private static func defaultName() -> String {
@@ -872,47 +1046,55 @@ private struct CourseClassEditorSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("Grupo") {
-                    TextField("Nombre", text: $name)
-                    TextField("Curso", text: $course)
+        CourseSheetScaffold(
+            title: schoolClass == nil ? "Nuevo grupo" : "Editar grupo",
+            subtitle: "Define el grupo docente y su asignatura para usarlo en el workspace diario.",
+            systemImage: "person.3.sequence.fill",
+            primaryTitle: "Guardar",
+            canPrimary: canSave,
+            onCancel: { dismiss() },
+            onPrimary: save
+        ) {
+            IOSSectionCard(title: "Grupo", systemImage: "rectangle.and.pencil.and.ellipsis") {
+                VStack(alignment: .leading, spacing: 16) {
+                    CourseSheetTextField(title: "Nombre", placeholder: "1º ESO A", text: $name)
+                    CourseSheetTextField(title: "Curso", placeholder: "1", text: $course)
 #if os(iOS)
-                        .keyboardType(.numberPad)
+                    .keyboardType(.numberPad)
 #endif
                 }
+            }
 
-                Section("Asignatura") {
+            IOSSectionCard(title: "Asignatura", systemImage: "books.vertical") {
+                VStack(alignment: .leading, spacing: 12) {
                     Picker("Asignatura", selection: $subjectId) {
                         Text("Sin asignatura").tag(Int64?.none)
                         ForEach(bridge.subjects, id: \.id) { subject in
                             Text(subject.name).tag(Optional(subject.id))
                         }
                     }
-                }
-            }
-            .navigationTitle(schoolClass == nil ? "Nuevo grupo" : "Editar grupo")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancelar") {
-                        dismiss()
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Guardar") {
-                        guard let courseNumber = Int32(course.trimmingCharacters(in: .whitespacesAndNewlines)) else { return }
-                        onSave(CourseClassDraft(
-                            original: schoolClass,
-                            name: name.trimmingCharacters(in: .whitespacesAndNewlines),
-                            course: courseNumber,
-                            subjectId: subjectId
-                        ))
-                        dismiss()
-                    }
-                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || Int32(course.trimmingCharacters(in: .whitespacesAndNewlines)) == nil)
+                    Text("La asignatura ayuda a filtrar contexto y mantener el cuaderno ordenado.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
         }
+    }
+
+    private var canSave: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        Int32(course.trimmingCharacters(in: .whitespacesAndNewlines)) != nil
+    }
+
+    private func save() {
+        guard let courseNumber = Int32(course.trimmingCharacters(in: .whitespacesAndNewlines)) else { return }
+        onSave(CourseClassDraft(
+            original: schoolClass,
+            name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+            course: courseNumber,
+            subjectId: subjectId
+        ))
+        dismiss()
     }
 }
 
@@ -930,14 +1112,34 @@ private struct SubjectCatalogSheet: View {
     @State private var saveError: String?
 
     var body: some View {
-        NavigationStack {
-            List {
-                Section("Nueva asignatura") {
+        CourseSheetScaffold(
+            title: "Asignaturas",
+            subtitle: "Mantén un catálogo breve y reutilizable para los grupos del curso.",
+            systemImage: "books.vertical.fill",
+            primaryTitle: "Cerrar",
+            onCancel: { dismiss() },
+            onPrimary: { dismiss() }
+        ) {
+            IOSSectionCard(title: editingSubject == nil ? "Nueva asignatura" : "Editar asignatura", systemImage: "tag") {
+                VStack(alignment: .leading, spacing: 16) {
                     subjectFields
-                    Button(editingSubject == nil ? "Añadir asignatura" : "Guardar cambios") {
+
+                    HStack(spacing: 12) {
+                        Button {
                         Task { await saveCurrentDraft() }
+                        } label: {
+                            Label(editingSubject == nil ? "Añadir asignatura" : "Guardar cambios", systemImage: "checkmark.circle.fill")
                     }
+                        .buttonStyle(.borderedProminent)
                     .disabled(isSaving || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                        if editingSubject != nil {
+                            Button("Cancelar edición", role: .cancel) {
+                                resetDraft()
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
 
                     if isSaving {
                         ProgressView()
@@ -948,15 +1150,11 @@ private struct SubjectCatalogSheet: View {
                             .font(.caption)
                             .foregroundStyle(.red)
                     }
-
-                    if editingSubject != nil {
-                        Button("Cancelar edición", role: .cancel) {
-                            resetDraft()
-                        }
-                    }
                 }
+            }
 
-                Section("Catálogo") {
+            IOSSectionCard(title: "Catálogo", systemImage: "list.bullet.rectangle") {
+                VStack(alignment: .leading, spacing: 12) {
                     if bridge.subjects.isEmpty {
                         Text("Todavía no hay asignaturas.")
                             .foregroundStyle(.secondary)
@@ -991,39 +1189,31 @@ private struct SubjectCatalogSheet: View {
                     }
                 }
             }
-            .navigationTitle("Asignaturas")
-            .confirmationDialog(
-                "Eliminar asignatura",
-                isPresented: Binding(
-                    get: { pendingDeleteSubject != nil },
-                    set: { if !$0 { pendingDeleteSubject = nil } }
-                ),
-                presenting: pendingDeleteSubject
-            ) { subject in
-                Button("Eliminar \(subject.name)", role: .destructive) {
-                    onDelete(subject)
-                    pendingDeleteSubject = nil
-                }
-                Button("Cancelar", role: .cancel) {
-                    pendingDeleteSubject = nil
-                }
-            } message: { subject in
-                Text("Los grupos que usen \(subject.name) quedarán como Sin asignatura.")
+        }
+        .confirmationDialog(
+            "Eliminar asignatura",
+            isPresented: Binding(
+                get: { pendingDeleteSubject != nil },
+                set: { if !$0 { pendingDeleteSubject = nil } }
+            ),
+            presenting: pendingDeleteSubject
+        ) { subject in
+            Button("Eliminar \(subject.name)", role: .destructive) {
+                onDelete(subject)
+                pendingDeleteSubject = nil
             }
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Cerrar") {
-                        dismiss()
-                    }
-                }
+            Button("Cancelar", role: .cancel) {
+                pendingDeleteSubject = nil
             }
+        } message: { subject in
+            Text("Los grupos que usen \(subject.name) quedarán como Sin asignatura.")
         }
     }
 
     private var subjectFields: some View {
-        Group {
-            TextField("Nombre", text: $name)
-            TextField("Código", text: $code)
+        VStack(alignment: .leading, spacing: 16) {
+            CourseSheetTextField(title: "Nombre", placeholder: "Matemáticas", text: $name)
+            CourseSheetTextField(title: "Código", placeholder: "MAT", text: $code)
         }
     }
 

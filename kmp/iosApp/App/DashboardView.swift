@@ -36,19 +36,6 @@ private struct DashboardGroupRow: Identifiable {
     let studentsInFollowUp: Int
 }
 
-private enum DashboardBlock: Hashable {
-    case today
-    case pending
-    case risk
-    case system
-    case alerts
-    case quickEvaluation
-    case groupSummary
-    case agenda
-    case physicalEducation
-    case lomloeAudit
-}
-
 private enum DashboardLoadPhase: Int {
     case shell
     case metrics
@@ -170,6 +157,10 @@ struct DashboardView: View {
                 initialClassId: dashboardActionClassId,
                 mode: mode.kotlinMode
             )
+            #if os(iOS)
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+            #endif
         }
 #if os(iOS)
         .sheet(isPresented: Binding(
@@ -242,36 +233,55 @@ struct DashboardView: View {
     }
 
     private var dashboardHeader: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Centro de trabajo")
-                        .font(.system(size: 26, weight: .black, design: .rounded))
-                    Text("Hoy, pendientes, riesgo y sistema · \(selectedClassLabel)")
-                        .font(.system(size: 14, weight: .medium, design: .rounded))
-                        .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 16) {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 24) {
+                    dashboardHeaderTitle
+
+                    Spacer(minLength: 16)
+
+                    dashboardHeaderControls
                 }
 
-                Spacer()
-
-                if let snapshot = dashboardStore.dashboardSnapshot {
-                    dashboardExportMenu(snapshot: snapshot)
+                VStack(alignment: .leading, spacing: 16) {
+                    dashboardHeaderTitle
+                    dashboardHeaderControls
                 }
-
-                Picker("Contexto", selection: $modeRawValue) {
-                    Text("Clase").tag(OperationalDashboardMode.classroom.rawValue)
-                    Text("Despacho").tag(OperationalDashboardMode.office.rawValue)
-                }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 240)
             }
 
             dashboardFilterChips
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 18)
-        .padding(.bottom, 14)
+        .padding(.horizontal, 24)
+        .padding(.top, 16)
+        .padding(.bottom, 16)
         .background(appMutedCardBackground(for: colorScheme))
+    }
+
+    private var dashboardHeaderTitle: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(mode == .classroom ? "Modo clase" : "Mesa docente")
+                .font(.system(size: 26, weight: .black, design: .rounded))
+            Text("Hoy, pendientes y alumnado en riesgo · \(selectedClassLabel)")
+                .font(.system(size: 14, weight: .medium, design: .rounded))
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var dashboardHeaderControls: some View {
+        HStack(spacing: 16) {
+            if let snapshot = dashboardStore.dashboardSnapshot {
+                dashboardExportMenu(snapshot: snapshot)
+            }
+
+            Picker("Contexto", selection: $modeRawValue) {
+                Text("Clase").tag(OperationalDashboardMode.classroom.rawValue)
+                Text("Despacho").tag(OperationalDashboardMode.office.rawValue)
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 240)
+        }
     }
 
     private var dashboardContent: some View {
@@ -302,35 +312,17 @@ struct DashboardView: View {
             }
 
             if loadPhase.includes(.lists) {
-                dashboardWorkCenter(snapshot: snapshot)
-
-                let blocks: [DashboardBlock] = mode == .classroom
-                    ? [.quickEvaluation, .groupSummary, .agenda, .lomloeAudit]
-                    : [.lomloeAudit, .groupSummary, .agenda, .quickEvaluation]
-
-                ForEach(blocks, id: \.self) { block in
-                    switch block {
-                    case .today:
-                        dashboardTodayBlock(snapshot: snapshot)
-                    case .pending:
-                        dashboardPendingBlock(snapshot: snapshot)
-                    case .risk:
-                        dashboardRiskBlock(snapshot: snapshot)
-                    case .system:
-                        dashboardSystemBlock()
-                    case .alerts:
-                        dashboardAlertsBlock(snapshot: snapshot)
-                    case .quickEvaluation:
-                        dashboardQuickEvalBlock(snapshot: snapshot)
-                    case .groupSummary:
-                        dashboardGroupSummaryBlock(snapshot: snapshot)
-                    case .agenda:
-                        dashboardAgendaBlock(snapshot: snapshot)
-                    case .physicalEducation:
-                        dashboardPEBlock(snapshot: snapshot)
-                    case .lomloeAudit:
-                        dashboardLomloeAuditBlock(snapshot: snapshot)
-                    }
+                if isCompactWidth {
+                    dashboardWorkCenter(snapshot: snapshot)
+                    dashboardQuickEvalBlock(snapshot: snapshot)
+                    dashboardGroupSummaryBlock(snapshot: snapshot)
+                    dashboardAgendaBlock(snapshot: snapshot)
+                    dashboardLomloeAuditBlock(snapshot: snapshot)
+                } else {
+                    dashboardIPadDailyCockpit(snapshot: snapshot)
+                    dashboardGroupSummaryBlock(snapshot: snapshot)
+                    dashboardAgendaBlock(snapshot: snapshot)
+                    dashboardLomloeAuditBlock(snapshot: snapshot)
                 }
             } else {
                 dashboardListSkeleton
@@ -424,10 +416,18 @@ struct DashboardView: View {
     }
 
     private var dashboardFilterChips: some View {
-        HStack(alignment: .bottom, spacing: 12) {
-            dashboardFilterPicker(title: "Severidad", selection: $severityFilter, options: DashboardFilterOption.allCases)
-            dashboardFilterPicker(title: "Prioridad", selection: $priorityFilter, options: DashboardFilterOption.allCases)
-            dashboardSessionFilterPicker(title: "Sesiones", selection: $sessionStatusFilter, options: DashboardSessionFilterOption.allCases)
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .bottom, spacing: 16) {
+                dashboardFilterPicker(title: "Severidad", selection: $severityFilter, options: DashboardFilterOption.allCases)
+                dashboardFilterPicker(title: "Prioridad", selection: $priorityFilter, options: DashboardFilterOption.allCases)
+                dashboardSessionFilterPicker(title: "Sesiones", selection: $sessionStatusFilter, options: DashboardSessionFilterOption.allCases)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                dashboardFilterPicker(title: "Severidad", selection: $severityFilter, options: DashboardFilterOption.allCases)
+                dashboardFilterPicker(title: "Prioridad", selection: $priorityFilter, options: DashboardFilterOption.allCases)
+                dashboardSessionFilterPicker(title: "Sesiones", selection: $sessionStatusFilter, options: DashboardSessionFilterOption.allCases)
+            }
         }
     }
 
@@ -596,6 +596,34 @@ struct DashboardView: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func dashboardIPadDailyCockpit(snapshot: DashboardSnapshot) -> some View {
+        VStack(spacing: 16) {
+            HStack(alignment: .top, spacing: 16) {
+                dashboardTodayBlock(snapshot: snapshot)
+                    .frame(maxWidth: .infinity, alignment: .top)
+                dashboardQuickEvalBlock(snapshot: snapshot)
+                    .frame(width: 320, alignment: .top)
+            }
+
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), spacing: 16, alignment: .top),
+                    GridItem(.flexible(), spacing: 16, alignment: .top),
+                    GridItem(.flexible(), spacing: 16, alignment: .top)
+                ],
+                alignment: .center,
+                spacing: 16
+            ) {
+                dashboardPendingBlock(snapshot: snapshot)
+                dashboardRiskBlock(snapshot: snapshot)
+                dashboardSystemBlock()
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Cockpit diario de iPad")
     }
 
     @ViewBuilder
@@ -1761,9 +1789,17 @@ private struct DashboardQuickEvaluationSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("Selección") {
+        DashboardEvaluationSheetScaffold(
+            title: "Evaluación rápida",
+            subtitle: "Registra una nota puntual sin salir del cockpit diario.",
+            systemImage: "square.and.pencil",
+            canSave: canSave,
+            isSaving: isSaving,
+            onCancel: { dismiss() },
+            onSave: { Task { await save() } }
+        ) {
+            IOSSectionCard(title: "Contexto", systemImage: "person.crop.rectangle.stack") {
+                VStack(spacing: 14) {
                     Picker("Clase", selection: $selectedClassId) {
                         Text("Seleccionar").tag(Int64?.none)
                         ForEach(bridge.classes, id: \.id) { schoolClass in
@@ -1785,43 +1821,52 @@ private struct DashboardQuickEvaluationSheet: View {
                         }
                     }
                 }
+                .pickerStyle(.menu)
+            }
 
-                Section("Nota") {
+            IOSSectionCard(title: "Nota", systemImage: "number.square") {
+                VStack(alignment: .leading, spacing: 14) {
                     TextField("0-10", text: $scoreText)
+                        .font(.title2.weight(.semibold))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .background(EvaluationDesign.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(EvaluationDesign.border, lineWidth: 1)
+                        }
 #if os(iOS)
                         .keyboardType(.decimalPad)
 #endif
+
                     TextField("Observación opcional", text: $note, axis: .vertical)
-                }
-
-                if notebookColumns.isEmpty {
-                    Section {
-                        Text("No hay columnas de evaluación cargadas para esta clase. Abre o prepara el cuaderno antes de guardar desde el dashboard.")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                if let message {
-                    Section {
-                        Text(message)
-                            .foregroundStyle(.secondary)
-                    }
+                        .lineLimit(3...6)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .background(EvaluationDesign.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(EvaluationDesign.border, lineWidth: 1)
+                        }
                 }
             }
-            .navigationTitle("Evaluación rápida")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancelar") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(isSaving ? "Guardando..." : "Confirmar") {
-                        Task { await save() }
-                    }
-                    .disabled(!canSave)
-                }
+
+            if notebookColumns.isEmpty {
+                DashboardEvaluationNotice(
+                    systemImage: "exclamationmark.triangle",
+                    text: "No hay columnas de evaluación cargadas para esta clase. Abre o prepara el cuaderno antes de guardar desde el dashboard.",
+                    tint: .orange
+                )
+            }
+
+            if let message {
+                DashboardEvaluationNotice(
+                    systemImage: "info.circle",
+                    text: message,
+                    tint: EvaluationDesign.accent
+                )
             }
         }
-        .frame(minWidth: 460, minHeight: 520)
         .onAppear {
             selectedClassId = initialClassId ?? bridge.classes.first?.id
             loadClassContext()
@@ -1866,6 +1911,114 @@ private struct DashboardQuickEvaluationSheet: View {
         bridge.status = "Evaluación guardada desde dashboard"
         isSaving = false
         dismiss()
+    }
+}
+
+private struct DashboardEvaluationSheetScaffold<Content: View>: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+    let canSave: Bool
+    let isSaving: Bool
+    let onCancel: () -> Void
+    let onSave: () -> Void
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    DashboardEvaluationHero(title: title, subtitle: subtitle, systemImage: systemImage)
+                    content
+                }
+                .padding(24)
+                .frame(maxWidth: 720, alignment: .topLeading)
+                .frame(maxWidth: .infinity, alignment: .top)
+            }
+            .background(EvaluationDesign.surface.opacity(0.45))
+            .navigationTitle(title)
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancelar", action: onCancel)
+                        .keyboardShortcut(.cancelAction)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(isSaving ? "Guardando..." : "Confirmar", action: onSave)
+                        .fontWeight(.semibold)
+                        .disabled(!canSave)
+                        .keyboardShortcut(.defaultAction)
+                }
+            }
+        }
+        #if os(macOS)
+        .frame(minWidth: 560, idealWidth: 640, maxWidth: 720, minHeight: 560, idealHeight: 640)
+        #else
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        #endif
+    }
+}
+
+private struct DashboardEvaluationHero: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 16) {
+            Image(systemName: systemImage)
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(EvaluationDesign.accent)
+                .frame(width: 48, height: 48)
+                .background(EvaluationDesign.accentSoft, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text(title)
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(EvaluationDesign.border, lineWidth: 1)
+        }
+    }
+}
+
+private struct DashboardEvaluationNotice: View {
+    let systemImage: String
+    let text: String
+    let tint: Color
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(tint)
+                .frame(width: 28, height: 28)
+                .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            Text(text)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EvaluationDesign.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(EvaluationDesign.border, lineWidth: 1)
+        }
     }
 }
 

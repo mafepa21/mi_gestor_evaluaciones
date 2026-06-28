@@ -25,6 +25,20 @@ struct NotebookFormulaEditorSheet: View {
     }
 
     var body: some View {
+#if os(macOS)
+        sheetContent
+            .frame(width: 660, height: 640)
+            .background(EvaluationBackdrop())
+#else
+        sheetContent
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(EvaluationBackdrop())
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+#endif
+    }
+
+    private var sheetContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
             Divider()
@@ -33,8 +47,6 @@ struct NotebookFormulaEditorSheet: View {
             Divider()
             footer
         }
-        .frame(width: 660, height: 640)
-        .background(EvaluationBackdrop())
     }
 
     private var header: some View {

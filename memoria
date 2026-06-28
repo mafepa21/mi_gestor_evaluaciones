@@ -3,6 +3,17 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-06-28 - Enriquecimiento de la Secuencia del Planificador (iOS/macOS)
+
+Se modificó la vista Secuencia en el planificador didáctico para que muestre la secuencia de aprendizaje completa (`LearningSituationSessionPlan`) en lugar de únicamente las sesiones planificadas en el calendario. Para lograr esto:
+1. Se añadió la API en `KmpBridge.swift`: `learningSituationSessionPlans(sequenceVersionId:)` para consultar todos los planes de sesión de una secuencia desde `LearningSituationsRepository`, y `plannerListAllSessions()` para listar todas las sesiones planificadas en el planificador.
+2. En `PlannerWorkspaceIOS.swift` se crearon los modelos `PlannerSequenceGroup` y `PlannerSequenceRow`, y se implementó la función asíncrona `loadEnrichedSequences()` en `PlannerWorkspaceViewModel` para cruzar los planes de sesión teóricos con las sesiones de calendario creadas, calculando el progreso exacto.
+3. Se actualizó `PlannerSequenceView` y `PlannerSequenceCard` para renderizar el listado ordenado de sesiones teóricas (con detalles de fecha/hora si están agendadas, o marcadas como "Pendiente de ubicar" si no lo están), y se actualizaron los contadores de progreso en la cabecera mostrando el progreso total enriquecido.
+
+## Avance 2026-06-28 - Solución a caída de SyncLAN por excepción no capturada
+
+Se solucionó la caída de la aplicación (crash con SIGABRT en `runCompletionFailure`) durante la sincronización por SyncLAN al intentar procesar cambios en años académicos. La causa residía en que los métodos suspendidos de `AcademicYearsRepository` (`upsertAcademicYear`, `deleteArchivedAcademicYear`, etc.) no estaban anotados con `@Throws(Exception::class)` en `Contracts.kt`. Se añadieron las anotaciones necesarias en la interfaz del repositorio en Kotlin Multiplatform para garantizar la traducción correcta de las excepciones a errores de Swift (`NSError`), impidiendo fallos fatales en el runtime de iOS y macOS.
+
 ## Avance 2026-06-19 - Debounce real de guardado de celdas del Cuaderno
 
 Se añadió `NotebookSaveQueue` en KMP para que la edición rápida de celdas del Cuaderno actualice drafts locales sin persistir cada carácter. `saveColumnGradeDebounced` ahora encola el último valor, guarda tras 500 ms sin cambios y permite flush inmediato al perder foco o al cambiar de clase. La persistencia SQLDelight incorpora un batch transaccional para drafts de celda, conservando la auditoría de cambios.

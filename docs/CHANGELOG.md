@@ -38,6 +38,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- La vista Secuencia del planificador deja de basarse únicamente en las sesiones ya agendadas y pasa a renderizar la secuencia didáctica completa (`LearningSituationSessionPlan`), cruzándolas con las `PlanningSession` planificadas para calcular el progreso exacto y mostrar sesiones no ubicadas como 'Pendiente de ubicar'.
 - Planner iOS/macOS incorpora una proyección semanal (`PlannerWeekRenderModel`) para consultar celdas por clave día/franja, añade modos Semana/Día/Secuencia/Cobertura, densidad compacta/estándar, tarjetas semanales sin scroll interno, apertura consistente de ficha de sesión y cobertura trimestral con barras de progreso.
 - Rúbricas abre la evaluación masiva directamente desde el detalle y desde cada uso del Cuaderno, priorizando la clase filtrada y dejando Evaluación como fallback si no puede abrirse el sheet.
 - iOS/iPadOS reorganiza el workspace diario como experiencia iPad-first: sidebar con prioridad de uso docente diario, barra superior más limpia con contexto de clase y Dashboard regular-width como cockpit de hoy, acciones rápidas, pendientes, riesgo y sistema.
@@ -112,6 +113,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- SyncLAN: Corrige una caída (crash) por excepción no capturada (SIGABRT en `runCompletionFailure`) durante la sincronización LAN añadiendo la anotación `@Throws(Exception::class)` a los métodos suspendidos de `AcademicYearsRepository` en `Contracts.kt`.
 - Planner iOS/macOS corrige los helpers de botones del pulso rápido del diario para devolver explícitamente la vista SwiftUI tras calcular el estado seleccionado, resolviendo el error de tipo opaco en `PlannerWorkspaceIOS.swift`.
 - SyncLAN alinea cursos escolares y grupos entre macOS/iPadOS: se sincroniza `academic_year` como entidad de primer orden y los payloads de `class` preservan `academicYearId`, evitando que los grupos aparezcan bajo cursos escolares distintos en cada dispositivo.
 - La importación DOCX de secuenciaciones de sesiones reconoce títulos desde cabeceras, sesiones agrupadas, tipos simple/doble, minutos globales por tipo y desarrollos por bloques o rangos horarios.

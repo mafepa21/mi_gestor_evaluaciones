@@ -80,8 +80,11 @@ interface ClassesRepository {
 
 interface AcademicYearsRepository {
     fun observeAcademicYears(): Flow<List<AcademicYear>>
+    @Throws(Exception::class)
     suspend fun listAcademicYears(): List<AcademicYear>
+    @Throws(Exception::class)
     suspend fun getActiveAcademicYear(): AcademicYear?
+    @Throws(Exception::class)
     suspend fun createAcademicYear(
         name: String,
         startEpochMs: Long,
@@ -89,6 +92,7 @@ interface AcademicYearsRepository {
         centerId: Long? = null,
         makeActive: Boolean = true,
     ): Long
+    @Throws(Exception::class)
     suspend fun upsertAcademicYear(
         id: Long,
         centerId: Long,
@@ -108,10 +112,15 @@ interface AcademicYearsRepository {
         centerId = centerId,
         makeActive = isActive,
     )
+    @Throws(Exception::class)
     suspend fun setActiveAcademicYear(academicYearId: Long)
+    @Throws(Exception::class)
     suspend fun archiveAcademicYear(academicYearId: Long)
+    @Throws(Exception::class)
     suspend fun trashAcademicYear(academicYearId: Long) = archiveAcademicYear(academicYearId)
+    @Throws(Exception::class)
     suspend fun deleteArchivedAcademicYear(academicYearId: Long)
+    @Throws(Exception::class)
     suspend fun enrollmentCount(academicYearId: Long): Long = 0
 }
 

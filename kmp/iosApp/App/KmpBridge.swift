@@ -2154,6 +2154,10 @@ final class KmpBridge: ObservableObject {
         container.plannerRepository.getTimeSlots()
     }
 
+    func plannerListAllSessions() async throws -> [PlanningSession] {
+        try await container.plannerRepository.listAllSessions()
+    }
+
     func plannerListSessions(weekNumber: Int, year: Int, classId: Int64? = nil) async throws -> [PlanningSession] {
         let sessions = try await container.plannerRepository.listSessions(weekNumber: Int32(weekNumber), year: Int32(year))
         guard let classId else { return sessions }
@@ -4629,6 +4633,10 @@ final class KmpBridge: ObservableObject {
 
     func learningSituationSessionPlan(id: Int64) async throws -> LearningSituationSessionPlan? {
         try await container.learningSituationsRepository.getSessionPlan(id: id)
+    }
+
+    func learningSituationSessionPlans(sequenceVersionId: Int64) async throws -> [LearningSituationSessionPlan] {
+        try await container.learningSituationsRepository.listSessionPlans(sequenceVersionId: sequenceVersionId)
     }
 
     func learningSituationSessionSequenceVersion(id: Int64, learningSituationId: Int64) async throws -> LearningSituationSessionSequenceVersion? {

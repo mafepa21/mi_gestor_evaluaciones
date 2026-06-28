@@ -38,7 +38,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
-- La vista Secuencia del planificador deja de basarse únicamente en las sesiones ya agendadas y pasa a renderizar la secuencia didáctica completa (`LearningSituationSessionPlan`), cruzándolas con las `PlanningSession` planificadas para calcular el progreso exacto y mostrar sesiones no ubicadas como 'Pendiente de ubicar'.
+- La vista Secuencia del planificador deja de basarse únicamente en las sesiones ya agendadas y pasa a renderizar la secuencia didáctica completa (`LearningSituationSessionPlan`), cruzándolas con las `PlanningSession` planificadas para calcular el progreso exacto, mostrar las no ubicadas como 'Pendiente de ubicar' y permitir agendarlas con un solo clic precargando los datos del plan.
 - Planner iOS/macOS incorpora una proyección semanal (`PlannerWeekRenderModel`) para consultar celdas por clave día/franja, añade modos Semana/Día/Secuencia/Cobertura, densidad compacta/estándar, tarjetas semanales sin scroll interno, apertura consistente de ficha de sesión y cobertura trimestral con barras de progreso.
 - Rúbricas abre la evaluación masiva directamente desde el detalle y desde cada uso del Cuaderno, priorizando la clase filtrada y dejando Evaluación como fallback si no puede abrirse el sheet.
 - iOS/iPadOS reorganiza el workspace diario como experiencia iPad-first: sidebar con prioridad de uso docente diario, barra superior más limpia con contexto de clase y Dashboard regular-width como cockpit de hoy, acciones rápidas, pendientes, riesgo y sistema.

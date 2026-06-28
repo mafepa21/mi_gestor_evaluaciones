@@ -225,6 +225,7 @@ struct PlannerComposerDraft {
     var startTime: String? = nil
     var endTime: String? = nil
     var selectedInstrumentIds: Set<String> = []
+    var learningSituationSessionPlanId: Int64? = nil
 }
 
 enum PlannerSaveState: Equatable {
@@ -329,6 +330,7 @@ struct PlannerSequenceRow: Identifiable {
     let statusIcon: String
     let statusColor: Color
     let planningSession: PlanningSession?
+    let learningSituationSessionPlanId: Int64?
 }
 
 struct PlannerScheduleGenerationPreviewRow: Identifiable, Hashable {
@@ -1135,7 +1137,15 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         await reloadJournalSummaries()
     }
 
-    func openComposer(for session: PlanningSession? = nil, day: Int? = nil, period: Int? = nil) {
+    func openComposer(
+        for session: PlanningSession? = nil,
+        day: Int? = nil,
+        period: Int? = nil,
+        learningSituationSessionPlanId: Int64? = nil,
+        initialObjectives: String? = nil,
+        initialActivities: String? = nil,
+        initialTeachingUnitName: String? = nil
+    ) {
         if let session {
             composerDraft = PlannerComposerDraft(
                 groupId: session.groupId,
@@ -1149,7 +1159,8 @@ final class PlannerWorkspaceViewModel: ObservableObject {
                 teacherScheduleSlotId: session.teacherScheduleSlotId?.int64Value,
                 startTime: session.startTime,
                 endTime: session.endTime,
-                selectedInstrumentIds: Set(session.linkedAssessmentIdsCsv.split(separator: ",").map(String.init))
+                selectedInstrumentIds: Set(session.linkedAssessmentIdsCsv.split(separator: ",").map(String.init)),
+                learningSituationSessionPlanId: session.learningSituationSessionPlanId?.int64Value ?? learningSituationSessionPlanId
             )
         } else {
             let firstVisibleDay = visibleWeekdays.first ?? 1
@@ -1160,14 +1171,15 @@ final class PlannerWorkspaceViewModel: ObservableObject {
             composerDraft = PlannerComposerDraft(
                 groupId: selectedGroupId ?? groups.first?.id,
                 teachingUnitId: nil,
-                unitTitle: "",
-                objectives: "",
-                activities: "",
+                unitTitle: initialTeachingUnitName ?? "",
+                objectives: initialObjectives ?? "",
+                activities: initialActivities ?? "",
                 dayOfWeek: resolvedDay,
                 period: resolvedPeriod,
                 teacherScheduleSlotId: slotMetadata.slotId,
                 startTime: slotMetadata.startTime,
-                endTime: slotMetadata.endTime
+                endTime: slotMetadata.endTime,
+                learningSituationSessionPlanId: learningSituationSessionPlanId
             )
         }
         composerSaveState = .idle
@@ -1204,6 +1216,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
                 teacherScheduleSlotId: slotMetadata.slotId,
                 startTime: slotMetadata.startTime,
                 endTime: slotMetadata.endTime,
+                learningSituationSessionPlanId: composerDraft.learningSituationSessionPlanId,
                 selectedInstruments: selectedInstruments
             )
             composerContextError = ""
@@ -1264,7 +1277,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
             teacherScheduleSlotId: slotMetadata.slotId.map { KotlinLong(value: $0) },
             startTime: slotMetadata.startTime,
             endTime: slotMetadata.endTime,
-            learningSituationSessionPlanId: previous?.learningSituationSessionPlanId,
+            learningSituationSessionPlanId: previous?.learningSituationSessionPlanId ?? composerDraft.learningSituationSessionPlanId.map { KotlinLong(value: $0) },
             status: previous?.status ?? .planned
         )
         sessionStore.upsertLocal(updated)
@@ -1895,7 +1908,8 @@ final class PlannerWorkspaceViewModel: ObservableObject {
                                 statusText: statusText,
                                 statusIcon: statusIcon,
                                 statusColor: statusColor,
-                                planningSession: session
+                                planningSession: session,
+                                learningSituationSessionPlanId: plan.id
                             ))
                         } else {
                             rows.append(PlannerSequenceRow(
@@ -1906,7 +1920,8 @@ final class PlannerWorkspaceViewModel: ObservableObject {
                                 statusText: "Pendiente de ubicar",
                                 statusIcon: "calendar.badge.plus",
                                 statusColor: Color.orange,
-                                planningSession: nil
+                                planningSession: nil,
+                                learningSituationSessionPlanId: plan.id
                             ))
                         }
                     }
@@ -1921,7 +1936,8 @@ final class PlannerWorkspaceViewModel: ObservableObject {
                             statusText: "Solo calendario",
                             statusIcon: "calendar",
                             statusColor: Color.secondary,
-                            planningSession: session
+                            planningSession: session,
+                            learningSituationSessionPlanId: session.learningSituationSessionPlanId?.int64Value
                         ))
                     }
                     
@@ -1985,7 +2001,8 @@ final class PlannerWorkspaceViewModel: ObservableObject {
                             statusText: statusText,
                             statusIcon: statusIcon,
                             statusColor: statusColor,
-                            planningSession: session
+                            planningSession: session,
+                            learningSituationSessionPlanId: session.learningSituationSessionPlanId?.int64Value
                         )
                     }
                     
@@ -3393,7 +3410,17 @@ private struct PlannerSequenceCard: View {
                         }
                         .buttonStyle(.plain)
                     } else {
-                        rowLabel(row: row, session: nil)
+                        Button {
+                            vm.openComposer(
+                                learningSituationSessionPlanId: row.learningSituationSessionPlanId,
+                                initialObjectives: row.title,
+                                initialActivities: row.objective,
+                                initialTeachingUnitName: group.title
+                            )
+                        } label: {
+                            rowLabel(row: row, session: nil)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -3433,6 +3460,10 @@ private struct PlannerSequenceCard: View {
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.tertiary)
+            } else {
+                Image(systemName: "plus")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.orange)
             }
         }
         .padding(.vertical, 6)

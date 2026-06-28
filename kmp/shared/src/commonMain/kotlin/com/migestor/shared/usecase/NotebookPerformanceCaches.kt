@@ -45,26 +45,35 @@ data class NotebookSheetCacheKey(
 class NotebookSheetMemoryCache(
     private val maxEntries: Int = 4,
 ) {
+    private val lock = Lock()
     private val entries = LinkedHashMap<NotebookSheetCacheKey, NotebookSheet>()
 
     fun get(key: NotebookSheetCacheKey): NotebookSheet? {
-        return entries.remove(key)?.also { entries[key] = it }
+        return lock.withLock {
+            entries.remove(key)?.also { entries[key] = it }
+        }
     }
 
     fun put(key: NotebookSheetCacheKey, sheet: NotebookSheet) {
-        entries[key] = sheet
-        while (entries.size > maxEntries) {
-            entries.remove(entries.keys.first())
+        lock.withLock {
+            entries[key] = sheet
+            while (entries.size > maxEntries) {
+                entries.remove(entries.keys.first())
+            }
         }
     }
 
     fun invalidate(classId: Long) {
-        val toRemove = entries.keys.filter { it.classId == classId }
-        toRemove.forEach { entries.remove(it) }
+        lock.withLock {
+            val toRemove = entries.keys.filter { it.classId == classId }
+            toRemove.forEach { entries.remove(it) }
+        }
     }
 
     fun clear() {
-        entries.clear()
+        lock.withLock {
+            entries.clear()
+        }
     }
 }
 
@@ -77,20 +86,25 @@ data class AverageCacheKey(
 class AverageCache(
     private val maxEntries: Int = 512,
 ) {
+    private val lock = Lock()
     private val entries = LinkedHashMap<AverageCacheKey, NotebookAverageExplanation?>()
 
     fun getOrPut(key: AverageCacheKey, compute: () -> NotebookAverageExplanation?): NotebookAverageExplanation? {
-        entries.remove(key)?.also {
-            entries[key] = it
-            NotebookPerformanceDebug.event("averageCache hit")
-            return it
+        lock.withLock {
+            entries.remove(key)?.also {
+                entries[key] = it
+                NotebookPerformanceDebug.event("averageCache hit")
+                return it
+            }
         }
         NotebookPerformanceDebug.event("averageCache miss")
-        return compute().also { value ->
-            entries[key] = value
+        val computed = compute()
+        return lock.withLock {
+            entries[key] = computed
             while (entries.size > maxEntries) {
                 entries.remove(entries.keys.first())
             }
+            computed
         }
     }
 

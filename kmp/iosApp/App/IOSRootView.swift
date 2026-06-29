@@ -184,8 +184,12 @@ struct IOSRootView: View {
 
     // MARK: Persistence helpers
     private func restorePersistedUIState() {
-        activeModule = AppWorkspaceModule(rawValue: persistedModule) ?? .dashboard
+        activeModule = normalizedModule(AppWorkspaceModule(rawValue: persistedModule) ?? .dashboard)
         columnVisibility = sidebarVisible ? .all : .detailOnly
+    }
+
+    private func normalizedModule(_ module: AppWorkspaceModule) -> AppWorkspaceModule {
+        module == .teacherRadar ? .dashboard : module
     }
 
     private func restorePersistedDataState() {
@@ -202,12 +206,14 @@ struct IOSRootView: View {
 
     // MARK: Navigation
     private func selectModule(_ module: AppWorkspaceModule) {
+        let module = normalizedModule(module)
         guard activeModule != module else { return }
         activeModule = module
         searchText = ""
     }
 
     func openModule(_ module: AppWorkspaceModule, classId: Int64? = nil, studentId: Int64? = nil) {
+        let module = normalizedModule(module)
         activeModule = module
         if classId != nil || studentId != nil {
             let targetClassId = classId ?? selectionStore.selectedClassId
@@ -777,11 +783,10 @@ struct IOSWorkspaceContent: View {
                 onOpenModule: onOpenModule
             )
         case .teacherRadar:
-            TeacherRadarDetailView(
+            DashboardView(
                 bridge: bridge,
-                selectedClassId: $selectionStore.selectedClassId,
-                selectedStudentId: $selectionStore.selectedStudentId,
-                onOpenModule: onOpenModule
+                dashboardStore: dashboardStore,
+                selectedClassId: $selectionStore.selectedClassId
             )
         case .notebook:
             NotebookModuleView(

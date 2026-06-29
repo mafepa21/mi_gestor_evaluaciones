@@ -35,6 +35,8 @@ Prioridad: alta.
 - Dashboard: Radar docente proactivo para priorizar que pasa ahora, por que importa y que accion diaria ejecutar.
   Avance: las recargas por filtros del Dashboard se cancelan y debouncean para evitar tareas solapadas durante cambios rápidos de contexto.
   Avance: Dashboard macOS "Hoy" prioriza la clase actual o próxima, pendiente principal y acción recomendada antes que los paneles secundarios.
+  Avance: Dashboard iOS/iPadOS y macOS fusionan Radar y cockpit diario en una unica entrada "Hoy"; se retira Radar del menu visible y el flujo queda centrado en acciones, sesiones, pendientes, riesgo y agenda.
+  Avance: el estado sin horario de "Hoy" en macOS muestra una explicación breve y accesos directos de trabajo diario para que la pantalla no parezca vacía.
 
 ## Fase 2 - Apple premium
 

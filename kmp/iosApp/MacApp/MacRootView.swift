@@ -59,7 +59,7 @@ struct MacRootView: View {
             }
         }
         .onAppear {
-            selectedFeature = session.selectedFeature
+            selectedFeature = normalizedFeature(session.selectedFeature)
             columnVisibility = NavigationSplitViewVisibility(macRootStoredValue: storedColumnVisibility)
             isInspectorVisible = storedInspectorVisible && session.inspectorVisible
         }
@@ -163,6 +163,7 @@ struct MacRootView: View {
             navigateFromCommand(notification.object)
         }
         .appOnChange(of: session.selectedFeature) { newFeature in
+            let newFeature = normalizedFeature(newFeature)
             guard selectedFeature != newFeature else { return }
             Task { @MainActor in
                 await Task.yield()
@@ -220,10 +221,15 @@ struct MacRootView: View {
         )
     }
 
+    private func normalizedFeature(_ feature: MacFeatureDescriptor.Feature) -> MacFeatureDescriptor.Feature {
+        feature == .teacherRadar ? .dashboard : feature
+    }
+
     private func selectFeature(
         _ feature: MacFeatureDescriptor.Feature,
         propagateToSession: Bool = true
     ) {
+        let feature = normalizedFeature(feature)
         guard selectedFeature != feature || session.selectedFeature != feature else { return }
         selectedFeature = feature
         isInspectorVisible = storedInspectorVisible
@@ -250,11 +256,13 @@ struct MacRootView: View {
                 onToolbarActionsChange: setDashboardToolbarActions
             )
         case .teacherRadar:
-            TeacherRadarDetailView(
+            MacDashboardView(
                 bridge: session.bridge,
-                selectedClassId: studentSelection.selectedClassBinding,
-                selectedStudentId: studentSelection.selectedStudentBinding,
-                onOpenModule: open(module:classId:studentId:)
+                dashboardStore: dashboardStore,
+                backupStore: backupStore,
+                bootstrap: session.bootstrap,
+                onNavigate: navigateFromDashboard,
+                onToolbarActionsChange: setDashboardToolbarActions
             )
         case .courses:
             CoursesWorkspaceView(
@@ -683,7 +691,7 @@ struct MacRootView: View {
     private func iconTint(for feature: MacFeatureDescriptor.Feature) -> Color {
         switch feature {
         case .dashboard: return .accentColor
-        case .teacherRadar: return .red
+        case .teacherRadar: return .accentColor
         case .courses: return .cyan
         case .notebook: return .purple
         case .attendance: return .green
@@ -950,7 +958,7 @@ struct MacRootView: View {
 
         switch module {
         case .teacherRadar:
-            selectFeature(.teacherRadar)
+            selectFeature(.dashboard)
         case .courses:
             selectFeature(.courses)
         case .notebook:

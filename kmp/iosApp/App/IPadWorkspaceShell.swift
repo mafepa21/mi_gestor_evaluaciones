@@ -874,7 +874,8 @@ struct AppWorkspaceShell: View {
             studentsBridgeStore.bind(to: bridge)
             attendanceStore.bind(to: bridge)
 
-            activeModule = AppWorkspaceModule(rawValue: persistedActiveModule) ?? .dashboard
+            let restoredModule = AppWorkspaceModule(rawValue: persistedActiveModule) ?? .dashboard
+            activeModule = restoredModule == .teacherRadar ? .dashboard : restoredModule
             
             await bridge.ensureClassesLoaded()
             try? await bridge.refreshStudentsDirectory()

@@ -65,8 +65,12 @@ class NotebookSheetMemoryCache(
 
     fun invalidate(classId: Long) {
         lock.withLock {
-            val toRemove = entries.keys.filter { it.classId == classId }
-            toRemove.forEach { entries.remove(it) }
+            val iterator = entries.iterator()
+            while (iterator.hasNext()) {
+                if (iterator.next().key.classId == classId) {
+                    iterator.remove()
+                }
+            }
         }
     }
 

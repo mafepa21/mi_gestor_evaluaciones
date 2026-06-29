@@ -80,11 +80,11 @@ extension AppWorkspaceShell {
     }
 
     private var primaryDailyFeatures: [IOSFeatureDescriptor] {
-        IOSFeatureRegistry.daily.filter { [.dashboard, .teacherRadar, .notebook, .attendance].contains($0.module) }
+        IOSFeatureRegistry.daily.filter { [.dashboard, .notebook, .attendance].contains($0.module) }
     }
 
     private var secondaryDailyFeatures: [IOSFeatureDescriptor] {
-        IOSFeatureRegistry.daily.filter { ![.dashboard, .teacherRadar, .notebook, .attendance].contains($0.module) }
+        IOSFeatureRegistry.daily.filter { ![.dashboard, .notebook, .attendance].contains($0.module) }
     }
 }
 

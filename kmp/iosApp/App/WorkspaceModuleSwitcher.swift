@@ -32,11 +32,10 @@ extension AppWorkspaceShell {
                 onOpenModule: open(module:classId:studentId:)
             )
         case .teacherRadar:
-            TeacherRadarDetailView(
+            DashboardView(
                 bridge: bridge,
-                selectedClassId: $selectedClassId,
-                selectedStudentId: $selectedStudentId,
-                onOpenModule: open(module:classId:studentId:)
+                dashboardStore: dashboardStore,
+                selectedClassId: $selectedClassId
             )
         case .notebook:
             NotebookModuleView(

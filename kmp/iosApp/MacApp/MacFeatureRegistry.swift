@@ -38,8 +38,7 @@ struct MacFeatureDescriptor: Identifiable, Hashable {
 
 enum MacFeatureRegistry {
     static let all: [MacFeatureDescriptor] = [
-        .init(feature: .dashboard, title: "Dashboard", subtitle: "KPIs, agenda y pulso operativo", systemImage: "rectangle.3.group.bubble.left.fill", source: .parityIOS, enabledInV1: true),
-        .init(feature: .teacherRadar, title: "Radar", subtitle: "Alertas docentes accionables", systemImage: "scope", source: .parityIOS, enabledInV1: true),
+        .init(feature: .dashboard, title: "Hoy", subtitle: "Dashboard y radar docente", systemImage: "rectangle.3.group.bubble.left.fill", source: .parityIOS, enabledInV1: true),
         .init(feature: .courses, title: "Cursos", subtitle: "Curso escolar, grupos y promoción", systemImage: "calendar.badge.clock", source: .parityIOS, enabledInV1: true),
         .init(feature: .notebook, title: "Cuaderno", subtitle: "Vista de clase, edición y guardado", systemImage: "tablecells.fill", source: .parityIOS, enabledInV1: true),
         .init(feature: .attendance, title: "Asistencia", subtitle: "Pase e historial", systemImage: "checklist.checked", source: .parityIOS, enabledInV1: true),
@@ -70,7 +69,7 @@ enum MacFeatureSection: String, CaseIterable, Identifiable {
     var features: [MacFeatureDescriptor.Feature] {
         switch self {
         case .hoy:
-            return [.dashboard, .teacherRadar]
+            return [.dashboard]
         case .evaluacion:
             return [.courses, .notebook, .attendance, .rubrics, .physicalTests]
         case .planificacion:

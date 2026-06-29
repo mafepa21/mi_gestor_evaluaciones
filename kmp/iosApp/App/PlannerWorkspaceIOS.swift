@@ -2487,24 +2487,26 @@ struct PlannerToolbar: View {
 
                 Spacer()
 
-                HStack(spacing: 8) {
-                    Button { Task { await vm.previousWeek() } } label: {
-                        Image(systemName: "chevron.left")
-                    }
-                    .buttonStyle(PlannerLiquidGlassButtonStyle())
-                    .accessibilityLabel("Semana anterior")
+                PlannerLiquidGlassGroup(spacing: 8) {
+                    HStack(spacing: 8) {
+                        Button { Task { await vm.previousWeek() } } label: {
+                            Image(systemName: "chevron.left")
+                        }
+                        .buttonStyle(PlannerLiquidGlassButtonStyle())
+                        .accessibilityLabel("Semana anterior")
 
-                    Button { Task { await vm.nextWeek() } } label: {
-                        Image(systemName: "chevron.right")
-                    }
-                    .buttonStyle(PlannerLiquidGlassButtonStyle())
-                    .accessibilityLabel("Semana siguiente")
+                        Button { Task { await vm.nextWeek() } } label: {
+                            Image(systemName: "chevron.right")
+                        }
+                        .buttonStyle(PlannerLiquidGlassButtonStyle())
+                        .accessibilityLabel("Semana siguiente")
 
-                    ShareLink(item: vm.exportText()) {
-                        Image(systemName: "square.and.arrow.up")
+                        ShareLink(item: vm.exportText()) {
+                            Image(systemName: "square.and.arrow.up")
+                        }
+                        .buttonStyle(PlannerLiquidGlassButtonStyle())
+                        .accessibilityLabel("Compartir planificación")
                     }
-                    .buttonStyle(PlannerLiquidGlassButtonStyle())
-                    .accessibilityLabel("Compartir planificación")
                 }
             }
 
@@ -2541,42 +2543,46 @@ struct PlannerToolbar: View {
                 IOSSearchField(text: $vm.searchText, placeholder: "Buscar sesión, unidad, objetivo…")
                     .appOnChange(of: vm.searchText) { _ in vm.applySearch() }
 
-                Menu {
-                    Button(vm.selectionMode ? "Salir de selección" : "Seleccionar sesiones") {
-                        vm.selectionMode.toggle()
-                        if !vm.selectionMode { vm.selectedSessionIds.removeAll() }
-                    }
-                    Button("Copiar a la semana siguiente") { Task { await vm.bulkCopyToNextWeek() } }
-                        .disabled(vm.selectedSessionIds.isEmpty)
-                    Button("Mover +1 día") { Task { await vm.bulkMoveOneDay() } }
-                        .disabled(vm.selectedSessionIds.isEmpty)
-                    Divider()
-                    Button("Limpiar semana sin franjas", role: .destructive) {
-                        isClearSchedulelessWeekConfirmationPresented = true
-                    }
-                    .disabled(!vm.canClearSchedulelessWeekSessions)
-                } label: {
-                    Label("Acciones", systemImage: "slider.horizontal.3")
-                }
-                .buttonStyle(PlannerLiquidGlassButtonStyle())
-                .confirmationDialog(
-                    "Eliminar sesiones de esta semana",
-                    isPresented: $isClearSchedulelessWeekConfirmationPresented,
-                    titleVisibility: .visible
-                ) {
-                    Button("Eliminar sesiones planificadas", role: .destructive) {
-                        Task { await vm.clearCurrentWeekSessionsWithoutSchedule() }
-                    }
-                    Button("Cancelar", role: .cancel) {}
-                } message: {
-                    Text("No hay franjas en la agenda. Se eliminarán las sesiones planificadas de la semana actual y se conservarán las completadas.")
-                }
+                PlannerLiquidGlassGroup(spacing: 8) {
+                    HStack(spacing: 8) {
+                        Menu {
+                            Button(vm.selectionMode ? "Salir de selección" : "Seleccionar sesiones") {
+                                vm.selectionMode.toggle()
+                                if !vm.selectionMode { vm.selectedSessionIds.removeAll() }
+                            }
+                            Button("Copiar a la semana siguiente") { Task { await vm.bulkCopyToNextWeek() } }
+                                .disabled(vm.selectedSessionIds.isEmpty)
+                            Button("Mover +1 día") { Task { await vm.bulkMoveOneDay() } }
+                                .disabled(vm.selectedSessionIds.isEmpty)
+                            Divider()
+                            Button("Limpiar semana sin franjas", role: .destructive) {
+                                isClearSchedulelessWeekConfirmationPresented = true
+                            }
+                            .disabled(!vm.canClearSchedulelessWeekSessions)
+                        } label: {
+                            Label("Acciones", systemImage: "slider.horizontal.3")
+                        }
+                        .buttonStyle(PlannerLiquidGlassButtonStyle())
+                        .confirmationDialog(
+                            "Eliminar sesiones de esta semana",
+                            isPresented: $isClearSchedulelessWeekConfirmationPresented,
+                            titleVisibility: .visible
+                        ) {
+                            Button("Eliminar sesiones planificadas", role: .destructive) {
+                                Task { await vm.clearCurrentWeekSessionsWithoutSchedule() }
+                            }
+                            Button("Cancelar", role: .cancel) {}
+                        } message: {
+                            Text("No hay franjas en la agenda. Se eliminarán las sesiones planificadas de la semana actual y se conservarán las completadas.")
+                        }
 
-                if vm.selectedSession != nil {
-                    Button(action: onOpenDiary) {
-                        Label("Abrir sesión", systemImage: "play.rectangle.fill")
+                        if vm.selectedSession != nil {
+                            Button(action: onOpenDiary) {
+                                Label("Abrir sesión", systemImage: "play.rectangle.fill")
+                            }
+                            .buttonStyle(PlannerLiquidGlassButtonStyle(isProminent: true))
+                        }
                     }
-                    .buttonStyle(PlannerLiquidGlassButtonStyle(isProminent: true))
                 }
             }
 
@@ -2608,36 +2614,93 @@ struct PlannerLiquidGlassButtonStyle: ButtonStyle {
     var isProminent = false
 
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
+        let shape = Capsule(style: .continuous)
+
+        return configuration.label
             .font(.callout.weight(.semibold))
-            .foregroundStyle(Color.primary)
+            .foregroundStyle(isProminent ? Color.white : Color.primary)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background {
-                Capsule(style: .continuous)
-                    .fill(isProminent ? AnyShapeStyle(.thinMaterial) : AnyShapeStyle(.ultraThinMaterial))
-            }
-            .background {
-                if isProminent {
-                    Capsule(style: .continuous)
-                        .fill(Color.white.opacity(0.12))
-                }
-            }
-            .overlay {
-                Capsule(style: .continuous)
-                    .stroke(
-                        isProminent ? Color.white.opacity(0.36) : EvaluationDesign.border.opacity(0.72),
-                        lineWidth: 1
-                    )
-            }
-            .shadow(
-                color: .black.opacity(configuration.isPressed ? 0.04 : (isProminent ? 0.12 : 0.08)),
-                radius: configuration.isPressed ? 4 : (isProminent ? 12 : 10),
-                x: 0,
-                y: configuration.isPressed ? 2 : (isProminent ? 6 : 5)
+            .background { plannerLiquidGlassFallbackFill(in: shape) }
+            .plannerNativeGlass(
+                isProminent: isProminent,
+                isInteractive: true,
+                in: shape
             )
+            .overlay { plannerLiquidGlassStroke(in: shape) }
+            .shadow(color: plannerLiquidGlassShadowColor(isPressed: configuration.isPressed),
+                    radius: configuration.isPressed ? 4 : (isProminent ? 14 : 10),
+                    x: 0,
+                    y: configuration.isPressed ? 2 : (isProminent ? 7 : 5))
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .animation(.spring(response: 0.28, dampingFraction: 0.78), value: configuration.isPressed)
+    }
+
+    @ViewBuilder
+    private func plannerLiquidGlassFallbackFill(in shape: Capsule) -> some View {
+        if #available(iOS 26.0, macOS 26.0, *) {
+            if isProminent {
+                shape.fill(EvaluationDesign.accent.opacity(0.72))
+            }
+        } else {
+            shape.fill(isProminent ? AnyShapeStyle(EvaluationDesign.accent.gradient) : AnyShapeStyle(.ultraThinMaterial))
+        }
+    }
+
+    @ViewBuilder
+    private func plannerLiquidGlassStroke(in shape: Capsule) -> some View {
+        if #available(iOS 26.0, macOS 26.0, *) {
+            shape.stroke(Color.white.opacity(isProminent ? 0.28 : 0.16), lineWidth: 0.5)
+        } else {
+            shape.stroke(
+                isProminent ? Color.white.opacity(0.36) : EvaluationDesign.border.opacity(0.72),
+                lineWidth: 1
+            )
+        }
+    }
+
+    private func plannerLiquidGlassShadowColor(isPressed: Bool) -> Color {
+        if #available(iOS 26.0, macOS 26.0, *) {
+            return .black.opacity(isPressed ? 0.03 : (isProminent ? 0.10 : 0.06))
+        }
+        return .black.opacity(isPressed ? 0.04 : (isProminent ? 0.12 : 0.08))
+    }
+}
+
+private struct PlannerLiquidGlassGroup<Content: View>: View {
+    let spacing: CGFloat?
+    @ViewBuilder var content: Content
+
+    init(spacing: CGFloat? = nil, @ViewBuilder content: () -> Content) {
+        self.spacing = spacing
+        self.content = content()
+    }
+
+    var body: some View {
+        if #available(iOS 26.0, macOS 26.0, *) {
+            GlassEffectContainer(spacing: spacing) {
+                content
+            }
+        } else {
+            content
+        }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func plannerNativeGlass<S: InsettableShape>(
+        isProminent: Bool,
+        isInteractive: Bool,
+        in shape: S
+    ) -> some View {
+        if #available(iOS 26.0, macOS 26.0, *) {
+            let glass = (isProminent ? Glass.regular.tint(EvaluationDesign.accent.opacity(0.34)) : Glass.regular)
+                .interactive(isInteractive)
+            self.glassEffect(glass, in: shape)
+        } else {
+            self
+        }
     }
 }
 

@@ -16,8 +16,7 @@ enum PlannerWorkspaceSection: String, CaseIterable, Identifiable {
     case week = "Semana"
     case day = "Día"
     case sequence = "Secuencia"
-    case sessions = "Agenda"
-    case schedule = "Cobertura"
+    case summary = "Resumen"
 
     var id: String { rawValue }
 
@@ -26,8 +25,7 @@ enum PlannerWorkspaceSection: String, CaseIterable, Identifiable {
         case .week: return "calendar"
         case .day: return "calendar.day.timeline.left"
         case .sequence: return "point.3.connected.trianglepath.dotted"
-        case .sessions: return "list.bullet.rectangle"
-        case .schedule: return "chart.bar.xaxis"
+        case .summary: return "chart.bar.doc.horizontal"
         }
     }
 }
@@ -2289,6 +2287,8 @@ struct PlannerWorkspaceIOS: View {
     @Environment(\.colorScheme) private var colorScheme
     @StateObject private var vm = PlannerWorkspaceViewModel()
     @State private var selectedDetailSession: PlanningSession? = nil
+    @State private var selectedWeekCell: PlannerCellKey? = nil
+    @State private var selectedWeekDay: Int? = nil
     private let initialSection: PlannerWorkspaceSection
     private let context: PlannerNavigationContext
     private let onOpenDiary: ((PlannerNavigationContext) -> Void)?
@@ -2384,15 +2384,18 @@ struct PlannerWorkspaceIOS: View {
             Group {
                 switch vm.activeSection {
                 case .week:
-                    PlannerWeekBoard(vm: vm, onOpenDiary: openSessionInDiary)
+                    PlannerWeekMiniatureLayout(
+                        vm: vm,
+                        selectedCell: $selectedWeekCell,
+                        selectedDay: $selectedWeekDay,
+                        onOpenSession: openSessionInDiary
+                    )
                 case .day:
                     PlannerDayView(vm: vm, onOpenSession: openSessionInDiary)
                 case .sequence:
-                    PlannerSequenceView(vm: vm, onOpenSession: openSessionInDiary)
-                case .sessions:
-                    PlannerSessionsList(vm: vm, source: vm.filteredSessions, onOpenDiary: openSessionInDiary)
-                case .schedule:
-                    PlannerScheduleBoard(vm: vm, onOpenSettings: onOpenSettings)
+                    PlannerSequenceGanttView(vm: vm, onOpenSession: openSessionInDiary)
+                case .summary:
+                    PlannerSummaryDashboard(vm: vm, onOpenSettings: onOpenSettings)
                 }
             }
             .background(appPageBackground(for: colorScheme).ignoresSafeArea())
@@ -2465,7 +2468,7 @@ struct PlannerWorkspaceIOS: View {
     }
 }
 
-private struct PlannerToolbar: View {
+struct PlannerToolbar: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
     let onOpenDiary: () -> Void
     @State private var isClearSchedulelessWeekConfirmationPresented = false
@@ -2488,19 +2491,19 @@ private struct PlannerToolbar: View {
                     Button { Task { await vm.previousWeek() } } label: {
                         Image(systemName: "chevron.left")
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(PlannerLiquidGlassButtonStyle())
                     .accessibilityLabel("Semana anterior")
 
                     Button { Task { await vm.nextWeek() } } label: {
                         Image(systemName: "chevron.right")
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(PlannerLiquidGlassButtonStyle())
                     .accessibilityLabel("Semana siguiente")
 
                     ShareLink(item: vm.exportText()) {
                         Image(systemName: "square.and.arrow.up")
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(PlannerLiquidGlassButtonStyle())
                     .accessibilityLabel("Compartir planificación")
                 }
             }
@@ -2512,14 +2515,8 @@ private struct PlannerToolbar: View {
             }
 
             HStack(spacing: 8) {
-                Picker("Vista", selection: $vm.activeSection) {
-                    ForEach([PlannerWorkspaceSection.week, PlannerWorkspaceSection.day, PlannerWorkspaceSection.sequence, PlannerWorkspaceSection.schedule], id: \.self) { section in
-                        Label(section.rawValue, systemImage: section.systemImage)
-                            .tag(section)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 420)
+                PlannerFloatingTabBar(activeSection: $vm.activeSection)
+                    .frame(maxWidth: 456)
 
                 Picker("Grupo", selection: Binding(
                     get: { vm.selectedGroupId },
@@ -2561,7 +2558,7 @@ private struct PlannerToolbar: View {
                 } label: {
                     Label("Acciones", systemImage: "slider.horizontal.3")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(PlannerLiquidGlassButtonStyle())
                 .confirmationDialog(
                     "Eliminar sesiones de esta semana",
                     isPresented: $isClearSchedulelessWeekConfirmationPresented,
@@ -2579,7 +2576,7 @@ private struct PlannerToolbar: View {
                     Button(action: onOpenDiary) {
                         Label("Abrir sesión", systemImage: "play.rectangle.fill")
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(PlannerLiquidGlassButtonStyle(isProminent: true))
                 }
             }
 
@@ -2604,6 +2601,43 @@ private struct PlannerToolbar: View {
             return "\(vm.weekLabel) · \(vm.dateRangeLabel) · \(session.groupName)"
         }
         return vm.dateRangeLabel
+    }
+}
+
+struct PlannerLiquidGlassButtonStyle: ButtonStyle {
+    var isProminent = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.callout.weight(.semibold))
+            .foregroundStyle(Color.primary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background {
+                Capsule(style: .continuous)
+                    .fill(isProminent ? AnyShapeStyle(.thinMaterial) : AnyShapeStyle(.ultraThinMaterial))
+            }
+            .background {
+                if isProminent {
+                    Capsule(style: .continuous)
+                        .fill(Color.white.opacity(0.12))
+                }
+            }
+            .overlay {
+                Capsule(style: .continuous)
+                    .stroke(
+                        isProminent ? Color.white.opacity(0.36) : EvaluationDesign.border.opacity(0.72),
+                        lineWidth: 1
+                    )
+            }
+            .shadow(
+                color: .black.opacity(configuration.isPressed ? 0.04 : (isProminent ? 0.12 : 0.08)),
+                radius: configuration.isPressed ? 4 : (isProminent ? 12 : 10),
+                x: 0,
+                y: configuration.isPressed ? 2 : (isProminent ? 6 : 5)
+            )
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.spring(response: 0.28, dampingFraction: 0.78), value: configuration.isPressed)
     }
 }
 
@@ -3471,7 +3505,7 @@ private struct PlannerSequenceCard: View {
     }
 }
 
-private struct PlannerEmptyState: View {
+struct PlannerEmptyState: View {
     let title: String
     let systemImage: String
     let message: String

@@ -32,6 +32,11 @@ Prioridad: alta.
 - Asistencia: flujo diario rapido y consistente.
 - Alumnado: perfiles utiles, busqueda y datos relevantes.
 - Planificacion: sesiones, situaciones de aprendizaje y continuidad docente.
+  Avance: Planificación inicia su rediseño iPad/macOS con cuatro secciones claras (Semana, Día, Secuencia, Resumen), tab bar flotante en iOS/iPadOS y macOS sin inspector lateral invasivo.
+  Avance: Semana de Planificación en iOS/iPadOS usa miniatura semafórica de 200pt con detalle contextual por sesión, franja o día, reduciendo densidad visual sin tocar lógica KMP.
+  Avance: Secuencia de Planificación adopta un Gantt horizontal por trimestre con situaciones, grupos colapsables y navegación directa a sesiones planificadas.
+  Avance: Resumen de Planificación concentra métricas semanales, próximas sesiones, cobertura diaria y alertas en un dashboard operativo sin añadir lógica KMP.
+  Avance: Planificación macOS reutiliza el toolbar y las vistas iPadOS para mantener una estética uniforme, con botones flotantes LiquidGlass.
 - Dashboard: Radar docente proactivo para priorizar que pasa ahora, por que importa y que accion diaria ejecutar.
   Avance: las recargas por filtros del Dashboard se cancelan y debouncean para evitar tareas solapadas durante cambios rápidos de contexto.
   Avance: Dashboard macOS "Hoy" prioriza la clase actual o próxima, pendiente principal y acción recomendada antes que los paneles secundarios.

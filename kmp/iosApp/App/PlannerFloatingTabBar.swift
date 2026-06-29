@@ -6,28 +6,32 @@ struct PlannerFloatingTabBar: View {
 
     var body: some View {
         PlannerFloatingTabGlassContainer {
-            HStack(spacing: 0) {
+            HStack(spacing: 8) {
                 ForEach(PlannerWorkspaceSection.allCases) { section in
                     Button {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        withAnimation(.spring(response: 0.42, dampingFraction: 0.72)) {
                             activeSection = section
                         }
                     } label: {
-                        VStack(spacing: 4) {
-                            Image(systemName: section.systemImage)
-                                .font(.system(size: 16, weight: .semibold))
-                            Text(section.rawValue)
-                                .font(.caption2.weight(.semibold))
-                                .lineLimit(1)
-                        }
-                        .foregroundStyle(activeSection == section ? Color.primary : Color.secondary)
-                        .frame(maxWidth: .infinity, minHeight: 48)
-                        .padding(.horizontal, 8)
-                        .background {
+                        ZStack {
+                            VStack(spacing: 4) {
+                                Image(systemName: section.systemImage)
+                                    .font(.system(size: 16, weight: .semibold))
+                                Text(section.rawValue)
+                                    .font(.caption2.weight(.semibold))
+                                    .lineLimit(1)
+                            }
+                            .foregroundStyle(activeSection == section ? Color.primary.opacity(0.92) : Color.secondary)
+                            .frame(maxWidth: .infinity, minHeight: 48)
+                            .padding(.horizontal, 8)
+
                             if activeSection == section {
                                 PlannerFloatingTabSelectionBackground(namespace: selectionNamespace)
+                                .allowsHitTesting(false)
+                                .transition(.opacity.combined(with: .scale(scale: 0.94)))
                             }
                         }
+                        .frame(maxWidth: .infinity, minHeight: 48)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -68,15 +72,15 @@ private struct PlannerFloatingTabSelectionBackground: View {
             .fill(selectionFallbackFill)
             .plannerFloatingTabNativeSelectionGlass(in: shape, namespace: namespace)
             .overlay {
-                shape.stroke(Color.white.opacity(0.22), lineWidth: 0.5)
+                shape.stroke(Color.white.opacity(0.18), lineWidth: 0.5)
             }
-            .shadow(color: .black.opacity(0.08), radius: 4, x: 0, y: 2)
+            .shadow(color: .black.opacity(0.04), radius: 4, x: 0, y: 2)
             .matchedGeometryEffect(id: "planner-tab-selection", in: namespace)
     }
 
     private var selectionFallbackFill: AnyShapeStyle {
         if #available(iOS 26.0, macOS 26.0, *) {
-            return AnyShapeStyle(Color.white.opacity(0.08))
+            return AnyShapeStyle(Color.white.opacity(0.015))
         }
         return AnyShapeStyle(.thinMaterial)
     }
@@ -89,12 +93,12 @@ private extension View {
 
         if #available(iOS 26.0, macOS 26.0, *) {
             self
-                .background { shape.fill(Color.white.opacity(0.035)) }
-                .glassEffect(.regular.interactive(), in: shape)
+                .background { shape.fill(Color.white.opacity(0.02)) }
+                .glassEffect(.regular.tint(Color.white.opacity(0.035)).interactive(), in: shape)
                 .overlay {
-                    shape.stroke(Color.white.opacity(0.14), lineWidth: 0.5)
+                    shape.stroke(Color.white.opacity(0.11), lineWidth: 0.5)
                 }
-                .shadow(color: .black.opacity(0.06), radius: 10, x: 0, y: 5)
+                .shadow(color: .black.opacity(0.04), radius: 10, x: 0, y: 5)
         } else {
             self
                 .background(.ultraThinMaterial, in: shape)
@@ -112,7 +116,7 @@ private extension View {
     ) -> some View {
         if #available(iOS 26.0, macOS 26.0, *) {
             self
-                .glassEffect(.regular.tint(EvaluationDesign.accent.opacity(0.14)).interactive(), in: shape)
+                .glassEffect(.regular.tint(EvaluationDesign.accent.opacity(0.08)).interactive(), in: shape)
                 .glassEffectID("planner-tab-selection", in: namespace)
         } else {
             self

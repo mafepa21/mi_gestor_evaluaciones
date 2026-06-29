@@ -2492,19 +2492,19 @@ struct PlannerToolbar: View {
                         Button { Task { await vm.previousWeek() } } label: {
                             Image(systemName: "chevron.left")
                         }
-                        .buttonStyle(PlannerLiquidGlassButtonStyle())
+                        .plannerLiquidGlassButtonStyle()
                         .accessibilityLabel("Semana anterior")
 
                         Button { Task { await vm.nextWeek() } } label: {
                             Image(systemName: "chevron.right")
                         }
-                        .buttonStyle(PlannerLiquidGlassButtonStyle())
+                        .plannerLiquidGlassButtonStyle()
                         .accessibilityLabel("Semana siguiente")
 
                         ShareLink(item: vm.exportText()) {
                             Image(systemName: "square.and.arrow.up")
                         }
-                        .buttonStyle(PlannerLiquidGlassButtonStyle())
+                        .plannerLiquidGlassButtonStyle()
                         .accessibilityLabel("Compartir planificación")
                     }
                 }
@@ -2562,7 +2562,7 @@ struct PlannerToolbar: View {
                         } label: {
                             Label("Acciones", systemImage: "slider.horizontal.3")
                         }
-                        .buttonStyle(PlannerLiquidGlassButtonStyle())
+                        .plannerLiquidGlassButtonStyle()
                         .confirmationDialog(
                             "Eliminar sesiones de esta semana",
                             isPresented: $isClearSchedulelessWeekConfirmationPresented,
@@ -2580,7 +2580,7 @@ struct PlannerToolbar: View {
                             Button(action: onOpenDiary) {
                                 Label("Abrir sesión", systemImage: "play.rectangle.fill")
                             }
-                            .buttonStyle(PlannerLiquidGlassButtonStyle(isProminent: true))
+                            .plannerLiquidGlassButtonStyle(isProminent: true)
                         }
                     }
                 }
@@ -2610,7 +2610,7 @@ struct PlannerToolbar: View {
     }
 }
 
-struct PlannerLiquidGlassButtonStyle: ButtonStyle {
+private struct PlannerLiquidGlassFallbackButtonStyle: ButtonStyle {
     var isProminent = false
 
     func makeBody(configuration: Configuration) -> some View {
@@ -2622,11 +2622,6 @@ struct PlannerLiquidGlassButtonStyle: ButtonStyle {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background { plannerLiquidGlassFallbackFill(in: shape) }
-            .plannerNativeGlass(
-                isProminent: isProminent,
-                isInteractive: true,
-                in: shape
-            )
             .overlay { plannerLiquidGlassStroke(in: shape) }
             .shadow(color: plannerLiquidGlassShadowColor(isPressed: configuration.isPressed),
                     radius: configuration.isPressed ? 4 : (isProminent ? 14 : 10),
@@ -2660,9 +2655,6 @@ struct PlannerLiquidGlassButtonStyle: ButtonStyle {
     }
 
     private func plannerLiquidGlassShadowColor(isPressed: Bool) -> Color {
-        if #available(iOS 26.0, macOS 26.0, *) {
-            return .black.opacity(isPressed ? 0.03 : (isProminent ? 0.10 : 0.06))
-        }
         return .black.opacity(isPressed ? 0.04 : (isProminent ? 0.12 : 0.08))
     }
 }
@@ -2689,17 +2681,21 @@ private struct PlannerLiquidGlassGroup<Content: View>: View {
 
 private extension View {
     @ViewBuilder
-    func plannerNativeGlass<S: InsettableShape>(
-        isProminent: Bool,
-        isInteractive: Bool,
-        in shape: S
-    ) -> some View {
+    func plannerLiquidGlassButtonStyle(isProminent: Bool = false) -> some View {
         if #available(iOS 26.0, macOS 26.0, *) {
-            let glass = (isProminent ? Glass.regular.tint(EvaluationDesign.accent.opacity(0.34)) : Glass.regular)
-                .interactive(isInteractive)
-            self.glassEffect(glass, in: shape)
+            if isProminent {
+                self
+                    .buttonStyle(.glassProminent)
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.regular)
+            } else {
+                self
+                    .buttonStyle(.glass)
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.regular)
+            }
         } else {
-            self
+            self.buttonStyle(PlannerLiquidGlassFallbackButtonStyle(isProminent: isProminent))
         }
     }
 }

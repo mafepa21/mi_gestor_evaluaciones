@@ -646,7 +646,6 @@ struct MacReportsView: View {
         }
     }
 }
-
 private struct MacReportPanelCard<Content: View>: View {
     let title: String
     @ViewBuilder var content: () -> Content
@@ -983,7 +982,7 @@ struct MacPlannerView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            PlannerToolbar(vm: vm, onOpenDiary: openSelectedMacSession)
+            PlannerToolbar(vm: vm)
 
             if let transientMessage, !transientMessage.isEmpty {
                 MacPlannerBanner(message: transientMessage)
@@ -1011,8 +1010,8 @@ struct MacPlannerView: View {
             }
         }
         .appOnChange(of: selectedTableSessionId) { newValue in
-            guard let newValue,
-                  let session = vm.filteredSessions.first(where: { $0.id == newValue }) ?? vm.sessions.first(where: { $0.id == newValue }) else { return }
+            guard let sessionId = newValue else { return }
+            guard let session = findSession(by: sessionId) else { return }
             Task {
                 await vm.select(session: session)
                 await syncInspectorStudents(for: session)
@@ -1368,6 +1367,10 @@ struct MacPlannerView: View {
                 onOpenSettings: { showingScheduleSettings = true }
             )
         }
+    }
+
+    private func findSession(by id: Int64) -> PlanningSession? {
+        vm.filteredSessions.first(where: { $0.id == id }) ?? vm.sessions.first(where: { $0.id == id })
     }
 
     private var displayedSessions: [PlanningSession] {
@@ -1762,72 +1765,100 @@ private struct MacPlannerWeekCell: View {
     @State private var isHovering = false
     @State private var isDropTargeted = false
 
+    @ViewBuilder
+    private var emptyCellContent: some View {
+        VStack(spacing: 6) {
+            Image(systemName: "plus")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(isHovering ? MacAppStyle.infoTint : .secondary)
+            if isHovering {
+                Text("Añadir sesión")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+    }
+
+    @ViewBuilder
+    private var holidayCellContent: some View {
+        ZStack {
+            if !entries.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(entries.prefix(3)) { entry in
+                        MacPlannerWeekEntryRow(
+                            entry: entry,
+                            vm: vm,
+                            onSelectSession: onSelectSession,
+                            onDoubleOpenSession: onDoubleOpenSession
+                        )
+                    }
+                }
+                .opacity(0.2)
+                .disabled(true)
+            }
+            VStack(spacing: 4) {
+                Image(systemName: "umbrella.fill")
+                    .font(.title2)
+                    .foregroundStyle(EvaluationDesign.danger.opacity(0.7))
+                Text("No lectivo")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private var populatedCellContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(entries.prefix(3)) { entry in
+                MacPlannerWeekEntryRow(
+                    entry: entry,
+                    vm: vm,
+                    onSelectSession: onSelectSession,
+                    onDoubleOpenSession: onDoubleOpenSession
+                )
+            }
+            if entries.count > 3 {
+                Text("+\(entries.count - 3) más")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var backgroundFill: Color {
+        if isHoliday { return MacAppStyle.subtleFill.opacity(0.5) }
+        if isDropTargeted { return MacAppStyle.infoTint.opacity(0.14) }
+        return isHovering ? MacAppStyle.infoTint.opacity(0.08) : MacAppStyle.cardBackground
+    }
+
+    private var borderColor: Color {
+        if isHoliday { return EvaluationDesign.danger.opacity(0.15) }
+        if isDropTargeted { return MacAppStyle.infoTint }
+        return isHovering ? MacAppStyle.infoTint.opacity(0.45) : MacAppStyle.cardBorder
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if isHoliday {
-                ZStack {
-                    if !entries.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            ForEach(entries.prefix(3)) { entry in
-                                MacPlannerWeekEntryRow(
-                                    entry: entry,
-                                    vm: vm,
-                                    onSelectSession: onSelectSession,
-                                    onDoubleOpenSession: onDoubleOpenSession
-                                )
-                            }
-                        }
-                        .opacity(0.2)
-                        .disabled(true)
-                    }
-                    VStack(spacing: 4) {
-                        Image(systemName: "umbrella.fill")
-                            .font(.title2)
-                            .foregroundStyle(EvaluationDesign.danger.opacity(0.7))
-                        Text("No lectivo")
-                            .font(.caption.bold())
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
+                holidayCellContent
             } else if entries.isEmpty {
-                VStack(spacing: 6) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(isHovering ? MacAppStyle.infoTint : .secondary)
-                    if isHovering {
-                        Text("Añadir sesión")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                emptyCellContent
             } else {
-                ForEach(entries.prefix(3)) { entry in
-                    MacPlannerWeekEntryRow(
-                        entry: entry,
-                        vm: vm,
-                        onSelectSession: onSelectSession,
-                        onDoubleOpenSession: onDoubleOpenSession
-                    )
-                }
-
-                if entries.count > 3 {
-                    Text("+\(entries.count - 3) más")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                }
+                populatedCellContent
             }
         }
         .padding(8)
         .frame(width: 214, height: 122, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(isHoliday ? MacAppStyle.subtleFill.opacity(0.5) : (isDropTargeted ? MacAppStyle.infoTint.opacity(0.14) : (isHovering ? MacAppStyle.infoTint.opacity(0.08) : MacAppStyle.cardBackground)))
+                .fill(backgroundFill)
         )
         .overlay {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(isHoliday ? EvaluationDesign.danger.opacity(0.15) : (isDropTargeted ? MacAppStyle.infoTint : (isHovering ? MacAppStyle.infoTint.opacity(0.45) : MacAppStyle.cardBorder)), lineWidth: isDropTargeted ? 2 : 1)
+                .stroke(borderColor, lineWidth: isDropTargeted ? 2 : 1)
         }
         .contentShape(Rectangle())
         .onHover { hovering in

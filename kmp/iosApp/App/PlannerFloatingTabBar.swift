@@ -6,7 +6,7 @@ struct PlannerFloatingTabBar: View {
 
     var body: some View {
         PlannerFloatingTabGlassContainer {
-            HStack(spacing: 8) {
+            HStack(spacing: 4) {
                 ForEach(PlannerWorkspaceSection.allCases) { section in
                     Button {
                         withAnimation(.spring(response: 0.42, dampingFraction: 0.72)) {
@@ -14,33 +14,34 @@ struct PlannerFloatingTabBar: View {
                         }
                     } label: {
                         ZStack {
-                            VStack(spacing: 4) {
+                            if activeSection == section {
+                                PlannerFloatingTabSelectionBackground(namespace: selectionNamespace)
+                                    .allowsHitTesting(false)
+                                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                            }
+
+                            VStack(spacing: 2) {
                                 Image(systemName: section.systemImage)
-                                    .font(.system(size: 14, weight: .semibold))
+                                    .font(.system(size: 12, weight: .semibold))
                                 Text(section.rawValue)
                                     .font(.caption2.weight(.semibold))
                                     .lineLimit(1)
                             }
                             .foregroundStyle(activeSection == section ? Color.primary.opacity(0.88) : Color.secondary)
-                            .frame(maxWidth: .infinity, minHeight: 40)
-                            .padding(.horizontal, 8)
-
-                            if activeSection == section {
-                                PlannerFloatingTabSelectionBackground(namespace: selectionNamespace)
-                                .allowsHitTesting(false)
-                                .transition(.opacity.combined(with: .scale(scale: 0.94)))
-                            }
+                            .frame(maxWidth: .infinity, minHeight: 36, maxHeight: 36)
+                            .padding(.horizontal, 4)
                         }
-                        .frame(maxWidth: .infinity, minHeight: 40)
-                        .contentShape(Rectangle())
+                        .frame(maxWidth: .infinity, minHeight: 36, maxHeight: 36)
+                        .contentShape(Capsule(style: .continuous))
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(section.rawValue)
                 }
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.horizontal, 4)
+        .padding(.vertical, 2)
+        .frame(height: 40)
         .plannerFloatingTabGlassSurface()
     }
 }
@@ -54,7 +55,7 @@ private struct PlannerFloatingTabGlassContainer<Content: View>: View {
 
     var body: some View {
         if #available(iOS 26.0, macOS 26.0, *) {
-            GlassEffectContainer(spacing: 8) {
+            GlassEffectContainer(spacing: 4) {
                 content
             }
         } else {

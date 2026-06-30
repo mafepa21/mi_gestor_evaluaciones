@@ -1526,27 +1526,7 @@ struct AppWorkspaceShell: View {
     }
 
     var plannerToolbarActions: some View {
-        HStack(spacing: 12) {
-            focusToggleButton
-
-            Button {
-                Task {
-                    await bridge.pullMissingSyncChanges()
-                    try? await bridge.refreshStudentsDirectory()
-                }
-            } label: {
-                Label("Sync", systemImage: "arrow.triangle.2.circlepath")
-            }
-            .buttonStyle(.bordered)
-
-            Button {
-                layoutState.openPlannerComposer()
-            } label: {
-                Label("Nueva sesión", systemImage: "plus")
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(!layoutState.plannerAddSessionAvailable)
-        }
+        EmptyView()
     }
 
     private var isRegularWidth: Bool {

@@ -738,6 +738,18 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         await reloadSessionsOnly(keepSelection: false)
     }
 
+    func goToCurrentWeek() async {
+        let current = IsoWeekHelper.shared.current()
+        week = Int(truncating: current.first ?? KotlinInt(value: 1))
+        year = Int(truncating: current.second ?? KotlinInt(value: 2026))
+        await reloadSessionsOnly(keepSelection: false)
+        await selectTodaySessionIfPossible(preferredGroupId: selectedGroupId)
+    }
+
+    func refreshCurrentWeek() async {
+        await reloadSessionsOnly()
+    }
+
     func selectGroup(_ id: Int64?) {
         selectedGroupId = id
         rebuildWeekRenderModel()
@@ -2289,6 +2301,7 @@ struct PlannerWorkspaceIOS: View {
     @State private var selectedDetailSession: PlanningSession? = nil
     @State private var selectedWeekCell: PlannerCellKey? = nil
     @State private var selectedWeekDay: Int? = nil
+    @State private var isClearSchedulelessWeekConfirmationPresented = false
     private let initialSection: PlannerWorkspaceSection
     private let context: PlannerNavigationContext
     private let onOpenDiary: ((PlannerNavigationContext) -> Void)?
@@ -2375,20 +2388,41 @@ struct PlannerWorkspaceIOS: View {
         .onDisappear {
             layoutState.clearPlannerToolbar()
         }
+        .confirmationDialog(
+            "Eliminar sesiones de esta semana",
+            isPresented: $isClearSchedulelessWeekConfirmationPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Eliminar sesiones planificadas", role: .destructive) {
+                Task { await vm.clearCurrentWeekSessionsWithoutSchedule() }
+            }
+            Button("Cancelar", role: .cancel) {}
+        } message: {
+            Text("No hay franjas en la agenda. Se eliminarán las sesiones planificadas de la semana actual y se conservarán las completadas.")
+        }
     }
 
     private var plannerMainContent: some View {
         VStack(spacing: 0) {
-            PlannerToolbar(vm: vm, onOpenDiary: openSelectedSessionInDiary)
+            PlannerToolbar(vm: vm)
             Group {
                 switch vm.activeSection {
                 case .week:
-                    PlannerWeekMiniatureLayout(
-                        vm: vm,
-                        selectedCell: $selectedWeekCell,
-                        selectedDay: $selectedWeekDay,
-                        onOpenSession: openSessionInDiary
-                    )
+                    ZStack(alignment: .bottom) {
+                        PlannerWeekMiniatureLayout(
+                            vm: vm,
+                            selectedCell: $selectedWeekCell,
+                            selectedDay: $selectedWeekDay,
+                            onOpenSession: openSessionInDiary
+                        )
+                        .safeAreaInset(edge: .bottom) {
+                            Color.clear.frame(height: 88)
+                        }
+
+                        plannerFloatingControls
+                            .padding(.horizontal, EvaluationDesign.screenPadding)
+                            .padding(.bottom, 24)
+                    }
                 case .day:
                     PlannerDayView(vm: vm, onOpenSession: openSessionInDiary)
                 case .sequence:
@@ -2405,6 +2439,37 @@ struct PlannerWorkspaceIOS: View {
         layoutState.configurePlannerToolbar(addSessionAvailable: true) {
             vm.openComposer()
         }
+    }
+
+    private var plannerFloatingControls: some View {
+        PlannerLiquidGlassControls(
+            canOpenDiary: vm.selectedSession != nil,
+            canCopySelection: !vm.selectedSessionIds.isEmpty,
+            canClearSchedulelessWeek: vm.canClearSchedulelessWeekSessions,
+            isSelectionModeActive: vm.selectionMode,
+            shareText: vm.exportText(),
+            onPreviousWeek: { Task { await vm.previousWeek() } },
+            onNextWeek: { Task { await vm.nextWeek() } },
+            onToday: { Task { await vm.goToCurrentWeek() } },
+            onSync: {
+                Task {
+                    await bridge.pullMissingSyncChanges()
+                    await vm.refreshCurrentWeek()
+                }
+            },
+            onToggleSelection: {
+                vm.selectionMode.toggle()
+                if !vm.selectionMode { vm.selectedSessionIds.removeAll() }
+            },
+            onCopyToNextWeek: { Task { await vm.bulkCopyToNextWeek() } },
+            onMoveOneDay: { Task { await vm.bulkMoveOneDay() } },
+            onClearSchedulelessWeek: {
+                isClearSchedulelessWeekConfirmationPresented = true
+            },
+            onOpenDiary: openSelectedSessionInDiary,
+            onNewSession: { vm.openComposer() }
+        )
+        .frame(maxWidth: .infinity)
     }
 
     private func openSelectedSessionInDiary() {
@@ -2469,45 +2534,17 @@ struct PlannerWorkspaceIOS: View {
 
 struct PlannerToolbar: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
-    let onOpenDiary: () -> Void
-    @State private var isClearSchedulelessWeekConfirmationPresented = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .top, spacing: 16) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(toolbarTitle)
-                            .font(.system(size: 24, weight: .black, design: .rounded))
-                            .lineLimit(2)
-                        Text(toolbarSubtitle)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer()
-
-                    PlannerLiquidGlassGroup(spacing: 8) {
-                        HStack(spacing: 8) {
-                            Button { Task { await vm.previousWeek() } } label: {
-                                Image(systemName: "chevron.left")
-                            }
-                            .plannerLiquidGlassButtonStyle()
-                            .accessibilityLabel("Semana anterior")
-
-                            Button { Task { await vm.nextWeek() } } label: {
-                                Image(systemName: "chevron.right")
-                            }
-                            .plannerLiquidGlassButtonStyle()
-                            .accessibilityLabel("Semana siguiente")
-
-                            ShareLink(item: vm.exportText()) {
-                                Image(systemName: "square.and.arrow.up")
-                            }
-                            .plannerLiquidGlassButtonStyle()
-                            .accessibilityLabel("Compartir planificación")
-                        }
-                    }
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(toolbarTitle)
+                        .font(.system(size: 22, weight: .black, design: .rounded))
+                        .lineLimit(2)
+                    Text(toolbarSubtitle)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
                 }
 
                 if let progress = vm.situationProgress(for: vm.selectedSession) {
@@ -2521,77 +2558,35 @@ struct PlannerToolbar: View {
 
             HStack(spacing: 8) {
                 PlannerFloatingTabBar(activeSection: $vm.activeSection)
-                    .frame(maxWidth: 456)
+                    .frame(maxWidth: 376)
 
-                PlannerLiquidGlassGroup(spacing: 8) {
-                    HStack(spacing: 8) {
-                        Picker("Grupo", selection: Binding(
-                            get: { vm.selectedGroupId },
-                            set: { vm.selectGroup($0) }
-                        )) {
-                            Text("Todos").tag(Optional<Int64>.none)
-                            ForEach(vm.groups, id: \.id) { group in
-                                Text(group.name).tag(Optional(group.id))
-                            }
+                HStack(spacing: 8) {
+                    Picker("Grupo", selection: Binding(
+                        get: { vm.selectedGroupId },
+                        set: { vm.selectGroup($0) }
+                    )) {
+                        Text("Todos").tag(Optional<Int64>.none)
+                        ForEach(vm.groups, id: \.id) { group in
+                            Text(group.name).tag(Optional(group.id))
                         }
-                        .pickerStyle(.menu)
-                        .frame(maxWidth: 180)
-
-                        Picker("Densidad", selection: $vm.density) {
-                            ForEach(PlannerDensity.allCases) { density in
-                                Text(density.rawValue).tag(density)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        .frame(maxWidth: 128)
                     }
+                    .pickerStyle(.menu)
+                    .frame(maxWidth: 180)
+
+                    Picker("Densidad", selection: $vm.density) {
+                        ForEach(PlannerDensity.allCases) { density in
+                            Text(density.rawValue).tag(density)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .frame(maxWidth: 128)
                 }
+                .controlSize(.small)
 
                 IOSSearchField(text: $vm.searchText, placeholder: "Buscar sesión, unidad, objetivo…")
                     .appOnChange(of: vm.searchText) { _ in vm.applySearch() }
-
-                PlannerLiquidGlassGroup(spacing: 8) {
-                    HStack(spacing: 8) {
-                        Menu {
-                            Button(vm.selectionMode ? "Salir de selección" : "Seleccionar sesiones") {
-                                vm.selectionMode.toggle()
-                                if !vm.selectionMode { vm.selectedSessionIds.removeAll() }
-                            }
-                            Button("Copiar a la semana siguiente") { Task { await vm.bulkCopyToNextWeek() } }
-                                .disabled(vm.selectedSessionIds.isEmpty)
-                            Button("Mover +1 día") { Task { await vm.bulkMoveOneDay() } }
-                                .disabled(vm.selectedSessionIds.isEmpty)
-                            Divider()
-                            Button("Limpiar semana sin franjas", role: .destructive) {
-                                isClearSchedulelessWeekConfirmationPresented = true
-                            }
-                            .disabled(!vm.canClearSchedulelessWeekSessions)
-                        } label: {
-                            Label("Acciones", systemImage: "slider.horizontal.3")
-                        }
-                        .plannerLiquidGlassButtonStyle()
-                        .confirmationDialog(
-                            "Eliminar sesiones de esta semana",
-                            isPresented: $isClearSchedulelessWeekConfirmationPresented,
-                            titleVisibility: .visible
-                        ) {
-                            Button("Eliminar sesiones planificadas", role: .destructive) {
-                                Task { await vm.clearCurrentWeekSessionsWithoutSchedule() }
-                            }
-                            Button("Cancelar", role: .cancel) {}
-                        } message: {
-                            Text("No hay franjas en la agenda. Se eliminarán las sesiones planificadas de la semana actual y se conservarán las completadas.")
-                        }
-
-                        if vm.selectedSession != nil {
-                            Button(action: onOpenDiary) {
-                                Label("Abrir sesión", systemImage: "play.rectangle.fill")
-                            }
-                            .plannerLiquidGlassButtonStyle(isProminent: true)
-                        }
-                    }
-                }
             }
+            .frame(height: 40)
 
             if !vm.bulkSummary.isEmpty {
                 Text(vm.bulkSummary)
@@ -2602,7 +2597,7 @@ struct PlannerToolbar: View {
         }
         .padding(.horizontal, EvaluationDesign.screenPadding)
         .padding(.top, 8)
-        .padding(.bottom, 8)
+        .padding(.bottom, 4)
     }
 
     private var toolbarTitle: String {
@@ -2614,96 +2609,6 @@ struct PlannerToolbar: View {
             return "\(vm.weekLabel) · \(vm.dateRangeLabel) · \(session.groupName)"
         }
         return vm.dateRangeLabel
-    }
-}
-
-private struct PlannerLiquidGlassFallbackButtonStyle: ButtonStyle {
-    var isProminent = false
-
-    func makeBody(configuration: Configuration) -> some View {
-        let shape = Capsule(style: .continuous)
-
-        return configuration.label
-            .font(.callout.weight(.semibold))
-            .foregroundStyle(isProminent ? Color.white : Color.primary)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background { plannerLiquidGlassFallbackFill(in: shape) }
-            .overlay { plannerLiquidGlassStroke(in: shape) }
-            .shadow(color: plannerLiquidGlassShadowColor(isPressed: configuration.isPressed),
-                    radius: configuration.isPressed ? 4 : (isProminent ? 14 : 10),
-                    x: 0,
-                    y: configuration.isPressed ? 2 : (isProminent ? 7 : 5))
-            .scaleEffect(configuration.isPressed ? 0.97 : 1)
-            .animation(.spring(response: 0.28, dampingFraction: 0.78), value: configuration.isPressed)
-    }
-
-    @ViewBuilder
-    private func plannerLiquidGlassFallbackFill(in shape: Capsule) -> some View {
-        if #available(iOS 26.0, macOS 26.0, *) {
-            if isProminent {
-                shape.fill(EvaluationDesign.accent.opacity(0.72))
-            }
-        } else {
-            shape.fill(isProminent ? AnyShapeStyle(EvaluationDesign.accent.gradient) : AnyShapeStyle(.ultraThinMaterial))
-        }
-    }
-
-    @ViewBuilder
-    private func plannerLiquidGlassStroke(in shape: Capsule) -> some View {
-        if #available(iOS 26.0, macOS 26.0, *) {
-            shape.stroke(Color.white.opacity(isProminent ? 0.28 : 0.16), lineWidth: 0.5)
-        } else {
-            shape.stroke(
-                isProminent ? Color.white.opacity(0.36) : EvaluationDesign.border.opacity(0.72),
-                lineWidth: 1
-            )
-        }
-    }
-
-    private func plannerLiquidGlassShadowColor(isPressed: Bool) -> Color {
-        return .black.opacity(isPressed ? 0.04 : (isProminent ? 0.12 : 0.08))
-    }
-}
-
-private struct PlannerLiquidGlassGroup<Content: View>: View {
-    let spacing: CGFloat?
-    @ViewBuilder var content: Content
-
-    init(spacing: CGFloat? = nil, @ViewBuilder content: () -> Content) {
-        self.spacing = spacing
-        self.content = content()
-    }
-
-    var body: some View {
-        if #available(iOS 26.0, macOS 26.0, *) {
-            GlassEffectContainer(spacing: spacing) {
-                content
-            }
-        } else {
-            content
-        }
-    }
-}
-
-private extension View {
-    @ViewBuilder
-    func plannerLiquidGlassButtonStyle(isProminent: Bool = false) -> some View {
-        if #available(iOS 26.0, macOS 26.0, *) {
-            if isProminent {
-                self
-                    .buttonStyle(.glassProminent)
-                    .buttonBorderShape(.capsule)
-                    .controlSize(.regular)
-            } else {
-                self
-                    .buttonStyle(.glass)
-                    .buttonBorderShape(.capsule)
-                    .controlSize(.regular)
-            }
-        } else {
-            self.buttonStyle(PlannerLiquidGlassFallbackButtonStyle(isProminent: isProminent))
-        }
     }
 }
 

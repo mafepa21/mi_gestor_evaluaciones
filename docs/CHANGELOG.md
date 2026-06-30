@@ -38,6 +38,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Changed
 
+- Planificación macOS/iPadOS reduce la altura de la toolbar superior y compacta la tab bar de vistas para que el grid semanal gane protagonismo, manteniendo la selección como una capa Liquid Glass translúcida.
 - Planificación iOS/iPadOS y macOS compacta la cabecera compartida, aligera la tab bar flotante y habilita scroll vertical en Semana para revisar el detalle completo sin tapar contenido.
 - Planificación iOS/iPadOS y macOS consolida el rediseño Liquid Glass en una cabecera compacta de chrome, agrupa progreso, filtros y acciones con superficies nativas y retira divisores duros en Semana para priorizar unidad/semana activa, progreso y sesiones sin tocar KMP.
 - Planificación (iOS/iPadOS y macOS): Se eliminan los textos superpuestos en la vista de Semana mediante el cálculo de altura dinámica para evitar desbordamientos y el rediseño de cabeceras de días con fecha apilada verticalmente. Todos los botones flotantes y pestañas adoptan el estilo translúcido Liquid Glass sin color azul.
@@ -124,6 +125,8 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Fixed
 
+- **Error de compilación de chequeo de tipos en macOS (`MacModuleStubs.swift`)**: Se ha extraído la búsqueda de sesiones en `MacPlannerView` al helper privado `findSession(by:)`, se desglosó el desenvolvimiento opcional en dos sentencias `guard let` independientes y se eliminó el argumento obsoleto `onOpenDiary` de la llamada a `PlannerToolbar`, resolviendo así la sobrecarga de inferencia de tipo y la firma desactualizada que causaban fallos al compilar.
+- **Archivos duplicados de interfaz en el Planner**: Se ha eliminado la versión redundante de `PlannerLiquidGlassControls.swift` en `kmp/iosApp/App/`, conservando la versión definitiva y responsiva en `kmp/iosApp/AppleShared/` para solucionar la colisión de nombres durante la compilación.
 - Dashboard corrige la ambigüedad SwiftUI entre `HierarchicalShapeStyle` y `Color` tipando explícitamente el color de la cápsula de alertas, y el cache KMP del Cuaderno evita `ConcurrentModificationException` al invalidar entradas de `NotebookSheetMemoryCache` durante cambios sincronizados.
 - El Cuaderno evita un `EXC_BAD_ACCESS` durante SyncLAN al proteger con el `Lock` multiplataforma existente las cachés KMP `NotebookSheetMemoryCache` y `AverageCache`, evitando iteraciones y mutaciones concurrentes sobre `LinkedHashMap` en Kotlin/Native.
 - SyncLAN: Corrige una caída (crash) por excepción no capturada (SIGABRT en `runCompletionFailure`) durante la sincronización LAN añadiendo la anotación `@Throws(Exception::class)` a los métodos suspendidos de `AcademicYearsRepository` en `Contracts.kt`.

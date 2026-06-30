@@ -992,8 +992,6 @@ struct MacPlannerView: View {
                     .transition(uiFeatureFlags.bannerTransition)
             }
 
-            Divider().opacity(0.12)
-
             plannerCenterContent
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }

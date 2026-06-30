@@ -2380,7 +2380,6 @@ struct PlannerWorkspaceIOS: View {
     private var plannerMainContent: some View {
         VStack(spacing: 0) {
             PlannerToolbar(vm: vm, onOpenDiary: openSelectedSessionInDiary)
-            Divider().opacity(0.18)
             Group {
                 switch vm.activeSection {
                 case .week:
@@ -2474,71 +2473,79 @@ struct PlannerToolbar: View {
     @State private var isClearSchedulelessWeekConfirmationPresented = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 16) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(toolbarTitle)
-                        .font(.system(size: 28, weight: .black, design: .rounded))
-                        .lineLimit(2)
-                    Text(toolbarSubtitle)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                }
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .top, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(toolbarTitle)
+                            .font(.system(size: 24, weight: .black, design: .rounded))
+                            .lineLimit(2)
+                        Text(toolbarSubtitle)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
 
-                Spacer()
+                    Spacer()
 
-                PlannerLiquidGlassGroup(spacing: 8) {
-                    HStack(spacing: 8) {
-                        Button { Task { await vm.previousWeek() } } label: {
-                            Image(systemName: "chevron.left")
+                    PlannerLiquidGlassGroup(spacing: 8) {
+                        HStack(spacing: 8) {
+                            Button { Task { await vm.previousWeek() } } label: {
+                                Image(systemName: "chevron.left")
+                            }
+                            .plannerLiquidGlassButtonStyle()
+                            .accessibilityLabel("Semana anterior")
+
+                            Button { Task { await vm.nextWeek() } } label: {
+                                Image(systemName: "chevron.right")
+                            }
+                            .plannerLiquidGlassButtonStyle()
+                            .accessibilityLabel("Semana siguiente")
+
+                            ShareLink(item: vm.exportText()) {
+                                Image(systemName: "square.and.arrow.up")
+                            }
+                            .plannerLiquidGlassButtonStyle()
+                            .accessibilityLabel("Compartir planificación")
                         }
-                        .plannerLiquidGlassButtonStyle()
-                        .accessibilityLabel("Semana anterior")
-
-                        Button { Task { await vm.nextWeek() } } label: {
-                            Image(systemName: "chevron.right")
-                        }
-                        .plannerLiquidGlassButtonStyle()
-                        .accessibilityLabel("Semana siguiente")
-
-                        ShareLink(item: vm.exportText()) {
-                            Image(systemName: "square.and.arrow.up")
-                        }
-                        .plannerLiquidGlassButtonStyle()
-                        .accessibilityLabel("Compartir planificación")
                     }
                 }
-            }
 
-            if let progress = vm.situationProgress(for: vm.selectedSession) {
-                PlannerSituationProgressStrip(progress: progress)
-            } else {
-                PlannerWeekProgressStrip(vm: vm)
+                if let progress = vm.situationProgress(for: vm.selectedSession) {
+                    PlannerSituationProgressStrip(progress: progress)
+                } else {
+                    PlannerWeekProgressStrip(vm: vm)
+                }
             }
+            .padding(16)
+            .plannerGlassPanel(.hero, cornerRadius: 24)
 
             HStack(spacing: 8) {
                 PlannerFloatingTabBar(activeSection: $vm.activeSection)
                     .frame(maxWidth: 456)
 
-                Picker("Grupo", selection: Binding(
-                    get: { vm.selectedGroupId },
-                    set: { vm.selectGroup($0) }
-                )) {
-                    Text("Todos").tag(Optional<Int64>.none)
-                    ForEach(vm.groups, id: \.id) { group in
-                        Text(group.name).tag(Optional(group.id))
-                    }
-                }
-                .pickerStyle(.menu)
-                .frame(maxWidth: 180)
+                PlannerLiquidGlassGroup(spacing: 8) {
+                    HStack(spacing: 8) {
+                        Picker("Grupo", selection: Binding(
+                            get: { vm.selectedGroupId },
+                            set: { vm.selectGroup($0) }
+                        )) {
+                            Text("Todos").tag(Optional<Int64>.none)
+                            ForEach(vm.groups, id: \.id) { group in
+                                Text(group.name).tag(Optional(group.id))
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .frame(maxWidth: 180)
 
-                Picker("Densidad", selection: $vm.density) {
-                    ForEach(PlannerDensity.allCases) { density in
-                        Text(density.rawValue).tag(density)
+                        Picker("Densidad", selection: $vm.density) {
+                            ForEach(PlannerDensity.allCases) { density in
+                                Text(density.rawValue).tag(density)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .frame(maxWidth: 128)
                     }
                 }
-                .pickerStyle(.menu)
-                .frame(maxWidth: 128)
 
                 IOSSearchField(text: $vm.searchText, placeholder: "Buscar sesión, unidad, objetivo…")
                     .appOnChange(of: vm.searchText) { _ in vm.applySearch() }
@@ -2595,7 +2602,7 @@ struct PlannerToolbar: View {
         }
         .padding(.horizontal, EvaluationDesign.screenPadding)
         .padding(.top, 8)
-        .padding(.bottom, 16)
+        .padding(.bottom, 8)
     }
 
     private var toolbarTitle: String {

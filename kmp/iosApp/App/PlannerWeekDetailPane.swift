@@ -8,18 +8,16 @@ struct PlannerWeekDetailPane: View {
     let onOpenSession: (PlanningSession) -> Void
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                if let selectedCell {
-                    cellDetail(for: selectedCell)
-                } else if let selectedDay {
-                    dayDetail(for: selectedDay)
-                } else {
-                    emptyState
-                }
+        VStack(alignment: .leading, spacing: 16) {
+            if let selectedCell {
+                cellDetail(for: selectedCell)
+            } else if let selectedDay {
+                dayDetail(for: selectedDay)
+            } else {
+                emptyState
             }
-            .padding(EvaluationDesign.screenPadding)
         }
+        .padding(EvaluationDesign.screenPadding)
     }
 
     @ViewBuilder

@@ -6,6 +6,7 @@ extension PlannerWorkspaceViewModel {
     func select(session: PlanningSession) async {
         selectedSession = session
         selectedGroupId = session.groupId
+        dayViewSelectedDay = nil
         await loadJournalForSelectedSession()
     }
 

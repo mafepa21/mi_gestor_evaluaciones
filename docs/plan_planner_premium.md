@@ -89,14 +89,16 @@ Aceptación: planificar una semana completa sin salir de la sección — cumplid
 
 Sintaxis verificada con `swiftc -parse` en todos los ficheros tocados; auditoría automatizada de accesos cross-file repetida tras los cambios, sin issues. **Pendiente del dev: compilar y probar en iPad (vertical/apaisado) y Mac, y confirmar visualmente el layout lateral, las abreviaturas de grupo y el indicador de hoy** (este entorno no tiene Xcode.app ni simulador).
 
-## Fase 4 — Día como cabina de vuelo (2 días)
+## Fase 4 — Día como cabina de vuelo (2 días) — ✅ hecha (2026-07-03)
 
-1. Timeline vertical con huecos y recreos reales (a partir de `TimeSlotConfig`), indicador "ahora" en vivo, tarjeta de sesión actual expandida.
-2. Acciones rápidas por sesión: marcar impartida, nota de voz / observación rápida (el recorder ya existe), abrir diario. Deshacer al marcar impartida por error.
-3. Navegación de día (← hoy →) y swipe horizontal entre días.
-4. Resumen de cierre del día: "3 de 5 impartidas, 2 diarios pendientes" con CTA para cerrarlos.
+1. **Timeline vertical — hecho.** `PlannerDayView` reconstruida por completo: las filas se generan a partir de `vm.visibleSlots` (franjas reales del docente ese día), detectando huecos entre el fin de una franja y el inicio de la siguiente (`PlannerDayGapRow`, "Recreo HH:mm-HH:mm") y franjas libres tocables para crear sesión (`PlannerDayEmptySlotRow`, borde discontinuo). Un marcador "Ahora HH:mm" (`PlannerDayNowMarker`) se inserta en la posición cronológica correcta de la lista cuando el día mostrado es hoy, refrescado cada 60s con un `Timer.publish` (patrón ya usado en `LibraryAndPEWorkspaceViews.swift`). La sesión en curso (`isCurrent`) se muestra con más padding, sombra y hasta 4 líneas de objetivo en vez de 2. **Decisión de diseño:** no se dibuja una línea continua superpuesta con posición en píxeles — al ser una lista de filas discretas (no un canvas con eje de tiempo continuo), insertar el marcador como una fila más en el orden cronológico es más simple y fiable que calcular offsets verticales proporcionales al tiempo.
+2. **Acciones rápidas — hecho, con un recorte deliberado.** "Abrir ficha" y "Marcar impartida" ya existían; se añadió "Nota rápida" (`PlannerQuickNoteSheet`, un `TextEditor` + Guardar — 2 gestos) que llama a un nuevo `vm.quickAddObservation(to:text:)` (`PlannerWorkspaceViewModel+DayBoard.swift`): carga el diario de la sesión si no era la seleccionada, añade el texto a `groupObservations` (respetando lo que ya hubiera) y guarda. Marcar impartida ahora ofrece "Deshacer" en un banner de 5s (`PlannerWorkspaceViewModel+BulkOperations.swift` generaliza `markCompleted` a `setSessionStatus(_:status:)`, capturando el estado previo antes de cambiarlo). **No implementado:** nota de voz — grabar audio, guardarlo como adjunto del diario y reproducirlo son flujos que dependen de permisos de micrófono y AVFoundation que no puedo verificar sin dispositivo/simulador; la vía existente (abrir la ficha completa, que sí tiene grabadora) sigue disponible para eso.
+3. **Navegación de día — hecho.** Nuevo estado `dayViewSelectedDay` en el facade (con passthrough en `selectedDayForDayView`, que antes solo derivaba del día de hoy o de la sesión seleccionada) + `goToPreviousDayInDayView()`/`goToNextDayInDayView()`/`goToTodayInDayView()` que saltan de semana en los límites (viernes → siguiente lunes de la semana que viene, llamando a `vm.nextWeek()`). Botones ← Hoy → en la cabecera y gesto de swipe horizontal (`DragGesture` con `.simultaneousGesture`, umbral direccional `|Δx| > |Δy|×1.5` y `|Δx| > 60pt` para no robarle el scroll vertical al `ScrollView`) — **pendiente de ajuste fino en dispositivo real**, los umbrales son una primera aproximación razonable sin poder probarlos interactivamente.
+4. **Resumen de cierre del día — hecho.** Tira con icono + "N de M impartidas" + "K diario(s) pendiente(s) de cerrar" (o "Todos los diarios están al día") y botón "Cerrar" que abre la primera sesión impartida sin diario cerrado.
 
-Aceptación: durante una jornada, registrar lo esencial de cada sesión cuesta ≤2 gestos; el estado del día es visible sin scroll.
+Aceptación: durante una jornada, registrar lo esencial de cada sesión cuesta ≤2 gestos — cumplido (marcar impartida = 1 toque; nota rápida = escribir + guardar). El estado del día es visible sin scroll — cumplido (resumen de cierre justo bajo la cabecera). Sintaxis verificada con `swiftc -parse`; auditoría automatizada de accesos cross-file repetida sin issues nuevos.
+
+**Pendiente del dev:** compilar y probar en dispositivo — en particular el umbral del swipe horizontal (puede sentirse demasiado sensible o poco sensible sin ajuste en vivo) y confirmar que el timer de 60s no consume batería de forma notable al dejar la app en Día mucho tiempo.
 
 ## Fase 5 — Secuencia con barras de verdad (2–3 días)
 
@@ -143,7 +145,7 @@ Aceptación: VoiceOver puede leer estado de cualquier celda/barra; cero material
 | 1 Fiabilidad | 2 | Bugs visibles ✅ |
 | 2 Arquitectura | 3 | Velocidad futura ✅ |
 | 3 Semana | 4–5 | ⭐ uso diario ✅ (drag multi-sesión pendiente) |
-| 4 Día | 2 | uso diario |
+| 4 Día | 2 | uso diario ✅ (nota de voz pendiente) |
 | 5 Secuencia | 2–3 | planificación a futuro |
 | 6 Justificación | 3 | ⭐ valor docente |
 | 7 Mac | 2–3 | premium Mac |

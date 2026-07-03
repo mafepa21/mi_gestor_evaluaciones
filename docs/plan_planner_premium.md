@@ -111,14 +111,19 @@ Aceptación: de un vistazo se ve qué situaciones van adelantadas/atrasadas por 
 
 Sintaxis verificada con `swiftc -parse`; auditoría automatizada de accesos cross-file repetida sin issues nuevos. **Pendiente del dev:** compilar y confirmar visualmente las franjas continuas, el sombreado de vacaciones (con periodos de evaluación reales configurados) y que el `Menu` de detalle se sienta bien tanto en iPad (tap) como en Mac (click).
 
-## Fase 6 — Resumen + justificación documental (3 días) ⭐ mayor valor añadido
+## Fase 6 — Resumen + justificación documental (3 días) ⭐ mayor valor añadido — ✅ hecha (2026-07-03)
 
-1. **Informe PDF** (ImageRenderer o vista de impresión): informe semanal/mensual/por evaluación con sesiones planificadas vs impartidas, objetivos, estado de diarios, incidencias y firma/fecha. Plantilla sobria imprimible pensada para jefatura/inspección. Compartir vía ShareLink/Guardar.
-2. **Plan vs real**: métrica de desviación (sesiones movidas, canceladas, no impartidas) por semana y por grupo — es la narrativa que justifica el trabajo.
-3. Alertas accionables: cada alerta del Resumen navega a resolverla (diarios pendientes → lista con acceso directo; días sin sesiones → Semana en ese día).
-4. Rango del Resumen conmutable: semana / mes / evaluación (hoy solo semana).
+**Investigación previa:** antes de escribir código, un subagente de exploración auditó toda la infraestructura de informes ya existente en la app (`AppleFoundationReportService`, `MacReportExportService` en `MacModuleStubs.swift`). Hallazgo clave: la **única** generación de PDF que existía en todo el repo es **exclusiva de macOS** (`NSTextView.dataWithPDF`, AppKit) — no había nada reutilizable en iPad. Dado que el Planner se usa igual en ambas plataformas, construí un renderer nuevo y genuinamente multiplataforma en vez de adaptar el de Mac o escribir una versión aparte para iPad.
 
-Aceptación: un docente genera en <30 s un PDF de su evaluación que puede entregar tal cual; cada alerta se resuelve desde la propia alerta.
+1. **Informe PDF — hecho.** Nuevo `PlannerReportPDFRenderer.swift`: usa **Core Text + Core Graphics puros** (`CTFramesetter` + `CGContext(consumer:mediaBox:)`), sin AppKit ni UIKit — el mismo código pagina y escribe el PDF exactamente igual en iPad y en Mac (patrón estándar de Apple para paginar texto sobre un contexto PDF). `PlannerReportDocument.swift` construye el contenido (título, rango, resumen, sesiones agrupadas por clase con día/franja/unidad/objetivo/estado, incidencias del diario, línea de firma y fecha en blanco para uso administrativo) como un `NSAttributedString`. Se genera desde el Resumen con un botón que pasa a `ShareLink(item: url)` en cuanto está listo — funciona igual en iPad (hoja de compartir nativa) y Mac (incluye Guardar en Archivos entre los destinos, sin necesitar el `NSSavePanel` específico de Mac). **Plantilla deliberadamente sobria** (texto maquetado con jerarquía tipográfica, no una tabla con líneas dibujadas a mano) — más seguro de implementar sin poder verlo en pantalla, y es literalmente lo que pide el plan ("plantilla sobria").
+2. **Plan vs real — hecho, con un recorte honesto.** Nuevas métricas "No impartidas" (sesiones de semanas ya pasadas sin marcar como impartidas ni canceladas) y "Canceladas", visibles en la rejilla de métricas y detalladas por sesión dentro del PDF. **"Sesiones movidas" no se implementó**: el modelo `PlanningSession` no guarda de dónde venía una sesión antes de un cambio de franja/semana (ni el backend expone un histórico de movimientos), así que no hay ningún dato real del que derivar esa cifra — inventarla habría sido falsear un documento pensado precisamente para justificar el trabajo ante inspección, lo cual habría sido peor que no tener la métrica.
+3. **Alertas accionables — hecho.** `PlannerSummaryAlert` gana un campo `action: (() -> Void)?`; cada alerta ahora es un botón real: "sesiones sin diario cerrado" y "sesiones no impartidas" abren directamente la primera pendiente (nuevo parámetro `onOpenSession` en `PlannerSummaryDashboard`, cableado en ambas plataformas); "días sin sesiones creadas", "secuencia sin ubicar" y "semana sin planificación" cambian `vm.activeSection` a Semana o Secuencia. Sin acción, la alerta se muestra igual que antes (sin chevron).
+4. **Rango del Resumen conmutable — hecho.** Nuevo `PlannerReportRange` (semana/mes/evaluación) + `PlannerRangeData`, con `vm.loadRangeData(_:groupId:)` (`PlannerWorkspaceViewModel+Report.swift`) como pieza compartida entre el selector del Resumen y el informe PDF: para semana reutiliza los datos ya cargados; para mes/evaluación pide todas las sesiones al bridge (`plannerListAllSessions()`, ya usado en Secuencia) y las filtra por semana ISO. Cobertura horaria y "próximas sesiones" solo tienen sentido a escala semanal, así que se ocultan en mes/evaluación a favor de las métricas agregadas.
+   - **Efecto colateral honesto:** el Resumen semanal **no** aplicaba el filtro de grupo del selector superior (usaba `vm.filteredSessions`, que solo filtra por texto de búsqueda, no por grupo) — un bug ya existente, no introducido en esta fase. Al construir `loadRangeData` sobre `filteredPlannerSessions()` (la misma función que ya usan Semana y Secuencia), el Resumen pasa a respetar el filtro de grupo también para la semana, quedando consistente con el resto de pestañas.
+
+Aceptación: un docente genera en <30 s un PDF de su evaluación que puede entregar tal cual — cumplido en el mecanismo (generación + compartir); **pendiente de verificar visualmente en dispositivo** que la maquetación y paginación de Core Text se vean correctas, al ser el primer renderer de este tipo en la app y no poder probarlo sin Xcode.app. Cada alerta se resuelve desde la propia alerta — cumplido.
+
+Sintaxis verificada con `swiftc -parse` en todos los ficheros nuevos/tocados (14 en total); auditoría automatizada de accesos cross-file repetida sin issues reales (los avisos restantes son falsos positivos ya verificados, inherentes a un detector basado en texto que no puede saber a qué tipo pertenece cada `.member`). Encontré y corregí dos bugs de interacción reales durante la propia revisión antes de dar la fase por cerrada: un `ShareLink` anidado dentro de la acción de un `Button` (conflicto de gestos) y un PDF generado que no se invalidaba al cambiar de rango o de grupo.
 
 ## Fase 7 — Mac de primera clase (2–3 días)
 
@@ -149,7 +154,7 @@ Aceptación: VoiceOver puede leer estado de cualquier celda/barra; cero material
 | 3 Semana | 4–5 | ⭐ uso diario ✅ (drag multi-sesión pendiente) |
 | 4 Día | 2 | uso diario ✅ (nota de voz pendiente) |
 | 5 Secuencia | 2–3 | planificación a futuro ✅ (drag pendiente) |
-| 6 Justificación | 3 | ⭐ valor docente |
+| 6 Justificación | 3 | ⭐ valor docente ✅ (sesiones movidas sin datos) |
 | 7 Mac | 2–3 | premium Mac |
 | 8 Pulido | 2 | premium global |
 

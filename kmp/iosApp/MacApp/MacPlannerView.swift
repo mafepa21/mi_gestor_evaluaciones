@@ -208,7 +208,8 @@ struct MacPlannerView: View {
         case .summary:
             PlannerSummaryDashboard(
                 vm: vm,
-                onOpenSettings: { showingScheduleSettings = true }
+                onOpenSettings: { showingScheduleSettings = true },
+                onOpenSession: openMacSession
             )
         }
     }

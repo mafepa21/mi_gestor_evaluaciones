@@ -15,6 +15,12 @@ typealias PlatformColor = NSColor
 /// para paginar con `PlannerReportPDFRenderer`). Plantilla sobria pensada para
 /// entregar a jefatura/inspección: sesiones planificadas vs. impartidas,
 /// objetivos, estado de diarios, incidencias y una línea de firma/fecha.
+///
+/// Aislado a `@MainActor` porque `groupSection` llama a `vm.dayLabel(for:)`/
+/// `vm.timeLabel(for:)`, que están aislados al actor principal (el ViewModel
+/// lo está por completo); solo se invoca desde `PlannerSummaryDashboard`, ya
+/// en el hilo principal.
+@MainActor
 enum PlannerReportDocument {
     static func build(
         rangeData: PlannerRangeData,

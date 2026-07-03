@@ -114,7 +114,6 @@ struct NotebookModuleView: View {
     @State var formulaAIMessage: String? = nil
     @State var isFormulaAIGenerating = false
     @State var activeChoiceCellId: String? = nil
-    @State var organizationColumnSearchText = ""
     @State var focusMode: NotebookFocusMode = .normal
     @State private var contextualAIOrchestrator = AppleAIOrchestrator()
     @StateObject private var formulaAIServiceStore = AppleFoundationFormulaServiceStore()
@@ -404,6 +403,9 @@ struct NotebookModuleView: View {
                         activeTabId: activeNotebookTabId(data: data),
                         onSelect: { tabId in
                             selectNotebookTab(tabId)
+                        },
+                        onCreateTab: {
+                            presentCreateNotebookTab()
                         }
                     )
                 }
@@ -1452,6 +1454,12 @@ struct NotebookModuleView: View {
                         let tabs = orderedNotebookTabs(data: data)
                         if !tabs.isEmpty {
                             Section("Pestañas") {
+                                Button {
+                                    presentCreateNotebookTab()
+                                } label: {
+                                    Label("Nueva pestaña", systemImage: "plus.rectangle.on.rectangle")
+                                }
+
                                 ForEach(tabs, id: \.id) { tab in
                                     Button {
                                         selectNotebookTab(tab.id)

@@ -9,6 +9,7 @@ struct NotebookColumnOrganizerSheet: View {
     let onDeleteMultiple: ([NotebookColumnDefinition]) -> Void
     let onAddColumn: () -> Void
     let onCreateCategory: () -> Void
+    let onCreateTab: () -> Void
     let onCreateSummary: () -> Void
     let onGenerateSummary: (String?) -> Void
     let onShowAll: () -> Void
@@ -207,13 +208,13 @@ struct NotebookColumnOrganizerSheet: View {
             .frame(maxWidth: .infinity)
 
             Picker("Sección", selection: $sectionFilter) {
-                Text("Todas (\(columns.count))").tag(SectionFilter.all)
-                Text("Visibles (\(visibleCount))").tag(SectionFilter.visible)
-                Text("Ocultas (\(hiddenCount))").tag(SectionFilter.hidden)
-                Text("Archivadas (\(archivedCount))").tag(SectionFilter.archived)
+                Text("Todas").tag(SectionFilter.all)
+                Text("Visibles").tag(SectionFilter.visible)
+                Text("Ocultas").tag(SectionFilter.hidden)
+                Text("Archivadas").tag(SectionFilter.archived)
             }
             .pickerStyle(.segmented)
-            .fixedSize()
+            .layoutPriority(1)
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 10)
@@ -412,38 +413,40 @@ struct NotebookColumnOrganizerSheet: View {
                 Label("Nueva categoría", systemImage: "folder.badge.plus")
             }
             .buttonStyle(.bordered)
-            .fixedSize()
 
             Button {
-                onShowAll()
+                onCreateTab()
             } label: {
-                Label("Mostrar todas", systemImage: "eye")
+                Label("Nueva pestaña", systemImage: "plus.rectangle.on.rectangle")
             }
             .buttonStyle(.bordered)
-            .disabled(hiddenCount == 0)
-            .fixedSize()
 
             Spacer(minLength: 12)
 
-            if let summaryColumn = summaryColumns.first {
-                Button {
-                    onGenerateSummary(summaryColumn.id)
-                } label: {
-                    Label("Síntesis pedagógica", systemImage: "apple.intelligence")
-                }
-                .buttonStyle(.bordered)
-                .fixedSize()
-            } else {
-                Button {
-                    onCreateSummary()
-                } label: {
-                    Label("Síntesis pedagógica", systemImage: "plus.bubble")
-                }
-                .buttonStyle(.bordered)
-                .fixedSize()
-            }
-
             Menu {
+                Button {
+                    onShowAll()
+                } label: {
+                    Label("Mostrar todas", systemImage: "eye")
+                }
+                .disabled(hiddenCount == 0)
+
+                if let summaryColumn = summaryColumns.first {
+                    Button {
+                        onGenerateSummary(summaryColumn.id)
+                    } label: {
+                        Label("Síntesis pedagógica", systemImage: "apple.intelligence")
+                    }
+                } else {
+                    Button {
+                        onCreateSummary()
+                    } label: {
+                        Label("Síntesis pedagógica", systemImage: "plus.bubble")
+                    }
+                }
+
+                Divider()
+
                 Toggle("Agrupar por grupos", isOn: Binding(
                     get: { groupByWorkGroupMode != "none" },
                     set: { newValue in
@@ -451,16 +454,13 @@ struct NotebookColumnOrganizerSheet: View {
                     }
                 ))
 
-                Divider()
-
                 Button("Gestionar grupos") {
                     onOpenGroupManagement()
                 }
             } label: {
-                Label("Grupos", systemImage: "person.2")
+                Label("Más", systemImage: "ellipsis.circle")
             }
             .menuStyle(.borderlessButton)
-            .fixedSize()
 
             Button {
                 isHelpPopoverPresented = true

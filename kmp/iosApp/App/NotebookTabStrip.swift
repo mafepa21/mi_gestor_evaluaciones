@@ -5,6 +5,7 @@ struct NotebookTabStrip: View {
     let tabs: [NotebookTab]
     let activeTabId: String?
     let onSelect: (String) -> Void
+    let onCreateTab: () -> Void
 
     var body: some View {
         HStack(spacing: 10) {
@@ -12,6 +13,16 @@ struct NotebookTabStrip: View {
                 Label("Organiza el cuaderno por temas", systemImage: "rectangle.on.rectangle")
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(.secondary)
+
+                Spacer(minLength: 12)
+
+                Button {
+                    onCreateTab()
+                } label: {
+                    Label("Crear primera pestaña", systemImage: "plus")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
@@ -21,6 +32,19 @@ struct NotebookTabStrip: View {
                     }
                     .padding(.vertical, 2)
                 }
+
+                Button {
+                    onCreateTab()
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 12, weight: .bold))
+                        .frame(width: 28, height: 28)
+                        .background(Color.secondary.opacity(0.08), in: Circle())
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(NotebookScaleButtonStyle())
+                .help("Nueva pestaña")
+                .accessibilityLabel("Nueva pestaña")
             }
         }
         .padding(.horizontal, 16)

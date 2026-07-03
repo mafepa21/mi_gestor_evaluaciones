@@ -99,6 +99,9 @@ extension PlannerWorkspaceViewModel {
     }
 
     var selectedDayForDayView: Int {
+        if let dayViewSelectedDay {
+            return dayViewSelectedDay
+        }
         if let selectedSession {
             return Int(selectedSession.dayOfWeek)
         }

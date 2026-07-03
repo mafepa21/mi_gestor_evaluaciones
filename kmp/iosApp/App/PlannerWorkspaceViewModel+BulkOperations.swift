@@ -85,6 +85,12 @@ extension PlannerWorkspaceViewModel {
     }
 
     func markCompleted(_ session: PlanningSession) async {
+        await setSessionStatus(session, status: .completed)
+    }
+
+    /// Cambia el estado de una sesión (usado por `markCompleted` y por el
+    /// deshacer de la vista Día, que necesita poder restaurar el estado previo).
+    func setSessionStatus(_ session: PlanningSession, status: SessionStatus) async {
         guard let bridge else { return }
         _ = try? await bridge.plannerUpsertSession(
             id: session.id,
@@ -104,9 +110,9 @@ extension PlannerWorkspaceViewModel {
             teacherScheduleSlotId: session.teacherScheduleSlotId?.int64Value,
             startTime: session.startTime,
             endTime: session.endTime,
-            status: .completed
+            status: status
         )
-        updateLocalSession(session, status: .completed)
+        updateLocalSession(session, status: status)
         await reloadJournalSummaries()
     }
 

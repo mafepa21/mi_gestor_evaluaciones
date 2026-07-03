@@ -23,6 +23,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     @Published var sequenceGroupsEnriched: [PlannerSequenceGroup] = []
     @Published var isLoadingSequences = false
     @Published var selectedSession: PlanningSession?
+    @Published var dayViewSelectedDay: Int?
     @Published var journalDraft: PlannerJournalDraft = .empty
     @Published var journalSaveState: PlannerSaveState = .idle
     @Published var journalSummaryBySessionId: [Int64: SessionJournalSummary] = [:]

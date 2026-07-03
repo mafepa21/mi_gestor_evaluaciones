@@ -1,0 +1,143 @@
+# Plan: Planner de 10 — intuitivo, práctico y premium (iPadOS + macOS)
+
+Fecha: 2026-07-03. Ámbito: `kmp/iosApp/App/Planner*.swift`, `kmp/iosApp/MacApp/MacModuleStubs.swift` (MacPlannerView), `kmp/iosApp/AppleShared/PlannerLiquidGlassControls.swift`. Cambios en `kmp/shared/` solo donde se indica (periodos de evaluación, export).
+
+Objetivo de producto: el Planner es la pantalla donde el docente **organiza las clases a futuro** y a la vez **justifica todo lo realizado**. Tiene que ser intuitivo, práctico en el día a día, aportar valor real y tener acabado premium.
+
+## Diagnóstico resumido
+
+La base funcional es buena: 4 secciones (Semana con grid miniatura + panel de detalle, Día, Secuencia tipo Gantt, Resumen con métricas y alertas), movimiento en cascada con deshacer, generación desde agenda, selección múltiple y diario integrado. Pero hay problemas estructurales, de interacción y de valor:
+
+**Arquitectura**
+- `PlannerWorkspaceIOS.swift` es una God File de ~5.900 líneas; `PlannerWorkspaceViewModel` tiene ~50 `@Published` en un único objeto: cualquier cambio (buscar, seleccionar, tick de guardado) invalida todas las vistas suscritas.
+- La versión Mac vive en `MacModuleStubs.swift` ("stubs") y contiene **código muerto**: `plannerSidebar` y `plannerHeader` (con los chevrons de semana anterior/siguiente, "Deshacer movimiento", filtros y acciones) están definidos pero **no se renderizan** — el `body` solo monta `PlannerToolbar` (el de iOS) + contenido central. El `@State activeSection` local tampoco se usa (el switch lee `vm.activeSection`).
+- Duplicaciones: `hasSessionPassed` copiado en iOS y Mac; vistas legacy aparentemente sin uso (`PlannerWeekBoard`, `PlannerSequenceView`, `PlannerSessionsList`, `PlannerScheduleBoard`) conviviendo con las versiones nuevas.
+
+**Intuición / interacción**
+- **Sin navegación de semana en macOS** (verificar en app): los controles flotantes de semana solo se montan en la rama iOS; el header Mac que los tenía es código muerto. En iPad, los controles de semana solo existen en la sección Semana: desde Día/Secuencia/Resumen no puedes cambiar de semana.
+- Las celdas del grid miniatura son **rectángulos de color sin contenido**: no dicen qué grupo ni qué unidad; obligan a tap → scroll al panel de detalle inferior. En iPad 13" y Mac se desperdicia pantalla: el detalle debería ir en panel lateral, no debajo.
+- **Sin drag & drop en el grid de iPad** para mover sesiones (la cascada existe en el modelo; `receiveCascadeDrop` en Mac no parece tener drop target conectado — verificar).
+- El color de celda mezcla semánticas: verde = impartida, ámbar = franja sin sesión, azul = planificada; el color del grupo (identidad clave para el docente) no aparece en la miniatura.
+- Botón "Observación" en Día hace exactamente lo mismo que "Abrir ficha".
+- Sin atajos de teclado (⌘←/→ semana, ⌘T hoy, ⌘N nueva sesión) ni menú de comandos en Mac.
+
+**Datos / corrección**
+- Trimestres **hardcodeados** en `PlannerGanttTerm` (1º: S36–52, 2º: S1–14, 3º: S15–26) cuando ya existen `evaluationPeriods` en el ViewModel; año fallback 2026 y `scheduleStartDate = "2026-09-01"` fijos.
+- La agrupación del Gantt por `normalized(title)` (título en minúsculas) es frágil: dos situaciones distintas con el mismo nombre se fusionan.
+- El Gantt corta a `prefix(4)` sesiones por semana sin indicador de desbordamiento.
+- La cobertura del Resumen calcula `available = max(visibleSlots.count, franjas del día)`: infla el denominador los días con menos franjas que el máximo semanal.
+
+**Valor para justificar (el gap más grande)**
+- La única "exportación" es texto plano al portapapeles. Para justificar lo realizado ante jefatura/inspección hace falta un **informe imprimible** (PDF) de semana/mes/trimestre con sesiones, objetivos, estado del diario y desviaciones plan-vs-real. Los datos ya existen (sesiones + diarios ricos); falta la salida.
+
+**Premium**
+- El sistema Liquid Glass (`plannerGlassPanel`) está bien montado, pero convive con `.thinMaterial` + borde manual en la mitad de las tarjetas → dos lenguajes visuales. Jerarquía tipográfica desigual, badges de estado con 3 estilos distintos, accesibilidad parcial (bien en grid, ausente en Gantt y Resumen).
+
+---
+
+## Fase 0 — Limpieza y línea base (1 día) — ✅ hecha (2026-07-03)
+
+1. Capturas de referencia de las 4 secciones en iPad 13", iPhone-compact y Mac (claro/oscuro) para comparar el antes/después. **Pendiente del dev**: este entorno solo tiene Command Line Tools (sin Xcode.app ni simulador), no se puede lanzar la app.
+2. **Código muerto eliminado** (verificado con grep repo-wide antes de borrar; todo recuperable en git history):
+   - `PlannerWorkspaceIOS.swift` (5.919 → 4.965 líneas): `PlannerWeekBoard` + `PlannerWeekCellCard` + `PlannerWeekCompactEntryRow` + `PlannerWeekEntryCard` + `PlannerStatusPill` (el board antiguo pre-miniatura), `PlannerSequenceView` + `PlannerSequenceCard` (secuencia pre-Gantt), `PlannerSessionsList` + `PlannerAgendaSessionRow`, `PlannerScheduleBoard` + `PlannerForecastRowView`, y `hasSessionPassed`.
+   - `MacModuleStubs.swift` (2.312 → 1.389 líneas): `plannerSidebar`, `plannerHeader`, `@State activeSection` + enum `MacPlannerSection`, `hasSessionPassed`, `openSelectedMacSession`, `weekEntries` + extensión `matchesSearch`, `MacPlannerSessionsTable`, cadena `MacPlannerWeekBoard`/`WeekCell`/`WeekEntryRow`/`SessionDragModifier` (el board Mac antiguo, tenía el drag & drop — referencia para Fase 3), `MacPlannerAgendaView`, `MacPlannerScheduleGenerationPreviewSheet`, `MacPlannerForecastHeaderRow`/`DataRow`.
+   - Se conservan a propósito (huérfanos pero se recablean en Fase 1): `receiveCascadeDrop`/`commitCascadeDrop`/`undoCascadeMove` + alerta `pendingCascadeDrop`, `exportCurrentContext`, `copyFilteredWeek`, `moveFilteredSessions`, `openComposerForCurrentFilter` y sus alertas.
+3. `hasSessionPassed` no había que unificarlo: estaba **muerto en ambos ficheros** (cero call sites) → eliminado.
+4. Sospechosos **confirmados por inspección de código**:
+   - **macOS no tiene navegación de semana**: los chevrons vivían en `plannerHeader`, que nunca se renderizaba. Tampoco hay export/mover/limpiar accesibles en Mac (vivían en el sidebar muerto). → Fase 1.1.
+   - **El drop de cascada en Mac está desconectado**: `receiveCascadeDrop` no tiene ningún caller; el `draggable` y los drop targets vivían en el `MacPlannerWeekBoard` eliminado. En iPad el grid miniatura tampoco tiene drag & drop. → Fase 1.6 / Fase 3.3.
+
+Sintaxis verificada con `swiftc -parse` en ambos ficheros y grep sin referencias residuales. **Pendiente del dev: compilar ambos targets en Xcode** (este entorno no puede).
+
+## Fase 1 — Correcciones de fiabilidad (2 días)
+
+1. **Navegación de semana universal.** Mover ← Hoy → (+ "Deshacer movimiento" cuando aplique) a `PlannerToolbar`, visible en las 4 secciones y ambas plataformas. En Mac, además como items de toolbar nativa y atajos ⌘←/⌘→/⌘T.
+2. **Trimestres reales.** `PlannerGanttTerm` deja de tener rangos fijos: derivar los rangos de semanas de `evaluationPeriods` (con fallback razonable si no hay periodos configurados). Eliminar los hardcodes de año 2026.
+3. **Cobertura correcta.** En `PlannerSummaryStats`, `available` por día = franjas reales de ese día (agenda docente), sin `max` global.
+4. **Gantt honesto.** Agrupar situaciones por `sequenceVersionId`/id real, no por título normalizado; cuando una semana tenga >4 sesiones mostrar "+N" tocable que abre la lista.
+5. **Botón "Observación"** en Día: abrir la ficha con el diario enfocado en observación rápida (o eliminarlo si no aporta).
+6. **Drop de cascada en Mac**: conectar `receiveCascadeDrop` a un drop target real en el grid si está suelto.
+
+Aceptación: cambiar de semana desde cualquier sección y plataforma; trimestre 2º de un curso con periodos configurados muestra sus semanas reales; cobertura 100% cuando todas las franjas del día tienen sesión.
+
+## Fase 2 — Arquitectura para poder crecer (3 días)
+
+1. Trocear `PlannerWorkspaceIOS.swift` en ficheros por responsabilidad (workspace/toolbar, week, day, journal, composer, schedule settings), como ya se hizo con `IPadWorkspaceShell`.
+2. Descomponer `PlannerWorkspaceViewModel` en sub-stores observables (semana/sesiones, diario, composer, agenda, secuencias) manteniendo una fachada para no romper llamadas; las vistas observan solo su store. Alternativa mínima: render models `Equatable` por sección (patrón ya validado en el Notebook con `notebook-grid-performance`).
+3. Sacar `MacPlannerView` de `MacModuleStubs.swift` a `MacApp/MacPlannerView.swift`.
+
+Aceptación: escribir en el buscador no invalida el grid semanal (verificable con `Self._printChanges`); ningún fichero Planner > 1.500 líneas.
+
+## Fase 3 — Semana de 10 (4–5 días, la fase de mayor impacto)
+
+1. **Celdas con contenido.** Sustituir el rectángulo mudo por una mini-tarjeta: banda o fondo con el **color del grupo**, abreviatura del grupo, y estado como pequeño indicador (punto/check), con variante según densidad y tamaño. En celdas multi-sesión, apilado con contador.
+2. **Layout adaptativo.** En regular-width (iPad apaisado, Mac): grid a la izquierda + panel de detalle **lateral** persistente (el actual pane inferior pasa a columna derecha, estilo inspector). En compact se mantiene el flujo vertical actual.
+3. **Drag & drop.** Arrastrar una sesión a otra celda ejecuta el movimiento en cascada (preview + confirmación si arrastra impartidas, igual que Mac); feedback háptico y animación del glass. Long-press/click derecho en celda: menú contextual (abrir diario, editar, marcar impartida, duplicar, mover a la semana siguiente).
+4. **Crear en contexto.** Tap en celda vacía con franja → composer prellenado con día/franja/grupo (ya existe el hook, pulirlo a un solo tap desde el panel lateral).
+5. **Indicador de hoy**: columna del día actual resaltada; línea de "ahora" si la semana es la actual.
+
+Aceptación: planificar una semana completa sin salir de la sección; mover una sesión cuesta un gesto; el grupo de cada sesión se distingue de un vistazo sin tocar nada.
+
+## Fase 4 — Día como cabina de vuelo (2 días)
+
+1. Timeline vertical con huecos y recreos reales (a partir de `TimeSlotConfig`), indicador "ahora" en vivo, tarjeta de sesión actual expandida.
+2. Acciones rápidas por sesión: marcar impartida, nota de voz / observación rápida (el recorder ya existe), abrir diario. Deshacer al marcar impartida por error.
+3. Navegación de día (← hoy →) y swipe horizontal entre días.
+4. Resumen de cierre del día: "3 de 5 impartidas, 2 diarios pendientes" con CTA para cerrarlos.
+
+Aceptación: durante una jornada, registrar lo esencial de cada sesión cuesta ≤2 gestos; el estado del día es visible sin scroll.
+
+## Fase 5 — Secuencia con barras de verdad (2–3 días)
+
+1. Sustituir los cuadraditos 18×18 por **barras continuas por situación/grupo** (inicio→fin), con segmentos coloreados por estado y sesiones como marcas dentro de la barra; hover/tap muestra popover con detalle.
+2. Cabecera con meses además de "S.36"; sombreado de vacaciones/festivos (ya hay `holidays` en el modelo semanal).
+3. Sesiones "sin ubicar" de la secuencia arrastrables al timeline (asignar semana) o botón "Ubicar" que abre el composer con la situación preseleccionada.
+4. Fila de resumen por grupo: % de la programación impartida vs punto del curso ("vas 2 sesiones por detrás del plan").
+
+Aceptación: de un vistazo se ve qué situaciones van adelantadas/atrasadas por grupo; ubicar una sesión pendiente cuesta un gesto.
+
+## Fase 6 — Resumen + justificación documental (3 días) ⭐ mayor valor añadido
+
+1. **Informe PDF** (ImageRenderer o vista de impresión): informe semanal/mensual/por evaluación con sesiones planificadas vs impartidas, objetivos, estado de diarios, incidencias y firma/fecha. Plantilla sobria imprimible pensada para jefatura/inspección. Compartir vía ShareLink/Guardar.
+2. **Plan vs real**: métrica de desviación (sesiones movidas, canceladas, no impartidas) por semana y por grupo — es la narrativa que justifica el trabajo.
+3. Alertas accionables: cada alerta del Resumen navega a resolverla (diarios pendientes → lista con acceso directo; días sin sesiones → Semana en ese día).
+4. Rango del Resumen conmutable: semana / mes / evaluación (hoy solo semana).
+
+Aceptación: un docente genera en <30 s un PDF de su evaluación que puede entregar tal cual; cada alerta se resuelve desde la propia alerta.
+
+## Fase 7 — Mac de primera clase (2–3 días)
+
+1. Toolbar nativa de macOS (navegación de semana, picker de sección como `ToolbarItem`, búsqueda con ⌘F) en lugar del `PlannerToolbar` de iOS; menú de comandos (Archivo → Nueva sesión ⌘N; Vista → Semana/Día/Secuencia/Resumen ⌘1–4; Edición → Deshacer movimiento con `UndoManager`).
+2. Hover states en celdas y filas; doble click abre ficha; click derecho = menú contextual de Fase 3.
+3. Detalle de sesión como **inspector lateral** (no sheet modal) para poder ver grid y ficha a la vez.
+
+Aceptación: el Planner en Mac se maneja 100% con teclado+ratón sin sheets bloqueantes; ⌘1–4 cambia de sección.
+
+## Fase 8 — Pulido premium y accesibilidad (2 días)
+
+1. Unificar todas las tarjetas sobre `plannerGlassPanel` (roles hero/content/control) eliminando los `.thinMaterial` + borde manual sueltos; una sola escala tipográfica y un solo estilo de badge de estado (cápsula con icono).
+2. Animaciones coherentes (un spring compartido), transición suave grid↔detalle, `contentTransition(.numericText())` en métricas.
+3. Accesibilidad: labels/valores en Gantt, Resumen y controles flotantes; Dynamic Type sin roturas en el grid (densidad automática); contraste AA de los colores de estado en oscuro.
+4. Auditoría rápida con `swiftui-polish` y capturas del después vs la línea base de Fase 0.
+
+Aceptación: VoiceOver puede leer estado de cualquier celda/barra; cero materiales "sueltos" fuera del sistema glass.
+
+---
+
+## Orden y esfuerzo
+
+| Fase | Días | Impacto |
+|---|---|---|
+| 0 Limpieza | 1 | Base sana |
+| 1 Fiabilidad | 2 | Bugs visibles |
+| 2 Arquitectura | 3 | Velocidad futura |
+| 3 Semana | 4–5 | ⭐ uso diario |
+| 4 Día | 2 | uso diario |
+| 5 Secuencia | 2–3 | planificación a futuro |
+| 6 Justificación | 3 | ⭐ valor docente |
+| 7 Mac | 2–3 | premium Mac |
+| 8 Pulido | 2 | premium global |
+
+Total ≈ 21–24 días. Si hay que priorizar: 0 → 1 → 3 → 6 dan el 80% del salto percibido (fiabilidad + semana usable + PDF justificativo); 2 puede intercalarse antes de 3 si el rendimiento ya duele.
+
+Al cierre de cada fase: `registrar-avance-app` (changelog + memoria de desarrollo), captura comparativa y build en ambos targets.

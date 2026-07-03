@@ -5,7 +5,7 @@ struct PlannerSequenceGanttView: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
     let onOpenSession: (PlanningSession) -> Void
 
-    @State private var selectedTerm: PlannerGanttTerm = .current
+    @State private var selectedRange: PlannerGanttRange = .current
     @State private var selectedGroupId: Int64?
     @State private var expandedSituationIds: Set<String> = []
 
@@ -50,9 +50,10 @@ struct PlannerSequenceGanttView: View {
             Spacer()
 
             HStack(spacing: 8) {
-                Picker("Trimestre", selection: $selectedTerm) {
-                    ForEach(PlannerGanttTerm.allCases) { term in
-                        Text(term.title).tag(term)
+                Picker("Periodo", selection: $selectedRange) {
+                    Text("Periodo actual").tag(PlannerGanttRange.current)
+                    ForEach(sortedEvaluationPeriods, id: \.id) { period in
+                        Text(period.name).tag(PlannerGanttRange.period(period.id))
                     }
                 }
                 .pickerStyle(.menu)
@@ -135,7 +136,7 @@ struct PlannerSequenceGanttView: View {
                 .background(EvaluationDesign.surfaceSoft)
 
             ForEach(visibleWeeks, id: \.self) { week in
-                Text("S.\(week)")
+                Text("S.\(week.week)")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(week == currentWeek ? EvaluationDesign.accent : .secondary)
                     .frame(width: weekWidth, height: rowHeight)
@@ -162,13 +163,26 @@ struct PlannerSequenceGanttView: View {
         .padding(.horizontal, 4)
     }
 
-    private var visibleWeeks: [Int] {
-        selectedTerm.weekRange(currentWeek: currentWeek)
+    private var sortedEvaluationPeriods: [PlannerEvaluationPeriod] {
+        vm.evaluationPeriods.sorted { ($0.sortOrder, $0.startDateIso) < ($1.sortOrder, $1.startDateIso) }
     }
 
-    private var currentWeek: Int {
-        let current = IsoWeekHelper.shared.current()
-        return Int(truncating: current.first ?? KotlinInt(value: Int32(vm.week)))
+    private var visibleWeeks: [PlannerGanttWeek] {
+        switch selectedRange {
+        case .current:
+            return PlannerGanttWeek.range(around: Date(), before: 6, after: 6)
+        case .period(let periodId):
+            guard let period = vm.evaluationPeriods.first(where: { $0.id == periodId }),
+                  let weeks = PlannerGanttWeek.range(fromIso: period.startDateIso, toIso: period.endDateIso),
+                  !weeks.isEmpty else {
+                return PlannerGanttWeek.range(around: Date(), before: 6, after: 6)
+            }
+            return weeks
+        }
+    }
+
+    private var currentWeek: PlannerGanttWeek {
+        PlannerGanttWeek(date: Date())
     }
 
     private var filteredGroups: [PlannerSequenceGroup] {
@@ -179,7 +193,7 @@ struct PlannerSequenceGanttView: View {
 
     private var situationRows: [PlannerGanttSituation] {
         let grouped = Dictionary(grouping: filteredGroups) { group in
-            normalized(group.title)
+            group.sequenceVersionId.map { "seq-\($0)" } ?? "title-\(normalized(group.title))"
         }
 
         return grouped.compactMap { key, groups in
@@ -214,36 +228,61 @@ struct PlannerSequenceGanttView: View {
     }
 }
 
-private enum PlannerGanttTerm: String, CaseIterable, Identifiable {
+private enum PlannerGanttRange: Hashable {
     case current
-    case first
-    case second
-    case third
+    case period(Int64)
+}
 
-    var id: String { rawValue }
+struct PlannerGanttWeek: Hashable {
+    let year: Int
+    let week: Int
 
-    var title: String {
-        switch self {
-        case .current: return "Trimestre actual"
-        case .first: return "1º trimestre"
-        case .second: return "2º trimestre"
-        case .third: return "3º trimestre"
+    private static var isoCalendar: Calendar {
+        var calendar = Calendar(identifier: .iso8601)
+        calendar.timeZone = TimeZone.current
+        return calendar
+    }
+
+    init(year: Int, week: Int) {
+        self.year = year
+        self.week = week
+    }
+
+    init(date: Date) {
+        let calendar = Self.isoCalendar
+        year = calendar.component(.yearForWeekOfYear, from: date)
+        week = calendar.component(.weekOfYear, from: date)
+    }
+
+    static func range(around reference: Date, before: Int, after: Int) -> [PlannerGanttWeek] {
+        let calendar = isoCalendar
+        return (-before...after).compactMap { offset in
+            calendar.date(byAdding: .weekOfYear, value: offset, to: reference)
+                .map(PlannerGanttWeek.init(date:))
         }
     }
 
-    func weekRange(currentWeek: Int) -> [Int] {
-        switch self {
-        case .current:
-            let start = max(1, currentWeek - 6)
-            let end = min(53, start + 12)
-            return Array(start...end)
-        case .first:
-            return Array(36...52)
-        case .second:
-            return Array(1...14)
-        case .third:
-            return Array(15...26)
+    static func range(fromIso startIso: String, toIso endIso: String) -> [PlannerGanttWeek]? {
+        guard let start = isoDate(startIso), let end = isoDate(endIso), start <= end else { return nil }
+        let calendar = isoCalendar
+        var weeks: [PlannerGanttWeek] = []
+        var cursor = start
+        // Límite de seguridad: un periodo de evaluación nunca supera un curso escolar.
+        while cursor <= end && weeks.count < 60 {
+            weeks.append(PlannerGanttWeek(date: cursor))
+            guard let next = calendar.date(byAdding: .weekOfYear, value: 1, to: cursor) else { break }
+            cursor = next
         }
+        return weeks
+    }
+
+    private static func isoDate(_ value: String) -> Date? {
+        let formatter = DateFormatter()
+        formatter.calendar = isoCalendar
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone.current
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.date(from: value)
     }
 }
 
@@ -259,7 +298,7 @@ private struct PlannerGanttSituation: Identifiable {
 
 private struct PlannerGanttSituationRow: View {
     let situation: PlannerGanttSituation
-    let weeks: [Int]
+    let weeks: [PlannerGanttWeek]
     let weekWidth: CGFloat
     let labelWidth: CGFloat
     let rowHeight: CGFloat
@@ -321,7 +360,7 @@ private struct PlannerGanttSituationRow: View {
 
 private struct PlannerGanttGroupRow: View {
     let group: PlannerSequenceGroup
-    let weeks: [Int]
+    let weeks: [PlannerGanttWeek]
     let weekWidth: CGFloat
     let labelWidth: CGFloat
     let rowHeight: CGFloat
@@ -355,10 +394,12 @@ private struct PlannerGanttGroupRow: View {
 
 private struct PlannerGanttTimelineCells: View {
     let sessions: [PlannerSequenceRow]
-    let weeks: [Int]
+    let weeks: [PlannerGanttWeek]
     let weekWidth: CGFloat
     let rowHeight: CGFloat
     let onOpenSession: (PlanningSession) -> Void
+
+    private let maxVisibleBlocks = 4
 
     var body: some View {
         HStack(spacing: 0) {
@@ -376,11 +417,21 @@ private struct PlannerGanttTimelineCells: View {
                         RoundedRectangle(cornerRadius: 4, style: .continuous)
                             .fill(Color.secondary.opacity(0.16))
                             .frame(width: weekWidth - 24, height: 8)
-                    } else {
+                    } else if rows.count <= maxVisibleBlocks {
                         HStack(spacing: 4) {
-                            ForEach(rows.prefix(4)) { row in
+                            ForEach(rows) { row in
                                 PlannerGanttSessionBlock(row: row, onOpenSession: onOpenSession)
                             }
+                        }
+                    } else {
+                        HStack(spacing: 4) {
+                            ForEach(rows.prefix(maxVisibleBlocks - 1)) { row in
+                                PlannerGanttSessionBlock(row: row, onOpenSession: onOpenSession)
+                            }
+                            PlannerGanttOverflowBlock(
+                                rows: Array(rows.dropFirst(maxVisibleBlocks - 1)),
+                                onOpenSession: onOpenSession
+                            )
                         }
                     }
                 }
@@ -389,11 +440,44 @@ private struct PlannerGanttTimelineCells: View {
         }
     }
 
-    private func rowsForWeek(_ week: Int) -> [PlannerSequenceRow] {
+    private func rowsForWeek(_ week: PlannerGanttWeek) -> [PlannerSequenceRow] {
         sessions.filter { row in
             guard let session = row.planningSession else { return false }
-            return Int(session.weekNumber) == week
+            return Int(session.weekNumber) == week.week && Int(session.year) == week.year
         }
+    }
+}
+
+private struct PlannerGanttOverflowBlock: View {
+    let rows: [PlannerSequenceRow]
+    let onOpenSession: (PlanningSession) -> Void
+
+    var body: some View {
+        Menu {
+            ForEach(rows) { row in
+                if let session = row.planningSession {
+                    Button {
+                        onOpenSession(session)
+                    } label: {
+                        Label(
+                            "S\(row.sessionNumber) · \(row.title.isEmpty ? "Sesión" : row.title)",
+                            systemImage: row.statusIcon
+                        )
+                    }
+                }
+            }
+        } label: {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.secondary.opacity(0.28))
+                .frame(width: 18, height: 18)
+                .overlay(
+                    Text("+\(rows.count)")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(.primary)
+                        .minimumScaleFactor(0.6)
+                )
+        }
+        .accessibilityLabel("\(rows.count) sesiones más esta semana")
     }
 }
 

@@ -5,6 +5,32 @@ import UniformTypeIdentifiers
 import QuickLook
 import MiGestorKit
 
+enum PlannerCalendar {
+    static var currentIsoYear: Int {
+        Calendar(identifier: .iso8601).component(.yearForWeekOfYear, from: Date())
+    }
+
+    static var currentIsoWeek: Int {
+        Calendar(identifier: .iso8601).component(.weekOfYear, from: Date())
+    }
+
+    /// Curso escolar por defecto (sept–jun) alrededor de la fecha actual.
+    static var defaultSchoolYearStartIso: String {
+        "\(schoolYearStartYear)-09-01"
+    }
+
+    static var defaultSchoolYearEndIso: String {
+        "\(schoolYearStartYear + 1)-06-30"
+    }
+
+    private static var schoolYearStartYear: Int {
+        let calendar = Calendar(identifier: .iso8601)
+        let year = calendar.component(.year, from: Date())
+        let month = calendar.component(.month, from: Date())
+        return month >= 8 ? year : year - 1
+    }
+}
+
 struct PlannerNavigationContext: Equatable {
     var week: Int?
     var year: Int?
@@ -399,8 +425,8 @@ private final class PlannerAudioRecorder: NSObject, ObservableObject, AVAudioRec
 
 @MainActor
 private final class PlannerCalendarStore: ObservableObject {
-    @Published var week = 1
-    @Published var year = 2026
+    @Published var week = PlannerCalendar.currentIsoWeek
+    @Published var year = PlannerCalendar.currentIsoYear
     @Published var groups: [SchoolClass] = []
     @Published var selectedGroupId: Int64?
     @Published var classColorHexById: [Int64: String] = [:]
@@ -518,8 +544,8 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     @Published var isLoaded = false
     @Published var activeSection: PlannerWorkspaceSection = .week
     @Published var density: PlannerDensity = .standard
-    @Published var week = 1
-    @Published var year = 2026
+    @Published var week = PlannerCalendar.currentIsoWeek
+    @Published var year = PlannerCalendar.currentIsoYear
     @Published var groups: [SchoolClass] = []
     @Published var selectedGroupId: Int64?
     @Published var classColorHexById: [Int64: String] = [:]
@@ -546,8 +572,8 @@ final class PlannerWorkspaceViewModel: ObservableObject {
     @Published var showingShareSheet = false
     @Published var bulkSummary = ""
     @Published var scheduleName = "Agenda docente"
-    @Published var scheduleStartDate = "2026-09-01"
-    @Published var scheduleEndDate = "2027-06-30"
+    @Published var scheduleStartDate = PlannerCalendar.defaultSchoolYearStartIso
+    @Published var scheduleEndDate = PlannerCalendar.defaultSchoolYearEndIso
     @Published var activeWeekdays: Set<Int> = [1, 2, 3, 4, 5]
     @Published var scheduleFormGroupId: Int64?
     @Published var scheduleFormDay = 1
@@ -625,8 +651,8 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         guard !isLoaded else { return }
         self.bridge = bridge
         let current = IsoWeekHelper.shared.current()
-        week = Int(truncating: current.first ?? KotlinInt(value: 1))
-        year = Int(truncating: current.second ?? KotlinInt(value: 2026))
+        week = Int(truncating: current.first ?? KotlinInt(value: Int32(PlannerCalendar.currentIsoWeek)))
+        year = Int(truncating: current.second ?? KotlinInt(value: Int32(PlannerCalendar.currentIsoYear)))
         timeSlots = bridge.plannerTimeSlots()
         await reloadPlannerBootstrap()
         await reloadScheduleOnly()
@@ -740,8 +766,8 @@ final class PlannerWorkspaceViewModel: ObservableObject {
 
     func goToCurrentWeek() async {
         let current = IsoWeekHelper.shared.current()
-        week = Int(truncating: current.first ?? KotlinInt(value: 1))
-        year = Int(truncating: current.second ?? KotlinInt(value: 2026))
+        week = Int(truncating: current.first ?? KotlinInt(value: Int32(PlannerCalendar.currentIsoWeek)))
+        year = Int(truncating: current.second ?? KotlinInt(value: Int32(PlannerCalendar.currentIsoYear)))
         await reloadSessionsOnly(keepSelection: false)
         await selectTodaySessionIfPossible(preferredGroupId: selectedGroupId)
     }
@@ -900,8 +926,8 @@ final class PlannerWorkspaceViewModel: ObservableObject {
 
     func selectTodaySessionIfPossible(preferredGroupId: Int64?) async {
         let current = IsoWeekHelper.shared.current()
-        let currentWeek = Int(truncating: current.first ?? KotlinInt(value: 1))
-        let currentYear = Int(truncating: current.second ?? KotlinInt(value: 2026))
+        let currentWeek = Int(truncating: current.first ?? KotlinInt(value: Int32(PlannerCalendar.currentIsoWeek)))
+        let currentYear = Int(truncating: current.second ?? KotlinInt(value: Int32(PlannerCalendar.currentIsoYear)))
         guard week == currentWeek, year == currentYear else { return }
 
         var calendar = Calendar(identifier: .iso8601)
@@ -1784,8 +1810,8 @@ final class PlannerWorkspaceViewModel: ObservableObject {
             return Int(selectedSession.dayOfWeek)
         }
         let current = IsoWeekHelper.shared.current()
-        let currentWeek = Int(truncating: current.first ?? KotlinInt(value: 1))
-        let currentYear = Int(truncating: current.second ?? KotlinInt(value: 2026))
+        let currentWeek = Int(truncating: current.first ?? KotlinInt(value: Int32(PlannerCalendar.currentIsoWeek)))
+        let currentYear = Int(truncating: current.second ?? KotlinInt(value: Int32(PlannerCalendar.currentIsoYear)))
         if week == currentWeek, year == currentYear {
             var calendar = Calendar(identifier: .iso8601)
             calendar.locale = Locale.current
@@ -2302,6 +2328,8 @@ struct PlannerWorkspaceIOS: View {
     @State private var selectedWeekCell: PlannerCellKey? = nil
     @State private var selectedWeekDay: Int? = nil
     @State private var isClearSchedulelessWeekConfirmationPresented = false
+    @StateObject private var cascadeCoordinator = PlannerCascadeDropCoordinator()
+    @State private var bannerDismissTask: Task<Void, Never>?
     private let initialSection: PlannerWorkspaceSection
     private let context: PlannerNavigationContext
     private let onOpenDiary: ((PlannerNavigationContext) -> Void)?
@@ -2400,11 +2428,36 @@ struct PlannerWorkspaceIOS: View {
         } message: {
             Text("No hay franjas en la agenda. Se eliminarán las sesiones planificadas de la semana actual y se conservarán las completadas.")
         }
+        .alert(
+            "Mover sesiones impartidas",
+            isPresented: Binding(
+                get: { cascadeCoordinator.pendingConfirmation != nil },
+                set: { if !$0 { cascadeCoordinator.pendingConfirmation = nil } }
+            )
+        ) {
+            Button("Cancelar", role: .cancel) {
+                cascadeCoordinator.cancelPendingMove()
+            }
+            Button("Mover") {
+                cascadeCoordinator.confirmPendingMove(vm: vm)
+            }
+        } message: {
+            Text("La cascada incluye una o más sesiones ya impartidas. Se conservarán sus diarios y referencias.")
+        }
+        .appOnChange(of: cascadeCoordinator.transientMessage) { message in
+            guard message != nil else { return }
+            bannerDismissTask?.cancel()
+            bannerDismissTask = Task {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                guard !Task.isCancelled else { return }
+                cascadeCoordinator.transientMessage = nil
+            }
+        }
     }
 
     private var plannerMainContent: some View {
         VStack(spacing: 0) {
-            PlannerToolbar(vm: vm)
+            PlannerToolbar(vm: vm, onUndoCascadeMove: { cascadeCoordinator.undoLastMove(vm: vm) })
             Group {
                 switch vm.activeSection {
                 case .week:
@@ -2413,8 +2466,19 @@ struct PlannerWorkspaceIOS: View {
                             vm: vm,
                             selectedCell: $selectedWeekCell,
                             selectedDay: $selectedWeekDay,
-                            onOpenSession: openSessionInDiary
+                            onOpenSession: openSessionInDiary,
+                            onDropSession: { sessionId, day, period in
+                                cascadeCoordinator.handleDrop(sessionId: sessionId, day: day, period: period, vm: vm)
+                            }
                         )
+                        .safeAreaInset(edge: .top) {
+                            if let message = cascadeCoordinator.transientMessage {
+                                PlannerInlineBanner(message: message)
+                                    .padding(.horizontal, EvaluationDesign.screenPadding)
+                                    .padding(.top, 8)
+                                    .transition(.move(edge: .top).combined(with: .opacity))
+                            }
+                        }
                         .safeAreaInset(edge: .bottom) {
                             Color.clear.frame(height: 96)
                         }
@@ -2497,6 +2561,7 @@ struct PlannerWorkspaceIOS: View {
 
 struct PlannerToolbar: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
+    var onUndoCascadeMove: (() -> Void)? = nil
     @AppStorage("planner_toolbar_progress_expanded") private var isProgressExpanded = true
 
     var body: some View {
@@ -2549,6 +2614,8 @@ struct PlannerToolbar: View {
                 PlannerFloatingTabBar(activeSection: $vm.activeSection)
                     .frame(maxWidth: 376)
 
+                weekNavigationCluster
+
                 HStack(spacing: 8) {
                     Picker("Grupo", selection: Binding(
                         get: { vm.selectedGroupId },
@@ -2579,6 +2646,56 @@ struct PlannerToolbar: View {
         .padding(.horizontal, EvaluationDesign.screenPadding)
         .padding(.top, 8)
         .padding(.bottom, 4)
+    }
+
+    private var weekNavigationCluster: some View {
+        HStack(spacing: 4) {
+            Button {
+                Task { await vm.previousWeek() }
+            } label: {
+                Image(systemName: "chevron.left")
+                    .frame(minWidth: 28, minHeight: 28)
+            }
+            .keyboardShortcut(.leftArrow, modifiers: .command)
+            .accessibilityLabel("Semana anterior")
+
+            Button {
+                Task { await vm.goToCurrentWeek() }
+            } label: {
+                Text("Hoy")
+                    .frame(minHeight: 28)
+            }
+            .keyboardShortcut("t", modifiers: .command)
+            .accessibilityLabel("Ir a la semana actual")
+
+            Button {
+                Task { await vm.nextWeek() }
+            } label: {
+                Image(systemName: "chevron.right")
+                    .frame(minWidth: 28, minHeight: 28)
+            }
+            .keyboardShortcut(.rightArrow, modifiers: .command)
+            .accessibilityLabel("Semana siguiente")
+
+            if vm.lastCascadeMove != nil {
+                Button {
+                    if let onUndoCascadeMove {
+                        onUndoCascadeMove()
+                    } else {
+                        Task { try? await vm.restoreLastCascadeMove() }
+                    }
+                } label: {
+                    Label("Deshacer movimiento", systemImage: "arrow.uturn.backward")
+                        .frame(minHeight: 28)
+                }
+                .keyboardShortcut("z", modifiers: [.command, .shift])
+                .accessibilityLabel("Deshacer último movimiento de sesiones")
+            }
+        }
+        .buttonStyle(.bordered)
+        .buttonBorderShape(.capsule)
+        .controlSize(.small)
+        .font(.subheadline.weight(.semibold))
     }
 
     private var toolbarTitle: String {
@@ -2734,8 +2851,8 @@ struct PlannerDayView: View {
     private func isCurrent(_ session: PlanningSession) -> Bool {
         guard let start = session.startTime, let end = session.endTime else { return false }
         let current = IsoWeekHelper.shared.current()
-        let currentWeek = Int(truncating: current.first ?? KotlinInt(value: 1))
-        let currentYear = Int(truncating: current.second ?? KotlinInt(value: 2026))
+        let currentWeek = Int(truncating: current.first ?? KotlinInt(value: Int32(PlannerCalendar.currentIsoWeek)))
+        let currentYear = Int(truncating: current.second ?? KotlinInt(value: Int32(PlannerCalendar.currentIsoYear)))
         guard Int(session.weekNumber) == currentWeek, Int(session.year) == currentYear else { return false }
         var calendar = Calendar(identifier: .iso8601)
         calendar.locale = Locale.current
@@ -2803,8 +2920,6 @@ private struct PlannerDaySessionRow: View {
                     Button("Impartida", action: onComplete)
                         .buttonStyle(.bordered)
                         .disabled(session.status == .completed)
-                    Button("Observación", action: onOpen)
-                        .buttonStyle(.bordered)
                 }
                 .font(.caption.weight(.semibold))
             }

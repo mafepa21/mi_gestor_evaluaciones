@@ -19,6 +19,7 @@ struct PlannerWeekMiniatureGrid: View {
     let vm: PlannerWorkspaceViewModel
     @Binding var selectedCell: PlannerCellKey?
     @Binding var selectedDay: Int?
+    let onOpenSession: (PlanningSession) -> Void
     var onDropSession: ((Int64, Int, Int) -> Void)? = nil
 
     private let timeAxisWidth: CGFloat = 72
@@ -40,6 +41,7 @@ struct PlannerWeekMiniatureGrid: View {
                         .frame(width: timeAxisWidth, height: headerHeight)
 
                     ForEach(days, id: \.self) { day in
+                        let isToday = day == todayDayIndex
                         Button {
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                                 selectedDay = day
@@ -47,9 +49,16 @@ struct PlannerWeekMiniatureGrid: View {
                             }
                         } label: {
                             VStack(spacing: 2) {
-                                Text(vm.dayLabel(for: day))
-                                    .font(.caption.weight(.bold))
-                                    .foregroundStyle(selectedDay == day ? Color.white : Color.primary)
+                                HStack(spacing: 4) {
+                                    Text(vm.dayLabel(for: day))
+                                        .font(.caption.weight(.bold))
+                                    if isToday {
+                                        Circle()
+                                            .fill(selectedDay == day ? Color.white : EvaluationDesign.accent)
+                                            .frame(width: 4, height: 4)
+                                    }
+                                }
+                                .foregroundStyle(selectedDay == day ? Color.white : Color.primary)
                                 if let dateStr = dateLabel(for: day), !dateStr.isEmpty {
                                     Text(dateStr)
                                         .font(.system(size: 9, weight: .semibold))
@@ -63,13 +72,18 @@ struct PlannerWeekMiniatureGrid: View {
                                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                                     .fill(selectedDay == day ? EvaluationDesign.accent : EvaluationDesign.surfaceSoft)
                             )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .stroke(isToday && selectedDay != day ? EvaluationDesign.accent.opacity(0.6) : .clear, lineWidth: 1.5)
+                            )
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("Ver día \(vm.dayHeaderLabel(for: day))")
+                        .accessibilityLabel("Ver día \(vm.dayHeaderLabel(for: day))\(isToday ? ", hoy" : "")")
                     }
                 }
 
                 ForEach(slots, id: \.period) { slot in
+                    let isCurrentPeriod = slot.period == currentPeriodNumber
                     HStack(spacing: gridSpacing) {
                         VStack(spacing: 2) {
                             Text("P\(slot.period)")
@@ -80,8 +94,12 @@ struct PlannerWeekMiniatureGrid: View {
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.7)
                         }
+                        .foregroundStyle(isCurrentPeriod ? EvaluationDesign.accent : Color.primary)
                         .frame(width: timeAxisWidth, height: rowHeight)
-                        .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .background(
+                            isCurrentPeriod ? EvaluationDesign.accent.opacity(0.14) : EvaluationDesign.surfaceSoft,
+                            in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        )
 
                         ForEach(days, id: \.self) { day in
                             let key = PlannerCellKey(day: day, period: slot.period)
@@ -90,12 +108,15 @@ struct PlannerWeekMiniatureGrid: View {
                                 entries: entries,
                                 isHoliday: weekBoard.holidayDays.contains(day),
                                 isSelected: selectedCell == key,
+                                isToday: day == todayDayIndex,
+                                vm: vm,
                                 onTap: {
                                     withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                                         selectedCell = key
                                         selectedDay = nil
                                     }
                                 },
+                                onOpenSession: onOpenSession,
                                 onDropSession: onDropSession.map { handler in
                                     { sessionId in handler(sessionId, day, slot.period) }
                                 }
@@ -107,6 +128,32 @@ struct PlannerWeekMiniatureGrid: View {
                 }
             }
         }
+    }
+
+    private var isCurrentWeek: Bool {
+        weekBoard.week == PlannerCalendar.currentIsoWeek && weekBoard.year == PlannerCalendar.currentIsoYear
+    }
+
+    private var todayDayIndex: Int? {
+        guard isCurrentWeek else { return nil }
+        let calendar = Calendar(identifier: .iso8601)
+        return ((calendar.component(.weekday, from: Date()) + 5) % 7) + 1
+    }
+
+    private var currentPeriodNumber: Int? {
+        guard isCurrentWeek, todayDayIndex != nil else { return nil }
+        let calendar = Calendar.current
+        let nowMinutes = calendar.component(.hour, from: Date()) * 60 + calendar.component(.minute, from: Date())
+        return weekBoard.weekRenderModel.visibleSlots.first { slot in
+            guard let start = minutes(from: slot.startTime), let end = minutes(from: slot.endTime) else { return false }
+            return nowMinutes >= start && nowMinutes <= end
+        }?.period
+    }
+
+    private func minutes(from value: String) -> Int? {
+        let parts = value.split(separator: ":")
+        guard parts.count == 2, let hour = Int(parts[0]), let minute = Int(parts[1]) else { return nil }
+        return hour * 60 + minute
     }
 
     private func gridWidth(_ totalWidth: CGFloat, days: Int) -> CGFloat {
@@ -173,7 +220,10 @@ private struct PlannerWeekMiniatureCell: View {
     let entries: [PlannerWeekCellEntry]
     let isHoliday: Bool
     let isSelected: Bool
+    let isToday: Bool
+    let vm: PlannerWorkspaceViewModel
     let onTap: () -> Void
+    let onOpenSession: (PlanningSession) -> Void
     var onDropSession: ((Int64) -> Void)? = nil
 
     @State private var isDropTargeted = false
@@ -187,38 +237,109 @@ private struct PlannerWeekMiniatureCell: View {
                     isTargeted: $isDropTargeted
                 )
             )
+            .contextMenu {
+                contextMenuContent
+            }
     }
 
     private var cellButton: some View {
         Button(action: onTap) {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(fillColor)
-                .overlay(alignment: .bottomTrailing) {
-                    if entries.count > 1 {
-                        Text("\(entries.count)")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(.black.opacity(0.24), in: Capsule(style: .continuous))
-                            .padding(4)
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(fillColor)
+
+                if let entry = primaryEntry, !isHoliday {
+                    Text(abbreviation(for: entry))
+                        .font(.system(size: 11, weight: .heavy, design: .rounded))
+                        .foregroundStyle(groupTint(for: entry))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .padding(.horizontal, 2)
+                }
+
+                if !isHoliday, let entry = primaryEntry, entries.count == 1 {
+                    VStack {
+                        HStack {
+                            Spacer()
+                            statusBadge(for: entry)
+                        }
+                        Spacer()
+                    }
+                    .padding(3)
+                }
+
+                if entries.count > 1 {
+                    VStack {
+                        Spacer()
+                        HStack(spacing: 2) {
+                            ForEach(entries.prefix(3)) { entry in
+                                Circle()
+                                    .fill(groupTint(for: entry))
+                                    .frame(width: 5, height: 5)
+                            }
+                            if entries.count > 3 {
+                                Text("+\(entries.count - 3)")
+                                    .font(.system(size: 7, weight: .bold))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(.bottom, 3)
                     }
                 }
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(strokeColor, lineWidth: (isSelected || isDropTargeted) ? 2 : 1)
-                )
-                .scaleEffect(isSelected ? 0.96 : (isDropTargeted ? 1.04 : 1))
-                .animation(.spring(response: 0.25, dampingFraction: 0.8), value: isDropTargeted)
+            }
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(strokeColor, lineWidth: strokeWidth)
+            )
+            .scaleEffect(isSelected ? 0.96 : (isDropTargeted ? 1.04 : 1))
+            .animation(.spring(response: 0.25, dampingFraction: 0.8), value: isDropTargeted)
         }
         .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var contextMenuContent: some View {
+        if entries.count == 1,
+           let entry = entries.first,
+           entry.kind == .session,
+           let sessionId = entry.sessionId,
+           let session = vm.sessions.first(where: { $0.id == sessionId }) {
+            Button {
+                onOpenSession(session)
+            } label: {
+                Label("Abrir diario", systemImage: "book.pages")
+            }
+            Button {
+                vm.openComposer(for: session)
+            } label: {
+                Label("Editar sesión", systemImage: "pencil")
+            }
+            Button {
+                Task { await vm.markCompleted(session) }
+            } label: {
+                Label("Marcar impartida", systemImage: "checkmark.circle")
+            }
+            .disabled(session.status == .completed)
+            Button {
+                Task { await vm.copySessionToNextWeek(session) }
+            } label: {
+                Label("Copiar a la semana siguiente", systemImage: "doc.on.doc")
+            }
+        }
     }
 
     private var strokeColor: Color {
         if isDropTargeted { return EvaluationDesign.accent }
         if isSelected { return EvaluationDesign.accent }
+        if isToday { return EvaluationDesign.accent.opacity(0.55) }
         return EvaluationDesign.border.opacity(0.65)
     }
+
+    private var strokeWidth: CGFloat {
+        (isSelected || isDropTargeted) ? 2 : (isToday ? 1.5 : 1)
+    }
+
+    private var primaryEntry: PlannerWeekCellEntry? { entries.first }
 
     /// Solo las celdas con exactamente una sesión real se pueden arrastrar;
     /// con varias entradas el origen sería ambiguo.
@@ -229,15 +350,43 @@ private struct PlannerWeekMiniatureCell: View {
         return entry.sessionId
     }
 
+    private func groupTint(for entry: PlannerWeekCellEntry) -> Color {
+        Color(hex: entry.classColorHex)
+    }
+
+    private func abbreviation(for entry: PlannerWeekCellEntry) -> String {
+        let words = entry.className
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(separator: " ")
+        if words.isEmpty { return "" }
+        if words.count == 1 {
+            return String(words[0].prefix(3)).uppercased()
+        }
+        return String(words.prefix(3).compactMap(\.first)).uppercased()
+    }
+
+    @ViewBuilder
+    private func statusBadge(for entry: PlannerWeekCellEntry) -> some View {
+        Image(systemName: statusIcon(for: entry))
+            .font(.system(size: 7, weight: .bold))
+            .foregroundStyle(.white)
+            .padding(3)
+            .background(statusTint(for: entry), in: Circle())
+    }
+
+    private func statusIcon(for entry: PlannerWeekCellEntry) -> String {
+        if entry.kind == .scheduledSlot { return "plus" }
+        return vm.sessionStateIcon(sessionStatus: entry.sessionStatus, journalStatus: entry.journalStatus)
+    }
+
+    private func statusTint(for entry: PlannerWeekCellEntry) -> Color {
+        if entry.kind == .scheduledSlot { return IOSAppStyle.warning }
+        return vm.sessionStateTint(sessionStatus: entry.sessionStatus, journalStatus: entry.journalStatus)
+    }
+
     private var fillColor: Color {
-        if isHoliday { return Color.secondary.opacity(0.18) }
-        guard let entry = entries.first else { return Color.secondary.opacity(0.16) }
-        if entries.contains(where: { $0.journalStatus == .completed || $0.sessionStatus == .completed }) {
-            return EvaluationDesign.success.opacity(0.82)
-        }
-        if entry.kind == .scheduledSlot {
-            return IOSAppStyle.warning.opacity(0.82)
-        }
-        return EvaluationDesign.accent.opacity(0.82)
+        if isHoliday { return Color.secondary.opacity(0.16) }
+        guard let entry = primaryEntry else { return Color.secondary.opacity(0.12) }
+        return groupTint(for: entry).opacity(entry.kind == .scheduledSlot ? 0.14 : 0.22)
     }
 }

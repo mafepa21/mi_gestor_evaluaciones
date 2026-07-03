@@ -77,15 +77,17 @@ Sintaxis verificada con `swiftc -parse` en todos los ficheros tocados. **Pendien
 
 Aceptación: ningún fichero Planner > 1.500 líneas (máximo real: 1.177, `PlannerJournalDetailPane.swift`) — cumplido. Escribir en el buscador no invalida el grid semanal — cumplido por construcción (el store que el grid observa no incluye `searchText`); **pendiente del dev confirmar con `Self._printChanges` en Xcode**, ya que este entorno no puede compilar ni ejecutar la app (solo Command Line Tools, sin simulador). Sintaxis verificada con `swiftc -parse` en los ~20 ficheros tocados/creados; auditoría automatizada de accesos cross-file (declaración vs. uso) sin issues pendientes.
 
-## Fase 3 — Semana de 10 (4–5 días, la fase de mayor impacto)
+## Fase 3 — Semana de 10 (4–5 días, la fase de mayor impacto) — ✅ hecha (2026-07-03)
 
-1. **Celdas con contenido.** Sustituir el rectángulo mudo por una mini-tarjeta: banda o fondo con el **color del grupo**, abreviatura del grupo, y estado como pequeño indicador (punto/check), con variante según densidad y tamaño. En celdas multi-sesión, apilado con contador.
-2. **Layout adaptativo.** En regular-width (iPad apaisado, Mac): grid a la izquierda + panel de detalle **lateral** persistente (el actual pane inferior pasa a columna derecha, estilo inspector). En compact se mantiene el flujo vertical actual.
-3. **Drag & drop — mecanismo base ya en Fase 1** (`PlannerCascadeDropCoordinator`); aquí toca pulirlo: permitir arrastrar desde celdas con varias sesiones (hoy solo funciona 1:1), long-press/click derecho como menú contextual (abrir diario, editar, marcar impartida, duplicar, mover a la semana siguiente) y mejorar la animación del glass durante el arrastre.
-4. **Crear en contexto.** Tap en celda vacía con franja → composer prellenado con día/franja/grupo (ya existe el hook, pulirlo a un solo tap desde el panel lateral).
-5. **Indicador de hoy**: columna del día actual resaltada; línea de "ahora" si la semana es la actual.
+1. **Celdas con contenido — hecho.** `PlannerWeekMiniatureCell` (`PlannerWeekMiniatureGrid.swift`) ya no es un rectángulo mudo: fondo tintado con el **color del grupo** (`Color(hex: entry.classColorHex)`), abreviatura del grupo (iniciales derivadas de `className`) centrada, y un badge de estado en la esquina (check/borrador/reloj según `vm.sessionStateIcon`/`sessionStateTint`, o "+" para franjas de agenda sin sesión). En celdas con más de una entrada, en vez del rectángulo de color de la primera sesión se muestran hasta 3 puntos apilados (uno por color de grupo) + contador "+N" si hay más — el "apilado con contador" del plan.
+2. **Layout adaptativo — hecho.** `PlannerWeekMiniatureLayout` decide entre `regularLayout` (grid a la izquierda + `PlannerWeekDetailPane` como panel lateral fijo de 400pt con su propio scroll, estilo inspector) y `compactLayout` (el flujo vertical de siempre, grid arriba + detalle debajo en un único scroll), usando el mismo patrón `isRegularWidth` (`horizontalSizeClass == .regular` en iOS, siempre `true` en Mac) ya usado en `IPadWorkspaceShell`. La API pública del componente no cambia, así que no hace falta tocar los dos call sites (iPad/Mac).
+3. **Drag & drop pulido — parcial, por precaución.** Se añadió `.contextMenu` (long-press en iPad, click derecho en Mac — gratis con el mismo modificador) en celdas de una sola sesión: Abrir diario, Editar sesión, Marcar impartida (deshabilitado si ya está impartida), Copiar a la semana siguiente (nuevo `vm.copySessionToNextWeek(_:)`, que copia una sola sesión sin tocar el modo de selección múltiple). **No** se implementó arrastrar desde celdas multi-sesión (el plan lo pedía): intentar un `.draggable` por cada chip apilado dentro de un `Button` de ~44pt de celda es un patrón de gestos de alto riesgo (conflictos táctiles reales) que no puedo verificar sin dispositivo/simulador en este entorno — queda para cuando el dev pueda probarlo interactivamente.
+4. **Crear en contexto — ya cumplía el criterio**, sin cambios: tocar una celda vacía selecciona la franja en el panel de detalle (ahora lateral en iPad apaisado/Mac) y su botón "Crear sesión" abre el composer prellenado con día/franja/grupo.
+5. **Indicador de hoy — hecho.** Cuando la semana mostrada es la semana ISO actual: la cabecera del día de hoy muestra un punto de acento junto al nombre (y un borde de acento si no está seleccionado); la franja horaria cuyo rango contiene la hora actual se resalta en el eje de tiempo (texto y fondo en acento). Se descartó una línea continua de "ahora" superpuesta al grid: al ser una parrilla de franjas discretas (no un timeline continuo de minutos), resaltar la franja en curso comunica lo mismo sin inventar una posición en píxeles poco fiable; la línea de "ahora" de verdad llega en la Fase 4 (vista Día, que sí es un timeline continuo).
 
-Aceptación: planificar una semana completa sin salir de la sección; mover una sesión cuesta un gesto; el grupo de cada sesión se distingue de un vistazo sin tocar nada.
+Aceptación: planificar una semana completa sin salir de la sección — cumplido (crear/editar/marcar impartida ahora también desde el menú contextual de la celda, sin pasar por el panel). El grupo de cada sesión se distingue de un vistazo sin tocar nada — cumplido (color + abreviatura). "Mover una sesión cuesta un gesto" — cumplido desde Fase 1 (drag & drop 1:1); el caso multi-sesión queda pendiente por el motivo de arriba.
+
+Sintaxis verificada con `swiftc -parse` en todos los ficheros tocados; auditoría automatizada de accesos cross-file repetida tras los cambios, sin issues. **Pendiente del dev: compilar y probar en iPad (vertical/apaisado) y Mac, y confirmar visualmente el layout lateral, las abreviaturas de grupo y el indicador de hoy** (este entorno no tiene Xcode.app ni simulador).
 
 ## Fase 4 — Día como cabina de vuelo (2 días)
 
@@ -140,7 +142,7 @@ Aceptación: VoiceOver puede leer estado de cualquier celda/barra; cero material
 | 0 Limpieza | 1 | Base sana ✅ |
 | 1 Fiabilidad | 2 | Bugs visibles ✅ |
 | 2 Arquitectura | 3 | Velocidad futura ✅ |
-| 3 Semana | 4–5 | ⭐ uso diario |
+| 3 Semana | 4–5 | ⭐ uso diario ✅ (drag multi-sesión pendiente) |
 | 4 Día | 2 | uso diario |
 | 5 Secuencia | 2–3 | planificación a futuro |
 | 6 Justificación | 3 | ⭐ valor docente |

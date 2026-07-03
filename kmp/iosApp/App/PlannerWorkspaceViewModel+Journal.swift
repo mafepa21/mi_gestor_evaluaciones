@@ -205,7 +205,7 @@ extension PlannerWorkspaceViewModel {
         }
     }
 
-    private static func isoWeeks(in year: Int) -> Int {
+    static func isoWeeks(in year: Int) -> Int {
         var calendar = Calendar(identifier: .iso8601)
         calendar.firstWeekday = 2
         calendar.minimumDaysInFirstWeek = 4

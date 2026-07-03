@@ -2,7 +2,8 @@ import SwiftUI
 import MiGestorKit
 
 struct PlannerWeekDetailPane: View {
-    @ObservedObject var vm: PlannerWorkspaceViewModel
+    @ObservedObject var weekBoard: PlannerWeekBoardStore
+    let vm: PlannerWorkspaceViewModel
     @Binding var selectedCell: PlannerCellKey?
     @Binding var selectedDay: Int?
     let onOpenSession: (PlanningSession) -> Void
@@ -22,7 +23,7 @@ struct PlannerWeekDetailPane: View {
 
     @ViewBuilder
     private func cellDetail(for key: PlannerCellKey) -> some View {
-        let entries = vm.weekRenderModel.entriesByCell[key] ?? []
+        let entries = weekBoard.weekRenderModel.entriesByCell[key] ?? []
         if entries.isEmpty {
             emptyCellDetail(for: key)
         } else {
@@ -127,8 +128,8 @@ struct PlannerWeekDetailPane: View {
     }
 
     private func entriesForDay(_ day: Int) -> [PlannerWeekCellEntry] {
-        vm.weekRenderModel.visibleSlots.flatMap { slot in
-            vm.weekRenderModel.entriesByCell[PlannerCellKey(day: day, period: slot.period)] ?? []
+        weekBoard.weekRenderModel.visibleSlots.flatMap { slot in
+            weekBoard.weekRenderModel.entriesByCell[PlannerCellKey(day: day, period: slot.period)] ?? []
         }
     }
 
@@ -145,7 +146,7 @@ struct PlannerWeekDetailPane: View {
 }
 
 private struct PlannerWeekDetailEntryCard: View {
-    @ObservedObject var vm: PlannerWorkspaceViewModel
+    let vm: PlannerWorkspaceViewModel
     let entry: PlannerWeekCellEntry
     let onPrimaryAction: () -> Void
 
@@ -227,7 +228,7 @@ private struct PlannerWeekDetailEntryCard: View {
 }
 
 private struct PlannerWeekDayEntryRow: View {
-    @ObservedObject var vm: PlannerWorkspaceViewModel
+    let vm: PlannerWorkspaceViewModel
     let entry: PlannerWeekCellEntry
     let onSelect: () -> Void
 

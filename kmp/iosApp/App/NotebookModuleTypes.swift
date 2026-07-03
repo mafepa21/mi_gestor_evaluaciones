@@ -53,6 +53,30 @@ final class NotebookMacInspectorState: ObservableObject {
     }
 }
 
+/// Pilas de deshacer/rehacer de celdas del Cuaderno, separadas de `NotebookModuleView`
+/// para que cambien sin formar parte de sus ~100 `@State` de la vista raiz.
+final class NotebookUndoStore: ObservableObject {
+    @Published var undoStack: [NotebookCellUndoEntry] = []
+    @Published var redoStack: [NotebookCellUndoEntry] = []
+
+    func reset() {
+        undoStack = []
+        redoStack = []
+    }
+}
+
+/// Señales del dia (asistencia de hoy, incidencias) usadas por el plano de aula y el
+/// resumen de asistencia por fila, separadas de `NotebookModuleView` por el mismo motivo.
+final class NotebookAttendanceSignalsStore: ObservableObject {
+    @Published var todayAttendanceByStudentId: [Int64: String] = [:]
+    @Published var incidentCountByStudentId: [Int64: Int] = [:]
+
+    func reset() {
+        todayAttendanceByStudentId = [:]
+        incidentCountByStudentId = [:]
+    }
+}
+
 enum NotebookMacPresentation: Equatable {
     case full
     case content

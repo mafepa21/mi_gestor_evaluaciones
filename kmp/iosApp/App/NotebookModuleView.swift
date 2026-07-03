@@ -52,8 +52,7 @@ struct NotebookModuleView: View {
     @State var selectedColumnId: String? = nil
     @State var viewPreset: NotebookViewPreset = .all
     @State var surfaceMode: NotebookSurfaceMode = .grid
-    @State var todayAttendanceByStudentId: [Int64: String] = [:]
-    @State var incidentCountByStudentId: [Int64: Int] = [:]
+    @StateObject var attendanceSignalsStore = NotebookAttendanceSignalsStore()
     @State var localInjuryStatuses: [Int64: Bool] = [:]
     @State var seatPositions: [Int64: NotebookSeatPosition] = [:]
     @State var highlightedRandomStudentId: Int64? = nil
@@ -83,8 +82,7 @@ struct NotebookModuleView: View {
     @State var toast: NotebookToast? = nil
     @State var isAttendanceQuickMode = false
     @State var isMarkAllPresentDialogPresented = false
-    @State var undoStack: [NotebookCellUndoEntry] = []
-    @State var redoStack: [NotebookCellUndoEntry] = []
+    @StateObject var undoStore = NotebookUndoStore()
     @State var structuralGridRevision = 0
     @State var rowReloadRevisions: [Int64: Int] = [:]
     @State var highlightedCategoryId: String? = nil
@@ -174,6 +172,26 @@ struct NotebookModuleView: View {
         }
     }
 
+    var undoStack: [NotebookCellUndoEntry] {
+        get { undoStore.undoStack }
+        nonmutating set { undoStore.undoStack = newValue }
+    }
+
+    var redoStack: [NotebookCellUndoEntry] {
+        get { undoStore.redoStack }
+        nonmutating set { undoStore.redoStack = newValue }
+    }
+
+    var todayAttendanceByStudentId: [Int64: String] {
+        get { attendanceSignalsStore.todayAttendanceByStudentId }
+        nonmutating set { attendanceSignalsStore.todayAttendanceByStudentId = newValue }
+    }
+
+    var incidentCountByStudentId: [Int64: Int] {
+        get { attendanceSignalsStore.incidentCountByStudentId }
+        nonmutating set { attendanceSignalsStore.incidentCountByStudentId = newValue }
+    }
+
     var inspectorSelection: NotebookInspectorSelection? {
         get { inspectorState.selection }
         nonmutating set { inspectorState.selection = newValue }
@@ -227,10 +245,8 @@ struct NotebookModuleView: View {
         focusedCellId = nil
         focusMode = .normal
 
-        undoStack = []
-        redoStack = []
-        todayAttendanceByStudentId = [:]
-        incidentCountByStudentId = [:]
+        undoStore.reset()
+        attendanceSignalsStore.reset()
         riskLevelCache = [:]
         riskComputationKey = nil
         isPrecomputingRiskLevels = false

@@ -2,7 +2,8 @@ import SwiftUI
 import MiGestorKit
 
 struct PlannerWeekMiniatureLayout: View {
-    @ObservedObject var vm: PlannerWorkspaceViewModel
+    @ObservedObject var weekBoard: PlannerWeekBoardStore
+    let vm: PlannerWorkspaceViewModel
     @Binding var selectedCell: PlannerCellKey?
     @Binding var selectedDay: Int?
     let onOpenSession: (PlanningSession) -> Void
@@ -12,6 +13,7 @@ struct PlannerWeekMiniatureLayout: View {
         ScrollView(.vertical) {
             VStack(spacing: 16) {
                 PlannerWeekMiniatureGrid(
+                    weekBoard: weekBoard,
                     vm: vm,
                     selectedCell: $selectedCell,
                     selectedDay: $selectedDay,
@@ -24,6 +26,7 @@ struct PlannerWeekMiniatureLayout: View {
                 .padding(.top, 8)
 
                 PlannerWeekDetailPane(
+                    weekBoard: weekBoard,
                     vm: vm,
                     selectedCell: $selectedCell,
                     selectedDay: $selectedDay,
@@ -36,7 +39,7 @@ struct PlannerWeekMiniatureLayout: View {
     }
 
     private var gridHeight: CGFloat {
-        let slotsCount = vm.weekRenderModel.visibleSlots.count
+        let slotsCount = weekBoard.weekRenderModel.visibleSlots.count
         guard slotsCount > 0 else { return 40 }
         let rowHeight: CGFloat = 36
         let spacing: CGFloat = 4

@@ -15,7 +15,8 @@ enum PlannerSessionDragPayload {
 }
 
 struct PlannerWeekMiniatureGrid: View {
-    @ObservedObject var vm: PlannerWorkspaceViewModel
+    @ObservedObject var weekBoard: PlannerWeekBoardStore
+    let vm: PlannerWorkspaceViewModel
     @Binding var selectedCell: PlannerCellKey?
     @Binding var selectedDay: Int?
     var onDropSession: ((Int64, Int, Int) -> Void)? = nil
@@ -26,8 +27,8 @@ struct PlannerWeekMiniatureGrid: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let days = vm.weekRenderModel.visibleDays
-            let slots = vm.weekRenderModel.visibleSlots
+            let days = weekBoard.weekRenderModel.visibleDays
+            let slots = weekBoard.weekRenderModel.visibleSlots
             let columnWidth = gridWidth(proxy.size.width, days: days.count)
             let rowHeight = gridHeight(proxy.size.height, rows: slots.count)
 
@@ -84,10 +85,10 @@ struct PlannerWeekMiniatureGrid: View {
 
                         ForEach(days, id: \.self) { day in
                             let key = PlannerCellKey(day: day, period: slot.period)
-                            let entries = vm.weekRenderModel.entriesByCell[key] ?? []
+                            let entries = weekBoard.weekRenderModel.entriesByCell[key] ?? []
                             PlannerWeekMiniatureCell(
                                 entries: entries,
-                                isHoliday: vm.holidayDays.contains(day),
+                                isHoliday: weekBoard.holidayDays.contains(day),
                                 isSelected: selectedCell == key,
                                 onTap: {
                                     withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
@@ -121,7 +122,7 @@ struct PlannerWeekMiniatureGrid: View {
     }
 
     private func dateLabel(for day: Int) -> String? {
-        let days = IsoWeekHelper.shared.daysOf(isoWeek: Int32(vm.week), year: Int32(vm.year))
+        let days = IsoWeekHelper.shared.daysOf(isoWeek: Int32(weekBoard.week), year: Int32(weekBoard.year))
         guard day >= 1 && day <= days.count else { return nil }
         let date = days[day - 1]
         return "\(date.dayOfMonth)/\(date.monthNumber)"

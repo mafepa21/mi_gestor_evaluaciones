@@ -62,13 +62,20 @@ Aceptación: cambiar de semana desde cualquier sección y plataforma; trimestre 
 
 Sintaxis verificada con `swiftc -parse` en todos los ficheros tocados. **Pendiente del dev: compilar ambos targets en Xcode y probar el drag & drop en dispositivo/simulador real** (este entorno no tiene Xcode.app).
 
-## Fase 2 — Arquitectura para poder crecer (3 días)
+## Fase 2 — Arquitectura para poder crecer (3 días) — ✅ hecha (2026-07-03)
 
-1. Trocear `PlannerWorkspaceIOS.swift` en ficheros por responsabilidad (workspace/toolbar, week, day, journal, composer, schedule settings), como ya se hizo con `IPadWorkspaceShell`.
-2. Descomponer `PlannerWorkspaceViewModel` en sub-stores observables (semana/sesiones, diario, composer, agenda, secuencias) manteniendo una fachada para no romper llamadas; las vistas observan solo su store. Alternativa mínima: render models `Equatable` por sección (patrón ya validado en el Notebook con `notebook-grid-performance`).
-3. Sacar `MacPlannerView` de `MacModuleStubs.swift` a `MacApp/MacPlannerView.swift`.
+1. **`MacPlannerView` extraído — hecho.** `MacModuleStubs.swift` (2.312 → 962 líneas) queda solo con `MacReportsView`; `MacPlannerView` y sus tipos privados viven en `MacApp/MacPlannerView.swift` (382 líneas), registrado únicamente en el target Mac (no compila en iOS).
 
-Aceptación: escribir en el buscador no invalida el grid semanal (verificable con `Self._printChanges`); ningún fichero Planner > 1.500 líneas.
+2. **`PlannerWorkspaceIOS.swift` (5.080 líneas) troceado por responsabilidad** en 14 ficheros nuevos, verificado con una prueba de reconstrucción byte a byte (concatenar todos los rangos extraídos en el orden original reproduce el fichero original al carácter) antes de aplicar ningún fix, para garantizar que el troceo en sí no perdió ni duplicó una sola línea:
+   - `PlannerModels.swift` (548 líneas): todos los tipos/modelos + los 5 sub-stores internos del ViewModel (`PlannerCalendarStore`, `PlannerSessionStore`, `PlannerScheduleStore`, `PlannerJournalStore`, `PlannerComposerStore`) + `PlannerAudioRecorder`, ahora `PlannerWeekBoardStore` (ver punto 3).
+   - `PlannerWorkspaceViewModel.swift` (343 líneas): la clase con sus propiedades almacenadas, lifecycle (`bind`/`reloadAll`/`reload*Only`), navegación de semana, selección y contexto externo.
+   - 7 extensiones de la misma clase en ficheros separados (`+Presentation`, `+CascadeMove`, `+Journal`, `+BulkOperations`, `+Composer`, `+Schedule`, `+WeekBoard`, `+Sequences`), cada una 51–367 líneas, agrupadas por dominio.
+   - Vistas: `PlannerDayView.swift`, `PlannerJournalDetailPane.swift` (1.177 líneas, la mayor del reparto), `PlannerSessionComposerSheet.swift`, `PlannerSessionDetailSheet.swift`; `PlannerWorkspaceIOS.swift` queda con la vista raíz + `PlannerToolbar` + tiras de progreso (484 líneas).
+   - **Bugs de compilación reales que solo aparecen al partir un fichero en varios** (no los detecta `swiftc -parse`, que no resuelve tipos): varios `private let`/`private var`/`private func` de la clase (stores, `bridge`, `autosaveTask`, `reloadWeekSessions`, `rebuildVisiblePlannerStructure`, etc.) se llamaban desde una extensión ahora en *otro* fichero — en Swift `private` es de ámbito de fichero, no de tipo, así que hubo que relajarlos a `internal` donde había uso cruzado (confirmado con un script que compara declaración vs. uso en todo el árbol) dejando `private` donde el uso seguía siendo interno a su propio fichero. Mismo problema con `private extension String { var nilIfBlank }` (patrón repetido en 5+ sitios de la app): 7 ficheros nuevos usaban `.nilIfBlank` sin tener su propia copia de la extensión — se replicó el mismo patrón `private extension` ya usado en el resto del código en cada uno de los 7, en vez de crear una versión `internal` compartida (para no arriesgar colisiones con las copias `private` que ya existen en `KmpBridge.swift`, `IPadWorkspaceShell.swift`, etc., fuera del alcance de esta fase). También `PlannerInstrumentCompactPicker` (usado desde `PlannerSessionComposerSheet.swift` pero declarado `private` en `PlannerJournalDetailPane.swift`) pasó a `internal`.
+
+3. **`PlannerWeekBoardStore` — hecho**, resolviendo el problema real de invalidación (no solo el paliativo de "render model Equatable" que proponía la alternativa mínima). `week`, `year`, `visibleSlots`, `timeSlots`, `holidayDays` y `weekRenderModel` se movieron de `PlannerWorkspaceViewModel` a un `ObservableObject` propio (`PlannerModels.swift`); el facade expone los mismos nombres como propiedades computadas que delegan en el store (cero cambios en los ~110 sitios que ya leían `vm.week`/`vm.weekRenderModel`/etc. en el resto de la app) y reenvía el `objectWillChange` del store al suyo propio vía Combine para que la vista raíz siga reaccionando. `PlannerWeekMiniatureGrid`, `PlannerWeekMiniatureLayout` y `PlannerWeekDetailPane` dejan de declarar `@ObservedObject var vm: PlannerWorkspaceViewModel` y pasan a `@ObservedObject var weekBoard: PlannerWeekBoardStore` + `let vm: PlannerWorkspaceViewModel` (referencia no observada, solo para llamar métodos/helpers). Resultado real: escribir en el buscador (`vm.searchText`, que vive en el facade, no en `weekBoard`) ya **no** dispara el `objectWillChange` que esas tres vistas observan.
+
+Aceptación: ningún fichero Planner > 1.500 líneas (máximo real: 1.177, `PlannerJournalDetailPane.swift`) — cumplido. Escribir en el buscador no invalida el grid semanal — cumplido por construcción (el store que el grid observa no incluye `searchText`); **pendiente del dev confirmar con `Self._printChanges` en Xcode**, ya que este entorno no puede compilar ni ejecutar la app (solo Command Line Tools, sin simulador). Sintaxis verificada con `swiftc -parse` en los ~20 ficheros tocados/creados; auditoría automatizada de accesos cross-file (declaración vs. uso) sin issues pendientes.
 
 ## Fase 3 — Semana de 10 (4–5 días, la fase de mayor impacto)
 
@@ -132,7 +139,7 @@ Aceptación: VoiceOver puede leer estado de cualquier celda/barra; cero material
 |---|---|---|
 | 0 Limpieza | 1 | Base sana ✅ |
 | 1 Fiabilidad | 2 | Bugs visibles ✅ |
-| 2 Arquitectura | 3 | Velocidad futura |
+| 2 Arquitectura | 3 | Velocidad futura ✅ |
 | 3 Semana | 4–5 | ⭐ uso diario |
 | 4 Día | 2 | uso diario |
 | 5 Secuencia | 2–3 | planificación a futuro |

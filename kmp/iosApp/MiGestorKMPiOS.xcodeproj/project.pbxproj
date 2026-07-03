@@ -14,6 +14,7 @@
 		02AEC17C3BD9D7E6D2BFD6A1 /* PhysicalScaleProfileService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7AB7B0DD5ECB7FDBA159F03 /* PhysicalScaleProfileService.swift */; };
 		0403F67C7B940442768FE76B /* BackupCenterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1027C324D7108B1CD8EB79AC /* BackupCenterView.swift */; };
 		042FE630464B6D6C17B475DC /* MacModuleStubs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09D87D21656FDFADF58B2FBA /* MacModuleStubs.swift */; };
+		6614C8276321BCC0A5E61948 /* MacPlannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D42E80A26959B767A54CD30 /* MacPlannerView.swift */; };
 		054C422A8183D69A7C828D57 /* PlannerWeekMiniatureLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 992519C5A19AC4FD6AA36D33 /* PlannerWeekMiniatureLayout.swift */; };
 		0633ABEC556B72EED5C1A119 /* WorkspaceModuleSwitcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 438FE85184775DE1F77E9FBD /* WorkspaceModuleSwitcher.swift */; };
 		0646619A762CA5434AF4EDC0 /* PhysicalScaleProfileService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7AB7B0DD5ECB7FDBA159F03 /* PhysicalScaleProfileService.swift */; };
@@ -40,6 +41,20 @@
 		15B5C7443B2944C59942F07A /* TeacherRadarStudentInsightRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AD45ACA95D963773FDADD4C /* TeacherRadarStudentInsightRow.swift */; };
 		1680A7159701320DC112E710 /* MacPhysicalTestsToolbarActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 418B317080940EE2A662D215 /* MacPhysicalTestsToolbarActions.swift */; };
 		17C72CB98D707507A9BA78E1 /* PlannerWorkspaceIOS.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AFC9FBC11C0B8B50E847112 /* PlannerWorkspaceIOS.swift */; };
+		0BE00B560EEED6B49C890D3D /* PlannerModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BEE0ACB8EAD235361BA1894 /* PlannerModels.swift */; };
+		D567483B5B5440209A01FFD6 /* PlannerWorkspaceViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 882953E8C01697B1222A8D2D /* PlannerWorkspaceViewModel.swift */; };
+		6B5F5B108B30AF6C2D0DA082 /* PlannerWorkspaceViewModel+Presentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D599966002DAAC1DAD6DCB1 /* PlannerWorkspaceViewModel+Presentation.swift */; };
+		1ECA2E1CF6EFF82C71177943 /* PlannerWorkspaceViewModel+CascadeMove.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6AFB2661B22814696B1861B /* PlannerWorkspaceViewModel+CascadeMove.swift */; };
+		48617687EEED2E48924D406B /* PlannerWorkspaceViewModel+Journal.swift in Sources */ = {isa = PBXBuildFile; fileRef = E72B23AFE5DE45B06FFEFB4D /* PlannerWorkspaceViewModel+Journal.swift */; };
+		AA4F74C509D1C315BF2593E0 /* PlannerWorkspaceViewModel+BulkOperations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3762B6339E03AFEC34A2459F /* PlannerWorkspaceViewModel+BulkOperations.swift */; };
+		AD260A2D898851A0937FF897 /* PlannerWorkspaceViewModel+Composer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8304CD9E16008B8E0D251038 /* PlannerWorkspaceViewModel+Composer.swift */; };
+		F830CF37F7067B39291E0BBA /* PlannerWorkspaceViewModel+Schedule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BED63D5B0331490E2AF90C9 /* PlannerWorkspaceViewModel+Schedule.swift */; };
+		2F31A0C2EF031DBE35B78766 /* PlannerWorkspaceViewModel+WeekBoard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89C799AFDA214475701E00EE /* PlannerWorkspaceViewModel+WeekBoard.swift */; };
+		D5C578B4B7DC500A1F798F96 /* PlannerWorkspaceViewModel+Sequences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B21B9280FAD5E38CDC7F75F /* PlannerWorkspaceViewModel+Sequences.swift */; };
+		2DE76AE420F67554EA2BEC42 /* PlannerDayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D437D020E353CCE61B924FAC /* PlannerDayView.swift */; };
+		0EEB480CBD982F292C95BDC6 /* PlannerJournalDetailPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60E284759AD9A5EF12D05897 /* PlannerJournalDetailPane.swift */; };
+		04EA95CEA0124774D29739FA /* PlannerSessionComposerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22B1C8E35773534746E8E3EA /* PlannerSessionComposerSheet.swift */; };
+		EFBF729CB73AF050C9A97A38 /* PlannerSessionDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F45660AB165FECFBBDF2CF49 /* PlannerSessionDetailSheet.swift */; };
 		183BC57A71CD453F65D09EEE /* IOSRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FF2D2638711055DB9781524 /* IOSRootView.swift */; };
 		1862DCED173C424EA7C21B6F /* AssignRubricToTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 893DD0805D75AD4923832EDD /* AssignRubricToTabView.swift */; };
 		1888893E4575900D01629700 /* PlannerFloatingTabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73E80A05F8F203CF9F01667C /* PlannerFloatingTabBar.swift */; };
@@ -229,6 +244,20 @@
 		B0E1302F3B9A1C94FD25615B /* SettingsSectionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AF5F802820D600F56AC6F2D /* SettingsSectionCard.swift */; };
 		B1EDD894F23E2AEA15628F17 /* DashboardProactiveInsight.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD1C7AE3703AF328A706E700 /* DashboardProactiveInsight.swift */; };
 		B20B74F08202FFF9657EF528 /* PlannerWorkspaceIOS.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AFC9FBC11C0B8B50E847112 /* PlannerWorkspaceIOS.swift */; };
+		35E20999202304873DC7FFF8 /* PlannerModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BEE0ACB8EAD235361BA1894 /* PlannerModels.swift */; };
+		4445A4EE4F1207D855D59752 /* PlannerWorkspaceViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 882953E8C01697B1222A8D2D /* PlannerWorkspaceViewModel.swift */; };
+		088BFAC780CCAEB4A01330DC /* PlannerWorkspaceViewModel+Presentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D599966002DAAC1DAD6DCB1 /* PlannerWorkspaceViewModel+Presentation.swift */; };
+		8494BD8E506CABDE882CCAA9 /* PlannerWorkspaceViewModel+CascadeMove.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6AFB2661B22814696B1861B /* PlannerWorkspaceViewModel+CascadeMove.swift */; };
+		A26E1F96CFA1498F0D405E31 /* PlannerWorkspaceViewModel+Journal.swift in Sources */ = {isa = PBXBuildFile; fileRef = E72B23AFE5DE45B06FFEFB4D /* PlannerWorkspaceViewModel+Journal.swift */; };
+		A38AA0724BB5BFF80D8BB24E /* PlannerWorkspaceViewModel+BulkOperations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3762B6339E03AFEC34A2459F /* PlannerWorkspaceViewModel+BulkOperations.swift */; };
+		36BD00DE0A8E8246D40FFC2C /* PlannerWorkspaceViewModel+Composer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8304CD9E16008B8E0D251038 /* PlannerWorkspaceViewModel+Composer.swift */; };
+		272FABAF101537BA8D5C873A /* PlannerWorkspaceViewModel+Schedule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BED63D5B0331490E2AF90C9 /* PlannerWorkspaceViewModel+Schedule.swift */; };
+		9D26EE65980403F2D427DA21 /* PlannerWorkspaceViewModel+WeekBoard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89C799AFDA214475701E00EE /* PlannerWorkspaceViewModel+WeekBoard.swift */; };
+		F8A38D1E4D69F8A607D91E8E /* PlannerWorkspaceViewModel+Sequences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B21B9280FAD5E38CDC7F75F /* PlannerWorkspaceViewModel+Sequences.swift */; };
+		59BD3B994973D273071BAE25 /* PlannerDayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D437D020E353CCE61B924FAC /* PlannerDayView.swift */; };
+		7554FBE0CBF1545E9DEB734D /* PlannerJournalDetailPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60E284759AD9A5EF12D05897 /* PlannerJournalDetailPane.swift */; };
+		974123FA0DA0D5C1AD578BAE /* PlannerSessionComposerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22B1C8E35773534746E8E3EA /* PlannerSessionComposerSheet.swift */; };
+		1AE2BD2C35E428FE625FD02E /* PlannerSessionDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F45660AB165FECFBBDF2CF49 /* PlannerSessionDetailSheet.swift */; };
 		B3E353DF6888D460947A3171 /* NotebookViewModifiers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000A844E2F1245DA5956673 /* NotebookViewModifiers.swift */; };
 		B3F0FF57249376955AE83723 /* MacAttendanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5FCBA2AF2D125D2CD13CFF5 /* MacAttendanceView.swift */; };
 		B68141438B789797C40E8E50 /* MacLiquidGlassStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD67BA2D3B2271344013D4FC /* MacLiquidGlassStyle.swift */; };
@@ -364,6 +393,7 @@
 		064505192DE6C78C8E8249B0 /* NotebookInspectorPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookInspectorPanel.swift; sourceTree = "<group>"; };
 		0998A4D4BC5E85BB92250336 /* SettingsDangerZoneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsDangerZoneView.swift; sourceTree = "<group>"; };
 		09D87D21656FDFADF58B2FBA /* MacModuleStubs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacModuleStubs.swift; sourceTree = "<group>"; };
+		1D42E80A26959B767A54CD30 /* MacPlannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacPlannerView.swift; sourceTree = "<group>"; };
 		0C0172AFB78FC2D43D634B3D /* AppearanceSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceSettingsView.swift; sourceTree = "<group>"; };
 		0CAE8A67112E3157FC3FFECE /* WeightEditorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeightEditorSheet.swift; sourceTree = "<group>"; };
 		0D4F77F8AE48BC67BBEA1603 /* WorkspaceSidebar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceSidebar.swift; sourceTree = "<group>"; };
@@ -461,6 +491,20 @@
 		893DD0805D75AD4923832EDD /* AssignRubricToTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssignRubricToTabView.swift; sourceTree = "<group>"; };
 		8A4E8D89679CED5E074F1005 /* NotebookModuleToolbarState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookModuleToolbarState.swift; sourceTree = "<group>"; };
 		8AFC9FBC11C0B8B50E847112 /* PlannerWorkspaceIOS.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerWorkspaceIOS.swift; sourceTree = "<group>"; };
+		3BEE0ACB8EAD235361BA1894 /* PlannerModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerModels.swift"; sourceTree = "<group>"; };
+		882953E8C01697B1222A8D2D /* PlannerWorkspaceViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerWorkspaceViewModel.swift"; sourceTree = "<group>"; };
+		4D599966002DAAC1DAD6DCB1 /* PlannerWorkspaceViewModel+Presentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerWorkspaceViewModel+Presentation.swift"; sourceTree = "<group>"; };
+		B6AFB2661B22814696B1861B /* PlannerWorkspaceViewModel+CascadeMove.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerWorkspaceViewModel+CascadeMove.swift"; sourceTree = "<group>"; };
+		E72B23AFE5DE45B06FFEFB4D /* PlannerWorkspaceViewModel+Journal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerWorkspaceViewModel+Journal.swift"; sourceTree = "<group>"; };
+		3762B6339E03AFEC34A2459F /* PlannerWorkspaceViewModel+BulkOperations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerWorkspaceViewModel+BulkOperations.swift"; sourceTree = "<group>"; };
+		8304CD9E16008B8E0D251038 /* PlannerWorkspaceViewModel+Composer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerWorkspaceViewModel+Composer.swift"; sourceTree = "<group>"; };
+		5BED63D5B0331490E2AF90C9 /* PlannerWorkspaceViewModel+Schedule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerWorkspaceViewModel+Schedule.swift"; sourceTree = "<group>"; };
+		89C799AFDA214475701E00EE /* PlannerWorkspaceViewModel+WeekBoard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerWorkspaceViewModel+WeekBoard.swift"; sourceTree = "<group>"; };
+		6B21B9280FAD5E38CDC7F75F /* PlannerWorkspaceViewModel+Sequences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerWorkspaceViewModel+Sequences.swift"; sourceTree = "<group>"; };
+		D437D020E353CCE61B924FAC /* PlannerDayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerDayView.swift"; sourceTree = "<group>"; };
+		60E284759AD9A5EF12D05897 /* PlannerJournalDetailPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerJournalDetailPane.swift"; sourceTree = "<group>"; };
+		22B1C8E35773534746E8E3EA /* PlannerSessionComposerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerSessionComposerSheet.swift"; sourceTree = "<group>"; };
+		F45660AB165FECFBBDF2CF49 /* PlannerSessionDetailSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerSessionDetailSheet.swift"; sourceTree = "<group>"; };
 		8FF2D2638711055DB9781524 /* IOSRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSRootView.swift; sourceTree = "<group>"; };
 		9066EF34A52C09F07E8CFAE7 /* AppleAIReadinessFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleAIReadinessFixtures.swift; sourceTree = "<group>"; };
 		9178079E080B287EE7008FE1 /* NotebookDeletionImpactSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookDeletionImpactSheet.swift; sourceTree = "<group>"; };
@@ -577,6 +621,7 @@
 				540E9FF031B5425A4147DC64 /* MacFeatureRegistry.swift */,
 				FD67BA2D3B2271344013D4FC /* MacLiquidGlassStyle.swift */,
 				09D87D21656FDFADF58B2FBA /* MacModuleStubs.swift */,
+				1D42E80A26959B767A54CD30 /* MacPlannerView.swift */,
 				2F3DD7E125A0DCF4D0CFEEC4 /* MacPhysicalTestsInspectorView.swift */,
 				418B317080940EE2A662D215 /* MacPhysicalTestsToolbarActions.swift */,
 				B928B856CB84C9E4660F8B34 /* MacPhysicalTestsView.swift */,
@@ -762,6 +807,20 @@
 				1DA915360711FBD27A37EB78 /* PlannerWeekMiniatureGrid.swift */,
 				992519C5A19AC4FD6AA36D33 /* PlannerWeekMiniatureLayout.swift */,
 				8AFC9FBC11C0B8B50E847112 /* PlannerWorkspaceIOS.swift */,
+				3BEE0ACB8EAD235361BA1894 /* PlannerModels.swift */,
+				882953E8C01697B1222A8D2D /* PlannerWorkspaceViewModel.swift */,
+				4D599966002DAAC1DAD6DCB1 /* PlannerWorkspaceViewModel+Presentation.swift */,
+				B6AFB2661B22814696B1861B /* PlannerWorkspaceViewModel+CascadeMove.swift */,
+				E72B23AFE5DE45B06FFEFB4D /* PlannerWorkspaceViewModel+Journal.swift */,
+				3762B6339E03AFEC34A2459F /* PlannerWorkspaceViewModel+BulkOperations.swift */,
+				8304CD9E16008B8E0D251038 /* PlannerWorkspaceViewModel+Composer.swift */,
+				5BED63D5B0331490E2AF90C9 /* PlannerWorkspaceViewModel+Schedule.swift */,
+				89C799AFDA214475701E00EE /* PlannerWorkspaceViewModel+WeekBoard.swift */,
+				6B21B9280FAD5E38CDC7F75F /* PlannerWorkspaceViewModel+Sequences.swift */,
+				D437D020E353CCE61B924FAC /* PlannerDayView.swift */,
+				60E284759AD9A5EF12D05897 /* PlannerJournalDetailPane.swift */,
+				22B1C8E35773534746E8E3EA /* PlannerSessionComposerSheet.swift */,
+				F45660AB165FECFBBDF2CF49 /* PlannerSessionDetailSheet.swift */,
 				53D5C192E36FCFC177FCB496 /* RubricBulkEvaluationSheet.swift */,
 				A866C1384FDBACD5D7ED109B /* RubricEvaluationView.swift */,
 				CABF3C938060DE09EB0F96BB /* RubricsBuilderScreen.swift */,
@@ -1052,6 +1111,7 @@
 				3D42ABE38DAA65311889C449 /* MacFeatureRegistry.swift in Sources */,
 				B68141438B789797C40E8E50 /* MacLiquidGlassStyle.swift in Sources */,
 				042FE630464B6D6C17B475DC /* MacModuleStubs.swift in Sources */,
+				6614C8276321BCC0A5E61948 /* MacPlannerView.swift in Sources */,
 				0D06A8F60DA55AD0D6366DC1 /* MacPhysicalTestsInspectorView.swift in Sources */,
 				1680A7159701320DC112E710 /* MacPhysicalTestsToolbarActions.swift in Sources */,
 				25BA7CFC8B77B20BCAEC638E /* MacPhysicalTestsView.swift in Sources */,
@@ -1126,6 +1186,20 @@
 				2FFE8A5486A369FD414EF796 /* PlannerWeekMiniatureGrid.swift in Sources */,
 				C29EE7CFDABD680D89230324 /* PlannerWeekMiniatureLayout.swift in Sources */,
 				17C72CB98D707507A9BA78E1 /* PlannerWorkspaceIOS.swift in Sources */,
+				0BE00B560EEED6B49C890D3D /* PlannerModels.swift in Sources */,
+				D567483B5B5440209A01FFD6 /* PlannerWorkspaceViewModel.swift in Sources */,
+				6B5F5B108B30AF6C2D0DA082 /* PlannerWorkspaceViewModel+Presentation.swift in Sources */,
+				1ECA2E1CF6EFF82C71177943 /* PlannerWorkspaceViewModel+CascadeMove.swift in Sources */,
+				48617687EEED2E48924D406B /* PlannerWorkspaceViewModel+Journal.swift in Sources */,
+				AA4F74C509D1C315BF2593E0 /* PlannerWorkspaceViewModel+BulkOperations.swift in Sources */,
+				AD260A2D898851A0937FF897 /* PlannerWorkspaceViewModel+Composer.swift in Sources */,
+				F830CF37F7067B39291E0BBA /* PlannerWorkspaceViewModel+Schedule.swift in Sources */,
+				2F31A0C2EF031DBE35B78766 /* PlannerWorkspaceViewModel+WeekBoard.swift in Sources */,
+				D5C578B4B7DC500A1F798F96 /* PlannerWorkspaceViewModel+Sequences.swift in Sources */,
+				2DE76AE420F67554EA2BEC42 /* PlannerDayView.swift in Sources */,
+				0EEB480CBD982F292C95BDC6 /* PlannerJournalDetailPane.swift in Sources */,
+				04EA95CEA0124774D29739FA /* PlannerSessionComposerSheet.swift in Sources */,
+				EFBF729CB73AF050C9A97A38 /* PlannerSessionDetailSheet.swift in Sources */,
 				96D1470DC455935FA3D0954A /* QRCodeView.swift in Sources */,
 				61FFEC29461420F26B181A57 /* RubricBulkEvaluationSheet.swift in Sources */,
 				1CE2E6B16C6F676B65D50109 /* RubricEvaluationView.swift in Sources */,
@@ -1277,6 +1351,20 @@
 				21EC372D555174E20612BAD5 /* PlannerWeekMiniatureGrid.swift in Sources */,
 				054C422A8183D69A7C828D57 /* PlannerWeekMiniatureLayout.swift in Sources */,
 				B20B74F08202FFF9657EF528 /* PlannerWorkspaceIOS.swift in Sources */,
+				35E20999202304873DC7FFF8 /* PlannerModels.swift in Sources */,
+				4445A4EE4F1207D855D59752 /* PlannerWorkspaceViewModel.swift in Sources */,
+				088BFAC780CCAEB4A01330DC /* PlannerWorkspaceViewModel+Presentation.swift in Sources */,
+				8494BD8E506CABDE882CCAA9 /* PlannerWorkspaceViewModel+CascadeMove.swift in Sources */,
+				A26E1F96CFA1498F0D405E31 /* PlannerWorkspaceViewModel+Journal.swift in Sources */,
+				A38AA0724BB5BFF80D8BB24E /* PlannerWorkspaceViewModel+BulkOperations.swift in Sources */,
+				36BD00DE0A8E8246D40FFC2C /* PlannerWorkspaceViewModel+Composer.swift in Sources */,
+				272FABAF101537BA8D5C873A /* PlannerWorkspaceViewModel+Schedule.swift in Sources */,
+				9D26EE65980403F2D427DA21 /* PlannerWorkspaceViewModel+WeekBoard.swift in Sources */,
+				F8A38D1E4D69F8A607D91E8E /* PlannerWorkspaceViewModel+Sequences.swift in Sources */,
+				59BD3B994973D273071BAE25 /* PlannerDayView.swift in Sources */,
+				7554FBE0CBF1545E9DEB734D /* PlannerJournalDetailPane.swift in Sources */,
+				974123FA0DA0D5C1AD578BAE /* PlannerSessionComposerSheet.swift in Sources */,
+				1AE2BD2C35E428FE625FD02E /* PlannerSessionDetailSheet.swift in Sources */,
 				E6E3B11097E285CF5867AFEF /* QRCodeView.swift in Sources */,
 				1E5709A0F0A7D9DD69106545 /* RubricBulkEvaluationSheet.swift in Sources */,
 				0765494CC55A29A19AE9FF6D /* RubricEvaluationView.swift in Sources */,

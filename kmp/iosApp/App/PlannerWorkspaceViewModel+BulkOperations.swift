@@ -65,6 +65,25 @@ extension PlannerWorkspaceViewModel {
         await reloadSessionsOnly(keepSelection: false)
     }
 
+    /// Copia una única sesión a la semana siguiente sin activar el modo de selección
+    /// múltiple ni tocar `selectedSessionIds` (a diferencia de `bulkCopyToNextWeek`).
+    func copySessionToNextWeek(_ session: PlanningSession) async {
+        guard let bridge else { return }
+        let result = try? await bridge.plannerCopySessions(
+            sourceSessionIds: [session.id],
+            targetGroupId: nil,
+            dayOffset: 7,
+            periodOffset: 0,
+            resolution: .skip
+        )
+        if let result {
+            bulkSummary = result.movedOrCopied > 0
+                ? "Sesión copiada a la semana siguiente."
+                : "No se pudo copiar la sesión a la semana siguiente."
+        }
+        await reloadSessionsOnly()
+    }
+
     func markCompleted(_ session: PlanningSession) async {
         guard let bridge else { return }
         _ = try? await bridge.plannerUpsertSession(

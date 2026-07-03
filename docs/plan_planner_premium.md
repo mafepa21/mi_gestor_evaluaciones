@@ -100,14 +100,16 @@ Aceptación: durante una jornada, registrar lo esencial de cada sesión cuesta �
 
 **Pendiente del dev:** compilar y probar en dispositivo — en particular el umbral del swipe horizontal (puede sentirse demasiado sensible o poco sensible sin ajuste en vivo) y confirmar que el timer de 60s no consume batería de forma notable al dejar la app en Día mucho tiempo.
 
-## Fase 5 — Secuencia con barras de verdad (2–3 días)
+## Fase 5 — Secuencia con barras de verdad (2–3 días) — ✅ hecha (2026-07-03)
 
-1. Sustituir los cuadraditos 18×18 por **barras continuas por situación/grupo** (inicio→fin), con segmentos coloreados por estado y sesiones como marcas dentro de la barra; hover/tap muestra popover con detalle.
-2. Cabecera con meses además de "S.36"; sombreado de vacaciones/festivos (ya hay `holidays` en el modelo semanal).
-3. Sesiones "sin ubicar" de la secuencia arrastrables al timeline (asignar semana) o botón "Ubicar" que abre el composer con la situación preseleccionada.
-4. Fila de resumen por grupo: % de la programación impartida vs punto del curso ("vas 2 sesiones por detrás del plan").
+1. **Barras continuas — hecho.** Nuevo `PlannerGanttContinuousBar` sustituye los cuadraditos sueltos de `PlannerGanttTimelineCells`: para cada fila (situación agregada y cada grupo) se calcula el **rango real de semanas** (desde la primera a la última semana con una sesión asignada) y ese tramo se pinta como una franja continua de color — verde si esa semana tiene una sesión impartida/cerrada, acento si planificada, ámbar si hay una "pendiente de ubicar" — con las sesiones como marcas de 18×18 dentro de cada franja semanal (o un contador tocable si hay varias esa semana). El detalle al tocar usa `Menu` (mismo patrón ya probado en el bloque de desbordamiento existente) en vez de `.popover`, que no había manera de verificar en ambas plataformas sin dispositivo.
+2. **Cabecera con meses + sombreado — hecho.** Fila de meses (`monthHeader`) sobre la fila de semanas, agrupando semanas consecutivas del mismo mes (nuevo `PlannerGanttWeek.monthTitle`, derivado de la fecha real del lunes de esa semana ISO — nuevo `mondayDate`). El sombreado de "vacaciones" **no usa** `weekBoard.holidayDays` (eso son festivos sueltos dentro de una semana concreta, no aplican a un timeline de varios meses): se calculan como las semanas visibles que **no caen dentro de ningún periodo de evaluación configurado** — un dato real ya existente (`vm.evaluationPeriods`), no una suposición. Si el docente no tiene periodos configurados, no se sombrea nada (no hay con qué comparar).
+3. **Botón "Ubicar" — hecho, sin el arrastre.** Cada fila de grupo con sesiones "pendiente de ubicar" (ya existían en el modelo pero **no se mostraban en ningún sitio** — `PlannerGanttTimelineCells.rowsForWeek` las descartaba por completo al no tener `planningSession`) muestra ahora un badge "N sin ubicar" con un `Menu` que lista cada una; tocarla abre el composer con `learningSituationSessionPlanId`, objetivo y título de unidad prellenados, y selecciona el grupo correcto antes de abrir. **No implementado:** arrastrar la sesión sin ubicar directamente a una celda del timeline para asignarle semana — el composer igualmente necesita día/franja después de soltar, así que la ganancia frente al botón es menor que en el drag & drop de Semana, y no puedo validar un nuevo tipo de drop target sin dispositivo.
+4. **Resumen de ritmo por grupo — hecho.** Bajo el nombre de cada grupo, si la situación tiene al menos una sesión asignada: "Vas N sesiones por delante/detrás" o "Al día con el plan", calculado como sesiones completadas − sesiones esperadas a estas alturas (proporcional a cuántas semanas del tramo real de la situación ya han pasado). Si la situación no ha empezado o terminó hace más de 4 semanas, no se muestra (para no dar un ritmo sin sentido fuera de su ventana activa); en su lugar se mantiene el contador de planificadas de siempre.
 
-Aceptación: de un vistazo se ve qué situaciones van adelantadas/atrasadas por grupo; ubicar una sesión pendiente cuesta un gesto.
+Aceptación: de un vistazo se ve qué situaciones van adelantadas/atrasadas por grupo — cumplido (etiqueta de ritmo bajo cada grupo). Ubicar una sesión pendiente cuesta un gesto — cumplido vía el botón/menú "Ubicar" (arrastrar queda pendiente, ver arriba).
+
+Sintaxis verificada con `swiftc -parse`; auditoría automatizada de accesos cross-file repetida sin issues nuevos. **Pendiente del dev:** compilar y confirmar visualmente las franjas continuas, el sombreado de vacaciones (con periodos de evaluación reales configurados) y que el `Menu` de detalle se sienta bien tanto en iPad (tap) como en Mac (click).
 
 ## Fase 6 — Resumen + justificación documental (3 días) ⭐ mayor valor añadido
 
@@ -146,7 +148,7 @@ Aceptación: VoiceOver puede leer estado de cualquier celda/barra; cero material
 | 2 Arquitectura | 3 | Velocidad futura ✅ |
 | 3 Semana | 4–5 | ⭐ uso diario ✅ (drag multi-sesión pendiente) |
 | 4 Día | 2 | uso diario ✅ (nota de voz pendiente) |
-| 5 Secuencia | 2–3 | planificación a futuro |
+| 5 Secuencia | 2–3 | planificación a futuro ✅ (drag pendiente) |
 | 6 Justificación | 3 | ⭐ valor docente |
 | 7 Mac | 2–3 | premium Mac |
 | 8 Pulido | 2 | premium global |

@@ -3,6 +3,22 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-07-03 - Rediseño de Organizar columnas del Cuaderno
+
+Se rediseñó `NotebookColumnOrganizerSheet.swift` para resolver un bug visual (buscador duplicado/solapado, capturado por el usuario) y simplificar la jerarquía:
+1. Se eliminó el `.searchable(placement: .toolbar)` que coexistía con un `TextField` de búsqueda propio: causaba un campo de búsqueda flotante duplicado solapado con el borde superior del sheet. Ahora hay un único campo de búsqueda flexible integrado en la fila de filtros.
+2. El CTA principal "Nueva columna" se movió a la cabecera, fuera de la fila de controles que antes desbordaba en pantallas estrechas (dejaba invisibles el propio CTA, el segmented picker cortado y "Nueva categoría" truncado).
+3. El Picker segmentado de sección ahora muestra contadores ("Visibles (3)", "Ocultas (1)"...) y las secciones vacías dejan de renderizarse bajo el filtro "Todas" (antes se mostraba "No hay columnas ocultas/archivadas" incluso con una sola columna en el cuaderno).
+4. Cada fila de columna gana un botón de ojo inline para mostrar/ocultar en un toque; el menú `⋯` se reduce a Archivar/Renombrar/Eliminar (o Restaurar/Eliminar definitivamente para archivadas).
+5. Las filas "IA y exportación" y "Grupos de trabajo", que antes ocupaban dos franjas completas con divisores propios, se compactan en botones de pie de página ("Síntesis pedagógica" y un menú "Grupos" con el toggle de agrupación + "Gestionar grupos"). El texto explicativo del pie pasa a un icono de ayuda con popover.
+6. Se retiró el botón "Ocultas" (y el callback `onOpenHiddenColumns`, sin otros usos) por ser redundante con el filtro segmentado; `NotebookHiddenColumnsSheet` sigue disponible desde sus otros puntos de entrada en `NotebookModuleView.swift`.
+
+Validación realizada: no se pudo compilar con `xcodebuild` (el entorno de esta sesión solo tiene Xcode Command Line Tools, sin Xcode completo instalado), por lo que la revisión fue manual línea a línea del Swift, incluyendo detectar y corregir que `SectionFilter` necesitaba conformar `Hashable` para el `Picker(selection:)` tras quitarle `RawRepresentable`. Pendiente: compilar/ejecutar en un entorno con Xcode antes de dar el cambio por completamente cerrado.
+
+Notas para futuras conversaciones:
+- Único punto de instanciación de `NotebookColumnOrganizerSheet` es `NotebookModuleDialogs.swift:154`; no quedaron referencias colgantes al callback eliminado.
+- Si se reintroduce un acceso directo a columnas ocultas dentro de este sheet, usar el filtro segmentado en lugar de un botón adicional para no repetir la redundancia original.
+
 ## Avance 2026-06-28 - Enriquecimiento de la Secuencia del Planificador (iOS/macOS)
 
 Se modificó la vista Secuencia en el planificador didáctico para que muestre la secuencia de aprendizaje completa (`LearningSituationSessionPlan`) en lugar de únicamente las sesiones planificadas en el calendario. Para lograr esto:
@@ -422,6 +438,15 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 - Documentar decisiones de arquitectura cuando afecten a persistencia, sync o ownership de estado.
 
 ## 10. Bitácora de avances significativos
+
+### 2026-07-03 - Habilitación de atajos de teclado hardware en evaluación masiva de rúbricas para iPadOS
+
+Resumen:
+- **Cambios realizados**: Se compartieron los atajos de teclado de macOS (Cmd+S para guardar, Esc/Cancel para cerrar y las teclas 1 a 5 para asignar nivel de rúbrica) para iPadOS con teclado hardware en `RubricBulkEvaluationSheet.swift`, renombrando el método interno a `hardwareKeyboardShortcuts` y retirando las condicionales de compilación `#if os(macOS)`. El movimiento de foco mediante flechas (`.onMoveCommand`) y el modificador `.focusable()` se mantuvieron condicionados a macOS debido a la indisponibilidad de `MoveCommandDirection` y `.focusable()` en iOS 16.0 (target mínimo del proyecto).
+- **Por qué importa**: Proporciona una ergonomía de nivel desktop a los docentes de iPad con teclado hardware al calificar rúbricas de forma masiva, optimizando los tiempos de corrección.
+- **Ruta de los cambios**:
+  - [RubricBulkEvaluationSheet.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/RubricBulkEvaluationSheet.swift)
+- **Validación realizada**: Compilación completada con éxito tanto para iOS Simulator como para macOS Native usando la verificación local.
 
 ### 2026-07-03 - Reubicación de la gestión de pestañas y vista compacta al menú de organización
 

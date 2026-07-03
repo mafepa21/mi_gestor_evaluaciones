@@ -19,6 +19,23 @@ Notas para futuras conversaciones:
 - Único punto de instanciación de `NotebookColumnOrganizerSheet` es `NotebookModuleDialogs.swift:154`; no quedaron referencias colgantes al callback eliminado.
 - Si se reintroduce un acceso directo a columnas ocultas dentro de este sheet, usar el filtro segmentado en lugar de un botón adicional para no repetir la redundancia original.
 
+### Correción 2026-07-03 - Recorte de controles y regresión de "Nueva pestaña"
+
+El usuario reportó con captura que, tras el rediseño anterior, la fila de filtros y el pie de página seguían recortándose contra el borde de la ventana. Causa real: `.fixedSize()` en el `Picker` segmentado y en cada botón del pie forzaba a cada control a exigir su ancho natural completo, y la suma superaba el ancho real del sheet en macOS. Corrección en `NotebookColumnOrganizerSheet.swift`:
+1. Se quitó `.fixedSize()` del picker segmentado (ahora `.layoutPriority(1)`, sin contadores embebidos en las etiquetas — solo "Todas/Visibles/Ocultas/Archivadas" — para que pueda comprimirse sin desbordar).
+2. El pie de página se redujo a 4 controles visibles: "Nueva categoría", "Nueva pestaña" (nuevo), un menú "Más" (agrupa Mostrar todas, Síntesis pedagógica, toggle "Agrupar por grupos" y "Gestionar grupos") y el icono de ayuda. Se quitó `.fixedSize()` de todos ellos.
+3. Se subió `minWidth` del frame macOS del sheet de 520 a 640 en `NotebookModuleDialogs.swift` como margen adicional.
+
+El usuario también señaló que "Crear una nueva pestaña" debía aparecer en este sheet y, además, seguir estando en el menú de pestañas del cuaderno "como estaba originalmente". Investigando se encontró una regresión real de una relocalización anterior (commit `1da478a`, "ui: move tab management and compact view toggle to organization sheet"): esa relocalización quitó el botón "+" de `NotebookTabStrip.swift` y el botón "Nueva pestaña" del menú de acciones de `NotebookModuleView.swift`, y supuestamente los trasladó a una función nueva `notebookOrganizationSheet(data:)` en `NotebookModuleOrganization.swift` — pero esa función nunca llegó a invocarse desde ningún sitio (el sheet realmente presentado por `isOrganizationMenuPresented` siempre fue `NotebookColumnOrganizerSheet`, no ese). Resultado: la app se quedó sin ninguna forma de crear pestañas del cuaderno.
+
+Se corrigió:
+- Se restauró en `NotebookTabStrip.swift` el botón "Crear primera pestaña" (estado sin pestañas) y el botón "+" circular (estado con pestañas), con el parámetro `onCreateTab: () -> Void` de vuelta en la struct.
+- Se restauró en `NotebookModuleView.swift` el wiring `onCreateTab: { presentCreateNotebookTab() }` al construir `NotebookTabStrip`, y el botón "Nueva pestaña" dentro de `Section("Pestañas")` del menú de acciones (solo visible si ya existe al menos una pestaña, igual que en el original).
+- Se añadió un botón "Nueva pestaña" también en el pie de `NotebookColumnOrganizerSheet.swift`, con un nuevo callback `onCreateTab` cableado en `NotebookModuleDialogs.swift` hacia `presentCreateNotebookTab()`.
+- Se eliminó la función muerta `notebookOrganizationSheet(data:)` de `NotebookModuleOrganization.swift` junto con sus helpers exclusivos `filteredOrganizationColumns`/`moveOrganizationColumns` y el `@State var organizationColumnSearchText` en `NotebookModuleView.swift`, para no dejar una segunda implementación de "Organización" sin usar y potencialmente confusa.
+
+Pendiente/fuera de alcance: el `contextMenu` de renombrar/eliminar pestaña sobre cada pill de `NotebookTabStrip` y el toggle "Vista compacta" del menú de acciones también se perdieron en el mismo commit `1da478a` y siguen sin restaurar; el usuario solo pidió la creación de pestañas. Validación: no se pudo compilar con Xcode completo en este entorno (solo Command Line Tools); revisión manual línea a línea y balance de llaves por script en los 5 archivos tocados.
+
 ## Avance 2026-06-28 - Enriquecimiento de la Secuencia del Planificador (iOS/macOS)
 
 Se modificó la vista Secuencia en el planificador didáctico para que muestre la secuencia de aprendizaje completa (`LearningSituationSessionPlan`) en lugar de únicamente las sesiones planificadas en el calendario. Para lograr esto:
@@ -438,6 +455,17 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 - Documentar decisiones de arquitectura cuando afecten a persistencia, sync o ownership de estado.
 
 ## 10. Bitácora de avances significativos
+
+### 2026-07-03 - Refactorización y división del shell principal de iPad (IPadWorkspaceShell.swift)
+
+Resumen:
+- **Cambios realizados**: Se extrajeron todas las sheets de creación (`CreateCourseSheet`, `CreateStudentSheet`, `CreateEvaluationSheet`, `CreatePESessionSheet`, `CreatePhysicalTestSheet`, `CreatePEIncidentSheet`, `CreatePEMaterialRecordSheet` y `CreateTournamentSheet`) y su scaffold común a [WorkspaceCreationSheets.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/WorkspaceCreationSheets.swift). Asimismo, se trasladó todo el bloque del tablero de torneos (`TournamentBoardScreen` y `TournamentAutoBalanceSheet`) y sus modelos asociados (`TournamentStudentProfile`, `TournamentTeam`, `TournamentMatch`, `TournamentViewState`) a [TournamentModule.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/TournamentModule.swift). El archivo original [IPadWorkspaceShell.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/IPadWorkspaceShell.swift) se aligeró en aproximadamente 1420 líneas de código mediante un movimiento puro.
+- **Por qué importa**: Reduce drásticamente la carga cognitiva y el tamaño del archivo principal del shell, mejorando la mantenibilidad a largo plazo sin alterar la lógica de negocio ni de presentación.
+- **Ruta de los cambios**:
+  - [IPadWorkspaceShell.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/IPadWorkspaceShell.swift)
+  - [WorkspaceCreationSheets.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/WorkspaceCreationSheets.swift)
+  - [TournamentModule.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/TournamentModule.swift)
+- **Validación realizada**: Compilación verificada con éxito para macOS Native y iOS Simulator.
 
 ### 2026-07-03 - Habilitación de atajos de teclado hardware en evaluación masiva de rúbricas para iPadOS
 

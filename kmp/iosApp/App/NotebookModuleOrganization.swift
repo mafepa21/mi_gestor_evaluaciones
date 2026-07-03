@@ -47,7 +47,44 @@ extension NotebookModuleView {
                     }
                 }
 
+                if let data {
+                    Section("Pestañas (Temas)") {
+                        Button {
+                            isOrganizationMenuPresented = false
+                            presentCreateNotebookTab()
+                        } label: {
+                            Label("Nueva pestaña", systemImage: "plus.rectangle.on.rectangle")
+                        }
+
+                        ForEach(orderedNotebookTabs(data: data), id: \.id) { tab in
+                            HStack {
+                                Text(tab.title)
+                                Spacer()
+                                Button {
+                                    isOrganizationMenuPresented = false
+                                    presentRenameNotebookTab(tab)
+                                } label: {
+                                    Image(systemName: "pencil")
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                                
+                                Button {
+                                    isOrganizationMenuPresented = false
+                                    pendingDeleteNotebookTab = tab
+                                } label: {
+                                    Image(systemName: "trash")
+                                        .foregroundStyle(.red)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
+
                 Section("Vista") {
+                    Toggle("Vista compacta", isOn: $isCompactViewActive)
+
                     Picker("Agrupar por", selection: $groupByWorkGroupMode) {
                         Text("No agrupar").tag("none")
                         Text("Grupos generales").tag("general")

@@ -404,15 +404,6 @@ struct NotebookModuleView: View {
                         activeTabId: activeNotebookTabId(data: data),
                         onSelect: { tabId in
                             selectNotebookTab(tabId)
-                        },
-                        onCreateTab: {
-                            presentCreateNotebookTab()
-                        },
-                        onRenameTab: { tab in
-                            presentRenameNotebookTab(tab)
-                        },
-                        onDeleteTab: { tab in
-                            pendingDeleteNotebookTab = tab
                         }
                     )
                 }
@@ -1339,18 +1330,6 @@ struct NotebookModuleView: View {
                                     Label("Exportar cuaderno", systemImage: "square.and.arrow.up")
                                 }
 
-                                // 8. Vista compacta
-                                Button {
-                                    isCompactViewActive.toggle()
-                                } label: {
-                                    HStack {
-                                        Label("Vista compacta", systemImage: "rectangle.compress.vertical")
-                                        if isCompactViewActive {
-                                            Image(systemName: "checkmark")
-                                        }
-                                    }
-                                }
-
                                 // 9. Configuración de media
                                 Button {
                                     isAverageConfigurationPresented = true
@@ -1473,12 +1452,6 @@ struct NotebookModuleView: View {
                         let tabs = orderedNotebookTabs(data: data)
                         if !tabs.isEmpty {
                             Section("Pestañas") {
-                                Button {
-                                    presentCreateNotebookTab()
-                                } label: {
-                                    Label("Nueva pestaña", systemImage: "plus.rectangle.on.rectangle")
-                                }
-
                                 ForEach(tabs, id: \.id) { tab in
                                     Button {
                                         selectNotebookTab(tab.id)

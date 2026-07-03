@@ -6,6 +6,7 @@ struct PlannerWeekMiniatureLayout: View {
     @Binding var selectedCell: PlannerCellKey?
     @Binding var selectedDay: Int?
     let onOpenSession: (PlanningSession) -> Void
+    var onDropSession: ((Int64, Int, Int) -> Void)? = nil
 
     var body: some View {
         ScrollView(.vertical) {
@@ -13,7 +14,8 @@ struct PlannerWeekMiniatureLayout: View {
                 PlannerWeekMiniatureGrid(
                     vm: vm,
                     selectedCell: $selectedCell,
-                    selectedDay: $selectedDay
+                    selectedDay: $selectedDay,
+                    onDropSession: onDropSession
                 )
                 .frame(height: gridHeight)
                 .padding(16)

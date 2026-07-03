@@ -977,11 +977,11 @@ struct MacPlannerView: View {
     @State private var selectedDetailSession: PlanningSession? = nil
     @State private var selectedWeekCell: PlannerCellKey? = nil
     @State private var selectedWeekDay: Int? = nil
-    @State private var pendingCascadeDrop: MacPlannerPendingDrop?
+    @StateObject private var cascadeCoordinator = PlannerCascadeDropCoordinator()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            PlannerToolbar(vm: vm)
+            PlannerToolbar(vm: vm, onUndoCascadeMove: { cascadeCoordinator.undoLastMove(vm: vm) })
 
             if let transientMessage, !transientMessage.isEmpty {
                 MacPlannerBanner(message: transientMessage)
@@ -995,6 +995,10 @@ struct MacPlannerView: View {
         }
         .background(MacAppStyle.pageBackground)
         .animation(uiFeatureFlags.interactionAnimation, value: transientMessage)
+        .appOnChange(of: cascadeCoordinator.transientMessage) { newValue in
+            guard let newValue else { return }
+            transientMessage = newValue
+        }
         .task {
             await vm.bind(bridge: bridge)
             await syncInspectorStudents(for: vm.selectedSession)
@@ -1071,24 +1075,15 @@ struct MacPlannerView: View {
         .alert(
             "Mover sesiones impartidas",
             isPresented: Binding(
-                get: { pendingCascadeDrop != nil },
-                set: { if !$0 { pendingCascadeDrop = nil } }
+                get: { cascadeCoordinator.pendingConfirmation != nil },
+                set: { if !$0 { cascadeCoordinator.pendingConfirmation = nil } }
             )
         ) {
             Button("Cancelar", role: .cancel) {
-                pendingCascadeDrop = nil
-                AppleInteractionFeedback.play(.warning)
+                cascadeCoordinator.cancelPendingMove()
             }
             Button("Mover") {
-                guard let pendingCascadeDrop else { return }
-                self.pendingCascadeDrop = nil
-                Task {
-                    await commitCascadeDrop(
-                        sessionId: pendingCascadeDrop.sessionId,
-                        day: pendingCascadeDrop.day,
-                        period: pendingCascadeDrop.period
-                    )
-                }
+                cascadeCoordinator.confirmPendingMove(vm: vm)
             }
         } message: {
             Text("La cascada incluye una o más sesiones ya impartidas. Se conservarán sus diarios y referencias.")
@@ -1159,7 +1154,10 @@ struct MacPlannerView: View {
                 vm: vm,
                 selectedCell: $selectedWeekCell,
                 selectedDay: $selectedWeekDay,
-                onOpenSession: openMacSession
+                onOpenSession: openMacSession,
+                onDropSession: { sessionId, day, period in
+                    cascadeCoordinator.handleDrop(sessionId: sessionId, day: day, period: period, vm: vm)
+                }
             )
         case .day:
             PlannerDayView(vm: vm, onOpenSession: openMacSession)
@@ -1237,47 +1235,6 @@ struct MacPlannerView: View {
         await vm.bulkMoveOneDay()
     }
 
-    @MainActor
-    private func receiveCascadeDrop(sessionId: Int64, day: Int, period: Int) async {
-        do {
-            let preview = try await vm.previewCascadeMove(sessionId: sessionId, day: day, period: period)
-            guard !preview.isNoOp else { return }
-            if !preview.completedSessionIds.isEmpty {
-                pendingCascadeDrop = MacPlannerPendingDrop(sessionId: sessionId, day: day, period: period)
-            } else {
-                await commitCascadeDrop(sessionId: sessionId, day: day, period: period)
-            }
-        } catch {
-            transientMessage = "No se puede mover la sesión: \(error.localizedDescription)"
-            AppleInteractionFeedback.play(.error)
-        }
-    }
-
-    @MainActor
-    private func commitCascadeDrop(sessionId: Int64, day: Int, period: Int) async {
-        do {
-            let result = try await vm.commitCascadeMove(sessionId: sessionId, day: day, period: period)
-            let suffix = result.crossesWeekBoundary ? " Se ha continuado en la semana siguiente." : ""
-            transientMessage = "Sesión movida; \(result.movedCount) sesión(es) recolocadas.\(suffix)"
-            AppleInteractionFeedback.play(.success)
-        } catch {
-            transientMessage = "No se pudo completar el movimiento: \(error.localizedDescription)"
-            AppleInteractionFeedback.play(.error)
-        }
-    }
-
-    @MainActor
-    private func undoCascadeMove() async {
-        do {
-            try await vm.restoreLastCascadeMove()
-            transientMessage = "Movimiento deshecho."
-            AppleInteractionFeedback.play(.success)
-        } catch {
-            transientMessage = "No se pudo deshacer: \(error.localizedDescription)"
-            AppleInteractionFeedback.play(.error)
-        }
-    }
-
     private func normalizeSelectionForDisplayedSessions() async {
         let visible = displayedSessions
         if let selectedSession = vm.selectedSession,
@@ -1309,12 +1266,6 @@ struct MacPlannerView: View {
         transientMessage = "Resumen exportado al portapapeles."
         showingExportConfirmation = true
     }
-}
-
-private struct MacPlannerPendingDrop {
-    let sessionId: Int64
-    let day: Int
-    let period: Int
 }
 
 private enum MacPlannerSessionFilter: String, CaseIterable, Identifiable {

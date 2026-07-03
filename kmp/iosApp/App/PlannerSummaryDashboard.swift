@@ -109,13 +109,18 @@ private struct PlannerSummaryStats {
         }
         completionPercent = sessions.isEmpty ? 0 : Int((Double(completedSessions) / Double(sessions.count) * 100).rounded())
 
+        let hasTeacherSchedule = !vm.teacherScheduleSlots.isEmpty
         coverageRows = vm.weekRenderModel.visibleDays.map { day in
-            let available = max(vm.weekRenderModel.visibleSlots.count, vm.teacherScheduleSlots.filter { Int($0.dayOfWeek) == day }.count)
-            let covered = Set(sessions.filter { Int($0.dayOfWeek) == day }.map { Int($0.period) }).count
+            // Con agenda configurada, las franjas disponibles son las de ese día
+            // (0 si el docente no imparte ese día); sin agenda, la parrilla visible.
+            let available = hasTeacherSchedule
+                ? vm.teacherScheduleSlots.filter { Int($0.dayOfWeek) == day }.count
+                : vm.weekRenderModel.visibleSlots.count
+            let coveredPeriods = Set(sessions.filter { Int($0.dayOfWeek) == day }.map { Int($0.period) }).count
             return PlannerCoverageRow(
                 id: day,
                 title: vm.dayHeaderLabel(for: day),
-                covered: covered,
+                covered: min(coveredPeriods, available),
                 available: available
             )
         }

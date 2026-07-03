@@ -49,16 +49,18 @@ La base funcional es buena: 4 secciones (Semana con grid miniatura + panel de de
 
 Sintaxis verificada con `swiftc -parse` en ambos ficheros y grep sin referencias residuales. **Pendiente del dev: compilar ambos targets en Xcode** (este entorno no puede).
 
-## Fase 1 — Correcciones de fiabilidad (2 días)
+## Fase 1 — Correcciones de fiabilidad (2 días) — ✅ hecha (2026-07-03)
 
-1. **Navegación de semana universal.** Mover ← Hoy → (+ "Deshacer movimiento" cuando aplique) a `PlannerToolbar`, visible en las 4 secciones y ambas plataformas. En Mac, además como items de toolbar nativa y atajos ⌘←/⌘→/⌘T.
-2. **Trimestres reales.** `PlannerGanttTerm` deja de tener rangos fijos: derivar los rangos de semanas de `evaluationPeriods` (con fallback razonable si no hay periodos configurados). Eliminar los hardcodes de año 2026.
-3. **Cobertura correcta.** En `PlannerSummaryStats`, `available` por día = franjas reales de ese día (agenda docente), sin `max` global.
-4. **Gantt honesto.** Agrupar situaciones por `sequenceVersionId`/id real, no por título normalizado; cuando una semana tenga >4 sesiones mostrar "+N" tocable que abre la lista.
-5. **Botón "Observación"** en Día: abrir la ficha con el diario enfocado en observación rápida (o eliminarlo si no aporta).
-6. **Drop de cascada en Mac**: conectar `receiveCascadeDrop` a un drop target real en el grid si está suelto.
+1. **Navegación de semana universal — hecho.** `weekNavigationCluster` (← Hoy → + "Deshacer movimiento" condicional) vive ahora en `PlannerToolbar` (`PlannerWorkspaceIOS.swift`), visible en las 4 secciones y en ambas plataformas. Atajos ⌘←/⌘→/⌘T y ⇧⌘Z para deshacer. `PlannerToolbar` acepta un `onUndoCascadeMove` opcional para que cada plataforma lo conecte a su propio feedback (banner/haptics); iOS y Mac lo conectan al coordinator de cascada (punto 6).
+2. **Trimestres reales — hecho.** `PlannerGanttTerm` → `PlannerGanttRange` (`PlannerSequenceGanttView.swift`): el picker ahora lista "Periodo actual" + los `vm.evaluationPeriods` reales, y `PlannerGanttWeek` deriva el rango de semanas ISO (año+semana, no solo número) a partir de `startDateIso`/`endDateIso` del periodo, con fallback a ±6 semanas alrededor de hoy si no hay periodos. Nuevo tipo `PlannerCalendar` (en `PlannerWorkspaceIOS.swift`) centraliza "año/semana ISO actual" y "curso escolar por defecto (sept–jun)", eliminando todos los `2026`/`2027` hardcodeados del ViewModel (fallbacks de `KotlinInt`, `scheduleStartDate`/`scheduleEndDate`, `@Published var week/year` iniciales).
+3. **Cobertura correcta — hecho.** En `PlannerSummaryStats` (`PlannerSummaryDashboard.swift`), `available` por día ahora son las franjas reales de la agenda docente ese día (0 si no imparte); solo cae al máximo de `visibleSlots` cuando no hay agenda configurada. `covered` se capa a `available` para no superar el 100%.
+4. **Gantt honesto — hecho.** Las situaciones se agrupan por `sequenceVersionId` real cuando existe (fallback a título normalizado solo para sesiones sin secuencia vinculada); las semanas con más de 4 sesiones muestran un bloque "+N" con `Menu` que lista el resto (abre cada sesión).
+5. **Botón "Observación" — eliminado.** Duplicaba exactamente "Abrir ficha" en `PlannerDaySessionRow`; una acción rápida real de observación llegará en Fase 4.
+6. **Drag & drop de cascada conectado en ambas plataformas — hecho.** Nuevo `PlannerCascadeDropCoordinator` (`AppleShared/PlannerCascadeDropCoordinator.swift`, `ObservableObject` compartido) centraliza preview → confirmación si hay sesiones impartidas → commit → mensaje/haptics → deshacer, sustituyendo la lógica que antes solo existía (duplicada) en el Mac. `PlannerWeekMiniatureGrid` añade `.draggable`/`.dropDestination` por celda (solo si la celda tiene exactamente una sesión real, para no ser ambigua) con highlight visual al arrastrar por encima. iPad y Mac instancian el mismo coordinator y le pasan `vm`; Mac elimina su copia local (`receiveCascadeDrop`/`commitCascadeDrop`/`undoCascadeMove`/`MacPlannerPendingDrop`) en favor del coordinator — de paso adelanta parte de la deduplicación prevista para la Fase 2.
 
-Aceptación: cambiar de semana desde cualquier sección y plataforma; trimestre 2º de un curso con periodos configurados muestra sus semanas reales; cobertura 100% cuando todas las franjas del día tienen sesión.
+Aceptación: cambiar de semana desde cualquier sección y plataforma; trimestre 2º de un curso con periodos configurados muestra sus semanas reales; cobertura 100% cuando todas las franjas del día tienen sesión; arrastrar una sesión a otra celda mueve la cascada en iPad y Mac, con confirmación si toca sesiones impartidas.
+
+Sintaxis verificada con `swiftc -parse` en todos los ficheros tocados. **Pendiente del dev: compilar ambos targets en Xcode y probar el drag & drop en dispositivo/simulador real** (este entorno no tiene Xcode.app).
 
 ## Fase 2 — Arquitectura para poder crecer (3 días)
 
@@ -72,7 +74,7 @@ Aceptación: escribir en el buscador no invalida el grid semanal (verificable co
 
 1. **Celdas con contenido.** Sustituir el rectángulo mudo por una mini-tarjeta: banda o fondo con el **color del grupo**, abreviatura del grupo, y estado como pequeño indicador (punto/check), con variante según densidad y tamaño. En celdas multi-sesión, apilado con contador.
 2. **Layout adaptativo.** En regular-width (iPad apaisado, Mac): grid a la izquierda + panel de detalle **lateral** persistente (el actual pane inferior pasa a columna derecha, estilo inspector). En compact se mantiene el flujo vertical actual.
-3. **Drag & drop.** Arrastrar una sesión a otra celda ejecuta el movimiento en cascada (preview + confirmación si arrastra impartidas, igual que Mac); feedback háptico y animación del glass. Long-press/click derecho en celda: menú contextual (abrir diario, editar, marcar impartida, duplicar, mover a la semana siguiente).
+3. **Drag & drop — mecanismo base ya en Fase 1** (`PlannerCascadeDropCoordinator`); aquí toca pulirlo: permitir arrastrar desde celdas con varias sesiones (hoy solo funciona 1:1), long-press/click derecho como menú contextual (abrir diario, editar, marcar impartida, duplicar, mover a la semana siguiente) y mejorar la animación del glass durante el arrastre.
 4. **Crear en contexto.** Tap en celda vacía con franja → composer prellenado con día/franja/grupo (ya existe el hook, pulirlo a un solo tap desde el panel lateral).
 5. **Indicador de hoy**: columna del día actual resaltada; línea de "ahora" si la semana es la actual.
 
@@ -128,8 +130,8 @@ Aceptación: VoiceOver puede leer estado de cualquier celda/barra; cero material
 
 | Fase | Días | Impacto |
 |---|---|---|
-| 0 Limpieza | 1 | Base sana |
-| 1 Fiabilidad | 2 | Bugs visibles |
+| 0 Limpieza | 1 | Base sana ✅ |
+| 1 Fiabilidad | 2 | Bugs visibles ✅ |
 | 2 Arquitectura | 3 | Velocidad futura |
 | 3 Semana | 4–5 | ⭐ uso diario |
 | 4 Día | 2 | uso diario |

@@ -1,10 +1,24 @@
 import SwiftUI
 import MiGestorKit
 
+enum PlannerSessionDragPayload {
+    static let prefix = "planner-session:"
+
+    static func encode(_ sessionId: Int64) -> String {
+        prefix + String(sessionId)
+    }
+
+    static func decode(_ value: String) -> Int64? {
+        guard value.hasPrefix(prefix) else { return nil }
+        return Int64(value.dropFirst(prefix.count))
+    }
+}
+
 struct PlannerWeekMiniatureGrid: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
     @Binding var selectedCell: PlannerCellKey?
     @Binding var selectedDay: Int?
+    var onDropSession: ((Int64, Int, Int) -> Void)? = nil
 
     private let timeAxisWidth: CGFloat = 72
     private let headerHeight: CGFloat = 40
@@ -74,13 +88,17 @@ struct PlannerWeekMiniatureGrid: View {
                             PlannerWeekMiniatureCell(
                                 entries: entries,
                                 isHoliday: vm.holidayDays.contains(day),
-                                isSelected: selectedCell == key
-                            ) {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                                    selectedCell = key
-                                    selectedDay = nil
+                                isSelected: selectedCell == key,
+                                onTap: {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                        selectedCell = key
+                                        selectedDay = nil
+                                    }
+                                },
+                                onDropSession: onDropSession.map { handler in
+                                    { sessionId in handler(sessionId, day, slot.period) }
                                 }
-                            }
+                            )
                             .frame(width: columnWidth, height: rowHeight)
                             .accessibilityLabel(accessibilityLabel(day: day, slot: slot, entries: entries))
                         }
@@ -117,13 +135,60 @@ struct PlannerWeekMiniatureGrid: View {
     }
 }
 
+private struct PlannerCellDragSourceModifier: ViewModifier {
+    let sessionId: Int64?
+
+    func body(content: Content) -> some View {
+        if let sessionId {
+            content.draggable(PlannerSessionDragPayload.encode(sessionId))
+        } else {
+            content
+        }
+    }
+}
+
+private struct PlannerCellDropTargetModifier: ViewModifier {
+    let onDropSession: ((Int64) -> Void)?
+    @Binding var isTargeted: Bool
+
+    func body(content: Content) -> some View {
+        if let onDropSession {
+            content.dropDestination(for: String.self) { items, _ in
+                guard let payload = items.first, let sessionId = PlannerSessionDragPayload.decode(payload) else {
+                    return false
+                }
+                onDropSession(sessionId)
+                return true
+            } isTargeted: { targeted in
+                isTargeted = targeted
+            }
+        } else {
+            content
+        }
+    }
+}
+
 private struct PlannerWeekMiniatureCell: View {
     let entries: [PlannerWeekCellEntry]
     let isHoliday: Bool
     let isSelected: Bool
     let onTap: () -> Void
+    var onDropSession: ((Int64) -> Void)? = nil
+
+    @State private var isDropTargeted = false
 
     var body: some View {
+        cellButton
+            .modifier(PlannerCellDragSourceModifier(sessionId: draggableSessionId))
+            .modifier(
+                PlannerCellDropTargetModifier(
+                    onDropSession: onDropSession,
+                    isTargeted: $isDropTargeted
+                )
+            )
+    }
+
+    private var cellButton: some View {
         Button(action: onTap) {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(fillColor)
@@ -140,11 +205,27 @@ private struct PlannerWeekMiniatureCell: View {
                 }
                 .overlay(
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(isSelected ? EvaluationDesign.accent : EvaluationDesign.border.opacity(0.65), lineWidth: isSelected ? 2 : 1)
+                        .stroke(strokeColor, lineWidth: (isSelected || isDropTargeted) ? 2 : 1)
                 )
-                .scaleEffect(isSelected ? 0.96 : 1)
+                .scaleEffect(isSelected ? 0.96 : (isDropTargeted ? 1.04 : 1))
+                .animation(.spring(response: 0.25, dampingFraction: 0.8), value: isDropTargeted)
         }
         .buttonStyle(.plain)
+    }
+
+    private var strokeColor: Color {
+        if isDropTargeted { return EvaluationDesign.accent }
+        if isSelected { return EvaluationDesign.accent }
+        return EvaluationDesign.border.opacity(0.65)
+    }
+
+    /// Solo las celdas con exactamente una sesión real se pueden arrastrar;
+    /// con varias entradas el origen sería ambiguo.
+    private var draggableSessionId: Int64? {
+        guard entries.count == 1,
+              let entry = entries.first,
+              entry.kind == .session else { return nil }
+        return entry.sessionId
     }
 
     private var fillColor: Color {

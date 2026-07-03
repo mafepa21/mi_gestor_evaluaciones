@@ -546,3 +546,30 @@ final class PlannerWeekBoardStore: ObservableObject {
     @Published var weekRenderModel: PlannerWeekRenderModel = .empty
 }
 
+/// Rango temporal del Resumen/informe: semana en curso, mes natural o una
+/// evaluación completa (usa los periodos ya configurados por el docente).
+enum PlannerReportRange: Hashable {
+    case week
+    case month
+    case evaluationPeriod(Int64)
+}
+
+/// Datos ya resueltos para un rango del Resumen/informe: sesiones del rango,
+/// sus resúmenes de diario y las semanas ISO que lo componen (para el PDF y
+/// para las métricas de plan vs. real).
+struct PlannerRangeData {
+    let range: PlannerReportRange
+    let rangeLabel: String
+    let sessions: [PlanningSession]
+    let journalSummaryBySessionId: [Int64: SessionJournalSummary]
+    let weeks: [PlannerGanttWeek]
+
+    static let empty = PlannerRangeData(
+        range: .week,
+        rangeLabel: "",
+        sessions: [],
+        journalSummaryBySessionId: [:],
+        weeks: []
+    )
+}
+

@@ -175,7 +175,7 @@ struct PlannerWorkspaceIOS: View {
                 case .sequence:
                     PlannerSequenceGanttView(vm: vm, onOpenSession: openSessionInDiary)
                 case .summary:
-                    PlannerSummaryDashboard(vm: vm, onOpenSettings: onOpenSettings)
+                    PlannerSummaryDashboard(vm: vm, onOpenSettings: onOpenSettings, onOpenSession: openSessionInDiary)
                 }
             }
             .background(appPageBackground(for: colorScheme).ignoresSafeArea())

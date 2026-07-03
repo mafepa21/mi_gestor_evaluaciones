@@ -44,6 +44,9 @@
 		15B5C7443B2944C59942F07A /* TeacherRadarStudentInsightRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AD45ACA95D963773FDADD4C /* TeacherRadarStudentInsightRow.swift */; };
 		1680A7159701320DC112E710 /* MacPhysicalTestsToolbarActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 418B317080940EE2A662D215 /* MacPhysicalTestsToolbarActions.swift */; };
 		17C72CB98D707507A9BA78E1 /* PlannerWorkspaceIOS.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AFC9FBC11C0B8B50E847112 /* PlannerWorkspaceIOS.swift */; };
+		8E48AF2D14DAA6B0771B325D /* PlannerReportPDFRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FDB7A6BD3A2BE5C440CB0E7 /* PlannerReportPDFRenderer.swift */; };
+		77E0137C47F3DCEBD7C69382 /* PlannerReportDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0956FECFFE38EA78B55C8B2 /* PlannerReportDocument.swift */; };
+		0A74EFEC8114FB4108F1C5A3 /* PlannerWorkspaceViewModel+Report.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F39A4142CC7538182400FDD /* PlannerWorkspaceViewModel+Report.swift */; };
 		1C54DAFE47B7F292205574C5 /* PlannerWorkspaceViewModel+DayBoard.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA7940EB3FEC1283BFDB9F80 /* PlannerWorkspaceViewModel+DayBoard.swift */; };
 		183BC57A71CD453F65D09EEE /* IOSRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FF2D2638711055DB9781524 /* IOSRootView.swift */; };
 		1862DCED173C424EA7C21B6F /* AssignRubricToTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 893DD0805D75AD4923832EDD /* AssignRubricToTabView.swift */; };
@@ -253,6 +256,9 @@
 		B0E1302F3B9A1C94FD25615B /* SettingsSectionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AF5F802820D600F56AC6F2D /* SettingsSectionCard.swift */; };
 		B1EDD894F23E2AEA15628F17 /* DashboardProactiveInsight.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD1C7AE3703AF328A706E700 /* DashboardProactiveInsight.swift */; };
 		B20B74F08202FFF9657EF528 /* PlannerWorkspaceIOS.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AFC9FBC11C0B8B50E847112 /* PlannerWorkspaceIOS.swift */; };
+		EA9233A492591E71CCD436AE /* PlannerReportPDFRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FDB7A6BD3A2BE5C440CB0E7 /* PlannerReportPDFRenderer.swift */; };
+		BE406EE89A98D33C572B5910 /* PlannerReportDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0956FECFFE38EA78B55C8B2 /* PlannerReportDocument.swift */; };
+		827DE4981404F164359BB1F4 /* PlannerWorkspaceViewModel+Report.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F39A4142CC7538182400FDD /* PlannerWorkspaceViewModel+Report.swift */; };
 		4FFFFA24AF3B6A3E61777589 /* PlannerWorkspaceViewModel+DayBoard.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA7940EB3FEC1283BFDB9F80 /* PlannerWorkspaceViewModel+DayBoard.swift */; };
 		B3E353DF6888D460947A3171 /* NotebookViewModifiers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000A844E2F1245DA5956673 /* NotebookViewModifiers.swift */; };
 		B3F0FF57249376955AE83723 /* MacAttendanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5FCBA2AF2D125D2CD13CFF5 /* MacAttendanceView.swift */; };
@@ -503,6 +509,9 @@
 		89C799AFDA214475701E00EE /* PlannerWorkspaceViewModel+WeekBoard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerWorkspaceViewModel+WeekBoard.swift"; sourceTree = "<group>"; };
 		8A4E8D89679CED5E074F1005 /* NotebookModuleToolbarState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookModuleToolbarState.swift; sourceTree = "<group>"; };
 		8AFC9FBC11C0B8B50E847112 /* PlannerWorkspaceIOS.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerWorkspaceIOS.swift; sourceTree = "<group>"; };
+		0FDB7A6BD3A2BE5C440CB0E7 /* PlannerReportPDFRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerReportPDFRenderer.swift"; sourceTree = "<group>"; };
+		B0956FECFFE38EA78B55C8B2 /* PlannerReportDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerReportDocument.swift"; sourceTree = "<group>"; };
+		7F39A4142CC7538182400FDD /* PlannerWorkspaceViewModel+Report.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerWorkspaceViewModel+Report.swift"; sourceTree = "<group>"; };
 		FA7940EB3FEC1283BFDB9F80 /* PlannerWorkspaceViewModel+DayBoard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerWorkspaceViewModel+DayBoard.swift"; sourceTree = "<group>"; };
 		8FF2D2638711055DB9781524 /* IOSRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSRootView.swift; sourceTree = "<group>"; };
 		9066EF34A52C09F07E8CFAE7 /* AppleAIReadinessFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleAIReadinessFixtures.swift; sourceTree = "<group>"; };
@@ -810,6 +819,9 @@
 				1DA915360711FBD27A37EB78 /* PlannerWeekMiniatureGrid.swift */,
 				992519C5A19AC4FD6AA36D33 /* PlannerWeekMiniatureLayout.swift */,
 				8AFC9FBC11C0B8B50E847112 /* PlannerWorkspaceIOS.swift */,
+				0FDB7A6BD3A2BE5C440CB0E7 /* PlannerReportPDFRenderer.swift */,
+				B0956FECFFE38EA78B55C8B2 /* PlannerReportDocument.swift */,
+				7F39A4142CC7538182400FDD /* PlannerWorkspaceViewModel+Report.swift */,
 				FA7940EB3FEC1283BFDB9F80 /* PlannerWorkspaceViewModel+DayBoard.swift */,
 				3BEE0ACB8EAD235361BA1894 /* PlannerModels.swift */,
 				882953E8C01697B1222A8D2D /* PlannerWorkspaceViewModel.swift */,
@@ -1190,6 +1202,9 @@
 				2FFE8A5486A369FD414EF796 /* PlannerWeekMiniatureGrid.swift in Sources */,
 				C29EE7CFDABD680D89230324 /* PlannerWeekMiniatureLayout.swift in Sources */,
 				17C72CB98D707507A9BA78E1 /* PlannerWorkspaceIOS.swift in Sources */,
+				8E48AF2D14DAA6B0771B325D /* PlannerReportPDFRenderer.swift in Sources */,
+				77E0137C47F3DCEBD7C69382 /* PlannerReportDocument.swift in Sources */,
+				0A74EFEC8114FB4108F1C5A3 /* PlannerWorkspaceViewModel+Report.swift in Sources */,
 				1C54DAFE47B7F292205574C5 /* PlannerWorkspaceViewModel+DayBoard.swift in Sources */,
 				0BE00B560EEED6B49C890D3D /* PlannerModels.swift in Sources */,
 				D567483B5B5440209A01FFD6 /* PlannerWorkspaceViewModel.swift in Sources */,
@@ -1356,6 +1371,9 @@
 				21EC372D555174E20612BAD5 /* PlannerWeekMiniatureGrid.swift in Sources */,
 				054C422A8183D69A7C828D57 /* PlannerWeekMiniatureLayout.swift in Sources */,
 				B20B74F08202FFF9657EF528 /* PlannerWorkspaceIOS.swift in Sources */,
+				EA9233A492591E71CCD436AE /* PlannerReportPDFRenderer.swift in Sources */,
+				BE406EE89A98D33C572B5910 /* PlannerReportDocument.swift in Sources */,
+				827DE4981404F164359BB1F4 /* PlannerWorkspaceViewModel+Report.swift in Sources */,
 				4FFFFA24AF3B6A3E61777589 /* PlannerWorkspaceViewModel+DayBoard.swift in Sources */,
 				35E20999202304873DC7FFF8 /* PlannerModels.swift in Sources */,
 				4445A4EE4F1207D855D59752 /* PlannerWorkspaceViewModel.swift in Sources */,

@@ -4,9 +4,17 @@ import MiGestorKit
 struct PlannerSummaryDashboard: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
     let onOpenSettings: (() -> Void)?
+    let onOpenSession: (PlanningSession) -> Void
+
+    @State private var selectedRange: PlannerReportRange = .week
+    @State private var rangeData: PlannerRangeData = .empty
+    @State private var isLoadingRange = false
+    @State private var isGeneratingReport = false
+    @State private var reportURL: URL?
+    @State private var reportError: String?
 
     private var stats: PlannerSummaryStats {
-        PlannerSummaryStats(vm: vm)
+        PlannerSummaryStats(vm: vm, rangeData: rangeData, onOpenSession: onOpenSession)
     }
 
     var body: some View {
@@ -15,40 +23,128 @@ struct PlannerSummaryDashboard: View {
                 header
                 metricsGrid
 
-                HStack(alignment: .top, spacing: 24) {
-                    PlannerUpcomingSessionsPanel(vm: vm, sessions: stats.upcomingSessions)
-                        .frame(maxWidth: .infinity, alignment: .top)
-                    PlannerCoveragePanel(vm: vm, rows: stats.coverageRows, onOpenSettings: onOpenSettings)
-                        .frame(maxWidth: .infinity, alignment: .top)
+                if selectedRange == .week {
+                    HStack(alignment: .top, spacing: 24) {
+                        PlannerUpcomingSessionsPanel(vm: vm, sessions: stats.upcomingSessions)
+                            .frame(maxWidth: .infinity, alignment: .top)
+                        PlannerCoveragePanel(vm: vm, rows: stats.coverageRows, onOpenSettings: onOpenSettings)
+                            .frame(maxWidth: .infinity, alignment: .top)
+                    }
                 }
 
                 PlannerAlertsPanel(alerts: stats.alerts)
             }
             .padding(EvaluationDesign.screenPadding)
         }
+        .task(id: rangeTaskKey) {
+            await reloadRangeData()
+        }
+        .alert("No se pudo generar el informe", isPresented: Binding(
+            get: { reportError != nil },
+            set: { if !$0 { reportError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(reportError ?? "")
+        }
+    }
+
+    private var rangeTaskKey: String {
+        let periodSuffix: String
+        if case .evaluationPeriod(let id) = selectedRange { periodSuffix = "-\(id)" } else { periodSuffix = "" }
+        return "\(selectedRange)\(periodSuffix)-\(vm.selectedGroupId ?? -1)"
+    }
+
+    private func reloadRangeData() async {
+        isLoadingRange = true
+        reportURL = nil
+        defer { isLoadingRange = false }
+        rangeData = await vm.loadRangeData(selectedRange, groupId: vm.selectedGroupId)
     }
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Resumen")
-                    .font(.title2.weight(.bold))
-                Text("\(vm.weekLabel) · \(vm.dateRangeLabel)")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Resumen")
+                        .font(.title2.weight(.bold))
+                    Text(rangeData.rangeLabel.isEmpty ? "\(vm.weekLabel) · \(vm.dateRangeLabel)" : rangeData.rangeLabel)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                if isLoadingRange {
+                    ProgressView()
+                        .tint(EvaluationDesign.accent)
+                }
+
+                if let onOpenSettings {
+                    Button {
+                        onOpenSettings()
+                    } label: {
+                        Label("Agenda", systemImage: "calendar.badge.clock")
+                    }
+                    .buttonStyle(.bordered)
+                }
             }
 
-            Spacer()
-
-            if let onOpenSettings {
-                Button {
-                    onOpenSettings()
-                } label: {
-                    Label("Agenda", systemImage: "calendar.badge.clock")
+            HStack(spacing: 8) {
+                Picker("Rango", selection: $selectedRange) {
+                    Text("Semana").tag(PlannerReportRange.week)
+                    Text("Mes").tag(PlannerReportRange.month)
+                    ForEach(sortedEvaluationPeriods, id: \.id) { period in
+                        Text(period.name).tag(PlannerReportRange.evaluationPeriod(period.id))
+                    }
                 }
-                .buttonStyle(.bordered)
+                .pickerStyle(.menu)
+                .frame(maxWidth: 220)
+
+                Spacer()
+
+                exportButton
             }
         }
+    }
+
+    @ViewBuilder
+    private var exportButton: some View {
+        if isGeneratingReport {
+            ProgressView()
+                .controlSize(.small)
+        } else if let reportURL {
+            ShareLink(item: reportURL) {
+                Label("Compartir informe", systemImage: "square.and.arrow.up")
+            }
+            .buttonStyle(.borderedProminent)
+        } else {
+            Button {
+                Task { await generateReport() }
+            } label: {
+                Label("Generar informe PDF", systemImage: "doc.richtext")
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(rangeData.sessions.isEmpty)
+        }
+    }
+
+    private func generateReport() async {
+        guard reportURL == nil else { return }
+        isGeneratingReport = true
+        defer { isGeneratingReport = false }
+
+        let groupName = vm.selectedGroupId.flatMap { id in vm.groups.first { $0.id == id }?.name }
+        let document = PlannerReportDocument.build(rangeData: rangeData, groupFilterName: groupName, vm: vm)
+        guard let url = PlannerReportPDFRenderer.writeToTemporaryFile(document, suggestedName: "informe-planificacion") else {
+            reportError = "No se pudo escribir el archivo PDF. Inténtalo de nuevo."
+            return
+        }
+        reportURL = url
+    }
+
+    private var sortedEvaluationPeriods: [PlannerEvaluationPeriod] {
+        vm.evaluationPeriods.sorted { ($0.sortOrder, $0.startDateIso) < ($1.sortOrder, $1.startDateIso) }
     }
 
     private var metricsGrid: some View {
@@ -68,19 +164,29 @@ struct PlannerSummaryDashboard: View {
                 systemImage: "calendar"
             )
             PlannerSummaryMetricCard(
-                title: "Pendientes",
-                value: "\(stats.pendingSessions)",
-                subtitle: "Sin diario cerrado",
-                tint: IOSAppStyle.warning,
-                systemImage: "exclamationmark.circle.fill"
+                title: "No impartidas",
+                value: "\(stats.notDeliveredSessions)",
+                subtitle: "De semanas ya pasadas",
+                tint: stats.notDeliveredSessions > 0 ? IOSAppStyle.warning : EvaluationDesign.success,
+                systemImage: "exclamationmark.triangle.fill"
             )
-            PlannerSummaryMetricCard(
-                title: "Cobertura",
-                value: "\(stats.coveragePercent)%",
-                subtitle: "\(stats.coveredSlots) de \(stats.totalSlots) franjas",
-                tint: stats.coveragePercent >= 80 ? EvaluationDesign.success : EvaluationDesign.accent,
-                systemImage: "chart.bar.xaxis"
-            )
+            if selectedRange == .week {
+                PlannerSummaryMetricCard(
+                    title: "Cobertura",
+                    value: "\(stats.coveragePercent)%",
+                    subtitle: "\(stats.coveredSlots) de \(stats.totalSlots) franjas",
+                    tint: stats.coveragePercent >= 80 ? EvaluationDesign.success : EvaluationDesign.accent,
+                    systemImage: "chart.bar.xaxis"
+                )
+            } else {
+                PlannerSummaryMetricCard(
+                    title: "Canceladas",
+                    value: "\(stats.cancelledSessions)",
+                    subtitle: "En el rango seleccionado",
+                    tint: stats.cancelledSessions > 0 ? IOSAppStyle.warning : .secondary,
+                    systemImage: "xmark.circle"
+                )
+            }
         }
     }
 }
@@ -89,6 +195,8 @@ private struct PlannerSummaryStats {
     let completedSessions: Int
     let plannedSessions: Int
     let pendingSessions: Int
+    let cancelledSessions: Int
+    let notDeliveredSessions: Int
     let completionPercent: Int
     let coveredSlots: Int
     let totalSlots: Int
@@ -98,31 +206,44 @@ private struct PlannerSummaryStats {
     let alerts: [PlannerSummaryAlert]
 
     @MainActor
-    init(vm: PlannerWorkspaceViewModel) {
-        let sessions = vm.filteredSessions
-        completedSessions = sessions.count { session in
-            session.status == .completed || vm.summary(for: session.id)?.status == .completed
+    init(vm: PlannerWorkspaceViewModel, rangeData: PlannerRangeData, onOpenSession: @escaping (PlanningSession) -> Void) {
+        let sessions = rangeData.sessions
+        let currentWeek = PlannerGanttWeek(date: Date())
+
+        func summary(for sessionId: Int64) -> SessionJournalSummary? {
+            rangeData.journalSummaryBySessionId[sessionId]
         }
+        func isPastAndNotDelivered(_ session: PlanningSession) -> Bool {
+            guard session.status != .completed, session.status != .cancelled else { return false }
+            let week = PlannerGanttWeek(year: Int(session.year), week: Int(session.weekNumber))
+            return week.weeks(until: currentWeek) > 0
+        }
+
+        completedSessions = sessions.count { $0.status == .completed }
+        cancelledSessions = sessions.count { $0.status == .cancelled }
+        notDeliveredSessions = sessions.count { isPastAndNotDelivered($0) }
         plannedSessions = sessions.count
         pendingSessions = sessions.count { session in
-            session.status != .completed && vm.summary(for: session.id)?.status != .completed
+            session.status == .completed && summary(for: session.id)?.status != .completed
         }
         completionPercent = sessions.isEmpty ? 0 : Int((Double(completedSessions) / Double(sessions.count) * 100).rounded())
 
         let hasTeacherSchedule = !vm.teacherScheduleSlots.isEmpty
-        coverageRows = vm.weekRenderModel.visibleDays.map { day in
-            // Con agenda configurada, las franjas disponibles son las de ese día
-            // (0 si el docente no imparte ese día); sin agenda, la parrilla visible.
-            let available = hasTeacherSchedule
-                ? vm.teacherScheduleSlots.filter { Int($0.dayOfWeek) == day }.count
-                : vm.weekRenderModel.visibleSlots.count
-            let coveredPeriods = Set(sessions.filter { Int($0.dayOfWeek) == day }.map { Int($0.period) }).count
-            return PlannerCoverageRow(
-                id: day,
-                title: vm.dayHeaderLabel(for: day),
-                covered: min(coveredPeriods, available),
-                available: available
-            )
+        if rangeData.range == .week {
+            coverageRows = vm.weekRenderModel.visibleDays.map { day in
+                let available = hasTeacherSchedule
+                    ? vm.teacherScheduleSlots.filter { Int($0.dayOfWeek) == day }.count
+                    : vm.weekRenderModel.visibleSlots.count
+                let coveredPeriods = Set(sessions.filter { Int($0.dayOfWeek) == day }.map { Int($0.period) }).count
+                return PlannerCoverageRow(
+                    id: day,
+                    title: vm.dayHeaderLabel(for: day),
+                    covered: min(coveredPeriods, available),
+                    available: available
+                )
+            }
+        } else {
+            coverageRows = []
         }
         coveredSlots = coverageRows.reduce(0) { $0 + $1.covered }
         totalSlots = coverageRows.reduce(0) { $0 + $1.available }
@@ -130,7 +251,7 @@ private struct PlannerSummaryStats {
 
         upcomingSessions = sessions
             .filter { session in
-                session.status != .completed && vm.summary(for: session.id)?.status != .completed
+                session.status != .completed && summary(for: session.id)?.status != .completed
             }
             .sorted {
                 if $0.dayOfWeek == $1.dayOfWeek {
@@ -145,39 +266,57 @@ private struct PlannerSummaryStats {
             .map { $0 }
 
         var resolvedAlerts: [PlannerSummaryAlert] = []
-        if pendingSessions > 0 {
+        let pendingJournalSessions = sessions.filter { session in
+            session.status == .completed && summary(for: session.id)?.status != .completed
+        }
+        if let firstPending = pendingJournalSessions.first {
             resolvedAlerts.append(.init(
-                title: "\(pendingSessions) sesiones sin diario cerrado",
-                message: "Revisa las próximas sesiones pendientes para mantener la continuidad docente.",
+                title: "\(pendingJournalSessions.count) sesiones sin diario cerrado",
+                message: "Abre la primera pendiente para ponerte al día.",
                 tint: IOSAppStyle.warning,
-                systemImage: "doc.badge.clock"
+                systemImage: "doc.badge.clock",
+                action: { onOpenSession(firstPending) }
             ))
         }
-        let emptyDays = coverageRows.filter { $0.covered == 0 && $0.available > 0 }
-        if !emptyDays.isEmpty {
+        if notDeliveredSessions > 0, let firstNotDelivered = sessions.first(where: isPastAndNotDelivered) {
             resolvedAlerts.append(.init(
-                title: "\(emptyDays.count) días sin sesiones creadas",
-                message: emptyDays.map(\.title).joined(separator: " · "),
-                tint: EvaluationDesign.accent,
-                systemImage: "calendar.badge.exclamationmark"
-            ))
-        }
-        let pendingSequences = vm.sequenceGroupsEnriched.reduce(0) { $0 + $1.pendingCount }
-        if pendingSequences > 0 {
-            resolvedAlerts.append(.init(
-                title: "\(pendingSequences) sesiones de secuencia sin ubicar",
-                message: "Abre Secuencia para revisar las situaciones con sesiones pendientes.",
+                title: "\(notDeliveredSessions) sesiones no impartidas",
+                message: "De semanas ya pasadas y sin marcar como impartidas.",
                 tint: IOSAppStyle.warning,
-                systemImage: "point.3.connected.trianglepath.dotted"
+                systemImage: "exclamationmark.triangle.fill",
+                action: { onOpenSession(firstNotDelivered) }
             ))
         }
-        if sessions.isEmpty {
-            resolvedAlerts.append(.init(
-                title: "Semana sin planificación",
-                message: "Configura la agenda o crea sesiones desde Semana.",
-                tint: .secondary,
-                systemImage: "calendar.badge.plus"
-            ))
+        if rangeData.range == .week {
+            let emptyDays = coverageRows.filter { $0.covered == 0 && $0.available > 0 }
+            if !emptyDays.isEmpty {
+                resolvedAlerts.append(.init(
+                    title: "\(emptyDays.count) días sin sesiones creadas",
+                    message: emptyDays.map(\.title).joined(separator: " · "),
+                    tint: EvaluationDesign.accent,
+                    systemImage: "calendar.badge.exclamationmark",
+                    action: { vm.activeSection = .week }
+                ))
+            }
+            let pendingSequences = vm.sequenceGroupsEnriched.reduce(0) { $0 + $1.pendingCount }
+            if pendingSequences > 0 {
+                resolvedAlerts.append(.init(
+                    title: "\(pendingSequences) sesiones de secuencia sin ubicar",
+                    message: "Abre Secuencia para revisar las situaciones con sesiones pendientes.",
+                    tint: IOSAppStyle.warning,
+                    systemImage: "point.3.connected.trianglepath.dotted",
+                    action: { vm.activeSection = .sequence }
+                ))
+            }
+            if sessions.isEmpty {
+                resolvedAlerts.append(.init(
+                    title: "Semana sin planificación",
+                    message: "Configura la agenda o crea sesiones desde Semana.",
+                    tint: .secondary,
+                    systemImage: "calendar.badge.plus",
+                    action: { vm.activeSection = .week }
+                ))
+            }
         }
         alerts = resolvedAlerts
     }
@@ -201,6 +340,7 @@ private struct PlannerSummaryAlert: Identifiable {
     let message: String
     let tint: Color
     let systemImage: String
+    let action: (() -> Void)?
 }
 
 private struct PlannerSummaryMetricCard: View {
@@ -379,32 +519,57 @@ private struct PlannerAlertsPanel: View {
             if alerts.isEmpty {
                 PlannerCompactEmptyState(
                     title: "Sin alertas",
-                    message: "La semana no tiene pendientes relevantes."
+                    message: "El rango seleccionado no tiene pendientes relevantes."
                 )
             } else {
                 VStack(spacing: 12) {
                     ForEach(alerts) { alert in
-                        HStack(alignment: .top, spacing: 12) {
-                            Image(systemName: alert.systemImage)
-                                .font(.headline.weight(.bold))
-                                .foregroundStyle(alert.tint)
-                                .frame(width: 24)
-                                .accessibilityHidden(true)
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(alert.title)
-                                    .font(.subheadline.weight(.semibold))
-                                Text(alert.message)
-                                    .font(.caption.weight(.medium))
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer(minLength: 8)
-                        }
-                        .padding(12)
-                        .background(alert.tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        PlannerAlertRow(alert: alert)
                     }
                 }
             }
         }
+    }
+}
+
+private struct PlannerAlertRow: View {
+    let alert: PlannerSummaryAlert
+
+    var body: some View {
+        if let action = alert.action {
+            Button(action: action) {
+                content
+            }
+            .buttonStyle(.plain)
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: alert.systemImage)
+                .font(.headline.weight(.bold))
+                .foregroundStyle(alert.tint)
+                .frame(width: 24)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(alert.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Text(alert.message)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            if alert.action != nil {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(12)
+        .background(alert.tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 

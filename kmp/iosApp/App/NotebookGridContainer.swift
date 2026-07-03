@@ -1,8 +1,45 @@
 import SwiftUI
 
+enum NotebookRowVirtualizationDebug {
+    static var enabled = false
+
+    private static var materializedRowIds: [String: Set<AnyHashable>] = [:]
+    private static var totalRowCounts: [String: Int] = [:]
+    private static var lastLogAt: [String: Date] = [:]
+
+    static func rowAppeared<ID: Hashable>(pane: String, id: ID, totalRows: Int) {
+        guard enabled else { return }
+        materializedRowIds[pane, default: []].insert(AnyHashable(id))
+        totalRowCounts[pane] = totalRows
+        logIfDue(pane: pane)
+    }
+
+    static func rowDisappeared<ID: Hashable>(pane: String, id: ID) {
+        guard enabled else { return }
+        materializedRowIds[pane]?.remove(AnyHashable(id))
+    }
+
+    private static func logIfDue(pane: String) {
+        let now = Date()
+        if let last = lastLogAt[pane], now.timeIntervalSince(last) < 0.5 {
+            return
+        }
+        lastLogAt[pane] = now
+        let materialized = materializedRowIds[pane]?.count ?? 0
+        let total = totalRowCounts[pane] ?? 0
+        print("NotebookPerf virtualization pane=\(pane) materialized=\(materialized) totalRows=\(total)")
+    }
+}
+
+@MainActor
+final class NotebookRowHoverModel: ObservableObject {
+    @Published var hoveredRowId: AnyHashable?
+}
+
 struct NotebookGridContainer<
     Row: Identifiable,
     EmptyContent: View,
+    FilteredEmptyContent: View,
     SeatingContent: View,
     TopAccessory: View,
     DividerHandle: View,
@@ -14,6 +51,7 @@ struct NotebookGridContainer<
     ScrollRow: View
 >: View {
     let rows: [Row]
+    let hasUnfilteredRows: Bool
     let surfaceMode: NotebookSurfaceMode
     let fixedColumnWidth: CGFloat
     let trailingFixedColumnWidth: CGFloat
@@ -22,6 +60,7 @@ struct NotebookGridContainer<
     let headerHeight: CGFloat
     let rowHeight: CGFloat
     let emptyContent: () -> EmptyContent
+    let filteredEmptyContent: () -> FilteredEmptyContent
     let seatingContent: ([Row]) -> SeatingContent
     let topAccessory: () -> TopAccessory
     let dividerHandle: () -> DividerHandle
@@ -32,10 +71,10 @@ struct NotebookGridContainer<
     let trailingFixedRow: (Int, Row) -> TrailingFixedRow
     let scrollRow: (Int, Row) -> ScrollRow
 
-    @State private var hoveredRowId: Row.ID? = nil
+    @StateObject private var hoverModel = NotebookRowHoverModel()
 
     var body: some View {
-        if rows.isEmpty {
+        if rows.isEmpty && !hasUnfilteredRows {
             emptyContent()
         } else if surfaceMode == .seatingPlan {
             seatingContent(rows)
@@ -61,47 +100,77 @@ struct NotebookGridContainer<
             } scrollHeader: {
                 scrollHeader()
             } fixedRows: {
-                rowStack(rows: rows, rowContent: fixedRow)
+                rowStack(pane: "fixed", rows: rows, rowContent: fixedRow)
             } trailingFixedRows: {
-                rowStack(rows: rows, rowContent: trailingFixedRow)
+                rowStack(pane: "trailing", rows: rows, rowContent: trailingFixedRow)
             } scrollRows: {
-                rowStack(rows: rows, rowContent: scrollRow)
+                if rows.isEmpty {
+                    filteredEmptyContent()
+                        .frame(maxWidth: .infinity, minHeight: 260)
+                } else {
+                    rowStack(pane: "scroll", rows: rows, rowContent: scrollRow)
+                }
             }
         }
     }
 
     private func rowStack<Content: View>(
+        pane: String,
         rows: [Row],
         @ViewBuilder rowContent: @escaping (Int, Row) -> Content
     ) -> some View {
         let rowIndexesById = Dictionary(uniqueKeysWithValues: rows.enumerated().map { ($0.element.id, $0.offset) })
+        let totalRows = rows.count
 
         return LazyVStack(alignment: .leading, spacing: 0) {
             ForEach(rows) { item in
-                let isHovered = hoveredRowId == item.id
-                rowContent(rowIndexesById[item.id] ?? 0, item)
-                    .frame(height: rowHeight)
-                    .background(isHovered ? hoverColor : Color.clear)
-                    .contentShape(Rectangle())
-                    #if os(macOS)
-                    .onHover { hovering in
-                        withAnimation(.easeOut(duration: 0.12)) {
-                            hoveredRowId = hovering ? item.id : nil
-                        }
-                    }
-                    #endif
-                    .overlay(
-                        VStack {
-                            Spacer()
-                            Rectangle()
-                                .fill(NotebookStyle.softBorder.opacity(0.45))
-                                .frame(height: 0.5)
-                                .padding(.horizontal, 16)
-                        }
-                    )
+                NotebookHoverableRow(rowId: AnyHashable(item.id), rowHeight: rowHeight, hoverModel: hoverModel) {
+                    rowContent(rowIndexesById[item.id] ?? 0, item)
+                }
+                .onAppear {
+                    NotebookRowVirtualizationDebug.rowAppeared(pane: pane, id: item.id, totalRows: totalRows)
+                }
+                .onDisappear {
+                    NotebookRowVirtualizationDebug.rowDisappeared(pane: pane, id: item.id)
+                }
             }
         }
         .padding(.bottom, 16)
+    }
+}
+
+/// Fila hoja del grid: es la única unidad que se invalida al pasar el ratón,
+/// en vez del `NotebookGridContainer` ancestro (que renderiza los 3 paneles).
+private struct NotebookHoverableRow<Content: View>: View {
+    let rowId: AnyHashable
+    let rowHeight: CGFloat
+    @ObservedObject var hoverModel: NotebookRowHoverModel
+    @ViewBuilder let content: () -> Content
+
+    private var isHovered: Bool {
+        hoverModel.hoveredRowId == rowId
+    }
+
+    var body: some View {
+        content()
+            .frame(height: rowHeight)
+            .background(isHovered ? hoverColor : Color.clear)
+            .contentShape(Rectangle())
+            #if os(macOS)
+            .onHover { hovering in
+                hoverModel.hoveredRowId = hovering ? rowId : nil
+            }
+            #endif
+            .overlay(
+                VStack {
+                    Spacer()
+                    Rectangle()
+                        .fill(NotebookStyle.softBorder.opacity(0.45))
+                        .frame(height: 0.5)
+                        .padding(.horizontal, 16)
+                }
+            )
+            .animation(.easeOut(duration: 0.12), value: isHovered)
     }
 
     private var hoverColor: Color {

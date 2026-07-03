@@ -128,12 +128,34 @@ extension NotebookModuleView {
         if undoStack.count > 10 {
             undoStack.removeFirst(undoStack.count - 10)
         }
+        redoStack.removeAll()
+    }
+
+    private func currentCellValue(studentId: Int64, column: NotebookColumnDefinition) -> String? {
+        guard let data = bridge.notebookState as? NotebookUiStateData,
+              let row = filteredRows(data: data).first(where: { $0.student.id == studentId }) else {
+            return nil
+        }
+        return displayValue(for: row, column: column)
     }
 
     func undoLastCellChange() {
         guard let entry = undoStack.popLast() else {
             showToast("No hay cambios que deshacer", style: .warning)
             return
+        }
+        if let currentValue = currentCellValue(studentId: entry.studentId, column: entry.column) {
+            redoStack.append(
+                NotebookCellUndoEntry(
+                    studentId: entry.studentId,
+                    column: entry.column,
+                    previousValue: currentValue,
+                    previousDisplayLabel: nil
+                )
+            )
+            if redoStack.count > 10 {
+                redoStack.removeFirst(redoStack.count - 10)
+            }
         }
         bridge.flushPendingColumnGradeSave(studentId: entry.studentId, columnId: entry.column.id)
         bridge.saveColumnGrade(studentId: entry.studentId, column: entry.column, value: entry.previousValue)
@@ -145,6 +167,36 @@ extension NotebookModuleView {
         }
         let label = entry.previousDisplayLabel ?? entry.previousValue
         showToast(label.isEmpty ? "Cambio deshecho" : "Cambio deshecho: \(label)")
+    }
+
+    func redoLastCellChange() {
+        guard let entry = redoStack.popLast() else {
+            showToast("No hay cambios que rehacer", style: .warning)
+            return
+        }
+        if let currentValue = currentCellValue(studentId: entry.studentId, column: entry.column) {
+            undoStack.append(
+                NotebookCellUndoEntry(
+                    studentId: entry.studentId,
+                    column: entry.column,
+                    previousValue: currentValue,
+                    previousDisplayLabel: nil
+                )
+            )
+            if undoStack.count > 10 {
+                undoStack.removeFirst(undoStack.count - 10)
+            }
+        }
+        bridge.flushPendingColumnGradeSave(studentId: entry.studentId, columnId: entry.column.id)
+        bridge.saveColumnGrade(studentId: entry.studentId, column: entry.column, value: entry.previousValue)
+        reloadNotebookRow(entry.studentId)
+        withAnimation(.spring(response: 0.18, dampingFraction: 0.9)) {
+            inspectorSelection = NotebookInspectorSelection(studentId: entry.studentId, columnId: entry.column.id)
+            focusedCellId = nil
+            activeChoiceCellId = nil
+        }
+        let label = entry.previousDisplayLabel ?? entry.previousValue
+        showToast(label.isEmpty ? "Cambio rehecho" : "Cambio rehecho: \(label)")
     }
 
     func createFollowUp(for student: Student) async {

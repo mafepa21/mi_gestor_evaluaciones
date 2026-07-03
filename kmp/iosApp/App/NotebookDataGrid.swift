@@ -200,15 +200,29 @@ struct NotebookResizableHeader<Content: View>: View {
 }
 
 private struct NotebookResizeCursorModifier: ViewModifier {
+    #if canImport(AppKit)
+    @State private var isCursorPushed = false
+    #endif
+
     func body(content: Content) -> some View {
         #if canImport(AppKit)
-        content.onHover { hovering in
-            if hovering {
-                NSCursor.resizeLeftRight.push()
-            } else {
-                NSCursor.pop()
+        content
+            .onHover { hovering in
+                if hovering {
+                    guard !isCursorPushed else { return }
+                    NSCursor.resizeLeftRight.push()
+                    isCursorPushed = true
+                } else if isCursorPushed {
+                    NSCursor.pop()
+                    isCursorPushed = false
+                }
             }
-        }
+            .onDisappear {
+                if isCursorPushed {
+                    NSCursor.pop()
+                    isCursorPushed = false
+                }
+            }
         #else
         content
         #endif
@@ -486,6 +500,13 @@ private struct NotebookSyncedVerticalUIScrollView<Content: View>: UIViewRepresen
         scrollView.showsHorizontalScrollIndicator = false
         scrollView.alwaysBounceHorizontal = false
         scrollView.backgroundColor = .clear
+        if id != "center" {
+            // Los paneles fijos (nombre de alumno, Media) solo reflejan el offset del panel
+            // central sincronizado; sin esto podian rebotar de forma elastica por su cuenta
+            // en un overscroll, desincronizandose visualmente durante ese instante.
+            scrollView.bounces = false
+            scrollView.alwaysBounceVertical = false
+        }
 
         let hostingController = UIHostingController(rootView: content)
         hostingController.view.translatesAutoresizingMaskIntoConstraints = false
@@ -551,6 +572,11 @@ private struct NotebookSyncedVerticalNSScrollView<Content: View>: NSViewRepresen
         scrollView.autohidesScrollers = true
         scrollView.drawsBackground = false
         scrollView.contentView.postsBoundsChangedNotifications = true
+        if id != "center" {
+            // Los paneles fijos solo reflejan el offset del panel central sincronizado;
+            // sin esto podian rebotar de forma elastica por su cuenta en un overscroll.
+            scrollView.verticalScrollElasticity = .none
+        }
 
         let hostingView = NSHostingView(rootView: content)
         hostingView.translatesAutoresizingMaskIntoConstraints = false

@@ -84,6 +84,7 @@ struct NotebookModuleView: View {
     @State var isAttendanceQuickMode = false
     @State var isMarkAllPresentDialogPresented = false
     @State var undoStack: [NotebookCellUndoEntry] = []
+    @State var redoStack: [NotebookCellUndoEntry] = []
     @State var structuralGridRevision = 0
     @State var rowReloadRevisions: [Int64: Int] = [:]
     @State var highlightedCategoryId: String? = nil
@@ -227,6 +228,7 @@ struct NotebookModuleView: View {
         focusMode = .normal
 
         undoStack = []
+        redoStack = []
         todayAttendanceByStudentId = [:]
         incidentCountByStudentId = [:]
         riskLevelCache = [:]
@@ -452,6 +454,7 @@ struct NotebookModuleView: View {
 
         NotebookGridContent(
             rows: rows,
+            hasUnfilteredRows: !data.sheet.rows.isEmpty,
             surfaceMode: surfaceMode,
             fixedColumnWidth: fixedZoneWidth,
             trailingFixedColumnWidth: renderModel.trailingFixedSegments.isEmpty ? 0 : defaultFixedWidth(for: .average) + trailingPaddingCompensation,
@@ -467,10 +470,22 @@ struct NotebookModuleView: View {
             scrollableSegments: renderModel.scrollableSegments
         ) {
             IOSEmptyState(
-                title: "Sin alumnos visibles",
-                subtitle: "Ajusta la búsqueda o el filtro de grupo para ver filas del cuaderno.",
+                title: "Sin alumnado en esta clase",
+                subtitle: "Añade alumnado a la clase para empezar a usar el Cuaderno.",
                 systemImage: "person.3.sequence"
             )
+        } filteredEmptyContent: {
+            NotebookStateCard(
+                systemImage: "line.3.horizontal.decrease.circle",
+                title: "Sin resultados con los filtros actuales",
+                message: "Ningún alumno visible coincide con la búsqueda o el filtro de grupo/situación seleccionados.",
+                tint: NotebookStyle.warningTint
+            ) {
+                Button("Limpiar filtros") {
+                    clearNotebookFilters()
+                }
+                .buttonStyle(.borderedProminent)
+            }
         } seatingContent: { rows in
             NotebookSeatingPlanView(
                 rows: rows,
@@ -606,19 +621,31 @@ struct NotebookModuleView: View {
     var maxFixedZoneWidth: CGFloat { 700 }
  
     func loadClassLearningSituations(classId: Int64) {
+        let bridge = self.bridge
         Task {
             do {
                 let situations = try await bridge.learningSituations()
-                var filtered: [LearningSituation] = []
-                for sit in situations {
-                    let links = try await bridge.learningSituationClassLinks(id: sit.id)
-                    if links.contains(where: { $0.classId == classId }) {
-                        filtered.append(sit)
+                let filtered = await withTaskGroup(of: (Int, LearningSituation?).self) { group -> [LearningSituation] in
+                    for (index, situation) in situations.enumerated() {
+                        group.addTask {
+                            do {
+                                let links = try await bridge.learningSituationClassLinks(id: situation.id)
+                                return (index, links.contains(where: { $0.classId == classId }) ? situation : nil)
+                            } catch {
+                                return (index, nil)
+                            }
+                        }
                     }
+                    var indexed: [(Int, LearningSituation)] = []
+                    for await (index, situation) in group {
+                        if let situation {
+                            indexed.append((index, situation))
+                        }
+                    }
+                    return indexed.sorted { $0.0 < $1.0 }.map(\.1)
                 }
-                let finalFiltered = filtered
                 await MainActor.run {
-                    self.classSituations = finalFiltered
+                    self.classSituations = filtered
                 }
             } catch {
                 // ignore
@@ -629,6 +656,10 @@ struct NotebookModuleView: View {
     var showsNotebookInlineActions: Bool {
         false
     }
+
+    /// Título compartido por los menús de filtro (barra compacta y `toolbarTitleMenu`) para evitar que el texto vuelva a divergir.
+    var notebookClearGroupFilterTitle: String { "Grupo completo" }
+    var notebookClearSituationFilterTitle: String { "Sin filtrar" }
 
     @ViewBuilder
     func notebookCommandMenuContent(data: NotebookUiStateData, tabs: [NotebookTab], rows: [NotebookTableRow]) -> some View {
@@ -641,18 +672,14 @@ struct NotebookModuleView: View {
         }
 
         Menu("Vista") {
-            Button {
-                surfaceMode = .grid
-            } label: {
-                Label("Grid", systemImage: surfaceMode == .grid ? "checkmark" : "tablecells")
+            ForEach(NotebookSurfaceMode.allCases) { mode in
+                Button {
+                    surfaceMode = mode
+                } label: {
+                    Label(mode.title, systemImage: surfaceMode == mode ? "checkmark" : mode.systemImage)
+                }
+                .disabled(mode == .seatingPlan && focusMode != .normal)
             }
-
-            Button {
-                surfaceMode = .seatingPlan
-            } label: {
-                Label("Plano", systemImage: surfaceMode == .seatingPlan ? "checkmark" : "rectangle.3.group")
-            }
-            .disabled(focusMode != .normal)
         }
 
         Menu("Pestañas") {
@@ -718,7 +745,7 @@ struct NotebookModuleView: View {
         } else {
             if !groups.isEmpty {
                 Menu {
-                    Button("Grupo completo") {
+                    Button(notebookClearGroupFilterTitle) {
                         selectedGroupId = nil
                     }
                     ForEach(groups, id: \.id) { group in
@@ -738,7 +765,7 @@ struct NotebookModuleView: View {
 
             if !classSituations.isEmpty {
                 Menu {
-                    Button("Sin filtrar") {
+                    Button(notebookClearSituationFilterTitle) {
                         groupByWorkGroupMode = "none"
                     }
                     ForEach(classSituations, id: \.id) { situation in
@@ -1474,7 +1501,7 @@ struct NotebookModuleView: View {
                                     selectedGroupId = nil
                                 } label: {
                                     HStack {
-                                        Text("Grupo completo")
+                                        Text(notebookClearGroupFilterTitle)
                                         if selectedGroupId == nil {
                                             Image(systemName: "checkmark")
                                         }
@@ -1501,7 +1528,7 @@ struct NotebookModuleView: View {
                                     groupByWorkGroupMode = "none"
                                 } label: {
                                     HStack {
-                                        Text("Sin filtrar (Ver todas)")
+                                        Text(notebookClearSituationFilterTitle)
                                         if groupByWorkGroupMode == "none" {
                                             Image(systemName: "checkmark")
                                         }
@@ -1658,7 +1685,7 @@ struct NotebookModuleView: View {
 
     func notebookNavigationSubtitle(data: NotebookUiStateData) -> String {
         if macPresentation == .full {
-            let groupText = selectedGroupId.flatMap { groupName(for: $0, in: data) } ?? "Grupo completo"
+            let groupText = selectedGroupId.flatMap { groupName(for: $0, in: data) } ?? notebookClearGroupFilterTitle
             let tabText = activeNotebookTab(data: data)?.title
             let studentCount = filteredRows(data: data).count
             let studentSuffix = studentCount == 1 ? "alumno" : "alumnos"

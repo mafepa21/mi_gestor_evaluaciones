@@ -179,6 +179,14 @@ struct IOSRootView: View {
                 sidebarVisible = isVisible
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .appleAppUndoNotebookRequested)) { _ in
+            guard activeModule == .notebook else { return }
+            layoutState.notebookUndo()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .appleAppRedoNotebookRequested)) { _ in
+            guard activeModule == .notebook else { return }
+            layoutState.notebookRedo()
+        }
         .appWritingToolsDisabled()
     }
 
@@ -482,6 +490,13 @@ struct IOSRootView: View {
                     Label("Deshacer", systemImage: "arrow.uturn.backward")
                 }
                 .disabled(!layoutState.notebookCanUndo)
+
+                Button {
+                    layoutState.notebookRedo()
+                } label: {
+                    Label("Rehacer", systemImage: "arrow.uturn.forward")
+                }
+                .disabled(!layoutState.notebookCanRedo)
 
                 Button {
                     layoutState.notebookToggleAttendanceQuickMode()

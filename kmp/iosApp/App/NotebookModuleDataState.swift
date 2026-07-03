@@ -38,6 +38,12 @@ extension NotebookModuleView {
         return bridge.rubrics.first(where: { $0.rubric.id == rubricId })?.rubric.name ?? "Rúbrica #\(rubricId)"
     }
 
+    func clearNotebookFilters() {
+        searchText = ""
+        selectedGroupId = nil
+        groupByWorkGroupMode = "none"
+    }
+
     func filteredRows(data: NotebookUiStateData) -> [NotebookTableRow] {
         gridLayoutModel.visibleRows(
             data: data,

@@ -4,6 +4,7 @@ import SwiftUI
 final class NotebookMacToolbarActions: ObservableObject {
     @Published var canMarkAllPresent = false
     @Published var canUndo = false
+    @Published var canRedo = false
     @Published var canToggleInspector = false
     @Published var isAttendanceQuickMode = false
     @Published var isInspectorPresented = false
@@ -15,6 +16,7 @@ final class NotebookMacToolbarActions: ObservableObject {
     private var markAllPresentAction: (() -> Void)?
     private var attendanceQuickModeAction: (() -> Void)?
     private var undoAction: (() -> Void)?
+    private var redoAction: (() -> Void)?
     private var toggleInspectorAction: (() -> Void)?
     private var addColumnAction: (() -> Void)?
     private var organizationMenuAction: (() -> Void)?
@@ -33,6 +35,7 @@ final class NotebookMacToolbarActions: ObservableObject {
     func configure(
         canMarkAllPresent: Bool,
         canUndo: Bool,
+        canRedo: Bool,
         canToggleInspector: Bool,
         isAttendanceQuickMode: Bool,
         isInspectorPresented: Bool,
@@ -43,6 +46,7 @@ final class NotebookMacToolbarActions: ObservableObject {
         onMarkAllPresent: @escaping () -> Void,
         onToggleAttendanceQuickMode: @escaping () -> Void,
         onUndo: @escaping () -> Void,
+        onRedo: @escaping () -> Void,
         onToggleInspector: @escaping () -> Void,
         onAddColumn: @escaping () -> Void,
         onOpenOrganizationMenu: @escaping () -> Void,
@@ -54,6 +58,7 @@ final class NotebookMacToolbarActions: ObservableObject {
         publishDeferred {
             self.canMarkAllPresent = canMarkAllPresent
             self.canUndo = canUndo
+            self.canRedo = canRedo
             self.canToggleInspector = canToggleInspector
             self.isAttendanceQuickMode = isAttendanceQuickMode
             self.isInspectorPresented = isInspectorPresented
@@ -64,6 +69,7 @@ final class NotebookMacToolbarActions: ObservableObject {
             self.markAllPresentAction = onMarkAllPresent
             self.attendanceQuickModeAction = onToggleAttendanceQuickMode
             self.undoAction = onUndo
+            self.redoAction = onRedo
             self.toggleInspectorAction = onToggleInspector
             self.addColumnAction = onAddColumn
             self.organizationMenuAction = onOpenOrganizationMenu
@@ -78,6 +84,7 @@ final class NotebookMacToolbarActions: ObservableObject {
         publishDeferred {
             self.canMarkAllPresent = false
             self.canUndo = false
+            self.canRedo = false
             self.canToggleInspector = false
             self.isAttendanceQuickMode = false
             self.isInspectorPresented = false
@@ -88,6 +95,7 @@ final class NotebookMacToolbarActions: ObservableObject {
             self.markAllPresentAction = nil
             self.attendanceQuickModeAction = nil
             self.undoAction = nil
+            self.redoAction = nil
             self.toggleInspectorAction = nil
             self.addColumnAction = nil
             self.organizationMenuAction = nil
@@ -101,6 +109,7 @@ final class NotebookMacToolbarActions: ObservableObject {
     func markAllPresent() { markAllPresentAction?() }
     func toggleAttendanceQuickMode() { attendanceQuickModeAction?() }
     func undo() { undoAction?() }
+    func redo() { redoAction?() }
     func toggleInspector() { toggleInspectorAction?() }
     func addColumn() { addColumnAction?() }
     func openOrganizationMenu() { organizationMenuAction?() }

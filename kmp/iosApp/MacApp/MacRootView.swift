@@ -156,6 +156,12 @@ struct MacRootView: View {
         .onReceive(NotificationCenter.default.publisher(for: .appleAppReorderNotebookColumnsRequested)) { _ in
             openNotebookColumnOrganizer()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .appleAppUndoNotebookRequested)) { _ in
+            performNotebookUndo()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .appleAppRedoNotebookRequested)) { _ in
+            performNotebookRedo()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .appleAppExportReportRequested)) { _ in
             openReports()
         }
@@ -490,7 +496,13 @@ struct MacRootView: View {
                 Label("Deshacer", systemImage: "arrow.uturn.backward")
             }
             .disabled(!notebookToolbarActions.canUndo)
-            .keyboardShortcut("z", modifiers: .command)
+
+            Button {
+                notebookToolbarActions.redo()
+            } label: {
+                Label("Rehacer", systemImage: "arrow.uturn.forward")
+            }
+            .disabled(!notebookToolbarActions.canRedo)
 
             Divider()
 
@@ -872,6 +884,22 @@ struct MacRootView: View {
     private func openNotebookHiddenColumns() {
         selectFeature(.notebook)
         layoutState.openNotebookHiddenColumns()
+    }
+
+    private func performNotebookUndo() {
+        guard selectedFeature == .notebook else {
+            showBanner("Deshacer está disponible en Cuaderno", systemImage: "arrow.uturn.backward", tint: MacAppStyle.infoTint)
+            return
+        }
+        notebookToolbarActions.undo()
+    }
+
+    private func performNotebookRedo() {
+        guard selectedFeature == .notebook else {
+            showBanner("Rehacer está disponible en Cuaderno", systemImage: "arrow.uturn.forward", tint: MacAppStyle.infoTint)
+            return
+        }
+        notebookToolbarActions.redo()
     }
 
     private func openNotebookColumnOrganizer() {

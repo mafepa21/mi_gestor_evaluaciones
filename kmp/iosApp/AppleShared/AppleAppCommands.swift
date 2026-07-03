@@ -53,6 +53,18 @@ struct AppleAppCommands: Commands {
                 AppleAppCommand.post(.appleAppExportReportRequested)
             }
             .keyboardShortcut("e", modifiers: .command)
+
+            Divider()
+
+            Button("Deshacer cambio") {
+                AppleAppCommand.post(.appleAppUndoNotebookRequested)
+            }
+            .keyboardShortcut("z", modifiers: .command)
+
+            Button("Rehacer cambio") {
+                AppleAppCommand.post(.appleAppRedoNotebookRequested)
+            }
+            .keyboardShortcut("z", modifiers: [.command, .shift])
         }
 
         CommandMenu("Navegación") {
@@ -80,6 +92,8 @@ extension Notification.Name {
     static let appleAppSaveOrSyncRequested = Notification.Name("appleAppSaveOrSyncRequested")
     static let appleAppShowHiddenNotebookColumnsRequested = Notification.Name("appleAppShowHiddenNotebookColumnsRequested")
     static let appleAppReorderNotebookColumnsRequested = Notification.Name("appleAppReorderNotebookColumnsRequested")
+    static let appleAppUndoNotebookRequested = Notification.Name("appleAppUndoNotebookRequested")
+    static let appleAppRedoNotebookRequested = Notification.Name("appleAppRedoNotebookRequested")
     static let appleAppExportReportRequested = Notification.Name("appleAppExportReportRequested")
     static let appleAppNavigateRequested = Notification.Name("appleAppNavigateRequested")
     static let appleAppRefreshRequested = Notification.Name("appleAppRefreshRequested")

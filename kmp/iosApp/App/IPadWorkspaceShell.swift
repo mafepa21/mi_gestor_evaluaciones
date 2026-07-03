@@ -21,6 +21,7 @@ final class WorkspaceLayoutState: ObservableObject {
     @Published var notebookSelectedGroupId: Int64? = nil
     @Published var notebookAvailableGroups: [NotebookToolbarGroupOption] = []
     @Published var notebookCanUndo: Bool = false
+    @Published var notebookCanRedo: Bool = false
     @Published var notebookIsAttendanceQuickMode: Bool = false
     @Published var notebookCanMarkAllPresent: Bool = false
     @Published var notebookExportText: String? = nil
@@ -44,6 +45,7 @@ final class WorkspaceLayoutState: ObservableObject {
     var notebookGroupFilterAction: ((Int64?) -> Void)?
     var notebookOrganizationMenuAction: (() -> Void)?
     var notebookUndoAction: (() -> Void)?
+    var notebookRedoAction: (() -> Void)?
     var notebookToggleAttendanceQuickModeAction: (() -> Void)?
     var notebookMarkAllPresentAction: (() -> Void)?
     var notebookRefreshAction: (() -> Void)?
@@ -86,6 +88,7 @@ final class WorkspaceLayoutState: ObservableObject {
         availableGroups: [NotebookToolbarGroupOption],
         organizationMenuAvailable: Bool,
         canUndo: Bool = false,
+        canRedo: Bool = false,
         isAttendanceQuickMode: Bool = false,
         canMarkAllPresent: Bool = false,
         exportText: String? = nil,
@@ -96,6 +99,7 @@ final class WorkspaceLayoutState: ObservableObject {
         onGroupFilterChange: @escaping (Int64?) -> Void,
         onOpenOrganizationMenu: @escaping () -> Void,
         onUndo: (() -> Void)? = nil,
+        onRedo: (() -> Void)? = nil,
         onToggleAttendanceQuickMode: (() -> Void)? = nil,
         onMarkAllPresent: (() -> Void)? = nil,
         onRefresh: (() -> Void)? = nil,
@@ -111,6 +115,7 @@ final class WorkspaceLayoutState: ObservableObject {
             self.notebookAvailableGroups = availableGroups
             self.notebookOrganizationMenuAvailable = organizationMenuAvailable
             self.notebookCanUndo = canUndo
+            self.notebookCanRedo = canRedo
             self.notebookIsAttendanceQuickMode = isAttendanceQuickMode
             self.notebookCanMarkAllPresent = canMarkAllPresent
             self.notebookExportText = exportText
@@ -121,6 +126,7 @@ final class WorkspaceLayoutState: ObservableObject {
             self.notebookGroupFilterAction = onGroupFilterChange
             self.notebookOrganizationMenuAction = onOpenOrganizationMenu
             self.notebookUndoAction = onUndo
+            self.notebookRedoAction = onRedo
             self.notebookToggleAttendanceQuickModeAction = onToggleAttendanceQuickMode
             self.notebookMarkAllPresentAction = onMarkAllPresent
             self.notebookRefreshAction = onRefresh
@@ -138,6 +144,7 @@ final class WorkspaceLayoutState: ObservableObject {
         availableGroups: [NotebookToolbarGroupOption],
         organizationMenuAvailable: Bool,
         canUndo: Bool = false,
+        canRedo: Bool = false,
         isAttendanceQuickMode: Bool = false,
         canMarkAllPresent: Bool = false,
         exportText: String? = nil
@@ -152,6 +159,7 @@ final class WorkspaceLayoutState: ObservableObject {
             self.notebookAvailableGroups = availableGroups
             self.notebookOrganizationMenuAvailable = organizationMenuAvailable
             self.notebookCanUndo = canUndo
+            self.notebookCanRedo = canRedo
             self.notebookIsAttendanceQuickMode = isAttendanceQuickMode
             self.notebookCanMarkAllPresent = canMarkAllPresent
             self.notebookExportText = exportText
@@ -170,6 +178,7 @@ final class WorkspaceLayoutState: ObservableObject {
             self.notebookSelectedGroupId = nil
             self.notebookAvailableGroups = []
             self.notebookCanUndo = false
+            self.notebookCanRedo = false
             self.notebookIsAttendanceQuickMode = false
             self.notebookCanMarkAllPresent = false
             self.notebookExportText = nil
@@ -180,6 +189,7 @@ final class WorkspaceLayoutState: ObservableObject {
             self.notebookGroupFilterAction = nil
             self.notebookOrganizationMenuAction = nil
             self.notebookUndoAction = nil
+            self.notebookRedoAction = nil
             self.notebookToggleAttendanceQuickModeAction = nil
             self.notebookMarkAllPresentAction = nil
             self.notebookRefreshAction = nil
@@ -197,6 +207,10 @@ final class WorkspaceLayoutState: ObservableObject {
 
     func notebookUndo() {
         notebookUndoAction?()
+    }
+
+    func notebookRedo() {
+        notebookRedoAction?()
     }
 
     func notebookToggleAttendanceQuickMode() {

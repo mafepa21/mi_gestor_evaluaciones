@@ -843,7 +843,9 @@ private struct NotebookStatefulEditableTableCell: View {
                         .submitLabel(.next)
                         .foregroundStyle(.primary)
                         .onSubmit { saveNumericAndNavigate(navigationDirection) }
+                    #if canImport(UIKit)
                         .simultaneousGesture(numericDragGesture)
+                    #endif
 
                     #if canImport(UIKit)
                     field
@@ -1365,7 +1367,7 @@ private struct NotebookStatefulEditableTableCell: View {
             } else {
                 actions.saveColumnGradeDebounced(item.student.id, column, numericDraft)
             }
-            markSaveInProgress()
+            markSaveInProgress(immediate: immediate)
             onCellSaved()
         }
     }
@@ -1389,7 +1391,7 @@ private struct NotebookStatefulEditableTableCell: View {
             } else {
                 actions.saveColumnGradeDebounced(item.student.id, column, textDraft)
             }
-            markSaveInProgress()
+            markSaveInProgress(immediate: immediate)
             onCellSaved()
         }
     }
@@ -1411,7 +1413,7 @@ private struct NotebookStatefulEditableTableCell: View {
         }
         AppleInteractionFeedback.play(.selection)
         actions.saveColumnGrade(item.student.id, column, option)
-        markSaveInProgress()
+        markSaveInProgress(immediate: true)
         onCellSaved()
         onNavigate(navigationDirection)
     }
@@ -1430,7 +1432,7 @@ private struct NotebookStatefulEditableTableCell: View {
         }
         AppleInteractionFeedback.play(.lightImpact)
         actions.saveColumnGrade(item.student.id, column, nextValue)
-        markSaveInProgress()
+        markSaveInProgress(immediate: true)
         onCellSaved()
         onNavigate(navigationDirection)
     }
@@ -1448,7 +1450,7 @@ private struct NotebookStatefulEditableTableCell: View {
         }
         AppleInteractionFeedback.play(.selection)
         actions.saveColumnGrade(item.student.id, column, canonicalStatus)
-        markSaveInProgress()
+        markSaveInProgress(immediate: true)
         onCellSaved()
         onNavigate(navigationDirection)
 
@@ -1512,11 +1514,23 @@ private struct NotebookStatefulEditableTableCell: View {
         #endif
     }
 
-    private func markSaveInProgress() {
+    private func markSaveInProgress(immediate: Bool) {
         saveFeedbackTask?.cancel()
+        guard !immediate else {
+            // El guardado inmediato ya se ha despachado sin ventana de espera:
+            // no hay una fase "guardando" real que mostrar, solo la confirmación.
+            saveFeedback = .saved
+            saveFeedbackTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 1_400_000_000)
+                guard !Task.isCancelled else { return }
+                saveFeedback = .idle
+            }
+            return
+        }
         saveFeedback = .saving
         saveFeedbackTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 700_000_000)
+            // Coincide con el debounce real de saveColumnGrade en kmp/shared (NotebookViewModel, 500ms).
+            try? await Task.sleep(nanoseconds: 500_000_000)
             guard !Task.isCancelled else { return }
             saveFeedback = .saved
             try? await Task.sleep(nanoseconds: 1_400_000_000)

@@ -43,7 +43,7 @@ extension NotebookModuleView {
 
     func headerContextLine(in data: NotebookUiStateData) -> String {
         let classText = activeClassLabel
-        let groupText = selectedGroupId.flatMap { groupName(for: $0, in: data) } ?? "Grupo completo"
+        let groupText = selectedGroupId.flatMap { groupName(for: $0, in: data) } ?? notebookClearGroupFilterTitle
         let tabText = activeNotebookTab(data: data)?.title
         return [classText, tabText, groupText]
             .compactMap { value in
@@ -135,6 +135,7 @@ extension NotebookModuleView {
             },
             organizationMenuAvailable: true,
             canUndo: !undoStack.isEmpty,
+            canRedo: !redoStack.isEmpty,
             isAttendanceQuickMode: isAttendanceQuickMode,
             canMarkAllPresent: canMarkAllPresent,
             exportText: exportText(data: data),
@@ -165,6 +166,9 @@ extension NotebookModuleView {
             onUndo: {
                 undoLastCellChange()
             },
+            onRedo: {
+                redoLastCellChange()
+            },
             onToggleAttendanceQuickMode: {
                 isAttendanceQuickMode.toggle()
                 if isAttendanceQuickMode {
@@ -188,6 +192,7 @@ extension NotebookModuleView {
         macToolbarActions?.configure(
             canMarkAllPresent: canMarkAllPresent,
             canUndo: !undoStack.isEmpty,
+            canRedo: !redoStack.isEmpty,
             canToggleInspector: inspectorAvailable,
             isAttendanceQuickMode: isAttendanceQuickMode,
             isInspectorPresented: isInspectorPresented,
@@ -207,6 +212,9 @@ extension NotebookModuleView {
             },
             onUndo: {
                 undoLastCellChange()
+            },
+            onRedo: {
+                redoLastCellChange()
             },
             onToggleInspector: {
                 if inspectorSelection == nil {
@@ -270,7 +278,7 @@ extension NotebookModuleView {
         let classKey = currentClass?.id ?? -1
         let groupKey = selectedGroupId ?? -1
         let inspectorKey = inspectorSelection?.id ?? "none"
-        return "\(classKey)|\(groupKey)|\(surfaceMode.rawValue)|\(managedColumns(data: data).count)|\(filteredRows(data: data).count)|\(inspectorKey)|\(isInspectorPresented)|\(undoStack.count)|\(isAttendanceQuickMode)|\(bridge.notebookSplitSaveState.state)"
+        return "\(classKey)|\(groupKey)|\(surfaceMode.rawValue)|\(managedColumns(data: data).count)|\(filteredRows(data: data).count)|\(inspectorKey)|\(isInspectorPresented)|\(undoStack.count)|\(redoStack.count)|\(isAttendanceQuickMode)|\(bridge.notebookSplitSaveState.state)"
     }
 
     var notebookRiskRefreshKey: String {

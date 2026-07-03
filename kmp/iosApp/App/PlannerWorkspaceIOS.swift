@@ -2443,6 +2443,7 @@ struct PlannerWorkspaceIOS: View {
 
     private var plannerFloatingControls: some View {
         PlannerLiquidGlassControls(
+            density: $vm.density,
             canOpenDiary: vm.selectedSession != nil,
             canCopySelection: !vm.selectedSessionIds.isEmpty,
             canClearSchedulelessWeek: vm.canClearSchedulelessWeekSessions,
@@ -2572,14 +2573,6 @@ struct PlannerToolbar: View {
                     }
                     .pickerStyle(.menu)
                     .frame(maxWidth: 180)
-
-                    Picker("Densidad", selection: $vm.density) {
-                        ForEach(PlannerDensity.allCases) { density in
-                            Text(density.rawValue).tag(density)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .frame(maxWidth: 128)
                 }
                 .controlSize(.small)
 

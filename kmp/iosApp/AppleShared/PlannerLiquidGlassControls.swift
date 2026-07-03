@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct PlannerLiquidGlassControls: View {
+    @Binding var density: PlannerDensity
     let canOpenDiary: Bool
     let canCopySelection: Bool
     let canClearSchedulelessWeek: Bool
@@ -68,6 +69,12 @@ struct PlannerLiquidGlassControls: View {
             Button("Sincronizar", systemImage: "arrow.triangle.2.circlepath", action: onSync)
             ShareLink(item: shareText) {
                 Label("Compartir planificación", systemImage: "square.and.arrow.up")
+            }
+            Divider()
+            Picker("Densidad", selection: $density) {
+                ForEach(PlannerDensity.allCases) { density in
+                    Text(density.rawValue).tag(density)
+                }
             }
             Divider()
             Button(isSelectionModeActive ? "Salir de selección" : "Seleccionar sesiones", systemImage: "checklist", action: onToggleSelection)

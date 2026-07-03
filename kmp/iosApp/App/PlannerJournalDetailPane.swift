@@ -1175,3 +1175,26 @@ private func plannerSafeDisplayText(_ value: String, fallback: String) -> String
     return trimmed
 }
 
+
+private extension SessionJournalMediaType {
+    var title: String {
+        switch self {
+        case .photo: return "Foto"
+        case .audio: return "Audio"
+        case .transcript: return "Dictado"
+        default: return "Media"
+        }
+    }
+}
+
+private extension SessionJournalLinkType {
+    var title: String {
+        switch self {
+        case .notebook: return "Cuaderno"
+        case .attendance: return "Asistencia"
+        case .incident: return "Incidencia"
+        case .family: return "Familias"
+        default: return "Enlace"
+        }
+    }
+}

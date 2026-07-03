@@ -205,12 +205,6 @@ extension NotebookModuleView {
                                 notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: columnId)
                             }
                         },
-                        onOpenHiddenColumns: {
-                            isOrganizationMenuPresented = false
-                            DispatchQueue.main.async {
-                                isHiddenColumnsSheetPresented = true
-                            }
-                        },
                         onShowAll: {
                             showAllManagedColumns(data: data)
                         },

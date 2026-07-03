@@ -423,6 +423,18 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-07-03 - Compactación de cabecera y progreso expandible de planificación
+
+Resumen:
+- **Cambios realizados**: Se compactó el panel hero de `PlannerToolbar` en `PlannerWorkspaceIOS.swift`. Título y subtítulo se unificaron en un bloque vertical de espaciado 8pt. El strip de progreso (`PlannerSituationProgressStrip` / `PlannerWeekProgressStrip`) se envolvió en un botón interactivo tipo chevron que rota de 0 a 90 grados, ocultando o mostrando el progreso con una animación fluida de tipo spring. El estado de expansión se almacena persistido mediante `@AppStorage("planner_toolbar_progress_expanded")`.
+- **Por qué importa**: Optimiza la densidad visual del planificador en iPad y Mac, permitiendo ganar espacio vertical de trabajo en el grid semanal mientras se preserva el acceso inmediato al progreso.
+- **Ruta de los cambios**:
+  - [PlannerWorkspaceIOS.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/PlannerWorkspaceIOS.swift)
+- **Validación realizada**: Compilación verificada con éxito tanto para iOS Simulator como para macOS Native usando la suite `./scripts/verify_apple_builds.sh` con Xcode-beta.
+
+Notas para futuras conversaciones:
+- El estado de expansión se almacena de forma persistente y local por dispositivo, mejorando la ergonomía de uso diario al recordar la preferencia del docente.
+
 ### 2026-07-03 - Rediseño de controles de planificación y migración de selector de densidad
 
 Resumen:

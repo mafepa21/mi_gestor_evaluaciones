@@ -207,6 +207,7 @@
 		9886188422D810036E17FDCD /* ImportPreviewModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D93A76DF493650C1B4A2C09 /* ImportPreviewModels.swift */; };
 		999AD638514A03DA2C933DA3 /* CoreXLSX in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2806E8CC764E9D8FD6409 /* CoreXLSX */; };
 		9A0540F813120813D331EA7F /* PlannerLiquidGlassControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0C94B9DDCF7110BC8C2A4DB /* PlannerLiquidGlassControls.swift */; };
+		BFFFDF3371BE947BADE30986 /* PlannerCascadeDropCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB1814ACC393C0F02A2A8D90 /* PlannerCascadeDropCoordinator.swift */; };
 		9A31C548996D137897FA1C75 /* AppleBridgeBootstrap.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4DF051FC8473FCD24BCC26C /* AppleBridgeBootstrap.swift */; };
 		9AA8BC06ED560D826F02901B /* AttendanceWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 284EFC5D21CE71AE69E43094 /* AttendanceWorkspaceView.swift */; };
 		9AFEF1D8CE80DFB68F1D38FB /* AppleAISettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28F8916B5C4C8F6DBC133D2B /* AppleAISettingsView.swift */; };
@@ -256,6 +257,7 @@
 		C3F8BC42806F5865C3CBF99B /* CoursesWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC6FF32972AD484A9FAEABBC /* CoursesWorkspaceView.swift */; };
 		C5E80A167C7AB5EDD13BCC51 /* IOSPremiumComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ED9DC6173D7A4938D83F2BB /* IOSPremiumComponents.swift */; };
 		C69D10C36B131D7D28DF9895 /* PlannerLiquidGlassControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0C94B9DDCF7110BC8C2A4DB /* PlannerLiquidGlassControls.swift */; };
+		CD640ACEBFA18DE809730F5D /* PlannerCascadeDropCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB1814ACC393C0F02A2A8D90 /* PlannerCascadeDropCoordinator.swift */; };
 		C8FFAFE5E4157F90035D3A27 /* NotebookGroupManagementSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A63C3DA4B9E97ACDAA83D53 /* NotebookGroupManagementSheet.swift */; };
 		C912103268D6101445655180 /* BackupHistoryList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EA2D2AD055252AE33611496 /* BackupHistoryList.swift */; };
 		C98B0AE6088C90E8B2E58EDB /* SyncPairingViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92E4753F5750444721BF2027 /* SyncPairingViews.swift */; };
@@ -518,6 +520,7 @@
 		DC6FF32972AD484A9FAEABBC /* CoursesWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoursesWorkspaceView.swift; sourceTree = "<group>"; };
 		DDF85B72D878968E171D9F9C /* GeneralSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralSettingsView.swift; sourceTree = "<group>"; };
 		E0C94B9DDCF7110BC8C2A4DB /* PlannerLiquidGlassControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerLiquidGlassControls.swift; sourceTree = "<group>"; };
+		DB1814ACC393C0F02A2A8D90 /* PlannerCascadeDropCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerCascadeDropCoordinator.swift; sourceTree = "<group>"; };
 		E44007C231E03029435B056F /* AppleBackupService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleBackupService.swift; sourceTree = "<group>"; };
 		E4A15D63AA4E7899412B1046 /* LearningSituationAssessmentInstrumentsImportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearningSituationAssessmentInstrumentsImportService.swift; sourceTree = "<group>"; };
 		E57AA10D4F5A9A3199288A4C /* MacAppStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacAppStyle.swift; sourceTree = "<group>"; };
@@ -629,6 +632,7 @@
 				5ADD746834EBC2A6B190831A /* PhysicalTestsColumnCreationPolicy.swift */,
 				41139A912BA4EE69F5B2DC1A /* PhysicalTestsColumnOptionsView.swift */,
 				E0C94B9DDCF7110BC8C2A4DB /* PlannerLiquidGlassControls.swift */,
+				DB1814ACC393C0F02A2A8D90 /* PlannerCascadeDropCoordinator.swift */,
 				D9892E60A7CF035F7B78B081 /* QRCodeView.swift */,
 				C6A13EB373B0EE87E425E97C /* ScheduleExcelImportService.swift */,
 				C85AD42D18AFCD452127D549 /* ScheduleImportModels.swift */,
@@ -1114,6 +1118,7 @@
 				64ED57DB32C7EBBDD5F2F1BD /* PhysicalTestsWorkspaceView.swift in Sources */,
 				1888893E4575900D01629700 /* PlannerFloatingTabBar.swift in Sources */,
 				9A0540F813120813D331EA7F /* PlannerLiquidGlassControls.swift in Sources */,
+				BFFFDF3371BE947BADE30986 /* PlannerCascadeDropCoordinator.swift in Sources */,
 				7AB1BAD7B74A9E61B2B0CD10 /* PlannerMacLayout.swift in Sources */,
 				1E0CCE81083A1420776AE50E /* PlannerSequenceGanttView.swift in Sources */,
 				DD5D6CEE951094108091C062 /* PlannerSummaryDashboard.swift in Sources */,
@@ -1265,6 +1270,7 @@
 				0D80693A9F28A17CBBB51A33 /* PhysicalTestsWorkspaceView.swift in Sources */,
 				57B71C3913C7F4D901323B42 /* PlannerFloatingTabBar.swift in Sources */,
 				C69D10C36B131D7D28DF9895 /* PlannerLiquidGlassControls.swift in Sources */,
+				CD640ACEBFA18DE809730F5D /* PlannerCascadeDropCoordinator.swift in Sources */,
 				0A94F3EA584945A698FC6F74 /* PlannerSequenceGanttView.swift in Sources */,
 				E8AE4881FFB88C106A37924D /* PlannerSummaryDashboard.swift in Sources */,
 				FB055151EE3D206236A08C2F /* PlannerWeekDetailPane.swift in Sources */,

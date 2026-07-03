@@ -423,6 +423,20 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-07-03 - Reubicación de la gestión de pestañas y vista compacta al menú de organización
+
+Resumen:
+- **Cambios realizados**: Se eliminó el botón `plus` de creación de pestañas y los menús contextuales de renombrado/eliminación de la barra de pestañas (`NotebookTabStrip.swift`). Se quitó la opción de "Vista compacta" de la toolbar de acciones secundarias de `NotebookModuleView.swift`. Se retiró el botón "Nueva pestaña" de `.toolbarTitleMenu`. Estas acciones se recolocaron en la hoja de organización (`NotebookModuleOrganization.swift`), donde se agregó una nueva sección de "Pestañas (Temas)" para gestionar por completo las pestañas y un `Toggle("Vista compacta")` en la sección de "Vista".
+- **Por qué importa**: Reduce el ruido visual y la sobrecarga cognitiva en los viewport de trabajo diario del cuaderno, aislando las herramientas de configuración de estructura dentro del panel específico de organización.
+- **Ruta de los cambios**:
+  - [NotebookTabStrip.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/NotebookTabStrip.swift)
+  - [NotebookModuleView.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/NotebookModuleView.swift)
+  - [NotebookModuleOrganization.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/NotebookModuleOrganization.swift)
+- **Validación realizada**: Compilación completada con éxito para iOS Simulator y macOS Native usando `./scripts/verify_apple_builds.sh` con Xcode-beta.
+
+Notas para futuras conversaciones:
+- La creación, renombrado y borrado de pestañas ahora requiere abrir el panel de organización, lo cual previene manipulaciones estructurales accidentales durante el registro rápido de notas diarias.
+
 ### 2026-07-03 - Compactación de cabecera y progreso expandible de planificación
 
 Resumen:

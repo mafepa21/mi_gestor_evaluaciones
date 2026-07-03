@@ -21,10 +21,11 @@ struct PlannerLiquidGlassControls: View {
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
+    @Namespace private var glassNamespace
 
     var body: some View {
         if #available(iOS 26.0, macOS 26.0, *) {
-            GlassEffectContainer(spacing: 8) {
+            GlassEffectContainer(spacing: glassContainerSpacing) {
                 controls
             }
         } else {
@@ -42,20 +43,20 @@ struct PlannerLiquidGlassControls: View {
     }
 
     private var regularControls: some View {
-        HStack(spacing: 8) {
-            secondaryButton(systemImage: "chevron.left", label: "Semana anterior", action: onPreviousWeek)
-            secondaryButton(systemImage: "chevron.right", label: "Semana siguiente", action: onNextWeek)
-            secondaryButton(systemImage: "calendar", label: "Hoy", action: onToday)
+        HStack(spacing: controlSpacing) {
+            secondaryButton(systemImage: "chevron.left", label: "Semana anterior", glassID: "planner-week-previous", action: onPreviousWeek)
+            secondaryButton(systemImage: "chevron.right", label: "Semana siguiente", glassID: "planner-week-next", action: onNextWeek)
+            secondaryButton(systemImage: "calendar", label: "Hoy", glassID: "planner-week-today", action: onToday)
             secondaryMenu
             prominentButton
         }
     }
 
     private var compactControls: some View {
-        HStack(spacing: 8) {
-            secondaryButton(systemImage: "chevron.left", label: "Semana anterior", action: onPreviousWeek)
-            secondaryButton(systemImage: "chevron.right", label: "Semana siguiente", action: onNextWeek)
-            secondaryButton(systemImage: "calendar", label: "Hoy", action: onToday)
+        HStack(spacing: controlSpacing) {
+            secondaryButton(systemImage: "chevron.left", label: "Semana anterior", glassID: "planner-week-previous", action: onPreviousWeek)
+            secondaryButton(systemImage: "chevron.right", label: "Semana siguiente", glassID: "planner-week-next", action: onNextWeek)
+            secondaryButton(systemImage: "calendar", label: "Hoy", glassID: "planner-week-today", action: onToday)
             secondaryMenu
             prominentButton
         }
@@ -84,6 +85,7 @@ struct PlannerLiquidGlassControls: View {
                 .frame(minWidth: compactButtonSide, minHeight: compactButtonSide)
         }
         .plannerLiquidGlassControlButtonStyle()
+        .plannerLiquidGlassControlIdentity("planner-week-actions", in: glassNamespace)
         .accessibilityLabel("Acciones secundarias")
     }
 
@@ -93,15 +95,17 @@ struct PlannerLiquidGlassControls: View {
                 .frame(minWidth: usesCompactControls ? compactButtonSide : 0, minHeight: compactButtonSide)
         }
         .plannerLiquidGlassControlButtonStyle(isProminent: true)
+        .plannerLiquidGlassControlIdentity("planner-week-new-session", in: glassNamespace)
         .accessibilityLabel("Nueva sesión")
     }
 
-    private func secondaryButton(systemImage: String, label: String, action: @escaping () -> Void) -> some View {
+    private func secondaryButton(systemImage: String, label: String, glassID: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Label(label, systemImage: systemImage)
                 .frame(minWidth: compactButtonSide, minHeight: compactButtonSide)
         }
         .plannerLiquidGlassControlButtonStyle()
+        .plannerLiquidGlassControlIdentity(glassID, in: glassNamespace)
         .accessibilityLabel(label)
     }
 
@@ -114,6 +118,8 @@ struct PlannerLiquidGlassControls: View {
     }
 
     private var compactButtonSide: CGFloat { 40 }
+    private var controlSpacing: CGFloat { 16 }
+    private var glassContainerSpacing: CGFloat { 16 }
 }
 
 private extension View {
@@ -125,6 +131,7 @@ private extension View {
                     .buttonStyle(.glassProminent)
                     .buttonBorderShape(.capsule)
                     .controlSize(.regular)
+                    .tint(EvaluationDesign.accent)
             } else {
                 self
                     .buttonStyle(.glass)
@@ -143,6 +150,15 @@ private extension View {
                     .buttonBorderShape(.capsule)
                     .controlSize(.regular)
             }
+        }
+    }
+
+    @ViewBuilder
+    func plannerLiquidGlassControlIdentity(_ id: String, in namespace: Namespace.ID) -> some View {
+        if #available(iOS 26.0, macOS 26.0, *) {
+            self.glassEffectID(id, in: namespace)
+        } else {
+            self
         }
     }
 }

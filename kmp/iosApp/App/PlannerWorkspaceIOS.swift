@@ -2416,12 +2416,12 @@ struct PlannerWorkspaceIOS: View {
                             onOpenSession: openSessionInDiary
                         )
                         .safeAreaInset(edge: .bottom) {
-                            Color.clear.frame(height: 88)
+                            Color.clear.frame(height: 96)
                         }
 
                         plannerFloatingControls
                             .padding(.horizontal, EvaluationDesign.screenPadding)
-                            .padding(.bottom, 24)
+                            .padding(.bottom, 32)
                     }
                 case .day:
                     PlannerDayView(vm: vm, onOpenSession: openSessionInDiary)

@@ -423,6 +423,19 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 
 ## 10. Bitácora de avances significativos
 
+### 2026-07-03 - Rediseño de controles de planificación y migración de selector de densidad
+
+Resumen:
+- **Cambios realizados**: Se eliminó el `Picker("Densidad")` de la barra de herramientas principal `PlannerToolbar` en `PlannerWorkspaceIOS.swift` y se movió como un picker inline dentro del menú de acciones secundarias de `PlannerLiquidGlassControls.swift`.
+- **Por qué importa**: Reduce la densidad cognitiva y el ruido visual en la cabecera del Planificador, dejando el espacio superior libre y ubicando los selectores del visualizador agrupados semánticamente en el menú contextual secundario.
+- **Ruta de los cambios**:
+  - [PlannerWorkspaceIOS.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/PlannerWorkspaceIOS.swift)
+  - [PlannerLiquidGlassControls.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/AppleShared/PlannerLiquidGlassControls.swift)
+- **Validación realizada**: Ejecución exitosa de `./scripts/verify_apple_builds.sh` con la variable `DEVELOPER_DIR` apuntando a `/Users/mariofernandez/Downloads/Xcode-beta.app/Contents/Developer`. La compilación de macOS y de iOS Simulator finalizó sin errores (`SUCCEEDED`).
+
+Notas para futuras conversaciones:
+- El enum `PlannerDensity` se define en `PlannerWorkspaceIOS.swift` pero es accesible en `AppleShared/` porque ambos archivos forman parte del mismo target de Xcode según `project.yml`. El binding `$vm.density` se propaga al control flotante Liquid Glass.
+
 ### 2026-06-19 - Mecanismo de recuperación ante incompatibilidad de versión de base de datos en arranque (macOS/iOS)
 
 Resumen:

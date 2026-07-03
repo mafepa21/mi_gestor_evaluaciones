@@ -2535,23 +2535,49 @@ struct PlannerWorkspaceIOS: View {
 
 struct PlannerToolbar: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
+    @AppStorage("planner_toolbar_progress_expanded") private var isProgressExpanded = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            VStack(alignment: .leading, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(toolbarTitle)
-                        .font(.system(size: 22, weight: .black, design: .rounded))
-                        .lineLimit(2)
-                    Text(toolbarSubtitle)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 16) {
+                Button(action: {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        isProgressExpanded.toggle()
+                    }
+                }) {
+                    HStack(alignment: .center, spacing: 8) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(toolbarTitle)
+                                .font(.system(size: 20, weight: .bold, design: .rounded))
+                                .lineLimit(1)
+                                .foregroundStyle(.primary)
+                            Text(toolbarSubtitle)
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(.secondary)
+                        }
+                        
+                        Spacer(minLength: 8)
+                        
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.secondary)
+                            .rotationEffect(.degrees(isProgressExpanded ? 90 : 0))
+                    }
                 }
+                .buttonStyle(.plain)
 
-                if let progress = vm.situationProgress(for: vm.selectedSession) {
-                    PlannerSituationProgressStrip(progress: progress)
-                } else {
-                    PlannerWeekProgressStrip(vm: vm)
+                if isProgressExpanded {
+                    Group {
+                        if let progress = vm.situationProgress(for: vm.selectedSession) {
+                            PlannerSituationProgressStrip(progress: progress)
+                        } else {
+                            PlannerWeekProgressStrip(vm: vm)
+                        }
+                    }
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.95, anchor: .top)).animation(.easeOut(duration: 0.2)),
+                        removal: .opacity.animation(.easeIn(duration: 0.15))
+                    ))
                 }
             }
             .padding(16)

@@ -243,8 +243,7 @@ struct PlannerSessionDetailSheet: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(prominence == .hero ? 24 : 20)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(EvaluationDesign.border, lineWidth: 1))
+        .plannerGlassPanel(prominence == .hero ? .hero : .content, cornerRadius: 20)
     }
 
     private func evaluationCard(criteria: [String], evidence: String) -> some View {
@@ -280,8 +279,7 @@ struct PlannerSessionDetailSheet: View {
             }
         }
         .padding(20)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(EvaluationDesign.border, lineWidth: 1))
+        .plannerGlassPanel(.content, cornerRadius: 20)
     }
 
     private func materialCard(_ material: String) -> some View {
@@ -301,8 +299,7 @@ struct PlannerSessionDetailSheet: View {
             }
         }
         .padding(20)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(EvaluationDesign.border, lineWidth: 1))
+        .plannerGlassPanel(.content, cornerRadius: 20)
     }
 
     private func developmentTimeline(_ plan: LearningSituationSessionPlan) -> some View {
@@ -332,8 +329,7 @@ struct PlannerSessionDetailSheet: View {
                     }
                 }
                 .padding(20)
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(EvaluationDesign.border, lineWidth: 1))
+                .plannerGlassPanel(.content, cornerRadius: 20)
             }
         }
     }
@@ -448,8 +444,7 @@ struct PlannerSessionDetailSheet: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(20)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(EvaluationDesign.border, lineWidth: 1))
+        .plannerGlassPanel(.content, cornerRadius: 20)
     }
 
     private var sourceDocumentFileURL: URL? {

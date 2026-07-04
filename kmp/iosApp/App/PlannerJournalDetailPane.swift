@@ -52,8 +52,7 @@ struct PlannerJournalDetailPane: View {
                                 }
                             }
                             .padding(16)
-                            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(EvaluationDesign.border, lineWidth: 1))
+                            .plannerGlassPanel(.content, cornerRadius: 16)
                         }
                     }
                     .padding(EvaluationDesign.screenPadding)
@@ -955,11 +954,7 @@ struct PlannerInstrumentCompactPicker: View {
                     }
                 }
                 .padding(16)
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(EvaluationDesign.border, lineWidth: 0.5)
-                }
+                .plannerGlassPanel(.content, cornerRadius: 14)
                 .transition(uiFeatureFlags.reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
             }
         }
@@ -1077,11 +1072,7 @@ private struct PlannerInstrumentDisclosureSection: View {
             }
         }
         .padding(8)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(EvaluationDesign.border, lineWidth: 0.5)
-        }
+        .plannerGlassPanel(.control, cornerRadius: 12)
         .shadow(color: EvaluationDesign.shadow, radius: 12, x: 0, y: 4)
     }
 

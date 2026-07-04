@@ -29,6 +29,27 @@ func appTertiarySystemFillColor() -> Color {
 #endif
 }
 
+/// Color de marca con variante propia para modo oscuro (en vez de una sola
+/// mezcla fija), necesaria para mantener contraste AA de los colores de
+/// estado sobre fondos oscuros.
+func appAdaptiveBrandColor(
+    light: (red: Double, green: Double, blue: Double),
+    dark: (red: Double, green: Double, blue: Double)
+) -> Color {
+#if os(macOS)
+    Color(nsColor: NSColor(name: nil) { appearance in
+        let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        let c = isDark ? dark : light
+        return NSColor(red: c.red, green: c.green, blue: c.blue, alpha: 1)
+    })
+#else
+    Color(uiColor: UIColor { traits in
+        let c = traits.userInterfaceStyle == .dark ? dark : light
+        return UIColor(red: c.red, green: c.green, blue: c.blue, alpha: 1)
+    })
+#endif
+}
+
 extension View {
     @ViewBuilder
     func appInlineNavigationBarTitleDisplayMode() -> some View {

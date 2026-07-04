@@ -5,6 +5,7 @@ struct PlannerSummaryDashboard: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
     let onOpenSettings: (() -> Void)?
     let onOpenSession: (PlanningSession) -> Void
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
 
     @State private var selectedRange: PlannerReportRange = .week
     @State private var rangeData: PlannerRangeData = .empty
@@ -59,7 +60,10 @@ struct PlannerSummaryDashboard: View {
         isLoadingRange = true
         reportURL = nil
         defer { isLoadingRange = false }
-        rangeData = await vm.loadRangeData(selectedRange, groupId: vm.selectedGroupId)
+        let data = await vm.loadRangeData(selectedRange, groupId: vm.selectedGroupId)
+        withAnimation(uiFeatureFlags.interactionAnimation) {
+            rangeData = data
+        }
     }
 
     private var header: some View {
@@ -367,6 +371,7 @@ private struct PlannerSummaryMetricCard: View {
                 Text(value)
                     .font(.system(size: 34, weight: .bold, design: .rounded))
                     .monospacedDigit()
+                    .contentTransition(.numericText())
                 Text(subtitle)
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
@@ -374,11 +379,10 @@ private struct PlannerSummaryMetricCard: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(EvaluationDesign.border, lineWidth: 1)
-        )
+        .plannerGlassPanel(.content, cornerRadius: 12)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue("\(value), \(subtitle)")
     }
 }
 
@@ -489,6 +493,7 @@ private struct PlannerCoverageRowView: View {
                 Text("\(row.covered)/\(row.available)")
                     .font(.caption.monospacedDigit().weight(.semibold))
                     .foregroundStyle(.secondary)
+                    .contentTransition(.numericText())
             }
 
             GeometryReader { proxy in
@@ -501,7 +506,11 @@ private struct PlannerCoverageRowView: View {
                 }
             }
             .frame(height: 8)
+            .accessibilityHidden(true)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(row.title)
+        .accessibilityValue("\(row.covered) de \(row.available) cubiertas, \(Int(row.ratio * 100)) por ciento")
     }
 
     private var tint: Color {
@@ -570,6 +579,7 @@ private struct PlannerAlertRow: View {
         }
         .padding(12)
         .background(alert.tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -598,11 +608,7 @@ private struct PlannerSummaryPanel<Content: View>: View {
             content
         }
         .padding(16)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(EvaluationDesign.border, lineWidth: 1)
-        )
+        .plannerGlassPanel(.content, cornerRadius: 12)
     }
 }
 

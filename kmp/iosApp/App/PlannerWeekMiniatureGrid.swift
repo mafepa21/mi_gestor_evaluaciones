@@ -21,6 +21,7 @@ struct PlannerWeekMiniatureGrid: View {
     @Binding var selectedDay: Int?
     let onOpenSession: (PlanningSession) -> Void
     var onDropSession: ((Int64, Int, Int) -> Void)? = nil
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
 
     private let timeAxisWidth: CGFloat = 72
     private let headerHeight: CGFloat = 40
@@ -33,6 +34,9 @@ struct PlannerWeekMiniatureGrid: View {
             let columnWidth = gridWidth(proxy.size.width, days: days.count)
             let rowHeight = gridHeight(proxy.size.height, rows: slots.count)
 
+            // El grid tiene celdas de tamaño fijo calculado geométricamente; a partir de
+            // tamaños de accesibilidad grandes el texto rompería el layout, así que se
+            // limita el crecimiento de Dynamic Type aquí (el resto del Planner escala libre).
             VStack(spacing: gridSpacing) {
                 HStack(spacing: gridSpacing) {
                     Text("Franja")
@@ -43,7 +47,7 @@ struct PlannerWeekMiniatureGrid: View {
                     ForEach(days, id: \.self) { day in
                         let isToday = day == todayDayIndex
                         Button {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                            withAnimation(uiFeatureFlags.interactionAnimation) {
                                 selectedDay = day
                                 selectedCell = nil
                             }
@@ -111,7 +115,7 @@ struct PlannerWeekMiniatureGrid: View {
                                 isToday: day == todayDayIndex,
                                 vm: vm,
                                 onTap: {
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                    withAnimation(uiFeatureFlags.interactionAnimation) {
                                         selectedCell = key
                                         selectedDay = nil
                                     }
@@ -128,6 +132,7 @@ struct PlannerWeekMiniatureGrid: View {
                 }
             }
         }
+        .dynamicTypeSize(...DynamicTypeSize.xLarge)
     }
 
     private var isCurrentWeek: Bool {

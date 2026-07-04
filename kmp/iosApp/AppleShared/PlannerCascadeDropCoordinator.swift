@@ -15,8 +15,7 @@ struct PlannerInlineBanner: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(.regularMaterial, in: Capsule())
-        .shadow(color: .black.opacity(0.10), radius: 12, x: 0, y: 6)
+        .plannerGlassPanel(.control, cornerRadius: 999)
     }
 }
 

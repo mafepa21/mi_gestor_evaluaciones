@@ -2,6 +2,7 @@ import SwiftUI
 
 struct PlannerFloatingTabBar: View {
     @Binding var activeSection: PlannerWorkspaceSection
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     @Namespace private var selectionNamespace
 
     var body: some View {
@@ -9,7 +10,7 @@ struct PlannerFloatingTabBar: View {
             HStack(spacing: 4) {
                 ForEach(PlannerWorkspaceSection.allCases) { section in
                     Button {
-                        withAnimation(.spring(response: 0.42, dampingFraction: 0.72)) {
+                        withAnimation(uiFeatureFlags.interactionAnimation) {
                             activeSection = section
                         }
                     } label: {
@@ -36,6 +37,7 @@ struct PlannerFloatingTabBar: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(section.rawValue)
+                    .accessibilityAddTraits(activeSection == section ? [.isSelected] : [])
                 }
             }
         }

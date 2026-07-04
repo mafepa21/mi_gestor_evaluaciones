@@ -19,6 +19,8 @@ struct NotebookCompactCommandBar<FilterActions: View, SecondaryActions: View>: V
     let onFillSelection: () -> Void
     let onClearSelection: () -> Void
     let onCommentSelection: () -> Void
+    let isVoiceDictationActive: Bool
+    let onToggleVoiceDictation: () -> Void
     let onEditColumn: () -> Void
     let onHideColumn: () -> Void
     let onDuplicateColumn: () -> Void
@@ -120,6 +122,12 @@ struct NotebookCompactCommandBar<FilterActions: View, SecondaryActions: View>: V
             textButton(systemImage: "arrow.down.to.line", label: "Rellenar", action: onFillSelection)
             textButton(systemImage: "eraser", label: "Borrar", action: onClearSelection)
             textButton(systemImage: "text.bubble", label: "Comentario", action: onCommentSelection)
+            iconButton(
+                systemImage: isVoiceDictationActive ? "mic.fill" : "mic",
+                label: isVoiceDictationActive ? "Escuchando… toca para parar" : "Dictar nota por voz",
+                action: onToggleVoiceDictation,
+                isActive: isVoiceDictationActive
+            )
         case .column:
             textButton(systemImage: "pencil", label: "Editar", action: onEditColumn)
             textButton(systemImage: "eye.slash", label: "Ocultar", action: onHideColumn)

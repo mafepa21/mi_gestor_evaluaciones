@@ -17,6 +17,7 @@ struct NotebookStudentInspector: View {
     let evidenceText: String
     let evaluationText: String
     let rubricText: String
+    let groupComparison: NotebookGroupComparison?
     let semanticIcons: [String]
     let aiSectionTitle: String?
     let aiSectionOrigin: String?
@@ -115,6 +116,16 @@ struct NotebookStudentInspector: View {
                 HStack(spacing: 8) {
                     NotebookPill(label: valueText.isEmpty ? "Sin valor" : valueText, systemImage: "number", active: true, tint: NotebookStyle.primaryTint, compact: true)
                     NotebookPill(label: "Peso \(weightText)", systemImage: "scalemass", active: false, tint: NotebookStyle.primaryTint, compact: true)
+                }
+
+                if let groupComparison {
+                    HStack(spacing: 6) {
+                        Image(systemName: groupComparison.systemImage)
+                            .font(.caption.weight(.bold))
+                        Text(groupComparison.label)
+                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    }
+                    .foregroundStyle(groupComparison.tint)
                 }
             }
         }
@@ -335,8 +346,59 @@ struct NotebookStudentInspector: View {
         }
     }
 
+    private static let quickObservationPresets = [
+        "No trae material",
+        "Falta entrega",
+        "Participación destacada",
+        "Necesita refuerzo"
+    ]
+
+    private static let quickObservationTimestampFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "dd/MM HH:mm"
+        return formatter
+    }()
+
+    private func appendQuickObservation(_ text: String) {
+        let entry = "[\(Self.quickObservationTimestampFormatter.string(from: Date()))] \(text)"
+        let trimmed = noteDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        noteDraft = trimmed.isEmpty ? entry : trimmed + "\n" + entry
+        onSaveContext()
+    }
+
+    private var quickObservationChips: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Incidencia rápida")
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .foregroundStyle(.secondary)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(Self.quickObservationPresets, id: \.self) { preset in
+                        Button {
+                            appendQuickObservation(preset)
+                        } label: {
+                            Text(preset)
+                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 7)
+                                .background(
+                                    Capsule(style: .continuous)
+                                        .fill(NotebookStyle.primaryTint.opacity(0.10))
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(NotebookStyle.primaryTint)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+        }
+    }
+
     private var evidenceEditor: some View {
         NotebookInspectorSection(title: "Comentario y evidencia", systemImage: "note.text") {
+            quickObservationChips
+
             TextEditor(text: $noteDraft)
                 .frame(minHeight: 140)
                 .padding(8)
@@ -609,6 +671,33 @@ struct NotebookStudentInspector: View {
         } catch {
             educationalInsightError = error.localizedDescription
         }
+    }
+}
+
+struct NotebookGroupComparison {
+    let studentValue: Double
+    let groupAverage: Double
+    let sampleSize: Int
+
+    private var delta: Double { studentValue - groupAverage }
+
+    var label: String {
+        let averageText = String(format: "%.1f", groupAverage)
+        if abs(delta) < 0.05 {
+            return "En la media del grupo (\(averageText))"
+        }
+        let deltaText = String(format: "%+.1f", delta)
+        return "\(deltaText) vs. media del grupo (\(averageText))"
+    }
+
+    var tint: Color {
+        if abs(delta) < 0.05 { return .secondary }
+        return delta > 0 ? NotebookStyle.successTint : NotebookStyle.warningTint
+    }
+
+    var systemImage: String {
+        if abs(delta) < 0.05 { return "equal.circle" }
+        return delta > 0 ? "arrow.up.circle.fill" : "arrow.down.circle.fill"
     }
 }
 

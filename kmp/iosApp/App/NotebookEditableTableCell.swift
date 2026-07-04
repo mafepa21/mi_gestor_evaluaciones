@@ -812,6 +812,9 @@ private struct NotebookStatefulEditableTableCell: View {
         } else {
             switch column.type {
             case .numeric:
+                #if os(macOS)
+                numericMacField
+                #else
                 if keyboardKind != .text {
                     Button {
                         onSelect()
@@ -861,6 +864,7 @@ private struct NotebookStatefulEditableTableCell: View {
                     field
                     #endif
                 }
+                #endif
             case .calculated:
                 Button {
                     onSelect()
@@ -997,6 +1001,24 @@ private struct NotebookStatefulEditableTableCell: View {
             }
         }
     }
+
+    #if os(macOS)
+    private var numericMacField: some View {
+        TextField("", text: $numericDraft)
+            .textFieldStyle(.plain)
+            .multilineTextAlignment(.trailing)
+            .monospacedDigit()
+            .focused(focusedCellId, equals: cellId)
+            .foregroundStyle(.primary)
+            .onSubmit { saveNumericAndNavigate(navigationDirection) }
+            .onKeyPress(.upArrow) { saveNumericAndNavigate(.up); return .handled }
+            .onKeyPress(.downArrow) { saveNumericAndNavigate(.down); return .handled }
+            .onKeyPress(keys: [.tab]) { press in
+                saveNumericAndNavigate(press.modifiers.contains(.shift) ? .left : .right)
+                return .handled
+            }
+    }
+    #endif
 
     private var isAttendanceColumn: Bool {
         column.type == .attendance || column.categoryKind == .attendance

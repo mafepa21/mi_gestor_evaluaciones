@@ -250,6 +250,18 @@ func appCardBackground(for colorScheme: ColorScheme) -> Color {
         : Color.white
 }
 
+extension View {
+    /// Resalta al pasar el puntero (Mac/trackpad) o al tocar (Pencil/dedo en iPad).
+    @ViewBuilder
+    func appInteractiveHighlight() -> some View {
+#if os(iOS)
+        self.hoverEffect(.highlight)
+#else
+        self
+#endif
+    }
+}
+
 enum AppleDesignSystem {
     static let pagePadding: CGFloat = 24
     static let sectionSpacing: CGFloat = 24

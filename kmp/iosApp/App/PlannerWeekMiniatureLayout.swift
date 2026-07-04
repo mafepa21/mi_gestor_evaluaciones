@@ -227,3 +227,21 @@ extension View {
         )
     }
 }
+
+/// Cápsula con icono para el estado de una sesión (planificada/impartida/revisión/etc.),
+/// único estilo de badge de estado en todo el Planner.
+struct PlannerStatusBadge: View {
+    let label: String
+    let systemImage: String
+    let tint: Color
+
+    var body: some View {
+        Label(label, systemImage: systemImage)
+            .font(.caption.weight(.bold))
+            .foregroundStyle(tint)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(tint.opacity(0.12), in: Capsule(style: .continuous))
+            .accessibilityElement(children: .combine)
+    }
+}

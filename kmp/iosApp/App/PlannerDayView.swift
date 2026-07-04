@@ -365,9 +365,11 @@ private struct PlannerDaySessionRow: View {
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(tint)
                     Spacer()
-                    Label(vm.sessionStateLabel(for: session), systemImage: vm.sessionStateIcon(sessionStatus: session.status, journalStatus: vm.summary(for: session.id)?.status))
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(stateTint)
+                    PlannerStatusBadge(
+                        label: vm.sessionStateLabel(for: session),
+                        systemImage: vm.sessionStateIcon(sessionStatus: session.status, journalStatus: vm.summary(for: session.id)?.status),
+                        tint: stateTint
+                    )
                 }
 
                 Text(session.teachingUnitName.nilIfBlank ?? "Sesión sin título")
@@ -398,10 +400,12 @@ private struct PlannerDaySessionRow: View {
             }
         }
         .padding(isCurrent ? 20 : 16)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .plannerGlassPanel(.content, cornerRadius: 16)
         .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(isCurrent ? EvaluationDesign.success.opacity(0.55) : EvaluationDesign.border, lineWidth: isCurrent ? 1.5 : 1)
+            if isCurrent {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(EvaluationDesign.success.opacity(0.55), lineWidth: 1.5)
+            }
         }
         .overlay {
             if isHovering {

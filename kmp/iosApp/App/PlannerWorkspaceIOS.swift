@@ -249,13 +249,14 @@ struct PlannerToolbar: View {
     /// nativa (ver `PlannerMacToolbarActions`); aquí solo queda la tarjeta de
     /// progreso, que sí aporta información y no es mera navegación.
     var showsNavigationControls: Bool = true
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     @AppStorage("planner_toolbar_progress_expanded") private var isProgressExpanded = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             VStack(alignment: .leading, spacing: 16) {
                 Button(action: {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    withAnimation(uiFeatureFlags.interactionAnimation) {
                         isProgressExpanded.toggle()
                     }
                 }) {
@@ -423,8 +424,7 @@ private struct PlannerSituationProgressStrip: View {
             }
         }
         .padding(16)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(EvaluationDesign.border, lineWidth: 1))
+        .plannerGlassPanel(.content, cornerRadius: 16)
     }
 }
 

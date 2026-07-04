@@ -4,6 +4,7 @@ import MiGestorKit
 struct PlannerSequenceGanttView: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
     let onOpenSession: (PlanningSession) -> Void
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
 
     @State private var selectedRange: PlannerGanttRange = .current
     @State private var selectedGroupId: Int64?
@@ -120,11 +121,7 @@ struct PlannerSequenceGanttView: View {
                         )
                     }
                 }
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(EvaluationDesign.border, lineWidth: 1)
-                )
+                .plannerGlassPanel(.content, cornerRadius: 12)
             }
 
             legend
@@ -266,7 +263,7 @@ struct PlannerSequenceGanttView: View {
     }
 
     private func toggle(_ id: String) {
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+        withAnimation(uiFeatureFlags.interactionAnimation) {
             if expandedSituationIds.contains(id) {
                 expandedSituationIds.remove(id)
             } else {
@@ -429,6 +426,9 @@ private struct PlannerGanttSituationRow: View {
                 }
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("\(situation.title): \(situation.completed) de \(situation.total) sesiones, \(situation.pending) sin ubicar")
+            .accessibilityValue(isExpanded ? "Expandido" : "Contraído")
+            .accessibilityHint("Alterna el detalle por grupo")
 
             if isExpanded {
                 ForEach(situation.groups) { group in
@@ -467,21 +467,25 @@ private struct PlannerGanttGroupRow: View {
     var body: some View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(group.groupName)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-
-                if let pace = paceLabel {
-                    Text(pace.text)
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(pace.tint)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(group.groupName)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.primary)
                         .lineLimit(1)
-                } else {
-                    Text("\(group.plannedCount) planificadas")
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(.secondary)
+
+                    if let pace = paceLabel {
+                        Text(pace.text)
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(pace.tint)
+                            .lineLimit(1)
+                    } else {
+                        Text("\(group.plannedCount) planificadas")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.secondary)
+                    }
                 }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("\(group.groupName): \(paceLabel?.text ?? "\(group.plannedCount) planificadas")")
 
                 if !unlocatedRows.isEmpty {
                     locateMenu
@@ -592,14 +596,17 @@ private struct PlannerGanttContinuousBar: View {
         ZStack {
             if isVacation {
                 Rectangle().fill(Color.secondary.opacity(0.08))
+                    .accessibilityHidden(true)
             } else if isWithinSpan {
                 Rectangle().fill(segmentColor(for: weekRows))
+                    .accessibilityHidden(true)
             }
 
             Rectangle()
                 .fill(Color.secondary.opacity(0.10))
                 .frame(width: 1)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityHidden(true)
 
             if !weekRows.isEmpty {
                 PlannerGanttWeekMarks(rows: weekRows, onOpenSession: onOpenSession)

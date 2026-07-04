@@ -7,18 +7,30 @@ struct PlannerWeekDetailPane: View {
     @Binding var selectedCell: PlannerCellKey?
     @Binding var selectedDay: Int?
     let onOpenSession: (PlanningSession) -> Void
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             if let selectedCell {
                 cellDetail(for: selectedCell)
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .move(edge: .trailing)),
+                        removal: .opacity
+                    ))
             } else if let selectedDay {
                 dayDetail(for: selectedDay)
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .move(edge: .trailing)),
+                        removal: .opacity
+                    ))
             } else {
                 emptyState
+                    .transition(.opacity)
             }
         }
         .padding(EvaluationDesign.screenPadding)
+        .animation(uiFeatureFlags.interactionAnimation, value: selectedCell)
+        .animation(uiFeatureFlags.interactionAnimation, value: selectedDay)
     }
 
     @ViewBuilder
@@ -68,7 +80,7 @@ struct PlannerWeekDetailPane: View {
                             vm: vm,
                             entry: entry,
                             onSelect: {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                withAnimation(uiFeatureFlags.interactionAnimation) {
                                     selectedCell = PlannerCellKey(day: entry.dayOfWeek, period: entry.period)
                                     selectedDay = nil
                                 }
@@ -109,11 +121,7 @@ struct PlannerWeekDetailPane: View {
                 .buttonStyle(.borderedProminent)
             }
             .padding(16)
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(EvaluationDesign.border, lineWidth: 1)
-            )
+            .plannerGlassPanel(.content, cornerRadius: 12)
         }
     }
 
@@ -178,12 +186,7 @@ private struct PlannerWeekDetailEntryCard: View {
 
                 Spacer(minLength: 8)
 
-                Label(statusLabel, systemImage: statusIcon)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(statusTint)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(statusTint.opacity(0.12), in: Capsule(style: .continuous))
+                PlannerStatusBadge(label: statusLabel, systemImage: statusIcon, tint: statusTint)
             }
 
             Button {
@@ -195,11 +198,7 @@ private struct PlannerWeekDetailEntryCard: View {
             .buttonStyle(.borderedProminent)
         }
         .padding(16)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(EvaluationDesign.border, lineWidth: 1)
-        )
+        .plannerGlassPanel(.content, cornerRadius: 12)
         .shadow(color: .black.opacity(0.08), radius: 12, x: 0, y: 4)
     }
 

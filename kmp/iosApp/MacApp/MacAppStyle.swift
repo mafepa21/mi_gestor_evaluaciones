@@ -57,6 +57,7 @@ struct MacMetricCard: View {
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
+                .contentTransition(.numericText())
         }
         .padding(MacAppStyle.innerPadding)
         .frame(maxWidth: .infinity, alignment: .leading)

@@ -8,11 +8,11 @@ struct MacAttendanceDayRow: View {
         case incident
     }
 
-    let row: MacAttendanceEntryRow
+    let row: AttendanceEntryRow
     let isSelected: Bool
     let isSaving: Bool
     let onSelect: () -> Void
-    let onPickStatus: (MacAttendanceStatusOption) -> Void
+    let onPickStatus: (AttendanceStatusOption) -> Void
     let onMarkInjury: () -> Void
 
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
@@ -106,7 +106,7 @@ struct MacAttendanceDayRow: View {
             }
 
             HStack(spacing: 6) {
-                ForEach(MacAttendanceStatusOption.all) { option in
+                ForEach(AttendanceStatusOption.all) { option in
                     Button {
                         onPickStatus(option)
                     } label: {
@@ -238,16 +238,16 @@ struct MacAttendanceDayRow: View {
             }
     }
 
-    private var currentOption: MacAttendanceStatusOption? {
-        MacAttendanceStatusOption.option(for: row.record?.status)
+    private var currentOption: AttendanceStatusOption? {
+        AttendanceStatusOption.option(for: row.record?.status)
     }
 
     private func statusLabel(_ status: String) -> String {
-        MacAttendanceStatusOption.option(for: status)?.label ?? status
+        AttendanceStatusOption.option(for: status)?.label ?? status
     }
 
     private func performStatus(_ id: String) {
-        guard let option = MacAttendanceStatusOption.option(for: id) else { return }
+        guard let option = AttendanceStatusOption.option(for: id) else { return }
         onPickStatus(option)
         closeActions()
     }

@@ -329,6 +329,7 @@ struct RubricCriterionRow: View {
             }
         }
         .animation(uiFeatureFlags.interactionAnimation, value: selectedLevelId)
+        .animation(uiFeatureFlags.rubricContentReveal, value: selectedLevelDescription.isEmpty)
         .onDisappear {
             hoverTask?.cancel()
         }
@@ -346,7 +347,7 @@ struct RubricCriterionRow: View {
             do {
                 try await Task.sleep(nanoseconds: 500_000_000)
                 await MainActor.run {
-                    withAnimation(uiFeatureFlags.interactionAnimation) {
+                    withAnimation(uiFeatureFlags.popoverOpenAnimation) {
                         activePopoverLevel = level
                     }
                 }
@@ -357,7 +358,7 @@ struct RubricCriterionRow: View {
     private func cancelPopover(for level: RubricLevel) {
         hoverTask?.cancel()
         guard activePopoverLevel?.id == level.id else { return }
-        withAnimation(uiFeatureFlags.interactionAnimation) {
+        withAnimation(uiFeatureFlags.popoverCloseAnimation) {
             activePopoverLevel = nil
         }
     }

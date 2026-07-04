@@ -96,6 +96,7 @@ struct DashboardView: View {
     @State private var severityFilter: DashboardFilterOption = .all
     @State private var priorityFilter: DashboardFilterOption = .all
     @State private var sessionStatusFilter: DashboardSessionFilterOption = .all
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     @State private var inspectorSelection: DashboardInspectorSelection? = nil
     @State private var isInspectorPresented = false
     @State private var isQuickEvaluationPresented = false
@@ -142,7 +143,7 @@ struct DashboardView: View {
             dashboardHeader
             dashboardContent
         }
-        .animation(.spring(response: 0.35, dampingFraction: 0.82), value: isInspectorPresented)
+        .animation(uiFeatureFlags.inspectorAnimation(presented: isInspectorPresented), value: isInspectorPresented)
         .background(appPageBackground(for: colorScheme).ignoresSafeArea())
         .sheet(isPresented: $isQuickEvaluationPresented) {
             DashboardQuickEvaluationSheet(
@@ -344,10 +345,14 @@ struct DashboardView: View {
     @ViewBuilder
     private func dashboardLoadedContent(snapshot: DashboardSnapshot) -> some View {
         VStack(alignment: .leading, spacing: EvaluationDesign.sectionSpacing) {
-            if loadPhase.includes(.ai) {
-                dashboardUnifiedFocus(snapshot: snapshot)
+            // 1. Hoy — qué requiere atención inmediata
+            dashboardTodayBlock(snapshot: snapshot)
+
+            // 2. Alertas — accionables, priorizadas
+            if loadPhase.includes(.lists) {
+                dashboardAlertsSection(snapshot: snapshot)
             } else {
-                dashboardRadarSkeleton
+                dashboardListSkeleton
             }
 
             if isInspectorPresented {
@@ -355,11 +360,23 @@ struct DashboardView: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
-            if loadPhase.includes(.lists) {
-                dashboardSupportGrid(snapshot: snapshot)
+            // 3. KPIs — contexto cuantitativo
+            dashboardKpiRow(snapshot: snapshot)
+
+            dashboardFilterChips
+
+            // 4. Accesos rápidos — iniciar una tarea
+            dashboardQuickEvalBlock(snapshot: snapshot)
+
+            // 5. Insight proactivo — una única tarjeta, descartable
+            if loadPhase.includes(.ai) {
+                dashboardProactiveRadar(snapshot: snapshot)
             } else {
-                dashboardListSkeleton
+                dashboardRadarSkeleton
             }
+
+            // 6. Contexto secundario — agenda y estado del sistema
+            dashboardSecondaryGrid(snapshot: snapshot)
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.82), value: loadPhase.rawValue)
     }
@@ -482,73 +499,59 @@ struct DashboardView: View {
     }
 
     @ViewBuilder
-    private func dashboardUnifiedFocus(snapshot: DashboardSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 24) {
-            HStack(alignment: .firstTextBaseline, spacing: 16) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(mode.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    Text(snapshot.nextSessionLabel)
-                        .font(.title2.weight(.bold))
-                        .lineLimit(2)
-                }
-                Spacer(minLength: 16)
-                Text("\(snapshot.alertsCount) alertas")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(snapshot.alertsCount == 0 ? Color.secondary : Color.orange)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color.primary.opacity(0.04), in: Capsule())
+    private func dashboardAlertsSection(snapshot: DashboardSnapshot) -> some View {
+        if isCompactWidth {
+            VStack(spacing: EvaluationDesign.cardSpacing) {
+                dashboardPendingBlock(snapshot: snapshot)
+                dashboardRiskBlock(snapshot: snapshot)
             }
-
-            dashboardFilterChips
-
-            if isCompactWidth {
-                VStack(spacing: 16) {
-                    dashboardProactiveRadar(snapshot: snapshot)
-                    dashboardTodayBlock(snapshot: snapshot)
-                    dashboardQuickEvalBlock(snapshot: snapshot)
-                }
-            } else {
-                HStack(alignment: .top, spacing: 16) {
-                    dashboardProactiveRadar(snapshot: snapshot)
-                        .frame(maxWidth: .infinity, alignment: .top)
-
-                    VStack(spacing: 16) {
-                        dashboardTodayBlock(snapshot: snapshot)
-                        dashboardQuickEvalBlock(snapshot: snapshot)
-                    }
-                    .frame(width: 360, alignment: .top)
-                }
+        } else {
+            HStack(alignment: .top, spacing: EvaluationDesign.cardSpacing) {
+                dashboardPendingBlock(snapshot: snapshot)
+                dashboardRiskBlock(snapshot: snapshot)
             }
         }
-        .padding(24)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 32, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 32, style: .continuous)
-                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-        )
-        .shadow(color: EvaluationDesign.accent.opacity(colorScheme == .dark ? 0.20 : 0.06), radius: 16, x: 0, y: 8)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Dashboard y radar docente unificados")
+    }
+
+    @ViewBuilder
+    private func dashboardSecondaryGrid(snapshot: DashboardSnapshot) -> some View {
+        if isCompactWidth {
+            VStack(spacing: EvaluationDesign.cardSpacing) {
+                dashboardAgendaBlock(snapshot: snapshot)
+                dashboardSystemBlock()
+            }
+        } else {
+            HStack(alignment: .top, spacing: EvaluationDesign.cardSpacing) {
+                dashboardAgendaBlock(snapshot: snapshot)
+                    .frame(maxWidth: .infinity, alignment: .top)
+                dashboardSystemBlock()
+                    .frame(maxWidth: .infinity, alignment: .top)
+            }
+        }
     }
 
     @ViewBuilder
     private func dashboardKpiRow(snapshot: DashboardSnapshot) -> some View {
         HStack(spacing: 12) {
-            dashboardKpiCard(title: "Hoy", value: "\(snapshot.todayCount)")
-            dashboardKpiCard(title: "Alertas", value: "\(snapshot.alertsCount)")
-            dashboardKpiCard(title: "Pendientes", value: "\(snapshot.pendingCount)")
-            dashboardKpiCard(title: "Próxima sesión", value: snapshot.nextSessionLabel)
+            dashboardKpiCard(title: "Hoy", value: "\(snapshot.todayCount)", isNumeric: true)
+            dashboardKpiCard(title: "Alertas", value: "\(snapshot.alertsCount)", isNumeric: true)
+            dashboardKpiCard(title: "Pendientes", value: "\(snapshot.pendingCount)", isNumeric: true)
+            dashboardKpiCard(title: "Próxima sesión", value: snapshot.nextSessionLabel, isNumeric: false)
         }
     }
 
     @ViewBuilder
-    private func dashboardKpiCard(title: String, value: String) -> some View {
+    private func dashboardKpiCard(title: String, value: String, isNumeric: Bool) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(.caption.bold()).foregroundStyle(.secondary)
-            Text(value).font(.headline)
+            Text(title).font(.footnote).foregroundStyle(.secondary)
+            if isNumeric {
+                Text(value)
+                    .font(.system(.title, design: .rounded).weight(.bold))
+                    .monospacedDigit()
+                    .lineLimit(1)
+            } else {
+                Text(value).font(.headline).lineLimit(2)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
@@ -727,31 +730,6 @@ struct DashboardView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Cockpit diario de iPad")
-    }
-
-    @ViewBuilder
-    private func dashboardSupportGrid(snapshot: DashboardSnapshot) -> some View {
-        if isCompactWidth {
-            VStack(spacing: 16) {
-                dashboardPendingBlock(snapshot: snapshot)
-                dashboardRiskBlock(snapshot: snapshot)
-                dashboardAgendaBlock(snapshot: snapshot)
-            }
-        } else {
-            LazyVGrid(
-                columns: [
-                    GridItem(.flexible(), spacing: 16, alignment: .top),
-                    GridItem(.flexible(), spacing: 16, alignment: .top),
-                    GridItem(.flexible(), spacing: 16, alignment: .top)
-                ],
-                alignment: .center,
-                spacing: 16
-            ) {
-                dashboardPendingBlock(snapshot: snapshot)
-                dashboardRiskBlock(snapshot: snapshot)
-                dashboardAgendaBlock(snapshot: snapshot)
-            }
-        }
     }
 
     @ViewBuilder
@@ -2157,5 +2135,6 @@ struct ScaleButtonStyle: ButtonStyle {
             .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
             .opacity(configuration.isPressed ? 0.92 : 1.0)
             .animation(.spring(response: 0.2, dampingFraction: 0.7), value: configuration.isPressed)
+            .appInteractiveHighlight()
     }
 }

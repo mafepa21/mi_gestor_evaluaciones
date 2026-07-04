@@ -23,6 +23,7 @@ struct MacRootView: View {
     @SceneStorage("mac.root.inspectorVisible") private var storedInspectorVisible = true
     @FocusState private var isNotebookSearchFocused: Bool
     @State private var attendanceToolbarActions: MacAttendanceToolbarActions? = nil
+    @State private var isAttendanceFilterPopoverPresented = false
     @State private var dashboardToolbarActions: MacDashboardToolbarActions? = nil
     @State private var plannerToolbarActions: PlannerMacToolbarActions? = nil
     @State private var plannerInspectorSession: PlanningSession? = nil
@@ -111,14 +112,22 @@ struct MacRootView: View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             macSidebar
         } detail: {
-            featureContent(for: selectedFeature)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(MacAppStyle.pageBackground)
-                .inspector(isPresented: $isInspectorVisible) {
-                    featureInspector(for: selectedFeature)
-                        .frame(minWidth: 320, idealWidth: 360, maxWidth: 440)
-                        .background(.thinMaterial)
-                }
+            // Attendance applies its own .inspector() internally; wrapping it in the
+            // shell's system inspector too would nest two inspectors and reserve width twice.
+            if selectedFeature == .attendance {
+                featureContent(for: selectedFeature)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(MacAppStyle.pageBackground)
+            } else {
+                featureContent(for: selectedFeature)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(MacAppStyle.pageBackground)
+                    .inspector(isPresented: $isInspectorVisible) {
+                        featureInspector(for: selectedFeature)
+                            .frame(minWidth: 320, idealWidth: 360, maxWidth: 440)
+                            .background(.thinMaterial)
+                    }
+            }
         }
         .navigationSplitViewStyle(.balanced)
         .scrollEdgeEffectStyle(.soft, for: .top)
@@ -178,6 +187,10 @@ struct MacRootView: View {
         .appOnChange(of: selectedFeature) { newFeature in
             guard newFeature != .notebook else { return }
             isNotebookSearchFocused = false
+        }
+        .appOnChange(of: plannerInspectorSession?.id) { newValue in
+            guard newValue != nil else { return }
+            isInspectorVisible = true
         }
     }
 
@@ -640,11 +653,81 @@ struct MacRootView: View {
             }
 
             if selectedFeature == .attendance, let attendanceToolbarActions {
+                Picker("Vista", selection: attendanceToolbarActions.mode) {
+                    ForEach(AttendanceBoardMode.allCases) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 260)
+
+                Menu {
+                    Button("Todos los cursos") {
+                        attendanceToolbarActions.mode.wrappedValue = .courses
+                    }
+                    Divider()
+                    ForEach(attendanceToolbarActions.classes, id: \.id) { schoolClass in
+                        Button {
+                            attendanceToolbarActions.selectClass(schoolClass.id)
+                        } label: {
+                            if schoolClass.id == attendanceToolbarActions.selectedClassId {
+                                Label(schoolClass.name, systemImage: "checkmark")
+                            } else {
+                                Text(schoolClass.name)
+                            }
+                        }
+                    }
+                } label: {
+                    Label(attendanceSelectedClassLabel, systemImage: "rectangle.3.group")
+                }
+                .menuStyle(.button)
+
+                DatePicker("", selection: attendanceToolbarActions.selectedDate, displayedComponents: .date)
+                    .labelsHidden()
+                    .disabled(attendanceToolbarActions.mode.wrappedValue == .courses)
+
+                if attendanceToolbarActions.mode.wrappedValue == .day, attendanceToolbarActions.selectedClassId != nil {
+                    Menu {
+                        if attendanceToolbarActions.sessions.isEmpty {
+                            Text("No hay sesiones planificadas")
+                        } else {
+                            ForEach(attendanceToolbarActions.sessions) { entry in
+                                Button {
+                                    attendanceToolbarActions.selectSession(entry.session.id)
+                                } label: {
+                                    if attendanceToolbarActions.selectedSessionId == entry.session.id {
+                                        Label(attendanceToolbarActions.sessionLabel(entry), systemImage: "checkmark")
+                                    } else {
+                                        Text(attendanceToolbarActions.sessionLabel(entry))
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
+                        Label(attendanceSelectedSessionLabel, systemImage: attendanceToolbarActions.sessions.count > 1 ? "calendar.badge.clock" : "calendar")
+                    }
+                    .menuStyle(.button)
+                    .disabled(attendanceToolbarActions.sessions.count <= 1)
+                    .help(attendanceToolbarActions.sessions.count > 1 ? "Selecciona la sesión asociada a la asistencia." : "Sesión asociada automáticamente.")
+                }
+
+                Button {
+                    isAttendanceFilterPopoverPresented.toggle()
+                } label: {
+                    Label(attendanceToolbarActions.filterLabel, systemImage: attendanceToolbarActions.filterIcon)
+                }
+                .disabled(attendanceToolbarActions.mode.wrappedValue == .courses)
+                .popover(isPresented: $isAttendanceFilterPopoverPresented, arrowEdge: .bottom) {
+                    attendanceFilterPopover(attendanceToolbarActions)
+                }
+
                 Button {
                     attendanceToolbarActions.markAllPresent()
                 } label: {
-                    Label("Todos presentes", systemImage: "checkmark.circle.fill")
+                    Label("Marcar presentes", systemImage: "checkmark.circle.fill")
                 }
+                .buttonStyle(.borderedProminent)
+                .disabled(!attendanceToolbarActions.canMarkAllPresent)
                 .help("Marcar como presentes los alumnos filtrados")
 
                 Button {
@@ -652,6 +735,7 @@ struct MacRootView: View {
                 } label: {
                     Label("Repetir patrón", systemImage: "repeat")
                 }
+                .disabled(!attendanceToolbarActions.canRepeatPattern)
                 .help("Repetir el último patrón de asistencia")
 
                 if attendanceToolbarActions.canCloseSelection {
@@ -735,6 +819,37 @@ struct MacRootView: View {
                     .textFieldStyle(.roundedBorder)
                     .frame(minWidth: 160, idealWidth: 220, maxWidth: 260)
 
+                ShareLink(item: plannerToolbarActions.shareText) {
+                    Label("Compartir semana", systemImage: "square.and.arrow.up")
+                }
+                .help("Compartir el resumen de la semana actual")
+
+                Button {
+                    plannerToolbarActions.onToggleSelectionMode()
+                } label: {
+                    Label(
+                        plannerToolbarActions.isSelectionModeActive ? "Salir de selección" : "Seleccionar sesiones",
+                        systemImage: plannerToolbarActions.isSelectionModeActive ? "checklist.checked" : "checklist"
+                    )
+                }
+                .help(plannerToolbarActions.isSelectionModeActive ? "Salir del modo selección múltiple" : "Activar selección múltiple de sesiones")
+
+                Button {
+                    plannerToolbarActions.onCopyToNextWeek()
+                } label: {
+                    Label("Copiar a semana siguiente", systemImage: "doc.on.doc")
+                }
+                .disabled(!plannerToolbarActions.canCopySelection)
+                .help("Copiar las sesiones seleccionadas a la semana siguiente")
+
+                Button {
+                    plannerToolbarActions.onMoveOneDay()
+                } label: {
+                    Label("Mover +1 día", systemImage: "arrow.right")
+                }
+                .disabled(!plannerToolbarActions.canCopySelection)
+                .help("Mover las sesiones seleccionadas un día hacia delante")
+
                 if plannerToolbarActions.canUndoCascadeMove {
                     Button {
                         plannerToolbarActions.onUndoCascadeMove()
@@ -815,6 +930,44 @@ struct MacRootView: View {
             guard selectedFeature == .attendance else { return }
             attendanceToolbarActions = actions
         }
+    }
+
+    private var attendanceSelectedClassLabel: String {
+        guard let attendanceToolbarActions else { return "Curso" }
+        return attendanceToolbarActions.classes.first { $0.id == attendanceToolbarActions.selectedClassId }?.name ?? "Curso"
+    }
+
+    private var attendanceSelectedSessionLabel: String {
+        guard let attendanceToolbarActions else { return "Sin sesión" }
+        guard let entry = attendanceToolbarActions.sessions.first(where: { $0.session.id == attendanceToolbarActions.selectedSessionId }) else {
+            return "Sin sesión"
+        }
+        return attendanceToolbarActions.sessionLabel(entry)
+    }
+
+    private func attendanceFilterPopover(_ actions: MacAttendanceToolbarActions) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            TextField("Buscar alumno", text: actions.searchText)
+                .textFieldStyle(.roundedBorder)
+
+            Picker("Estado", selection: actions.selectedStatusFilter) {
+                Text("Todos").tag("TODOS")
+                ForEach(AttendanceStatusOption.all) { option in
+                    Text(option.label).tag(option.id)
+                }
+            }
+            .pickerStyle(.menu)
+
+            Button {
+                actions.clearFilters()
+            } label: {
+                Label("Limpiar filtros", systemImage: "xmark.circle")
+            }
+            .buttonStyle(.bordered)
+            .disabled(actions.searchText.wrappedValue.isEmpty && actions.selectedStatusFilter.wrappedValue == "TODOS")
+        }
+        .padding(24)
+        .frame(width: 320)
     }
 
     private func setPlannerToolbarActions(_ actions: PlannerMacToolbarActions?) {

@@ -5,71 +5,119 @@ import UniformTypeIdentifiers
 import QuickLook
 import MiGestorKit
 
+enum PlannerSessionDetailPresentation {
+    /// Modal clásico (iPad, y Mac cuando no hay inspector disponible).
+    case sheet
+    /// Panel lateral persistente del inspector de macOS: sin `NavigationStack`
+    /// ni tamaño de ventana propio, solo una cabecera compacta con cierre.
+    case inspector
+}
+
 struct PlannerSessionDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var bridge: KmpBridge
     @Environment(\.colorScheme) private var colorScheme
-    
+
     let session: PlanningSession
     let onOpenDiary: () -> Void
     let onEdit: () -> Void
-    
+    var presentation: PlannerSessionDetailPresentation = .sheet
+    var onClose: (() -> Void)? = nil
+
     @State private var linkedInstruments: [PlannerAssessmentInstrument] = []
     @State private var isLoadingInstruments = false
     @State private var detailedPlan: LearningSituationSessionPlan?
     @State private var sequenceVersion: LearningSituationSessionSequenceVersion?
     @State private var sourceDocumentURL: URL?
-    
+
     private var tint: Color {
         Color(hex: session.teachingUnitColor)
     }
-    
+
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                sessionBriefHeader
-                quickActionBar
-                ScrollView {
-                    VStack(spacing: 16) {
-                        if let detailedPlan {
-                            teacherAtAGlanceSection(detailedPlan)
-                            developmentTimeline(detailedPlan)
-                            sourceDocumentSection(detailedPlan)
-                        } else {
-                            fallbackSessionSections
+        Group {
+            switch presentation {
+            case .sheet:
+                NavigationStack {
+                    detailContent
+                        .navigationTitle("Sesión")
+                        #if os(iOS)
+                        .navigationBarTitleDisplayMode(.inline)
+                        #endif
+                        .toolbar {
+                            ToolbarItem(placement: .navigationBarLeading) {
+                                Button("Cerrar") {
+                                    dismiss()
+                                }
+                            }
                         }
-                        instrumentsSection
-                    }
-                    .padding(24)
+                }
+                #if os(macOS)
+                .frame(minWidth: 760, idealWidth: 860, minHeight: 720, idealHeight: 820)
+                #else
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+                #endif
+            case .inspector:
+                VStack(spacing: 0) {
+                    inspectorHeader
+                    detailContent
                 }
             }
-            .background(appPageBackground(for: colorScheme).ignoresSafeArea())
-            .navigationTitle("Sesión")
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cerrar") {
-                        dismiss()
-                    }
-                }
-            }
-            .task {
-                await loadDetailedPlan()
-                await loadLinkedInstruments()
-            }
-            .quickLookPreview($sourceDocumentURL)
         }
-#if os(macOS)
-        .frame(minWidth: 760, idealWidth: 860, minHeight: 720, idealHeight: 820)
-#else
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
-#endif
+        .task {
+            await loadDetailedPlan()
+            await loadLinkedInstruments()
+        }
+        .quickLookPreview($sourceDocumentURL)
     }
-    
+
+    private var inspectorHeader: some View {
+        HStack {
+            Text("Sesión")
+                .font(.headline.weight(.bold))
+            Spacer()
+            Button {
+                onClose?()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Cerrar el inspector de la sesión")
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(EvaluationDesign.border)
+                .frame(height: 1)
+        }
+    }
+
+    private var detailContent: some View {
+        VStack(spacing: 0) {
+            sessionBriefHeader
+            quickActionBar
+            ScrollView {
+                VStack(spacing: 16) {
+                    if let detailedPlan {
+                        teacherAtAGlanceSection(detailedPlan)
+                        developmentTimeline(detailedPlan)
+                        sourceDocumentSection(detailedPlan)
+                    } else {
+                        fallbackSessionSections
+                    }
+                    instrumentsSection
+                }
+                .padding(24)
+            }
+        }
+        .background(appPageBackground(for: colorScheme).ignoresSafeArea())
+    }
+
     private var sessionBriefHeader: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 16) {

@@ -343,6 +343,8 @@ private struct PlannerDaySessionRow: View {
     let onComplete: () -> Void
     let onQuickNote: () -> Void
 
+    @State private var isHovering = false
+
     private var tint: Color { Color(hex: vm.classColorHex(for: session.groupId)) }
     private var stateTint: Color { vm.sessionStateTint(sessionStatus: session.status, journalStatus: vm.summary(for: session.id)?.status) }
 
@@ -401,7 +403,17 @@ private struct PlannerDaySessionRow: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(isCurrent ? EvaluationDesign.success.opacity(0.55) : EvaluationDesign.border, lineWidth: isCurrent ? 1.5 : 1)
         }
+        .overlay {
+            if isHovering {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color.primary.opacity(0.03))
+            }
+        }
         .shadow(color: .black.opacity(isCurrent ? 0.10 : 0), radius: isCurrent ? 14 : 0, x: 0, y: 6)
+        .onHover { hovering in
+            isHovering = hovering
+        }
+        .onTapGesture(count: 2, perform: onOpen)
     }
 
     private var timeRange: String {

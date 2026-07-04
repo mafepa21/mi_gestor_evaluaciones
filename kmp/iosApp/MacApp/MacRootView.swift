@@ -24,6 +24,8 @@ struct MacRootView: View {
     @FocusState private var isNotebookSearchFocused: Bool
     @State private var attendanceToolbarActions: MacAttendanceToolbarActions? = nil
     @State private var dashboardToolbarActions: MacDashboardToolbarActions? = nil
+    @State private var plannerToolbarActions: PlannerMacToolbarActions? = nil
+    @State private var plannerInspectorSession: PlanningSession? = nil
     @State private var studentsReloadToken = 0
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var isInspectorVisible = true
@@ -161,6 +163,9 @@ struct MacRootView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .appleAppNavigateRequested)) { notification in
             navigateFromCommand(notification.object)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .appleAppPlannerSectionRequested)) { notification in
+            selectPlannerSection(notification.object)
         }
         .appOnChange(of: session.selectedFeature) { newFeature in
             let newFeature = normalizedFeature(newFeature)
@@ -325,7 +330,12 @@ struct MacRootView: View {
                 selectedStudentId: studentSelection.selectedStudentBinding
             )
         case .planner:
-            PlannerMacLayout(bridge: session.bridge, selectedSessionId: $selectedPlannerSessionId)
+            PlannerMacLayout(
+                bridge: session.bridge,
+                selectedSessionId: $selectedPlannerSessionId,
+                inspectorSession: $plannerInspectorSession,
+                onToolbarActionsChange: setPlannerToolbarActions
+            )
         case .situations:
             LearningSituationsWorkspaceView(
                 selectedClassId: studentSelection.selectedClassBinding,
@@ -379,6 +389,19 @@ struct MacRootView: View {
                 selectedStudentId: studentSelection.selectedStudentBinding,
                 onOpenModule: open(module:classId:studentId:)
             )
+        case .planner:
+            if let plannerSession = plannerInspectorSession {
+                PlannerSessionDetailSheet(
+                    session: plannerSession,
+                    onOpenDiary: { plannerToolbarActions?.onOpenDiary(plannerSession) },
+                    onEdit: { plannerToolbarActions?.onEditSession(plannerSession) },
+                    presentation: .inspector,
+                    onClose: { plannerInspectorSession = nil }
+                )
+                .environmentObject(session.bridge)
+            } else {
+                MacModuleInspectorPlaceholder(feature: MacFeatureRegistry.descriptor(for: feature))
+            }
         default:
             MacModuleInspectorPlaceholder(feature: MacFeatureRegistry.descriptor(for: feature))
         }
@@ -667,6 +690,79 @@ struct MacRootView: View {
                 .help("Crear columnas de marca y nota en el cuaderno")
             }
 
+            if selectedFeature == .planner, let plannerToolbarActions {
+                Picker("Sección", selection: plannerToolbarActions.activeSection) {
+                    ForEach(PlannerWorkspaceSection.allCases) { section in
+                        Label(section.rawValue, systemImage: section.systemImage).tag(section)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 320)
+                .help("Cambiar de sección del planificador (⌘⌥1–4)")
+
+                Button {
+                    plannerToolbarActions.onPreviousWeek()
+                } label: {
+                    Label("Semana anterior", systemImage: "chevron.left")
+                }
+                .keyboardShortcut(.leftArrow, modifiers: .command)
+                .help("Semana anterior (⌘←)")
+
+                Button("Hoy") {
+                    plannerToolbarActions.onToday()
+                }
+                .keyboardShortcut("t", modifiers: .command)
+                .help("Ir a la semana actual (⌘T)")
+
+                Button {
+                    plannerToolbarActions.onNextWeek()
+                } label: {
+                    Label("Semana siguiente", systemImage: "chevron.right")
+                }
+                .keyboardShortcut(.rightArrow, modifiers: .command)
+                .help("Semana siguiente (⌘→)")
+
+                Picker("Grupo", selection: plannerToolbarActions.selectedGroupId) {
+                    Text("Todos").tag(Optional<Int64>.none)
+                    ForEach(plannerToolbarActions.groups, id: \.id) { group in
+                        Text(group.name).tag(Optional(group.id))
+                    }
+                }
+                .frame(maxWidth: 160)
+                .help("Filtrar por grupo")
+
+                TextField("Buscar sesión, unidad, objetivo…", text: plannerToolbarActions.searchText)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(minWidth: 160, idealWidth: 220, maxWidth: 260)
+
+                if plannerToolbarActions.canUndoCascadeMove {
+                    Button {
+                        plannerToolbarActions.onUndoCascadeMove()
+                    } label: {
+                        Label("Deshacer movimiento", systemImage: "arrow.uturn.backward")
+                    }
+                    .keyboardShortcut("z", modifiers: .command)
+                    .help("Deshacer el último movimiento de sesiones (⌘Z)")
+                }
+
+                if plannerToolbarActions.canClearSchedulelessWeek {
+                    Button(role: .destructive) {
+                        plannerToolbarActions.onClearSchedulelessWeek()
+                    } label: {
+                        Label("Limpiar semana sin franjas", systemImage: "trash")
+                    }
+                    .help("Eliminar las sesiones planificadas de esta semana cuando no hay agenda configurada")
+                }
+
+                Button {
+                    plannerToolbarActions.onNewSession()
+                } label: {
+                    Label("Nueva sesión", systemImage: "plus")
+                }
+                .keyboardShortcut("n", modifiers: [.command, .shift])
+                .help("Nueva sesión (⌘⇧N)")
+            }
+
             Button {
                 refreshCurrentFeature()
             } label: {
@@ -718,6 +814,13 @@ struct MacRootView: View {
         DispatchQueue.main.async {
             guard selectedFeature == .attendance else { return }
             attendanceToolbarActions = actions
+        }
+    }
+
+    private func setPlannerToolbarActions(_ actions: PlannerMacToolbarActions?) {
+        DispatchQueue.main.async {
+            guard selectedFeature == .planner else { return }
+            plannerToolbarActions = actions
         }
     }
 
@@ -903,6 +1006,17 @@ struct MacRootView: View {
         case .planner:
             selectFeature(.planner)
         }
+    }
+
+    private func selectPlannerSection(_ object: Any?) {
+        guard let rawValue = object as? String,
+              let section = PlannerWorkspaceSection(rawValue: rawValue)
+        else { return }
+
+        if selectedFeature != .planner {
+            selectFeature(.planner)
+        }
+        plannerToolbarActions?.activeSection.wrappedValue = section
     }
 
     private func performSave() {

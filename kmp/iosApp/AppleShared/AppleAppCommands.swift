@@ -71,6 +71,31 @@ struct AppleAppCommands: Commands {
             }
             .keyboardShortcut("3", modifiers: .command)
         }
+
+        // ⌘⌥1–4 en vez de ⌘1–4: el menú "Navegación" ya reserva ⌘1–3 para saltar
+        // entre Cuaderno/Asistencia/Planner a nivel de app, así que las secciones
+        // internas del planificador usan una combinación distinta para no chocar.
+        CommandMenu("Planificador") {
+            Button("Semana") {
+                AppleAppCommand.post(.appleAppPlannerSectionRequested, object: PlannerWorkspaceSection.week.rawValue)
+            }
+            .keyboardShortcut("1", modifiers: [.command, .option])
+
+            Button("Día") {
+                AppleAppCommand.post(.appleAppPlannerSectionRequested, object: PlannerWorkspaceSection.day.rawValue)
+            }
+            .keyboardShortcut("2", modifiers: [.command, .option])
+
+            Button("Secuencia") {
+                AppleAppCommand.post(.appleAppPlannerSectionRequested, object: PlannerWorkspaceSection.sequence.rawValue)
+            }
+            .keyboardShortcut("3", modifiers: [.command, .option])
+
+            Button("Resumen") {
+                AppleAppCommand.post(.appleAppPlannerSectionRequested, object: PlannerWorkspaceSection.summary.rawValue)
+            }
+            .keyboardShortcut("4", modifiers: [.command, .option])
+        }
     }
 }
 
@@ -86,4 +111,5 @@ extension Notification.Name {
     static let appleAppBackupRequested = Notification.Name("appleAppBackupRequested")
     static let appleAppToggleInspectorRequested = Notification.Name("appleAppToggleInspectorRequested")
     static let appleAppToggleSidebarRequested = Notification.Name("appleAppToggleSidebarRequested")
+    static let appleAppPlannerSectionRequested = Notification.Name("appleAppPlannerSectionRequested")
 }

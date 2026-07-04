@@ -2,27 +2,51 @@ import SwiftUI
 import AppKit
 import MiGestorKit
 
+/// Acciones/estado que `MacPlannerView` publica hacia `MacRootView` para poder
+/// pintar una toolbar nativa de macOS (en vez de la barra estilo iOS) — mismo
+/// patrón ya usado por Notebook/Dashboard/Asistencia/Pruebas físicas
+/// (`onToolbarActionsChange` + `@State` en el root).
+struct PlannerMacToolbarActions {
+    var activeSection: Binding<PlannerWorkspaceSection>
+    var selectedGroupId: Binding<Int64?>
+    var searchText: Binding<String>
+    let groups: [SchoolClass]
+    let canUndoCascadeMove: Bool
+    let canClearSchedulelessWeek: Bool
+    let onPreviousWeek: () -> Void
+    let onNextWeek: () -> Void
+    let onToday: () -> Void
+    let onNewSession: () -> Void
+    let onUndoCascadeMove: () -> Void
+    let onClearSchedulelessWeek: () -> Void
+    /// Usados por el inspector de sesión en `MacRootView` (que no tiene acceso
+    /// directo al `PlannerWorkspaceViewModel`, propio de `MacPlannerView`).
+    let onOpenDiary: (PlanningSession) -> Void
+    let onEditSession: (PlanningSession) -> Void
+}
+
 struct MacPlannerView: View {
     @ObservedObject var bridge: KmpBridge
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     @Binding var selectedSessionIdFromRoot: Int64?
+    @Binding var inspectorSession: PlanningSession?
+    let onToolbarActionsChange: (PlannerMacToolbarActions?) -> Void
     @StateObject private var vm = PlannerWorkspaceViewModel()
-    @State private var selectedTableSessionId: Int64?
     @State private var showingScheduleSettings = false
-    @State private var showingExportConfirmation = false
-    @State private var showingMoveFilteredConfirmation = false
     @State private var showingClearSchedulelessWeekConfirmation = false
     @State private var transientMessage: String?
-    @State private var sessionFilter: MacPlannerSessionFilter = .all
     @State private var groupFilterId: Int64?
-    @State private var selectedDetailSession: PlanningSession? = nil
     @State private var selectedWeekCell: PlannerCellKey? = nil
     @State private var selectedWeekDay: Int? = nil
     @StateObject private var cascadeCoordinator = PlannerCascadeDropCoordinator()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            PlannerToolbar(vm: vm, onUndoCascadeMove: { cascadeCoordinator.undoLastMove(vm: vm) })
+            PlannerToolbar(
+                vm: vm,
+                onUndoCascadeMove: { cascadeCoordinator.undoLastMove(vm: vm) },
+                showsNavigationControls: false
+            )
 
             if let transientMessage, !transientMessage.isEmpty {
                 MacPlannerBanner(message: transientMessage)
@@ -53,25 +77,10 @@ struct MacPlannerView: View {
                 await applySessionIdFromRoot(newValue)
             }
         }
-        .appOnChange(of: selectedTableSessionId) { newValue in
-            guard let sessionId = newValue else { return }
-            guard let session = findSession(by: sessionId) else { return }
-            Task {
-                await vm.select(session: session)
-                await syncInspectorStudents(for: session)
-            }
-        }
-        .appOnChange(of: vm.selectedSession?.id) { newValue in
-            selectedTableSessionId = newValue
+        .appOnChange(of: vm.selectedSession?.id) { _ in
             Task {
                 await syncInspectorStudents(for: vm.selectedSession)
             }
-        }
-        .appOnChange(of: sessionFilter) { _ in
-            Task { await normalizeSelectionForDisplayedSessions() }
-        }
-        .appOnChange(of: groupFilterId) { _ in
-            Task { await normalizeSelectionForDisplayedSessions() }
         }
         .sheet(isPresented: $vm.showingComposer) {
             PlannerSessionComposerSheet(vm: vm)
@@ -92,23 +101,10 @@ struct MacPlannerView: View {
             )
             .frame(minWidth: 980, minHeight: 760)
         }
-        .alert("Exportación copiada", isPresented: $showingExportConfirmation) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("El resumen actual de planificación se ha copiado al portapapeles.")
-        }
-        .alert("Mover sesiones filtradas", isPresented: $showingMoveFilteredConfirmation) {
-            Button("Cancelar", role: .cancel) {}
-            Button("Mover \(displayedSessions.count) sesiones", role: .destructive) {
-                Task { await moveFilteredSessions() }
-            }
-        } message: {
-            Text("Se moverán todas las sesiones visibles con los filtros actuales un día hacia delante.")
-        }
         .alert("Limpiar semana sin franjas", isPresented: $showingClearSchedulelessWeekConfirmation) {
             Button("Cancelar", role: .cancel) {}
             Button("Eliminar sesiones planificadas", role: .destructive) {
-                Task { await vm.clearCurrentWeekSessionsWithoutSchedule(groupId: groupFilterId) }
+                Task { await vm.clearCurrentWeekSessionsWithoutSchedule(groupId: vm.selectedGroupId) }
             }
         } message: {
             Text("No hay franjas en la agenda. Se eliminarán las sesiones planificadas de la semana actual y se conservarán las completadas.")
@@ -129,37 +125,53 @@ struct MacPlannerView: View {
         } message: {
             Text("La cascada incluye una o más sesiones ya impartidas. Se conservarán sus diarios y referencias.")
         }
-        .sheet(
-            isPresented: Binding(
-                get: { selectedDetailSession != nil },
-                set: { if !$0 { selectedDetailSession = nil } }
-            )
-        ) {
-            if let session = selectedDetailSession {
-                PlannerSessionDetailSheet(
-                    session: session,
-                    onOpenDiary: {
-                        selectedDetailSession = nil
-                        Task {
-                            await vm.select(session: session)
-                        }
-                    },
-                    onEdit: {
-                        selectedDetailSession = nil
-                        vm.openComposer(for: session)
-                    }
-                )
-                .environmentObject(bridge)
-                .frame(minWidth: 760, idealWidth: 860, minHeight: 720, idealHeight: 820)
-            }
+        .task {
+            publishToolbarActions()
         }
+        .appOnChange(of: vm.activeSection) { _ in publishToolbarActions() }
+        .appOnChange(of: vm.groups.map(\.id)) { _ in publishToolbarActions() }
+        .appOnChange(of: vm.lastCascadeMove?.movedCount) { _ in publishToolbarActions() }
+        .appOnChange(of: vm.sessions.count) { _ in publishToolbarActions() }
+        .onDisappear {
+            onToolbarActionsChange(nil)
+        }
+    }
+
+    private func publishToolbarActions() {
+        onToolbarActionsChange(
+            PlannerMacToolbarActions(
+                activeSection: Binding(get: { vm.activeSection }, set: { vm.activeSection = $0 }),
+                selectedGroupId: Binding(get: { vm.selectedGroupId }, set: { vm.selectGroup($0) }),
+                searchText: Binding(
+                    get: { vm.searchText },
+                    set: { vm.searchText = $0; vm.applySearch() }
+                ),
+                groups: vm.groups,
+                canUndoCascadeMove: vm.lastCascadeMove != nil,
+                canClearSchedulelessWeek: vm.canClearSchedulelessWeekSessions,
+                onPreviousWeek: { Task { await vm.previousWeek() } },
+                onNextWeek: { Task { await vm.nextWeek() } },
+                onToday: { Task { await vm.goToCurrentWeek() } },
+                onNewSession: { openComposerForCurrentFilter() },
+                onUndoCascadeMove: { cascadeCoordinator.undoLastMove(vm: vm) },
+                onClearSchedulelessWeek: { showingClearSchedulelessWeekConfirmation = true },
+                onOpenDiary: { session in
+                    inspectorSession = nil
+                    Task { await vm.select(session: session) }
+                },
+                onEditSession: { session in
+                    inspectorSession = nil
+                    vm.openComposer(for: session)
+                }
+            )
+        )
     }
 
     private func openMacSession(_ session: PlanningSession) {
         Task {
             await vm.select(session: session)
         }
-        selectedDetailSession = session
+        inspectorSession = session
     }
 
     private func applySessionIdFromRoot(_ sessionId: Int64) async {
@@ -172,9 +184,9 @@ struct MacPlannerView: View {
                 sessionId: session.id
             )
             selectedSessionIdFromRoot = nil
-            
+
             await vm.select(session: session)
-            selectedDetailSession = session
+            inspectorSession = session
         } catch {
             print("Error getting session from root: \(error)")
         }
@@ -214,125 +226,12 @@ struct MacPlannerView: View {
         }
     }
 
-    private func findSession(by id: Int64) -> PlanningSession? {
-        vm.filteredSessions.first(where: { $0.id == id }) ?? vm.sessions.first(where: { $0.id == id })
-    }
-
-    private var displayedSessions: [PlanningSession] {
-        vm.filteredSessions.filter { session in
-            let matchesGroup = groupFilterId.map { session.groupId == $0 } ?? true
-            let matchesStatus: Bool
-            switch sessionFilter {
-            case .all:
-                matchesStatus = true
-            case .planned:
-                matchesStatus = session.status != .completed
-            case .completed:
-                matchesStatus = session.status == .completed
-            }
-            return matchesGroup && matchesStatus
-        }
-    }
-
-    private var displayedRows: [MacPlannerSessionRow] {
-        displayedSessions.map { session in
-            MacPlannerSessionRow(
-                session: session,
-                dayLabel: vm.dayLabel(for: Int(session.dayOfWeek)),
-                timeLabel: vm.timeLabel(for: Int(session.period)),
-                sessionStatusLabel: session.status == .completed ? "Impartida" : "Planificada",
-                diaryStatusLabel: diaryStatusLabel(for: session)
-            )
-        }
-    }
-
-    private func diaryStatusLabel(for session: PlanningSession) -> String {
-        switch vm.summary(for: session.id)?.status {
-        case .completed:
-            return "Cerrado"
-        case .draft:
-            return "Borrador"
-        case .empty, .none:
-            return "Vacío"
-        default:
-            return "Vacío"
-        }
-    }
-
     private func openComposerForCurrentFilter() {
         vm.openComposer()
         if let groupFilterId {
             vm.composerDraft.groupId = groupFilterId
         }
     }
-
-    private func copyFilteredWeek() async {
-        guard !displayedSessions.isEmpty else { return }
-        vm.selectedSessionIds = Set(displayedSessions.map(\.id))
-        await vm.bulkCopyToNextWeek()
-    }
-
-    private func moveFilteredSessions() async {
-        guard !displayedSessions.isEmpty else { return }
-        vm.selectedSessionIds = Set(displayedSessions.map(\.id))
-        await vm.bulkMoveOneDay()
-    }
-
-    private func normalizeSelectionForDisplayedSessions() async {
-        let visible = displayedSessions
-        if let selectedSession = vm.selectedSession,
-           visible.contains(where: { $0.id == selectedSession.id }) {
-            return
-        }
-        if let first = visible.first {
-            await vm.select(session: first)
-            selectedTableSessionId = first.id
-        } else {
-            vm.clearSelection()
-            selectedTableSessionId = nil
-        }
-    }
-
-    private func exportCurrentContext() {
-        let text: String
-        if vm.selectedSession != nil {
-            text = vm.exportText()
-        } else {
-            let sessionLines = displayedRows.map {
-                "\($0.unit) · \($0.group) · \($0.day) · \($0.time) · \($0.sessionStatus) · \($0.diaryStatus)"
-            }
-            text = ([ "\(vm.weekLabel) · \(vm.dateRangeLabel)" ] + sessionLines).joined(separator: "\n")
-        }
-
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
-        transientMessage = "Resumen exportado al portapapeles."
-        showingExportConfirmation = true
-    }
-}
-
-private enum MacPlannerSessionFilter: String, CaseIterable, Identifiable {
-    case all = "Todas"
-    case planned = "Planificadas"
-    case completed = "Impartidas"
-
-    var id: String { rawValue }
-}
-
-private struct MacPlannerSessionRow: Identifiable {
-    let session: PlanningSession
-    let dayLabel: String
-    let timeLabel: String
-    let sessionStatusLabel: String
-    let diaryStatusLabel: String
-
-    var id: Int64 { session.id }
-    var unit: String { session.teachingUnitName }
-    var group: String { session.groupName }
-    var day: String { dayLabel }
-    var time: String { timeLabel }
-    var sessionStatus: String { sessionStatusLabel }
-    var diaryStatus: String { diaryStatusLabel }
 }
 
 private struct MacPlannerBanner: View {

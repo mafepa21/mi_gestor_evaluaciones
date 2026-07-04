@@ -227,6 +227,7 @@ private struct PlannerWeekMiniatureCell: View {
     var onDropSession: ((Int64) -> Void)? = nil
 
     @State private var isDropTargeted = false
+    @State private var isHovering = false
 
     var body: some View {
         cellButton
@@ -240,6 +241,25 @@ private struct PlannerWeekMiniatureCell: View {
             .contextMenu {
                 contextMenuContent
             }
+            .onHover { hovering in
+                isHovering = hovering
+            }
+            // Doble click en Mac abre la ficha directamente; el tap sencillo
+            // (Button) sigue seleccionando la celda como siempre.
+            .simultaneousGesture(
+                TapGesture(count: 2).onEnded {
+                    openSessionDirectly()
+                }
+            )
+    }
+
+    private func openSessionDirectly() {
+        guard entries.count == 1,
+              let entry = entries.first,
+              entry.kind == .session,
+              let sessionId = entry.sessionId,
+              let session = vm.sessions.first(where: { $0.id == sessionId }) else { return }
+        onOpenSession(session)
     }
 
     private var cellButton: some View {
@@ -291,8 +311,10 @@ private struct PlannerWeekMiniatureCell: View {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .stroke(strokeColor, lineWidth: strokeWidth)
             )
+            .brightness(isHovering && !isSelected ? 0.06 : 0)
             .scaleEffect(isSelected ? 0.96 : (isDropTargeted ? 1.04 : 1))
             .animation(.spring(response: 0.25, dampingFraction: 0.8), value: isDropTargeted)
+            .animation(.easeOut(duration: 0.12), value: isHovering)
         }
         .buttonStyle(.plain)
     }

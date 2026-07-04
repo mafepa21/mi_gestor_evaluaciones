@@ -245,6 +245,10 @@ struct PlannerWorkspaceIOS: View {
 struct PlannerToolbar: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
     var onUndoCascadeMove: (() -> Void)? = nil
+    /// En Mac, la navegación de semana/sección/grupo/búsqueda vive en la toolbar
+    /// nativa (ver `PlannerMacToolbarActions`); aquí solo queda la tarjeta de
+    /// progreso, que sí aporta información y no es mera navegación.
+    var showsNavigationControls: Bool = true
     @AppStorage("planner_toolbar_progress_expanded") private var isProgressExpanded = true
 
     var body: some View {
@@ -293,31 +297,33 @@ struct PlannerToolbar: View {
             .padding(16)
             .plannerGlassPanel(.hero, cornerRadius: 24)
 
-            HStack(spacing: 8) {
-                PlannerFloatingTabBar(activeSection: $vm.activeSection)
-                    .frame(maxWidth: 376)
-
-                weekNavigationCluster
-
+            if showsNavigationControls {
                 HStack(spacing: 8) {
-                    Picker("Grupo", selection: Binding(
-                        get: { vm.selectedGroupId },
-                        set: { vm.selectGroup($0) }
-                    )) {
-                        Text("Todos").tag(Optional<Int64>.none)
-                        ForEach(vm.groups, id: \.id) { group in
-                            Text(group.name).tag(Optional(group.id))
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .frame(maxWidth: 180)
-                }
-                .controlSize(.small)
+                    PlannerFloatingTabBar(activeSection: $vm.activeSection)
+                        .frame(maxWidth: 376)
 
-                IOSSearchField(text: $vm.searchText, placeholder: "Buscar sesión, unidad, objetivo…")
-                    .appOnChange(of: vm.searchText) { _ in vm.applySearch() }
+                    weekNavigationCluster
+
+                    HStack(spacing: 8) {
+                        Picker("Grupo", selection: Binding(
+                            get: { vm.selectedGroupId },
+                            set: { vm.selectGroup($0) }
+                        )) {
+                            Text("Todos").tag(Optional<Int64>.none)
+                            ForEach(vm.groups, id: \.id) { group in
+                                Text(group.name).tag(Optional(group.id))
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .frame(maxWidth: 180)
+                    }
+                    .controlSize(.small)
+
+                    IOSSearchField(text: $vm.searchText, placeholder: "Buscar sesión, unidad, objetivo…")
+                        .appOnChange(of: vm.searchText) { _ in vm.applySearch() }
+                }
+                .frame(height: 40)
             }
-            .frame(height: 40)
 
             if !vm.bulkSummary.isEmpty {
                 Text(vm.bulkSummary)

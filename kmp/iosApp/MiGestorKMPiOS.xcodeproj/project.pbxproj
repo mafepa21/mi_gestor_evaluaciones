@@ -187,6 +187,7 @@
 		733437AB0213E2D83A1686C7 /* ScheduleImportPreviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2383FA2AFCB17CB773F8D8C /* ScheduleImportPreviewSheet.swift */; };
 		738EEEE78B67FE32320DC5E1 /* AppleFoundationContextualAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14C238867D14FCB6C59390D5 /* AppleFoundationContextualAIService.swift */; };
 		740FE4946BFED011E3EE355F /* AppleAppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 996E1D0739D88B5507B110B6 /* AppleAppEnvironment.swift */; };
+		E8147A604336BA13A6627728 /* AttendanceShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77AAFCB9DAEBFD9206FE7BDE /* AttendanceShared.swift */; };
 		753FCA184045EFF02028F2A5 /* NotebookSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 515D5694AA82CA792EE56E33 /* NotebookSettingsView.swift */; };
 		7554FBE0CBF1545E9DEB734D /* PlannerJournalDetailPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60E284759AD9A5EF12D05897 /* PlannerJournalDetailPane.swift */; };
 		75DAA59B8CF537FD4469E859 /* NotebookGridContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BD759479FF5E71467F7276D /* NotebookGridContent.swift */; };
@@ -213,6 +214,7 @@
 		86BC90A2A4604BC6B4545E27 /* IPadWorkspaceShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74BD0F6DDCBB48B737A44D3C /* IPadWorkspaceShell.swift */; };
 		878FB204389D94BB6A912BF6 /* NotebookModuleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BA9E95BA74B4D7D8AC2D362 /* NotebookModuleView.swift */; };
 		89A42DAB37443B7552C21222 /* AppleAppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 996E1D0739D88B5507B110B6 /* AppleAppEnvironment.swift */; };
+		79C9893FD7C63AA3319B5330 /* AttendanceShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77AAFCB9DAEBFD9206FE7BDE /* AttendanceShared.swift */; };
 		8A83E0FD7E5A964AAB5A36A1 /* StudentProfilesWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8E171DE6E69C0B8DA060197 /* StudentProfilesWorkspaceView.swift */; };
 		8CDF2E982B870BD83D430A83 /* GeneralSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDF85B72D878968E171D9F9C /* GeneralSettingsView.swift */; };
 		8DD86495D33264D09FE0618C /* AppleAIReadinessFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9066EF34A52C09F07E8CFAE7 /* AppleAIReadinessFixtures.swift */; };
@@ -524,6 +526,7 @@
 		992519C5A19AC4FD6AA36D33 /* PlannerWeekMiniatureLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerWeekMiniatureLayout.swift; sourceTree = "<group>"; };
 		9967D38B9A879C71B174CAE6 /* NotebookFormulaEditorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookFormulaEditorSheet.swift; sourceTree = "<group>"; };
 		996E1D0739D88B5507B110B6 /* AppleAppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleAppEnvironment.swift; sourceTree = "<group>"; };
+		77AAFCB9DAEBFD9206FE7BDE /* AttendanceShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttendanceShared.swift; sourceTree = "<group>"; };
 		9B37D82D4C30174CBD843E47 /* MiGestorKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MiGestorKit.framework; path = Frameworks/macos/MiGestorKit.framework; sourceTree = "<group>"; };
 		9C7AB4FB2753F16568E54891 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		9D93A76DF493650C1B4A2C09 /* ImportPreviewModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportPreviewModels.swift; sourceTree = "<group>"; };
@@ -670,6 +673,7 @@
 				466A6EE8F4E0ABF4D24AEDDD /* AppleViewCompatibility.swift */,
 				75BBE6314E371EFE7E28E853 /* AppSettingsModels.swift */,
 				863347F9ECD4F8B4496AA0AD /* AppSettingsStore.swift */,
+				77AAFCB9DAEBFD9206FE7BDE /* AttendanceShared.swift */,
 				1027C324D7108B1CD8EB79AC /* BackupCenterView.swift */,
 				5EA2D2AD055252AE33611496 /* BackupHistoryList.swift */,
 				41D847221EF034B6A7ED4339 /* BackupRestorePreviewSheet.swift */,
@@ -1071,6 +1075,7 @@
 				9AFEF1D8CE80DFB68F1D38FB /* AppleAISettingsView.swift in Sources */,
 				901C7CD23263A71A3D9090D9 /* AppleAppCommands.swift in Sources */,
 				740FE4946BFED011E3EE355F /* AppleAppEnvironment.swift in Sources */,
+				79C9893FD7C63AA3319B5330 /* AttendanceShared.swift in Sources */,
 				F0B171DB64DE32129BFBCE30 /* AppleAppRootView.swift in Sources */,
 				EC465FA1A3AA49BBF03CF1B5 /* AppleBackupModels.swift in Sources */,
 				7054EE8C0407272790015F8C /* AppleBackupService.swift in Sources */,
@@ -1266,6 +1271,7 @@
 				DEF0A0A4EF14D55FB47F66E5 /* AppleAISettingsView.swift in Sources */,
 				5E00FCB168FF7174CD518DA4 /* AppleAppCommands.swift in Sources */,
 				89A42DAB37443B7552C21222 /* AppleAppEnvironment.swift in Sources */,
+				E8147A604336BA13A6627728 /* AttendanceShared.swift in Sources */,
 				1286D99337F554322E21CD9C /* AppleAppRootView.swift in Sources */,
 				39B06EC818722E4C75CA4E8E /* AppleBackupModels.swift in Sources */,
 				0B3B32F606E1E6961B27FFB9 /* AppleBackupService.swift in Sources */,
@@ -1475,7 +1481,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
@@ -1576,7 +1582,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;

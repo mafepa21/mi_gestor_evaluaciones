@@ -13,12 +13,20 @@ struct PlannerMacToolbarActions {
     let groups: [SchoolClass]
     let canUndoCascadeMove: Bool
     let canClearSchedulelessWeek: Bool
+    /// Estado/acciones del modo selección múltiple, espejo de
+    /// `PlannerLiquidGlassControls` en iPad (`vm.selectionMode` / `vm.selectedSessionIds`).
+    let isSelectionModeActive: Bool
+    let canCopySelection: Bool
+    let shareText: String
     let onPreviousWeek: () -> Void
     let onNextWeek: () -> Void
     let onToday: () -> Void
     let onNewSession: () -> Void
     let onUndoCascadeMove: () -> Void
     let onClearSchedulelessWeek: () -> Void
+    let onToggleSelectionMode: () -> Void
+    let onCopyToNextWeek: () -> Void
+    let onMoveOneDay: () -> Void
     /// Usados por el inspector de sesión en `MacRootView` (que no tiene acceso
     /// directo al `PlannerWorkspaceViewModel`, propio de `MacPlannerView`).
     let onOpenDiary: (PlanningSession) -> Void
@@ -132,6 +140,8 @@ struct MacPlannerView: View {
         .appOnChange(of: vm.groups.map(\.id)) { _ in publishToolbarActions() }
         .appOnChange(of: vm.lastCascadeMove?.movedCount) { _ in publishToolbarActions() }
         .appOnChange(of: vm.sessions.count) { _ in publishToolbarActions() }
+        .appOnChange(of: vm.selectionMode) { _ in publishToolbarActions() }
+        .appOnChange(of: vm.selectedSessionIds) { _ in publishToolbarActions() }
         .onDisappear {
             onToolbarActionsChange(nil)
         }
@@ -149,12 +159,21 @@ struct MacPlannerView: View {
                 groups: vm.groups,
                 canUndoCascadeMove: vm.lastCascadeMove != nil,
                 canClearSchedulelessWeek: vm.canClearSchedulelessWeekSessions,
+                isSelectionModeActive: vm.selectionMode,
+                canCopySelection: !vm.selectedSessionIds.isEmpty,
+                shareText: vm.exportText(),
                 onPreviousWeek: { Task { await vm.previousWeek() } },
                 onNextWeek: { Task { await vm.nextWeek() } },
                 onToday: { Task { await vm.goToCurrentWeek() } },
                 onNewSession: { openComposerForCurrentFilter() },
                 onUndoCascadeMove: { cascadeCoordinator.undoLastMove(vm: vm) },
                 onClearSchedulelessWeek: { showingClearSchedulelessWeekConfirmation = true },
+                onToggleSelectionMode: {
+                    vm.selectionMode.toggle()
+                    if !vm.selectionMode { vm.selectedSessionIds.removeAll() }
+                },
+                onCopyToNextWeek: { Task { await vm.bulkCopyToNextWeek() } },
+                onMoveOneDay: { Task { await vm.bulkMoveOneDay() } },
                 onOpenDiary: { session in
                     inspectorSession = nil
                     Task { await vm.select(session: session) }

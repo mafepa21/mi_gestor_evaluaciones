@@ -58,6 +58,68 @@ struct UiFeatureFlags {
             : .spring(response: 0.35, dampingFraction: 0.75)
     }
 
+    /// `true` en macOS (interacción por puntero), `false` en iPadOS (táctil).
+    /// El puntero exige inmediatez; el tacto tolera curvas algo más largas.
+    private var isPointerPlatform: Bool {
+        #if os(macOS)
+        return true
+        #else
+        return false
+        #endif
+    }
+
+    /// Fallback común cuando `reduceMotion` está activo: cross-fade breve, sin desplazamientos.
+    private var reduceMotionFallback: Animation { .easeInOut(duration: 0.15) }
+
+    // MARK: Rúbricas (celda expandible)
+
+    var rubricOpenAnimation: Animation {
+        reduceMotion ? reduceMotionFallback : .spring(response: 0.38, dampingFraction: 0.82)
+    }
+
+    var rubricCloseAnimation: Animation {
+        reduceMotion ? reduceMotionFallback : .spring(response: 0.30, dampingFraction: 0.90)
+    }
+
+    /// Fade-in escalonado del contenido interno de la rúbrica.
+    var rubricContentReveal: Animation {
+        reduceMotion ? reduceMotionFallback : .easeOut(duration: 0.20)
+    }
+
+    // MARK: Menús / popovers custom
+
+    var popoverOpenAnimation: Animation {
+        guard !reduceMotion else { return reduceMotionFallback }
+        // macOS abre más rápido (0.22) por la expectativa de inmediatez del puntero.
+        return .spring(response: isPointerPlatform ? 0.22 : 0.28, dampingFraction: 0.78)
+    }
+
+    var popoverCloseAnimation: Animation {
+        guard !reduceMotion else { return reduceMotionFallback }
+        // macOS: fade puro al perder foco. iPadOS: ease-in con leve scale de salida.
+        return isPointerPlatform ? .easeOut(duration: 0.12) : .easeIn(duration: 0.15)
+    }
+
+    // MARK: Inspector lateral (panel custom iPadOS; macOS usa `.inspector` nativo)
+
+    var inspectorOpenAnimation: Animation {
+        reduceMotion ? reduceMotionFallback : .spring(response: 0.42, dampingFraction: 0.86)
+    }
+
+    var inspectorCloseAnimation: Animation {
+        reduceMotion ? reduceMotionFallback : .spring(response: 0.35, dampingFraction: 0.92)
+    }
+
+    /// Devuelve la curva adecuada según la dirección de la transición del inspector.
+    func inspectorAnimation(presented: Bool) -> Animation {
+        presented ? inspectorOpenAnimation : inspectorCloseAnimation
+    }
+
+    /// Fade-in del contenido del inspector tras completarse el slide (evita text-jitter).
+    var inspectorContentReveal: Animation {
+        reduceMotion ? reduceMotionFallback : .easeOut(duration: 0.18)
+    }
+
     var inspectorTransition: AnyTransition {
         reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity)
     }
@@ -248,6 +310,18 @@ func appCardBackground(for colorScheme: ColorScheme) -> Color {
     colorScheme == .dark
         ? Color(red: 0.10, green: 0.14, blue: 0.22)
         : Color.white
+}
+
+extension View {
+    /// Resalta al pasar el puntero (Mac/trackpad) o al tocar (Pencil/dedo en iPad).
+    @ViewBuilder
+    func appInteractiveHighlight() -> some View {
+#if os(iOS)
+        self.hoverEffect(.highlight)
+#else
+        self
+#endif
+    }
 }
 
 enum AppleDesignSystem {

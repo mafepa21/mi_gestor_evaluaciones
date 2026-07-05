@@ -317,8 +317,14 @@ class LocalSyncServer(
             println("📡 Conexión SSE abierta desde ${ex.remoteAddress}")
 
             try {
-                out.write(": ok\n\n".toByteArray())
-                out.flush()
+                // `ex` también es el lock usado por broadcastSseEvent para esta misma
+                // conexión: sin esto, un evento de sync y el keep-alive pueden escribir
+                // al mismo tiempo en el stream y entrelazar sus bytes, corrompiendo el
+                // frame SSE que lee el cliente.
+                synchronized(ex) {
+                    out.write(": ok\n\n".toByteArray())
+                    out.flush()
+                }
             } catch (e: Exception) {
                 sseConnections.remove(ex)
                 runCatching { ex.close() }
@@ -329,8 +335,10 @@ class LocalSyncServer(
                 while (server != null && sseConnections.contains(ex)) {
                     Thread.sleep(15000)
                     try {
-                        out.write(": keep-alive\n\n".toByteArray())
-                        out.flush()
+                        synchronized(ex) {
+                            out.write(": keep-alive\n\n".toByteArray())
+                            out.flush()
+                        }
                     } catch (e: Exception) {
                         break
                     }
@@ -625,12 +633,15 @@ class LocalSyncServer(
     }
 
     private fun buildBonjourTxtMap(): Map<String, String> {
+        // El PIN NUNCA debe publicarse por Bonjour: el registro TXT es legible por
+        // cualquier dispositivo de la red local sin necesidad de ver el QR/pantalla
+        // del Mac, lo que anularía por completo la protección del PIN de emparejamiento.
+        // El cliente iOS ya no lo lee de aquí (ver LanSyncDiscovery.emitHosts).
         return mapOf(
             "sid" to serverId,
             "proto" to "https",
             "fp" to certFingerprintSha256,
             "paired" to if (isPaired()) "1" else "0",
-            "pin" to pairingPin
         )
     }
 
@@ -774,9 +785,11 @@ class LocalSyncServer(
         val disconnected = mutableListOf<HttpExchange>()
         for (conn in sseConnections) {
             try {
-                val out = conn.responseBody
-                out.write(bytes)
-                out.flush()
+                synchronized(conn) {
+                    val out = conn.responseBody
+                    out.write(bytes)
+                    out.flush()
+                }
             } catch (e: Exception) {
                 disconnected.add(conn)
             }

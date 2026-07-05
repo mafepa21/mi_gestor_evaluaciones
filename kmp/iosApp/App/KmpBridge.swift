@@ -6514,13 +6514,18 @@ final class KmpBridge: ObservableObject {
             return
         }
 
+        // Snapshot lo que vamos a enviar. Los cambios que se encolen mientras la
+        // petición de red está en curso (el `await`) no deben perderse cuando
+        // limpiemos la cola al recibir la respuesta.
+        let sentChanges = pendingOutboundChanges
+
         let ack: LanPushResult
         do {
             ack = try await lanSyncClient.push(
                 host: host,
                 token: token,
                 deviceId: localDeviceId,
-                changes: pendingOutboundChanges,
+                changes: sentChanges,
                 lastKnownServerEpochMs: lastSyncCursorEpochMs,
                 pinnedFingerprint: pairedServerFingerprint
             )
@@ -6532,15 +6537,22 @@ final class KmpBridge: ObservableObject {
                 host: reboundHost,
                 token: token,
                 deviceId: localDeviceId,
-                changes: pendingOutboundChanges,
+                changes: sentChanges,
                 lastKnownServerEpochMs: lastSyncCursorEpochMs,
                 pinnedFingerprint: pairedServerFingerprint
             )
         }
-        if ack.applied > 0 || ack.desktopAuthoritative {
-            pendingOutboundChanges.removeAll()
-            UserDefaults.standard.removeObject(forKey: "sync.pending.changes.v2")
-        }
+        // Un round-trip exitoso significa que el servidor ya resolvió cada cambio
+        // del lote (aplicado, ignorado por LWW o rechazado por payload inválido).
+        // Reintentar un ignored/failed sin una edición local más reciente nunca
+        // tendría éxito, así que soltamos siempre el snapshot enviado en vez de
+        // condicionar a `applied > 0` — de lo contrario un lote totalmente
+        // ignorado reintentaría para siempre y "pendientes" nunca bajaría a 0.
+        // Solo quitamos las entradas que coinciden exactamente con lo enviado:
+        // si el mismo entity/id se volvió a editar durante el `await`, la entrada
+        // más nueva en la cola no será igual (Equatable) al snapshot y se conserva.
+        pendingOutboundChanges.removeAll { sentChanges.contains($0) }
+        persistPendingChanges()
         if ack.desktopAuthoritative {
             try await performPullSync(
                 silent: true,
@@ -10273,6 +10285,12 @@ final class KmpBridge: ObservableObject {
         syncSecureStore.delete(key: "sync.host")
         syncSecureStore.delete(key: "sync.server.id")
         syncSecureStore.delete(key: "sync.server.fingerprint")
+        // El cursor pertenece al servidor con el que estábamos emparejados; un Mac
+        // distinto tiene su propio reloj/epoch y no debe heredar este valor.
+        // (Los cambios pendientes de envío SÍ se conservan: son ediciones locales
+        // reales aún no sincronizadas y deben llegar al próximo dispositivo emparejado.)
+        lastSyncCursorEpochMs = 0
+        UserDefaults.standard.removeObject(forKey: "sync.last.cursor")
     }
 
     private func rebindPairedHostIfNeeded() {

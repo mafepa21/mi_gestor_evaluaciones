@@ -2484,7 +2484,7 @@ private struct PlannerScheduleBoard: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: IOSAppStyle.sectionSpacing) {
-                IOSSectionCard(title: "Resumen operativo", systemImage: "calendar.badge.clock") {
+                PremiumCard.section(title: "Resumen operativo", systemImage: "calendar.badge.clock") {
                     VStack(alignment: .leading, spacing: 16) {
                         Text("La configuración editable vive ahora en Ajustes para que Planner conserve una sola tarea principal.")
                             .font(IOSAppStyle.captionText)
@@ -2510,7 +2510,7 @@ private struct PlannerScheduleBoard: View {
                     }
                 }
 
-                IOSSectionCard(title: "Franjas activas", systemImage: "clock.fill") {
+                PremiumCard.section(title: "Franjas activas", systemImage: "clock.fill") {
                     VStack(alignment: .leading, spacing: 16) {
                         Text("Resumen de las franjas que ya están alimentando el tablero semanal actual.")
                             .font(IOSAppStyle.captionText)
@@ -2552,7 +2552,7 @@ private struct PlannerScheduleBoard: View {
                     }
                 }
 
-                IOSSectionCard(title: "Previsión lectiva", systemImage: "calendar.badge.exclamationmark") {
+                PremiumCard.section(title: "Previsión lectiva", systemImage: "calendar.badge.exclamationmark") {
                     VStack(alignment: .leading, spacing: 16) {
                         Text("Sigue visible en Planner para contrastar lo previsto con lo ya creado, pero se edita desde Ajustes.")
                             .font(IOSAppStyle.captionText)
@@ -2753,7 +2753,7 @@ private struct SessionJournalHeaderCard: View {
     let session: PlanningSession
 
     var body: some View {
-        EvaluationGlassCard {
+        PremiumCard.glass {
             VStack(alignment: .leading, spacing: 14) {
                 EvaluationSectionTitle(
                     eyebrow: "Diario",
@@ -3182,7 +3182,7 @@ private struct SessionJournalSectionCard<Content: View>: View {
     }
 
     var body: some View {
-        EvaluationGlassCard {
+        PremiumCard.glass {
             VStack(alignment: .leading, spacing: 16) {
                 EvaluationSectionTitle(eyebrow: eyebrow, title: title, subtitle: subtitle)
                 content
@@ -3749,7 +3749,7 @@ struct PlannerSessionComposerSheet: View {
     private var composerContent: some View {
         ScrollView(.vertical, showsIndicators: true) {
             VStack(alignment: .leading, spacing: IOSAppStyle.sectionSpacing) {
-                IOSSectionCard(title: vm.composerDraft.sessionId == 0 ? "Nueva sesión" : "Editar sesión", systemImage: "pencil.and.outline") {
+                PremiumCard.section(title: vm.composerDraft.sessionId == 0 ? "Nueva sesión" : "Editar sesión", systemImage: "pencil.and.outline") {
                     VStack(alignment: .leading, spacing: 14) {
                         PlannerSaveStateInlineStatus(state: vm.composerSaveState)
 
@@ -3799,7 +3799,7 @@ struct PlannerSessionComposerSheet: View {
                     }
                 }
 
-                IOSSectionCard(title: "Instrumentos enlazados", systemImage: "doc.plaintext.fill") {
+                PremiumCard.section(title: "Instrumentos enlazados", systemImage: "doc.plaintext.fill") {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Selecciona evaluaciones o rúbricas filtradas por el curso y la situación de aprendizaje.")
                             .font(IOSAppStyle.captionText)
@@ -3821,7 +3821,7 @@ struct PlannerSessionComposerSheet: View {
                     }
                 }
 
-                IOSSectionCard(title: "Dónde cae la sesión", systemImage: "calendar.badge.clock") {
+                PremiumCard.section(title: "Dónde cae la sesión", systemImage: "calendar.badge.clock") {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Se guardará como planificada en la franja seleccionada.")
                             .font(IOSAppStyle.captionText)

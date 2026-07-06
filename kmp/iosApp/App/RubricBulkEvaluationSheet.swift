@@ -111,7 +111,7 @@ struct RubricBulkEvaluationSheet: View {
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal, 24)
                         }
-                        EvaluationPrimaryButton(label: "Cerrar", systemImage: "xmark") {
+                        PrimaryActionButton(label: "Cerrar", systemImage: "xmark") {
                             bridge.closeBulkRubricEvaluation()
                             dismiss()
                         }
@@ -168,7 +168,7 @@ struct RubricBulkEvaluationSheet: View {
                 )
 
                 VStack(alignment: .trailing, spacing: 4) {
-                    EvaluationPrimaryButton(label: "Guardar Todo", systemImage: "square.and.arrow.down.fill") {
+                    PrimaryActionButton(label: "Guardar Todo", systemImage: "square.and.arrow.down.fill") {
                         bridge.bulkSaveAll()
                     }
                     .frame(width: 180)
@@ -188,7 +188,7 @@ struct RubricBulkEvaluationSheet: View {
         rubric: RubricDetail,
         cache: BulkRubricEvaluationCache
     ) -> some View {
-        EvaluationGlassCard(cornerRadius: EvaluationDesign.cardRadius, fillOpacity: 0.92) {
+        PremiumCard.glass(cornerRadius: EvaluationDesign.cardRadius, fillOpacity: 0.92) {
             VStack(alignment: .leading, spacing: 24) {
                 HStack(spacing: 16) {
                     EvaluationChip(label: "\(state.students.count) alumnos", systemImage: "person.3.fill")
@@ -241,7 +241,7 @@ struct RubricBulkEvaluationSheet: View {
         let actionsWidth: CGFloat = 96
         let studentWidth: CGFloat = 224
 
-        return EvaluationGlassCard(cornerRadius: EvaluationDesign.cardRadius, fillOpacity: 0.92) {
+        return PremiumCard.glass(cornerRadius: EvaluationDesign.cardRadius, fillOpacity: 0.92) {
             VStack(alignment: .leading, spacing: 24) {
                 HStack(spacing: 16) {
                     EvaluationChip(
@@ -764,7 +764,7 @@ struct RubricBulkEvaluationSheet: View {
 
     private func injuredSidebar(state: BulkRubricEvaluationUiState) -> some View {
         let injuredStudents = injuredStudents(for: state)
-        return EvaluationGlassCard(cornerRadius: 32, fillOpacity: 0.90) {
+        return PremiumCard.glass(cornerRadius: 32, fillOpacity: 0.90) {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(spacing: 10) {
                     EvaluationChip(

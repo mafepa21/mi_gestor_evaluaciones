@@ -245,7 +245,7 @@ struct NotebookSummaryGenerationSheet: View {
     }
 
     private var introCard: some View {
-        IOSSectionCard(title: "Síntesis Inteligente", systemImage: "apple.intelligence") {
+        PremiumCard.section(title: "Síntesis Inteligente", systemImage: "apple.intelligence") {
             VStack(alignment: .leading, spacing: 12) {
                 Text(hasExistingSummary ? "Refina o actualiza la síntesis pedagógica del cuaderno." : "Genera una columna de síntesis pedagógica lista para cada alumno.")
                     .font(IOSAppStyle.cardTitle)
@@ -261,7 +261,7 @@ struct NotebookSummaryGenerationSheet: View {
     }
 
     private var configurationCard: some View {
-        IOSSectionCard(title: "Configuración", systemImage: "slider.horizontal.3") {
+        PremiumCard.section(title: "Configuración", systemImage: "slider.horizontal.3") {
             VStack(alignment: .leading, spacing: 16) {
                 if hasExistingSummary {
                     Picker("Columna destino", selection: $selectedExistingColumnId) {
@@ -286,7 +286,7 @@ struct NotebookSummaryGenerationSheet: View {
     }
 
     private var generationCard: some View {
-        IOSSectionCard(title: "Generación", systemImage: "play.fill") {
+        PremiumCard.section(title: "Generación", systemImage: "play.fill") {
             VStack(alignment: .leading, spacing: 16) {
                 Text(targetSummaryText)
                     .font(IOSAppStyle.bodyText)
@@ -309,11 +309,12 @@ struct NotebookSummaryGenerationSheet: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
                 } else {
-                    IOSPrimaryActionButton(
+                    PrimaryActionButton(
                         label: ctaTitle,
                         systemImage: "apple.intelligence",
                         tint: IOSAppStyle.info,
-                        isEnabled: !resolvedStudentIds.isEmpty
+                        isEnabled: !resolvedStudentIds.isEmpty,
+                        fullWidth: false
                     ) {
                         performGeneration()
                     }

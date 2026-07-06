@@ -131,39 +131,6 @@ struct EvaluationBackdrop: View {
     }
 }
 
-struct EvaluationGlassCard<Content: View>: View {
-    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
-    @Environment(\.colorScheme) private var colorScheme
-    let cornerRadius: CGFloat
-    let fillOpacity: Double
-    let content: Content
-
-    init(cornerRadius: CGFloat = EvaluationDesign.cardRadius, fillOpacity: Double = 0.82, @ViewBuilder content: () -> Content) {
-        self.cornerRadius = cornerRadius
-        self.fillOpacity = fillOpacity
-        self.content = content()
-    }
-
-    var body: some View {
-        content
-            .padding(EvaluationDesign.screenPadding)
-            .background(
-                adaptiveSurfaceBackground(
-                    accessibilityFallback: uiFeatureFlags.accessibilitySurfaceFallback,
-                    fill: colorScheme == .dark
-                        ? appCardBackground(for: .dark).opacity(fillOpacity)
-                        : appCardBackground(for: .light).opacity(fillOpacity),
-                    cornerRadius: cornerRadius
-                )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                            .stroke(EvaluationDesign.border, lineWidth: 1)
-                    )
-                    .shadow(color: EvaluationDesign.shadow.opacity(0.20), radius: 18, x: 0, y: 8)
-            )
-    }
-}
-
 struct EvaluationChip: View {
     let label: String
     var systemImage: String? = nil
@@ -212,33 +179,6 @@ struct EvaluationIconButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityLabel ?? systemImage)
-    }
-}
-
-struct EvaluationPrimaryButton: View {
-    let label: String
-    let systemImage: String
-    var tint: Color = EvaluationDesign.accent
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 14, weight: .bold))
-                Text(label)
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-            }
-            .foregroundStyle(contrastingTextColor(for: tint))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(tint)
-                    .shadow(color: tint.opacity(0.18), radius: 12, x: 0, y: 6)
-            )
-        }
-        .buttonStyle(.plain)
     }
 }
 

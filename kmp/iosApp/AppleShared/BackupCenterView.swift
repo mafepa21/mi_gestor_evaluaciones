@@ -217,7 +217,7 @@ struct BackupSecurityCard: View {
     }
 
     var body: some View {
-        IOSSectionCard(title: "Estado de seguridad", systemImage: "lock.shield.fill") {
+        PremiumCard.section(title: "Estado de seguridad", systemImage: "lock.shield.fill") {
             LazyVGrid(
                 columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())],
                 spacing: 10

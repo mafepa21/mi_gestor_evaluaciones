@@ -7,10 +7,21 @@ enum EvaluationDesign {
     static let cardRadius: CGFloat = 40
     static let innerRadius: CGFloat = 16
     static let pillRadius: CGFloat = 12
-    static let accent = Color(red: 0.09, green: 0.32, blue: 0.92)
-    static let accentSoft = Color(red: 0.09, green: 0.32, blue: 0.92).opacity(0.12)
-    static let success = Color(red: 0.12, green: 0.65, blue: 0.46)
-    static let danger = Color(red: 0.90, green: 0.20, blue: 0.22)
+    // Variantes de modo oscuro tomadas de los tonos system (blue/green/red) de Apple,
+    // ya auditados para mantener contraste AA sobre fondos oscuros del sistema.
+    static let accent = appAdaptiveBrandColor(
+        light: (0.09, 0.32, 0.92),
+        dark: (0.039, 0.518, 1.0)
+    )
+    static let accentSoft = accent.opacity(0.12)
+    static let success = appAdaptiveBrandColor(
+        light: (0.12, 0.65, 0.46),
+        dark: (0.188, 0.820, 0.345)
+    )
+    static let danger = appAdaptiveBrandColor(
+        light: (0.90, 0.20, 0.22),
+        dark: (1.0, 0.2706, 0.2275)
+    )
     static let surface = appSecondarySystemBackgroundColor()
     static let surfaceMuted = appSecondarySystemBackgroundColor()
     static let surfaceSoft = appTertiarySystemBackgroundColor()

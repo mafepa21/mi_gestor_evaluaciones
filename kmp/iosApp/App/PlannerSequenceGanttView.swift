@@ -4,14 +4,16 @@ import MiGestorKit
 struct PlannerSequenceGanttView: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
     let onOpenSession: (PlanningSession) -> Void
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
 
-    @State private var selectedTerm: PlannerGanttTerm = .current
+    @State private var selectedRange: PlannerGanttRange = .current
     @State private var selectedGroupId: Int64?
     @State private var expandedSituationIds: Set<String> = []
 
     private let labelWidth: CGFloat = 208
     private let weekWidth: CGFloat = 64
     private let rowHeight: CGFloat = 40
+    private let monthHeaderHeight: CGFloat = 24
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -50,9 +52,10 @@ struct PlannerSequenceGanttView: View {
             Spacer()
 
             HStack(spacing: 8) {
-                Picker("Trimestre", selection: $selectedTerm) {
-                    ForEach(PlannerGanttTerm.allCases) { term in
-                        Text(term.title).tag(term)
+                Picker("Periodo", selection: $selectedRange) {
+                    Text("Periodo actual").tag(PlannerGanttRange.current)
+                    ForEach(sortedEvaluationPeriods, id: \.id) { period in
+                        Text(period.name).tag(PlannerGanttRange.period(period.id))
                     }
                 }
                 .pickerStyle(.menu)
@@ -97,15 +100,19 @@ struct PlannerSequenceGanttView: View {
         VStack(alignment: .leading, spacing: 12) {
             ScrollView([.horizontal, .vertical]) {
                 VStack(alignment: .leading, spacing: 0) {
+                    monthHeader
                     timelineHeader
 
                     ForEach(situationRows) { situation in
                         PlannerGanttSituationRow(
+                            vm: vm,
                             situation: situation,
                             weeks: visibleWeeks,
+                            vacationWeeks: vacationWeeks,
                             weekWidth: weekWidth,
                             labelWidth: labelWidth,
                             rowHeight: rowHeight,
+                            currentWeek: currentWeek,
                             isExpanded: expandedSituationIds.contains(situation.id),
                             onToggle: {
                                 toggle(situation.id)
@@ -114,14 +121,25 @@ struct PlannerSequenceGanttView: View {
                         )
                     }
                 }
-                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(EvaluationDesign.border, lineWidth: 1)
-                )
+                .plannerGlassPanel(.content, cornerRadius: 12)
             }
 
             legend
+        }
+    }
+
+    private var monthHeader: some View {
+        HStack(spacing: 0) {
+            Color.clear.frame(width: labelWidth, height: monthHeaderHeight)
+
+            ForEach(monthSpans, id: \.id) { span in
+                Text(span.title)
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .frame(width: weekWidth * CGFloat(span.weekCount), height: monthHeaderHeight, alignment: .leading)
+                    .padding(.leading, 6)
+            }
         }
     }
 
@@ -135,11 +153,11 @@ struct PlannerSequenceGanttView: View {
                 .background(EvaluationDesign.surfaceSoft)
 
             ForEach(visibleWeeks, id: \.self) { week in
-                Text("S.\(week)")
+                Text("S.\(week.week)")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(week == currentWeek ? EvaluationDesign.accent : .secondary)
                     .frame(width: weekWidth, height: rowHeight)
-                    .background(week == currentWeek ? EvaluationDesign.accent.opacity(0.10) : EvaluationDesign.surfaceSoft)
+                    .background(weekHeaderBackground(for: week))
                     .overlay(alignment: .leading) {
                         if week == currentWeek {
                             Rectangle()
@@ -151,24 +169,75 @@ struct PlannerSequenceGanttView: View {
         }
     }
 
+    private func weekHeaderBackground(for week: PlannerGanttWeek) -> Color {
+        if week == currentWeek { return EvaluationDesign.accent.opacity(0.10) }
+        if vacationWeeks.contains(week) { return Color.secondary.opacity(0.14) }
+        return EvaluationDesign.surfaceSoft
+    }
+
     private var legend: some View {
         HStack(spacing: 16) {
             PlannerGanttLegendItem(label: "Impartida", tint: EvaluationDesign.success)
             PlannerGanttLegendItem(label: "Planificada", tint: EvaluationDesign.accent)
-            PlannerGanttLegendItem(label: "Pendiente", tint: IOSAppStyle.warning)
-            PlannerGanttLegendItem(label: "Sin asignar", tint: Color.secondary.opacity(0.35))
+            PlannerGanttLegendItem(label: "Pendiente de ubicar", tint: IOSAppStyle.warning)
+            PlannerGanttLegendItem(label: "Vacaciones", tint: Color.secondary.opacity(0.35))
             Spacer()
         }
         .padding(.horizontal, 4)
     }
 
-    private var visibleWeeks: [Int] {
-        selectedTerm.weekRange(currentWeek: currentWeek)
+    private var sortedEvaluationPeriods: [PlannerEvaluationPeriod] {
+        vm.evaluationPeriods.sorted { ($0.sortOrder, $0.startDateIso) < ($1.sortOrder, $1.startDateIso) }
     }
 
-    private var currentWeek: Int {
-        let current = IsoWeekHelper.shared.current()
-        return Int(truncating: current.first ?? KotlinInt(value: Int32(vm.week)))
+    private var visibleWeeks: [PlannerGanttWeek] {
+        switch selectedRange {
+        case .current:
+            return PlannerGanttWeek.range(around: Date(), before: 6, after: 6)
+        case .period(let periodId):
+            guard let period = vm.evaluationPeriods.first(where: { $0.id == periodId }),
+                  let weeks = PlannerGanttWeek.range(fromIso: period.startDateIso, toIso: period.endDateIso),
+                  !weeks.isEmpty else {
+                return PlannerGanttWeek.range(around: Date(), before: 6, after: 6)
+            }
+            return weeks
+        }
+    }
+
+    private var currentWeek: PlannerGanttWeek {
+        PlannerGanttWeek(date: Date())
+    }
+
+    /// Semanas visibles que no caen dentro de ningún periodo de evaluación configurado:
+    /// son los huecos reales entre evaluaciones (Navidad, Semana Santa, verano...).
+    /// Si no hay periodos configurados no se sombrea nada (no hay con qué comparar).
+    private var vacationWeeks: Set<PlannerGanttWeek> {
+        guard !vm.evaluationPeriods.isEmpty else { return [] }
+        let coveredWeeks = Set(
+            vm.evaluationPeriods.flatMap { period in
+                PlannerGanttWeek.range(fromIso: period.startDateIso, toIso: period.endDateIso) ?? []
+            }
+        )
+        return Set(visibleWeeks.filter { !coveredWeeks.contains($0) })
+    }
+
+    private struct MonthSpan: Identifiable {
+        let id: String
+        let title: String
+        let weekCount: Int
+    }
+
+    private var monthSpans: [MonthSpan] {
+        var spans: [MonthSpan] = []
+        for week in visibleWeeks {
+            let label = week.monthTitle
+            if let last = spans.last, last.title == label {
+                spans[spans.count - 1] = MonthSpan(id: last.id, title: last.title, weekCount: last.weekCount + 1)
+            } else {
+                spans.append(MonthSpan(id: "\(week.year)-\(label)-\(spans.count)", title: label, weekCount: 1))
+            }
+        }
+        return spans
     }
 
     private var filteredGroups: [PlannerSequenceGroup] {
@@ -179,7 +248,7 @@ struct PlannerSequenceGanttView: View {
 
     private var situationRows: [PlannerGanttSituation] {
         let grouped = Dictionary(grouping: filteredGroups) { group in
-            normalized(group.title)
+            group.sequenceVersionId.map { "seq-\($0)" } ?? "title-\(normalized(group.title))"
         }
 
         return grouped.compactMap { key, groups in
@@ -194,7 +263,7 @@ struct PlannerSequenceGanttView: View {
     }
 
     private func toggle(_ id: String) {
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+        withAnimation(uiFeatureFlags.interactionAnimation) {
             if expandedSituationIds.contains(id) {
                 expandedSituationIds.remove(id)
             } else {
@@ -214,36 +283,87 @@ struct PlannerSequenceGanttView: View {
     }
 }
 
-private enum PlannerGanttTerm: String, CaseIterable, Identifiable {
+private enum PlannerGanttRange: Hashable {
     case current
-    case first
-    case second
-    case third
+    case period(Int64)
+}
 
-    var id: String { rawValue }
+struct PlannerGanttWeek: Hashable {
+    let year: Int
+    let week: Int
 
-    var title: String {
-        switch self {
-        case .current: return "Trimestre actual"
-        case .first: return "1º trimestre"
-        case .second: return "2º trimestre"
-        case .third: return "3º trimestre"
+    private static var isoCalendar: Calendar {
+        var calendar = Calendar(identifier: .iso8601)
+        calendar.timeZone = TimeZone.current
+        return calendar
+    }
+
+    init(year: Int, week: Int) {
+        self.year = year
+        self.week = week
+    }
+
+    init(date: Date) {
+        let calendar = Self.isoCalendar
+        year = calendar.component(.yearForWeekOfYear, from: date)
+        week = calendar.component(.weekOfYear, from: date)
+    }
+
+    /// Lunes de esta semana ISO, usado para ordenar/comparar semanas por fecha real
+    /// y para derivar el nombre del mes en la cabecera.
+    var mondayDate: Date? {
+        var components = DateComponents()
+        components.yearForWeekOfYear = year
+        components.weekOfYear = week
+        components.weekday = 2
+        return Self.isoCalendar.date(from: components)
+    }
+
+    var monthTitle: String {
+        guard let date = mondayDate else { return "" }
+        let formatter = DateFormatter()
+        formatter.calendar = Self.isoCalendar
+        formatter.locale = Locale.current
+        formatter.dateFormat = "LLLL"
+        return formatter.string(from: date).capitalized
+    }
+
+    static func range(around reference: Date, before: Int, after: Int) -> [PlannerGanttWeek] {
+        let calendar = isoCalendar
+        return (-before...after).compactMap { offset in
+            calendar.date(byAdding: .weekOfYear, value: offset, to: reference)
+                .map(PlannerGanttWeek.init(date:))
         }
     }
 
-    func weekRange(currentWeek: Int) -> [Int] {
-        switch self {
-        case .current:
-            let start = max(1, currentWeek - 6)
-            let end = min(53, start + 12)
-            return Array(start...end)
-        case .first:
-            return Array(36...52)
-        case .second:
-            return Array(1...14)
-        case .third:
-            return Array(15...26)
+    static func range(fromIso startIso: String, toIso endIso: String) -> [PlannerGanttWeek]? {
+        guard let start = isoDate(startIso), let end = isoDate(endIso), start <= end else { return nil }
+        let calendar = isoCalendar
+        var weeks: [PlannerGanttWeek] = []
+        var cursor = start
+        // Límite de seguridad: un periodo de evaluación nunca supera un curso escolar.
+        while cursor <= end && weeks.count < 60 {
+            weeks.append(PlannerGanttWeek(date: cursor))
+            guard let next = calendar.date(byAdding: .weekOfYear, value: 1, to: cursor) else { break }
+            cursor = next
         }
+        return weeks
+    }
+
+    /// Diferencia en semanas ISO entre dos semanas (positiva si `other` es posterior).
+    func weeks(until other: PlannerGanttWeek) -> Int {
+        guard let selfDate = mondayDate, let otherDate = other.mondayDate else { return 0 }
+        let days = Calendar(identifier: .iso8601).dateComponents([.day], from: selfDate, to: otherDate).day ?? 0
+        return Int((Double(days) / 7.0).rounded())
+    }
+
+    private static func isoDate(_ value: String) -> Date? {
+        let formatter = DateFormatter()
+        formatter.calendar = isoCalendar
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone.current
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.date(from: value)
     }
 }
 
@@ -258,11 +378,14 @@ private struct PlannerGanttSituation: Identifiable {
 }
 
 private struct PlannerGanttSituationRow: View {
+    @ObservedObject var vm: PlannerWorkspaceViewModel
     let situation: PlannerGanttSituation
-    let weeks: [Int]
+    let weeks: [PlannerGanttWeek]
+    let vacationWeeks: Set<PlannerGanttWeek>
     let weekWidth: CGFloat
     let labelWidth: CGFloat
     let rowHeight: CGFloat
+    let currentWeek: PlannerGanttWeek
     let isExpanded: Bool
     let onToggle: () -> Void
     let onOpenSession: (PlanningSession) -> Void
@@ -281,7 +404,7 @@ private struct PlannerGanttSituationRow: View {
                                 .font(.subheadline.weight(.bold))
                                 .foregroundStyle(.primary)
                                 .lineLimit(1)
-                            Text("\(situation.completed) de \(situation.total) sesiones · \(situation.pending) pendientes")
+                            Text("\(situation.completed) de \(situation.total) sesiones · \(situation.pending) sin ubicar")
                                 .font(.caption.weight(.medium))
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
@@ -292,9 +415,10 @@ private struct PlannerGanttSituationRow: View {
                     .padding(.horizontal, 16)
                     .background(EvaluationDesign.surfaceSoft.opacity(0.72))
 
-                    PlannerGanttTimelineCells(
-                        sessions: situation.groups.flatMap(\.rows),
+                    PlannerGanttContinuousBar(
+                        rows: situation.groups.flatMap(\.rows),
                         weeks: weeks,
+                        vacationWeeks: vacationWeeks,
                         weekWidth: weekWidth,
                         rowHeight: rowHeight,
                         onOpenSession: onOpenSession
@@ -302,15 +426,21 @@ private struct PlannerGanttSituationRow: View {
                 }
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("\(situation.title): \(situation.completed) de \(situation.total) sesiones, \(situation.pending) sin ubicar")
+            .accessibilityValue(isExpanded ? "Expandido" : "Contraído")
+            .accessibilityHint("Alterna el detalle por grupo")
 
             if isExpanded {
                 ForEach(situation.groups) { group in
                     PlannerGanttGroupRow(
+                        vm: vm,
                         group: group,
                         weeks: weeks,
+                        vacationWeeks: vacationWeeks,
                         weekWidth: weekWidth,
                         labelWidth: labelWidth,
                         rowHeight: rowHeight,
+                        currentWeek: currentWeek,
                         onOpenSession: onOpenSession
                     )
                 }
@@ -320,42 +450,120 @@ private struct PlannerGanttSituationRow: View {
 }
 
 private struct PlannerGanttGroupRow: View {
+    @ObservedObject var vm: PlannerWorkspaceViewModel
     let group: PlannerSequenceGroup
-    let weeks: [Int]
+    let weeks: [PlannerGanttWeek]
+    let vacationWeeks: Set<PlannerGanttWeek>
     let weekWidth: CGFloat
     let labelWidth: CGFloat
     let rowHeight: CGFloat
+    let currentWeek: PlannerGanttWeek
     let onOpenSession: (PlanningSession) -> Void
+
+    private var unlocatedRows: [PlannerSequenceRow] {
+        group.rows.filter { $0.planningSession == nil }
+    }
 
     var body: some View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(group.groupName)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                Text("\(group.plannedCount) planificadas")
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(group.groupName)
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+
+                    if let pace = paceLabel {
+                        Text(pace.text)
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(pace.tint)
+                            .lineLimit(1)
+                    } else {
+                        Text("\(group.plannedCount) planificadas")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("\(group.groupName): \(paceLabel?.text ?? "\(group.plannedCount) planificadas")")
+
+                if !unlocatedRows.isEmpty {
+                    locateMenu
+                }
             }
             .frame(width: labelWidth, height: rowHeight, alignment: .leading)
             .padding(.horizontal, 40)
             .background(EvaluationDesign.surfaceSoft.opacity(0.36))
 
-            PlannerGanttTimelineCells(
-                sessions: group.rows,
+            PlannerGanttContinuousBar(
+                rows: group.rows,
                 weeks: weeks,
+                vacationWeeks: vacationWeeks,
                 weekWidth: weekWidth,
                 rowHeight: rowHeight,
                 onOpenSession: onOpenSession
             )
         }
     }
+
+    private var locateMenu: some View {
+        Menu {
+            ForEach(unlocatedRows) { row in
+                Button {
+                    locate(row)
+                } label: {
+                    Label("Ubicar S\(row.sessionNumber) · \(row.title.isEmpty ? "Sesión" : row.title)", systemImage: "calendar.badge.plus")
+                }
+            }
+        } label: {
+            Label("\(unlocatedRows.count) sin ubicar", systemImage: "calendar.badge.plus")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(IOSAppStyle.warning)
+        }
+    }
+
+    private func locate(_ row: PlannerSequenceRow) {
+        vm.selectGroup(group.groupId)
+        vm.openComposer(
+            learningSituationSessionPlanId: row.learningSituationSessionPlanId,
+            initialObjectives: row.objective,
+            initialTeachingUnitName: row.title
+        )
+    }
+
+    /// Sesiones esperadas a día de hoy (proporcional al punto en que estamos dentro
+    /// del rango real de semanas de la situación) frente a las realmente completadas.
+    private var paceLabel: (text: String, tint: Color)? {
+        let assignedWeeks = group.rows.compactMap { row -> PlannerGanttWeek? in
+            guard let session = row.planningSession else { return nil }
+            return PlannerGanttWeek(year: Int(session.year), week: Int(session.weekNumber))
+        }
+        guard let firstWeek = assignedWeeks.min(by: { $0.weeks(until: $1) > 0 }),
+              let lastWeek = assignedWeeks.max(by: { $0.weeks(until: $1) > 0 }),
+              group.totalSessionsCount > 0 else { return nil }
+
+        let totalSpanWeeks = max(firstWeek.weeks(until: lastWeek) + 1, 1)
+        let elapsedWeeks = min(max(firstWeek.weeks(until: currentWeek) + 1, 0), totalSpanWeeks)
+        guard elapsedWeeks > 0 else { return nil }
+        guard currentWeek.weeks(until: lastWeek) >= -4 else { return nil }
+
+        let expected = Int((Double(group.totalSessionsCount) * Double(elapsedWeeks) / Double(totalSpanWeeks)).rounded())
+        let delta = group.completedCount - expected
+
+        if delta == 0 {
+            return ("Al día con el plan", EvaluationDesign.success)
+        } else if delta > 0 {
+            return ("Vas \(delta) sesión\(delta == 1 ? "" : "es") por delante", EvaluationDesign.success)
+        } else {
+            return ("Vas \(-delta) sesión\(-delta == 1 ? "" : "es") por detrás", IOSAppStyle.warning)
+        }
+    }
 }
 
-private struct PlannerGanttTimelineCells: View {
-    let sessions: [PlannerSequenceRow]
-    let weeks: [Int]
+private struct PlannerGanttContinuousBar: View {
+    let rows: [PlannerSequenceRow]
+    let weeks: [PlannerGanttWeek]
+    let vacationWeeks: Set<PlannerGanttWeek>
     let weekWidth: CGFloat
     let rowHeight: CGFloat
     let onOpenSession: (PlanningSession) -> Void
@@ -363,61 +571,122 @@ private struct PlannerGanttTimelineCells: View {
     var body: some View {
         HStack(spacing: 0) {
             ForEach(weeks, id: \.self) { week in
-                let rows = rowsForWeek(week)
-                ZStack {
-                    Rectangle()
-                        .fill(Color.clear)
-                    Rectangle()
-                        .fill(Color.secondary.opacity(0.10))
-                        .frame(width: 1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                    if rows.isEmpty {
-                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                            .fill(Color.secondary.opacity(0.16))
-                            .frame(width: weekWidth - 24, height: 8)
-                    } else {
-                        HStack(spacing: 4) {
-                            ForEach(rows.prefix(4)) { row in
-                                PlannerGanttSessionBlock(row: row, onOpenSession: onOpenSession)
-                            }
-                        }
-                    }
-                }
-                .frame(width: weekWidth, height: rowHeight)
+                segment(for: week)
+                    .frame(width: weekWidth, height: rowHeight)
             }
         }
     }
 
-    private func rowsForWeek(_ week: Int) -> [PlannerSequenceRow] {
-        sessions.filter { row in
+    private var spanIndexRange: ClosedRange<Int>? {
+        let indices = rows.compactMap { row -> Int? in
+            guard let session = row.planningSession else { return nil }
+            let week = PlannerGanttWeek(year: Int(session.year), week: Int(session.weekNumber))
+            return weeks.firstIndex(of: week)
+        }
+        guard let minIndex = indices.min(), let maxIndex = indices.max() else { return nil }
+        return minIndex...maxIndex
+    }
+
+    @ViewBuilder
+    private func segment(for week: PlannerGanttWeek) -> some View {
+        let weekRows = rowsForWeek(week)
+        let isWithinSpan = weeks.firstIndex(of: week).map { spanIndexRange?.contains($0) ?? false } ?? false
+        let isVacation = vacationWeeks.contains(week)
+
+        ZStack {
+            if isVacation {
+                Rectangle().fill(Color.secondary.opacity(0.08))
+                    .accessibilityHidden(true)
+            } else if isWithinSpan {
+                Rectangle().fill(segmentColor(for: weekRows))
+                    .accessibilityHidden(true)
+            }
+
+            Rectangle()
+                .fill(Color.secondary.opacity(0.10))
+                .frame(width: 1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityHidden(true)
+
+            if !weekRows.isEmpty {
+                PlannerGanttWeekMarks(rows: weekRows, onOpenSession: onOpenSession)
+            }
+        }
+    }
+
+    private func segmentColor(for rows: [PlannerSequenceRow]) -> Color {
+        guard !rows.isEmpty else {
+            return EvaluationDesign.accent.opacity(0.16)
+        }
+        if rows.contains(where: { $0.statusText == "Cerrada" || $0.statusText == "Impartida" }) {
+            return EvaluationDesign.success.opacity(0.30)
+        }
+        if rows.contains(where: { $0.statusText == "Pendiente de ubicar" }) {
+            return IOSAppStyle.warning.opacity(0.24)
+        }
+        return EvaluationDesign.accent.opacity(0.24)
+    }
+
+    private func rowsForWeek(_ week: PlannerGanttWeek) -> [PlannerSequenceRow] {
+        rows.filter { row in
             guard let session = row.planningSession else { return false }
-            return Int(session.weekNumber) == week
+            return Int(session.weekNumber) == week.week && Int(session.year) == week.year
         }
     }
 }
 
-private struct PlannerGanttSessionBlock: View {
+private struct PlannerGanttWeekMarks: View {
+    let rows: [PlannerSequenceRow]
+    let onOpenSession: (PlanningSession) -> Void
+
+    var body: some View {
+        if rows.count == 1, let row = rows.first {
+            PlannerGanttSessionMark(row: row, onOpenSession: onOpenSession)
+        } else {
+            Menu {
+                ForEach(rows) { row in
+                    if let session = row.planningSession {
+                        Button {
+                            onOpenSession(session)
+                        } label: {
+                            Label("S\(row.sessionNumber) · \(row.title.isEmpty ? "Sesión" : row.title)", systemImage: row.statusIcon)
+                        }
+                    }
+                }
+            } label: {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.secondary.opacity(0.5))
+                    .frame(width: 18, height: 18)
+                    .overlay(
+                        Text("\(rows.count)")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(.white)
+                    )
+            }
+            .accessibilityLabel("\(rows.count) sesiones esta semana")
+        }
+    }
+}
+
+private struct PlannerGanttSessionMark: View {
     let row: PlannerSequenceRow
     let onOpenSession: (PlanningSession) -> Void
 
     var body: some View {
-        Group {
-            if let session = row.planningSession {
-                Button {
-                    onOpenSession(session)
-                } label: {
-                    block
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Abrir sesión \(row.sessionNumber)")
-            } else {
-                block
+        if let session = row.planningSession {
+            Button {
+                onOpenSession(session)
+            } label: {
+                mark
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Abrir sesión \(row.sessionNumber): \(row.statusText)")
+        } else {
+            mark
         }
     }
 
-    private var block: some View {
+    private var mark: some View {
         RoundedRectangle(cornerRadius: 6, style: .continuous)
             .fill(tint)
             .frame(width: 18, height: 18)

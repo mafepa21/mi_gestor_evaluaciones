@@ -2,39 +2,98 @@ import SwiftUI
 import MiGestorKit
 
 struct PlannerWeekMiniatureLayout: View {
-    @ObservedObject var vm: PlannerWorkspaceViewModel
+    @ObservedObject var weekBoard: PlannerWeekBoardStore
+    let vm: PlannerWorkspaceViewModel
     @Binding var selectedCell: PlannerCellKey?
     @Binding var selectedDay: Int?
     let onOpenSession: (PlanningSession) -> Void
+    var onDropSession: ((Int64, Int, Int) -> Void)? = nil
+
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
+
+    private var isRegularWidth: Bool {
+        #if os(iOS)
+        horizontalSizeClass == .regular
+        #else
+        true
+        #endif
+    }
 
     var body: some View {
-        ScrollView(.vertical) {
-            VStack(spacing: 16) {
-                PlannerWeekMiniatureGrid(
-                    vm: vm,
-                    selectedCell: $selectedCell,
-                    selectedDay: $selectedDay
-                )
+        Group {
+            if isRegularWidth {
+                regularLayout
+            } else {
+                compactLayout
+            }
+        }
+    }
+
+    /// iPad apaisado y Mac: grid a la izquierda, detalle como panel lateral
+    /// persistente (estilo inspector) para poder ver ambos a la vez.
+    private var regularLayout: some View {
+        HStack(alignment: .top, spacing: 16) {
+            grid
                 .frame(height: gridHeight)
                 .padding(16)
                 .plannerGlassPanel(.content, cornerRadius: 24)
-                .padding(.horizontal, EvaluationDesign.screenPadding)
-                .padding(.top, 8)
+                .frame(maxWidth: .infinity, alignment: .top)
 
-                PlannerWeekDetailPane(
-                    vm: vm,
-                    selectedCell: $selectedCell,
-                    selectedDay: $selectedDay,
-                    onOpenSession: onOpenSession
-                )
-                .frame(maxWidth: .infinity)
+            ScrollView(.vertical) {
+                detailPane
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+            .frame(width: 400)
+            .plannerGlassPanel(.content, cornerRadius: 24)
+        }
+        .padding(.horizontal, EvaluationDesign.screenPadding)
+        .padding(.top, 8)
+        .padding(.bottom, 24)
+    }
+
+    /// iPhone y iPad en vertical: grid arriba, detalle debajo en un único scroll.
+    private var compactLayout: some View {
+        ScrollView(.vertical) {
+            VStack(spacing: 16) {
+                grid
+                    .frame(height: gridHeight)
+                    .padding(16)
+                    .plannerGlassPanel(.content, cornerRadius: 24)
+                    .padding(.horizontal, EvaluationDesign.screenPadding)
+                    .padding(.top, 8)
+
+                detailPane
+                    .frame(maxWidth: .infinity)
             }
             .padding(.bottom, 24)
         }
     }
 
+    private var grid: some View {
+        PlannerWeekMiniatureGrid(
+            weekBoard: weekBoard,
+            vm: vm,
+            selectedCell: $selectedCell,
+            selectedDay: $selectedDay,
+            onOpenSession: onOpenSession,
+            onDropSession: onDropSession
+        )
+    }
+
+    private var detailPane: some View {
+        PlannerWeekDetailPane(
+            weekBoard: weekBoard,
+            vm: vm,
+            selectedCell: $selectedCell,
+            selectedDay: $selectedDay,
+            onOpenSession: onOpenSession
+        )
+    }
+
     private var gridHeight: CGFloat {
-        let slotsCount = vm.weekRenderModel.visibleSlots.count
+        let slotsCount = weekBoard.weekRenderModel.visibleSlots.count
         guard slotsCount > 0 else { return 40 }
         let rowHeight: CGFloat = 36
         let spacing: CGFloat = 4
@@ -166,5 +225,23 @@ extension View {
                 isInteractive: isInteractive
             )
         )
+    }
+}
+
+/// Cápsula con icono para el estado de una sesión (planificada/impartida/revisión/etc.),
+/// único estilo de badge de estado en todo el Planner.
+struct PlannerStatusBadge: View {
+    let label: String
+    let systemImage: String
+    let tint: Color
+
+    var body: some View {
+        Label(label, systemImage: systemImage)
+            .font(.caption.weight(.bold))
+            .foregroundStyle(tint)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(tint.opacity(0.12), in: Capsule(style: .continuous))
+            .accessibilityElement(children: .combine)
     }
 }

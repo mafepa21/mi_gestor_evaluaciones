@@ -2,58 +2,33 @@ import SwiftUI
 import AppKit
 import MiGestorKit
 
+/// Estado/acciones que `MacAttendanceView` publica hacia `MacRootView` para pintar
+/// una toolbar nativa de macOS con los controles que antes vivían en el strip
+/// bajo la cabecera (mismo patrón que Planner/Notebook/Dashboard).
 struct MacAttendanceToolbarActions {
+    var mode: Binding<AttendanceBoardMode>
+    var selectedDate: Binding<Date>
+    let classes: [SchoolClass]
+    let selectedClassId: Int64?
+    let selectClass: (Int64) -> Void
+    let sessions: [KmpBridge.AttendanceSessionSnapshot]
+    let selectedSessionId: Int64?
+    let sessionLabel: (KmpBridge.AttendanceSessionSnapshot) -> String
+    let selectSession: (Int64) -> Void
+    var searchText: Binding<String>
+    var selectedStatusFilter: Binding<String>
+    let filterLabel: String
+    let filterIcon: String
+    let clearFilters: () -> Void
     let canCloseSelection: Bool
+    let canMarkAllPresent: Bool
+    let canRepeatPattern: Bool
     let markAllPresent: () -> Void
     let repeatPattern: () -> Void
     let refresh: () -> Void
     let clearSelection: () -> Void
 }
 
-private enum MacAttendanceMode: String, CaseIterable, Identifiable {
-    case day = "Día"
-    case history = "Historial"
-    case courses = "Cursos"
-
-    var id: String { rawValue }
-}
-
-struct MacAttendanceStatusOption: Identifiable, Hashable {
-    let id: String
-    let label: String
-    let shortLabel: String
-    let color: Color
-
-    static let all: [MacAttendanceStatusOption] = [
-        .init(id: "PRESENTE", label: "Presente", shortLabel: "P", color: MacAppStyle.successTint),
-        .init(id: "AUSENTE", label: "Ausente", shortLabel: "A", color: MacAppStyle.dangerTint),
-        .init(id: "TARDE", label: "Retraso", shortLabel: "R", color: MacAppStyle.warningTint),
-        .init(id: "JUSTIFICADO", label: "Justificada", shortLabel: "J", color: .gray),
-        .init(id: "SIN_MATERIAL", label: "Sin material", shortLabel: "M", color: .brown),
-        .init(id: "EXENTO", label: "Exento", shortLabel: "E", color: .indigo)
-    ]
-
-    static func option(for status: String?) -> MacAttendanceStatusOption? {
-        all.first { $0.id == status }
-    }
-}
-
-struct MacAttendanceEntryRow: Identifiable {
-    let id: Int64
-    let student: Student
-    let isInjured: Bool
-    let record: KmpBridge.AttendanceRecordSnapshot?
-}
-
-private struct MacAttendanceHistorySelection: Identifiable {
-    let studentId: Int64
-    let date: Date
-    let record: KmpBridge.AttendanceRecordSnapshot?
-
-    var id: String {
-        "\(studentId)-\(Int(date.timeIntervalSince1970))"
-    }
-}
 
 struct MacAttendanceView: View {
     let bridge: KmpBridge
@@ -64,7 +39,7 @@ struct MacAttendanceView: View {
     let onToolbarActionsChange: (MacAttendanceToolbarActions?) -> Void
 
     @State private var selectedDate = Date()
-    @State private var mode: MacAttendanceMode = .day
+    @State private var mode: AttendanceBoardMode = .day
     @State private var searchText = ""
     @State private var selectedStatusFilter = "TODOS"
     @State private var recordsByStudentId: [Int64: KmpBridge.AttendanceRecordSnapshot] = [:]
@@ -78,10 +53,11 @@ struct MacAttendanceView: View {
     @State private var localInjuryStatuses: [Int64: Bool] = [:]
     @State private var saveRevisionByStudentId: [Int64: Int] = [:]
     @State private var overviewRefreshTask: Task<Void, Never>?
-    @State private var historySelection: MacAttendanceHistorySelection?
+    @State private var historySelection: AttendanceHistorySelection?
+    @State private var isAttendanceInspectorVisible = false
     @State private var noteDraft = ""
     @State private var isLoading = false
-    @State private var isFilterPopoverPresented = false
+    @State private var showAllPresent = false
 
     private var selectedClass: SchoolClass? {
         selectedClassId.flatMap { id in attendanceStore.classes.first(where: { $0.id == id }) }
@@ -105,10 +81,10 @@ struct MacAttendanceView: View {
         historySelection?.date ?? selectedDate
     }
 
-    private var filteredRows: [MacAttendanceEntryRow] {
+    private var filteredRows: [AttendanceEntryRow] {
         attendanceStore.studentsInClass
             .map { student in
-                MacAttendanceEntryRow(
+                AttendanceEntryRow(
                     id: student.id,
                     student: student,
                     isInjured: isStudentInjured(student),
@@ -121,6 +97,15 @@ struct MacAttendanceView: View {
                 let matchesStatus = selectedStatusFilter == "TODOS" || row.record?.status == selectedStatusFilter
                 return matchesSearch && matchesStatus
             }
+    }
+
+    private var exceptionRows: [AttendanceEntryRow] {
+        filteredRows.filter(AttendanceLogic.isRowUnresolved)
+            .sorted { AttendanceLogic.exceptionPriority($0) < AttendanceLogic.exceptionPriority($1) }
+    }
+
+    private var presentRows: [AttendanceEntryRow] {
+        filteredRows.filter { !AttendanceLogic.isRowUnresolved($0) }
     }
 
     private var visibleHistoryStudents: [Student] {
@@ -144,9 +129,9 @@ struct MacAttendanceView: View {
     }
 
     private var boardSummary: (present: Int, absent: Int, late: Int, pending: Int) {
-        let present = recordsByStudentId.values.filter { Self.isPresentStatus($0.status) }.count
-        let absent = recordsByStudentId.values.filter { Self.isAbsentStatus($0.status) }.count
-        let late = recordsByStudentId.values.filter { Self.isLateStatus($0.status) }.count
+        let present = recordsByStudentId.values.filter { AttendanceLogic.isPresentStatus($0.status) }.count
+        let absent = recordsByStudentId.values.filter { AttendanceLogic.isAbsentStatus($0.status) }.count
+        let late = recordsByStudentId.values.filter { AttendanceLogic.isLateStatus($0.status) }.count
         let pending = max(attendanceStore.studentsInClass.count - recordsByStudentId.count, 0)
         return (present, absent, late, pending)
     }
@@ -160,6 +145,40 @@ struct MacAttendanceView: View {
         return classOverviews.map(\.attendanceRate).reduce(0, +) / classOverviews.count
     }
 
+    private var criticalAlerts: [AttendanceAlert] {
+        guard mode == .day else { return [] }
+        let today = Calendar.current.startOfDay(for: selectedDate)
+        guard let windowStart = Calendar.current.date(byAdding: .day, value: -6, to: today) else { return [] }
+        var alerts: [AttendanceAlert] = []
+        for student in attendanceStore.studentsInClass {
+            let recentAbsences = history.filter {
+                $0.studentId == student.id
+                    && Calendar.current.startOfDay(for: $0.date) >= windowStart
+                    && Calendar.current.startOfDay(for: $0.date) <= today
+                    && AttendanceLogic.isAbsentStatus($0.status)
+            }.count
+            if recentAbsences >= 3 {
+                alerts.append(AttendanceAlert(
+                    id: "\(student.id)-absences",
+                    student: student,
+                    message: "\(recentAbsences) ausencias en 7 días",
+                    systemImage: "exclamationmark.triangle.fill",
+                    tint: MacAppStyle.dangerTint
+                ))
+            }
+            if isStudentInjured(student) {
+                alerts.append(AttendanceAlert(
+                    id: "\(student.id)-injury",
+                    student: student,
+                    message: "Lesión activa",
+                    systemImage: "cross.case.fill",
+                    tint: MacAppStyle.warningTint
+                ))
+            }
+        }
+        return alerts
+    }
+
     private var toolbarStateKey: String {
         [
             selectedClassId.map(String.init) ?? "all",
@@ -167,25 +186,34 @@ struct MacAttendanceView: View {
             selectedStatusFilter,
             searchText,
             mode.rawValue,
-            String(Int(selectedDate.timeIntervalSince1970))
+            String(Int(selectedDate.timeIntervalSince1970)),
+            selectedAttendanceSessionId.map(String.init) ?? "none",
+            String(sessions.count)
         ].joined(separator: "|")
     }
 
     var body: some View {
-        HSplitView {
-            VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
-                header
-                metricsStrip
-                mainContent
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .padding(MacAppStyle.pagePadding)
-            .frame(minWidth: 640, idealWidth: 760)
-
-            inspector
-                .frame(minWidth: 320, idealWidth: 360, maxWidth: 430)
+        VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
+            header
+            metricsStrip
+            mainContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .padding(MacAppStyle.pagePadding)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(MacAppStyle.pageBackground)
+        // Native .inspector() (rather than a manual HSplitView pane) lets the enclosing
+        // NavigationSplitView negotiate space correctly. Starts closed (no student
+        // selected yet) and opens itself when a student is picked, below.
+        .inspector(isPresented: $isAttendanceInspectorVisible) {
+            inspector
+                .inspectorColumnWidth(min: 300, ideal: 360, max: 430)
+        }
+        .background(
+            Button("") { Task { await markAllPresent() } }
+                .keyboardShortcut("p", modifiers: [.command, .shift])
+                .hidden()
+        )
         .task {
             await bootstrap()
         }
@@ -196,8 +224,11 @@ struct MacAttendanceView: View {
             await reloadClassOverviews()
             await reloadAttendance()
         }
-        .appOnChange(of: selectedStudentId) { _, _ in
+        .appOnChange(of: selectedStudentId) { _, newValue in
             noteDraft = selectedInspectionAttendance?.note ?? ""
+            if newValue != nil {
+                isAttendanceInspectorVisible = true
+            }
             publishToolbarActions()
         }
         .appOnChange(of: mode) { _, newValue in
@@ -221,33 +252,38 @@ struct MacAttendanceView: View {
             MacPremiumModuleHeader(
                 title: "Asistencia",
                 subtitle: selectedClass?.name ?? "Todos los cursos",
-                state: attendanceOperationState,
-                primaryAction: MacPremiumHeaderAction(
-                    title: "Marcar presentes",
-                    systemImage: "checkmark.circle",
-                    isDisabled: mode != .day || selectedClassId == nil || filteredRows.isEmpty
-                ) {
-                    Task { await markAllPresent() }
-                },
-                secondaryActions: [
-                    MacPremiumHeaderAction(
-                        title: "Repetir patrón",
-                        systemImage: "clock.arrow.circlepath",
-                        isDisabled: mode != .day || selectedClassId == nil
-                    ) {
-                        Task { await repeatPattern() }
-                    },
-                    MacPremiumHeaderAction(title: "Recargar", systemImage: "arrow.clockwise") {
-                        Task {
-                            await reloadClassOverviews()
-                            await reloadAttendance()
-                        }
-                    }
-                ]
+                state: attendanceOperationState
             )
 
-            MacPremiumControlStrip {
-                attendanceControls
+            if !criticalAlerts.isEmpty {
+                criticalAlertsRow
+            }
+        }
+    }
+
+    private var criticalAlertsRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(criticalAlerts) { alert in
+                    Button {
+                        historySelection = nil
+                        selectedStudentId = alert.student.id
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: alert.systemImage)
+                            Text(alert.student.fullName)
+                                .fontWeight(.semibold)
+                            Text(alert.message)
+                                .foregroundStyle(.secondary)
+                        }
+                        .font(.caption)
+                        .foregroundStyle(alert.tint)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(alert.tint.opacity(0.14), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
     }
@@ -262,58 +298,20 @@ struct MacAttendanceView: View {
         return nil
     }
 
-    private var attendanceControls: some View {
-        Group {
-            Picker("Vista", selection: $mode) {
-                ForEach(MacAttendanceMode.allCases) { mode in
-                    Text(mode.rawValue).tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 280)
-
-            Menu {
-                Button("Todos los cursos") {
-                    mode = .courses
-                }
-                Divider()
-                ForEach(attendanceStore.classes, id: \.id) { schoolClass in
-                    Button {
-                        selectedClassId = schoolClass.id
-                        if mode == .courses {
-                            mode = .day
-                        }
-                    } label: {
-                        if schoolClass.id == selectedClassId {
-                            Label(schoolClass.name, systemImage: "checkmark")
-                        } else {
-                            Text(schoolClass.name)
-                        }
-                    }
-                }
-            } label: {
-                Label(selectedClass?.name ?? "Curso", systemImage: "rectangle.3.group")
-                    .frame(minWidth: 170, alignment: .leading)
-            }
-            .menuStyle(.button)
-
-            DatePicker("", selection: $selectedDate, displayedComponents: .date)
-                .labelsHidden()
-                .disabled(mode == .courses)
-
-            sessionPicker
-
-            Button {
-                isFilterPopoverPresented.toggle()
-            } label: {
-                Label(attendanceFilterLabel, systemImage: attendanceFilterIcon)
-                    .frame(minWidth: 120, alignment: .leading)
-            }
-            .disabled(mode == .courses)
-            .popover(isPresented: $isFilterPopoverPresented, arrowEdge: .bottom) {
-                attendanceFilterPopover
-            }
+    private func selectClass(_ classId: Int64) {
+        selectedClassId = classId
+        if mode == .courses {
+            mode = .day
         }
+    }
+
+    private func selectSession(_ sessionId: Int64) {
+        selectedAttendanceSessionId = sessionId
+    }
+
+    private func clearAttendanceFilters() {
+        searchText = ""
+        selectedStatusFilter = "TODOS"
     }
 
     private var attendanceFilterLabel: String {
@@ -331,32 +329,6 @@ struct MacAttendanceView: View {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedStatusFilter == "TODOS"
             ? "line.3.horizontal.decrease.circle"
             : "line.3.horizontal.decrease.circle.fill"
-    }
-
-    private var attendanceFilterPopover: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            TextField("Buscar alumno", text: $searchText)
-                .textFieldStyle(.roundedBorder)
-
-            Picker("Estado", selection: $selectedStatusFilter) {
-                Text("Todos").tag("TODOS")
-                ForEach(MacAttendanceStatusOption.all) { option in
-                    Text(option.label).tag(option.id)
-                }
-            }
-            .pickerStyle(.menu)
-
-            Button {
-                searchText = ""
-                selectedStatusFilter = "TODOS"
-            } label: {
-                Label("Limpiar filtros", systemImage: "xmark.circle")
-            }
-            .buttonStyle(.bordered)
-            .disabled(searchText.isEmpty && selectedStatusFilter == "TODOS")
-        }
-        .padding(24)
-        .frame(width: 320)
     }
 
     @ViewBuilder
@@ -447,38 +419,102 @@ struct MacAttendanceView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 8) {
-                        ForEach(filteredRows) { row in
-                            MacAttendanceDayRow(
-                                row: row,
-                                isSelected: selectedStudentId == row.student.id,
-                                isSaving: savingStudentIds.contains(row.student.id) || savingInjuryStudentIds.contains(row.student.id),
-                                onSelect: {
-                                    historySelection = nil
-                                    selectedStudentId = row.student.id
-                                },
-                                onPickStatus: { status in
-                                    Task { await updateAttendance(for: row.student, status: status.id) }
-                                },
-                                onMarkInjury: {
-                                    Task { await markInjuryStatus(for: row.student) }
-                                }
-                            )
-                            .contextMenu {
-                                Button {
-                                    Task { await toggleInjuryStatus(for: row.student) }
-                                } label: {
-                                    Label(
-                                        row.isInjured ? "Quitar lesión" : "Marcar lesión",
-                                        systemImage: row.isInjured ? "heart.slash" : "bandage"
-                                    )
-                                }
+                        if exceptionRows.isEmpty {
+                            allPresentBanner
+                        } else {
+                            ForEach(exceptionRows) { row in
+                                dayRow(for: row)
                             }
+                        }
+
+                        if !presentRows.isEmpty {
+                            presentSummaryDisclosure
                         }
                     }
                     .padding(.vertical, 8)
                 }
+                .focusable()
+                .focusEffectDisabled()
+                .onKeyPress { press in
+                    switch press.key {
+                    case .upArrow:
+                        moveRosterSelection(by: -1)
+                        return .handled
+                    case .downArrow:
+                        moveRosterSelection(by: 1)
+                        return .handled
+                    default:
+                        guard let char = press.characters.first,
+                              let status = Self.statusShortcut(for: char) else { return .ignored }
+                        applyStatusShortcut(status)
+                        return .handled
+                    }
+                }
             }
         }
+    }
+
+    private func dayRow(for row: AttendanceEntryRow) -> some View {
+        MacAttendanceDayRow(
+            row: row,
+            isSelected: selectedStudentId == row.student.id,
+            isSaving: savingStudentIds.contains(row.student.id) || savingInjuryStudentIds.contains(row.student.id),
+            onSelect: {
+                historySelection = nil
+                selectedStudentId = row.student.id
+            },
+            onPickStatus: { status in
+                Task { await updateAttendance(for: row.student, status: status.id) }
+            },
+            onMarkInjury: {
+                Task { await markInjuryStatus(for: row.student) }
+            }
+        )
+        .contextMenu {
+            Button {
+                Task { await toggleInjuryStatus(for: row.student) }
+            } label: {
+                Label(
+                    row.isInjured ? "Quitar lesión" : "Marcar lesión",
+                    systemImage: row.isInjured ? "heart.slash" : "bandage"
+                )
+            }
+        }
+    }
+
+    private var allPresentBanner: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 30))
+                .foregroundStyle(MacAppStyle.successTint)
+            Text("Todos presentes")
+                .font(.headline)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 28)
+    }
+
+    private var presentSummaryDisclosure: some View {
+        DisclosureGroup(isExpanded: $showAllPresent) {
+            LazyVStack(spacing: 8) {
+                ForEach(presentRows) { row in
+                    dayRow(for: row)
+                }
+            }
+            .padding(.top, 8)
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.circle")
+                    .foregroundStyle(MacAppStyle.successTint)
+                Text("\(presentRows.count) presentes")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding(.vertical, 6)
+        }
+        .padding(.horizontal, 4)
+        .animation(.snappy(duration: 0.22), value: showAllPresent)
     }
 
     private var historyContent: some View {
@@ -569,7 +605,7 @@ struct MacAttendanceView: View {
                                     MacStatusPill(
                                         label: statusLabel(record.status),
                                         isActive: true,
-                                        tint: MacAttendanceStatusOption.option(for: record.status)?.color ?? .secondary
+                                        tint: AttendanceStatusOption.option(for: record.status)?.color ?? .secondary
                                     )
                                 }
                             }
@@ -698,43 +734,11 @@ struct MacAttendanceView: View {
             MacStatusPill(
                 label: record.map { statusLabel($0.status) } ?? "Sin registro",
                 isActive: record != nil,
-                tint: MacAttendanceStatusOption.option(for: record?.status)?.color ?? .secondary
+                tint: AttendanceStatusOption.option(for: record?.status)?.color ?? .secondary
             )
             if record?.followUpRequired == true {
                 MacStatusPill(label: "Seguimiento", isActive: true, tint: MacAppStyle.warningTint)
             }
-        }
-    }
-
-    @ViewBuilder
-    private var sessionPicker: some View {
-        if mode == .day, selectedClassId != nil {
-            Menu {
-                if sessions.isEmpty {
-                    Text("No hay sesiones planificadas")
-                } else {
-                    ForEach(sessions) { entry in
-                        Button {
-                            selectedAttendanceSessionId = entry.session.id
-                        } label: {
-                            if selectedAttendanceSessionId == entry.session.id {
-                                Label(sessionLabel(for: entry), systemImage: "checkmark")
-                            } else {
-                                Text(sessionLabel(for: entry))
-                            }
-                        }
-                    }
-                }
-            } label: {
-                Label(
-                    selectedAttendanceSession.map(sessionLabel(for:)) ?? "Sin sesión",
-                    systemImage: sessions.count > 1 ? "calendar.badge.clock" : "calendar"
-                )
-                .frame(minWidth: 190, alignment: .leading)
-            }
-            .menuStyle(.button)
-            .disabled(sessions.count <= 1)
-            .help(sessions.count > 1 ? "Selecciona la sesión asociada a la asistencia." : "Sesión asociada automáticamente.")
         }
     }
 
@@ -773,7 +777,7 @@ struct MacAttendanceView: View {
         let range = monthRange(for: selectedDate)
         history = (try? await bridge.attendanceHistory(for: selectedClassId, from: range.start, to: range.end)) ?? []
         if let selection = historySelection {
-            historySelection = MacAttendanceHistorySelection(
+            historySelection = AttendanceHistorySelection(
                 studentId: selection.studentId,
                 date: selection.date,
                 record: historyRecord(for: selection.studentId, date: selection.date)
@@ -900,6 +904,47 @@ struct MacAttendanceView: View {
         }
     }
 
+    private static func statusShortcut(for char: Character) -> String? {
+        let mapping: [Character: String] = [
+            "p": "PRESENTE",
+            "a": "AUSENTE",
+            "r": "TARDE",
+            "j": "JUSTIFICADO",
+            "m": "SIN_MATERIAL",
+            "e": "EXENTO"
+        ]
+        return mapping[Character(char.lowercased())]
+    }
+
+    private func moveRosterSelection(by delta: Int) {
+        guard !filteredRows.isEmpty else { return }
+        historySelection = nil
+        guard let currentId = selectedStudentId,
+              let index = filteredRows.firstIndex(where: { $0.student.id == currentId }) else {
+            selectedStudentId = filteredRows.first?.student.id
+            expandPresentSummaryIfNeeded(for: filteredRows.first?.student.id)
+            return
+        }
+        let newIndex = min(max(index + delta, 0), filteredRows.count - 1)
+        let newStudentId = filteredRows[newIndex].student.id
+        selectedStudentId = newStudentId
+        expandPresentSummaryIfNeeded(for: newStudentId)
+    }
+
+    private func expandPresentSummaryIfNeeded(for studentId: Int64?) {
+        guard let studentId, presentRows.contains(where: { $0.student.id == studentId }) else { return }
+        showAllPresent = true
+    }
+
+    private func applyStatusShortcut(_ status: String) {
+        guard let studentId = selectedStudentId ?? filteredRows.first?.student.id,
+              let student = filteredRows.first(where: { $0.student.id == studentId })?.student else { return }
+        historySelection = nil
+        selectedStudentId = studentId
+        Task { await updateAttendance(for: student, status: status) }
+        moveRosterSelection(by: 1)
+    }
+
     @MainActor
     private func repeatPattern() async {
         guard let selectedClassId else { return }
@@ -1010,7 +1055,7 @@ struct MacAttendanceView: View {
         }
         upsertHistoryRecord(updated)
         if let selection = historySelection, selection.studentId == studentId {
-            historySelection = MacAttendanceHistorySelection(
+            historySelection = AttendanceHistorySelection(
                 studentId: selection.studentId,
                 date: selection.date,
                 record: updated
@@ -1039,7 +1084,7 @@ struct MacAttendanceView: View {
         }
         upsertHistoryRecord(updated)
         if let selection = historySelection, selection.studentId == studentId {
-            historySelection = MacAttendanceHistorySelection(
+            historySelection = AttendanceHistorySelection(
                 studentId: selection.studentId,
                 date: selection.date,
                 record: updated
@@ -1070,11 +1115,6 @@ struct MacAttendanceView: View {
         (record.sessionId == nil ? 0 : 1, record.id)
     }
 
-    private var selectedAttendanceSession: KmpBridge.AttendanceSessionSnapshot? {
-        guard let selectedAttendanceSessionId else { return nil }
-        return sessions.first { $0.session.id == selectedAttendanceSessionId }
-    }
-
     private func reconcileSelectedAttendanceSession() {
         if let selectedAttendanceSessionId, sessions.contains(where: { $0.session.id == selectedAttendanceSessionId }) {
             return
@@ -1092,11 +1132,6 @@ struct MacAttendanceView: View {
         return selectedAttendanceSessionId
     }
 
-    private func sessionLabel(for entry: KmpBridge.AttendanceSessionSnapshot) -> String {
-        let unit = entry.session.teachingUnitName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let title = unit.isEmpty ? "Sesión" : unit
-        return "Periodo \(entry.session.period) · \(title)"
-    }
 
     private func historyRecord(for studentId: Int64, date: Date) -> KmpBridge.AttendanceRecordSnapshot? {
         history.first {
@@ -1117,7 +1152,23 @@ struct MacAttendanceView: View {
     private func publishToolbarActions() {
         onToolbarActionsChange(
             MacAttendanceToolbarActions(
+                mode: $mode,
+                selectedDate: $selectedDate,
+                classes: attendanceStore.classes,
+                selectedClassId: selectedClassId,
+                selectClass: { classId in selectClass(classId) },
+                sessions: sessions,
+                selectedSessionId: selectedAttendanceSessionId,
+                sessionLabel: { entry in AttendanceLogic.sessionLabel(for: entry) },
+                selectSession: { sessionId in selectSession(sessionId) },
+                searchText: $searchText,
+                selectedStatusFilter: $selectedStatusFilter,
+                filterLabel: attendanceFilterLabel,
+                filterIcon: attendanceFilterIcon,
+                clearFilters: { clearAttendanceFilters() },
                 canCloseSelection: selectedStudentId != nil || historySelection != nil,
+                canMarkAllPresent: mode == .day && selectedClassId != nil && !filteredRows.isEmpty,
+                canRepeatPattern: mode == .day && selectedClassId != nil,
                 markAllPresent: { Task { await markAllPresent() } },
                 repeatPattern: { Task { await repeatPattern() } },
                 refresh: {
@@ -1135,11 +1186,11 @@ struct MacAttendanceView: View {
     }
 
     private func historyCell(record: KmpBridge.AttendanceRecordSnapshot?, studentId: Int64, date: Date) -> some View {
-        let option = MacAttendanceStatusOption.option(for: record?.status)
+        let option = AttendanceStatusOption.option(for: record?.status)
         let isSelected = historySelection?.studentId == studentId && Calendar.current.isDate(historySelection?.date ?? .distantPast, inSameDayAs: date)
         return Button {
             selectedStudentId = studentId
-            historySelection = MacAttendanceHistorySelection(studentId: studentId, date: date, record: record)
+            historySelection = AttendanceHistorySelection(studentId: studentId, date: date, record: record)
             noteDraft = record?.note ?? ""
         } label: {
             Text(option?.shortLabel ?? "·")
@@ -1180,23 +1231,11 @@ struct MacAttendanceView: View {
     }
 
     private func statusLabel(_ status: String) -> String {
-        MacAttendanceStatusOption.option(for: status)?.label ?? status
+        AttendanceStatusOption.option(for: status)?.label ?? status
     }
 
     private static func dayHeaderString(_ date: Date) -> String {
         date.formatted(.dateTime.day())
     }
 
-    private static func isPresentStatus(_ status: String?) -> Bool {
-        status?.uppercased().contains("PRESENT") == true
-    }
-
-    private static func isAbsentStatus(_ status: String?) -> Bool {
-        status?.uppercased().contains("AUS") == true
-    }
-
-    private static func isLateStatus(_ status: String?) -> Bool {
-        guard let status = status?.uppercased() else { return false }
-        return status.contains("TARD") || status.contains("RETR")
-    }
 }

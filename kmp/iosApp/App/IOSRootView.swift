@@ -59,7 +59,7 @@ struct IOSRootView: View {
             .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 280)
         } detail: {
             VStack(spacing: 0) {
-                if activeModule != .notebook {
+                if activeModule != .notebook && !(activeModule == .attendance && horizontalSizeClass == .regular) {
                     IOSGlobalContextRow(
                         activeModule: activeModule,
                         layoutState: layoutState,
@@ -88,6 +88,8 @@ struct IOSRootView: View {
             .toolbar {
                 if activeModule == .notebook && horizontalSizeClass == .regular {
                     notebookToolbarItems
+                } else if activeModule == .attendance && horizontalSizeClass == .regular {
+                    attendanceToolbarItems
                 } else {
                     IOSContextualToolbar(
                         activeModule: activeModule,
@@ -510,6 +512,207 @@ struct IOSRootView: View {
                 Label("Más", systemImage: "ellipsis.circle")
             }
         }
+    }
+
+    // MARK: Attendance native toolbar (iPad regular width — parity with MacRootView's attendance toolbar)
+    @ToolbarContentBuilder
+    private var attendanceToolbarItems: some ToolbarContent {
+        ToolbarItem(placement: .navigationBarLeading) {
+            attendanceClassMenu
+        }
+
+        ToolbarItem(placement: .navigationBarLeading) {
+            Picker("Vista", selection: Binding(
+                get: { layoutState.attendanceBoardMode },
+                set: { layoutState.setAttendanceBoardMode($0) }
+            )) {
+                ForEach(AttendanceBoardMode.allCases) { mode in
+                    Text(mode.rawValue).tag(mode.rawValue)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 240)
+        }
+
+        if bridge.syncPendingChanges > 0 {
+            ToolbarItem(placement: .navigationBarLeading) {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.footnote)
+                    Text("\(bridge.syncPendingChanges) pnd.")
+                        .font(.footnote.weight(.semibold))
+                }
+                .foregroundStyle(IOSAppStyle.warning)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(IOSAppStyle.warning.opacity(0.12), in: Capsule())
+            }
+        }
+
+        if attendanceModeSelection != .courses {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                DatePicker(
+                    "",
+                    selection: Binding(
+                        get: { layoutState.attendanceSelectedDate },
+                        set: { layoutState.setAttendanceDate($0) }
+                    ),
+                    displayedComponents: .date
+                )
+                .labelsHidden()
+            }
+
+            if attendanceModeSelection == .day {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    attendanceSessionMenu
+                }
+            }
+
+            ToolbarItem(placement: .navigationBarTrailing) {
+                attendanceFilterMenu
+            }
+        }
+
+        ToolbarItem(placement: .navigationBarTrailing) {
+            Menu {
+                Button {
+                    layoutState.attendanceMarkAllPresent()
+                } label: {
+                    Label("Todos presentes", systemImage: "checkmark.circle.fill")
+                }
+                Button {
+                    layoutState.attendanceRepeatPattern()
+                } label: {
+                    Label("Repetir patrón", systemImage: "repeat")
+                }
+                if layoutState.attendanceHasSelection {
+                    Button {
+                        layoutState.attendanceClearSelection()
+                    } label: {
+                        Label("Cerrar ficha", systemImage: "xmark.circle")
+                    }
+                }
+            } label: {
+                Label("Acciones", systemImage: "ellipsis.circle")
+            }
+        }
+
+        ToolbarItem(placement: .navigationBarTrailing) {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField(
+                    "Buscar alumno",
+                    text: Binding(
+                        get: { layoutState.attendanceSearchText },
+                        set: { layoutState.setAttendanceSearchText($0) }
+                    )
+                )
+                .textFieldStyle(.plain)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .frame(minWidth: 140, idealWidth: 180, maxWidth: 220)
+        }
+    }
+
+    private var attendanceModeSelection: AttendanceBoardMode {
+        AttendanceBoardMode(rawValue: layoutState.attendanceBoardMode) ?? .day
+    }
+
+    private var attendanceClassMenu: some View {
+        Menu {
+            Button("Sin clase activa") {
+                selectionStore.selectedClassId = nil
+            }
+            ForEach(bridge.classes, id: \.id) { schoolClass in
+                Button {
+                    selectionStore.selectedClassId = schoolClass.id
+                } label: {
+                    HStack {
+                        Text(schoolClass.name)
+                        if selectionStore.selectedClassId == schoolClass.id {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+        } label: {
+            Label(activeAttendanceClassLabel, systemImage: "rectangle.3.group")
+        }
+    }
+
+    private var activeAttendanceClassLabel: String {
+        guard let classId = selectionStore.selectedClassId,
+              let schoolClass = bridge.classes.first(where: { $0.id == classId }) else {
+            return "Curso"
+        }
+        return schoolClass.name
+    }
+
+    private var attendanceFilterMenu: some View {
+        Menu {
+            Button("Todos los estados") {
+                layoutState.setAttendanceStatusFilter("TODOS")
+            }
+            ForEach(AttendanceStatusOption.all) { option in
+                Button(option.label) {
+                    layoutState.setAttendanceStatusFilter(option.id)
+                }
+            }
+        } label: {
+            Label(attendanceFilterLabel, systemImage: attendanceFilterSystemImage)
+        }
+    }
+
+    private var attendanceFilterLabel: String {
+        layoutState.attendanceSelectedStatusFilter == "TODOS"
+            ? "Filtrar"
+            : (AttendanceStatusOption.option(for: layoutState.attendanceSelectedStatusFilter)?.label ?? "Filtrar")
+    }
+
+    private var attendanceFilterSystemImage: String {
+        layoutState.attendanceSelectedStatusFilter == "TODOS"
+            ? "line.3.horizontal.decrease.circle"
+            : "line.3.horizontal.decrease.circle.fill"
+    }
+
+    private var attendanceSessionMenu: some View {
+        Menu {
+            if layoutState.attendanceSessions.isEmpty {
+                Text("No hay sesiones planificadas")
+            } else {
+                ForEach(layoutState.attendanceSessions) { entry in
+                    Button {
+                        layoutState.setAttendanceSessionId(entry.session.id)
+                    } label: {
+                        if layoutState.attendanceSelectedSessionId == entry.session.id {
+                            Label(attendanceSessionLabel(entry), systemImage: "checkmark")
+                        } else {
+                            Text(attendanceSessionLabel(entry))
+                        }
+                    }
+                }
+            }
+        } label: {
+            Label(
+                attendanceSelectedSessionLabel,
+                systemImage: layoutState.attendanceSessions.count > 1 ? "calendar.badge.clock" : "calendar"
+            )
+        }
+        .disabled(layoutState.attendanceSessions.count <= 1)
+    }
+
+    private var attendanceSelectedSessionLabel: String {
+        guard let entry = layoutState.attendanceSessions.first(where: { $0.session.id == layoutState.attendanceSelectedSessionId }) else {
+            return "Sin sesión"
+        }
+        return attendanceSessionLabel(entry)
+    }
+
+    private func attendanceSessionLabel(_ entry: KmpBridge.AttendanceSessionSnapshot) -> String {
+        AttendanceLogic.sessionLabel(for: entry)
     }
 }
 

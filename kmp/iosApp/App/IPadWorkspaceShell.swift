@@ -36,6 +36,8 @@ final class WorkspaceLayoutState: ObservableObject {
     @Published var attendanceBoardMode: String = "Día"
     @Published var attendanceSelectedStatusFilter: String = "TODOS"
     @Published var attendanceHasSelection: Bool = false
+    @Published var attendanceSessions: [KmpBridge.AttendanceSessionSnapshot] = []
+    @Published var attendanceSelectedSessionId: Int64? = nil
 
     var notebookInspectorAction: (() -> Void)?
     var notebookAddColumnAction: (() -> Void)?
@@ -63,6 +65,7 @@ final class WorkspaceLayoutState: ObservableObject {
     var attendanceMarkAllPresentAction: (() -> Void)?
     var attendanceRepeatPatternAction: (() -> Void)?
     var attendanceClearSelectionAction: (() -> Void)?
+    var attendanceSessionAction: ((Int64) -> Void)?
 
     func publishDeferred(_ mutation: @escaping @MainActor () -> Void) {
         Task { @MainActor in
@@ -357,13 +360,16 @@ final class WorkspaceLayoutState: ObservableObject {
         boardMode: String,
         selectedStatusFilter: String,
         hasSelection: Bool,
+        sessions: [KmpBridge.AttendanceSessionSnapshot] = [],
+        selectedSessionId: Int64? = nil,
         onSearchTextChange: @escaping (String) -> Void,
         onDateChange: @escaping (Date) -> Void,
         onBoardModeChange: @escaping (String) -> Void,
         onStatusFilterChange: @escaping (String) -> Void,
         onMarkAllPresent: @escaping () -> Void,
         onRepeatPattern: @escaping () -> Void,
-        onClearSelection: @escaping () -> Void
+        onClearSelection: @escaping () -> Void,
+        onSessionChange: ((Int64) -> Void)? = nil
     ) {
         publishDeferred {
             self.attendanceToolbarAvailable = true
@@ -372,6 +378,8 @@ final class WorkspaceLayoutState: ObservableObject {
             self.attendanceBoardMode = boardMode
             self.attendanceSelectedStatusFilter = selectedStatusFilter
             self.attendanceHasSelection = hasSelection
+            self.attendanceSessions = sessions
+            self.attendanceSelectedSessionId = selectedSessionId
             self.attendanceSearchAction = onSearchTextChange
             self.attendanceDateAction = onDateChange
             self.attendanceBoardModeAction = onBoardModeChange
@@ -379,6 +387,7 @@ final class WorkspaceLayoutState: ObservableObject {
             self.attendanceMarkAllPresentAction = onMarkAllPresent
             self.attendanceRepeatPatternAction = onRepeatPattern
             self.attendanceClearSelectionAction = onClearSelection
+            self.attendanceSessionAction = onSessionChange
         }
     }
 
@@ -387,7 +396,9 @@ final class WorkspaceLayoutState: ObservableObject {
         selectedDate: Date,
         boardMode: String,
         selectedStatusFilter: String,
-        hasSelection: Bool
+        hasSelection: Bool,
+        sessions: [KmpBridge.AttendanceSessionSnapshot] = [],
+        selectedSessionId: Int64? = nil
     ) {
         publishDeferred {
             self.attendanceToolbarAvailable = true
@@ -396,6 +407,8 @@ final class WorkspaceLayoutState: ObservableObject {
             self.attendanceBoardMode = boardMode
             self.attendanceSelectedStatusFilter = selectedStatusFilter
             self.attendanceHasSelection = hasSelection
+            self.attendanceSessions = sessions
+            self.attendanceSelectedSessionId = selectedSessionId
         }
     }
 
@@ -407,6 +420,8 @@ final class WorkspaceLayoutState: ObservableObject {
             self.attendanceBoardMode = "Día"
             self.attendanceSelectedStatusFilter = "TODOS"
             self.attendanceHasSelection = false
+            self.attendanceSessions = []
+            self.attendanceSelectedSessionId = nil
             self.attendanceSearchAction = nil
             self.attendanceDateAction = nil
             self.attendanceBoardModeAction = nil
@@ -414,6 +429,7 @@ final class WorkspaceLayoutState: ObservableObject {
             self.attendanceMarkAllPresentAction = nil
             self.attendanceRepeatPatternAction = nil
             self.attendanceClearSelectionAction = nil
+            self.attendanceSessionAction = nil
         }
     }
 
@@ -435,6 +451,11 @@ final class WorkspaceLayoutState: ObservableObject {
     func setAttendanceStatusFilter(_ value: String) {
         attendanceSelectedStatusFilter = value
         attendanceStatusFilterAction?(value)
+    }
+
+    func setAttendanceSessionId(_ value: Int64) {
+        attendanceSelectedSessionId = value
+        attendanceSessionAction?(value)
     }
 
     func attendanceMarkAllPresent() {

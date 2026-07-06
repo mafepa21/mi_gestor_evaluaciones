@@ -27,8 +27,19 @@ Skills tecnicas frecuentes:
 - `swiftui-macos-adapt`: adaptacion macOS.
 - `kmp-bridge-fix`: binding Swift-KMP.
 - `kmp-logic-fix`: logica compartida KMP.
-- `sqldelight-fix`: persistencia SQLDelight.
+- `sqldelight-fix`: bug de persistencia SQLDelight sin cambio de esquema.
+- `sqldelight-migration`: evolucion segura de esquema, tablas y migraciones.
 - `apple-service-patch`: servicios Apple.
+
+Skills de dominio (usar cuando la tarea cae en su area, tienen prioridad sobre las genericas):
+
+- `kmp-feature-vertical`: feature completa que atraviesa SQLDelight -> repositorio -> contrato -> ViewModel -> KmpBridge -> SwiftUI.
+- `planner-workspace`: modulo Planificacion (Semana, Dia, Secuencia, Resumen, composer, PDF).
+- `liquid-glass-design`: adopcion y correccion de Liquid Glass iOS/macOS 26 con fallbacks.
+- `apple-intelligence-service`: servicios de IA local Foundation Models (insights, EarlyWarning, informes, orchestrator).
+- `adaptive-layout-apple`: patron adaptativo iPad-first, sheets con detents, bugs de controles cortados.
+- `synclan-debug`: sincronizacion LAN Mac <-> iPad (helper, SSE, debounce, crashes de sync).
+- `release-prep`: release candidates, consistencia de version, evidencias, tag y GitHub Release.
 
 Skill transversal de cierre:
 

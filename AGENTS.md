@@ -56,8 +56,16 @@ No tocar salvo peticion explicita:
 | Adaptacion macOS | `swiftui-macos-adapt` |
 | Binding Swift-KMP | `kmp-bridge-fix` |
 | Logica KMP | `kmp-logic-fix` |
-| SQLDelight | `sqldelight-fix` |
+| SQLDelight (bug de query/transaccion) | `sqldelight-fix` |
+| SQLDelight (esquema, tablas, migraciones) | `sqldelight-migration` |
 | Servicios Apple | `apple-service-patch` |
+| Feature completa datos->UI (persistencia nueva) | `kmp-feature-vertical` |
+| Modulo Planificacion (Semana/Dia/Secuencia/Resumen/PDF) | `planner-workspace` |
+| Liquid Glass, materiales, chrome premium | `liquid-glass-design` |
+| IA local Foundation Models (insights, EarlyWarning, informes) | `apple-intelligence-service` |
+| Layout adaptativo iPad/iPhone/macOS, sheets, controles cortados | `adaptive-layout-apple` |
+| SyncLAN, helper macOS, sync entre dispositivos | `synclan-debug` |
+| Release, versiones, evidencias, tag | `release-prep` |
 
 Usar una sola skill principal por tarea, salvo que el usuario pida una intervencion transversal.
 

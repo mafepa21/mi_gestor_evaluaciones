@@ -28,6 +28,7 @@ import com.migestor.data.repository.TeacherScheduleRepositorySqlDelight
 import com.migestor.data.repository.WeeklyTemplateRepositorySqlDelight
 import com.migestor.data.repository.PlannedSessionRepositorySqlDelight
 import com.migestor.data.repository.LearningSituationsRepositorySqlDelight
+import com.migestor.data.repository.SyncTombstoneRepositorySqlDelight
 import com.migestor.data.repository.AITrendsRepositorySqlDelight
 import com.migestor.data.service.CsvImportServiceImpl
 import com.migestor.data.service.createPlatformBackupService
@@ -78,6 +79,7 @@ class KmpContainer(val driver: SqlDriver) {
     val weeklyTemplateRepository = WeeklyTemplateRepositorySqlDelight(database)
     val plannedSessionRepository = PlannedSessionRepositorySqlDelight(database)
     val learningSituationsRepository = LearningSituationsRepositorySqlDelight(database)
+    val syncTombstoneRepository = SyncTombstoneRepositorySqlDelight(database)
     val teacherScheduleRepository = TeacherScheduleRepositorySqlDelight(
         db = database,
         plannerRepository = plannerRepository,

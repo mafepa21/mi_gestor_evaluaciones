@@ -122,6 +122,17 @@ internal fun isLoopbackSyncRequest(address: InetAddress?): Boolean {
     return address?.isLoopbackAddress == true
 }
 
+internal fun parseQueryParams(rawQuery: String?): Map<String, String> {
+    return rawQuery
+        ?.split("&")
+        ?.mapNotNull { part ->
+            val kv = part.split("=", limit = 2)
+            if (kv.size == 2 && kv[0].isNotBlank()) kv[0] to kv[1] else null
+        }
+        ?.toMap()
+        .orEmpty()
+}
+
 internal fun selectPreferredLanAddress(candidates: List<Pair<String, InetAddress>>): InetAddress? {
     return candidates
         .sortedWith(
@@ -286,18 +297,19 @@ class LocalSyncServer(
                 return@createContext
             }
             if (!isAuthorized(ex)) return@createContext
-            val since = ex.requestURI.query
-                ?.split("&")
-                ?.mapNotNull { part ->
-                    val kv = part.split("=")
-                    if (kv.size == 2 && kv[0] == "since") kv[1].toLongOrNull() else null
-                }
-                ?.firstOrNull() ?: 0L
+            val query = parseQueryParams(ex.requestURI.query)
+            val since = query["since"]?.toLongOrNull() ?: 0L
+            val requestingDeviceId = query["deviceId"]
             val response = kotlinx.coroutines.runBlocking {
-                println("📥 Recibida solicitud de PULL (desde epoch: $since)")
+                println("📥 Recibida solicitud de PULL (desde epoch: $since, deviceId: $requestingDeviceId)")
                 syncCoordinator.pullChanges(sinceEpochMs = since, serverNowEpochMs = System.currentTimeMillis())
             }
-            ex.respond(200, encodePullResponse(response))
+            // Un dispositivo nunca necesita que le devuelvan sus propios cambios: ya
+            // los tiene aplicados localmente. Sin este filtro, cada pull re-descarga
+            // y re-aplica (de forma redonda pero costosa) todo lo que el propio
+            // dispositivo acaba de empujar, incluido el full-pull periódico.
+            val filteredChanges = filterDesktopChangesForSse(response.changes, requestingDeviceId)
+            ex.respond(200, encodePullResponse(response.copy(changes = filteredChanges)))
         }
 
         https.createContext("/sync/events") { ex ->

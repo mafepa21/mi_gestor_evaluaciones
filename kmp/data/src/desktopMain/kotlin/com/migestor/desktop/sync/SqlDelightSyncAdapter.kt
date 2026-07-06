@@ -1054,7 +1054,27 @@ class SqlDelightSyncAdapter(
             // Si la operación es delete, delegar a handler de borrado
             if (change.op == "delete") {
                 val deleted = applyDelete(change)
-                if (deleted) applied++ else ignored++
+                if (deleted) {
+                    applied++
+                    // Deja un tombstone: si otro dispositivo (offline en el momento del
+                    // borrado) empuja más tarde un upsert fechado ANTES de este borrado,
+                    // no debe resucitar la entidad (ver applyIncomingChangesLww más abajo).
+                    container.syncTombstoneRepository.recordTombstone(
+                        entity = change.entity,
+                        entityId = change.id,
+                        deletedAtEpochMs = change.updatedAtEpochMs,
+                        deviceId = change.deviceId,
+                    )
+                } else {
+                    ignored++
+                }
+                return@forEach
+            }
+
+            // Un upsert fechado antes (o igual) que el último borrado conocido de esta
+            // misma entidad no debe resucitarla: el borrado es más reciente y gana LWW.
+            if (container.syncTombstoneRepository.isDeletedAtOrAfter(change.entity, change.id, change.updatedAtEpochMs)) {
+                ignored++
                 return@forEach
             }
 
@@ -1134,12 +1154,27 @@ class SqlDelightSyncAdapter(
                         val remoteIds = payload.longList("studentIds").toSet()
                         val localIds = container.classesRepository.listStudentsInClass(classId).map { it.id }.toSet()
                         remoteIds.subtract(localIds).forEach {
+                            // Añadir siempre es seguro: en el peor caso, un snapshot viejo
+                            // re-añade a alguien que ya se había quitado en el otro
+                            // dispositivo; ese dispositivo lo volverá a quitar en su
+                            // próximo snapshot. La mitad peligrosa es la baja (abajo).
                             container.classesRepository.addStudentToClass(classId, it)
                             applied++
                         }
-                        localIds.subtract(remoteIds).forEach {
-                            container.classesRepository.removeStudentFromClass(classId, it)
-                            applied++
+                        localIds.subtract(remoteIds).forEach { studentId ->
+                            // Solo dar de baja si este snapshot es al menos tan reciente
+                            // como la última alta/baja conocida localmente para ESTE
+                            // alumno. Sin esto, un snapshot de roster desactualizado que
+                            // llega tarde (p.ej. tras una reconexión) puede borrar a un
+                            // alumno recién añadido localmente, aunque el snapshot entero
+                            // sea "más nuevo" que la última vez que se sincronizó la clase.
+                            val localEnrollmentAt = container.classesRepository.latestEnrollmentUpdatedAt(classId, studentId)
+                            if (localEnrollmentAt == null || change.updatedAtEpochMs >= localEnrollmentAt) {
+                                container.classesRepository.removeStudentFromClass(classId, studentId)
+                                applied++
+                            } else {
+                                ignored++
+                            }
                         }
                     }
 
@@ -1732,6 +1767,11 @@ class SqlDelightSyncAdapter(
 
                     else -> ignored++
                 }
+            }.onSuccess {
+                // El upsert ganó frente a cualquier borrado previo (más antiguo): si
+                // había un tombstone, ya no aplica y lo retiramos para no bloquear
+                // futuros upserts legítimos de esta misma entidad.
+                container.syncTombstoneRepository.clearTombstone(change.entity, change.id)
             }.onFailure { failed++ }
         }
 

@@ -1,0 +1,9 @@
+-- Tombstones genéricos para la sincronización LAN: ver AppDatabase.sq para el
+-- razonamiento. Puramente aditiva, no toca ninguna tabla existente.
+CREATE TABLE IF NOT EXISTS sync_tombstones (
+    entity TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    deleted_at_epoch_ms INTEGER NOT NULL,
+    device_id TEXT,
+    PRIMARY KEY (entity, entity_id)
+);

@@ -280,27 +280,162 @@ enum AppleDesignSystem {
 }
 
 struct PremiumCard<Content: View>: View {
+    enum Style {
+        case compact
+        case glass
+    }
+
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
+    var style: Style = .glass
     var padding: CGFloat = AppleDesignSystem.cardSpacing
     var cornerRadius: CGFloat = AppleDesignSystem.cardRadius
+    var fillOpacity: Double? = nil
+    var borderColor: Color = AppleDesignSystem.border
+    var shadowColor: Color = AppleDesignSystem.shadow.opacity(0.65)
+    var shadowRadius: CGFloat = 16
+    var shadowY: CGFloat = 8
+    var title: String? = nil
+    var systemImage: String? = nil
     @ViewBuilder let content: Content
 
     var body: some View {
-        content
-            .padding(padding)
-            .background(
-                adaptiveSurfaceBackground(
-                    accessibilityFallback: uiFeatureFlags.accessibilitySurfaceFallback,
-                    fill: AppleDesignSystem.cardBackground(for: colorScheme).opacity(colorScheme == .dark ? 0.82 : 0.96),
-                    cornerRadius: cornerRadius
-                )
+        VStack(alignment: .leading, spacing: IOSAppStyle.cardSpacing) {
+            if let title {
+                HStack(spacing: 8) {
+                    if let systemImage {
+                        Image(systemName: systemImage)
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(IOSAppStyle.info)
+                    }
+                    Text(title)
+                        .font(IOSAppStyle.cardTitle)
+                        .foregroundStyle(.primary)
+                }
+            }
+            content
+        }
+        .padding(padding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(backgroundView)
+    }
+
+    @ViewBuilder
+    private var backgroundView: some View {
+        switch style {
+        case .glass:
+            adaptiveSurfaceBackground(
+                accessibilityFallback: uiFeatureFlags.accessibilitySurfaceFallback,
+                fill: AppleDesignSystem.cardBackground(for: colorScheme).opacity(
+                    fillOpacity ?? (colorScheme == .dark ? 0.82 : 0.96)
+                ),
+                cornerRadius: cornerRadius
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(borderColor, lineWidth: 1)
+            }
+            .shadow(color: shadowColor, radius: shadowRadius, x: 0, y: shadowY)
+        case .compact:
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(IOSAppStyle.cardBackground)
                 .overlay {
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .stroke(AppleDesignSystem.border, lineWidth: 1)
+                        .stroke(borderColor, lineWidth: 1)
                 }
-                .shadow(color: AppleDesignSystem.shadow.opacity(0.65), radius: 16, x: 0, y: 8)
+                .shadow(color: shadowColor, radius: shadowRadius, x: 0, y: shadowY)
+        }
+    }
+}
+
+extension PremiumCard {
+    /// Reproduces IOSSectionCard's look exactly (solid background, radius 20, optional title/icon header).
+    static func section(
+        title: String? = nil,
+        systemImage: String? = nil,
+        @ViewBuilder content: () -> Content
+    ) -> PremiumCard {
+        PremiumCard(
+            style: .compact,
+            padding: IOSAppStyle.cardSpacing,
+            cornerRadius: IOSAppStyle.cardRadius,
+            borderColor: IOSAppStyle.cardBorder,
+            shadowColor: Color.black.opacity(0.04),
+            shadowRadius: 10,
+            shadowY: 4,
+            title: title,
+            systemImage: systemImage,
+            content: content
+        )
+    }
+
+    /// Reproduces IOSMetricCard's card shell exactly (solid background, radius 14, no header).
+    static func metric(@ViewBuilder content: () -> Content) -> PremiumCard {
+        PremiumCard(
+            style: .compact,
+            padding: IOSAppStyle.cardSpacing,
+            cornerRadius: IOSAppStyle.innerRadius,
+            borderColor: IOSAppStyle.cardBorder,
+            shadowColor: Color.black.opacity(0.02),
+            shadowRadius: 6,
+            shadowY: 3,
+            content: content
+        )
+    }
+
+    /// Reproduces EvaluationGlassCard's look exactly (ultraThinMaterial glass, radius 40 by default).
+    static func glass(
+        cornerRadius: CGFloat = EvaluationDesign.cardRadius,
+        fillOpacity: Double = 0.82,
+        @ViewBuilder content: () -> Content
+    ) -> PremiumCard {
+        PremiumCard(
+            style: .glass,
+            padding: EvaluationDesign.screenPadding,
+            cornerRadius: cornerRadius,
+            fillOpacity: fillOpacity,
+            borderColor: EvaluationDesign.border,
+            shadowColor: EvaluationDesign.shadow.opacity(0.20),
+            shadowRadius: 18,
+            shadowY: 8,
+            content: content
+        )
+    }
+}
+
+struct PrimaryActionButton: View {
+    let label: String
+    let systemImage: String
+    var tint: Color = EvaluationDesign.accent
+    var isEnabled: Bool = true
+    var fullWidth: Bool = true
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: fullWidth ? 12 : 8) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 14, weight: .bold))
+                Text(label)
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+            }
+            .foregroundStyle(fullWidth ? contrastingTextColor(for: tint) : .white)
+            .frame(maxWidth: fullWidth ? .infinity : nil)
+            .padding(.horizontal, fullWidth ? 0 : 16)
+            .padding(.vertical, fullWidth ? 16 : 10)
+            .background(
+                RoundedRectangle(cornerRadius: fullWidth ? 16 : IOSAppStyle.controlRadius, style: .continuous)
+                    .fill(isEnabled ? tint : tint.opacity(0.5))
+                    .shadow(
+                        color: (isEnabled ? tint : Color.clear).opacity(fullWidth ? 0.18 : 0.15),
+                        radius: fullWidth ? 12 : 6,
+                        x: 0,
+                        y: fullWidth ? 6 : 3
+                    )
             )
+        }
+        .disabled(!isEnabled)
+        .buttonStyle(.plain)
     }
 }
 

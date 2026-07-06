@@ -27,6 +27,8 @@ class NotebookViewModel(
     private val _selectedTabId = MutableStateFlow<String?>(null)
     private val formulaEvaluator = FormulaEvaluator()
     private val averageCache = AverageCache()
+    private val saveQueue = NotebookSaveQueue()
+    private var saveQueueJob: Job? = null
 
     init {
         loadInitialData()

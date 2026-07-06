@@ -9,7 +9,7 @@ struct MacCommandCenterPairingCard: View {
     let commandCenterState: AppleCommandCenterState
 
     var body: some View {
-        IOSSectionCard(title: "Enlazar iPhone o iPad", systemImage: "qrcode") {
+        PremiumCard.section(title: "Enlazar iPhone o iPad", systemImage: "qrcode") {
             VStack(alignment: .leading, spacing: IOSAppStyle.cardSpacing) {
                 Text(headlineText)
                     .font(IOSAppStyle.bodyText)
@@ -265,7 +265,7 @@ struct SyncLanView: View {
     // MARK: 1 — Estado principal
 
     private var syncStatusHero: some View {
-        IOSSectionCard {
+        PremiumCard.section {
             HStack(spacing: 16) {
                 // Icono de estado
                 ZStack {
@@ -372,7 +372,7 @@ struct SyncLanView: View {
     // MARK: 2 — Emparejamiento
 
     private var pairingSection: some View {
-        IOSSectionCard(title: "Emparejamiento", systemImage: "link.circle.fill") {
+        PremiumCard.section(title: "Emparejamiento", systemImage: "link.circle.fill") {
             if let host = bridge.pairedSyncHost {
                 // Vinculado
                 HStack(spacing: 12) {
@@ -482,7 +482,7 @@ struct SyncLanView: View {
     // MARK: 3 — Actividad
 
     private var activitySection: some View {
-        IOSSectionCard(title: "Actividad", systemImage: "clock.arrow.circlepath") {
+        PremiumCard.section(title: "Actividad", systemImage: "clock.arrow.circlepath") {
             VStack(spacing: 10) {
                 SyncActivityRow(
                     label: "Última sincronización",
@@ -532,7 +532,7 @@ struct SyncLanView: View {
         DisclosureGroup(
             isExpanded: $showDiagnostics,
             content: {
-                IOSSectionCard {
+                PremiumCard.section {
                     VStack(spacing: 10) {
                         SyncActivityRow(
                             label: "Host vinculado",
@@ -744,7 +744,7 @@ struct SyncLanCard: View {
     @State private var showingQrScanner = false
 
     var body: some View {
-        IOSSectionCard(title: "Sincronización LAN", systemImage: "dot.radiowaves.left.and.right") {
+        PremiumCard.section(title: "Sincronización LAN", systemImage: "dot.radiowaves.left.and.right") {
             VStack(alignment: .leading, spacing: IOSAppStyle.cardSpacing) {
                 if !bridge.syncStatusMessage.isEmpty {
                     Text(bridge.syncStatusMessage)

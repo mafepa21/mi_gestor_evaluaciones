@@ -10,12 +10,12 @@ struct SyncSettingsView: View {
         // macOS: mantener comportamiento original (solo toggle + texto informativo)
         ScrollView {
             VStack(spacing: IOSAppStyle.sectionSpacing) {
-                IOSSectionCard(title: "Preferencia de Sincronización", systemImage: "arrow.triangle.2.circlepath") {
+                PremiumCard.section(title: "Preferencia de Sincronización", systemImage: "arrow.triangle.2.circlepath") {
                     Toggle("Sincronizar automáticamente al inicio", isOn: $settings.syncAutoStart)
                         .font(IOSAppStyle.bodyText)
                 }
 
-                IOSSectionCard(title: "Sincronización de Red", systemImage: "wifi") {
+                PremiumCard.section(title: "Sincronización de Red", systemImage: "wifi") {
                     Text("La sincronización y el emparejamiento se gestionan desde la sección dedicada 'Sincronizar' en la barra lateral de la aplicación principal.")
                         .font(IOSAppStyle.bodyText)
                         .foregroundStyle(.secondary)

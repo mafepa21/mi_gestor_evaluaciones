@@ -3826,7 +3826,7 @@ struct ContextualAIAssistantSheet: View {
     }
 
     var availabilityCard: some View {
-        EvaluationGlassCard {
+        PremiumCard.glass {
             VStack(alignment: .leading, spacing: 12) {
                 Label(module.title, systemImage: module.systemImage)
                     .font(.system(size: 13, weight: .bold, design: .rounded))
@@ -3870,7 +3870,7 @@ struct ContextualAIAssistantSheet: View {
     }
 
     var actionCard: some View {
-        EvaluationGlassCard {
+        PremiumCard.glass {
             VStack(alignment: .leading, spacing: 14) {
                 Text("Acciones sugeridas")
                     .font(.system(size: 18, weight: .bold, design: .rounded))
@@ -3965,7 +3965,7 @@ struct ContextualAIAssistantSheet: View {
     }
 
     var resultCard: some View {
-        EvaluationGlassCard {
+        PremiumCard.glass {
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
                     Text("Resultado")

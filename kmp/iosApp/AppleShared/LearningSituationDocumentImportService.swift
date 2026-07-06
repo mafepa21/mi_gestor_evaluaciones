@@ -455,8 +455,9 @@ struct LearningSituationSessionSequenceDocumentImportService {
         let paragraphs = try readParagraphs(from: data).filter { !$0.isEmpty }
         guard !paragraphs.isEmpty else { throw LearningSituationImportError.missingDocumentBody }
 
+        let defaultMinutes = defaultMinutesByType(in: paragraphs)
         let headerPattern = try NSRegularExpression(
-            pattern: #"^(?:SESI|SESSI)(?:ÓN|ON|ONES|ONS)?\s+([0-9]+)(?:\s+(?:y|and|\&)\s+([0-9]+))?\s*(?:\((.+)\))?"#,
+            pattern: #"^(?:SESI|SESSI)(?:ÓN|ON|ONES|ONS)?\s+([0-9]+)(?:\s+(?:y|and|\&)\s+([0-9]+))?(?:\s*[-:–—]\s*|\s+)?(.*)?$"#,
             options: [.caseInsensitive]
         )
         let headerIndexes = paragraphs.indices.filter {
@@ -476,7 +477,7 @@ struct LearningSituationSessionSequenceDocumentImportService {
                 numbers.append(secondNumber)
             }
             let body = Array(paragraphs[(start + 1)..<end])
-            let parsed = parsePlan(header: header, body: body)
+            let parsed = parsePlan(header: header, body: body, defaultMinutes: defaultMinutes)
             plans.append(contentsOf: numbers.map {
                 LearningSituationSessionPlanDraft(
                     sessionNumber: $0,
@@ -500,8 +501,21 @@ struct LearningSituationSessionSequenceDocumentImportService {
         if let maximum = numbers.max(), numbers != Array(1...maximum) {
             warnings.append("La numeración de las sesiones no es consecutiva.")
         }
-        if plans.contains(where: { $0.title.isEmpty || $0.objective.isEmpty }) {
-            warnings.append("Revisa las sesiones sin título u objetivo reconocido.")
+        let missingTitleCount = plans.filter { $0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.count
+        if missingTitleCount > 0 {
+            warnings.append("\(missingTitleCount) sesiones no tienen título reconocido.")
+        }
+        let missingObjectiveCount = plans.filter { $0.objective.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.count
+        if missingObjectiveCount > 0 {
+            warnings.append("\(missingObjectiveCount) sesiones no tienen objetivo reconocido.")
+        }
+        let missingDevelopmentCount = plans.filter { $0.development.isEmpty }.count
+        if missingDevelopmentCount > 0 {
+            warnings.append("\(missingDevelopmentCount) sesiones no tienen desarrollo reconocido.")
+        }
+        let inferredMinutesCount = plans.filter { $0.effectiveMinutes > 0 && integerMatch(in: $0.sourceLabel, pattern: #"([0-9]+)\s*(?:minutos|minutes|min|')"#) == nil }.count
+        if inferredMinutesCount > 0 {
+            warnings.append("\(inferredMinutesCount) sesiones usan minutos inferidos por tipo o desarrollo.")
         }
         return LearningSituationSessionSequenceImportDraft(
             plans: plans,
@@ -517,17 +531,26 @@ struct LearningSituationSessionSequenceDocumentImportService {
         title: String, sessionType: String, effectiveMinutes: Int, objective: String,
         criteria: [String], material: String, development: [LearningSituationSessionSectionDraft], adaptations: [String]
     ) {
-        let title = value(afterLabels: ["Título", "Title"], in: body).trimmingCharacters(in: CharacterSet(charactersIn: "“”\""))
-        let objective = value(afterLabels: ["Objetivo", "Objective"], in: body)
-        let criteria = value(afterLabels: ["Criterio de evaluación", "Criterio", "Criterion", "Criteria"], in: body)
+        parsePlan(header: header, body: body, defaultMinutes: [:])
+    }
+
+    private func parsePlan(header: String, body: [String], defaultMinutes: [String: Int]) -> (
+        title: String, sessionType: String, effectiveMinutes: Int, objective: String,
+        criteria: [String], material: String, development: [LearningSituationSessionSectionDraft], adaptations: [String]
+    ) {
+        let headerParts = sessionTypeAndTitle(from: header)
+        let titleFromBody = value(afterLabels: ["Título", "Title"], in: body)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "“”\""))
+        let title = titleFromBody.isEmpty ? headerParts.title : titleFromBody
+        let objective = value(afterLabels: ["Objetivo", "Objetivos", "Objective", "Objectives"], in: body)
+        let criteria = value(afterLabels: ["Criterio de evaluación", "Criterios de evaluación", "Criterio", "Criterios", "Criterion", "Criteria"], in: body)
             .trimmingCharacters(in: CharacterSet(charactersIn: "."))
             .components(separatedBy: ",")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
-        let material = value(afterLabels: ["Material", "Materials"], in: body)
-        let normalizedHeader = header.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
-        let type = normalizedHeader.contains("doble") ? "Doble" : "Simple"
-        let minutes = integerMatch(in: header, pattern: #"([0-9]+)\s+minutos"#) ?? 0
+        let material = value(afterLabels: ["Material", "Materials", "Materiales"], in: body)
+        let evidence = value(afterLabels: ["Evidencia", "Evidencias", "Evidence"], in: body)
+        let type = headerParts.type
         let adaptationIndex = body.firstIndex(where: {
             let norm = normalized($0)
             return norm.hasPrefix("adaptacion al contexto") || norm.hasPrefix("adaptación al contexto") || norm.hasPrefix("context adaptation")
@@ -547,7 +570,13 @@ struct LearningSituationSessionSequenceDocumentImportService {
             }
         }
         if let currentTitle { development.append(.init(title: currentTitle, lines: currentLines)) }
+        if !evidence.isEmpty {
+            development.insert(.init(title: "Evidencia", lines: [evidence]), at: 0)
+        }
         let adaptations = adaptationIndex.map { Array(body.dropFirst($0 + 1)) } ?? []
+        let minutes = integerMatch(in: header, pattern: #"([0-9]+)\s*(?:minutos|minutes|min|')"#)
+            ?? defaultMinutes[normalized(type)]
+            ?? inferredMinutes(from: development)
         return (title, type, minutes, objective, criteria, material, development, adaptations)
     }
 
@@ -566,7 +595,7 @@ struct LearningSituationSessionSequenceDocumentImportService {
         for paragraph in paragraphs {
             let normPara = normalized(paragraph)
             for label in normalizedLabels {
-                if normPara.range(of: "\\b\(NSRegularExpression.escapedPattern(for: label))\\b", options: .regularExpression) != nil {
+                if normPara.range(of: "\\b\(NSRegularExpression.escapedPattern(for: label))s?\\b", options: .regularExpression) != nil {
                     if let colonIndex = paragraph.firstIndex(of: ":") {
                         return String(paragraph[paragraph.index(after: colonIndex)...]).trimmingCharacters(in: .whitespacesAndNewlines)
                     }
@@ -580,18 +609,78 @@ struct LearningSituationSessionSequenceDocumentImportService {
         let item = normalized(paragraph)
         return item.hasPrefix("bloque ") ||
                item.hasPrefix("block ") ||
+               item.hasPrefix("break ") ||
+               item.hasPrefix("descanso ") ||
                item.hasPrefix("desarrollo de la sesion") ||
                item.hasPrefix("desarrollo de la sesión") ||
                item.hasPrefix("session development") ||
                item.hasPrefix("development of the session") ||
                item.contains("descanso reglamentario") ||
-               item.contains("regulatory rest")
+               item.contains("regulatory rest") ||
+               timeRangeMinutes(in: paragraph) != nil
     }
 
     private func integerMatch(in text: String, pattern: String) -> Int? {
         let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
         let match = regex?.firstMatch(in: text, range: NSRange(text.startIndex..., in: text))
         return match.flatMap { Range($0.range(at: 1), in: text) }.flatMap { Int(text[$0]) }
+    }
+
+    private func sessionTypeAndTitle(from header: String) -> (type: String, title: String) {
+        let normalizedHeader = normalized(header)
+        let type: String
+        if normalizedHeader.contains("double") || normalizedHeader.contains("doble") {
+            type = "Doble"
+        } else {
+            type = "Simple"
+        }
+        let pattern = #"^(?:SESI|SESSI)(?:ÓN|ON|ONES|ONS)?\s+[0-9]+(?:\s+(?:y|and|\&)\s+[0-9]+)?\s*(?:[-:–—]\s*)?(?:(?:Simple|Double|Doble)\s*[:\-–—]\s*)?(.*)$"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
+              let match = regex.firstMatch(in: header, range: NSRange(header.startIndex..., in: header)),
+              let titleRange = Range(match.range(at: 1), in: header) else {
+            return (type, "")
+        }
+        let title = String(header[titleRange])
+            .replacingOccurrences(of: #"^(Simple|Double|Doble)\s*[:\-–—]\s*"#, with: "", options: [.regularExpression, .caseInsensitive])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return (type, title)
+    }
+
+    private func defaultMinutesByType(in paragraphs: [String]) -> [String: Int] {
+        var result: [String: Int] = [:]
+        for paragraph in paragraphs {
+            let normalizedParagraph = normalized(paragraph)
+            if normalizedParagraph.contains("simple"),
+               let minutes = integerMatch(in: paragraph, pattern: #"Simple[^0-9]{0,80}([0-9]+)\s*(?:effective|useful)?\s*(?:minutos|minutes|min)"#) {
+                result[normalized("Simple")] = minutes
+            }
+            if (normalizedParagraph.contains("double") || normalizedParagraph.contains("doble")),
+               let minutes = integerMatch(in: paragraph, pattern: #"(?:Double|Doble)[^0-9]{0,80}([0-9]+)\s*(?:effective|useful)?\s*(?:minutos|minutes|min)"#) {
+                result[normalized("Doble")] = minutes
+            }
+        }
+        return result
+    }
+
+    private func inferredMinutes(from development: [LearningSituationSessionSectionDraft]) -> Int {
+        let total = development
+            .compactMap { timeRangeMinutes(in: $0.title) }
+            .reduce(0, +)
+        return total
+    }
+
+    private func timeRangeMinutes(in text: String) -> Int? {
+        let pattern = #"([0-9]{1,3})\s*(?:'|’|min)?\s*[-–—]\s*([0-9]{1,3})\s*(?:'|’|min)?"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
+              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let startRange = Range(match.range(at: 1), in: text),
+              let endRange = Range(match.range(at: 2), in: text),
+              let start = Int(text[startRange]),
+              let end = Int(text[endRange]),
+              end > start else {
+            return nil
+        }
+        return end - start
     }
 
     private func normalized(_ value: String) -> String {

@@ -762,6 +762,13 @@ struct AppWorkspaceShell: View {
                         Divider().opacity(0.24)
                     }
                     activeWorkspace
+                        .id(activeModule)
+                        .transition(
+                            .asymmetric(
+                                insertion: .opacity.animation(.easeOut(duration: 0.15)),
+                                removal: .opacity.animation(.easeIn(duration: 0.10))
+                            )
+                        )
                         .environmentObject(layoutState)
                 }
                 .background(appPageBackground(for: colorScheme).ignoresSafeArea())

@@ -76,23 +76,41 @@ struct NotebookDynamicCellsRow: View {
     @MainActor
     private func cellDisplaySnapshot(for column: NotebookColumnDefinition) -> NotebookCellDisplaySnapshot {
         let persistedCell = item.row.persistedCells.first(where: { $0.columnId == column.id })
+        let persistedGrade = item.row.persistedGrades.first(where: { $0.columnId == column.id })
+        
         switch column.type {
         case .numeric:
-            return NotebookCellDisplaySnapshot(
-                numericText: bridge.numericGradeText(studentId: item.student.id, columnId: column.id)
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-            )
+            let numericVal: String
+            if let value = persistedGrade?.value {
+                numericVal = IosFormatting.decimal(from: value.doubleValue)
+            } else {
+                numericVal = persistedCell?.textValue ?? persistedCell?.displayValue ?? ""
+            }
+            return NotebookCellDisplaySnapshot(numericText: numericVal.trimmingCharacters(in: .whitespacesAndNewlines))
         case .check:
-            return NotebookCellDisplaySnapshot(checkValue: bridge.cellCheck(studentId: item.student.id, columnId: column.id))
+            let boolVal = persistedCell?.boolValue?.boolValue ?? false
+            return NotebookCellDisplaySnapshot(checkValue: boolVal)
         case .calculated:
-            return NotebookCellDisplaySnapshot(calculatedText: bridge.numericGradeOnTenText(studentId: item.student.id, columnId: column.id))
+            let calculatedVal: String
+            if let value = persistedGrade?.value {
+                calculatedVal = IosFormatting.decimal(from: value.doubleValue)
+            } else {
+                calculatedVal = persistedCell?.displayValue ?? ""
+            }
+            return NotebookCellDisplaySnapshot(calculatedText: calculatedVal)
         case .rubric:
-            return NotebookCellDisplaySnapshot(
-                rubricText: bridge.rubricGradeOnTenText(studentId: item.student.id, column: column)
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-            )
+            let rubricVal: String
+            if let display = persistedCell?.displayValue {
+                rubricVal = display
+            } else if let value = persistedGrade?.value {
+                rubricVal = IosFormatting.decimal(from: value.doubleValue)
+            } else {
+                rubricVal = ""
+            }
+            return NotebookCellDisplaySnapshot(rubricText: rubricVal.trimmingCharacters(in: .whitespacesAndNewlines))
         case .attendance:
-            return NotebookCellDisplaySnapshot(text: bridge.cellText(studentId: item.student.id, columnId: column.id))
+            let textVal = persistedCell?.textValue ?? persistedCell?.ordinalValue ?? ""
+            return NotebookCellDisplaySnapshot(text: textVal)
         default:
             return NotebookCellDisplaySnapshot(text: persistedCell?.textValue ?? persistedCell?.displayValue ?? "")
         }
@@ -125,15 +143,28 @@ struct NotebookDynamicCellsRow: View {
         if column.inputKind.isStructuredInstrument {
             return bridge.structuredCellDisplayText(studentId: item.student.id, columnId: column.id)
         }
+        let persistedCell = item.row.persistedCells.first(where: { $0.columnId == column.id })
+        let persistedGrade = item.row.persistedGrades.first(where: { $0.columnId == column.id })
+        
         switch column.type {
         case .numeric, .calculated:
-            return bridge.numericGradeText(studentId: item.student.id, columnId: column.id)
+            if let value = persistedGrade?.value {
+                return IosFormatting.decimal(from: value.doubleValue)
+            }
+            return persistedCell?.textValue ?? persistedCell?.displayValue ?? ""
         case .rubric:
-            return bridge.rubricGradeOnTenText(studentId: item.student.id, column: column)
+            if let display = persistedCell?.displayValue {
+                return display
+            }
+            if let value = persistedGrade?.value {
+                return IosFormatting.decimal(from: value.doubleValue)
+            }
+            return ""
         case .check:
-            return bridge.cellCheck(studentId: item.student.id, columnId: column.id) ? "true" : ""
+            let boolVal = persistedCell?.boolValue?.boolValue ?? false
+            return boolVal ? "true" : ""
         default:
-            return bridge.cellText(studentId: item.student.id, columnId: column.id)
+            return persistedCell?.textValue ?? persistedCell?.displayValue ?? ""
         }
     }
 }

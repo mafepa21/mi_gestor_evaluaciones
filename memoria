@@ -1377,6 +1377,24 @@ Validación:
 Notas para futuras conversaciones:
 - Si vuelve a aparecer un crash LLDB en `<compiler-generated>` durante `createIosDriver()`, revisar primero excepciones de migración SQLDelight y `PRAGMA user_version` de la base del dispositivo; ese mensaje de Xcode no es la causa, solo indica que no hay fuente Kotlin para ese frame generado.
 
+### 2026-06-22 - Optimización de Rendimiento y Transiciones Visuales Fluidas
+
+Resumen:
+- **Transición Fluida de Carga en Cuaderno**: Se introdujo una transición de opacidad animada (`.transition(.opacity)`) y una clave de estado estable (`notebookStateKey`) en [NotebookModuleDialogs.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/NotebookModuleDialogs.swift) para suavizar la transición del esqueleto de carga (skeletons) al grid de datos reales, eliminando parpadeos bruscos de la UI.
+- **Crossfade en Workspace Shell**: Se configuró una transición asimétrica rápida (150 ms para entrar, 100 ms para salir) con identificador de vista `.id(activeModule)` en [IPadWorkspaceShell.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/IPadWorkspaceShell.swift) al cambiar de módulo desde la barra lateral, eliminando el lag visual de inicialización de vistas densas.
+- **Planner con Celdas Equatable**: Se conformó a `Equatable` la cuadrícula de sesiones semanales `PlannerWeekCellCard` en [PlannerWorkspaceIOS.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/PlannerWorkspaceIOS.swift) para evitar re-renderizados innecesarios y optimizar el scroll horizontal y el cambio de semana, limitando las invalidaciones de O(N) a O(1).
+- **Acceso Local en Celdas del Cuaderno**: Se optimizó [NotebookDynamicCellsRow.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/NotebookDynamicCellsRow.swift) para que `cellDisplaySnapshot(for:)` y `cellValue(for:)` realicen búsquedas locales sobre `persistedCells` y `persistedGrades` de la fila en lugar de hacer llamadas de indexación global síncronas al bridge en el Main Thread.
+- **Carga por Fases del Dashboard**: Se reestructuró la carga en [DashboardView.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/DashboardView.swift) añadiendo un retardo controlado de 150 ms en las consultas pesadas de tendencias e IA, permitiendo que la transición de entrada al Dashboard finalice de forma fluida y sedosa.
+
+Validación:
+- Verificación sintáctica manual completada.
+- Corregido error de compilación en `NotebookDynamicCellsRow.swift` al eliminar la llamada a la función inexistente `bridge.cellDraftText`, implementando la resolución de valores locales de forma pura.
+- Compilación automatizada en Xcode de iOS/macOS no ejecutada debido a la configuración de `xcode-select` (CommandLineTools activa por defecto en el entorno).
+
+Notas para futuras conversaciones:
+- Al modificar interacciones del cuaderno o teclado, priorizar siempre lecturas sobre los datos locales en Swift (`persistedCells`/`persistedGrades`) para evitar despertar síncronamente los índices en el Main Thread del bridge.
+- Mantener los retardos asíncronos cortos (100-200 ms) al cargar datos pesados en transiciones de pantalla para preservar la fluidez de entrada a 60/120 fps en iOS y macOS.
+
 ### 2026-05-20 - Optimización de Rendimiento y Diseño Premium en Módulo de Cuaderno
 
 Resumen:

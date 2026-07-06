@@ -60,7 +60,7 @@ struct RubricEvaluationView: View {
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 24)
-                        EvaluationPrimaryButton(label: "Cerrar", systemImage: "xmark") {
+                        PrimaryActionButton(label: "Cerrar", systemImage: "xmark") {
                             closeRubric()
                         }
                         .frame(width: 160)
@@ -82,7 +82,7 @@ struct RubricEvaluationView: View {
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 24)
-                        EvaluationPrimaryButton(label: "Cerrar", systemImage: "xmark") {
+                        PrimaryActionButton(label: "Cerrar", systemImage: "xmark") {
                             closeRubric()
                         }
                         .frame(width: 160)
@@ -131,7 +131,7 @@ struct RubricEvaluationView: View {
                     value: IosFormatting.scoreOutOfTen(from: score)
                 )
 
-                EvaluationPrimaryButton(label: "Guardar evaluación", systemImage: "square.and.arrow.down.fill") {
+                PrimaryActionButton(label: "Guardar evaluación", systemImage: "square.and.arrow.down.fill") {
                     bridge.saveRubricEvaluation(
                         manual: true,
                         emitNotebookRefresh: !bridge.isNotebookRubricAutoAdvanceActive,
@@ -149,7 +149,7 @@ struct RubricEvaluationView: View {
     }
 
     private func criteriaPanel(rubric: RubricDetail) -> some View {
-        EvaluationGlassCard(cornerRadius: 32, fillOpacity: 0.88) {
+        PremiumCard.glass(cornerRadius: 32, fillOpacity: 0.88) {
             VStack(alignment: .leading, spacing: EvaluationDesign.sectionSpacing) {
                 HStack(spacing: 12) {
                     EvaluationChip(
@@ -185,7 +185,7 @@ struct RubricEvaluationView: View {
     }
 
     private func summaryPanel(rubric: RubricDetail, score: Double) -> some View {
-        EvaluationGlassCard(cornerRadius: 32, fillOpacity: 0.92) {
+        PremiumCard.glass(cornerRadius: 32, fillOpacity: 0.92) {
             VStack(alignment: .leading, spacing: 20) {
                 HStack(spacing: 10) {
                     EvaluationChip(
@@ -251,7 +251,7 @@ struct RubricCriterionRow: View {
     }
 
     var body: some View {
-        EvaluationGlassCard(cornerRadius: 24, fillOpacity: 0.96) {
+        PremiumCard.glass(cornerRadius: 24, fillOpacity: 0.96) {
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(item.criterion.description_)

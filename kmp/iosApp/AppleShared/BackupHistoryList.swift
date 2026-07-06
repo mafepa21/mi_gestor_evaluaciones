@@ -129,7 +129,7 @@ struct BackupRowView: View {
     @State private var isHovered = false
 
     var body: some View {
-        IOSSectionCard {
+        PremiumCard.section {
             VStack(alignment: .leading, spacing: 14) {
                 // Top Header Row
                 HStack(alignment: .top) {

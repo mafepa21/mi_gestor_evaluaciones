@@ -37,7 +37,7 @@ struct BackupStatusHero: View {
     }
 
     var body: some View {
-        IOSSectionCard {
+        PremiumCard.section {
             VStack(alignment: .leading, spacing: 18) {
                 HStack(alignment: .center, spacing: 16) {
                     // Pulsing / glowing status icon
@@ -89,10 +89,11 @@ struct BackupStatusHero: View {
                         }
                         .transition(.opacity)
                     } else {
-                        IOSPrimaryActionButton(
+                        PrimaryActionButton(
                             label: "Crear Copia en 1 Clic",
                             systemImage: "plus.shield",
-                            tint: IOSAppStyle.info
+                            tint: IOSAppStyle.info,
+                            fullWidth: false
                         ) {
                             backupNote = ""
                             showingCreateDialog = true

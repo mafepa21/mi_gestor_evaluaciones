@@ -1,45 +1,5 @@
 import SwiftUI
 
-// MARK: - IOSSectionCard
-struct IOSSectionCard<Content: View>: View {
-    let title: String?
-    let systemImage: String?
-    let content: Content
-
-    init(title: String? = nil, systemImage: String? = nil, @ViewBuilder content: () -> Content) {
-        self.title = title
-        self.systemImage = systemImage
-        self.content = content()
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: IOSAppStyle.cardSpacing) {
-            if let title {
-                HStack(spacing: 8) {
-                    if let systemImage {
-                        Image(systemName: systemImage)
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(IOSAppStyle.info)
-                    }
-                    Text(title)
-                        .font(IOSAppStyle.cardTitle)
-                        .foregroundStyle(.primary)
-                }
-            }
-            content
-        }
-        .padding(IOSAppStyle.cardSpacing)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(IOSAppStyle.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: IOSAppStyle.cardRadius, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: IOSAppStyle.cardRadius, style: .continuous)
-                .stroke(IOSAppStyle.cardBorder, lineWidth: 1)
-        }
-        .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 4)
-    }
-}
-
 // MARK: - IOSCommandBar
 struct IOSCommandBar<Content: View>: View {
     let content: Content
@@ -132,65 +92,28 @@ struct IOSMetricCard: View {
     var tint: Color = IOSAppStyle.info
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                if let systemImage {
-                    Image(systemName: systemImage)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(tint)
+        PremiumCard.metric {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    if let systemImage {
+                        Image(systemName: systemImage)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(tint)
+                    }
+                    Text(title.uppercased())
+                        .font(IOSAppStyle.captionText)
+                        .foregroundStyle(.secondary)
+                        .tracking(0.5)
+                        .lineLimit(1)
                 }
-                Text(title.uppercased())
-                    .font(IOSAppStyle.captionText)
-                    .foregroundStyle(.secondary)
-                    .tracking(0.5)
+
+                Text(value)
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
-
-            Text(value)
-                .font(.system(size: 20, weight: .bold, design: .rounded))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
         }
-        .padding(IOSAppStyle.cardSpacing)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(IOSAppStyle.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: IOSAppStyle.innerRadius, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: IOSAppStyle.innerRadius, style: .continuous)
-                .stroke(IOSAppStyle.cardBorder, lineWidth: 1)
-        }
-        .shadow(color: Color.black.opacity(0.02), radius: 6, x: 0, y: 3)
-    }
-}
-
-// MARK: - IOSPrimaryActionButton
-struct IOSPrimaryActionButton: View {
-    let label: String
-    let systemImage: String
-    var tint: Color = IOSAppStyle.info
-    var isEnabled: Bool = true
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 14, weight: .bold))
-                Text(label)
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-            }
-            .foregroundStyle(.white)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: IOSAppStyle.controlRadius, style: .continuous)
-                    .fill(isEnabled ? tint : tint.opacity(0.5))
-                    .shadow(color: (isEnabled ? tint : Color.clear).opacity(0.15), radius: 6, x: 0, y: 3)
-            )
-        }
-        .disabled(!isEnabled)
-        .buttonStyle(.plain)
     }
 }
 

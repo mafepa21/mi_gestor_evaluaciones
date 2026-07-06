@@ -1060,7 +1060,7 @@ struct TeacherScheduleSettingsPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: EvaluationDesign.cardSpacing) {
-            EvaluationGlassCard {
+            PremiumCard.glass {
                 VStack(alignment: .leading, spacing: 16) {
                     EvaluationSectionTitle(
                         eyebrow: "Planificación docente",
@@ -1112,7 +1112,7 @@ struct TeacherScheduleSettingsPanel: View {
                 }
             }
 
-            EvaluationGlassCard {
+            PremiumCard.glass {
                 VStack(alignment: .leading, spacing: 16) {
                     EvaluationSectionTitle(
                         eyebrow: "Marco del curso",
@@ -1191,7 +1191,7 @@ struct TeacherScheduleSettingsPanel: View {
                 }
             }
 
-            EvaluationGlassCard {
+            PremiumCard.glass {
                 VStack(alignment: .leading, spacing: 16) {
                     EvaluationSectionTitle(
                         eyebrow: "Horario fijo",
@@ -1317,7 +1317,7 @@ struct TeacherScheduleSettingsPanel: View {
                 }
             }
 
-            EvaluationGlassCard {
+            PremiumCard.glass {
                 VStack(alignment: .leading, spacing: 16) {
                     EvaluationSectionTitle(
                         eyebrow: "Identidad visual",
@@ -1364,7 +1364,7 @@ struct TeacherScheduleSettingsPanel: View {
                 }
             }
 
-            EvaluationGlassCard {
+            PremiumCard.glass {
                 VStack(alignment: .leading, spacing: 16) {
                     EvaluationSectionTitle(
                         eyebrow: "Calendario",
@@ -1402,7 +1402,7 @@ struct TeacherScheduleSettingsPanel: View {
                 }
             }
 
-            EvaluationGlassCard {
+            PremiumCard.glass {
                 VStack(alignment: .leading, spacing: 16) {
                     EvaluationSectionTitle(
                         eyebrow: "Evaluaciones",

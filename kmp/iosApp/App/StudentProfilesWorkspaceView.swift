@@ -235,10 +235,11 @@ struct StudentProfilesWorkspaceView: View {
     private func quickActionBar(for profile: KmpBridge.StudentProfileSnapshot) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 10) {
-                IOSPrimaryActionButton(
+                PrimaryActionButton(
                     label: "Cuaderno",
                     systemImage: "book.closed.fill",
-                    tint: IOSAppStyle.info
+                    tint: IOSAppStyle.info,
+                    fullWidth: false
                 ) {
                     onOpenModule(.notebook, selectedClassId, profile.student.id)
                 }
@@ -359,7 +360,7 @@ struct StudentProfilesWorkspaceView: View {
                 // Asistencia reciente
                 if !profile.recentAttendance.isEmpty {
                     let recent = Array(profile.recentAttendance.prefix(4))
-                    IOSSectionCard(title: "Asistencia reciente", systemImage: "checklist.checked") {
+                    PremiumCard.section(title: "Asistencia reciente", systemImage: "checklist.checked") {
                         VStack(alignment: .leading, spacing: 8) {
                             ForEach(recent, id: \.id) { attendance in
                                 recentAttendanceRow(attendance)
@@ -370,7 +371,7 @@ struct StudentProfilesWorkspaceView: View {
 
                 // Incidencias
                 if !profile.incidents.isEmpty {
-                    IOSSectionCard(title: "Incidencias destacadas", systemImage: "exclamationmark.bubble.fill") {
+                    PremiumCard.section(title: "Incidencias destacadas", systemImage: "exclamationmark.bubble.fill") {
                         VStack(alignment: .leading, spacing: 8) {
                             ForEach(profile.incidents.prefix(3), id: \.id) { incident in
                                 incidentRow(incident)
@@ -381,7 +382,7 @@ struct StudentProfilesWorkspaceView: View {
 
                 // Instrumentos vinculados
                 if !profile.evaluationTitles.isEmpty {
-                    IOSSectionCard(title: "Instrumentos vinculados", systemImage: "checklist") {
+                    PremiumCard.section(title: "Instrumentos vinculados", systemImage: "checklist") {
                         WorkspaceFlowLayout(spacing: 8) {
                             ForEach(Array(profile.evaluationTitles.enumerated()), id: \.offset) { _, title in
                                 WorkspaceTag(text: title, systemImage: "checklist")
@@ -391,7 +392,7 @@ struct StudentProfilesWorkspaceView: View {
                 }
 
                 // Resumen docente
-                IOSSectionCard(title: "Resumen docente", systemImage: "doc.text.magnifyingglass") {
+                PremiumCard.section(title: "Resumen docente", systemImage: "doc.text.magnifyingglass") {
                     VStack(alignment: .leading, spacing: 8) {
                         ProfileSummaryLine(title: "Grupo activo", value: profile.schoolClass?.name ?? "Sin grupo filtrado")
                         ProfileSummaryLine(title: "Seguimientos abiertos", value: "\(profile.followUpCount)")
@@ -403,7 +404,7 @@ struct StudentProfilesWorkspaceView: View {
 
                 // Contexto pedagógico
                 if profile.adaptationsSummary != nil || profile.familyCommunicationSummary != nil {
-                    IOSSectionCard(title: "Contexto pedagógico", systemImage: "person.text.rectangle") {
+                    PremiumCard.section(title: "Contexto pedagógico", systemImage: "person.text.rectangle") {
                         VStack(alignment: .leading, spacing: 12) {
                             if let adaptations = profile.adaptationsSummary {
                                 WorkspaceDetailBlock(title: "Adaptaciones recientes", content: adaptations)
@@ -416,7 +417,7 @@ struct StudentProfilesWorkspaceView: View {
                 }
 
                 // Timeline
-                IOSSectionCard(title: "Timeline docente", systemImage: "clock.arrow.circlepath") {
+                PremiumCard.section(title: "Timeline docente", systemImage: "clock.arrow.circlepath") {
                     VStack(alignment: .leading, spacing: 8) {
                         if profile.timeline.isEmpty {
                             Text("Todavía no hay registros vinculados.")

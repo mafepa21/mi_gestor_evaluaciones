@@ -107,7 +107,7 @@ class NotebookViewModelTest {
     }
 
     @Test
-    fun `addColumn spreads the column across all tabs when there is no active tab`() = runTest {
+    fun `addColumn assigns the column only to the first tab when there is no active tab`() = runTest {
         val classId = 1L
         val tabs = listOf(
             NotebookTab(id = "TAB_1", title = "Evaluación"),
@@ -130,8 +130,8 @@ class NotebookViewModelTest {
         advanceUntilIdle()
 
         val saved = repository.savedColumns.last()
-        assertEquals(listOf("TAB_1", "TAB_2"), saved.tabIds)
-        assertTrue(saved.sharedAcrossTabs)
+        assertEquals(listOf("TAB_1"), saved.tabIds)
+        assertFalse(saved.sharedAcrossTabs)
     }
 
     @Test

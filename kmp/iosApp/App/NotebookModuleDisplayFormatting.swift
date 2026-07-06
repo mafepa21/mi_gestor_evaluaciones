@@ -1,58 +1,6 @@
 import SwiftUI
 import MiGestorKit
 
-struct AverageKey: Hashable {
-    let id: String
-    let revision: String
-}
-
-struct CellDisplayKey: Hashable {
-    let studentId: Int64
-    let columnId: String
-    let semanticKind: String
-    let revision: String
-}
-
-struct DisplayValueCache {
-    var decimals: [Double: String] = [:]
-    var dates: [Date: String] = [:]
-    var averageLabels: [AverageKey: String] = [:]
-    var cellTexts: [CellDisplayKey: String] = [:]
-
-    private let maxCellTextEntries = 4096
-
-    mutating func decimalText(_ value: Double) -> String {
-        if let cached = decimals[value] { return cached }
-        let formatted = IosFormatting.decimal(value)
-        decimals[value] = formatted
-        return formatted
-    }
-
-    mutating func dateText(for date: Date, compute: () -> String) -> String {
-        if let cached = dates[date] { return cached }
-        let formatted = compute()
-        dates[date] = formatted
-        return formatted
-    }
-
-    mutating func averageLabel(for key: AverageKey, compute: () -> String) -> String {
-        if let cached = averageLabels[key] { return cached }
-        let formatted = compute()
-        averageLabels[key] = formatted
-        return formatted
-    }
-
-    mutating func cellText(for key: CellDisplayKey, compute: () -> String) -> String {
-        if let cached = cellTexts[key] { return cached }
-        let formatted = compute()
-        cellTexts[key] = formatted
-        if cellTexts.count > maxCellTextEntries {
-            cellTexts.removeAll(keepingCapacity: true)
-        }
-        return formatted
-    }
-}
-
 extension NotebookModuleView {
     func exportText(data: NotebookUiStateData) -> String {
         let segments = displaySegments(data: data)
@@ -187,9 +135,7 @@ extension NotebookModuleView {
         var parts = [categoryTitle(for: column, data: data)]
         if let epochMs = column.dateEpochMs?.int64Value {
             let date = Date(timeIntervalSince1970: TimeInterval(epochMs) / 1000.0)
-            parts.append(displayValueCache.dateText(for: date) {
-                date.formatted(.dateTime.day().month(.abbreviated))
-            })
+            parts.append(date.formatted(.dateTime.day().month(.abbreviated)))
         }
         if let average = columnAverageText(for: column, rows: rows) {
             parts.append(average)
@@ -207,12 +153,7 @@ extension NotebookModuleView {
         }
         guard !values.isEmpty else { return nil }
         let average = values.reduce(0, +) / Double(values.count)
-        let revision = values
-            .map { String(format: "%.4f", $0) }
-            .joined(separator: "|")
-        return displayValueCache.averageLabel(for: AverageKey(id: "column:\(column.id)", revision: revision)) {
-            String(format: "x̄ %.1f", average)
-        }
+        return String(format: "x̄ %.1f", average)
     }
 
     func tint(for category: NotebookColumnCategory) -> Color {
@@ -282,7 +223,7 @@ extension NotebookModuleView {
 
     func averageText(for item: NotebookTableRow) -> String {
         guard let weightedAverage = item.row.weightedAverage else { return "Sin media" }
-        return displayValueCache.decimalText(weightedAverage.doubleValue)
+        return IosFormatting.decimal(weightedAverage.doubleValue)
     }
 
     enum AverageCellState {
@@ -394,10 +335,7 @@ extension NotebookModuleView {
     }
 
     func displayValue(for item: NotebookTableRow, column: NotebookColumnDefinition) -> String {
-        let key = cellDisplayKey(for: item, column: column)
-        return displayValueCache.cellText(for: key) {
-            uncachedDisplayValue(for: item, column: column)
-        }
+        uncachedDisplayValue(for: item, column: column)
     }
 
     func uncachedDisplayValue(for item: NotebookTableRow, column: NotebookColumnDefinition) -> String {
@@ -416,44 +354,6 @@ extension NotebookModuleView {
         }
     }
 
-    func cellDisplayKey(for item: NotebookTableRow, column: NotebookColumnDefinition) -> CellDisplayKey {
-        let persistedCell = item.row.persistedCells.first(where: { $0.columnId == column.id })
-        let persistedGrade = item.row.persistedGrades.first(where: { $0.columnId == column.id })
-            ?? column.evaluationId.flatMap { evaluationId in
-                item.row.persistedGrades.first(where: { $0.evaluationId?.int64Value == evaluationId.int64Value })
-            }
-        let semanticKind: String = {
-            if column.inputKind.isStructuredInstrument { return "structured" }
-            switch column.type {
-            case .numeric: return "numeric"
-            case .calculated: return "calculated"
-            case .rubric: return "rubric"
-            case .check: return "check"
-            case .attendance: return "attendance"
-            default: return "text"
-            }
-        }()
-        let revision = [
-            "\(rowReloadRevisions[item.student.id, default: 0])",
-            persistedGrade?.value.map { String($0.doubleValue) } ?? "",
-            persistedGrade?.rubricSelections ?? "",
-            persistedGrade.map { String(describing: $0.trace.updatedAt) } ?? "",
-            persistedCell?.textValue ?? "",
-            "\(persistedCell?.boolValue?.boolValue ?? false)",
-            persistedCell?.displayValue ?? "",
-            persistedCell?.iconValue ?? "",
-            persistedCell?.ordinalValue ?? "",
-            persistedCell.map { String(describing: $0.trace.updatedAt) } ?? ""
-        ].joined(separator: "¬")
-
-        return CellDisplayKey(
-            studentId: item.student.id,
-            columnId: column.id,
-            semanticKind: semanticKind,
-            revision: revision
-        )
-    }
-
     func evidenceLabel(for persistedCell: PersistedNotebookCell?) -> String {
         let count = persistedCell?.annotation?.attachmentUris.count ?? 0
         let icon = persistedCell?.annotation?.icon ?? persistedCell?.iconValue ?? ""
@@ -465,9 +365,7 @@ extension NotebookModuleView {
     func formattedDate(_ epochMs: Int64?) -> String {
         guard let epochMs else { return "Sin fecha" }
         let date = Date(timeIntervalSince1970: TimeInterval(epochMs) / 1000)
-        return displayValueCache.dateText(for: date) {
-            date.formatted(date: .abbreviated, time: .omitted)
-        }
+        return date.formatted(date: .abbreviated, time: .omitted)
     }
 
 }

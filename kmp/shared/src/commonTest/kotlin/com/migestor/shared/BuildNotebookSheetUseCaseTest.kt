@@ -14,6 +14,7 @@ import com.migestor.shared.domain.NotebookTab
 import com.migestor.shared.domain.SchoolClass
 import com.migestor.shared.domain.Student
 import com.migestor.shared.domain.PersistedNotebookCell
+import com.migestor.shared.domain.visibleColumnsForTab
 import com.migestor.shared.repository.ClassesRepository
 import com.migestor.shared.repository.EvaluationsRepository
 import com.migestor.shared.repository.GradesRepository
@@ -87,6 +88,36 @@ class BuildNotebookSheetUseCaseTest {
         assertNotNull(sheet.rows.first().weightedAverage)
         assertEquals(7.1, sheet.rows.first().weightedAverage)
         assertTrue(sheet.rows.first().averageExplanation?.included?.any { it.columnId == "calc_final" && it.value == 7.2 } == true)
+    }
+
+    @Test
+    fun `generated evaluation columns belong only to first tab by default`() = runTest {
+        val classId = 1L
+        val student = Student(id = 1, firstName = "Ana", lastName = "López")
+        val evaluations = listOf(
+            Evaluation(id = 11, classId = classId, code = "EX1", name = "Examen", type = "EX", weight = 1.0),
+        )
+        val getNotebook = GetNotebookUseCase(
+            classesRepository = FakeClassesRepository2(student, classId),
+            evaluationsRepository = FakeEvaluationsRepository2(evaluations),
+            gradesRepository = FakeGradesRepository2(emptyList()),
+            notebookCellsRepository = FakeNotebookCellsRepository2()
+        )
+        val useCase = BuildNotebookSheetUseCase(getNotebook)
+
+        val sheet = useCase.build(
+            classId = classId,
+            evaluations = evaluations,
+            students = listOf(student),
+            tabs = listOf(
+                NotebookTab(id = "tema_1", title = "Tema 1", order = 0),
+                NotebookTab(id = "tema_2", title = "Tema 2", order = 1),
+            ),
+            configuredColumns = emptyList()
+        )
+
+        assertEquals(listOf("eval_11"), sheet.visibleColumnsForTab("tema_1").map { it.id })
+        assertEquals(emptyList(), sheet.visibleColumnsForTab("tema_2").map { it.id })
     }
 
     @Test

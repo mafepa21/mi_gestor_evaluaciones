@@ -162,6 +162,15 @@ struct RubricsWorkspaceView: View {
                 }
                 .padding(24)
 
+                if groupedRubrics.isEmpty {
+                    IOSEmptyState(
+                        title: searchText.isEmpty ? "Sin rúbricas todavía" : "Sin resultados",
+                        subtitle: searchText.isEmpty
+                            ? "Crea tu primera rúbrica para empezar a evaluar con criterios."
+                            : "Ninguna rúbrica coincide con “\(searchText)”.",
+                        systemImage: searchText.isEmpty ? "checklist" : "magnifyingglass"
+                    )
+                } else {
                 List {
                     ForEach(groupedRubrics, id: \.key) { group in
                         DisclosureGroup(
@@ -193,6 +202,7 @@ struct RubricsWorkspaceView: View {
                     }
                 }
                 .listStyle(.plain)
+                }
             }
             .frame(minWidth: 320, maxWidth: 380)
 

@@ -102,6 +102,7 @@ struct DashboardView: View {
     @State private var isQuickEvaluationPresented = false
     @State private var classTrends: KmpBridge.AITrendsSnapshot? = nil
     @State private var isLoadingClassTrends = false
+    @State private var classTrendsLoadFailed = false
     @State private var proactiveInsights: [DashboardProactiveInsight] = []
     @State private var aiBriefing: TeachingAssistantDraft? = nil
     @State private var aiBriefingState: DashboardAIBriefingState = .deterministic
@@ -1806,6 +1807,17 @@ struct DashboardView: View {
                         }
                     }
                 }
+            } else if classTrendsLoadFailed {
+                HStack(spacing: 10) {
+                    Label("No se pudo cargar la auditoría de este grupo.", systemImage: "exclamationmark.triangle.fill")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(IOSAppStyle.warning)
+                    Spacer()
+                    Button("Reintentar") {
+                        Task { await loadClassTrends() }
+                    }
+                    .font(.system(size: 13, weight: .semibold))
+                }
             } else if !isLoadingClassTrends {
                 Text("No hay datos suficientes para generar la auditoría de cobertura curricular y tendencias de este grupo.")
                     .font(.system(size: 13, weight: .medium))
@@ -1847,13 +1859,16 @@ struct DashboardView: View {
     private func loadClassTrends() async {
         guard let classId = selectedClassId else {
             classTrends = nil
+            classTrendsLoadFailed = false
             return
         }
         isLoadingClassTrends = true
+        classTrendsLoadFailed = false
         do {
             classTrends = try await bridge.getAITrendsAndMetrics(classId: classId, studentId: nil)
         } catch {
             print("Error loading class trends: \(error)")
+            classTrendsLoadFailed = true
         }
         isLoadingClassTrends = false
     }

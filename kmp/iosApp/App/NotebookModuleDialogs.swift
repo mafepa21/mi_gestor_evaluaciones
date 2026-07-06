@@ -189,6 +189,12 @@ extension NotebookModuleView {
                                 presentCreateCategory()
                             }
                         },
+                        onCreateTab: {
+                            isOrganizationMenuPresented = false
+                            DispatchQueue.main.async {
+                                presentCreateNotebookTab()
+                            }
+                        },
                         onCreateSummary: {
                             isOrganizationMenuPresented = false
                             UserDefaults.standard.set("individual_summary", forKey: "notebook.addColumn.lastBlueprintId")
@@ -205,12 +211,6 @@ extension NotebookModuleView {
                                 notebookSummarySheetRequest = NotebookSummarySheetRequest(targetColumnId: columnId)
                             }
                         },
-                        onOpenHiddenColumns: {
-                            isOrganizationMenuPresented = false
-                            DispatchQueue.main.async {
-                                isHiddenColumnsSheetPresented = true
-                            }
-                        },
                         onShowAll: {
                             showAllManagedColumns(data: data)
                         },
@@ -225,7 +225,7 @@ extension NotebookModuleView {
                         }
                     )
 #if os(macOS)
-                    .frame(minWidth: 520, minHeight: 620)
+                    .frame(minWidth: 640, minHeight: 620)
 #else
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .presentationDetents([.large])

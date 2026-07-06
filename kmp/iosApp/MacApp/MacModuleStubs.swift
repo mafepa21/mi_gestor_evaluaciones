@@ -646,7 +646,6 @@ struct MacReportsView: View {
         }
     }
 }
-
 private struct MacReportPanelCard<Content: View>: View {
     let title: String
     @ViewBuilder var content: () -> Content
@@ -974,39 +973,26 @@ struct MacPlannerView: View {
     @State private var showingMoveFilteredConfirmation = false
     @State private var showingClearSchedulelessWeekConfirmation = false
     @State private var transientMessage: String?
-    @State private var isInspectorVisible = true
-    @State private var inspectorWidth: CGFloat = 380
     @State private var sessionFilter: MacPlannerSessionFilter = .all
     @State private var groupFilterId: Int64?
     @State private var selectedDetailSession: PlanningSession? = nil
+    @State private var selectedWeekCell: PlannerCellKey? = nil
+    @State private var selectedWeekDay: Int? = nil
     @State private var pendingCascadeDrop: MacPlannerPendingDrop?
 
     var body: some View {
-        GeometryReader { proxy in
-            HSplitView {
-                plannerSidebar
-                    .frame(minWidth: 252, idealWidth: 272, maxWidth: 296)
+        VStack(alignment: .leading, spacing: 0) {
+            PlannerToolbar(vm: vm)
 
-                VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
-                    plannerHeader
-                    if let transientMessage, !transientMessage.isEmpty {
-                        MacPlannerBanner(message: transientMessage)
-                            .transition(uiFeatureFlags.bannerTransition)
-                    } else if !vm.bulkSummary.isEmpty {
-                        MacPlannerBanner(message: vm.bulkSummary)
-                            .transition(uiFeatureFlags.bannerTransition)
-                    }
-                    plannerCenterContent
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                }
-                .padding(MacAppStyle.pagePadding)
-                .background(MacAppStyle.pageBackground)
-
-                if shouldShowInspector(in: proxy.size.width) {
-                    plannerInspector
-                        .frame(minWidth: 320, idealWidth: inspectorWidth, maxWidth: 460)
-                }
+            if let transientMessage, !transientMessage.isEmpty {
+                MacPlannerBanner(message: transientMessage)
+                    .padding(.horizontal, EvaluationDesign.screenPadding)
+                    .padding(.bottom, 8)
+                    .transition(uiFeatureFlags.bannerTransition)
             }
+
+            plannerCenterContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .background(MacAppStyle.pageBackground)
         .animation(uiFeatureFlags.interactionAnimation, value: transientMessage)
@@ -1024,12 +1010,11 @@ struct MacPlannerView: View {
             }
         }
         .appOnChange(of: selectedTableSessionId) { newValue in
-            guard let newValue,
-                  let session = vm.filteredSessions.first(where: { $0.id == newValue }) ?? vm.sessions.first(where: { $0.id == newValue }) else { return }
+            guard let sessionId = newValue else { return }
+            guard let session = findSession(by: sessionId) else { return }
             Task {
                 await vm.select(session: session)
                 await syncInspectorStudents(for: session)
-                isInspectorVisible = true
             }
         }
         .appOnChange(of: vm.selectedSession?.id) { newValue in
@@ -1122,7 +1107,6 @@ struct MacPlannerView: View {
                         selectedDetailSession = nil
                         Task {
                             await vm.select(session: session)
-                            isInspectorVisible = true
                         }
                     },
                     onEdit: {
@@ -1139,9 +1123,13 @@ struct MacPlannerView: View {
     private func openMacSession(_ session: PlanningSession) {
         Task {
             await vm.select(session: session)
-            isInspectorVisible = true
         }
         selectedDetailSession = session
+    }
+
+    private func openSelectedMacSession() {
+        guard let session = vm.selectedSession else { return }
+        openMacSession(session)
     }
 
     private func applySessionIdFromRoot(_ sessionId: Int64) async {
@@ -1156,7 +1144,6 @@ struct MacPlannerView: View {
             selectedSessionIdFromRoot = nil
             
             await vm.select(session: session)
-            isInspectorVisible = true
             selectedDetailSession = session
         } catch {
             print("Error getting session from root: \(error)")
@@ -1340,11 +1327,6 @@ struct MacPlannerView: View {
                     Image(systemName: "chevron.right")
                 }
 
-                Button(isInspectorVisible ? "Ocultar inspector" : "Mostrar inspector") {
-                    isInspectorVisible.toggle()
-                }
-                .buttonStyle(.bordered)
-
                 if vm.lastCascadeMove != nil {
                     Button("Deshacer movimiento") {
                         Task { await undoCascadeMove() }
@@ -1367,110 +1349,28 @@ struct MacPlannerView: View {
 
     @ViewBuilder
     private var plannerCenterContent: some View {
-        switch activeSection {
+        switch vm.activeSection {
         case .week:
-            MacPlannerWeekBoard(
+            PlannerWeekMiniatureLayout(
                 vm: vm,
-                defaultGroupId: groupFilterId,
-                entriesProvider: weekEntries(for:period:),
-                onSelectSession: { session in
-                    Task {
-                        await vm.select(session: session)
-                        isInspectorVisible = true
-                    }
-                },
-                onDoubleOpenSession: { session in
-                    openMacSession(session)
-                },
-                onDropSession: { sessionId, day, period in
-                    Task { await receiveCascadeDrop(sessionId: sessionId, day: day, period: period) }
-                }
+                selectedCell: $selectedWeekCell,
+                selectedDay: $selectedWeekDay,
+                onOpenSession: openMacSession
             )
         case .day:
             PlannerDayView(vm: vm, onOpenSession: openMacSession)
         case .sequence:
-            PlannerSequenceView(vm: vm, onOpenSession: openMacSession)
-        case .sessions:
-            MacPlannerSessionsTable(
-                rows: displayedRows,
-                selectedSessionId: $selectedTableSessionId,
-                onOpenSession: { session in
-                    openMacSession(session)
-                }
-            )
-        case .agenda:
-            MacPlannerAgendaView(
+            PlannerSequenceGanttView(vm: vm, onOpenSession: openMacSession)
+        case .summary:
+            PlannerSummaryDashboard(
                 vm: vm,
-                groupFilterId: groupFilterId,
                 onOpenSettings: { showingScheduleSettings = true }
             )
         }
     }
 
-    private var plannerInspector: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Inspector")
-                        .font(MacAppStyle.sectionTitle)
-                    Text(vm.selectedSession?.teachingUnitName ?? "Diario de sesión")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button {
-                    isInspectorVisible = false
-                } label: {
-                    Image(systemName: "sidebar.right")
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(MacAppStyle.innerPadding)
-
-            Divider()
-
-            if let session = vm.selectedSession, !hasSessionPassed(session) {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "calendar.badge.clock")
-                            .foregroundStyle(Color(hex: session.teachingUnitColor))
-                            .font(.title3)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Sesión Programada")
-                                .font(.headline)
-                            Text("Esta sesión aún no ha transcurrido.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    
-                    Button {
-                        selectedDetailSession = session
-                    } label: {
-                        Label("Ver detalles de sesión", systemImage: "info.circle")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(Color(hex: session.teachingUnitColor))
-                }
-                .padding(MacAppStyle.innerPadding)
-                .background(Color(hex: session.teachingUnitColor).opacity(0.06))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color(hex: session.teachingUnitColor).opacity(0.2), lineWidth: 1)
-                )
-                .padding(.horizontal, MacAppStyle.innerPadding)
-                .padding(.top, 8)
-                
-                Divider()
-                    .padding(.top, 8)
-            } else {
-                PlannerJournalDetailPane(vm: vm)
-                    .environmentObject(bridge)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            }
-        }
-        .macLiquidGlassPanel(.inspector, cornerRadius: 0, isActive: true)
+    private func findSession(by id: Int64) -> PlanningSession? {
+        vm.filteredSessions.first(where: { $0.id == id }) ?? vm.sessions.first(where: { $0.id == id })
     }
 
     private var displayedSessions: [PlanningSession] {
@@ -1530,10 +1430,6 @@ struct MacPlannerView: View {
         default:
             return "Vacío"
         }
-    }
-
-    private func shouldShowInspector(in totalWidth: CGFloat) -> Bool {
-        isInspectorVisible && totalWidth >= 1180
     }
 
     private func openComposerForCurrentFilter() {
@@ -1639,8 +1535,7 @@ private enum MacPlannerSection: String, CaseIterable, Identifiable {
     case week
     case day
     case sequence
-    case sessions
-    case agenda
+    case summary
 
     var id: String { rawValue }
 
@@ -1649,8 +1544,7 @@ private enum MacPlannerSection: String, CaseIterable, Identifiable {
         case .week: return "Semana"
         case .day: return "Día"
         case .sequence: return "Secuencia"
-        case .sessions: return "Sesiones"
-        case .agenda: return "Agenda"
+        case .summary: return "Resumen"
         }
     }
 
@@ -1659,8 +1553,7 @@ private enum MacPlannerSection: String, CaseIterable, Identifiable {
         case .week: return "calendar"
         case .day: return "calendar.day.timeline.left"
         case .sequence: return "point.3.connected.trianglepath.dotted"
-        case .sessions: return "tablecells"
-        case .agenda: return "clock.badge.checkmark"
+        case .summary: return "chart.bar.doc.horizontal"
         }
     }
 }
@@ -1872,72 +1765,100 @@ private struct MacPlannerWeekCell: View {
     @State private var isHovering = false
     @State private var isDropTargeted = false
 
+    @ViewBuilder
+    private var emptyCellContent: some View {
+        VStack(spacing: 6) {
+            Image(systemName: "plus")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(isHovering ? MacAppStyle.infoTint : .secondary)
+            if isHovering {
+                Text("Añadir sesión")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+    }
+
+    @ViewBuilder
+    private var holidayCellContent: some View {
+        ZStack {
+            if !entries.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(entries.prefix(3)) { entry in
+                        MacPlannerWeekEntryRow(
+                            entry: entry,
+                            vm: vm,
+                            onSelectSession: onSelectSession,
+                            onDoubleOpenSession: onDoubleOpenSession
+                        )
+                    }
+                }
+                .opacity(0.2)
+                .disabled(true)
+            }
+            VStack(spacing: 4) {
+                Image(systemName: "umbrella.fill")
+                    .font(.title2)
+                    .foregroundStyle(EvaluationDesign.danger.opacity(0.7))
+                Text("No lectivo")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private var populatedCellContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(entries.prefix(3)) { entry in
+                MacPlannerWeekEntryRow(
+                    entry: entry,
+                    vm: vm,
+                    onSelectSession: onSelectSession,
+                    onDoubleOpenSession: onDoubleOpenSession
+                )
+            }
+            if entries.count > 3 {
+                Text("+\(entries.count - 3) más")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var backgroundFill: Color {
+        if isHoliday { return MacAppStyle.subtleFill.opacity(0.5) }
+        if isDropTargeted { return MacAppStyle.infoTint.opacity(0.14) }
+        return isHovering ? MacAppStyle.infoTint.opacity(0.08) : MacAppStyle.cardBackground
+    }
+
+    private var borderColor: Color {
+        if isHoliday { return EvaluationDesign.danger.opacity(0.15) }
+        if isDropTargeted { return MacAppStyle.infoTint }
+        return isHovering ? MacAppStyle.infoTint.opacity(0.45) : MacAppStyle.cardBorder
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if isHoliday {
-                ZStack {
-                    if !entries.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            ForEach(entries.prefix(3)) { entry in
-                                MacPlannerWeekEntryRow(
-                                    entry: entry,
-                                    vm: vm,
-                                    onSelectSession: onSelectSession,
-                                    onDoubleOpenSession: onDoubleOpenSession
-                                )
-                            }
-                        }
-                        .opacity(0.2)
-                        .disabled(true)
-                    }
-                    VStack(spacing: 4) {
-                        Image(systemName: "umbrella.fill")
-                            .font(.title2)
-                            .foregroundStyle(EvaluationDesign.danger.opacity(0.7))
-                        Text("No lectivo")
-                            .font(.caption.bold())
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
+                holidayCellContent
             } else if entries.isEmpty {
-                VStack(spacing: 6) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(isHovering ? MacAppStyle.infoTint : .secondary)
-                    if isHovering {
-                        Text("Añadir sesión")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                emptyCellContent
             } else {
-                ForEach(entries.prefix(3)) { entry in
-                    MacPlannerWeekEntryRow(
-                        entry: entry,
-                        vm: vm,
-                        onSelectSession: onSelectSession,
-                        onDoubleOpenSession: onDoubleOpenSession
-                    )
-                }
-
-                if entries.count > 3 {
-                    Text("+\(entries.count - 3) más")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                }
+                populatedCellContent
             }
         }
         .padding(8)
         .frame(width: 214, height: 122, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(isHoliday ? MacAppStyle.subtleFill.opacity(0.5) : (isDropTargeted ? MacAppStyle.infoTint.opacity(0.14) : (isHovering ? MacAppStyle.infoTint.opacity(0.08) : MacAppStyle.cardBackground)))
+                .fill(backgroundFill)
         )
         .overlay {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(isHoliday ? EvaluationDesign.danger.opacity(0.15) : (isDropTargeted ? MacAppStyle.infoTint : (isHovering ? MacAppStyle.infoTint.opacity(0.45) : MacAppStyle.cardBorder)), lineWidth: isDropTargeted ? 2 : 1)
+                .stroke(borderColor, lineWidth: isDropTargeted ? 2 : 1)
         }
         .contentShape(Rectangle())
         .onHover { hovering in

@@ -8225,6 +8225,7 @@ final class KmpBridge: ObservableObject {
         teacherScheduleSlotId: Int64? = nil,
         startTime: String? = nil,
         endTime: String? = nil,
+        learningSituationSessionPlanId: Int64? = nil,
         selectedInstruments: [PlannerAssessmentInstrument]
     ) async throws -> PlannerSessionSaveResult {
         let resolvedTeachingUnit = try await resolvePlannerTeachingUnit(
@@ -8257,6 +8258,7 @@ final class KmpBridge: ObservableObject {
             teacherScheduleSlotId: teacherScheduleSlotId,
             startTime: startTime,
             endTime: endTime,
+            learningSituationSessionPlanId: learningSituationSessionPlanId,
             status: .planned
         )
 

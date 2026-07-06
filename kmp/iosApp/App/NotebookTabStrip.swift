@@ -6,8 +6,6 @@ struct NotebookTabStrip: View {
     let activeTabId: String?
     let onSelect: (String) -> Void
     let onCreateTab: () -> Void
-    let onRenameTab: (NotebookTab) -> Void
-    let onDeleteTab: (NotebookTab) -> Void
 
     var body: some View {
         HStack(spacing: 10) {
@@ -83,15 +81,6 @@ struct NotebookTabStrip: View {
             )
         }
         .buttonStyle(NotebookScaleButtonStyle())
-        .contextMenu {
-            Button("Renombrar") {
-                onRenameTab(tab)
-            }
-
-            Button("Eliminar pestaña", role: .destructive) {
-                onDeleteTab(tab)
-            }
-        }
         .help("Abrir \(tab.title)")
     }
 }

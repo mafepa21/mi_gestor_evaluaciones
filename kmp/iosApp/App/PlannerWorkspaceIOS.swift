@@ -16,8 +16,7 @@ enum PlannerWorkspaceSection: String, CaseIterable, Identifiable {
     case week = "Semana"
     case day = "Día"
     case sequence = "Secuencia"
-    case sessions = "Agenda"
-    case schedule = "Cobertura"
+    case summary = "Resumen"
 
     var id: String { rawValue }
 
@@ -26,8 +25,7 @@ enum PlannerWorkspaceSection: String, CaseIterable, Identifiable {
         case .week: return "calendar"
         case .day: return "calendar.day.timeline.left"
         case .sequence: return "point.3.connected.trianglepath.dotted"
-        case .sessions: return "list.bullet.rectangle"
-        case .schedule: return "chart.bar.xaxis"
+        case .summary: return "chart.bar.doc.horizontal"
         }
     }
 }
@@ -225,6 +223,7 @@ struct PlannerComposerDraft {
     var startTime: String? = nil
     var endTime: String? = nil
     var selectedInstrumentIds: Set<String> = []
+    var learningSituationSessionPlanId: Int64? = nil
 }
 
 enum PlannerSaveState: Equatable {
@@ -329,6 +328,7 @@ struct PlannerSequenceRow: Identifiable {
     let statusIcon: String
     let statusColor: Color
     let planningSession: PlanningSession?
+    let learningSituationSessionPlanId: Int64?
 }
 
 struct PlannerScheduleGenerationPreviewRow: Identifiable, Hashable {
@@ -738,6 +738,18 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         await reloadSessionsOnly(keepSelection: false)
     }
 
+    func goToCurrentWeek() async {
+        let current = IsoWeekHelper.shared.current()
+        week = Int(truncating: current.first ?? KotlinInt(value: 1))
+        year = Int(truncating: current.second ?? KotlinInt(value: 2026))
+        await reloadSessionsOnly(keepSelection: false)
+        await selectTodaySessionIfPossible(preferredGroupId: selectedGroupId)
+    }
+
+    func refreshCurrentWeek() async {
+        await reloadSessionsOnly()
+    }
+
     func selectGroup(_ id: Int64?) {
         selectedGroupId = id
         rebuildWeekRenderModel()
@@ -1135,7 +1147,15 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         await reloadJournalSummaries()
     }
 
-    func openComposer(for session: PlanningSession? = nil, day: Int? = nil, period: Int? = nil) {
+    func openComposer(
+        for session: PlanningSession? = nil,
+        day: Int? = nil,
+        period: Int? = nil,
+        learningSituationSessionPlanId: Int64? = nil,
+        initialObjectives: String? = nil,
+        initialActivities: String? = nil,
+        initialTeachingUnitName: String? = nil
+    ) {
         if let session {
             composerDraft = PlannerComposerDraft(
                 groupId: session.groupId,
@@ -1149,7 +1169,8 @@ final class PlannerWorkspaceViewModel: ObservableObject {
                 teacherScheduleSlotId: session.teacherScheduleSlotId?.int64Value,
                 startTime: session.startTime,
                 endTime: session.endTime,
-                selectedInstrumentIds: Set(session.linkedAssessmentIdsCsv.split(separator: ",").map(String.init))
+                selectedInstrumentIds: Set(session.linkedAssessmentIdsCsv.split(separator: ",").map(String.init)),
+                learningSituationSessionPlanId: session.learningSituationSessionPlanId?.int64Value ?? learningSituationSessionPlanId
             )
         } else {
             let firstVisibleDay = visibleWeekdays.first ?? 1
@@ -1160,14 +1181,15 @@ final class PlannerWorkspaceViewModel: ObservableObject {
             composerDraft = PlannerComposerDraft(
                 groupId: selectedGroupId ?? groups.first?.id,
                 teachingUnitId: nil,
-                unitTitle: "",
-                objectives: "",
-                activities: "",
+                unitTitle: initialTeachingUnitName ?? "",
+                objectives: initialObjectives ?? "",
+                activities: initialActivities ?? "",
                 dayOfWeek: resolvedDay,
                 period: resolvedPeriod,
                 teacherScheduleSlotId: slotMetadata.slotId,
                 startTime: slotMetadata.startTime,
-                endTime: slotMetadata.endTime
+                endTime: slotMetadata.endTime,
+                learningSituationSessionPlanId: learningSituationSessionPlanId
             )
         }
         composerSaveState = .idle
@@ -1204,6 +1226,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
                 teacherScheduleSlotId: slotMetadata.slotId,
                 startTime: slotMetadata.startTime,
                 endTime: slotMetadata.endTime,
+                learningSituationSessionPlanId: composerDraft.learningSituationSessionPlanId,
                 selectedInstruments: selectedInstruments
             )
             composerContextError = ""
@@ -1264,7 +1287,7 @@ final class PlannerWorkspaceViewModel: ObservableObject {
             teacherScheduleSlotId: slotMetadata.slotId.map { KotlinLong(value: $0) },
             startTime: slotMetadata.startTime,
             endTime: slotMetadata.endTime,
-            learningSituationSessionPlanId: previous?.learningSituationSessionPlanId,
+            learningSituationSessionPlanId: previous?.learningSituationSessionPlanId ?? composerDraft.learningSituationSessionPlanId.map { KotlinLong(value: $0) },
             status: previous?.status ?? .planned
         )
         sessionStore.upsertLocal(updated)
@@ -1895,7 +1918,8 @@ final class PlannerWorkspaceViewModel: ObservableObject {
                                 statusText: statusText,
                                 statusIcon: statusIcon,
                                 statusColor: statusColor,
-                                planningSession: session
+                                planningSession: session,
+                                learningSituationSessionPlanId: plan.id
                             ))
                         } else {
                             rows.append(PlannerSequenceRow(
@@ -1906,7 +1930,8 @@ final class PlannerWorkspaceViewModel: ObservableObject {
                                 statusText: "Pendiente de ubicar",
                                 statusIcon: "calendar.badge.plus",
                                 statusColor: Color.orange,
-                                planningSession: nil
+                                planningSession: nil,
+                                learningSituationSessionPlanId: plan.id
                             ))
                         }
                     }
@@ -1921,7 +1946,8 @@ final class PlannerWorkspaceViewModel: ObservableObject {
                             statusText: "Solo calendario",
                             statusIcon: "calendar",
                             statusColor: Color.secondary,
-                            planningSession: session
+                            planningSession: session,
+                            learningSituationSessionPlanId: session.learningSituationSessionPlanId?.int64Value
                         ))
                     }
                     
@@ -1985,7 +2011,8 @@ final class PlannerWorkspaceViewModel: ObservableObject {
                             statusText: statusText,
                             statusIcon: statusIcon,
                             statusColor: statusColor,
-                            planningSession: session
+                            planningSession: session,
+                            learningSituationSessionPlanId: session.learningSituationSessionPlanId?.int64Value
                         )
                     }
                     
@@ -2272,6 +2299,9 @@ struct PlannerWorkspaceIOS: View {
     @Environment(\.colorScheme) private var colorScheme
     @StateObject private var vm = PlannerWorkspaceViewModel()
     @State private var selectedDetailSession: PlanningSession? = nil
+    @State private var selectedWeekCell: PlannerCellKey? = nil
+    @State private var selectedWeekDay: Int? = nil
+    @State private var isClearSchedulelessWeekConfirmationPresented = false
     private let initialSection: PlannerWorkspaceSection
     private let context: PlannerNavigationContext
     private let onOpenDiary: ((PlannerNavigationContext) -> Void)?
@@ -2358,24 +2388,47 @@ struct PlannerWorkspaceIOS: View {
         .onDisappear {
             layoutState.clearPlannerToolbar()
         }
+        .confirmationDialog(
+            "Eliminar sesiones de esta semana",
+            isPresented: $isClearSchedulelessWeekConfirmationPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Eliminar sesiones planificadas", role: .destructive) {
+                Task { await vm.clearCurrentWeekSessionsWithoutSchedule() }
+            }
+            Button("Cancelar", role: .cancel) {}
+        } message: {
+            Text("No hay franjas en la agenda. Se eliminarán las sesiones planificadas de la semana actual y se conservarán las completadas.")
+        }
     }
 
     private var plannerMainContent: some View {
         VStack(spacing: 0) {
-            PlannerToolbar(vm: vm, onOpenDiary: openSelectedSessionInDiary)
-            Divider().opacity(0.18)
+            PlannerToolbar(vm: vm)
             Group {
                 switch vm.activeSection {
                 case .week:
-                    PlannerWeekBoard(vm: vm, onOpenDiary: openSessionInDiary)
+                    ZStack(alignment: .bottom) {
+                        PlannerWeekMiniatureLayout(
+                            vm: vm,
+                            selectedCell: $selectedWeekCell,
+                            selectedDay: $selectedWeekDay,
+                            onOpenSession: openSessionInDiary
+                        )
+                        .safeAreaInset(edge: .bottom) {
+                            Color.clear.frame(height: 96)
+                        }
+
+                        plannerFloatingControls
+                            .padding(.horizontal, EvaluationDesign.screenPadding)
+                            .padding(.bottom, 32)
+                    }
                 case .day:
                     PlannerDayView(vm: vm, onOpenSession: openSessionInDiary)
                 case .sequence:
-                    PlannerSequenceView(vm: vm, onOpenSession: openSessionInDiary)
-                case .sessions:
-                    PlannerSessionsList(vm: vm, source: vm.filteredSessions, onOpenDiary: openSessionInDiary)
-                case .schedule:
-                    PlannerScheduleBoard(vm: vm, onOpenSettings: onOpenSettings)
+                    PlannerSequenceGanttView(vm: vm, onOpenSession: openSessionInDiary)
+                case .summary:
+                    PlannerSummaryDashboard(vm: vm, onOpenSettings: onOpenSettings)
                 }
             }
             .background(appPageBackground(for: colorScheme).ignoresSafeArea())
@@ -2386,6 +2439,38 @@ struct PlannerWorkspaceIOS: View {
         layoutState.configurePlannerToolbar(addSessionAvailable: true) {
             vm.openComposer()
         }
+    }
+
+    private var plannerFloatingControls: some View {
+        PlannerLiquidGlassControls(
+            density: $vm.density,
+            canOpenDiary: vm.selectedSession != nil,
+            canCopySelection: !vm.selectedSessionIds.isEmpty,
+            canClearSchedulelessWeek: vm.canClearSchedulelessWeekSessions,
+            isSelectionModeActive: vm.selectionMode,
+            shareText: vm.exportText(),
+            onPreviousWeek: { Task { await vm.previousWeek() } },
+            onNextWeek: { Task { await vm.nextWeek() } },
+            onToday: { Task { await vm.goToCurrentWeek() } },
+            onSync: {
+                Task {
+                    await bridge.pullMissingSyncChanges()
+                    await vm.refreshCurrentWeek()
+                }
+            },
+            onToggleSelection: {
+                vm.selectionMode.toggle()
+                if !vm.selectionMode { vm.selectedSessionIds.removeAll() }
+            },
+            onCopyToNextWeek: { Task { await vm.bulkCopyToNextWeek() } },
+            onMoveOneDay: { Task { await vm.bulkMoveOneDay() } },
+            onClearSchedulelessWeek: {
+                isClearSchedulelessWeekConfirmationPresented = true
+            },
+            onOpenDiary: openSelectedSessionInDiary,
+            onNewSession: { vm.openComposer() }
+        )
+        .frame(maxWidth: .infinity)
     }
 
     private func openSelectedSessionInDiary() {
@@ -2448,123 +2533,79 @@ struct PlannerWorkspaceIOS: View {
     }
 }
 
-private struct PlannerToolbar: View {
+struct PlannerToolbar: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
-    let onOpenDiary: () -> Void
-    @State private var isClearSchedulelessWeekConfirmationPresented = false
+    @AppStorage("planner_toolbar_progress_expanded") private var isProgressExpanded = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 16) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(toolbarTitle)
-                        .font(.system(size: 28, weight: .black, design: .rounded))
-                        .lineLimit(2)
-                    Text(toolbarSubtitle)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                HStack(spacing: 8) {
-                    Button { Task { await vm.previousWeek() } } label: {
-                        Image(systemName: "chevron.left")
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 16) {
+                Button(action: {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        isProgressExpanded.toggle()
                     }
-                    .buttonStyle(.bordered)
-                    .accessibilityLabel("Semana anterior")
-
-                    Button { Task { await vm.nextWeek() } } label: {
+                }) {
+                    HStack(alignment: .center, spacing: 8) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(toolbarTitle)
+                                .font(.system(size: 20, weight: .bold, design: .rounded))
+                                .lineLimit(1)
+                                .foregroundStyle(.primary)
+                            Text(toolbarSubtitle)
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(.secondary)
+                        }
+                        
+                        Spacer(minLength: 8)
+                        
                         Image(systemName: "chevron.right")
+                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.secondary)
+                            .rotationEffect(.degrees(isProgressExpanded ? 90 : 0))
                     }
-                    .buttonStyle(.bordered)
-                    .accessibilityLabel("Semana siguiente")
+                }
+                .buttonStyle(.plain)
 
-                    ShareLink(item: vm.exportText()) {
-                        Image(systemName: "square.and.arrow.up")
+                if isProgressExpanded {
+                    Group {
+                        if let progress = vm.situationProgress(for: vm.selectedSession) {
+                            PlannerSituationProgressStrip(progress: progress)
+                        } else {
+                            PlannerWeekProgressStrip(vm: vm)
+                        }
                     }
-                    .buttonStyle(.bordered)
-                    .accessibilityLabel("Compartir planificación")
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.95, anchor: .top)).animation(.easeOut(duration: 0.2)),
+                        removal: .opacity.animation(.easeIn(duration: 0.15))
+                    ))
                 }
             }
-
-            if let progress = vm.situationProgress(for: vm.selectedSession) {
-                PlannerSituationProgressStrip(progress: progress)
-            } else {
-                PlannerWeekProgressStrip(vm: vm)
-            }
+            .padding(16)
+            .plannerGlassPanel(.hero, cornerRadius: 24)
 
             HStack(spacing: 8) {
-                Picker("Vista", selection: $vm.activeSection) {
-                    ForEach([PlannerWorkspaceSection.week, PlannerWorkspaceSection.day, PlannerWorkspaceSection.sequence, PlannerWorkspaceSection.schedule], id: \.self) { section in
-                        Label(section.rawValue, systemImage: section.systemImage)
-                            .tag(section)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 420)
+                PlannerFloatingTabBar(activeSection: $vm.activeSection)
+                    .frame(maxWidth: 376)
 
-                Picker("Grupo", selection: Binding(
-                    get: { vm.selectedGroupId },
-                    set: { vm.selectGroup($0) }
-                )) {
-                    Text("Todos").tag(Optional<Int64>.none)
-                    ForEach(vm.groups, id: \.id) { group in
-                        Text(group.name).tag(Optional(group.id))
+                HStack(spacing: 8) {
+                    Picker("Grupo", selection: Binding(
+                        get: { vm.selectedGroupId },
+                        set: { vm.selectGroup($0) }
+                    )) {
+                        Text("Todos").tag(Optional<Int64>.none)
+                        ForEach(vm.groups, id: \.id) { group in
+                            Text(group.name).tag(Optional(group.id))
+                        }
                     }
+                    .pickerStyle(.menu)
+                    .frame(maxWidth: 180)
                 }
-                .pickerStyle(.menu)
-                .frame(maxWidth: 180)
-
-                Picker("Densidad", selection: $vm.density) {
-                    ForEach(PlannerDensity.allCases) { density in
-                        Text(density.rawValue).tag(density)
-                    }
-                }
-                .pickerStyle(.menu)
-                .frame(maxWidth: 128)
+                .controlSize(.small)
 
                 IOSSearchField(text: $vm.searchText, placeholder: "Buscar sesión, unidad, objetivo…")
                     .appOnChange(of: vm.searchText) { _ in vm.applySearch() }
-
-                Menu {
-                    Button(vm.selectionMode ? "Salir de selección" : "Seleccionar sesiones") {
-                        vm.selectionMode.toggle()
-                        if !vm.selectionMode { vm.selectedSessionIds.removeAll() }
-                    }
-                    Button("Copiar a la semana siguiente") { Task { await vm.bulkCopyToNextWeek() } }
-                        .disabled(vm.selectedSessionIds.isEmpty)
-                    Button("Mover +1 día") { Task { await vm.bulkMoveOneDay() } }
-                        .disabled(vm.selectedSessionIds.isEmpty)
-                    Divider()
-                    Button("Limpiar semana sin franjas", role: .destructive) {
-                        isClearSchedulelessWeekConfirmationPresented = true
-                    }
-                    .disabled(!vm.canClearSchedulelessWeekSessions)
-                } label: {
-                    Label("Acciones", systemImage: "slider.horizontal.3")
-                }
-                .buttonStyle(.bordered)
-                .confirmationDialog(
-                    "Eliminar sesiones de esta semana",
-                    isPresented: $isClearSchedulelessWeekConfirmationPresented,
-                    titleVisibility: .visible
-                ) {
-                    Button("Eliminar sesiones planificadas", role: .destructive) {
-                        Task { await vm.clearCurrentWeekSessionsWithoutSchedule() }
-                    }
-                    Button("Cancelar", role: .cancel) {}
-                } message: {
-                    Text("No hay franjas en la agenda. Se eliminarán las sesiones planificadas de la semana actual y se conservarán las completadas.")
-                }
-
-                if vm.selectedSession != nil {
-                    Button(action: onOpenDiary) {
-                        Label("Abrir sesión", systemImage: "play.rectangle.fill")
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
             }
+            .frame(height: 40)
 
             if !vm.bulkSummary.isEmpty {
                 Text(vm.bulkSummary)
@@ -2575,7 +2616,7 @@ private struct PlannerToolbar: View {
         }
         .padding(.horizontal, EvaluationDesign.screenPadding)
         .padding(.top, 8)
-        .padding(.bottom, 16)
+        .padding(.bottom, 4)
     }
 
     private var toolbarTitle: String {
@@ -3393,7 +3434,17 @@ private struct PlannerSequenceCard: View {
                         }
                         .buttonStyle(.plain)
                     } else {
-                        rowLabel(row: row, session: nil)
+                        Button {
+                            vm.openComposer(
+                                learningSituationSessionPlanId: row.learningSituationSessionPlanId,
+                                initialObjectives: row.title,
+                                initialActivities: row.objective,
+                                initialTeachingUnitName: group.title
+                            )
+                        } label: {
+                            rowLabel(row: row, session: nil)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -3433,6 +3484,10 @@ private struct PlannerSequenceCard: View {
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.tertiary)
+            } else {
+                Image(systemName: "plus")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.orange)
             }
         }
         .padding(.vertical, 6)
@@ -3440,7 +3495,7 @@ private struct PlannerSequenceCard: View {
     }
 }
 
-private struct PlannerEmptyState: View {
+struct PlannerEmptyState: View {
     let title: String
     let systemImage: String
     let message: String

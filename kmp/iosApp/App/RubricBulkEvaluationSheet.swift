@@ -86,10 +86,10 @@ struct RubricBulkEvaluationSheet: View {
                         .onMoveCommand { direction in
                             moveFocusedCell(direction: direction, state: state, rubric: rubric)
                         }
-                        .overlay(alignment: .topLeading) {
-                            macKeyboardShortcuts(state: state, rubric: rubric)
-                        }
                         #endif
+                        .overlay(alignment: .topLeading) {
+                            hardwareKeyboardShortcuts(state: state, rubric: rubric)
+                        }
                     }
                 } else {
                     VStack(spacing: 16) {
@@ -674,9 +674,8 @@ struct RubricBulkEvaluationSheet: View {
         .help(title)
     }
 
-    #if os(macOS)
     @ViewBuilder
-    private func macKeyboardShortcuts(
+    private func hardwareKeyboardShortcuts(
         state: BulkRubricEvaluationUiState,
         rubric: RubricDetail
     ) -> some View {
@@ -704,6 +703,7 @@ struct RubricBulkEvaluationSheet: View {
         .accessibilityHidden(true)
     }
 
+    #if os(macOS)
     private func moveFocusedCell(
         direction: MoveCommandDirection,
         state: BulkRubricEvaluationUiState,
@@ -738,6 +738,7 @@ struct RubricBulkEvaluationSheet: View {
         focusedBulkStudentId = studentIds[nextStudentIndex]
         focusedBulkCriterionId = criterionIds[nextCriterionIndex]
     }
+    #endif
 
     private func selectFocusedLevel(
         position: Int,
@@ -760,7 +761,6 @@ struct RubricBulkEvaluationSheet: View {
             levelId: criterion.levels[position - 1].id
         )
     }
-    #endif
 
     private func injuredSidebar(state: BulkRubricEvaluationUiState) -> some View {
         let injuredStudents = injuredStudents(for: state)

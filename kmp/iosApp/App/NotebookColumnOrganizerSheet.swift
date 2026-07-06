@@ -9,9 +9,9 @@ struct NotebookColumnOrganizerSheet: View {
     let onDeleteMultiple: ([NotebookColumnDefinition]) -> Void
     let onAddColumn: () -> Void
     let onCreateCategory: () -> Void
+    let onCreateTab: () -> Void
     let onCreateSummary: () -> Void
     let onGenerateSummary: (String?) -> Void
-    let onOpenHiddenColumns: () -> Void
     let onShowAll: () -> Void
     let onReorder: ([NotebookColumnDefinition]) -> Void
     let onOpenGroupManagement: () -> Void
@@ -23,14 +23,15 @@ struct NotebookColumnOrganizerSheet: View {
     @State private var sectionFilter: SectionFilter = .all
     @State private var isSelectionMode = false
     @State private var selectedColumnIds = Set<String>()
+    @State private var isHelpPopoverPresented = false
 
-    private enum SectionFilter: String, CaseIterable, Identifiable {
-        case all = "Todas"
-        case visible = "Visibles"
-        case hidden = "Ocultas"
-        case archived = "Archivadas"
+    private enum SectionFilter: Hashable, CaseIterable, Identifiable {
+        case all
+        case visible
+        case hidden
+        case archived
 
-        var id: String { rawValue }
+        var id: Self { self }
     }
 
     private var orderedColumns: [NotebookColumnDefinition] {
@@ -83,15 +84,7 @@ struct NotebookColumnOrganizerSheet: View {
             Divider()
 
             if !isSelectionMode {
-                controls
-
-                Divider()
-
-                aiActions
-
-                Divider()
-
-                groupActions
+                filterRow
 
                 Divider()
             }
@@ -100,18 +93,26 @@ struct NotebookColumnOrganizerSheet: View {
                 emptyState
             } else {
                 List {
-                    if sectionFilter == .all || sectionFilter == .visible {
+                    switch sectionFilter {
+                    case .all:
+                        if !visibleColumns.isEmpty {
+                            columnSection("Visibles", columns: visibleColumns, emptyText: "No hay columnas visibles.", allowsMove: !isSelectionMode)
+                        }
+                        if !hiddenColumns.isEmpty {
+                            columnSection("Ocultas", columns: hiddenColumns, emptyText: "No hay columnas ocultas.", allowsMove: !isSelectionMode)
+                        }
+                        if !archivedColumns.isEmpty {
+                            columnSection("Archivadas", columns: archivedColumns, emptyText: "No hay columnas archivadas.", allowsMove: false)
+                        }
+                    case .visible:
                         columnSection("Visibles", columns: visibleColumns, emptyText: "No hay columnas visibles.", allowsMove: !isSelectionMode)
-                    }
-                    if sectionFilter == .all || sectionFilter == .hidden {
+                    case .hidden:
                         columnSection("Ocultas", columns: hiddenColumns, emptyText: "No hay columnas ocultas.", allowsMove: !isSelectionMode)
-                    }
-                    if sectionFilter == .all || sectionFilter == .archived {
+                    case .archived:
                         columnSection("Archivadas", columns: archivedColumns, emptyText: "No hay columnas archivadas.", allowsMove: false)
                     }
                 }
                 .listStyle(.inset)
-                .searchable(text: $searchText, placement: .toolbar, prompt: "Buscar columna")
                 .appEditMode(isSelectionMode: isSelectionMode)
             }
 
@@ -158,7 +159,7 @@ struct NotebookColumnOrganizerSheet: View {
                     }
                 }
                 .buttonStyle(.bordered)
-                
+
                 Button("Listo") {
                     isSelectionMode = false
                     selectedColumnIds.removeAll()
@@ -170,9 +171,22 @@ struct NotebookColumnOrganizerSheet: View {
                 }
                 .buttonStyle(.bordered)
 
-                Button("Cerrar") {
-                    dismiss()
+                Button {
+                    onAddColumn()
+                } label: {
+                    Label("Nueva columna", systemImage: "plus")
                 }
+                .buttonStyle(.borderedProminent)
+                .fixedSize()
+
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
                 .keyboardShortcut(.cancelAction)
             }
         }
@@ -180,10 +194,36 @@ struct NotebookColumnOrganizerSheet: View {
         .padding(.vertical, 12)
     }
 
+    private var filterRow: some View {
+        HStack(spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField("Buscar columna", text: $searchText)
+                    .textFieldStyle(.plain)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+            .frame(maxWidth: .infinity)
+
+            Picker("Sección", selection: $sectionFilter) {
+                Text("Todas").tag(SectionFilter.all)
+                Text("Visibles").tag(SectionFilter.visible)
+                Text("Ocultas").tag(SectionFilter.hidden)
+                Text("Archivadas").tag(SectionFilter.archived)
+            }
+            .pickerStyle(.segmented)
+            .layoutPriority(1)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 10)
+    }
+
     private var selectionActionBar: some View {
         let selectedColumns = columns.filter { selectedColumnIds.contains($0.id) }
         let hasLocked = selectedColumns.contains { $0.isLocked }
-        
+
         return VStack(spacing: 8) {
             if hasLocked {
                 HStack(spacing: 6) {
@@ -196,14 +236,14 @@ struct NotebookColumnOrganizerSheet: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
             }
-            
+
             HStack {
                 Text("\(selectedColumnIds.count) seleccionadas")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
-                
+
                 Spacer()
-                
+
                 Button(role: .destructive) {
                     onDeleteMultiple(selectedColumns)
                 } label: {
@@ -218,119 +258,6 @@ struct NotebookColumnOrganizerSheet: View {
             .padding(.top, hasLocked ? 4 : 12)
         }
         .background(.thinMaterial)
-    }
-
-    private var controls: some View {
-        HStack(spacing: 12) {
-            TextField("Buscar columna...", text: $searchText)
-                .textFieldStyle(.roundedBorder)
-                .frame(maxWidth: 280)
-
-            Picker("Sección", selection: $sectionFilter) {
-                ForEach(SectionFilter.allCases) { filter in
-                    Text(filter.rawValue).tag(filter)
-                }
-            }
-            .pickerStyle(.segmented)
-            .frame(maxWidth: 360)
-
-            Spacer()
-
-            Button {
-                onOpenHiddenColumns()
-            } label: {
-                Label("Ocultas", systemImage: "eye.slash")
-            }
-            .buttonStyle(.bordered)
-            .disabled(hiddenCount == 0)
-            .fixedSize()
-
-            Button {
-                showAllColumns()
-            } label: {
-                Label("Mostrar todas", systemImage: "eye")
-            }
-            .buttonStyle(.bordered)
-            .disabled(hiddenCount == 0)
-            .fixedSize()
-
-            Button {
-                onCreateCategory()
-            } label: {
-                Label("Nueva categoría", systemImage: "folder.badge.plus")
-            }
-            .buttonStyle(.bordered)
-            .fixedSize()
-
-            Button {
-                onAddColumn()
-            } label: {
-                Label("Nueva columna", systemImage: "plus")
-            }
-            .buttonStyle(.borderedProminent)
-            .fixedSize()
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 10)
-    }
-
-    private var aiActions: some View {
-        HStack(spacing: 12) {
-            Label("IA y exportación", systemImage: "apple.intelligence")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
-
-            Spacer(minLength: 0)
-
-            if let summaryColumn = summaryColumns.first {
-                Button {
-                    onGenerateSummary(summaryColumn.id)
-                } label: {
-                    Label("Generar síntesis pedagógica", systemImage: "apple.intelligence")
-                }
-                .buttonStyle(.bordered)
-                .fixedSize()
-            } else {
-                Button {
-                    onCreateSummary()
-                } label: {
-                    Label("Crear síntesis pedagógica", systemImage: "plus.bubble")
-                }
-                .buttonStyle(.bordered)
-                .fixedSize()
-            }
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 10)
-    }
-
-    private var groupActions: some View {
-        HStack(spacing: 12) {
-            Label("Grupos de trabajo", systemImage: "person.2")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.secondary)
-
-            Spacer(minLength: 0)
-
-            Toggle("Agrupar por grupos", isOn: Binding(
-                get: { groupByWorkGroupMode != "none" },
-                set: { newValue in
-                    groupByWorkGroupMode = newValue ? "general" : "none"
-                }
-            ))
-            .tint(NotebookStyle.primaryTint)
-            .fixedSize()
-
-            Button {
-                onOpenGroupManagement()
-            } label: {
-                Label("Gestionar grupos", systemImage: "person.2.badge.gearshape")
-            }
-            .buttonStyle(.bordered)
-            .fixedSize()
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 10)
     }
 
     private var emptyState: some View {
@@ -391,7 +318,7 @@ struct NotebookColumnOrganizerSheet: View {
                     Text(column.title)
                         .font(.body.weight(.medium))
                         .foregroundStyle(column.isArchived ? .secondary : .primary)
-                    
+
                     if column.isLocked {
                         Image(systemName: "lock.fill")
                             .font(.caption2)
@@ -415,22 +342,28 @@ struct NotebookColumnOrganizerSheet: View {
             Spacer()
 
             if !isSelectionMode {
+                if column.isVisibleInGrid {
+                    Button {
+                        onSetVisibility(column, .hidden)
+                    } label: {
+                        Image(systemName: "eye")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help("Ocultar columna")
+                } else if column.isTemporarilyHidden {
+                    Button {
+                        onSetVisibility(column, .visible)
+                    } label: {
+                        Image(systemName: "eye.slash")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help("Mostrar columna")
+                }
+
                 Menu {
-                    if column.isVisibleInGrid {
-                        Button("Ocultar") {
-                            onSetVisibility(column, .hidden)
-                        }
-                        Button("Archivar") {
-                            onSetVisibility(column, .archived)
-                        }
-                        Button("Renombrar") {
-                            onRename(column)
-                        }
-                        deleteButton(for: column, title: "Eliminar")
-                    } else if column.isTemporarilyHidden {
-                        Button("Mostrar") {
-                            onSetVisibility(column, .visible)
-                        }
+                    if column.isVisibleInGrid || column.isTemporarilyHidden {
                         Button("Archivar") {
                             onSetVisibility(column, .archived)
                         }
@@ -448,6 +381,7 @@ struct NotebookColumnOrganizerSheet: View {
                     Image(systemName: "ellipsis.circle")
                 }
                 .menuStyle(.borderlessButton)
+                .fixedSize()
             }
         }
         .contentShape(Rectangle())
@@ -472,12 +406,75 @@ struct NotebookColumnOrganizerSheet: View {
     }
 
     private var footer: some View {
-        HStack {
-            Text("Ocultar limpia la rejilla. Archivar retira la columna del uso diario. Eliminar borra la columna tras confirmación.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        HStack(spacing: 10) {
+            Button {
+                onCreateCategory()
+            } label: {
+                Label("Nueva categoría", systemImage: "folder.badge.plus")
+            }
+            .buttonStyle(.bordered)
 
-            Spacer()
+            Button {
+                onCreateTab()
+            } label: {
+                Label("Nueva pestaña", systemImage: "plus.rectangle.on.rectangle")
+            }
+            .buttonStyle(.bordered)
+
+            Spacer(minLength: 12)
+
+            Menu {
+                Button {
+                    onShowAll()
+                } label: {
+                    Label("Mostrar todas", systemImage: "eye")
+                }
+                .disabled(hiddenCount == 0)
+
+                if let summaryColumn = summaryColumns.first {
+                    Button {
+                        onGenerateSummary(summaryColumn.id)
+                    } label: {
+                        Label("Síntesis pedagógica", systemImage: "apple.intelligence")
+                    }
+                } else {
+                    Button {
+                        onCreateSummary()
+                    } label: {
+                        Label("Síntesis pedagógica", systemImage: "plus.bubble")
+                    }
+                }
+
+                Divider()
+
+                Toggle("Agrupar por grupos", isOn: Binding(
+                    get: { groupByWorkGroupMode != "none" },
+                    set: { newValue in
+                        groupByWorkGroupMode = newValue ? "general" : "none"
+                    }
+                ))
+
+                Button("Gestionar grupos") {
+                    onOpenGroupManagement()
+                }
+            } label: {
+                Label("Más", systemImage: "ellipsis.circle")
+            }
+            .menuStyle(.borderlessButton)
+
+            Button {
+                isHelpPopoverPresented = true
+            } label: {
+                Image(systemName: "questionmark.circle")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .popover(isPresented: $isHelpPopoverPresented) {
+                Text("Ocultar limpia la rejilla. Archivar retira la columna del uso diario. Eliminar borra la columna tras confirmación.")
+                    .font(.callout)
+                    .padding()
+                    .frame(maxWidth: 260)
+            }
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 10)
@@ -498,10 +495,6 @@ struct NotebookColumnOrganizerSheet: View {
         let trimmedSearch = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedSearch.isEmpty else { return columns }
         return columns.filter { $0.title.localizedCaseInsensitiveContains(trimmedSearch) }
-    }
-
-    private func showAllColumns() {
-        onShowAll()
     }
 
     private func moveColumns(

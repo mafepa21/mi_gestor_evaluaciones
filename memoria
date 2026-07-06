@@ -3,12 +3,46 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-07-03 - Rediseño de Organizar columnas del Cuaderno
+
+Se rediseñó `NotebookColumnOrganizerSheet.swift` para resolver un bug visual (buscador duplicado/solapado, capturado por el usuario) y simplificar la jerarquía:
+1. Se eliminó el `.searchable(placement: .toolbar)` que coexistía con un `TextField` de búsqueda propio: causaba un campo de búsqueda flotante duplicado solapado con el borde superior del sheet. Ahora hay un único campo de búsqueda flexible integrado en la fila de filtros.
+2. El CTA principal "Nueva columna" se movió a la cabecera, fuera de la fila de controles que antes desbordaba en pantallas estrechas (dejaba invisibles el propio CTA, el segmented picker cortado y "Nueva categoría" truncado).
+3. El Picker segmentado de sección ahora muestra contadores ("Visibles (3)", "Ocultas (1)"...) y las secciones vacías dejan de renderizarse bajo el filtro "Todas" (antes se mostraba "No hay columnas ocultas/archivadas" incluso con una sola columna en el cuaderno).
+4. Cada fila de columna gana un botón de ojo inline para mostrar/ocultar en un toque; el menú `⋯` se reduce a Archivar/Renombrar/Eliminar (o Restaurar/Eliminar definitivamente para archivadas).
+5. Las filas "IA y exportación" y "Grupos de trabajo", que antes ocupaban dos franjas completas con divisores propios, se compactan en botones de pie de página ("Síntesis pedagógica" y un menú "Grupos" con el toggle de agrupación + "Gestionar grupos"). El texto explicativo del pie pasa a un icono de ayuda con popover.
+6. Se retiró el botón "Ocultas" (y el callback `onOpenHiddenColumns`, sin otros usos) por ser redundante con el filtro segmentado; `NotebookHiddenColumnsSheet` sigue disponible desde sus otros puntos de entrada en `NotebookModuleView.swift`.
+
+Validación realizada: no se pudo compilar con `xcodebuild` (el entorno de esta sesión solo tiene Xcode Command Line Tools, sin Xcode completo instalado), por lo que la revisión fue manual línea a línea del Swift, incluyendo detectar y corregir que `SectionFilter` necesitaba conformar `Hashable` para el `Picker(selection:)` tras quitarle `RawRepresentable`. Pendiente: compilar/ejecutar en un entorno con Xcode antes de dar el cambio por completamente cerrado.
+
+Notas para futuras conversaciones:
+- Único punto de instanciación de `NotebookColumnOrganizerSheet` es `NotebookModuleDialogs.swift:154`; no quedaron referencias colgantes al callback eliminado.
+- Si se reintroduce un acceso directo a columnas ocultas dentro de este sheet, usar el filtro segmentado en lugar de un botón adicional para no repetir la redundancia original.
+
+### Correción 2026-07-03 - Recorte de controles y regresión de "Nueva pestaña"
+
+El usuario reportó con captura que, tras el rediseño anterior, la fila de filtros y el pie de página seguían recortándose contra el borde de la ventana. Causa real: `.fixedSize()` en el `Picker` segmentado y en cada botón del pie forzaba a cada control a exigir su ancho natural completo, y la suma superaba el ancho real del sheet en macOS. Corrección en `NotebookColumnOrganizerSheet.swift`:
+1. Se quitó `.fixedSize()` del picker segmentado (ahora `.layoutPriority(1)`, sin contadores embebidos en las etiquetas — solo "Todas/Visibles/Ocultas/Archivadas" — para que pueda comprimirse sin desbordar).
+2. El pie de página se redujo a 4 controles visibles: "Nueva categoría", "Nueva pestaña" (nuevo), un menú "Más" (agrupa Mostrar todas, Síntesis pedagógica, toggle "Agrupar por grupos" y "Gestionar grupos") y el icono de ayuda. Se quitó `.fixedSize()` de todos ellos.
+3. Se subió `minWidth` del frame macOS del sheet de 520 a 640 en `NotebookModuleDialogs.swift` como margen adicional.
+
+El usuario también señaló que "Crear una nueva pestaña" debía aparecer en este sheet y, además, seguir estando en el menú de pestañas del cuaderno "como estaba originalmente". Investigando se encontró una regresión real de una relocalización anterior (commit `1da478a`, "ui: move tab management and compact view toggle to organization sheet"): esa relocalización quitó el botón "+" de `NotebookTabStrip.swift` y el botón "Nueva pestaña" del menú de acciones de `NotebookModuleView.swift`, y supuestamente los trasladó a una función nueva `notebookOrganizationSheet(data:)` en `NotebookModuleOrganization.swift` — pero esa función nunca llegó a invocarse desde ningún sitio (el sheet realmente presentado por `isOrganizationMenuPresented` siempre fue `NotebookColumnOrganizerSheet`, no ese). Resultado: la app se quedó sin ninguna forma de crear pestañas del cuaderno.
+
+Se corrigió:
+- Se restauró en `NotebookTabStrip.swift` el botón "Crear primera pestaña" (estado sin pestañas) y el botón "+" circular (estado con pestañas), con el parámetro `onCreateTab: () -> Void` de vuelta en la struct.
+- Se restauró en `NotebookModuleView.swift` el wiring `onCreateTab: { presentCreateNotebookTab() }` al construir `NotebookTabStrip`, y el botón "Nueva pestaña" dentro de `Section("Pestañas")` del menú de acciones (solo visible si ya existe al menos una pestaña, igual que en el original).
+- Se añadió un botón "Nueva pestaña" también en el pie de `NotebookColumnOrganizerSheet.swift`, con un nuevo callback `onCreateTab` cableado en `NotebookModuleDialogs.swift` hacia `presentCreateNotebookTab()`.
+- Se eliminó la función muerta `notebookOrganizationSheet(data:)` de `NotebookModuleOrganization.swift` junto con sus helpers exclusivos `filteredOrganizationColumns`/`moveOrganizationColumns` y el `@State var organizationColumnSearchText` en `NotebookModuleView.swift`, para no dejar una segunda implementación de "Organización" sin usar y potencialmente confusa.
+
+Pendiente/fuera de alcance: el `contextMenu` de renombrar/eliminar pestaña sobre cada pill de `NotebookTabStrip` y el toggle "Vista compacta" del menú de acciones también se perdieron en el mismo commit `1da478a` y siguen sin restaurar; el usuario solo pidió la creación de pestañas. Validación: no se pudo compilar con Xcode completo en este entorno (solo Command Line Tools); revisión manual línea a línea y balance de llaves por script en los 5 archivos tocados.
+
 ## Avance 2026-06-28 - Enriquecimiento de la Secuencia del Planificador (iOS/macOS)
 
 Se modificó la vista Secuencia en el planificador didáctico para que muestre la secuencia de aprendizaje completa (`LearningSituationSessionPlan`) en lugar de únicamente las sesiones planificadas en el calendario. Para lograr esto:
 1. Se añadió la API en `KmpBridge.swift`: `learningSituationSessionPlans(sequenceVersionId:)` para consultar todos los planes de sesión de una secuencia desde `LearningSituationsRepository`, y `plannerListAllSessions()` para listar todas las sesiones planificadas en el planificador.
 2. En `PlannerWorkspaceIOS.swift` se crearon los modelos `PlannerSequenceGroup` y `PlannerSequenceRow`, y se implementó la función asíncrona `loadEnrichedSequences()` en `PlannerWorkspaceViewModel` para cruzar los planes de sesión teóricos con las sesiones de calendario creadas, calculando el progreso exacto.
-3. Se actualizó `PlannerSequenceView` y `PlannerSequenceCard` para renderizar el listado ordenado de sesiones teóricas (con detalles de fecha/hora si están agendadas, o marcadas como "Pendiente de ubicar" si no lo están), y se actualizaron los contadores de progreso en la cabecera mostrando el progreso total enriquecido.
+3. Se actualizaron `PlannerSequenceView` y `PlannerSequenceCard` para renderizar el listado ordenado de sesiones teóricas. Las sesiones agendadas muestran detalles de fecha/hora, y las no agendadas aparecen como "Pendiente de ubicar" con un botón de acción `+` interactivo que abre el compositor de sesiones con los datos del plan de secuencia pre-llenados (`learningSituationSessionPlanId`, título, objetivos y actividades).
+4. Se actualizaron `plannerSaveSessionWithLinks` en `KmpBridge.swift`, y `openComposer` / `saveComposer` / `updateSessionFromComposerSave` en `PlannerWorkspaceIOS.swift` para propagar y persistir correctamente el identificador del plan de sesión (`learningSituationSessionPlanId`).
 
 ## Avance 2026-06-28 - Solución a caída de SyncLAN por excepción no capturada
 
@@ -421,6 +455,65 @@ Estos puntos proceden del estado previo documentado en `progress.md`, `task_plan
 - Documentar decisiones de arquitectura cuando afecten a persistencia, sync o ownership de estado.
 
 ## 10. Bitácora de avances significativos
+
+### 2026-07-03 - Refactorización y división del shell principal de iPad (IPadWorkspaceShell.swift)
+
+Resumen:
+- **Cambios realizados**: Se extrajeron todas las sheets de creación (`CreateCourseSheet`, `CreateStudentSheet`, `CreateEvaluationSheet`, `CreatePESessionSheet`, `CreatePhysicalTestSheet`, `CreatePEIncidentSheet`, `CreatePEMaterialRecordSheet` y `CreateTournamentSheet`) y su scaffold común a [WorkspaceCreationSheets.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/WorkspaceCreationSheets.swift). Asimismo, se trasladó todo el bloque del tablero de torneos (`TournamentBoardScreen` y `TournamentAutoBalanceSheet`) y sus modelos asociados (`TournamentStudentProfile`, `TournamentTeam`, `TournamentMatch`, `TournamentViewState`) a [TournamentModule.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/TournamentModule.swift). El archivo original [IPadWorkspaceShell.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/IPadWorkspaceShell.swift) se aligeró en aproximadamente 1420 líneas de código mediante un movimiento puro.
+- **Por qué importa**: Reduce drásticamente la carga cognitiva y el tamaño del archivo principal del shell, mejorando la mantenibilidad a largo plazo sin alterar la lógica de negocio ni de presentación.
+- **Ruta de los cambios**:
+  - [IPadWorkspaceShell.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/IPadWorkspaceShell.swift)
+  - [WorkspaceCreationSheets.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/WorkspaceCreationSheets.swift)
+  - [TournamentModule.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/TournamentModule.swift)
+- **Validación realizada**: Compilación verificada con éxito para macOS Native y iOS Simulator.
+
+### 2026-07-03 - Habilitación de atajos de teclado hardware en evaluación masiva de rúbricas para iPadOS
+
+Resumen:
+- **Cambios realizados**: Se compartieron los atajos de teclado de macOS (Cmd+S para guardar, Esc/Cancel para cerrar y las teclas 1 a 5 para asignar nivel de rúbrica) para iPadOS con teclado hardware en `RubricBulkEvaluationSheet.swift`, renombrando el método interno a `hardwareKeyboardShortcuts` y retirando las condicionales de compilación `#if os(macOS)`. El movimiento de foco mediante flechas (`.onMoveCommand`) y el modificador `.focusable()` se mantuvieron condicionados a macOS debido a la indisponibilidad de `MoveCommandDirection` y `.focusable()` en iOS 16.0 (target mínimo del proyecto).
+- **Por qué importa**: Proporciona una ergonomía de nivel desktop a los docentes de iPad con teclado hardware al calificar rúbricas de forma masiva, optimizando los tiempos de corrección.
+- **Ruta de los cambios**:
+  - [RubricBulkEvaluationSheet.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/RubricBulkEvaluationSheet.swift)
+- **Validación realizada**: Compilación completada con éxito tanto para iOS Simulator como para macOS Native usando la verificación local.
+
+### 2026-07-03 - Reubicación de la gestión de pestañas y vista compacta al menú de organización
+
+Resumen:
+- **Cambios realizados**: Se eliminó el botón `plus` de creación de pestañas y los menús contextuales de renombrado/eliminación de la barra de pestañas (`NotebookTabStrip.swift`). Se quitó la opción de "Vista compacta" de la toolbar de acciones secundarias de `NotebookModuleView.swift`. Se retiró el botón "Nueva pestaña" de `.toolbarTitleMenu`. Estas acciones se recolocaron en la hoja de organización (`NotebookModuleOrganization.swift`), donde se agregó una nueva sección de "Pestañas (Temas)" para gestionar por completo las pestañas y un `Toggle("Vista compacta")` en la sección de "Vista".
+- **Por qué importa**: Reduce el ruido visual y la sobrecarga cognitiva en los viewport de trabajo diario del cuaderno, aislando las herramientas de configuración de estructura dentro del panel específico de organización.
+- **Ruta de los cambios**:
+  - [NotebookTabStrip.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/NotebookTabStrip.swift)
+  - [NotebookModuleView.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/NotebookModuleView.swift)
+  - [NotebookModuleOrganization.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/NotebookModuleOrganization.swift)
+- **Validación realizada**: Compilación completada con éxito para iOS Simulator y macOS Native usando `./scripts/verify_apple_builds.sh` con Xcode-beta.
+
+Notas para futuras conversaciones:
+- La creación, renombrado y borrado de pestañas ahora requiere abrir el panel de organización, lo cual previene manipulaciones estructurales accidentales durante el registro rápido de notas diarias.
+
+### 2026-07-03 - Compactación de cabecera y progreso expandible de planificación
+
+Resumen:
+- **Cambios realizados**: Se compactó el panel hero de `PlannerToolbar` en `PlannerWorkspaceIOS.swift`. Título y subtítulo se unificaron en un bloque vertical de espaciado 8pt. El strip de progreso (`PlannerSituationProgressStrip` / `PlannerWeekProgressStrip`) se envolvió en un botón interactivo tipo chevron que rota de 0 a 90 grados, ocultando o mostrando el progreso con una animación fluida de tipo spring. El estado de expansión se almacena persistido mediante `@AppStorage("planner_toolbar_progress_expanded")`.
+- **Por qué importa**: Optimiza la densidad visual del planificador en iPad y Mac, permitiendo ganar espacio vertical de trabajo en el grid semanal mientras se preserva el acceso inmediato al progreso.
+- **Ruta de los cambios**:
+  - [PlannerWorkspaceIOS.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/PlannerWorkspaceIOS.swift)
+- **Validación realizada**: Compilación verificada con éxito tanto para iOS Simulator como para macOS Native usando la suite `./scripts/verify_apple_builds.sh` con Xcode-beta.
+
+Notas para futuras conversaciones:
+- El estado de expansión se almacena de forma persistente y local por dispositivo, mejorando la ergonomía de uso diario al recordar la preferencia del docente.
+
+### 2026-07-03 - Rediseño de controles de planificación y migración de selector de densidad
+
+Resumen:
+- **Cambios realizados**: Se eliminó el `Picker("Densidad")` de la barra de herramientas principal `PlannerToolbar` en `PlannerWorkspaceIOS.swift` y se movió como un picker inline dentro del menú de acciones secundarias de `PlannerLiquidGlassControls.swift`.
+- **Por qué importa**: Reduce la densidad cognitiva y el ruido visual en la cabecera del Planificador, dejando el espacio superior libre y ubicando los selectores del visualizador agrupados semánticamente en el menú contextual secundario.
+- **Ruta de los cambios**:
+  - [PlannerWorkspaceIOS.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/App/PlannerWorkspaceIOS.swift)
+  - [PlannerLiquidGlassControls.swift](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/kmp/iosApp/AppleShared/PlannerLiquidGlassControls.swift)
+- **Validación realizada**: Ejecución exitosa de `./scripts/verify_apple_builds.sh` con la variable `DEVELOPER_DIR` apuntando a `/Users/mariofernandez/Downloads/Xcode-beta.app/Contents/Developer`. La compilación de macOS y de iOS Simulator finalizó sin errores (`SUCCEEDED`).
+
+Notas para futuras conversaciones:
+- El enum `PlannerDensity` se define en `PlannerWorkspaceIOS.swift` pero es accesible en `AppleShared/` porque ambos archivos forman parte del mismo target de Xcode según `project.yml`. El binding `$vm.density` se propaga al control flotante Liquid Glass.
 
 ### 2026-06-19 - Mecanismo de recuperación ante incompatibilidad de versión de base de datos en arranque (macOS/iOS)
 

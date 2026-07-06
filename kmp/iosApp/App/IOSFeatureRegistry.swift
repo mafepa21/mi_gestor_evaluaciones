@@ -18,8 +18,7 @@ struct IOSFeatureDescriptor: Identifiable, Hashable {
 
 enum IOSFeatureRegistry {
     static let daily: [IOSFeatureDescriptor] = [
-        .init(module: .dashboard, title: "Hoy", subtitle: "Resumen operativo", systemImage: "rectangle.3.group", priority: .daily, visibleInDailyMode: true),
-        .init(module: .teacherRadar, title: "Radar", subtitle: "Alertas docentes", systemImage: "scope", priority: .daily, visibleInDailyMode: true),
+        .init(module: .dashboard, title: "Hoy", subtitle: "Dashboard y radar docente", systemImage: "rectangle.3.group", priority: .daily, visibleInDailyMode: true),
         .init(module: .courses, title: "Cursos", subtitle: "Curso escolar y grupos", systemImage: "calendar.badge.clock", priority: .daily, visibleInDailyMode: true),
         .init(module: .notebook, title: "Cuaderno", subtitle: "Evaluación diaria", systemImage: "tablecells", priority: .daily, visibleInDailyMode: true),
         .init(module: .attendance, title: "Asistencia", subtitle: "Pase y seguimiento", systemImage: "checklist.checked", priority: .daily, visibleInDailyMode: true),

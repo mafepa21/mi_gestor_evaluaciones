@@ -114,7 +114,6 @@ struct NotebookModuleView: View {
     @State var formulaAIMessage: String? = nil
     @State var isFormulaAIGenerating = false
     @State var activeChoiceCellId: String? = nil
-    @State var organizationColumnSearchText = ""
     @State var focusMode: NotebookFocusMode = .normal
     @State private var contextualAIOrchestrator = AppleAIOrchestrator()
     @StateObject private var formulaAIServiceStore = AppleFoundationFormulaServiceStore()
@@ -407,12 +406,6 @@ struct NotebookModuleView: View {
                         },
                         onCreateTab: {
                             presentCreateNotebookTab()
-                        },
-                        onRenameTab: { tab in
-                            presentRenameNotebookTab(tab)
-                        },
-                        onDeleteTab: { tab in
-                            pendingDeleteNotebookTab = tab
                         }
                     )
                 }
@@ -1337,18 +1330,6 @@ struct NotebookModuleView: View {
                                 // 7. Exportar
                                 ShareLink(item: exportText(data: data)) {
                                     Label("Exportar cuaderno", systemImage: "square.and.arrow.up")
-                                }
-
-                                // 8. Vista compacta
-                                Button {
-                                    isCompactViewActive.toggle()
-                                } label: {
-                                    HStack {
-                                        Label("Vista compacta", systemImage: "rectangle.compress.vertical")
-                                        if isCompactViewActive {
-                                            Image(systemName: "checkmark")
-                                        }
-                                    }
                                 }
 
                                 // 9. Configuración de media

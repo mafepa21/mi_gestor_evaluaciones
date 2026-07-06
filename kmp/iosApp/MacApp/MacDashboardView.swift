@@ -1255,24 +1255,48 @@ private struct DashboardEmptyStateView: View {
     let onNavigate: (MacDashboardDestination) -> Void
 
     var body: some View {
-        MacPanel(title: "Ahora") {
-            VStack(alignment: .leading, spacing: 16) {
-                Label(title, systemImage: systemImage)
-                    .font(.title2.weight(.semibold))
-                Text(message)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                if case .outsideSchoolYear(let startDate, let endDate) = reason {
-                    Text("Curso configurado: \(startDate) - \(endDate)")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 20) {
+            MacPanel(title: "Ahora", tint: tint) {
+                HStack(alignment: .top, spacing: 18) {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 28, weight: .semibold))
+                        .foregroundStyle(tint)
+                        .frame(width: 44, height: 44)
+                        .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(title)
+                            .font(.title2.weight(.semibold))
+                        Text(message)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        if case .outsideSchoolYear(let startDate, let endDate) = reason {
+                            Text("Curso configurado: \(startDate) - \(endDate)")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    Spacer(minLength: 24)
+
+                    Button(buttonTitle) {
+                        onNavigate(destination)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
                 }
-                Button(buttonTitle) {
-                    onNavigate(destination)
-                }
-                .buttonStyle(.borderedProminent)
             }
-            .frame(maxWidth: .infinity, minHeight: 260, alignment: .leading)
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 16)], alignment: .leading, spacing: 16) {
+                ForEach(actions) { action in
+                    Button {
+                        onNavigate(action.destination)
+                    } label: {
+                        DashboardEmptyActionCard(action: action)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         }
     }
 
@@ -1317,6 +1341,76 @@ private struct DashboardEmptyStateView: View {
         case .noScheduleConfigured, .outsideSchoolYear: return "calendar.badge.exclamationmark"
         case .noClasses: return "person.3.sequence"
         }
+    }
+
+    private var tint: Color {
+        switch reason {
+        case .noScheduleConfigured, .outsideSchoolYear: return MacAppStyle.warningTint
+        case .noClasses: return MacAppStyle.infoTint
+        }
+    }
+
+    private var actions: [DashboardEmptyAction] {
+        switch reason {
+        case .noScheduleConfigured:
+            return [
+                .init(title: "Planificar horario", subtitle: "Crear franjas para activar Hoy.", systemImage: "calendar.badge.plus", destination: .plannerAgenda, tint: MacAppStyle.warningTint),
+                .init(title: "Abrir cuaderno", subtitle: "Revisar notas aunque no haya sesión.", systemImage: "tablecells", destination: .notebook(classId: nil), tint: MacAppStyle.infoTint),
+                .init(title: "Pasar asistencia", subtitle: "Entrar manualmente si ya hay grupo.", systemImage: "checklist.checked", destination: .attendance(classId: nil), tint: MacAppStyle.successTint),
+                .init(title: "Revisar alumnado", subtitle: "Perfiles, observaciones y seguimiento.", systemImage: "person.3.sequence", destination: .students(classId: nil), tint: MacAppStyle.infoTint)
+            ]
+        case .noClasses:
+            return [
+                .init(title: "Crear grupo", subtitle: "Empieza por el alumnado y sus clases.", systemImage: "person.3.sequence", destination: .students(classId: nil), tint: MacAppStyle.infoTint),
+                .init(title: "Preparar agenda", subtitle: "Define el marco del curso.", systemImage: "calendar", destination: .plannerAgenda, tint: MacAppStyle.warningTint)
+            ]
+        case .outsideSchoolYear:
+            return [
+                .init(title: "Editar agenda", subtitle: "Ajustar fechas del curso activo.", systemImage: "calendar.badge.clock", destination: .plannerAgenda, tint: MacAppStyle.warningTint),
+                .init(title: "Abrir informes", subtitle: "Consultar datos ya registrados.", systemImage: "doc.text.image", destination: .reports(classId: nil), tint: MacAppStyle.infoTint)
+            ]
+        }
+    }
+}
+
+private struct DashboardEmptyAction: Identifiable {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+    let destination: MacDashboardDestination
+    let tint: Color
+
+    var id: String { title }
+}
+
+private struct DashboardEmptyActionCard: View {
+    let action: DashboardEmptyAction
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: action.systemImage)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(action.tint)
+                .frame(width: 28, height: 28)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(action.title)
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Text(action.subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
+        .macLiquidGlassPanel(.secondaryPanel, cornerRadius: 14, tint: action.tint.opacity(0.5), isInteractive: true)
     }
 }
 

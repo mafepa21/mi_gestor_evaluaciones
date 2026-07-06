@@ -288,13 +288,13 @@ extension NotebookModuleView {
     }
 
     func showToast(_ message: String, style: NotebookToastStyle = .success) {
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
+        withAnimation(uiFeatureFlags.animation(.spring(response: 0.28, dampingFraction: 0.88))) {
             toast = NotebookToast(message: message, style: style)
         }
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             if toast?.message == message {
-                withAnimation(.easeOut(duration: 0.2)) {
+                withAnimation(uiFeatureFlags.animation(.easeOut(duration: 0.2))) {
                     toast = nil
                 }
             }

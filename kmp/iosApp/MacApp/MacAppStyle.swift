@@ -85,6 +85,28 @@ struct MacSectionHeader: View {
     }
 }
 
+/// Para botones con .buttonStyle(.plain): esa variante quita el hover nativo de AppKit,
+/// así que lo reponemos a mano con un fondo sutil al pasar el puntero.
+struct MacHoverableButtonStyle: ButtonStyle {
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
+    var cornerRadius: CGFloat = MacAppStyle.chipRadius
+    @State private var isHovering = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.7 : 1.0)
+            .background(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(isHovering ? Color.primary.opacity(0.06) : Color.clear)
+            )
+            .onHover { hovering in
+                withAnimation(uiFeatureFlags.animation(.easeOut(duration: 0.12))) {
+                    isHovering = hovering
+                }
+            }
+    }
+}
+
 struct MacStatusPill: View {
     let label: String
     var isActive: Bool = false

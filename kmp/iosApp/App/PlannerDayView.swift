@@ -240,7 +240,8 @@ struct PlannerDayView: View {
     }
 
     private var isTodayAndCurrentWeek: Bool {
-        guard vm.week == PlannerCalendar.currentIsoWeek, vm.year == PlannerCalendar.currentIsoYear else { return false }
+        let current = PlannerCalendar.currentIsoYearWeek
+        guard vm.week == current.week, vm.year == current.year else { return false }
         return vm.selectedDayForDayView == todayWeekdayIndex
     }
 

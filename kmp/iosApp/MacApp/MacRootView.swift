@@ -116,10 +116,14 @@ struct MacRootView: View {
             // shell's system inspector too would nest two inspectors and reserve width twice.
             if selectedFeature == .attendance {
                 featureContent(for: selectedFeature)
+                    .id(selectedFeature)
+                    .transition(uiFeatureFlags.contentSwitchTransition)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(MacAppStyle.pageBackground)
             } else {
                 featureContent(for: selectedFeature)
+                    .id(selectedFeature)
+                    .transition(uiFeatureFlags.contentSwitchTransition)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(MacAppStyle.pageBackground)
                     .inspector(isPresented: $isInspectorVisible) {
@@ -141,7 +145,7 @@ struct MacRootView: View {
         }
         .animation(uiFeatureFlags.interactionAnimation, value: banner?.id)
         .onReceive(NotificationCenter.default.publisher(for: .appleAppAddNotebookColumnRequested)) { _ in
-            performNotebookAddColumn()
+            performPrimaryCreation()
         }
         .onReceive(NotificationCenter.default.publisher(for: .appleAppSaveOrSyncRequested)) { _ in
             performSave()
@@ -249,7 +253,9 @@ struct MacRootView: View {
     ) {
         let feature = normalizedFeature(feature)
         guard selectedFeature != feature || session.selectedFeature != feature else { return }
-        selectedFeature = feature
+        withAnimation(uiFeatureFlags.animation(.easeOut(duration: 0.2))) {
+            selectedFeature = feature
+        }
         isInspectorVisible = storedInspectorVisible
         columnVisibility = .all
         guard propagateToSession else { return }
@@ -1086,8 +1092,12 @@ struct MacRootView: View {
     private func performPrimaryCreation() {
         switch selectedFeature {
         case .notebook:
-            if layoutState.notebookAddColumnAvailable {
+            if notebookToolbarActions.addColumnAvailable {
+                notebookToolbarActions.addColumn()
+            } else if layoutState.notebookAddColumnAvailable {
                 layoutState.showNotebookAddColumn()
+            } else {
+                showBanner("Selecciona un grupo para añadir columnas", systemImage: "plus.rectangle", tint: MacAppStyle.warningTint)
             }
         case .physicalTests:
             physicalTestsToolbarActions.newBattery()
@@ -1098,17 +1108,6 @@ struct MacRootView: View {
             showBanner("Alumnado actualizado", systemImage: "person.3.sequence", tint: MacAppStyle.infoTint)
         default:
             showBanner("Nueva acción no disponible aquí", systemImage: "plus.circle", tint: MacAppStyle.warningTint)
-        }
-    }
-
-    private func performNotebookAddColumn() {
-        selectFeature(.notebook)
-        if notebookToolbarActions.addColumnAvailable {
-            notebookToolbarActions.addColumn()
-        } else if layoutState.notebookAddColumnAvailable {
-            layoutState.showNotebookAddColumn()
-        } else {
-            showBanner("Selecciona un grupo para añadir columnas", systemImage: "plus.rectangle", tint: MacAppStyle.warningTint)
         }
     }
 

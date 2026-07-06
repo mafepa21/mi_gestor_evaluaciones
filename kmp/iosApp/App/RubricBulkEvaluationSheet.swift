@@ -8,6 +8,7 @@ struct RubricBulkEvaluationSheet: View {
     @ObservedObject var bridge: KmpBridge
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     @State private var horizontalScrollOffset: CGFloat = 0
     @State private var levelHoverTask: Task<Void, Never>?
     @State private var focusedBulkStudentId: Int64?
@@ -601,7 +602,7 @@ struct RubricBulkEvaluationSheet: View {
             do {
                 try await Task.sleep(nanoseconds: 600_000_000)
                 await MainActor.run {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                    withAnimation(uiFeatureFlags.interactionAnimation) {
                         activePopoverLevel = level
                     }
                 }
@@ -612,7 +613,7 @@ struct RubricBulkEvaluationSheet: View {
     private func cancelLevelPopover(for level: RubricLevel) {
         levelHoverTask?.cancel()
         guard activePopoverLevel?.id == level.id else { return }
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+        withAnimation(uiFeatureFlags.interactionAnimation) {
             activePopoverLevel = nil
         }
     }

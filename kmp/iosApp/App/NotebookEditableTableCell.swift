@@ -94,6 +94,39 @@ struct NotebookEditableTableCell: View {
     let onAttendanceSaved: () -> Void
 
     var body: some View {
+        cellContent
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(column.title), \(item.student.fullName)")
+            .accessibilityValue(accessibilityCellValue)
+            .accessibilityHint(accessibilityCellHint)
+    }
+
+    private var accessibilityCellValue: String {
+        if column.type == .check {
+            return displaySnapshot.checkValue ? "Marcado" : "Sin marcar"
+        }
+        let value = [
+            displaySnapshot.numericText,
+            displaySnapshot.calculatedText,
+            displaySnapshot.rubricText,
+            displaySnapshot.text
+        ].first(where: { !$0.isEmpty })
+        return value ?? "Vacío"
+    }
+
+    private var accessibilityCellHint: String {
+        switch column.type {
+        case .calculated:
+            return "Calculado automáticamente, no editable"
+        case .check:
+            return "Toca dos veces para marcar o desmarcar"
+        default:
+            return "Toca dos veces para editar"
+        }
+    }
+
+    @ViewBuilder
+    private var cellContent: some View {
         if column.inputKind.isStructuredInstrument {
             NotebookReadOnlyCell(
                 displaySnapshot: displaySnapshot,

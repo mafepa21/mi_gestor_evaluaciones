@@ -1,14 +1,14 @@
 import SwiftUI
 
 enum IOSAppStyle {
-    static let pagePadding: CGFloat = 20
-    static let compactPagePadding: CGFloat = 16
+    static let pagePadding: CGFloat = AppleDesignSystem.compactPagePadding
+    static let compactPagePadding: CGFloat = AppleDesignSystem.tightPagePadding
     static let sectionSpacing: CGFloat = 18
-    static let cardSpacing: CGFloat = 14
+    static let cardSpacing: CGFloat = AppleDesignSystem.compactCardSpacing
 
-    static let cardRadius: CGFloat = 20
+    static let cardRadius: CGFloat = AppleDesignSystem.regularCardRadius
     static let innerRadius: CGFloat = 14
-    static let controlRadius: CGFloat = 12
+    static let controlRadius: CGFloat = AppleDesignSystem.regularControlRadius
 
     static let pageTitle: Font = .system(size: 28, weight: .black, design: .rounded)
     static let sectionTitle: Font = .headline
@@ -31,7 +31,8 @@ enum IOSAppStyle {
         #endif
     }
     static let subtleFill = Color.secondary.opacity(0.08)
-    static let cardBorder = Color.primary.opacity(0.08)
+    static let cardBorder = AppleDesignSystem.border
+    static let shadow = AppleDesignSystem.shadow
 
     static let success = Color.green
     static let warning = Color.orange

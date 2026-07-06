@@ -6,13 +6,20 @@ import QuickLook
 import MiGestorKit
 
 enum PlannerCalendar {
-    static var currentIsoYear: Int {
-        Calendar(identifier: .iso8601).component(.yearForWeekOfYear, from: Date())
+    /// Año y semana ISO calculados a partir del mismo instante para evitar que,
+    /// justo en el cambio de año, uno quede desfasado respecto al otro.
+    static var currentIsoYearWeek: (year: Int, week: Int) {
+        let calendar = Calendar(identifier: .iso8601)
+        let components = calendar.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())
+        return (
+            components.yearForWeekOfYear ?? calendar.component(.yearForWeekOfYear, from: Date()),
+            components.weekOfYear ?? calendar.component(.weekOfYear, from: Date())
+        )
     }
 
-    static var currentIsoWeek: Int {
-        Calendar(identifier: .iso8601).component(.weekOfYear, from: Date())
-    }
+    static var currentIsoYear: Int { currentIsoYearWeek.year }
+
+    static var currentIsoWeek: Int { currentIsoYearWeek.week }
 
     /// Curso escolar por defecto (sept–jun) alrededor de la fecha actual.
     static var defaultSchoolYearStartIso: String {

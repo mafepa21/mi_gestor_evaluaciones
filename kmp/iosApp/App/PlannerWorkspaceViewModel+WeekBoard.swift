@@ -106,8 +106,9 @@ extension PlannerWorkspaceViewModel {
             return Int(selectedSession.dayOfWeek)
         }
         let current = IsoWeekHelper.shared.current()
-        let currentWeek = Int(truncating: current.first ?? KotlinInt(value: Int32(PlannerCalendar.currentIsoWeek)))
-        let currentYear = Int(truncating: current.second ?? KotlinInt(value: Int32(PlannerCalendar.currentIsoYear)))
+        let currentIsoFallback = PlannerCalendar.currentIsoYearWeek
+        let currentWeek = Int(truncating: current.first ?? KotlinInt(value: Int32(currentIsoFallback.week)))
+        let currentYear = Int(truncating: current.second ?? KotlinInt(value: Int32(currentIsoFallback.year)))
         if week == currentWeek, year == currentYear {
             var calendar = Calendar(identifier: .iso8601)
             calendar.locale = Locale.current

@@ -976,7 +976,9 @@ struct AppWorkspaceShell: View {
     }
 
     func performNotebookAddColumnCommand() {
-        activeModule = .notebook
+        // ⌘N solo actúa si ya estamos en el Cuaderno: forzar la navegación aquí
+        // interrumpiría sin avisar el trabajo en otro módulo (Asistencia, Planner…).
+        guard activeModule == .notebook else { return }
         Task { @MainActor in
             await Task.yield()
             layoutState.showNotebookAddColumn()
@@ -2060,6 +2062,7 @@ struct AttendanceRowCard: View {
                     )
                 }
                 .buttonStyle(.plain)
+                .appInteractiveHighlight()
             }
         }
         .padding(24)
@@ -2113,6 +2116,8 @@ struct AttendanceRowCard: View {
             )
         }
         .buttonStyle(.plain)
+        .appInteractiveHighlight()
+        .accessibilityAddTraits(row.record?.status == option.id ? .isSelected : [])
         .opacity(isSaving && row.record?.status != option.id ? 0.84 : 1)
     }
 }

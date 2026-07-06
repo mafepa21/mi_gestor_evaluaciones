@@ -8,7 +8,7 @@ struct NotebookFormulaKeyboard: View {
     @Binding var formula: String
     let availableColumns: [NotebookColumnDefinition]
 
-    private let formulaTokens = ["=", "+", "-", "*", "/", "(", ")", "SUMA", "PROMEDIO", "MAX", "MIN", "SI", ","]
+    private let formulaTokens = ["=", "+", "-", "*", "/", "(", ")", "SUMA", "PROMEDIO", "MAX", "MIN", "SI", ";"]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {

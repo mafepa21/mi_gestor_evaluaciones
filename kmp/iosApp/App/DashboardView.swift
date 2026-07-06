@@ -102,6 +102,7 @@ struct DashboardView: View {
     @State private var isQuickEvaluationPresented = false
     @State private var classTrends: KmpBridge.AITrendsSnapshot? = nil
     @State private var isLoadingClassTrends = false
+    @State private var classTrendsLoadFailed = false
     @State private var proactiveInsights: [DashboardProactiveInsight] = []
     @State private var aiBriefing: TeachingAssistantDraft? = nil
     @State private var aiBriefingState: DashboardAIBriefingState = .deterministic
@@ -490,9 +491,9 @@ struct DashboardView: View {
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                .stroke(IOSAppStyle.cardBorder, lineWidth: 1)
         )
-        .shadow(color: .black.opacity(0.08), radius: 12, x: 0, y: 4)
+        .shadow(color: IOSAppStyle.shadow, radius: 12, x: 0, y: 4)
     }
 
     private var selectedClassLabel: String {
@@ -649,9 +650,9 @@ struct DashboardView: View {
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                .stroke(IOSAppStyle.cardBorder, lineWidth: 1)
         )
-        .shadow(color: .black.opacity(0.08), radius: 12, x: 0, y: 4)
+        .shadow(color: IOSAppStyle.shadow, radius: 12, x: 0, y: 4)
         .redacted(reason: .placeholder)
     }
 
@@ -1314,6 +1315,7 @@ struct DashboardView: View {
                             )
                     }
                     .buttonStyle(ScaleButtonStyle())
+                    .accessibilityAddTraits(selection.wrappedValue == option ? .isSelected : [])
                 }
             }
         }
@@ -1359,6 +1361,7 @@ struct DashboardView: View {
                             )
                     }
                     .buttonStyle(ScaleButtonStyle())
+                    .accessibilityAddTraits(selection.wrappedValue == option ? .isSelected : [])
                 }
             }
         }
@@ -1845,6 +1848,17 @@ struct DashboardView: View {
                         }
                     }
                 }
+            } else if classTrendsLoadFailed {
+                HStack(spacing: 10) {
+                    Label("No se pudo cargar la auditoría de este grupo.", systemImage: "exclamationmark.triangle.fill")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(IOSAppStyle.warning)
+                    Spacer()
+                    Button("Reintentar") {
+                        Task { await loadClassTrends() }
+                    }
+                    .font(.system(size: 13, weight: .semibold))
+                }
             } else if !isLoadingClassTrends {
                 Text("No hay datos suficientes para generar la auditoría de cobertura curricular y tendencias de este grupo.")
                     .font(.system(size: 13, weight: .medium))
@@ -1886,13 +1900,16 @@ struct DashboardView: View {
     private func loadClassTrends() async {
         guard let classId = selectedClassId else {
             classTrends = nil
+            classTrendsLoadFailed = false
             return
         }
         isLoadingClassTrends = true
+        classTrendsLoadFailed = false
         do {
             classTrends = try await bridge.getAITrendsAndMetrics(classId: classId, studentId: nil)
         } catch {
             print("Error loading class trends: \(error)")
+            classTrendsLoadFailed = true
         }
         isLoadingClassTrends = false
     }

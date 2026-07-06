@@ -1,12 +1,12 @@
 import SwiftUI
 
 enum EvaluationDesign {
-    static let screenPadding: CGFloat = 24
+    static let screenPadding: CGFloat = AppleDesignSystem.pagePadding
     static let sectionSpacing: CGFloat = 32
-    static let cardSpacing: CGFloat = 16
-    static let cardRadius: CGFloat = 40
-    static let innerRadius: CGFloat = 16
-    static let pillRadius: CGFloat = 12
+    static let cardSpacing: CGFloat = AppleDesignSystem.cardSpacing
+    static let cardRadius: CGFloat = AppleDesignSystem.heroCardRadius
+    static let innerRadius: CGFloat = AppleDesignSystem.innerRadius
+    static let pillRadius: CGFloat = AppleDesignSystem.regularControlRadius
     // Variantes de modo oscuro tomadas de los tonos system (blue/green/red) de Apple,
     // ya auditados para mantener contraste AA sobre fondos oscuros del sistema.
     static let accent = appAdaptiveBrandColor(
@@ -14,19 +14,21 @@ enum EvaluationDesign {
         dark: (0.039, 0.518, 1.0)
     )
     static let accentSoft = accent.opacity(0.12)
+    // Variante clara oscurecida para llegar a 4.5:1 sobre blanco (el tono original
+    // solo llegaba a ~3:1); la variante oscura ya cumplía sobradamente.
     static let success = appAdaptiveBrandColor(
-        light: (0.12, 0.65, 0.46),
+        light: (0.09, 0.48, 0.34),
         dark: (0.188, 0.820, 0.345)
     )
     static let danger = appAdaptiveBrandColor(
-        light: (0.90, 0.20, 0.22),
+        light: (0.86, 0.19, 0.21),
         dark: (1.0, 0.2706, 0.2275)
     )
     static let surface = appSecondarySystemBackgroundColor()
     static let surfaceMuted = appSecondarySystemBackgroundColor()
     static let surfaceSoft = appTertiarySystemBackgroundColor()
     static let border = Color.black.opacity(0.06)
-    static let shadow = Color.black.opacity(0.08)
+    static let shadow = AppleDesignSystem.shadow
     static let plannerCoursePalette: [String] = [
         "#2563EB",
         "#0F766E",

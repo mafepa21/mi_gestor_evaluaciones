@@ -58,6 +58,8 @@ struct NotebookModuleView: View {
     @State var localInjuryStatuses: [Int64: Bool] = [:]
     @State var seatPositions: [Int64: NotebookSeatPosition] = [:]
     @State var highlightedRandomStudentId: Int64? = nil
+    @State var seatingGradingColumnId: String? = nil
+    @StateObject var voiceGradeDictationService = NotebookVoiceGradeDictationService()
     @State var selectedAttachmentPhoto: PhotosPickerItem?
     @State var isCreateCategoryAlertPresented = false
     @State var isGroupManagementPresented = false
@@ -84,6 +86,8 @@ struct NotebookModuleView: View {
     @State var toast: NotebookToast? = nil
     @State var isAttendanceQuickMode = false
     @State var isMarkAllPresentDialogPresented = false
+    @State var isFillColumnDialogPresented = false
+    @State var pendingCopyTabStructureSource: NotebookTab? = nil
     @State var undoStack: [NotebookCellUndoEntry] = []
     @State var structuralGridRevision = 0
     @State var rowReloadRevisions: [Int64: Int] = [:]
@@ -338,13 +342,17 @@ struct NotebookModuleView: View {
                             pasteIntoSelectedCell(data: data)
                         },
                         onFillSelection: {
-                            showToast("Selecciona un rango para rellenar varias celdas", style: .warning)
+                            requestFillColumnFromSelectedCell(data: data)
                         },
                         onClearSelection: {
                             clearSelectedCell(data: data)
                         },
                         onCommentSelection: {
                             openCommentForSelectedCell(data: data)
+                        },
+                        isVoiceDictationActive: voiceGradeDictationService.isListening,
+                        onToggleVoiceDictation: {
+                            toggleVoiceGradeDictation(data: data)
                         },
                         onEditColumn: {
                             editSelectedColumn(data: data)
@@ -489,8 +497,22 @@ struct NotebookModuleView: View {
                 selectedStudentId: inspectorSelection?.studentId,
                 highlightedStudentId: highlightedRandomStudentId,
                 seatPositions: $seatPositions,
+                gradableColumns: gradableSeatingColumns(data: data),
+                gradingColumnId: $seatingGradingColumnId,
+                gradeText: { studentId in
+                    guard let columnId = seatingGradingColumnId,
+                          let column = data.sheet.columns.first(where: { $0.id == columnId }),
+                          let row = rows.first(where: { $0.student.id == studentId }) else { return "—" }
+                    let value = displayValue(for: row, column: column)
+                    return value.isEmpty ? "—" : value
+                },
+                onAdjustGrade: { studentId, delta in
+                    guard let columnId = seatingGradingColumnId,
+                          let column = data.sheet.columns.first(where: { $0.id == columnId }) else { return }
+                    adjustSeatingGrade(studentId: studentId, column: column, delta: delta, data: data)
+                },
                 onHighlightRandomStudent: {
-                    highlightedRandomStudentId = randomEligibleStudentId(from: rows)
+                    highlightedRandomStudentId = randomEligibleStudentId(from: rows, data: data)
                 },
                 onResetSeats: {
                     seatPositions = defaultSeatPositions(for: rows)
@@ -679,6 +701,18 @@ struct NotebookModuleView: View {
                         selectNotebookTab(tab.id)
                     } label: {
                         Label(tab.title, systemImage: tab.id == activeNotebookTabId(data: data) ? "checkmark" : "rectangle.on.rectangle")
+                    }
+                }
+
+                let otherTabs = tabs.filter { $0.id != activeNotebookTabId(data: data) }
+                if !otherTabs.isEmpty {
+                    Divider()
+                    Menu("Copiar estructura desde…") {
+                        ForEach(otherTabs, id: \.id) { tab in
+                            Button(tab.title) {
+                                requestCopyTabStructure(from: tab)
+                            }
+                        }
                     }
                 }
             }
@@ -890,20 +924,68 @@ struct NotebookModuleView: View {
 
     func pasteIntoSelectedCell(data: NotebookUiStateData) {
         guard let selected = selectedNotebookCell(data: data),
-              let value = clipboardText()?.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
+              let rawClipboard = clipboardText() else { return }
         guard isToolbarEditableCellColumn(selected.column) else {
             showToast("Esta columna se edita desde su acción específica", style: .warning)
             return
         }
-        recordCellUndo(
-            studentId: selected.selection.studentId,
-            column: selected.column,
-            previousValue: displayValue(for: selected.row, column: selected.column),
-            previousDisplayLabel: nil
-        )
-        bridge.saveColumnGrade(studentId: selected.selection.studentId, column: selected.column, value: value)
-        reloadNotebookRow(selected.selection.studentId)
-        showToast("Celda pegada")
+
+        let pastedValues = notebookClipboardColumnValues(from: rawClipboard)
+        guard pastedValues.count > 1 else {
+            let value = pastedValues.first ?? rawClipboard.trimmingCharacters(in: .whitespacesAndNewlines)
+            recordCellUndo(
+                studentId: selected.selection.studentId,
+                column: selected.column,
+                previousValue: displayValue(for: selected.row, column: selected.column),
+                previousDisplayLabel: nil
+            )
+            bridge.saveColumnGrade(studentId: selected.selection.studentId, column: selected.column, value: value)
+            reloadNotebookRow(selected.selection.studentId)
+            showToast("Celda pegada")
+            return
+        }
+
+        // Pegado de varias filas (p. ej. una columna copiada de una hoja de cálculo):
+        // se aplica desde la celda seleccionada hacia abajo, fila a fila.
+        let rows = filteredRows(data: data)
+        guard let startIndex = rows.firstIndex(where: { $0.student.id == selected.selection.studentId }) else { return }
+        let targetRows = rows[startIndex...]
+
+        var pastedCount = 0
+        for (row, value) in zip(targetRows, pastedValues) {
+            let previousValue = displayValue(for: row, column: selected.column)
+            guard previousValue != value else { continue }
+            recordCellUndo(
+                studentId: row.student.id,
+                column: selected.column,
+                previousValue: previousValue,
+                previousDisplayLabel: nil
+            )
+            bridge.saveColumnGrade(studentId: row.student.id, column: selected.column, value: value)
+            reloadNotebookRow(row.student.id)
+            pastedCount += 1
+        }
+        let skippedCount = max(0, pastedValues.count - targetRows.count)
+        if skippedCount > 0 {
+            showToast("Pegadas \(pastedCount) celdas (\(skippedCount) valores no cupieron en las filas visibles)", style: .warning)
+        } else {
+            showToast(pastedCount > 0 ? "Pegadas \(pastedCount) celdas" : "Sin cambios: los valores ya coincidían")
+        }
+    }
+
+    private func notebookClipboardColumnValues(from rawClipboard: String) -> [String] {
+        var lines = rawClipboard
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .components(separatedBy: "\n")
+            .map { line -> String in
+                let firstColumn = line.components(separatedBy: "\t").first ?? line
+                return firstColumn.trimmingCharacters(in: .whitespaces)
+            }
+        // Las apps de hojas de cálculo suelen añadir una línea vacía final al copiar.
+        if lines.count > 1, lines.last == "" {
+            lines.removeLast()
+        }
+        return lines
     }
 
     func clearSelectedCell(data: NotebookUiStateData) {
@@ -1259,6 +1341,10 @@ struct NotebookModuleView: View {
                     guard saved, notebookStore.isNotebookRubricAutoAdvanceActive else { return }
                     openNextRubricStudentIfPossible()
                 }
+                .appOnChange(of: voiceGradeDictationService.errorMessage) { message in
+                    guard let message else { return }
+                    showToast(message, style: .warning)
+                }
                 .toolbar {
                     if toolbarMode == .shellOwned || toolbarMode == .macWindowOwned {
                         ToolbarItemGroup(placement: .primaryAction) {
@@ -1275,6 +1361,32 @@ struct NotebookModuleView: View {
                                 }
                                 .disabled(undoStack.isEmpty)
                                 .keyboardShortcut("z", modifiers: .command)
+
+                                // 1b. Rellenar columna con la celda seleccionada
+                                Button {
+                                    requestFillColumnFromSelectedCell(data: data)
+                                } label: {
+                                    Label("Rellenar columna", systemImage: "arrow.down.to.line")
+                                }
+                                .disabled(selectedNotebookCell(data: data) == nil)
+                                .keyboardShortcut("d", modifiers: .command)
+
+                                // 1c. Ciclar pestañas del cuaderno
+                                Button {
+                                    cycleNotebookTab(forward: true, data: data)
+                                } label: {
+                                    Label("Siguiente pestaña", systemImage: "chevron.right")
+                                }
+                                .disabled(orderedNotebookTabs(data: data).count < 2)
+                                .keyboardShortcut("]", modifiers: [.command, .shift])
+
+                                Button {
+                                    cycleNotebookTab(forward: false, data: data)
+                                } label: {
+                                    Label("Pestaña anterior", systemImage: "chevron.left")
+                                }
+                                .disabled(orderedNotebookTabs(data: data).count < 2)
+                                .keyboardShortcut("[", modifiers: [.command, .shift])
 
                                 // 2. Asistencia rápida
                                 Button {

@@ -1513,7 +1513,8 @@
 				INFOPLIST_KEY_CFBundleShortVersionString = "$(MARKETING_VERSION)";
 				INFOPLIST_KEY_CFBundleVersion = "$(CURRENT_PROJECT_VERSION)";
 				INFOPLIST_KEY_NSCameraUsageDescription = "MiGestor usa la cámara para escanear el código QR de vinculación con la app de escritorio.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "MiGestor usa el micrófono para adjuntar audios breves al diario de aula.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "MiGestor usa el micrófono para adjuntar audios breves al diario de aula y para dictar notas rápidas en el cuaderno.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "MiGestor usa el reconocimiento de voz para rellenar notas del cuaderno por dictado.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "MiGestor usa la fototeca para adjuntar evidencias visuales a la sesión.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -1613,7 +1614,8 @@
 				INFOPLIST_KEY_CFBundleShortVersionString = "$(MARKETING_VERSION)";
 				INFOPLIST_KEY_CFBundleVersion = "$(CURRENT_PROJECT_VERSION)";
 				INFOPLIST_KEY_NSCameraUsageDescription = "MiGestor usa la cámara para escanear el código QR de vinculación con la app de escritorio.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "MiGestor usa el micrófono para adjuntar audios breves al diario de aula.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "MiGestor usa el micrófono para adjuntar audios breves al diario de aula y para dictar notas rápidas en el cuaderno.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "MiGestor usa el reconocimiento de voz para rellenar notas del cuaderno por dictado.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "MiGestor usa la fototeca para adjuntar evidencias visuales a la sesión.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

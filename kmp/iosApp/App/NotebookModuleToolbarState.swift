@@ -104,6 +104,61 @@ extension NotebookModuleView {
         bridge.setSelectedNotebookTab(id: tabId)
     }
 
+    func cycleNotebookTab(forward: Bool, data: NotebookUiStateData) {
+        let tabs = orderedNotebookTabs(data: data)
+        guard tabs.count > 1 else { return }
+        let currentIndex = activeNotebookTabId(data: data).flatMap { id in tabs.firstIndex { $0.id == id } } ?? 0
+        let count = tabs.count
+        let nextIndex = forward
+            ? (currentIndex + 1) % count
+            : (currentIndex - 1 + count) % count
+        selectNotebookTab(tabs[nextIndex].id)
+    }
+
+    func columnsOwnedByTab(_ tabId: String, data: NotebookUiStateData) -> [NotebookColumnDefinition] {
+        data.sheet.columns
+            .filter { $0.tabIds.contains(tabId) && !$0.sharedAcrossTabs }
+            .sorted { $0.order < $1.order }
+    }
+
+    func requestCopyTabStructure(from sourceTab: NotebookTab) {
+        pendingCopyTabStructureSource = sourceTab
+    }
+
+    func copyTabStructure(from sourceTab: NotebookTab, data: NotebookUiStateData) {
+        let sourceColumns = columnsOwnedByTab(sourceTab.id, data: data)
+        guard !sourceColumns.isEmpty else {
+            showToast("“\(sourceTab.title)” no tiene columnas propias que copiar", style: .warning)
+            return
+        }
+        for column in sourceColumns {
+            bridge.addColumn(
+                name: column.title,
+                type: column.type.name,
+                weight: column.weight,
+                formula: column.formula,
+                rubricId: column.rubricId?.int64Value,
+                categoryId: column.categoryId,
+                categoryKind: column.categoryKind,
+                instrumentKind: column.instrumentKind,
+                inputKind: column.inputKind,
+                dateEpochMs: nil,
+                unitOrSituation: column.unitOrSituation,
+                competencyCriteriaIds: column.competencyCriteriaIds.map(\.int64Value),
+                scaleKind: column.scaleKind,
+                iconName: column.iconName,
+                countsTowardAverage: column.countsTowardAverage,
+                isPinned: column.isPinned,
+                isHidden: false,
+                visibility: .visible,
+                isLocked: false,
+                isTemplate: column.isTemplate
+            )
+        }
+        showToast("Copiadas \(sourceColumns.count) columnas de estructura desde “\(sourceTab.title)” (sin notas)")
+        scheduleToolbarStateSyncIfLoaded()
+    }
+
     func selectNotebookClass(_ classId: Int64) {
         guard bridge.notebookViewModel.currentClassId?.int64Value != classId else { return }
         selectedGroupId = nil

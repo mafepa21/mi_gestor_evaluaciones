@@ -94,6 +94,7 @@ struct NotebookInspectorPanel: View {
             evidenceText: evidenceLabel(persistedCell),
             evaluationText: column.map { evaluationTitle($0) } ?? "Media del alumno",
             rubricText: column.map { rubricTitle($0) } ?? rubricSummaryText(for: item),
+            groupComparison: groupComparison(for: item, column: column),
             semanticIcons: semanticIcons,
             aiSectionTitle: isAIColumn ? (isSummaryColumnValue ? "Síntesis pedagógica" : "Comentario IA") : nil,
             aiSectionOrigin: isAIColumn ? (isSummaryColumnValue ? "Columna de síntesis pedagógica editable" : "Columna de comentario IA editable") : nil,
@@ -186,6 +187,19 @@ struct NotebookInspectorPanel: View {
         if let value = value as? NSNumber { return value.doubleValue }
         if let value = value as? KotlinDouble { return value.doubleValue }
         return nil
+    }
+
+    private func groupComparison(for item: NotebookTableRow, column: NotebookColumnDefinition?) -> NotebookGroupComparison? {
+        guard let column, column.type == .numeric else { return nil }
+        let values: [(studentId: Int64, value: Double)] = rows.compactMap { row in
+            let raw = displayValue(row, column).trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: ".")
+            guard let parsed = Double(raw) else { return nil }
+            return (row.student.id, parsed)
+        }
+        guard values.count >= 3,
+              let studentValue = values.first(where: { $0.studentId == item.student.id })?.value else { return nil }
+        let groupAverage = values.map(\.value).reduce(0, +) / Double(values.count)
+        return NotebookGroupComparison(studentValue: studentValue, groupAverage: groupAverage, sampleSize: values.count)
     }
 
     private func rubricSummaryText(for item: NotebookTableRow) -> String {

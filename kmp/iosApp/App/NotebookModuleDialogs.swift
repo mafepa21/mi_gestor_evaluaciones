@@ -141,6 +141,47 @@ extension NotebookModuleView {
                 Text("Se marcarán como presentes \(filteredRows(data: data).count) alumnos visibles.")
             }
         }
+        .confirmationDialog(
+            "Rellenar columna",
+            isPresented: $isFillColumnDialogPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Rellenar celdas visibles") {
+                if let data = bridge.notebookState as? NotebookUiStateData {
+                    fillColumnFromSelectedCell(data: data)
+                }
+            }
+            Button("Cancelar", role: .cancel) {}
+        } message: {
+            if let data = bridge.notebookState as? NotebookUiStateData,
+               let selected = selectedNotebookCell(data: data) {
+                let count = filteredRows(data: data).filter { $0.student.id != selected.selection.studentId }.count
+                Text("Se copiará el valor de \(selected.row.student.firstName) en \(count) alumnos visibles de esta columna. Puedes deshacerlo con Cmd+Z.")
+            }
+        }
+        .confirmationDialog(
+            "Copiar estructura de pestaña",
+            isPresented: Binding(
+                get: { pendingCopyTabStructureSource != nil },
+                set: { if !$0 { pendingCopyTabStructureSource = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let sourceTab = pendingCopyTabStructureSource,
+               let data = bridge.notebookState as? NotebookUiStateData {
+                Button("Copiar \(columnsOwnedByTab(sourceTab.id, data: data).count) columnas") {
+                    copyTabStructure(from: sourceTab, data: data)
+                    pendingCopyTabStructureSource = nil
+                }
+                Button("Cancelar", role: .cancel) {
+                    pendingCopyTabStructureSource = nil
+                }
+            }
+        } message: {
+            if let sourceTab = pendingCopyTabStructureSource {
+                Text("Se crearán columnas nuevas con la misma estructura (pesos, fórmulas, rúbricas) que “\(sourceTab.title)”, sin fecha ni notas, en la pestaña actual.")
+            }
+        }
     }
 
     @ViewBuilder

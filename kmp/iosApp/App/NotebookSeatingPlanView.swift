@@ -10,6 +10,10 @@ struct NotebookSeatingPlanView: View {
     let selectedStudentId: Int64?
     let highlightedStudentId: Int64?
     @Binding var seatPositions: [Int64: NotebookSeatPosition]
+    let gradableColumns: [NotebookColumnDefinition]
+    @Binding var gradingColumnId: String?
+    let gradeText: (Int64) -> String
+    let onAdjustGrade: (Int64, Double) -> Void
     let onHighlightRandomStudent: () -> Void
     let onResetSeats: () -> Void
     let onPersistSeats: () -> Void
@@ -34,6 +38,28 @@ struct NotebookSeatingPlanView: View {
                 .font(.system(size: 18, weight: .bold, design: .rounded))
 
             Spacer()
+
+            if !gradableColumns.isEmpty {
+                Menu {
+                    Button("Sin calificar") {
+                        gradingColumnId = nil
+                    }
+                    Divider()
+                    ForEach(gradableColumns, id: \.id) { column in
+                        Button {
+                            gradingColumnId = column.id
+                        } label: {
+                            Label(column.title, systemImage: gradingColumnId == column.id ? "checkmark" : "number")
+                        }
+                    }
+                } label: {
+                    Label(
+                        gradableColumns.first(where: { $0.id == gradingColumnId })?.title ?? "Calificar en el plano",
+                        systemImage: "checklist"
+                    )
+                }
+                .buttonStyle(.bordered)
+            }
 
             Button {
                 onHighlightRandomStudent()
@@ -93,8 +119,15 @@ struct NotebookSeatingPlanView: View {
                         isSelected: selectedStudentId == item.student.id,
                         isDragging: isDragging,
                         isHovering: hoveredStudentId == item.student.id,
+                        gradeText: gradingColumnId != nil ? gradeText(item.student.id) : nil,
                         onTap: {
                             onOpenStudent(item.student.id)
+                        },
+                        onIncrementGrade: {
+                            onAdjustGrade(item.student.id, gradeStepSize)
+                        },
+                        onDecrementGrade: {
+                            onAdjustGrade(item.student.id, -gradeStepSize)
                         },
                         onMarkPresent: {
                             onMarkPresent(item.student.id)
@@ -145,6 +178,8 @@ struct NotebookSeatingPlanView: View {
         }
     }
 
+    private let gradeStepSize: Double = 0.25
+
     private func resolvedSeatPosition(for studentId: Int64, index: Int, total: Int) -> NotebookSeatPosition {
         if let existing = seatPositions[studentId] {
             return existing
@@ -171,7 +206,10 @@ private struct NotebookSeatCard: View {
     let isSelected: Bool
     let isDragging: Bool
     let isHovering: Bool
+    let gradeText: String?
     let onTap: () -> Void
+    let onIncrementGrade: () -> Void
+    let onDecrementGrade: () -> Void
     let onMarkPresent: () -> Void
     let onMarkAbsent: () -> Void
     let onMarkLate: () -> Void
@@ -211,13 +249,26 @@ private struct NotebookSeatCard: View {
                 }
             }
 
-            HStack(spacing: 6) {
-                quickAction("P", tint: NotebookStyle.successTint, action: onMarkPresent)
-                quickAction("A", tint: .red, action: onMarkAbsent)
-                quickAction("R", tint: NotebookStyle.warningTint, action: onMarkLate)
-                quickAction("Seg", tint: .orange, action: onFollowUp)
+            if let gradeText {
+                HStack(spacing: 6) {
+                    quickAction("−", tint: NotebookStyle.warningTint, action: onDecrementGrade)
+                    Text(gradeText)
+                        .font(.system(size: 15, weight: .black, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(NotebookStyle.primaryTint)
+                        .frame(maxWidth: .infinity)
+                    quickAction("+", tint: NotebookStyle.successTint, action: onIncrementGrade)
+                }
+                .opacity(isDragging ? 0.42 : 1)
+            } else {
+                HStack(spacing: 6) {
+                    quickAction("P", tint: NotebookStyle.successTint, action: onMarkPresent)
+                    quickAction("A", tint: .red, action: onMarkAbsent)
+                    quickAction("R", tint: NotebookStyle.warningTint, action: onMarkLate)
+                    quickAction("Seg", tint: .orange, action: onFollowUp)
+                }
+                .opacity(isDragging ? 0.42 : 1)
             }
-            .opacity(isDragging ? 0.42 : 1)
         }
         .padding(14)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

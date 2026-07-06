@@ -3,6 +3,18 @@
 Fecha de creación: 2026-05-17
 Propósito: servir como memoria viva del proyecto, recogiendo el estado ejecutivo de la app y los avances significativos que conviene recordar entre conversaciones.
 
+## Avance 2026-07-06 - Reorganización de Git y Desacoplamiento de Ramas Temáticas
+
+Resumen:
+- Qué cambio se hizo: Se reestructuró por completo el repositorio local de Git. Los commits acumulados linealmente en la rama de planificación se separaron en ramas temáticas independientes y limpias.
+- Por qué importa: Permite al usuario revisar y aprobar cada funcionalidad (Planner Premium, Asistencia por Excepción, SyncLAN Fase 2, Consolidación de Componentes, Auditoría Premium, etc.) por Pull Requests (PRs) individuales ordenados por dependencias (cascada libre de conflictos), evitando el infierno de conflictos al integrar en Xcode.
+- Dónde vive el cambio: Afecta a la estructura general de las ramas de Git del proyecto. Se crearon las ramas locales `fix/consolidate-premium-components-and-kmp-build`, `feature/synclan-security-and-data-integrity`, `feature/planner-premium-fases`, `feature/attendance-macos-exception-panel`, `feature/premium-audit-lomloe-and-fixes`.
+- Validación realizada: Se verificó la estructura del árbol de Git resultante con `git branch -vv` y se confirmó la ausencia de conflictos de fusión durante los rebasamientos de SyncLAN y los cherry-picks de UI.
+
+Notas para futuras conversaciones:
+- Los cambios locales en progreso sobre IA contextual y reportes de planner se respaldaron de forma segura en la rama `wip/contextual-ai-and-reports`.
+- Se proporciona una guía detallada de PRs en cascada en el artefacto walkthrough.md para su integración paso a paso.
+
 ## Avance 2026-07-03 - Rediseño de Organizar columnas del Cuaderno
 
 Se rediseñó `NotebookColumnOrganizerSheet.swift` para resolver un bug visual (buscador duplicado/solapado, capturado por el usuario) y simplificar la jerarquía:

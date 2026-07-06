@@ -81,11 +81,19 @@ struct LearningSituationsWorkspaceView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            masterColumn
-                .frame(minWidth: 300, idealWidth: 330, maxWidth: 360)
-            Divider().opacity(0.2)
-            detailColumn
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 0) {
+                masterColumn
+                    .frame(minWidth: 336, idealWidth: 360, maxWidth: 384)
+                Color.clear.frame(width: 8)
+                detailColumn
+            }
+
+            VStack(spacing: 0) {
+                masterColumn
+                    .frame(maxHeight: 440)
+                detailColumn
+            }
         }
         .background(appPageBackground(for: colorScheme))
         .task { await reload() }
@@ -148,7 +156,8 @@ struct LearningSituationsWorkspaceView: View {
 
 
     private var masterColumn: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Text("Situaciones")
                     .font(.title2.bold())
@@ -189,30 +198,24 @@ struct LearningSituationsWorkspaceView: View {
                 }
             }
 
-            HStack {
+            HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                 TextField("Buscar situación", text: $searchText).textFieldStyle(.plain)
             }
-            .padding(10)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
             .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            Menu {
-                Picker("Grupo", selection: $classFilter) {
-                    Text("Todos los grupos").tag(nil as Int64?)
-                    ForEach(bridge.classes, id: \.id) { Text($0.name).tag(Optional($0.id)) }
-                }
-                Picker("Materia", selection: $subjectFilter) {
-                    Text("Todas las materias").tag("")
-                    ForEach(availableSubjects, id: \.self) { Text($0).tag($0) }
-                }
-                Picker("Trimestre", selection: $termFilter) {
-                    Text("Todos los trimestres").tag("")
-                    ForEach(availableTerms, id: \.self) { Text($0).tag($0) }
-                }
-            } label: {
-                Label("Filtrar", systemImage: "line.3.horizontal.decrease.circle")
-                    .frame(maxWidth: .infinity, alignment: .leading)
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                WorkspaceCompactStat(title: "Situaciones", value: "\(filteredSituations.count)", tint: EvaluationDesign.accent)
+                WorkspaceCompactStat(title: "Materias", value: "\(availableSubjects.count)", tint: IOSAppStyle.warning)
+                WorkspaceCompactStat(title: "Trimestres", value: "\(availableTerms.count)", tint: EvaluationDesign.success)
+                WorkspaceCompactStat(title: "Selección", value: isSelectionMode ? "\(selectedSituationIds.count)" : "1", tint: .blue)
             }
-            .buttonStyle(.bordered)
+
+            situationFiltersMenu
+            }
+            .padding(24)
 
             if isSelectionMode {
                 List(filteredSituations, id: \.id, selection: $selectedSituationIds) { situation in
@@ -237,7 +240,28 @@ struct LearningSituationsWorkspaceView: View {
             }
 
         }
-        .padding(16)
+        .background(appMutedCardBackground(for: colorScheme))
+    }
+
+    private var situationFiltersMenu: some View {
+        Menu {
+            Picker("Grupo", selection: $classFilter) {
+                Text("Todos los grupos").tag(nil as Int64?)
+                ForEach(bridge.classes, id: \.id) { Text($0.name).tag(Optional($0.id)) }
+            }
+            Picker("Materia", selection: $subjectFilter) {
+                Text("Todas las materias").tag("")
+                ForEach(availableSubjects, id: \.self) { Text($0).tag($0) }
+            }
+            Picker("Trimestre", selection: $termFilter) {
+                Text("Todos los trimestres").tag("")
+                ForEach(availableTerms, id: \.self) { Text($0).tag($0) }
+            }
+        } label: {
+            Label("Filtrar", systemImage: "line.3.horizontal.decrease.circle")
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.bordered)
     }
 
     @ViewBuilder
@@ -569,7 +593,12 @@ private struct LearningSituationDuplicateSheet: View {
                 }
             }
         }
+        #if os(macOS)
         .frame(minWidth: 480, minHeight: 460)
+        #else
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        #endif
     }
 }
 
@@ -619,7 +648,12 @@ private struct LearningSituationImportPreviewSheet: View {
                 }
             }
         }
+        #if os(macOS)
         .frame(minWidth: 540, minHeight: 560)
+        #else
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+        #endif
     }
 }
 
@@ -657,7 +691,12 @@ private struct LearningSituationScheduleSheet: View {
                 Button("Cerrar", role: .cancel) {}
             } message: { Text(errorMessage) }
         }
+        #if os(macOS)
         .frame(minWidth: 720, minHeight: 720)
+        #else
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+        #endif
         .onAppear { classId = initialClassId ?? bridge.classes.first?.id }
         .fileImporter(
             isPresented: $isSequenceImporterPresented,
@@ -1252,13 +1291,25 @@ private struct LearningSituationEvaluationSheet: View {
                     showingRubricBuilder = false
                 })
                 .environmentObject(bridge)
+#if os(macOS)
                 .frame(minWidth: 1200, minHeight: 820)
+#else
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+#endif
             }
             .alert("No se puede crear", isPresented: Binding(get: { !errorMessage.isEmpty }, set: { if !$0 { errorMessage = "" } })) {
                 Button("Cerrar", role: .cancel) {}
             } message: { Text(errorMessage) }
         }
+#if os(macOS)
         .frame(minWidth: 620, minHeight: 560)
+#else
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+#endif
         .onAppear {
             classId = initialClassId ?? bridge.classes.first?.id
             proposals = (try? JSONDecoder().decode(LearningSituationImportDraft.self, from: Data(situation.payloadJson.utf8)))?.evaluationItems ?? []
@@ -1593,7 +1644,12 @@ private struct LearningSituationAssessmentImportPreviewSheet: View {
             footer
         }
         .background(IOSAppStyle.pageBackground)
+        #if os(macOS)
         .frame(minWidth: 720, minHeight: 620)
+        #else
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+        #endif
         .onAppear {
             ensureSelectedInstrument()
         }
@@ -1667,12 +1723,22 @@ private struct LearningSituationAssessmentImportPreviewSheet: View {
     }
 
     private var metricsStrip: some View {
-        HStack(spacing: 12) {
-            previewMetric("Detectados", value: "\(editableDraft.instruments.count)")
-            previewMetric("Seleccionados", value: "\(selectedCount)")
-            previewMetric("Computan", value: "\(averageCount)")
-            previewMetric("Auxiliares", value: "\(auxiliaryCount)")
-            previewMetric("Peso", value: "\(Int(weightedTotal.rounded()))%")
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 16) {
+                previewMetric("Detectados", value: "\(editableDraft.instruments.count)")
+                previewMetric("Seleccionados", value: "\(selectedCount)")
+                previewMetric("Computan", value: "\(averageCount)")
+                previewMetric("Auxiliares", value: "\(auxiliaryCount)")
+                previewMetric("Peso", value: "\(Int(weightedTotal.rounded()))%")
+            }
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 16)], alignment: .leading, spacing: 16) {
+                previewMetric("Detectados", value: "\(editableDraft.instruments.count)")
+                previewMetric("Seleccionados", value: "\(selectedCount)")
+                previewMetric("Computan", value: "\(averageCount)")
+                previewMetric("Auxiliares", value: "\(auxiliaryCount)")
+                previewMetric("Peso", value: "\(Int(weightedTotal.rounded()))%")
+            }
         }
         .padding(16)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -2052,11 +2118,7 @@ private struct LearningSituationRubricImportPreviewSheet: View {
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 20) {
-                HStack(spacing: 12) {
-                    previewMetric(title: "Niveles", value: "\(preview.levelCount)", icon: "slider.horizontal.below.square")
-                    previewMetric(title: "Criterios", value: "\(preview.criterionCount)", icon: "list.bullet.rectangle")
-                    previewMetric(title: "Advertencias", value: "\(preview.warnings.count)", icon: "exclamationmark.triangle")
-                }
+                rubricMetrics
 
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Validación")
@@ -2086,7 +2148,28 @@ private struct LearningSituationRubricImportPreviewSheet: View {
                 }
             }
         }
+        #if os(macOS)
         .frame(width: 600, height: 430)
+        #else
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        #endif
+    }
+
+    private var rubricMetrics: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 16) {
+                previewMetric(title: "Niveles", value: "\(preview.levelCount)", icon: "slider.horizontal.below.square")
+                previewMetric(title: "Criterios", value: "\(preview.criterionCount)", icon: "list.bullet.rectangle")
+                previewMetric(title: "Advertencias", value: "\(preview.warnings.count)", icon: "exclamationmark.triangle")
+            }
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 144), spacing: 16)], alignment: .leading, spacing: 16) {
+                previewMetric(title: "Niveles", value: "\(preview.levelCount)", icon: "slider.horizontal.below.square")
+                previewMetric(title: "Criterios", value: "\(preview.criterionCount)", icon: "list.bullet.rectangle")
+                previewMetric(title: "Advertencias", value: "\(preview.warnings.count)", icon: "exclamationmark.triangle")
+            }
+        }
     }
 
     private func previewMetric(title: String, value: String, icon: String) -> some View {

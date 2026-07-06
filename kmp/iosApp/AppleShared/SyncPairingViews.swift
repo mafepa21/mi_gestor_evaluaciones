@@ -216,19 +216,7 @@ struct SyncLanView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: IOSAppStyle.sectionSpacing) {
-                // 1. Estado principal
-                syncStatusHero
-
-                // 2. Emparejamiento
-                pairingSection
-
-                // 3. Actividad
-                activitySection
-
-                // 4. Diagnóstico avanzado (colapsado)
-                diagnosticsSection
-            }
+            syncLanContent
             .padding(IOSAppStyle.pagePadding)
         }
         .background(IOSAppStyle.pageBackground)
@@ -258,6 +246,33 @@ struct SyncLanView: View {
                         bridge.syncStatusMessage = "Error emparejando: \(error.localizedDescription)"
                     }
                 }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var syncLanContent: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 24) {
+                VStack(spacing: IOSAppStyle.sectionSpacing) {
+                    syncStatusHero
+                    pairingSection
+                }
+                .frame(minWidth: 520, maxWidth: .infinity, alignment: .top)
+
+                VStack(spacing: IOSAppStyle.sectionSpacing) {
+                    activitySection
+                    diagnosticsSection
+                }
+                .frame(width: 344, alignment: .top)
+            }
+            .frame(minWidth: 888, alignment: .topLeading)
+
+            VStack(spacing: IOSAppStyle.sectionSpacing) {
+                syncStatusHero
+                pairingSection
+                activitySection
+                diagnosticsSection
             }
         }
     }

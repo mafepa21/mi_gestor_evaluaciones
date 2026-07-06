@@ -1540,6 +1540,442 @@ struct TeacherScheduleSettingsPanel: View {
         }
     }
 
+    @ViewBuilder
+    private var scheduleSettingsContent: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 24) {
+                VStack(alignment: .leading, spacing: EvaluationDesign.cardSpacing) {
+                    scheduleHeaderCard
+                    courseFrameCard
+                    weeklySlotsCard
+                }
+                .frame(minWidth: 560, maxWidth: .infinity, alignment: .topLeading)
+
+                VStack(alignment: .leading, spacing: EvaluationDesign.cardSpacing) {
+                    visualIdentityCard
+                    nonTeachingCard
+                    evaluationPeriodsCard
+                }
+                .frame(width: 368, alignment: .topLeading)
+            }
+            .frame(minWidth: 952, alignment: .topLeading)
+
+            VStack(alignment: .leading, spacing: EvaluationDesign.cardSpacing) {
+                scheduleHeaderCard
+                courseFrameCard
+                weeklySlotsCard
+                visualIdentityCard
+                nonTeachingCard
+                evaluationPeriodsCard
+            }
+        }
+    }
+
+    private var scheduleHeaderCard: some View {
+        EvaluationGlassCard {
+            VStack(alignment: .leading, spacing: 16) {
+                EvaluationSectionTitle(
+                    eyebrow: "Planificación docente",
+                    title: "Horario, curso y calendario lectivo",
+                    subtitle: "Aquí se define la agenda fija que consume Planner: rango del curso, franjas semanales, no lectivos detectados y previsión por evaluación."
+                )
+
+                if !vm.scheduleError.isEmpty {
+                    Text(vm.scheduleError)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(EvaluationDesign.danger)
+                }
+                if !vm.scheduleImportStatusMessage.isEmpty {
+                    Text(vm.scheduleImportStatusMessage)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(EvaluationDesign.success)
+                }
+
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Grupo en foco")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.secondary)
+                        Picker(
+                            "Grupo en foco",
+                            selection: Binding(
+                                get: { selectedClassId ?? -1 },
+                                set: { selectedClassId = $0 > 0 ? $0 : nil }
+                            )
+                        ) {
+                            Text("Todos").tag(Int64(-1) as Int64?)
+                            ForEach(vm.groups, id: \.id) { group in
+                                Text(group.name).tag(group.id as Int64?)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                    }
+
+                    Spacer()
+
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Text("No lectivos detectados")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.secondary)
+                        Text("\(vm.nonTeachingEvents.count)")
+                            .font(.system(size: 24, weight: .black, design: .rounded))
+                    }
+                }
+            }
+        }
+    }
+
+    private var courseFrameCard: some View {
+        EvaluationGlassCard {
+            VStack(alignment: .leading, spacing: 16) {
+                EvaluationSectionTitle(
+                    eyebrow: "Marco del curso",
+                    title: "Curso, agenda y días lectivos",
+                    subtitle: "La agenda docente persiste en KMP y sirve como fuente única para el planner semanal."
+                )
+
+                TextField("Nombre de agenda", text: $vm.scheduleName)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+
+                Text("Marca aquí el inicio y el fin reales del curso. Planner usará este rango para calcular semanas, no lectivos y previsiones por evaluación.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                HStack(alignment: .bottom, spacing: 12) {
+                    datePickerField("Inicio de curso", selection: $vm.scheduleStartDateValue)
+                    datePickerField("Fin de curso", selection: $vm.scheduleEndDateValue)
+                    Button("Guardar curso") {
+                        Task { await vm.saveTeacherSchedule() }
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Días lectivos")
+                        .font(.subheadline.weight(.semibold))
+                    HStack(spacing: 8) {
+                        ForEach([1, 2, 3, 4, 5, 6, 7], id: \.self) { day in
+                            if vm.activeWeekdays.contains(day) {
+                                Button {
+                                    vm.toggleActiveWeekday(day)
+                                } label: {
+                                    Text(vm.dayLabel(for: day))
+                                        .font(.caption.weight(.bold))
+                                        .frame(minWidth: 44)
+                                }
+                                .buttonStyle(.borderedProminent)
+                            } else {
+                                Button {
+                                    vm.toggleActiveWeekday(day)
+                                } label: {
+                                    Text(vm.dayLabel(for: day))
+                                        .font(.caption.weight(.bold))
+                                        .frame(minWidth: 44)
+                                }
+                                .buttonStyle(.bordered)
+                            }
+                        }
+                    }
+                    Text(vm.activeWeekdaySummary)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private var weeklySlotsCard: some View {
+        EvaluationGlassCard {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    EvaluationSectionTitle(
+                        eyebrow: "Horario fijo",
+                        title: "Franjas semanales del docente",
+                        subtitle: "Cada franja alimenta el tablero semanal y sirve de base para el cómputo de sesiones lectivas por evaluación."
+                    )
+                    Spacer()
+                    Button {
+                        isScheduleImporterPresented = true
+                    } label: {
+                        Label("Importar horario", systemImage: "square.and.arrow.down")
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+
+                HStack(spacing: 12) {
+                    Picker(
+                        "Grupo",
+                        selection: Binding(
+                            get: { vm.scheduleFormGroupId ?? -1 },
+                            set: { vm.scheduleFormGroupId = $0 > 0 ? $0 : nil }
+                        )
+                    ) {
+                        ForEach(vm.groups, id: \.id) { group in
+                            Text(group.name).tag(group.id as Int64?)
+                        }
+                    }
+                    .pickerStyle(.menu)
+
+                    Picker("Día", selection: $vm.scheduleFormDay) {
+                        ForEach([1, 2, 3, 4, 5, 6, 7], id: \.self) { day in
+                            Text(vm.dayLabel(for: day)).tag(day)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+
+                HStack(spacing: 12) {
+                    TextField("Materia o bloque", text: $vm.scheduleFormSubject)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                    TextField("Unidad de referencia", text: $vm.scheduleFormUnit)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                }
+
+                Text("Define una franja tal y como ocurre en el centro. Si eliges una hora distinta a las franjas clásicas, el planner la mostrará igualmente en su hueco real.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                HStack(alignment: .bottom, spacing: 12) {
+                    timePickerField("Inicio", selection: $vm.scheduleFormStartTimeValue)
+                    timePickerField("Fin", selection: $vm.scheduleFormEndTimeValue)
+                    Button("Añadir franja") {
+                        Task { await vm.addScheduleSlot() }
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+
+                if vm.teacherScheduleSlots.isEmpty {
+                    Text("Todavía no hay franjas definidas.")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                } else {
+                    if vm.usingLegacyWeeklySlots {
+                        Text("Mostrando franjas heredadas del horario original de KMP Desktop. Puedes seguir viéndolas aquí aunque todavía no se hayan guardado en la agenda persistente.")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    ForEach(vm.effectiveScheduleSlots, id: \.id) { slot in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("\(vm.dayLabel(for: Int(slot.dayOfWeek))) · \(slot.startTime)-\(slot.endTime)")
+                                    .font(.body.weight(.semibold))
+                                Text(slotSubtitle(slot))
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if !vm.usingLegacyWeeklySlots {
+                                Button(role: .destructive) {
+                                    pendingScheduleSlotDeletionId = slot.id
+                                } label: {
+                                    Image(systemName: "trash")
+                                }
+                            }
+                        }
+                        .padding(.vertical, 6)
+                    }
+                }
+            }
+        }
+    }
+
+    private var visualIdentityCard: some View {
+        EvaluationGlassCard {
+            VStack(alignment: .leading, spacing: 16) {
+                EvaluationSectionTitle(
+                    eyebrow: "Identidad visual",
+                    title: "Color por curso",
+                    subtitle: "Cada curso puede tener un color fijo para reconocerlo de un vistazo en planner."
+                )
+
+                Text("Elige un color estable para cada curso. El color identificará el curso en las franjas y no sustituirá al estado de la sesión.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                ForEach(vm.groups, id: \.id) { group in
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 10) {
+                            Circle()
+                                .fill(Color(hex: vm.colorHex(for: group.id)))
+                                .frame(width: 12, height: 12)
+                            Text(group.name)
+                                .font(.subheadline.weight(.semibold))
+                        }
+
+                        HStack(spacing: 10) {
+                            ForEach(EvaluationDesign.plannerCoursePalette, id: \.self) { hex in
+                                Button {
+                                    vm.saveColor(hex, for: group.id)
+                                } label: {
+                                    Circle()
+                                        .fill(Color(hex: hex))
+                                        .frame(width: 28, height: 28)
+                                        .overlay(
+                                            Circle()
+                                                .stroke(
+                                                    vm.colorHex(for: group.id) == hex ? Color.primary : Color.clear,
+                                                    lineWidth: 3
+                                                )
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+        }
+    }
+
+    private var nonTeachingCard: some View {
+        EvaluationGlassCard {
+            VStack(alignment: .leading, spacing: 16) {
+                EvaluationSectionTitle(
+                    eyebrow: "Calendario",
+                    title: "No lectivos detectados",
+                    subtitle: "Se leen del calendario y afectan al contador de sesiones previstas si contienen etiquetas como festivo, no lectivo, vacaciones o puente."
+                )
+
+                if vm.nonTeachingEvents.isEmpty {
+                    Text("No hay eventos no lectivos detectados para el contexto actual.")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(vm.nonTeachingEvents, id: \.id) { event in
+                        HStack(alignment: .top, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(event.title)
+                                    .font(.body.weight(.semibold))
+                                Text(nonTeachingSubtitle(event))
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if let classId = event.classId?.int64Value,
+                               let group = vm.groups.first(where: { $0.id == classId }) {
+                                Text(group.name)
+                                    .font(.caption.weight(.bold))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(Capsule(style: .continuous).fill(EvaluationDesign.surfaceSoft))
+                            }
+                        }
+                        .padding(.vertical, 6)
+                    }
+                }
+            }
+        }
+    }
+
+    private var evaluationPeriodsCard: some View {
+        EvaluationGlassCard {
+            VStack(alignment: .leading, spacing: 16) {
+                EvaluationSectionTitle(
+                    eyebrow: "Evaluaciones",
+                    title: "Periodos y cómputo lectivo",
+                    subtitle: "El contador cruza agenda fija, curso, festivos detectados y sesiones ya creadas en planner."
+                )
+
+                VStack(alignment: .leading, spacing: 12) {
+                    TextField("Nombre de la evaluación", text: $vm.evaluationFormName)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                    HStack(spacing: 12) {
+                        datePickerField("Inicio", selection: $vm.evaluationFormStartDateValue)
+                        datePickerField("Fin", selection: $vm.evaluationFormEndDateValue)
+                        Button("Añadir periodo") {
+                            Task { await vm.addEvaluationPeriod() }
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                }
+
+                Text("Cada evaluación necesita un rango claro. El sistema lo cruzará con las franjas semanales y los días no lectivos para calcular cuántas sesiones tocan.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                if vm.evaluationPeriods.isEmpty {
+                    Text("Aún no hay periodos evaluativos configurados.")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(vm.evaluationPeriods.sorted(by: { ($0.sortOrder, $0.startDateIso) < ($1.sortOrder, $1.startDateIso) }), id: \.id) { period in
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(period.name)
+                                        .font(.headline)
+                                    Text("\(period.startDateIso) · \(period.endDateIso)")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Button(role: .destructive) {
+                                    Task { await vm.deleteEvaluationPeriod(period.id) }
+                                } label: {
+                                    Image(systemName: "trash")
+                                }
+                            }
+
+                            let rows = vm.filteredForecastRows.filter { $0.periodId == period.id }
+                            if rows.isEmpty {
+                                Text("Sin sesiones previstas para este periodo con el contexto actual.")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                                    ScheduleForecastRowView(row: row)
+                                }
+                            }
+                        }
+                        .padding(14)
+                        .background(
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .fill(EvaluationDesign.surfaceSoft)
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private func datePickerField(_ label: String, selection: Binding<Date>) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
+            DatePicker(label, selection: selection, displayedComponents: .date)
+                .labelsHidden()
+                .datePickerStyle(.compact)
+        }
+    }
+
+    private func timePickerField(_ label: String, selection: Binding<Date>) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
+            DatePicker(label, selection: selection, displayedComponents: .hourAndMinute)
+                .labelsHidden()
+                .datePickerStyle(.compact)
+        }
+    }
+
+    private func slotSubtitle(_ slot: TeacherScheduleSlot) -> String {
+        let slotLines: [String?] = [
+            vm.groups.first(where: { $0.id == slot.schoolClassId })?.name ?? "Grupo \(slot.schoolClassId)",
+            slot.subjectLabel,
+            slot.unitLabel
+        ]
+        return slotLines
+            .compactMap { value in
+                guard let raw = value?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
+                return raw
+            }
+            .joined(separator: " · ")
+    }
+
     private func nonTeachingSubtitle(_ event: CalendarEvent) -> String {
         let start = Date(timeIntervalSince1970: TimeInterval(event.startAt.toEpochMilliseconds()) / 1000)
         let end = Date(timeIntervalSince1970: TimeInterval(event.endAt.toEpochMilliseconds()) / 1000)

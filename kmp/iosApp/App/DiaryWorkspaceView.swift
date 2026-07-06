@@ -83,89 +83,7 @@ struct DiaryWorkspaceView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            VStack(spacing: 16) {
-                diaryLocalToolbar
-
-                ScrollView {
-                    LazyVStack(spacing: 12) {
-                        ForEach(diarySessions, id: \.id) { session in
-                            let sessionSummary = vm.summary(for: session.id)
-                            let isSessionSelected = session.id == selectedSession?.id
-                            let sessionTimeLabel = vm.timeLabel(for: Int(session.period))
-                            DiarySessionRailCard(
-                                session: session,
-                                summary: sessionSummary,
-                                isSelected: isSessionSelected,
-                                timeLabel: sessionTimeLabel,
-                                onTap: {
-                                    AppleInteractionFeedback.play(.selection)
-                                    Task { await vm.select(session: session) }
-                                },
-                                onOpenAttendance: {
-                                    onOpenModule(.attendance, session.groupId, nil)
-                                },
-                                onOpenNotebook: {
-                                    onOpenModule(.notebook, session.groupId, nil)
-                                }
-                            )
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 20)
-                }
-            }
-            .frame(minWidth: 320, maxWidth: 360, maxHeight: .infinity, alignment: .top)
-            .background(appMutedCardBackground(for: colorScheme).opacity(0.28))
-
-            Divider().opacity(0.2)
-
-            Group {
-                if selectedSession != nil {
-                    PlannerJournalDetailPane(vm: vm, efVisibility: .contextual)
-                } else {
-                    VStack(spacing: 18) {
-                        WorkspaceEmptyState(
-                            title: "Selecciona una sesión",
-                            subtitle: "La sesión activa ocupará este espacio con edición inline, métricas y seguimiento sin saltar a otra pantalla."
-                        )
-                        HStack(spacing: 12) {
-                            Button("Ver planner") {
-                                onOpenPlanner(currentNavigationContext)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            Button("Ir a asistencia") {
-                                onOpenModule(.attendance, selectedClassId, nil)
-                            }
-                            .buttonStyle(.bordered)
-                        }
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(appPageBackground(for: colorScheme))
-
-            if showingInspector, let session = selectedSession {
-                Divider().opacity(0.2)
-                DiaryInspectorPanel(
-                    session: session,
-                    summary: selectedSummary,
-                    timeLabel: vm.timeLabel(for: Int(session.period)),
-                    onOpenAttendance: {
-                        onOpenModule(.attendance, session.groupId, nil)
-                    },
-                    onOpenNotebook: {
-                        onOpenModule(.notebook, session.groupId, nil)
-                    },
-                    onOpenStudents: {
-                        onOpenModule(.students, session.groupId, nil)
-                    }
-                )
-                .frame(width: 340)
-                .background(appMutedCardBackground(for: colorScheme).opacity(0.22))
-                .transition(uiFeatureFlags.inspectorTransition)
-            }
-        }
+        diaryWorkspaceContent
         .task {
             await vm.bind(bridge: bridge)
             await vm.applyExternalContext(
@@ -221,6 +139,134 @@ struct DiaryWorkspaceView: View {
             layoutState.clearDiaryToolbar()
         }
         .animation(uiFeatureFlags.interactionAnimation, value: showingInspector)
+    }
+
+    @ViewBuilder
+    private var diaryWorkspaceContent: some View {
+        ViewThatFits(in: .horizontal) {
+            regularDiaryWorkspace
+            compactDiaryWorkspace
+        }
+    }
+
+    private var regularDiaryWorkspace: some View {
+        HStack(spacing: 0) {
+            diarySessionRailPane
+                .frame(minWidth: 320, maxWidth: 360, maxHeight: .infinity, alignment: .top)
+
+            Divider().opacity(0.2)
+
+            diaryDetailPane
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if showingInspector, let session = selectedSession {
+                Divider().opacity(0.2)
+                diaryInspectorPane(for: session)
+                    .frame(width: 340)
+                    .transition(uiFeatureFlags.inspectorTransition)
+            }
+        }
+        .frame(minWidth: showingInspector && selectedSession != nil ? 1040 : 760)
+    }
+
+    private var compactDiaryWorkspace: some View {
+        VStack(spacing: 16) {
+            diarySessionRailPane
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 360, maxHeight: 520)
+
+            diaryDetailPane
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if showingInspector, let session = selectedSession {
+                diaryInspectorPane(for: session)
+                    .frame(maxWidth: .infinity)
+                    .transition(uiFeatureFlags.inspectorTransition)
+            }
+        }
+        .padding(16)
+        .background(appPageBackground(for: colorScheme))
+    }
+
+    private var diarySessionRailPane: some View {
+        VStack(spacing: 16) {
+            diaryLocalToolbar
+
+            ScrollView {
+                LazyVStack(spacing: 12) {
+                    ForEach(diarySessions, id: \.id) { session in
+                        let sessionSummary = vm.summary(for: session.id)
+                        let isSessionSelected = session.id == selectedSession?.id
+                        let sessionTimeLabel = vm.timeLabel(for: Int(session.period))
+                        DiarySessionRailCard(
+                            session: session,
+                            summary: sessionSummary,
+                            isSelected: isSessionSelected,
+                            timeLabel: sessionTimeLabel,
+                            onTap: {
+                                AppleInteractionFeedback.play(.selection)
+                                Task { await vm.select(session: session) }
+                            },
+                            onOpenAttendance: {
+                                onOpenModule(.attendance, session.groupId, nil)
+                            },
+                            onOpenNotebook: {
+                                onOpenModule(.notebook, session.groupId, nil)
+                            }
+                        )
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 24)
+            }
+        }
+        .background(appMutedCardBackground(for: colorScheme).opacity(0.28))
+    }
+
+    @ViewBuilder
+    private var diaryDetailPane: some View {
+        Group {
+            if selectedSession != nil {
+                PlannerJournalDetailPane(vm: vm, efVisibility: .contextual)
+            } else {
+                VStack(spacing: 24) {
+                    WorkspaceEmptyState(
+                        title: "Selecciona una sesión",
+                        subtitle: "La sesión activa ocupará este espacio con edición inline, métricas y seguimiento sin saltar a otra pantalla."
+                    )
+                    HStack(spacing: 16) {
+                        Button("Ver planner") {
+                            onOpenPlanner(currentNavigationContext)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        Button("Ir a asistencia") {
+                            onOpenModule(.attendance, selectedClassId, nil)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(appPageBackground(for: colorScheme))
+    }
+
+    private func diaryInspectorPane(for session: PlanningSession) -> some View {
+        DiaryInspectorPanel(
+            session: session,
+            summary: selectedSummary,
+            timeLabel: vm.timeLabel(for: Int(session.period)),
+            onOpenAttendance: {
+                onOpenModule(.attendance, session.groupId, nil)
+            },
+            onOpenNotebook: {
+                onOpenModule(.notebook, session.groupId, nil)
+            },
+            onOpenStudents: {
+                onOpenModule(.students, session.groupId, nil)
+            }
+        )
+        .background(appMutedCardBackground(for: colorScheme).opacity(0.22))
     }
 
     func weekdayLabel(_ dayOfWeek: Int32) -> String {

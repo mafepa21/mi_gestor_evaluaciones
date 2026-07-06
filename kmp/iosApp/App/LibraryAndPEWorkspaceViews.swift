@@ -45,136 +45,23 @@ struct LibraryWorkspaceView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 0) {
+                librarySidebar
+                    .frame(minWidth: 336, idealWidth: 360, maxWidth: 384)
+
+                Color.clear.frame(width: 8)
+
+                libraryDetail
+            }
+
             VStack(spacing: 0) {
-                VStack(spacing: 12) {
-                    HStack(spacing: 10) {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundStyle(.secondary)
-                        TextField("Buscar plantilla…", text: $searchText)
-                            .textFieldStyle(.plain)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-
-                    HStack(spacing: 10) {
-                        Picker("Tipo", selection: $selectedKindFilter) {
-                            ForEach(availableKinds, id: \.self) { kind in
-                                Text(kind).tag(kind)
-                            }
-                        }
-                        .pickerStyle(.menu)
-
-                        Spacer()
-                    }
-
-                    HStack(spacing: 10) {
-                        WorkspaceCompactStat(title: "Activos", value: "\(templateMetrics.total)", tint: .blue)
-                        WorkspaceCompactStat(title: "Tipos", value: "\(templateMetrics.kinds)", tint: .orange)
-                        WorkspaceCompactStat(title: "Versiones", value: "\(templateMetrics.versions)", tint: .green)
-                    }
-                }
-                .padding(16)
-
-                List {
-                    Section("Por asignatura") {
-                        ForEach(subjectTemplates) { template in
-                            VStack(alignment: .leading, spacing: 4) {
-                                Label(template.title, systemImage: template.systemImage)
-                                    .font(.headline)
-                                Text(template.subtitle)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(.vertical, 4)
-                        }
-                    }
-
-                    Section("Plantillas") {
-                        ForEach(filteredTemplates, id: \.id) { template in
-                            Button {
-                                selectedTemplateId = template.id
-                                Task { await reloadVersions(templateId: template.id) }
-                            } label: {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(template.name).font(.headline)
-                                    Text(templateKindLabel(template.kind)).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-                .listStyle(.plain)
+                librarySidebar
+                    .frame(maxHeight: 440)
+                libraryDetail
             }
-            .frame(minWidth: 320, maxWidth: 360)
-
-            Divider().opacity(0.2)
-
-            Group {
-                if let selectedTemplate {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 20) {
-                            WorkspaceInspectorHero(title: selectedTemplate.name, subtitle: templateKindLabel(selectedTemplate.kind))
-                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 16)], spacing: 16) {
-                                WorkspaceMetricCard(title: "Versiones", value: "\(versions.count)", systemImage: "square.stack.3d.up.fill")
-                                WorkspaceMetricCard(
-                                    title: "Última versión",
-                                    value: selectedTemplateVersions.first.map { "v\($0.versionNumber)" } ?? "Sin histórico",
-                                    systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90"
-                                )
-                                WorkspaceMetricCard(
-                                    title: "Ámbito",
-                                    value: selectedClassId == nil ? "Global" : "Clase activa",
-                                    systemImage: "rectangle.3.group"
-                                )
-                            }
-
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text("Uso recomendado")
-                                    .font(.headline)
-                                WorkspaceDetailBlock(title: "Tipo", content: templateUsageDescription(selectedTemplate.kind))
-                                WorkspaceDetailBlock(title: "Clase activa", content: selectedClassId == nil ? "La plantilla se muestra sin una clase concreta seleccionada." : "Puedes reutilizar esta configuración desde el contexto actual del grupo.")
-                            }
-
-                            HStack(spacing: 12) {
-                                Button(templatePrimaryActionTitle(selectedTemplate.kind)) {
-                                    onOpenModule(templatePrimaryModule(selectedTemplate.kind), selectedClassId, nil)
-                                }
-                                .buttonStyle(.borderedProminent)
-
-                                Button("Abrir biblioteca relacionada") {
-                                    onOpenModule(.library, selectedClassId, nil)
-                                }
-                                .buttonStyle(.bordered)
-                            }
-
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text("Histórico")
-                                    .font(.headline)
-                                if selectedTemplateVersions.isEmpty {
-                                    Text("Sin versiones registradas todavía.")
-                                        .foregroundStyle(.secondary)
-                                } else {
-                                    ForEach(selectedTemplateVersions, id: \.id) { version in
-                                        templateVersionCard(version)
-                                    }
-                                }
-                            }
-                        }
-                        .padding(24)
-                    }
-                } else {
-                    WorkspaceEmptyState(
-                        title: "Biblioteca de configuración",
-                        subtitle: "Aquí centralizamos plantillas de cuaderno, rúbricas y futuras configuraciones reutilizables."
-                    )
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(appPageBackground(for: colorScheme))
         }
+        .background(appPageBackground(for: colorScheme))
         .task { await reloadTemplates() }
         .appOnChange(of: selectedKindFilter) { _ in
             if selectedTemplateId == nil || !filteredTemplates.contains(where: { $0.id == selectedTemplateId }) {
@@ -186,6 +73,139 @@ struct LibraryWorkspaceView: View {
                 selectedTemplateId = filteredTemplates.first?.id
             }
         }
+    }
+
+    private var librarySidebar: some View {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
+                    TextField("Buscar plantilla…", text: $searchText)
+                        .textFieldStyle(.plain)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                Picker("Tipo", selection: $selectedKindFilter) {
+                    ForEach(availableKinds, id: \.self) { kind in
+                        Text(kind).tag(kind)
+                    }
+                }
+                .pickerStyle(.menu)
+
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                    WorkspaceCompactStat(title: "Activos", value: "\(templateMetrics.total)", tint: .blue)
+                    WorkspaceCompactStat(title: "Tipos", value: "\(templateMetrics.kinds)", tint: .orange)
+                    WorkspaceCompactStat(title: "Versiones", value: "\(templateMetrics.versions)", tint: .green)
+                    WorkspaceCompactStat(title: "Asignaturas", value: "\(subjectTemplates.count)", tint: EvaluationDesign.accent)
+                }
+            }
+            .padding(24)
+
+            List {
+                Section("Por asignatura") {
+                    ForEach(subjectTemplates) { template in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Label(template.title, systemImage: template.systemImage)
+                                .font(.headline)
+                            Text(template.subtitle)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+
+                Section("Plantillas") {
+                    ForEach(filteredTemplates, id: \.id) { template in
+                        Button {
+                            selectedTemplateId = template.id
+                            Task { await reloadVersions(templateId: template.id) }
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(template.name)
+                                    .font(.headline)
+                                    .lineLimit(2)
+                                Text(templateKindLabel(template.kind))
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.vertical, 4)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .listStyle(.plain)
+        }
+        .background(appMutedCardBackground(for: colorScheme))
+    }
+
+    private var libraryDetail: some View {
+        Group {
+            if let selectedTemplate {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 24) {
+                        WorkspaceInspectorHero(title: selectedTemplate.name, subtitle: templateKindLabel(selectedTemplate.kind))
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 16)], spacing: 16) {
+                            WorkspaceMetricCard(title: "Versiones", value: "\(versions.count)", systemImage: "square.stack.3d.up.fill")
+                            WorkspaceMetricCard(
+                                title: "Última versión",
+                                value: selectedTemplateVersions.first.map { "v\($0.versionNumber)" } ?? "Sin histórico",
+                                systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90"
+                            )
+                            WorkspaceMetricCard(
+                                title: "Ámbito",
+                                value: selectedClassId == nil ? "Global" : "Clase activa",
+                                systemImage: "rectangle.3.group"
+                            )
+                        }
+
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("Uso recomendado")
+                                .font(.headline)
+                            WorkspaceDetailBlock(title: "Tipo", content: templateUsageDescription(selectedTemplate.kind))
+                            WorkspaceDetailBlock(title: "Clase activa", content: selectedClassId == nil ? "La plantilla se muestra sin una clase concreta seleccionada." : "Puedes reutilizar esta configuración desde el contexto actual del grupo.")
+                        }
+
+                        HStack(spacing: 12) {
+                            Button(templatePrimaryActionTitle(selectedTemplate.kind)) {
+                                onOpenModule(templatePrimaryModule(selectedTemplate.kind), selectedClassId, nil)
+                            }
+                            .buttonStyle(.borderedProminent)
+
+                            Button("Abrir biblioteca relacionada") {
+                                onOpenModule(.library, selectedClassId, nil)
+                            }
+                            .buttonStyle(.bordered)
+                        }
+
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("Histórico")
+                                .font(.headline)
+                            if selectedTemplateVersions.isEmpty {
+                                Text("Sin versiones registradas todavía.")
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                ForEach(selectedTemplateVersions, id: \.id) { version in
+                                    templateVersionCard(version)
+                                }
+                            }
+                        }
+                    }
+                    .padding(24)
+                }
+            } else {
+                WorkspaceEmptyState(
+                    title: "Biblioteca de configuración",
+                    subtitle: "Aquí centralizamos plantillas de cuaderno, rúbricas y futuras configuraciones reutilizables."
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(appPageBackground(for: colorScheme))
     }
 
     @MainActor
@@ -343,72 +363,122 @@ struct EFIncidentsWorkspaceView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            VStack(spacing: 0) {
-                VStack(spacing: 12) {
-                    HStack(spacing: 10) {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundStyle(.secondary)
-                        TextField("Buscar incidencia, detalle o severidad…", text: $searchText)
-                            .textFieldStyle(.plain)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 0) {
+                incidentListPane
+                    .frame(minWidth: 336, idealWidth: 368, maxWidth: 400)
 
-                    HStack(spacing: 10) {
-                        Picker("Filtro", selection: $selectedFilter) {
-                            ForEach(availableFilters, id: \.self) { filter in
-                                Text(filter).tag(filter)
-                            }
-                        }
-                        .pickerStyle(.menu)
+                Color.clear.frame(width: 8)
 
-                        Spacer()
-
-                        Button {
-                            showingCreateSheet = true
-                        } label: {
-                            Label("Nueva incidencia", systemImage: "plus")
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
-
-                    HStack(spacing: 10) {
-                        WorkspaceCompactStat(title: "Total", value: "\(metrics.total)", tint: .blue)
-                        WorkspaceCompactStat(title: "Críticas", value: "\(metrics.critical)", tint: .pink)
-                        WorkspaceCompactStat(title: "Con alumno", value: "\(metrics.followUp)", tint: .orange)
-                    }
-                }
-                .padding(16)
-
-                List(filteredIncidents, id: \.id) { incident in
-                    Button {
-                        selectedIncidentId = incident.id
-                    } label: {
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Text(incident.title)
-                                    .font(.headline)
-                                Spacer()
-                                Text(incident.severity.capitalized)
-                                    .font(.caption.weight(.bold))
-                                    .foregroundStyle(severityColor(incident.severity))
-                            }
-                            Text("\(incidentCategory(for: incident)) · \(incidentDateLabel(incident))")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-                .listStyle(.plain)
+                incidentDetailPane
             }
-            .frame(minWidth: 320, maxWidth: 380)
 
-            Divider().opacity(0.2)
+            VStack(spacing: 0) {
+                incidentListPane
+                    .frame(maxHeight: 440)
+                incidentDetailPane
+            }
+        }
+        .task { await reload() }
+        .sheet(isPresented: $showingCreateSheet) {
+            CreatePEIncidentSheet(defaultClassId: selectedClassId) { incidentId, category, workflowState, sessionId, note in
+                let entry = PEIncidentMetadata(
+                    id: incidentId,
+                    category: category,
+                    workflowState: workflowState,
+                    sessionId: sessionId,
+                    followUpNote: note
+                )
+                metadata.removeAll { $0.id == incidentId }
+                metadata.append(entry)
+                persistItems(metadata, forKey: peIncidentMetadataStorageKey)
+                Task { await reload() }
+            }
+            .environmentObject(bridge)
+        }
+        .appOnChange(of: selectedClassId) { _ in
+            Task { await reload() }
+        }
+        .appOnChange(of: selectedFilter) { _ in
+            if selectedIncidentId == nil || !filteredIncidents.contains(where: { $0.id == selectedIncidentId }) {
+                selectedIncidentId = filteredIncidents.first?.id
+            }
+        }
+        .appOnChange(of: searchText) { _ in
+            if selectedIncidentId == nil || !filteredIncidents.contains(where: { $0.id == selectedIncidentId }) {
+                selectedIncidentId = filteredIncidents.first?.id
+            }
+        }
+    }
 
-            Group {
+    private var incidentListPane: some View {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
+                    TextField("Buscar incidencia, detalle o severidad…", text: $searchText)
+                        .textFieldStyle(.plain)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                HStack(spacing: 12) {
+                    Picker("Filtro", selection: $selectedFilter) {
+                        ForEach(availableFilters, id: \.self) { filter in
+                            Text(filter).tag(filter)
+                        }
+                    }
+                    .pickerStyle(.menu)
+
+                    Spacer()
+
+                    Button {
+                        showingCreateSheet = true
+                    } label: {
+                        Label("Nueva incidencia", systemImage: "plus")
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                    WorkspaceCompactStat(title: "Total", value: "\(metrics.total)", tint: .blue)
+                    WorkspaceCompactStat(title: "Críticas", value: "\(metrics.critical)", tint: .pink)
+                    WorkspaceCompactStat(title: "Con alumno", value: "\(metrics.followUp)", tint: .orange)
+                    WorkspaceCompactStat(title: "Filtro", value: selectedFilter == "Todas" ? "Todo" : selectedFilter, tint: EvaluationDesign.accent)
+                }
+            }
+            .padding(24)
+
+            List(filteredIncidents, id: \.id) { incident in
+                Button {
+                    selectedIncidentId = incident.id
+                } label: {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text(incident.title)
+                                .font(.headline)
+                            Spacer()
+                            Text(incident.severity.capitalized)
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(severityColor(incident.severity))
+                        }
+                        Text("\(incidentCategory(for: incident)) · \(incidentDateLabel(incident))")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 4)
+                }
+                .buttonStyle(.plain)
+            }
+            .listStyle(.plain)
+        }
+        .background(appMutedCardBackground(for: colorScheme))
+    }
+
+    private var incidentDetailPane: some View {
+        Group {
                 if let incident = selectedIncident {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 18) {
@@ -504,37 +574,6 @@ struct EFIncidentsWorkspaceView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(appPageBackground(for: colorScheme))
-        }
-        .task { await reload() }
-        .sheet(isPresented: $showingCreateSheet) {
-            CreatePEIncidentSheet(defaultClassId: selectedClassId) { incidentId, category, workflowState, sessionId, note in
-                let entry = PEIncidentMetadata(
-                    id: incidentId,
-                    category: category,
-                    workflowState: workflowState,
-                    sessionId: sessionId,
-                    followUpNote: note
-                )
-                metadata.removeAll { $0.id == incidentId }
-                metadata.append(entry)
-                persistItems(metadata, forKey: peIncidentMetadataStorageKey)
-                Task { await reload() }
-            }
-            .environmentObject(bridge)
-        }
-        .appOnChange(of: selectedClassId) { _ in
-            Task { await reload() }
-        }
-        .appOnChange(of: selectedFilter) { _ in
-            if selectedIncidentId == nil || !filteredIncidents.contains(where: { $0.id == selectedIncidentId }) {
-                selectedIncidentId = filteredIncidents.first?.id
-            }
-        }
-        .appOnChange(of: searchText) { _ in
-            if selectedIncidentId == nil || !filteredIncidents.contains(where: { $0.id == selectedIncidentId }) {
-                selectedIncidentId = filteredIncidents.first?.id
-            }
-        }
     }
 
     @MainActor
@@ -676,52 +715,95 @@ struct PESessionsWorkspaceView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            VStack(spacing: 0) {
-                VStack(spacing: 12) {
-                    HStack(spacing: 10) {
-                        WorkspaceCompactStat(title: "Sesiones", value: "\(sessions.count)", tint: .blue)
-                        WorkspaceCompactStat(title: "Con diario", value: "\(sessions.filter { $0.summary != nil }.count)", tint: .green)
-                        WorkspaceCompactStat(title: "Activa", value: activeDurationText, tint: .orange)
-                        Spacer()
-                        Button {
-                            showingCreateSheet = true
-                        } label: {
-                            Label("Nueva sesión EF", systemImage: "plus")
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
-                }
-                .padding(16)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 0) {
+                peSessionListPane
+                    .frame(minWidth: 336, idealWidth: 376, maxWidth: 408)
 
-                List(sessions, id: \.id) { snapshot in
-                    Button {
-                        selectedSessionId = snapshot.id
-                        timerStart = Date()
-                    } label: {
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Text(snapshot.session.teachingUnitName)
-                                    .font(.headline)
-                                Spacer()
-                                Text("P\(snapshot.session.period)")
-                                    .font(.caption.weight(.bold))
-                                    .foregroundStyle(.secondary)
-                            }
-                            Text("\(weekdayLabel(snapshot.session.dayOfWeek)) · \(snapshot.session.groupName)")
-                                .font(.caption.weight(.semibold))
+                Color.clear.frame(width: 8)
+
+                peSessionDetailPane
+            }
+
+            VStack(spacing: 0) {
+                peSessionListPane
+                    .frame(maxHeight: 440)
+                peSessionDetailPane
+            }
+        }
+        .task { await reload() }
+        .sheet(isPresented: $showingCreateSheet) {
+            CreatePESessionSheet(defaultClassId: selectedClassId) {
+                Task { await reload() }
+            }
+            .environmentObject(bridge)
+        }
+        .sheet(isPresented: $showingOperationalSheet) {
+            if let selectedSession {
+                EditPESessionOperationalSheet(snapshot: selectedSession) {
+                    Task { await reload() }
+                }
+                .environmentObject(bridge)
+            }
+        }
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { tick in
+            now = tick
+        }
+        .appOnChange(of: selectedClassId) { _ in
+            Task { await reload() }
+        }
+    }
+
+    private var peSessionListPane: some View {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 16) {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                    WorkspaceCompactStat(title: "Sesiones", value: "\(sessions.count)", tint: .blue)
+                    WorkspaceCompactStat(title: "Con diario", value: "\(sessions.filter { $0.summary != nil }.count)", tint: .green)
+                    WorkspaceCompactStat(title: "Activa", value: activeDurationText, tint: .orange)
+                    WorkspaceCompactStat(title: "Clase", value: selectedClassId == nil ? "Todas" : "Activa", tint: EvaluationDesign.accent)
+                }
+
+                Button {
+                    showingCreateSheet = true
+                } label: {
+                    Label("Nueva sesión EF", systemImage: "plus")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .padding(24)
+
+            List(sessions, id: \.id) { snapshot in
+                Button {
+                    selectedSessionId = snapshot.id
+                    timerStart = Date()
+                } label: {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text(snapshot.session.teachingUnitName)
+                                .font(.headline)
+                                .lineLimit(2)
+                            Spacer()
+                            Text("P\(snapshot.session.period)")
+                                .font(.caption.weight(.bold))
                                 .foregroundStyle(.secondary)
                         }
+                        Text("\(weekdayLabel(snapshot.session.dayOfWeek)) · \(snapshot.session.groupName)")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
                     }
-                    .buttonStyle(.plain)
+                    .padding(.vertical, 4)
                 }
-                .listStyle(.plain)
+                .buttonStyle(.plain)
             }
-            .frame(minWidth: 330, maxWidth: 390)
+            .listStyle(.plain)
+        }
+        .background(appMutedCardBackground(for: colorScheme))
+    }
 
-            Divider().opacity(0.2)
-
-            Group {
+    private var peSessionDetailPane: some View {
+        Group {
                 if let snapshot = selectedSession {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 18) {
@@ -780,28 +862,6 @@ struct PESessionsWorkspaceView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(appPageBackground(for: colorScheme))
-        }
-        .task { await reload() }
-        .sheet(isPresented: $showingCreateSheet) {
-            CreatePESessionSheet(defaultClassId: selectedClassId) {
-                Task { await reload() }
-            }
-            .environmentObject(bridge)
-        }
-        .sheet(isPresented: $showingOperationalSheet) {
-            if let selectedSession {
-                EditPESessionOperationalSheet(snapshot: selectedSession) {
-                    Task { await reload() }
-                }
-                .environmentObject(bridge)
-            }
-        }
-        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { tick in
-            now = tick
-        }
-        .appOnChange(of: selectedClassId) { _ in
-            Task { await reload() }
-        }
     }
 
     @MainActor
@@ -871,45 +931,81 @@ struct PEMaterialWorkspaceView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            VStack(spacing: 0) {
-                VStack(spacing: 12) {
-                    HStack(spacing: 10) {
-                        WorkspaceCompactStat(title: "Registros", value: "\(filteredRecords.count)", tint: .blue)
-                        WorkspaceCompactStat(title: "Dañado", value: "\(filteredRecords.filter { $0.status == .damaged }.count)", tint: .red)
-                        WorkspaceCompactStat(title: "Reponer", value: "\(filteredRecords.filter { $0.status == .replenish }.count)", tint: .orange)
-                        Spacer()
-                        Button {
-                            showingCreateSheet = true
-                        } label: {
-                            Label("Nuevo material", systemImage: "plus")
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
-                }
-                .padding(16)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 0) {
+                materialListPane
+                    .frame(minWidth: 336, idealWidth: 376, maxWidth: 408)
 
-                List(filteredRecords, id: \.id) { record in
-                    Button {
-                        selectedRecordId = record.id
-                    } label: {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(record.itemName)
-                                .font(.headline)
-                            Text("\(record.status.rawValue) · \(record.quantity) uds")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-                .listStyle(.plain)
+                Color.clear.frame(width: 8)
+
+                materialDetailPane
             }
-            .frame(minWidth: 330, maxWidth: 390)
 
-            Divider().opacity(0.2)
+            VStack(spacing: 0) {
+                materialListPane
+                    .frame(maxHeight: 440)
+                materialDetailPane
+            }
+        }
+        .task { await reload() }
+        .sheet(isPresented: $showingCreateSheet) {
+            CreatePEMaterialRecordSheet(defaultClassId: selectedClassId, sessions: sessions) { record in
+                records.removeAll { $0.id == record.id }
+                records.append(record)
+                persistItems(records, forKey: peMaterialStorageKey)
+                selectedRecordId = record.id
+                Task { await reload() }
+            }
+            .environmentObject(bridge)
+        }
+        .appOnChange(of: selectedClassId) { _ in
+            Task { await reload() }
+        }
+    }
 
-            Group {
+    private var materialListPane: some View {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 16) {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                    WorkspaceCompactStat(title: "Registros", value: "\(filteredRecords.count)", tint: .blue)
+                    WorkspaceCompactStat(title: "Dañado", value: "\(filteredRecords.filter { $0.status == .damaged }.count)", tint: .red)
+                    WorkspaceCompactStat(title: "Reponer", value: "\(filteredRecords.filter { $0.status == .replenish }.count)", tint: .orange)
+                    WorkspaceCompactStat(title: "Sesiones", value: "\(sessions.count)", tint: EvaluationDesign.accent)
+                }
+
+                Button {
+                    showingCreateSheet = true
+                } label: {
+                    Label("Nuevo material", systemImage: "plus")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .padding(24)
+
+            List(filteredRecords, id: \.id) { record in
+                Button {
+                    selectedRecordId = record.id
+                } label: {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(record.itemName)
+                            .font(.headline)
+                            .lineLimit(2)
+                        Text("\(record.status.rawValue) · \(record.quantity) uds")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 4)
+                }
+                .buttonStyle(.plain)
+            }
+            .listStyle(.plain)
+        }
+        .background(appMutedCardBackground(for: colorScheme))
+    }
+
+    private var materialDetailPane: some View {
+        Group {
                 if let record = selectedRecord {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 18) {
@@ -959,21 +1055,6 @@ struct PEMaterialWorkspaceView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(appPageBackground(for: colorScheme))
-        }
-        .task { await reload() }
-        .sheet(isPresented: $showingCreateSheet) {
-            CreatePEMaterialRecordSheet(defaultClassId: selectedClassId, sessions: sessions) { record in
-                records.removeAll { $0.id == record.id }
-                records.append(record)
-                persistItems(records, forKey: peMaterialStorageKey)
-                selectedRecordId = record.id
-                Task { await reload() }
-            }
-            .environmentObject(bridge)
-        }
-        .appOnChange(of: selectedClassId) { _ in
-            Task { await reload() }
-        }
     }
 
     @MainActor
@@ -1025,199 +1106,28 @@ struct PETournamentsWorkspaceView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            VStack(spacing: 0) {
-                VStack(spacing: 12) {
-                    HStack(spacing: 10) {
-                        WorkspaceCompactStat(title: "Torneos", value: "\(scopedTournaments.count)", tint: .blue)
-                        WorkspaceCompactStat(title: "Equipos", value: "\(selectedTournament?.teams.count ?? 0)", tint: .orange)
-                        WorkspaceCompactStat(title: "Partidos", value: "\(selectedTournament?.matches.count ?? 0)", tint: .green)
-                    }
-                }
-                .padding(16)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 0) {
+                tournamentListPane
+                    .frame(minWidth: 312, idealWidth: 336, maxWidth: 360)
 
-                List {
-                    Section("Torneos") {
-                        ForEach(scopedTournaments, id: \.id) { tournament in
-                            Button {
-                                selectedTournamentId = tournament.id
-                                selectedMatchId = tournament.matches.first?.id
-                            } label: {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text(tournament.name)
-                                        .font(.headline)
-                                    Text("\(tournament.template.rawValue) · \(tournament.status.rawValue)")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-                .listStyle(.plain)
+                Color.clear.frame(width: 8)
+
+                tournamentMatchesPane
+                    .frame(minWidth: 384, idealWidth: 424, maxWidth: 480)
+
+                Color.clear.frame(width: 8)
+
+                tournamentDetailPane
             }
-            .frame(minWidth: 300, maxWidth: 340)
-
-            Divider().opacity(0.2)
 
             VStack(spacing: 0) {
-                VStack(spacing: 12) {
-                    if let selectedTournament {
-                        HStack {
-                            Text(selectedTournament.template.rawValue)
-                                .font(.headline)
-                            Spacer()
-                            Button("Vista torneo") {
-                                showingBoardScreen = true
-                            }
-                            .buttonStyle(.bordered)
-                            Menu {
-                                ForEach(TournamentStatus.allCases) { status in
-                                    Button(status.rawValue) {
-                                        updateTournament(selectedTournament.id) { current in
-                                            current.status = status
-                                        }
-                                    }
-                                }
-                            } label: {
-                                Label(selectedTournament.status.rawValue, systemImage: "flag.fill")
-                            }
-                        }
-                    }
-                }
-                .padding(16)
-
-                List {
-                    if let selectedTournament {
-                        Section("Partidos") {
-                            ForEach(Array(selectedTournament.matches.enumerated()), id: \.element.id) { index, match in
-                                Button {
-                                    selectedMatchId = match.id
-                                } label: {
-                                    VStack(alignment: .leading, spacing: 8) {
-                                        Text("\(match.phase) · Ronda \(match.round)")
-                                            .font(.caption.weight(.bold))
-                                            .foregroundStyle(.secondary)
-                                        HStack {
-                                            Text(match.homeLabel)
-                                            Spacer()
-                                            Stepper(value: matchBinding(tournamentId: selectedTournament.id, matchIndex: index, home: true), in: 0...99) {
-                                                Text("\(match.homeScore)")
-                                                    .font(.headline.monospacedDigit())
-                                            }
-                                        }
-                                        HStack {
-                                            Text(match.awayLabel)
-                                            Spacer()
-                                            Stepper(value: matchBinding(tournamentId: selectedTournament.id, matchIndex: index, home: false), in: 0...99) {
-                                                Text("\(match.awayScore)")
-                                                    .font(.headline.monospacedDigit())
-                                            }
-                                        }
-                                    }
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                }
-                .listStyle(.plain)
+                tournamentListPane
+                    .frame(maxHeight: 280)
+                tournamentMatchesPane
+                    .frame(maxHeight: 360)
+                tournamentDetailPane
             }
-            .frame(minWidth: 380, maxWidth: 470)
-
-            Divider().opacity(0.2)
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    if let selectedTournament {
-                        WorkspaceInspectorHero(title: selectedTournament.name, subtitle: selectedClassLabel)
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 16)], spacing: 16) {
-                            WorkspaceMetricCard(title: "Plantilla", value: selectedTournament.template.rawValue, systemImage: "square.grid.3x3.fill")
-                            WorkspaceMetricCard(title: "Equipos", value: "\(selectedTournament.teams.count)", systemImage: "person.3.fill")
-                            WorkspaceMetricCard(title: "Partidos", value: "\(selectedTournament.matches.count)", systemImage: "sportscourt.fill")
-                            WorkspaceMetricCard(title: "Estado", value: selectedTournament.status.rawValue, systemImage: "flag.fill")
-                        }
-
-                        if let selectedMatch {
-                            WorkspaceDetailBlock(
-                                title: "Partido seleccionado",
-                                content: "\(selectedMatch.phase) · Ronda \(selectedMatch.round)\n\(selectedMatch.homeLabel) vs \(selectedMatch.awayLabel)\nPista: \(selectedMatch.court.isEmpty ? "Sin asignar" : selectedMatch.court)"
-                            )
-                        }
-
-                        HStack(spacing: 12) {
-                            Button("Abrir progreso del torneo") {
-                                showingBoardScreen = true
-                            }
-                            .buttonStyle(.borderedProminent)
-                            Button("Nuevo torneo") {
-                                showingCreateSheet = true
-                            }
-                            .buttonStyle(.bordered)
-                        }
-
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Clasificación")
-                                .font(.headline)
-                            ForEach(Array(standings.enumerated()), id: \.offset) { index, standing in
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text("#\(index + 1) · \(standing.team.name)")
-                                        .font(.headline)
-                                    Text("\(standing.points) pts · \(standing.scored) a favor · \(standing.conceded) en contra")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(.secondary)
-                                }
-                                .padding(12)
-                                .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            }
-                        }
-
-                        if selectedTournament.template == .groupsAndKnockout {
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text("Clasificación por grupos")
-                                    .font(.headline)
-                                ForEach(groupStandings(for: selectedTournament), id: \.key) { group, rows in
-                                    VStack(alignment: .leading, spacing: 8) {
-                                        Text(group)
-                                            .font(.subheadline.bold())
-                                        ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
-                                            groupStandingRow(index: index, row: row)
-                                        }
-                                    }
-                                    .padding(12)
-                                    .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                }
-                            }
-                        }
-
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Equipos")
-                                .font(.headline)
-                            ForEach(selectedTournament.teams, id: \.id) { team in
-                                WorkspaceDetailBlock(
-                                    title: team.name,
-                                    content: teamSummaryText(team, tournament: selectedTournament)
-                                )
-                            }
-                        }
-                    } else {
-                        VStack(alignment: .leading, spacing: 14) {
-                            WorkspaceEmptyState(
-                                title: "Organiza un torneo EF",
-                                subtitle: "Crea torneos con plantillas Round-robin, Eliminatoria o Fase de grupos + eliminatoria."
-                            )
-                            Button("Nuevo torneo") {
-                                showingCreateSheet = true
-                            }
-                            .buttonStyle(.borderedProminent)
-                        }
-                    }
-                }
-                .padding(24)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(appPageBackground(for: colorScheme))
         }
         .task { await reloadTeams() }
         .sheet(isPresented: $showingCreateSheet) {
@@ -1243,6 +1153,205 @@ struct PETournamentsWorkspaceView: View {
         .appOnChange(of: selectedClassId) { _ in
             Task { await reloadTeams() }
         }
+    }
+
+    private var tournamentListPane: some View {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 16) {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                    WorkspaceCompactStat(title: "Torneos", value: "\(scopedTournaments.count)", tint: .blue)
+                    WorkspaceCompactStat(title: "Equipos", value: "\(selectedTournament?.teams.count ?? 0)", tint: .orange)
+                    WorkspaceCompactStat(title: "Partidos", value: "\(selectedTournament?.matches.count ?? 0)", tint: .green)
+                    WorkspaceCompactStat(title: "Clase", value: selectedClassId == nil ? "Todas" : "Activa", tint: EvaluationDesign.accent)
+                }
+            }
+            .padding(24)
+
+            List {
+                Section("Torneos") {
+                    ForEach(scopedTournaments, id: \.id) { tournament in
+                        Button {
+                            selectedTournamentId = tournament.id
+                            selectedMatchId = tournament.matches.first?.id
+                        } label: {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(tournament.name)
+                                    .font(.headline)
+                                    .lineLimit(2)
+                                Text("\(tournament.template.rawValue) · \(tournament.status.rawValue)")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.vertical, 4)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .listStyle(.plain)
+        }
+        .background(appMutedCardBackground(for: colorScheme))
+    }
+
+    private var tournamentMatchesPane: some View {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 16) {
+                if let selectedTournament {
+                    HStack {
+                        Text(selectedTournament.template.rawValue)
+                            .font(.headline)
+                        Spacer()
+                        Button("Vista torneo") {
+                            showingBoardScreen = true
+                        }
+                        .buttonStyle(.bordered)
+                        Menu {
+                            ForEach(TournamentStatus.allCases) { status in
+                                Button(status.rawValue) {
+                                    updateTournament(selectedTournament.id) { current in
+                                        current.status = status
+                                    }
+                                }
+                            }
+                        } label: {
+                            Label(selectedTournament.status.rawValue, systemImage: "flag.fill")
+                        }
+                    }
+                }
+            }
+            .padding(24)
+
+            List {
+                if let selectedTournament {
+                    Section("Partidos") {
+                        ForEach(Array(selectedTournament.matches.enumerated()), id: \.element.id) { index, match in
+                            Button {
+                                selectedMatchId = match.id
+                            } label: {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("\(match.phase) · Ronda \(match.round)")
+                                        .font(.caption.weight(.bold))
+                                        .foregroundStyle(.secondary)
+                                    HStack {
+                                        Text(match.homeLabel)
+                                        Spacer()
+                                        Stepper(value: matchBinding(tournamentId: selectedTournament.id, matchIndex: index, home: true), in: 0...99) {
+                                            Text("\(match.homeScore)")
+                                                .font(.headline.monospacedDigit())
+                                        }
+                                    }
+                                    HStack {
+                                        Text(match.awayLabel)
+                                        Spacer()
+                                        Stepper(value: matchBinding(tournamentId: selectedTournament.id, matchIndex: index, home: false), in: 0...99) {
+                                            Text("\(match.awayScore)")
+                                                .font(.headline.monospacedDigit())
+                                        }
+                                    }
+                                }
+                                .padding(.vertical, 4)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+            .listStyle(.plain)
+        }
+        .background(appMutedCardBackground(for: colorScheme))
+    }
+
+    private var tournamentDetailPane: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                if let selectedTournament {
+                    WorkspaceInspectorHero(title: selectedTournament.name, subtitle: selectedClassLabel)
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 16)], spacing: 16) {
+                        WorkspaceMetricCard(title: "Plantilla", value: selectedTournament.template.rawValue, systemImage: "square.grid.3x3.fill")
+                        WorkspaceMetricCard(title: "Equipos", value: "\(selectedTournament.teams.count)", systemImage: "person.3.fill")
+                        WorkspaceMetricCard(title: "Partidos", value: "\(selectedTournament.matches.count)", systemImage: "sportscourt.fill")
+                        WorkspaceMetricCard(title: "Estado", value: selectedTournament.status.rawValue, systemImage: "flag.fill")
+                    }
+
+                    if let selectedMatch {
+                        WorkspaceDetailBlock(
+                            title: "Partido seleccionado",
+                            content: "\(selectedMatch.phase) · Ronda \(selectedMatch.round)\n\(selectedMatch.homeLabel) vs \(selectedMatch.awayLabel)\nPista: \(selectedMatch.court.isEmpty ? "Sin asignar" : selectedMatch.court)"
+                        )
+                    }
+
+                    HStack(spacing: 12) {
+                        Button("Abrir progreso del torneo") {
+                            showingBoardScreen = true
+                        }
+                        .buttonStyle(.borderedProminent)
+                        Button("Nuevo torneo") {
+                            showingCreateSheet = true
+                        }
+                        .buttonStyle(.bordered)
+                    }
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Clasificación")
+                            .font(.headline)
+                        ForEach(Array(standings.enumerated()), id: \.offset) { index, standing in
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("#\(index + 1) · \(standing.team.name)")
+                                    .font(.headline)
+                                Text("\(standing.points) pts · \(standing.scored) a favor · \(standing.conceded) en contra")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(12)
+                            .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+                    }
+
+                    if selectedTournament.template == .groupsAndKnockout {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Clasificación por grupos")
+                                .font(.headline)
+                            ForEach(groupStandings(for: selectedTournament), id: \.key) { group, rows in
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text(group)
+                                        .font(.subheadline.bold())
+                                    ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                                        groupStandingRow(index: index, row: row)
+                                    }
+                                }
+                                .padding(12)
+                                .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Equipos")
+                            .font(.headline)
+                        ForEach(selectedTournament.teams, id: \.id) { team in
+                            WorkspaceDetailBlock(
+                                title: team.name,
+                                content: teamSummaryText(team, tournament: selectedTournament)
+                            )
+                        }
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: 14) {
+                        WorkspaceEmptyState(
+                            title: "Organiza un torneo EF",
+                            subtitle: "Crea torneos con plantillas Round-robin, Eliminatoria o Fase de grupos + eliminatoria."
+                        )
+                        Button("Nuevo torneo") {
+                            showingCreateSheet = true
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                }
+            }
+            .padding(24)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(appPageBackground(for: colorScheme))
     }
 
     var selectedClassLabel: String {

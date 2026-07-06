@@ -65,6 +65,13 @@ class LocalSyncServerTest {
     }
 
     @Test
+    fun localChangesEndpointGateOnlyAllowsLoopbackAddresses() {
+        assertTrue(isLoopbackSyncRequest(InetAddress.getByName("127.0.0.1")))
+        assertTrue(isLoopbackSyncRequest(InetAddress.getByName("::1")))
+        assertEquals(false, isLoopbackSyncRequest(InetAddress.getByName("192.168.1.10")))
+    }
+
+    @Test
     fun lanAddressSelectionPrefersPrimaryAppleEthernetInterface() {
         val vpn = InetAddress.getByName("10.8.0.2")
         val en1 = InetAddress.getByName("192.168.1.12")

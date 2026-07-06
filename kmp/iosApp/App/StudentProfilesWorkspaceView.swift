@@ -64,6 +64,38 @@ struct StudentProfilesWorkspaceView: View {
     // MARK: - Body
 
     var body: some View {
+        studentWorkspaceContent
+            .task {
+                await bridge.ensureClassesLoaded()
+                await bridge.selectStudentsClass(classId: selectedClassId)
+                if selectedStudentId == nil {
+                    selectedStudentId = studentsBridgeStore.studentsInClass.first?.id ?? studentsBridgeStore.allStudents.first?.id
+                }
+                await reloadProfile()
+            }
+            .appOnChange(of: selectedClassId) { _ in
+                Task {
+                    await bridge.selectStudentsClass(classId: selectedClassId)
+                    if selectedStudentId == nil {
+                        selectedStudentId = studentsBridgeStore.studentsInClass.first?.id
+                    }
+                    await reloadProfile()
+                }
+            }
+            .appOnChange(of: selectedStudentId) { _ in
+                Task { await reloadProfile() }
+            }
+    }
+
+    @ViewBuilder
+    private var studentWorkspaceContent: some View {
+        ViewThatFits(in: .horizontal) {
+            regularStudentWorkspace
+            compactStudentWorkspace
+        }
+    }
+
+    private var regularStudentWorkspace: some View {
         HStack(spacing: 0) {
             leftColumn
                 .frame(minWidth: 290, maxWidth: 330)
@@ -73,26 +105,20 @@ struct StudentProfilesWorkspaceView: View {
             rightColumn
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .task {
-            await bridge.ensureClassesLoaded()
-            await bridge.selectStudentsClass(classId: selectedClassId)
-            if selectedStudentId == nil {
-                selectedStudentId = studentsBridgeStore.studentsInClass.first?.id ?? studentsBridgeStore.allStudents.first?.id
-            }
-            await reloadProfile()
+        .frame(minWidth: 760)
+    }
+
+    private var compactStudentWorkspace: some View {
+        VStack(spacing: 16) {
+            leftColumn
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 360, maxHeight: 520)
+
+            rightColumn
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .appOnChange(of: selectedClassId) { _ in
-            Task {
-                await bridge.selectStudentsClass(classId: selectedClassId)
-                if selectedStudentId == nil {
-                    selectedStudentId = studentsBridgeStore.studentsInClass.first?.id
-                }
-                await reloadProfile()
-            }
-        }
-        .appOnChange(of: selectedStudentId) { _ in
-            Task { await reloadProfile() }
-        }
+        .padding(16)
+        .background(appPageBackground(for: colorScheme))
     }
 
     // MARK: - Left Column

@@ -62,6 +62,27 @@ class SqlDelightSyncAdapter(
 
     override suspend fun collectLocalChanges(sinceEpochMs: Long): List<SyncChange> {
         val changes = mutableListOf<SyncChange>()
+        container.academicYearsRepository.listAcademicYears().forEach { year ->
+            val updatedAt = year.trace.updatedAt.toEpochMilliseconds()
+            if (sinceEpochMs == 0L || updatedAt > sinceEpochMs) {
+                changes += SyncChange(
+                    entity = "academic_year",
+                    id = year.id.toString(),
+                    updatedAtEpochMs = updatedAt,
+                    deviceId = year.trace.deviceId ?: localDeviceId,
+                    payload = buildJsonObject {
+                        put("id", JsonPrimitive(year.id))
+                        put("centerId", JsonPrimitive(year.centerId))
+                        put("name", JsonPrimitive(year.name))
+                        put("startEpochMs", JsonPrimitive(year.startAt.toEpochMilliseconds()))
+                        put("endEpochMs", JsonPrimitive(year.endAt.toEpochMilliseconds()))
+                        put("status", JsonPrimitive(year.status.name))
+                        put("isActive", JsonPrimitive(year.isActive))
+                        put("archivedAtEpochMs", year.archivedAt?.toEpochMilliseconds()?.let(::JsonPrimitive) ?: JsonPrimitive(0L))
+                    }.toString(),
+                )
+            }
+        }
         val classes = container.classesRepository.listClasses()
 
         // ── Entidades vinculadas a clase ──────────────────────────────────────
@@ -1039,6 +1060,30 @@ class SqlDelightSyncAdapter(
 
             runCatching {
                 when (change.entity) {
+                    "academic_year" -> {
+                        val id = payload.long("id") ?: return@forEach
+                        val centerId = payload.long("centerId") ?: 1L
+                        val name = payload.string("name") ?: return@forEach
+                        val startEpochMs = payload.long("startEpochMs") ?: return@forEach
+                        val endEpochMs = payload.long("endEpochMs") ?: return@forEach
+                        val status = payload.string("status") ?: "ACTIVE"
+                        val isActive = payload.bool("isActive") ?: false
+                        container.academicYearsRepository.upsertAcademicYear(
+                            id = id,
+                            centerId = centerId,
+                            name = name,
+                            startEpochMs = startEpochMs,
+                            endEpochMs = endEpochMs,
+                            status = status,
+                            isActive = isActive,
+                            archivedAtEpochMs = payload.long("archivedAtEpochMs")?.takeIf { it > 0L },
+                            updatedAtEpochMs = change.updatedAtEpochMs,
+                            deviceId = change.deviceId,
+                            syncVersion = 1,
+                        )
+                        applied++
+                    }
+
                     "class" -> {
                         val id = payload.long("id")
                         val name = payload.string("name") ?: return@forEach
@@ -1706,6 +1751,11 @@ class SqlDelightSyncAdapter(
     private suspend fun applyDelete(change: SyncChange): Boolean {
         val payload = runCatching { json.parseToJsonElement(change.payload).jsonObject }.getOrNull() ?: return false
         return when (change.entity) {
+            "academic_year" -> {
+                payload.long("id")?.let {
+                    runCatching { container.academicYearsRepository.deleteArchivedAcademicYear(it) }.isSuccess
+                } ?: false
+            }
             "student_deleted", "student" -> {
                 payload.long("id")?.let { container.studentsRepository.deleteStudent(it); true } ?: false
             }

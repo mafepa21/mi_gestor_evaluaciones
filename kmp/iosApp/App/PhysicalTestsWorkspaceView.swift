@@ -806,47 +806,73 @@ struct PhysicalTestsWorkspaceView: View {
     }
 
     private var captureDashboard: some View {
+        ViewThatFits(in: .horizontal) {
+            regularCaptureDashboard
+            compactCaptureDashboard
+        }
+    }
+
+    private var regularCaptureDashboard: some View {
         HStack(spacing: 0) {
             testsList
                 .frame(minWidth: 320, maxWidth: 380)
 
             Divider()
 
-            if let selectedTest {
-                VStack(alignment: .leading, spacing: 18) {
-                    Text(selectedTest.evaluation.name)
-                        .font(.system(size: 30, weight: .black, design: .rounded))
+            captureDetailPane
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .frame(minWidth: 760)
+    }
 
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 14)], spacing: 14) {
-                        PhysicalMetricCard(title: "Completado", value: "\(selectedTest.recordedCount)/\(selectedTest.results.count)", systemImage: "checkmark.circle.fill")
-                        PhysicalMetricCard(title: "Media grupo", value: PhysicalTestsFormatting.decimal(selectedTest.average), systemImage: "chart.line.uptrend.xyaxis")
-                        PhysicalMetricCard(title: "Mejor marca", value: selectedTest.best.map { PhysicalTestsFormatting.decimal($0) } ?? "-", systemImage: "trophy.fill")
-                    }
+    private var compactCaptureDashboard: some View {
+        VStack(spacing: 16) {
+            testsList
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 320, maxHeight: 480)
 
-                    Button {
-                        showingCapture = true
-                    } label: {
-                        Label("Abrir captura en pista", systemImage: "figure.run.circle.fill")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .disabled(selectedClassId == nil || activeAssignment == nil)
+            captureDetailPane
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .padding(16)
+    }
 
-                    searchField
-                    resultsList
+    @ViewBuilder
+    private var captureDetailPane: some View {
+        if let selectedTest {
+            VStack(alignment: .leading, spacing: 24) {
+                Text(selectedTest.evaluation.name)
+                    .font(.system(size: 30, weight: .black, design: .rounded))
 
-                    Spacer(minLength: 0)
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 16)], spacing: 16) {
+                    PhysicalMetricCard(title: "Completado", value: "\(selectedTest.recordedCount)/\(selectedTest.results.count)", systemImage: "checkmark.circle.fill")
+                    PhysicalMetricCard(title: "Media grupo", value: PhysicalTestsFormatting.decimal(selectedTest.average), systemImage: "chart.line.uptrend.xyaxis")
+                    PhysicalMetricCard(title: "Mejor marca", value: selectedTest.best.map { PhysicalTestsFormatting.decimal($0) } ?? "-", systemImage: "trophy.fill")
                 }
-                .padding(20)
-            } else {
-                PhysicalEmptyState(
-                    title: "Sin prueba seleccionada",
-                    systemImage: "stopwatch",
-                    subtitle: "Crea o selecciona una prueba física para capturar marcas."
-                )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                Button {
+                    showingCapture = true
+                } label: {
+                    Label("Abrir captura en pista", systemImage: "figure.run.circle.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .disabled(selectedClassId == nil || activeAssignment == nil)
+
+                searchField
+                resultsList
+
+                Spacer(minLength: 0)
             }
+            .padding(24)
+        } else {
+            PhysicalEmptyState(
+                title: "Sin prueba seleccionada",
+                systemImage: "stopwatch",
+                subtitle: "Crea o selecciona una prueba física para capturar marcas."
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
@@ -1954,36 +1980,69 @@ private struct PhysicalTestCreationSheet: View {
         templates.first(where: { $0.id == selectedTemplateId })
     }
 
-    var body: some View {
-        NavigationStack {
-            Form {
-                Picker("Plantilla", selection: $selectedTemplateId) {
-                    ForEach(templates) { template in
-                        Text(template.name).tag(template.id)
-                    }
-                }
-                .appOnChange(of: selectedTemplateId) { _ in syncTemplate() }
+    private var canSave: Bool {
+        defaultClassId != nil &&
+        selectedTemplate != nil &&
+        Double(weight.replacingOccurrences(of: ",", with: ".")) != nil &&
+        !code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
-                TextField("Código", text: $code)
-                TextField("Nombre", text: $name)
-                TextField("Peso", text: $weight)
-                    .appKeyboardType(.decimalPad)
-                TextField("Protocolo", text: $description, axis: .vertical)
-            }
-            .navigationTitle("Nueva prueba física")
-            .onAppear(perform: syncTemplate)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancelar") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Guardar") {
-                        Task { await save() }
+    var body: some View {
+        PhysicalTestCreationScaffold(
+            title: "Nueva prueba física",
+            subtitle: "Crea una medición lista para capturar marcas del grupo actual.",
+            systemImage: "stopwatch",
+            canSave: canSave,
+            onCancel: { dismiss() },
+            onSave: { Task { await save() } }
+        ) {
+            IOSSectionCard(title: "Plantilla", systemImage: "figure.run") {
+                VStack(alignment: .leading, spacing: 14) {
+                    Picker("Plantilla", selection: $selectedTemplateId) {
+                        ForEach(templates) { template in
+                            Text(template.name).tag(template.id)
+                        }
                     }
-                    .fontWeight(.bold)
+                    .pickerStyle(.menu)
+                    .appOnChange(of: selectedTemplateId) { _ in syncTemplate() }
+
+                    if let selectedTemplate {
+                        PhysicalTestTemplateSummary(template: selectedTemplate)
+                    }
                 }
+            }
+
+            IOSSectionCard(title: "Datos evaluables", systemImage: "number.square") {
+                VStack(spacing: 14) {
+                    PhysicalTestSheetTextField(title: "Código", placeholder: "EF_NAVETTE", text: $code)
+                    PhysicalTestSheetTextField(title: "Nombre", placeholder: "Course Navette", text: $name)
+                    PhysicalTestSheetTextField(title: "Peso", placeholder: "1", text: $weight)
+                        .appKeyboardType(.decimalPad)
+                }
+            }
+
+            IOSSectionCard(title: "Protocolo", systemImage: "checklist") {
+                TextField("Protocolo", text: $description, axis: .vertical)
+                    .lineLimit(4...8)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(EvaluationDesign.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(EvaluationDesign.border, lineWidth: 1)
+                    }
+            }
+
+            if defaultClassId == nil {
+                PhysicalTestSheetNotice(
+                    systemImage: "person.3.sequence",
+                    text: "Selecciona una clase antes de crear la prueba física.",
+                    tint: .orange
+                )
             }
         }
+        .onAppear(perform: syncTemplate)
     }
 
     private func syncTemplate() {
@@ -2017,6 +2076,177 @@ private struct PhysicalTestCreationSheet: View {
             dismiss()
         } catch {
             bridge.status = "No se pudo crear la prueba física: \(error.localizedDescription)"
+        }
+    }
+}
+
+private struct PhysicalTestCreationScaffold<Content: View>: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+    let canSave: Bool
+    let onCancel: () -> Void
+    let onSave: () -> Void
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    PhysicalTestCreationHero(title: title, subtitle: subtitle, systemImage: systemImage)
+                    content
+                }
+                .padding(24)
+                .frame(maxWidth: 720, alignment: .topLeading)
+                .frame(maxWidth: .infinity, alignment: .top)
+            }
+            .background(EvaluationDesign.surface.opacity(0.45))
+            .navigationTitle(title)
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancelar", action: onCancel)
+                        .keyboardShortcut(.cancelAction)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Guardar", action: onSave)
+                        .fontWeight(.semibold)
+                        .disabled(!canSave)
+                        .keyboardShortcut(.defaultAction)
+                }
+            }
+        }
+        #if os(macOS)
+        .frame(minWidth: 560, idealWidth: 640, maxWidth: 720, minHeight: 560, idealHeight: 660)
+        #else
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        #endif
+    }
+}
+
+private struct PhysicalTestCreationHero: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 16) {
+            Image(systemName: systemImage)
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(EvaluationDesign.accent)
+                .frame(width: 48, height: 48)
+                .background(EvaluationDesign.accentSoft, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text(title)
+                    .font(.title2.weight(.semibold))
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(EvaluationDesign.border, lineWidth: 1)
+        }
+    }
+}
+
+private struct PhysicalTestTemplateSummary: View {
+    let template: PhysicalTestTemplate
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                pills
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                pills
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var pills: some View {
+        PhysicalTestTemplatePill(title: template.capacity.rawValue, systemImage: "heart.text.square")
+        PhysicalTestTemplatePill(title: "\(template.measurement.rawValue) · \(template.unit)", systemImage: "ruler")
+        PhysicalTestTemplatePill(title: template.resultMode.rawValue, systemImage: "target")
+    }
+}
+
+private struct PhysicalTestTemplatePill: View {
+    let title: String
+    let systemImage: String
+
+    var body: some View {
+        Label(title, systemImage: systemImage)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(EvaluationDesign.surface, in: Capsule(style: .continuous))
+            .overlay {
+                Capsule(style: .continuous)
+                    .stroke(EvaluationDesign.border, lineWidth: 1)
+            }
+    }
+}
+
+private struct PhysicalTestSheetTextField: View {
+    let title: String
+    let placeholder: String
+    @Binding var text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            TextField(placeholder, text: $text)
+                .textFieldStyle(.plain)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(EvaluationDesign.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(EvaluationDesign.border, lineWidth: 1)
+                }
+        }
+    }
+}
+
+private struct PhysicalTestSheetNotice: View {
+    let systemImage: String
+    let text: String
+    let tint: Color
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(tint)
+                .frame(width: 28, height: 28)
+                .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            Text(text)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(EvaluationDesign.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(EvaluationDesign.border, lineWidth: 1)
         }
     }
 }

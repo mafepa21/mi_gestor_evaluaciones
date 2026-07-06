@@ -116,7 +116,7 @@ struct RubricsWorkspaceView: View {
     var body: some View {
         HStack(spacing: 0) {
             VStack(spacing: 0) {
-                VStack(spacing: 16) {
+                VStack(alignment: .leading, spacing: 16) {
                     HStack(spacing: 8) {
                         Image(systemName: "magnifyingglass")
                             .foregroundStyle(.secondary)
@@ -127,39 +127,37 @@ struct RubricsWorkspaceView: View {
                     .padding(.vertical, 16)
                     .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-                    HStack(spacing: 16) {
-                        Picker("Curso", selection: $selectedClassId) {
-                            Text("Todas").tag(Optional<Int64>.none)
-                            ForEach(bridge.classes, id: \.id) { schoolClass in
-                                Text(schoolClass.name).tag(Optional(schoolClass.id))
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                        WorkspaceCompactStat(title: "Rúbricas", value: "\(rubricMetrics.total)", tint: EvaluationDesign.accent)
+                        WorkspaceCompactStat(title: "Vinculadas", value: "\(rubricMetrics.linked)", tint: EvaluationDesign.success)
+                        WorkspaceCompactStat(title: "Criterios", value: String(format: "%.1f", rubricMetrics.avgCriteria), tint: IOSAppStyle.warning)
+                        WorkspaceCompactStat(title: "Situaciones", value: "\(availableTeachingUnits.count)", tint: .purple)
+                    }
+
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 16) {
+                            rubricFilterControls
+
+                            Spacer()
+
+                            Button {
+                                onOpenBuilder()
+                            } label: {
+                                Label("Nueva rúbrica", systemImage: "plus")
                             }
+                            .buttonStyle(.borderedProminent)
                         }
-                        .pickerStyle(.menu)
 
-                        Picker("SA", selection: $selectedTeachingUnitId) {
-                            Text("Todas las SA").tag(Optional<Int64>.none)
-                            ForEach(availableTeachingUnits, id: \.id) { unit in
-                                Text(unit.name).tag(Optional(unit.id))
+                        VStack(alignment: .leading, spacing: 12) {
+                            rubricFilterControls
+
+                            Button {
+                                onOpenBuilder()
+                            } label: {
+                                Label("Nueva rúbrica", systemImage: "plus")
                             }
-                            Text("Sin SA").tag(Optional(Int64.min))
+                            .buttonStyle(.borderedProminent)
                         }
-                        .pickerStyle(.menu)
-
-                        Picker("Filtro", selection: $selectedFilter) {
-                            ForEach(availableFilters, id: \.self) { filter in
-                                Text(filter).tag(filter)
-                            }
-                        }
-                        .pickerStyle(.menu)
-
-                        Spacer()
-
-                        Button {
-                            onOpenBuilder()
-                        } label: {
-                            Label("Nueva rúbrica", systemImage: "plus")
-                        }
-                        .buttonStyle(.borderedProminent)
                     }
                 }
                 .padding(24)
@@ -337,6 +335,34 @@ struct RubricsWorkspaceView: View {
         }
         .appOnChange(of: selectedRubricId) { _ in
             Task { await reloadUsageSummary() }
+        }
+    }
+
+    private var rubricFilterControls: some View {
+        HStack(spacing: 12) {
+            Picker("Curso", selection: $selectedClassId) {
+                Text("Todas").tag(Optional<Int64>.none)
+                ForEach(bridge.classes, id: \.id) { schoolClass in
+                    Text(schoolClass.name).tag(Optional(schoolClass.id))
+                }
+            }
+            .pickerStyle(.menu)
+
+            Picker("SA", selection: $selectedTeachingUnitId) {
+                Text("Todas las SA").tag(Optional<Int64>.none)
+                ForEach(availableTeachingUnits, id: \.id) { unit in
+                    Text(unit.name).tag(Optional(unit.id))
+                }
+                Text("Sin SA").tag(Optional(Int64.min))
+            }
+            .pickerStyle(.menu)
+
+            Picker("Filtro", selection: $selectedFilter) {
+                ForEach(availableFilters, id: \.self) { filter in
+                    Text(filter).tag(filter)
+                }
+            }
+            .pickerStyle(.menu)
         }
     }
 
@@ -708,15 +734,26 @@ struct ReportsWorkspaceView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            sidebar
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 0) {
+                sidebar
 
-            Divider().opacity(0.2)
+                Color.clear.frame(width: 8)
 
-            detail
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(appPageBackground(for: colorScheme))
+                detail
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(appPageBackground(for: colorScheme))
+            }
+
+            VStack(spacing: 0) {
+                sidebar
+                    .frame(maxHeight: 440)
+                detail
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(appPageBackground(for: colorScheme))
+            }
         }
+        .background(appPageBackground(for: colorScheme))
         .task {
             refreshAvailability()
             await refreshWorkspaceContext()
@@ -774,14 +811,14 @@ struct ReportsWorkspaceView: View {
 
     var sidebar: some View {
         VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 16) {
                 Picker("Superficie", selection: $activeSurface) {
                     Text("Informes").tag(WorkspaceSurface.reports)
                     Text("Analítica IA").tag(WorkspaceSurface.analytics)
                 }
                 .pickerStyle(.segmented)
 
-                HStack(spacing: 10) {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                     WorkspaceCompactStat(title: "Alumnado", value: "\(reportMetrics.students)", tint: .blue)
                     WorkspaceCompactStat(
                         title: activeSurface == .reports ? "Evaluaciones" : "Gráficos",
@@ -793,9 +830,14 @@ struct ReportsWorkspaceView: View {
                         value: activeSurface == .reports ? "\(reportMetrics.rubrics)" : (analyticsAvailability.isAvailable ? "On" : "Off"),
                         tint: .green
                     )
+                    WorkspaceCompactStat(
+                        title: "Superficie",
+                        value: activeSurface == .reports ? "Doc" : "IA",
+                        tint: EvaluationDesign.accent
+                    )
                 }
             }
-            .padding(16)
+            .padding(24)
 
             List {
                 if activeSurface == .reports {
@@ -806,7 +848,8 @@ struct ReportsWorkspaceView: View {
             }
             .listStyle(.plain)
         }
-        .frame(minWidth: 320, maxWidth: 360)
+        .frame(minWidth: 336, idealWidth: 360, maxWidth: 384)
+        .background(appMutedCardBackground(for: colorScheme))
     }
 
     @ViewBuilder

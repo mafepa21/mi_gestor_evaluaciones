@@ -118,6 +118,10 @@ internal fun filterDesktopChangesForSse(changes: List<SyncChange>, pairedDeviceI
     }
 }
 
+internal fun isLoopbackSyncRequest(address: InetAddress?): Boolean {
+    return address?.isLoopbackAddress == true
+}
+
 internal fun selectPreferredLanAddress(candidates: List<Pair<String, InetAddress>>): InetAddress? {
     return candidates
         .sortedWith(
@@ -358,6 +362,27 @@ class LocalSyncServer(
             }
         }
 
+        https.createContext("/sync/local-changes") { ex ->
+            if (ex.requestMethod != "POST") {
+                ex.respond(405, """{"error":"method_not_allowed"}""")
+                return@createContext
+            }
+            if (!isLoopbackSyncRequest(ex.remoteAddress?.address)) {
+                ex.respond(403, """{"error":"loopback_only"}""")
+                return@createContext
+            }
+
+            val changes = decodeLocalChangesRequest(ex.readBody())
+            val desktopChanges = filterDesktopChangesForSse(changes, pairedDeviceId)
+            if (desktopChanges.isNotEmpty()) {
+                broadcastSseEvent(desktopChanges, System.currentTimeMillis())
+            }
+            ex.respond(200, buildJsonObject {
+                put("accepted", JsonPrimitive(changes.size))
+                put("broadcast", JsonPrimitive(desktopChanges.size))
+            }.toString())
+        }
+
         https.createContext("/sync/documents") { ex ->
             if (!isAuthorized(ex)) return@createContext
             val hash = ex.requestURI.path.substringAfterLast('/').lowercase()
@@ -503,7 +528,7 @@ class LocalSyncServer(
                         kotlinx.coroutines.runBlocking {
                             val now = System.currentTimeMillis()
                             val response = syncCoordinator.pullChanges(sinceEpochMs = lastCheckedDbTimestamp, serverNowEpochMs = now)
-                            val changes = response.changes
+                            val changes = filterDesktopChangesForSse(response.changes, pairedDeviceId)
                             if (changes.isNotEmpty()) {
                                 println("📡 DB Monitor: Encontrados ${changes.size} cambios locales. Retransmitiendo...")
                                 broadcastSseEvent(changes, now)
@@ -654,22 +679,35 @@ class LocalSyncServer(
         val deviceId = root["clientDeviceId"]?.jsonPrimitive?.contentOrNull ?: "ios"
         val known = root["lastKnownServerEpochMs"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: 0L
         val changesArray = root["changes"]?.jsonArray ?: JsonArray(emptyList())
-        val changes = changesArray.mapNotNull { element ->
-            val obj = element.jsonObject
-            val entity = obj["entity"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
-            val id = obj["id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
-            val updatedAt = obj["updatedAtEpochMs"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: 0L
-            val sourceDevice = obj["deviceId"]?.jsonPrimitive?.contentOrNull ?: deviceId
-            val payload = obj["payload"]?.jsonPrimitive?.contentOrNull ?: "{}"
-            val op = obj["op"]?.jsonPrimitive?.contentOrNull ?: "upsert"
-            val schemaVersion = obj["schemaVersion"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 1
-            SyncChange(entity, id, updatedAt, sourceDevice, payload, op, schemaVersion)
-        }
+        val changes = changesArray.mapNotNull { element -> decodeSyncChange(element.jsonObject, deviceId) }
         return SyncPushRequest(
             clientDeviceId = deviceId,
             lastKnownServerEpochMs = known,
             changes = changes
         )
+    }
+
+    private fun decodeLocalChangesRequest(body: String): List<SyncChange> {
+        val root = runCatching { json.parseToJsonElement(body) }.getOrNull() ?: return emptyList()
+        val changesArray = when (root) {
+            is JsonArray -> root
+            is JsonObject -> root["changes"]?.jsonArray ?: JsonArray(emptyList())
+            else -> JsonArray(emptyList())
+        }
+        return changesArray.mapNotNull { element ->
+            runCatching { decodeSyncChange(element.jsonObject, "desktop") }.getOrNull()
+        }
+    }
+
+    private fun decodeSyncChange(obj: JsonObject, fallbackDeviceId: String): SyncChange? {
+        val entity = obj["entity"]?.jsonPrimitive?.contentOrNull ?: return null
+        val id = obj["id"]?.jsonPrimitive?.contentOrNull ?: return null
+        val updatedAt = obj["updatedAtEpochMs"]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: 0L
+        val sourceDevice = obj["deviceId"]?.jsonPrimitive?.contentOrNull ?: fallbackDeviceId
+        val payload = obj["payload"]?.jsonPrimitive?.contentOrNull ?: "{}"
+        val op = obj["op"]?.jsonPrimitive?.contentOrNull ?: "upsert"
+        val schemaVersion = obj["schemaVersion"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 1
+        return SyncChange(entity, id, updatedAt, sourceDevice, payload, op, schemaVersion)
     }
 
     private fun encodePullResponse(response: SyncPullResponse): String {

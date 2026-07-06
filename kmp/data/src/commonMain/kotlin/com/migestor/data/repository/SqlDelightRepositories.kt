@@ -244,6 +244,44 @@ class AcademicYearsRepositorySqlDelight(
         }
     }
 
+    override suspend fun upsertAcademicYear(
+        id: Long,
+        centerId: Long,
+        name: String,
+        startEpochMs: Long,
+        endEpochMs: Long,
+        status: String,
+        isActive: Boolean,
+        archivedAtEpochMs: Long?,
+        updatedAtEpochMs: Long,
+        deviceId: String?,
+        syncVersion: Long,
+    ): Long = withContext(Dispatchers.Default) {
+        val now = if (updatedAtEpochMs > 0) updatedAtEpochMs else Clock.System.now().toEpochMilliseconds()
+        db.transactionWithResult {
+            if (isActive) {
+                db.appDatabaseQueries.deactivateAcademicYears(now, now)
+            }
+            db.appDatabaseQueries.upsertAcademicYear(
+                id = id,
+                center_id = centerId,
+                name = name,
+                start_epoch_ms = startEpochMs,
+                end_epoch_ms = endEpochMs,
+                status = status,
+                is_active = if (isActive) 1L else 0L,
+                archived_at_epoch_ms = archivedAtEpochMs,
+                author_user_id = null,
+                created_at_epoch_ms = now,
+                updated_at_epoch_ms = now,
+                associated_group_id = null,
+                device_id = deviceId,
+                sync_version = syncVersion,
+            )
+            id
+        }
+    }
+
     override suspend fun setActiveAcademicYear(academicYearId: Long) = withContext(Dispatchers.Default) {
         val now = Clock.System.now().toEpochMilliseconds()
         val target = db.appDatabaseQueries.selectAcademicYearById(academicYearId).executeAsOneOrNull()

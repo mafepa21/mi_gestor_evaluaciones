@@ -32,5 +32,6 @@ struct NotebookSkeletonGridView: View {
             Spacer()
         }
         .redacted(reason: .placeholder)
+        .shimmering()
     }
 }

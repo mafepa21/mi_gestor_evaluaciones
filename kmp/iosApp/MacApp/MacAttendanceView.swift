@@ -401,7 +401,7 @@ struct MacAttendanceView: View {
                                 .stroke(MacAppStyle.cardBorder, lineWidth: 0.5)
                         }
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(MacHoverableButtonStyle(cornerRadius: MacAppStyle.cardRadius))
                 }
             }
             .padding(.vertical, 8)
@@ -539,7 +539,7 @@ struct MacAttendanceView: View {
                                 .frame(width: 220, height: 42, alignment: .leading)
                                 .padding(.horizontal, 10)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(MacHoverableButtonStyle(cornerRadius: 0))
                         .background(MacAppStyle.cardBackground)
                         .overlay(Rectangle().stroke(MacAppStyle.cardBorder, lineWidth: 0.5))
 

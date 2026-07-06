@@ -862,6 +862,7 @@ final class KmpBridge: ObservableObject {
     private var pendingChangesPersistenceTask: Task<Void, Never>? = nil
     private var notebookSnapshotDebounceTask: Task<Void, Never>? = nil
     private var pendingGradeSnapshotTask: Task<Void, Never>? = nil
+    private var postSyncRefreshTask: Task<Void, Never>? = nil
     private var isPairingInFlight = false
     private var isSyncInFlight = false
     private var syncNeedsAnotherPass = false
@@ -1017,6 +1018,7 @@ final class KmpBridge: ObservableObject {
         syncEventListener.stop()
         notebookSnapshotDebounceTask?.cancel()
         pendingGradeSnapshotTask?.cancel()
+        postSyncRefreshTask?.cancel()
     }
 
     private static func emptyNotebookStructureState() -> NotebookStructureState {
@@ -6155,8 +6157,20 @@ final class KmpBridge: ObservableObject {
         )
     }
 
+    private static let stableDayCalendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        return calendar
+    }()
+
+    // Extrae año/mes/día con la zona horaria local (respeta el día que el usuario
+    // quiso decir) pero ancla el epoch resultante a UTC, para que el mismo día
+    // civil siempre produzca el mismo valor aunque cambie la zona horaria del
+    // dispositivo (viajes, cambios de huso) entre una escritura y la siguiente.
     private func startOfDayEpochMs(for date: Date) -> Int64 {
-        Int64(Calendar.current.startOfDay(for: date).timeIntervalSince1970 * 1000)
+        let dayComponents = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        let stableDate = Self.stableDayCalendar.date(from: dayComponents) ?? date
+        return Int64(stableDate.timeIntervalSince1970 * 1000)
     }
 
     private func startOfDayEpochMs(forEpochSeconds epochSeconds: Int64) -> Int64 {
@@ -6473,16 +6487,23 @@ final class KmpBridge: ObservableObject {
         // se congele cuando el servidor LAN tarda o no está disponible.
         let capturedChanges = changes
         let capturedLocalDeviceId = localDeviceId
-        Task(priority: .utility) { [weak self] in
-            guard let self else { return }
+        postSyncRefreshTask?.cancel()
+        postSyncRefreshTask = Task(priority: .utility) { [weak self] in
+            guard let self, !Task.isCancelled else { return }
             do {
                 try await self.refreshDashboard()
+                guard !Task.isCancelled else { return }
                 try await self.refreshClasses()
+                guard !Task.isCancelled else { return }
                 try await self.refreshStudentsDirectory()
+                guard !Task.isCancelled else { return }
                 try await self.refreshRubrics()
+                guard !Task.isCancelled else { return }
                 try await self.refreshRubricClassLinks()
+                guard !Task.isCancelled else { return }
                 try await self.refreshPlanning()
-                
+                guard !Task.isCancelled else { return }
+
                 // Solo refrescar el cuaderno si alguno de los cambios sincronizados
                 // afecta a entidades del cuaderno (grades, columnas, celdas, rúbricas).
                 // Esto evita recargas innecesarias cuando solo cambian clases o alumnos.
@@ -6496,6 +6517,9 @@ final class KmpBridge: ObservableObject {
                     self.refreshCurrentNotebook()
                 }
             } catch {
+                self.publishSyncState {
+                    $0.syncStatusMessage = "Error al refrescar datos tras sincronizar: \(error.localizedDescription)"
+                }
                 print("No se pudieron refrescar los datos tras aplicar cambios LAN: \(error.localizedDescription)")
             }
         }
@@ -9712,11 +9736,17 @@ final class KmpBridge: ObservableObject {
                 try await container.notebookRepository.deleteWorkGroup(groupId: groupId)
             }
         case "notebook_group_member":
-            let parts = change.id.contains("|") ? change.id.split(separator: "|") : change.id.split(separator: "-")
+            // Formato "classId|tabId|groupId|studentId" o tombstone "group-member-classId-tabId-groupId-studentId".
+            let rawId = change.id.hasPrefix("group-member-")
+                ? String(change.id.dropFirst("group-member-".count))
+                : change.id
+            let idParts: [String] = rawId.contains("|")
+                ? rawId.split(separator: "|").map(String.init)
+                : rawId.split(separator: "-").map(String.init)
             guard
-                let classId = int64Value(payloadObject["classId"]) ?? int64Value(payloadObject["class_id"]) ?? (parts.count > 0 ? Int64(parts.last == parts.first ? parts[0] : parts[parts.count-4]) : nil),
-                let tabId = (payloadObject["tabId"] as? String) ?? (payloadObject["tab_id"] as? String) ?? (parts.count > 1 ? String(parts[parts.count-3]) : nil),
-                let studentId = int64Value(payloadObject["studentId"]) ?? int64Value(payloadObject["student_id"]) ?? (parts.count > 3 ? Int64(parts.last!) : nil)
+                let classId = int64Value(payloadObject["classId"]) ?? int64Value(payloadObject["class_id"]) ?? idParts[safe: 0].flatMap(Int64.init),
+                let tabId = (payloadObject["tabId"] as? String) ?? (payloadObject["tab_id"] as? String) ?? idParts[safe: 1],
+                let studentId = int64Value(payloadObject["studentId"]) ?? int64Value(payloadObject["student_id"]) ?? idParts[safe: 3].flatMap(Int64.init)
             else { break }
             try await container.notebookConfigRepository.clearStudentsFromWorkGroup(
                 classId: classId,

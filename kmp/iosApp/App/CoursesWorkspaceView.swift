@@ -315,7 +315,7 @@ struct CoursesWorkspaceView: View {
                     VStack(alignment: .leading, spacing: 24) {
                             WorkspaceInspectorHero(
                                 title: summary.schoolClass.name,
-                                subtitle: summary.schoolClass.description_?.isEmpty == false ? summary.schoolClass.description_! : classSubtitle(for: summary.schoolClass)
+                                subtitle: summary.schoolClass.description_.flatMap { $0.isEmpty ? nil : $0 } ?? classSubtitle(for: summary.schoolClass)
                             )
 
                             LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 16)], spacing: 16) {

@@ -50,10 +50,13 @@ class FormulaEvaluator {
                         tokens += char.toString()
                     }
                 }
-                char in listOf('+', '-', '*', '/', '(', ')', ',', '<', '>', '=') -> {
+                char in listOf('+', '-', '*', '/', '(', ')', ';', '<', '>', '=') -> {
                     flushToken()
                     tokens += char.toString()
                 }
+                // ',' se trata como separador decimal (no como separador de argumentos)
+                // para que fórmulas en español como "[Nota1]*1,5" se evalúen correctamente.
+                char == ',' -> current.append('.')
                 else -> current.append(char)
             }
             i += 1
@@ -139,7 +142,7 @@ class FormulaEvaluator {
                 if (!check(")")) {
                     do {
                         args += parseComparison()
-                    } while (match(","))
+                    } while (match(";"))
                 }
                 require(match(")")) { "Paréntesis desbalanceados en función $token" }
                 return evalFunction(token, args)

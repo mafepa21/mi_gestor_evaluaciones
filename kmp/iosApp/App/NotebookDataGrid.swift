@@ -31,6 +31,7 @@ struct NotebookDividerHandle: View {
     let onResetWidth: () -> Void
     
     @State private var isHovering = false
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
 
     var body: some View {
         ZStack {
@@ -55,7 +56,7 @@ struct NotebookDividerHandle: View {
         .modifier(NotebookResizeCursorModifier())
         #if os(macOS)
         .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.2)) {
+            withAnimation(uiFeatureFlags.animation(.easeOut(duration: 0.2))) {
                 isHovering = hovering
             }
         }

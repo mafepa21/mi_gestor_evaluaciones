@@ -416,7 +416,7 @@ private enum NotebookFormulaEditorEvaluator {
                 } else {
                     tokens.append(String(character))
                 }
-            } else if "+-*/(),<>".contains(character) {
+            } else if "+-*/();<>".contains(character) {
                 flush()
                 let nextIndex = input.index(after: index)
                 if nextIndex < input.endIndex {
@@ -517,7 +517,7 @@ private enum NotebookFormulaEditorEvaluator {
                 if !check(")") {
                     repeat {
                         args.append(try parseComparison())
-                    } while match(",")
+                    } while match(";")
                 }
                 guard match(")") else { throw NotebookFormulaEditorEvaluatorError.unbalancedParentheses }
                 return try evaluateFunction(token, args: args)

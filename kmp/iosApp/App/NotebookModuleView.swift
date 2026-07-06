@@ -32,6 +32,7 @@ struct NotebookModuleView: View {
     let notebookGridFolderLaneHeight: CGFloat = 34
 
     @EnvironmentObject var layoutState: WorkspaceLayoutState
+    @Environment(\.uiFeatureFlags) var uiFeatureFlags
     #if os(iOS)
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
     #endif

@@ -1058,7 +1058,7 @@ private struct DashboardPendingCard: View {
                         .background(MacAppStyle.subtleFill)
                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(MacHoverableButtonStyle(cornerRadius: 12))
                 }
             }
         }
@@ -1119,7 +1119,7 @@ private struct DashboardRiskCard: View {
                             .background(MacAppStyle.subtleFill)
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(MacHoverableButtonStyle(cornerRadius: 12))
                     }
                 }
             }

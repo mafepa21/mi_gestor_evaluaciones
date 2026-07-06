@@ -449,9 +449,9 @@ struct DashboardView: View {
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                .stroke(IOSAppStyle.cardBorder, lineWidth: 1)
         )
-        .shadow(color: .black.opacity(0.08), radius: 12, x: 0, y: 4)
+        .shadow(color: IOSAppStyle.shadow, radius: 12, x: 0, y: 4)
     }
 
     private var selectedClassLabel: String {
@@ -608,9 +608,9 @@ struct DashboardView: View {
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                .stroke(IOSAppStyle.cardBorder, lineWidth: 1)
         )
-        .shadow(color: .black.opacity(0.08), radius: 12, x: 0, y: 4)
+        .shadow(color: IOSAppStyle.shadow, radius: 12, x: 0, y: 4)
         .redacted(reason: .placeholder)
     }
 
@@ -1273,6 +1273,7 @@ struct DashboardView: View {
                             )
                     }
                     .buttonStyle(ScaleButtonStyle())
+                    .accessibilityAddTraits(selection.wrappedValue == option ? .isSelected : [])
                 }
             }
         }
@@ -1318,6 +1319,7 @@ struct DashboardView: View {
                             )
                     }
                     .buttonStyle(ScaleButtonStyle())
+                    .accessibilityAddTraits(selection.wrappedValue == option ? .isSelected : [])
                 }
             }
         }

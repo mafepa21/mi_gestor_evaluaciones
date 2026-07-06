@@ -17,7 +17,7 @@ class FormulaEvaluatorTest {
     @Test
     fun `evaluates bracketed column references`() {
         val result = evaluator.evaluate(
-            "REDONDEAR((([eval_1]*0.6)+([rubric_1]*0.4)),2)",
+            "REDONDEAR((([eval_1]*0.6)+([rubric_1]*0.4));2)",
             mapOf("eval_1" to 8.0, "rubric_1" to 6.0),
         )
 
@@ -33,14 +33,14 @@ class FormulaEvaluatorTest {
 
     @Test
     fun `supports IF with comparisons`() {
-        val result = evaluator.evaluate("IF(EX1 >= 5, 10, 0)", mapOf("EX1" to 7.0))
+        val result = evaluator.evaluate("IF(EX1 >= 5; 10; 0)", mapOf("EX1" to 7.0))
         assertEquals(10.0, result)
     }
 
     @Test
     fun `supports AND OR functions`() {
         val result = evaluator.evaluate(
-            "IF(AND(EX1 >= 5, OR(EX2 >= 5, EX3 >= 5)), 1, 0)",
+            "IF(AND(EX1 >= 5; OR(EX2 >= 5; EX3 >= 5)); 1; 0)",
             mapOf("EX1" to 6.0, "EX2" to 4.0, "EX3" to 8.0),
         )
         assertEquals(1.0, result)
@@ -48,14 +48,14 @@ class FormulaEvaluatorTest {
 
     @Test
     fun `supports aggregation helpers`() {
-        val result = evaluator.evaluate("ROUND(AVG(EX1, EX2, EX3), 2)", mapOf("EX1" to 6.0, "EX2" to 7.0, "EX3" to 8.0))
+        val result = evaluator.evaluate("ROUND(AVG(EX1; EX2; EX3); 2)", mapOf("EX1" to 6.0, "EX2" to 7.0, "EX3" to 8.0))
         assertEquals(7.0, result)
     }
 
     @Test
     fun `supports leading equals and bracket column references`() {
         val result = evaluator.evaluate(
-            "=ROUND(AVG([eval_1], [COL_2]), 2)",
+            "=ROUND(AVG([eval_1]; [COL_2]); 2)",
             mapOf("eval_1" to 8.0, "COL_2" to 6.0),
         )
         assertEquals(7.0, result)
@@ -64,9 +64,21 @@ class FormulaEvaluatorTest {
     @Test
     fun `supports equality comparison with bracket references`() {
         val result = evaluator.evaluate(
-            "SI([col_1]=5, 10, 0)",
+            "SI([col_1]=5; 10; 0)",
             mapOf("col_1" to 5.0),
         )
         assertEquals(10.0, result)
+    }
+
+    @Test
+    fun `treats comma as decimal separator instead of argument separator`() {
+        val result = evaluator.evaluate("[Nota1]*1,5", mapOf("Nota1" to 4.0))
+        assertEquals(6.0, result)
+    }
+
+    @Test
+    fun `semicolon still separates arguments when a decimal comma is present`() {
+        val result = evaluator.evaluate("REDONDEAR([Nota1]*1,5;1)", mapOf("Nota1" to 4.0))
+        assertEquals(6.0, result)
     }
 }

@@ -720,7 +720,7 @@ extension NotebookModuleView {
     ) -> NotebookColumnDefinition {
         NotebookColumnDefinition(
             id: column.id,
-            title: title?.isEmpty == false ? title! : column.title,
+            title: title.flatMap { $0.isEmpty ? nil : $0 } ?? column.title,
             type: column.type,
             categoryKind: column.categoryKind,
             instrumentKind: column.instrumentKind,

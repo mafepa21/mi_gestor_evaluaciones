@@ -527,7 +527,7 @@ struct DiarySessionRailCard: View {
     ) -> some View {
         Button {
             action()
-            withAnimation(.easeOut(duration: 0.15)) {
+            withAnimation(uiFeatureFlags.animation(.easeOut(duration: 0.15))) {
                 revealsActions = false
             }
         } label: {

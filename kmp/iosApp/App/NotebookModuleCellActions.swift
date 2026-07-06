@@ -92,7 +92,7 @@ extension NotebookModuleView {
             studentIds: pendingRubricStudentOrder,
             currentStudentId: item.student.id
         )
-        withAnimation(.spring(response: 0.18, dampingFraction: 0.9)) {
+        withAnimation(uiFeatureFlags.animation(.spring(response: 0.18, dampingFraction: 0.9))) {
             focusedCellId = nil
             activeChoiceCellId = nil
             inspectorSelection = NotebookInspectorSelection(studentId: item.student.id, columnId: column.id)
@@ -211,14 +211,14 @@ extension NotebookModuleView {
         let nextColumn = navigableColumns[nextColumnIndex]
         let nextCellId = cellFocusId(studentId: nextStudentId, columnId: nextColumn.id)
 
-        withAnimation(.spring(response: 0.18, dampingFraction: 0.9)) {
+        withAnimation(uiFeatureFlags.animation(.spring(response: 0.18, dampingFraction: 0.9))) {
             inspectorSelection = NotebookInspectorSelection(studentId: nextStudentId, columnId: nextColumn.id)
             focusedCellId = nil
             activeChoiceCellId = nil
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-            withAnimation(.spring(response: 0.18, dampingFraction: 0.9)) {
+            withAnimation(uiFeatureFlags.animation(.spring(response: 0.18, dampingFraction: 0.9))) {
                 if nextColumn.type == .ordinal || nextColumn.type == .attendance || nextColumn.categoryKind == .attendance {
                     activeChoiceCellId = nextCellId
                 } else if nextColumn.type != .calculated && nextColumn.type != .rubric && nextColumn.type != .check {

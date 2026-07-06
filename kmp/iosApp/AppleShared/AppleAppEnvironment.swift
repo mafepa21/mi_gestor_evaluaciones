@@ -58,6 +58,12 @@ struct UiFeatureFlags {
             : .spring(response: 0.35, dampingFraction: 0.75)
     }
 
+    /// Envuelve una curva ad-hoc (spring/easeOut concretos de una micro-interacción)
+    /// para que también respete Reduce Motion, sin perder su ajuste específico.
+    func animation(_ curve: Animation) -> Animation {
+        reduceMotion ? reduceMotionFallback : curve
+    }
+
     /// `true` en macOS (interacción por puntero), `false` en iPadOS (táctil).
     /// El puntero exige inmediatez; el tacto tolera curvas algo más largas.
     private var isPointerPlatform: Bool {
@@ -126,6 +132,17 @@ struct UiFeatureFlags {
 
     var bannerTransition: AnyTransition {
         reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity)
+    }
+
+    // MARK: Cambio de módulo/workspace (contenido principal)
+
+    var contentSwitchTransition: AnyTransition {
+        reduceMotion
+            ? .opacity
+            : .asymmetric(
+                insertion: .opacity.combined(with: .scale(scale: 0.98)),
+                removal: .opacity
+            )
     }
 }
 
@@ -312,6 +329,45 @@ func appCardBackground(for colorScheme: ColorScheme) -> Color {
         : Color.white
 }
 
+private struct ShimmerModifier: ViewModifier {
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
+    @State private var phase: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        content.overlay(
+            GeometryReader { proxy in
+                if !uiFeatureFlags.reduceMotion {
+                    Color.white.opacity(0.4)
+                        .frame(width: proxy.size.width)
+                        .mask(
+                            LinearGradient(
+                                colors: [.clear, .white, .clear],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                            .frame(width: proxy.size.width * 0.5)
+                            .offset(x: phase * proxy.size.width * 2 - proxy.size.width * 0.75)
+                        )
+                        .allowsHitTesting(false)
+                        .onAppear {
+                            withAnimation(.linear(duration: 1.4).repeatForever(autoreverses: false)) {
+                                phase = 1
+                            }
+                        }
+                }
+            }
+        )
+        .clipped()
+    }
+}
+
+extension View {
+    /// Barrido de brillo animado para estados de carga (skeletons), respeta Reduce Motion.
+    func shimmering() -> some View {
+        modifier(ShimmerModifier())
+    }
+}
+
 extension View {
     /// Resalta al pasar el puntero (Mac/trackpad) o al tocar (Pencil/dedo en iPad).
     @ViewBuilder
@@ -333,10 +389,24 @@ enum AppleDesignSystem {
     static let chipRadius: CGFloat = 20
     static let inspectorWidth: CGFloat = 360
 
+    // Niveles adicionales de la misma escala, para que IOSAppStyle/EvaluationDesign
+    // dejen de repetir estos números por su cuenta: cada uno documenta de dónde
+    // sale un valor ya usado en pantalla, sin cambiar ningún tamaño existente.
+    static let tightPagePadding: CGFloat = 16
+    static let compactPagePadding: CGFloat = 20
+    static let compactCardSpacing: CGFloat = 14
+    static let regularCardRadius: CGFloat = 20
+    static let heroCardRadius: CGFloat = 40
+    static let regularControlRadius: CGFloat = 12
+    static let innerRadius: CGFloat = 16
+
     static let accent = Color.accentColor
-    static let success = Color(red: 0.12, green: 0.65, blue: 0.46)
-    static let warning = Color(red: 0.86, green: 0.52, blue: 0.12)
-    static let danger = Color(red: 0.90, green: 0.20, blue: 0.22)
+    // Ajustados a partir de los tonos originales para alcanzar 4.5:1 de contraste
+    // WCAG AA como texto sobre fondos claros (blanco/casi blanco); el tono original
+    // se quedaba en ~2.7-4.1:1, insuficiente para texto normal.
+    static let success = Color(red: 0.09, green: 0.48, blue: 0.34)
+    static let warning = Color(red: 0.62, green: 0.38, blue: 0.08)
+    static let danger = Color(red: 0.86, green: 0.19, blue: 0.21)
     static let border = Color.primary.opacity(0.08)
     static let shadow = Color.black.opacity(0.08)
 

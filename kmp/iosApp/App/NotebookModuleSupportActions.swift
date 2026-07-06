@@ -138,7 +138,8 @@ extension NotebookModuleView {
         bridge.flushPendingColumnGradeSave(studentId: entry.studentId, columnId: entry.column.id)
         bridge.saveColumnGrade(studentId: entry.studentId, column: entry.column, value: entry.previousValue)
         reloadNotebookRow(entry.studentId)
-        withAnimation(.spring(response: 0.18, dampingFraction: 0.9)) {
+        AppleInteractionFeedback.play(.success)
+        withAnimation(uiFeatureFlags.animation(.spring(response: 0.18, dampingFraction: 0.9))) {
             inspectorSelection = NotebookInspectorSelection(studentId: entry.studentId, columnId: entry.column.id)
             focusedCellId = nil
             activeChoiceCellId = nil

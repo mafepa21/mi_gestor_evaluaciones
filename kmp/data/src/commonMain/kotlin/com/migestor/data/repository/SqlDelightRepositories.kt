@@ -530,6 +530,19 @@ class ClassesRepositorySqlDelight(
         return db.appDatabaseQueries.selectClassAcademicYearId(classId).executeAsOneOrNull()?.academic_year_id ?: ensureActiveAcademicYearId()
     }
 
+    /**
+     * Timestamp de la última matriculación/baja conocida localmente para (classId,
+     * studentId), o null si no hay historial. Usado por la sincronización LAN para
+     * blindar la mitad destructiva (bajas) de un snapshot de roster: solo se aplica
+     * una baja si el snapshot entrante es al menos tan reciente como esta marca —
+     * así una alta local muy reciente nunca se pierde por un snapshot stale llegado
+     * tarde desde el otro dispositivo. Ver SqlDelightSyncAdapter.applyIncomingChangesLww
+     * y KmpBridge.applyPulledChanges ("class_roster").
+     */
+    suspend fun latestEnrollmentUpdatedAt(classId: Long, studentId: Long): Long? = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectLatestEnrollmentUpdatedAt(classId, studentId).executeAsOneOrNull()
+    }
+
     override fun observeClasses(): Flow<List<SchoolClass>> {
         return db.appDatabaseQueries
             .selectAllClasses()
@@ -2353,6 +2366,33 @@ class BackupMetadataRepositorySqlDelight(
     }
 }
 
+/**
+ * Tombstones genéricos de sincronización LAN: recuerdan cuándo se borró por
+ * última vez una entidad (entity + entity_id, mismo par que viaja en
+ * SyncChange) para que un upsert LWW más antiguo que ese borrado no la
+ * resucite. Usado exclusivamente por la capa de sync (SqlDelightSyncAdapter en
+ * desktop y KmpBridge.applyPulledChanges en Apple); no afecta al resto de la app.
+ */
+class SyncTombstoneRepositorySqlDelight(
+    private val db: AppDatabase,
+) {
+    /** true si la entidad está borrada con un timestamp >= updatedAtEpochMs (el borrado gana o empata). */
+    suspend fun isDeletedAtOrAfter(entity: String, entityId: String, updatedAtEpochMs: Long): Boolean =
+        withContext(Dispatchers.Default) {
+            val tombstone = db.appDatabaseQueries.selectSyncTombstone(entity, entityId).executeAsOneOrNull()
+            tombstone != null && tombstone.deleted_at_epoch_ms >= updatedAtEpochMs
+        }
+
+    suspend fun recordTombstone(entity: String, entityId: String, deletedAtEpochMs: Long, deviceId: String?) =
+        withContext(Dispatchers.Default) {
+            db.appDatabaseQueries.upsertSyncTombstone(entity, entityId, deletedAtEpochMs, deviceId)
+        }
+
+    /** Se llama tras aplicar con éxito un upsert más reciente que cualquier borrado previo (deshace la resurrección). */
+    suspend fun clearTombstone(entity: String, entityId: String) = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.deleteSyncTombstone(entity, entityId)
+    }
+}
 
 private fun buildRubrics(
     rubrics: List<Rubric>,

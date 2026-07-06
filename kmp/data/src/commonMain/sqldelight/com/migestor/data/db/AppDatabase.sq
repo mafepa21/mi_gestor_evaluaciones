@@ -267,6 +267,19 @@ ON student_enrollments(academic_year_id, class_id, status);
 CREATE INDEX IF NOT EXISTS idx_student_enrollments_student_year
 ON student_enrollments(student_id, academic_year_id);
 
+-- Tombstones genéricos para la sincronización LAN: registran cuándo se borró
+-- por última vez una entidad (entity + entity_id, el mismo par que viaja en
+-- SyncChange) para que un upsert de otro dispositivo, sincronizado más tarde
+-- pero fechado ANTES del borrado, no la resucite. Independiente del propio
+-- borrado físico de cada tabla: no cambia el comportamiento normal de la app.
+CREATE TABLE IF NOT EXISTS sync_tombstones (
+    entity TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    deleted_at_epoch_ms INTEGER NOT NULL,
+    device_id TEXT,
+    PRIMARY KEY (entity, entity_id)
+);
+
 CREATE TABLE IF NOT EXISTS stage_cycles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     center_id INTEGER NOT NULL,
@@ -819,6 +832,13 @@ SELECT id
 FROM student_enrollments
 WHERE class_id = ? AND student_id = ? AND status = 'ACTIVE'
 ORDER BY id DESC
+LIMIT 1;
+
+selectLatestEnrollmentUpdatedAt:
+SELECT updated_at_epoch_ms
+FROM student_enrollments
+WHERE class_id = ? AND student_id = ?
+ORDER BY updated_at_epoch_ms DESC, id DESC
 LIMIT 1;
 
 removeClassStudent:
@@ -2391,8 +2411,26 @@ ORDER BY date_epoch_ms DESC;
 
 selectCompetencyCoverage:
 SELECT c.id, c.code, c.name,
-       (SELECT COUNT(*) 
-        FROM notebook_columns col 
+       (SELECT COUNT(*)
+        FROM notebook_columns col
         WHERE col.class_id = ? AND col.competency_criteria_ids_csv LIKE '%' || c.code || '%') AS columns_count
 FROM competency_criteria c
 ORDER BY c.code;
+
+-- ── sync_tombstones ──────────────────────────────────────────────────────
+
+selectSyncTombstone:
+SELECT deleted_at_epoch_ms, device_id
+FROM sync_tombstones
+WHERE entity = ? AND entity_id = ?;
+
+upsertSyncTombstone:
+INSERT INTO sync_tombstones(entity, entity_id, deleted_at_epoch_ms, device_id)
+VALUES (?, ?, ?, ?)
+ON CONFLICT(entity, entity_id) DO UPDATE SET
+    deleted_at_epoch_ms = excluded.deleted_at_epoch_ms,
+    device_id = excluded.device_id
+WHERE excluded.deleted_at_epoch_ms >= sync_tombstones.deleted_at_epoch_ms;
+
+deleteSyncTombstone:
+DELETE FROM sync_tombstones WHERE entity = ? AND entity_id = ?;

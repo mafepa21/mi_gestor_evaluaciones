@@ -6398,6 +6398,7 @@ final class KmpBridge: ObservableObject {
                 host: host,
                 token: token,
                 sinceEpochMs: cursor,
+                deviceId: localDeviceId,
                 pinnedFingerprint: pairedServerFingerprint
             )
         } catch {
@@ -6408,6 +6409,7 @@ final class KmpBridge: ObservableObject {
                 host: reboundHost,
                 token: token,
                 sinceEpochMs: cursor,
+                deviceId: localDeviceId,
                 pinnedFingerprint: pairedServerFingerprint
             )
         }
@@ -6514,13 +6516,18 @@ final class KmpBridge: ObservableObject {
             return
         }
 
+        // Snapshot lo que vamos a enviar. Los cambios que se encolen mientras la
+        // petición de red está en curso (el `await`) no deben perderse cuando
+        // limpiemos la cola al recibir la respuesta.
+        let sentChanges = pendingOutboundChanges
+
         let ack: LanPushResult
         do {
             ack = try await lanSyncClient.push(
                 host: host,
                 token: token,
                 deviceId: localDeviceId,
-                changes: pendingOutboundChanges,
+                changes: sentChanges,
                 lastKnownServerEpochMs: lastSyncCursorEpochMs,
                 pinnedFingerprint: pairedServerFingerprint
             )
@@ -6532,15 +6539,22 @@ final class KmpBridge: ObservableObject {
                 host: reboundHost,
                 token: token,
                 deviceId: localDeviceId,
-                changes: pendingOutboundChanges,
+                changes: sentChanges,
                 lastKnownServerEpochMs: lastSyncCursorEpochMs,
                 pinnedFingerprint: pairedServerFingerprint
             )
         }
-        if ack.applied > 0 || ack.desktopAuthoritative {
-            pendingOutboundChanges.removeAll()
-            UserDefaults.standard.removeObject(forKey: "sync.pending.changes.v2")
-        }
+        // Un round-trip exitoso significa que el servidor ya resolvió cada cambio
+        // del lote (aplicado, ignorado por LWW o rechazado por payload inválido).
+        // Reintentar un ignored/failed sin una edición local más reciente nunca
+        // tendría éxito, así que soltamos siempre el snapshot enviado en vez de
+        // condicionar a `applied > 0` — de lo contrario un lote totalmente
+        // ignorado reintentaría para siempre y "pendientes" nunca bajaría a 0.
+        // Solo quitamos las entradas que coinciden exactamente con lo enviado:
+        // si el mismo entity/id se volvió a editar durante el `await`, la entrada
+        // más nueva en la cola no será igual (Equatable) al snapshot y se conserva.
+        pendingOutboundChanges.removeAll { sentChanges.contains($0) }
+        persistPendingChanges()
         if ack.desktopAuthoritative {
             try await performPullSync(
                 silent: true,
@@ -8834,12 +8848,41 @@ final class KmpBridge: ObservableObject {
             if index.isMultiple(of: 25) {
                 await Task.yield()
             }
+            // El servidor ya filtra los cambios propios del dispositivo que pide el
+            // pull (ver /sync/pull en LocalSyncServer.kt), pero mantenemos esta
+            // comprobación como red de seguridad por si el peer aún no tiene ese
+            // filtro (versión anterior del Mac) — reaplicar nuestro propio cambio
+            // es, en el mejor caso, trabajo desperdiciado y, en el peor, un pull
+            // completo periódico reprocesando toda la base de datos local.
+            if change.deviceId == localDeviceId {
+                continue
+            }
             do {
             let payloadData = change.payload.data(using: .utf8) ?? Data()
             let payloadObject = (try? JSONSerialization.jsonObject(with: payloadData)) as? [String: Any] ?? [:]
 
             if change.op == "delete" {
                 try await applyDeletedChange(change: change, payloadObject: payloadObject)
+                // Deja un tombstone: si el otro dispositivo empuja más tarde un upsert
+                // fechado ANTES de este borrado, no debe resucitar la entidad (ver el
+                // chequeo simétrico justo antes del switch de abajo).
+                try? await container.syncTombstoneRepository.recordTombstone(
+                    entity: change.entity,
+                    entityId: change.id,
+                    deletedAtEpochMs: change.updatedAtEpochMs,
+                    deviceId: change.deviceId
+                )
+                continue
+            }
+
+            // Un upsert fechado antes (o igual) que el último borrado conocido de esta
+            // misma entidad no debe resucitarla: el borrado es más reciente y gana LWW.
+            let isBlockedByTombstone = (try? await container.syncTombstoneRepository.isDeletedAtOrAfter(
+                entity: change.entity,
+                entityId: change.id,
+                updatedAtEpochMs: change.updatedAtEpochMs
+            )) ?? false
+            if isBlockedByTombstone {
                 continue
             }
 
@@ -8919,10 +8962,18 @@ final class KmpBridge: ObservableObject {
                 let remoteIds = Set(rawStudentIds.compactMap { int64Value($0) })
                 let localIds = Set(try await container.classesRepository.listStudentsInClass(classId: classId).map { $0.id })
                 for id in remoteIds.subtracting(localIds) {
+                    // Añadir siempre es seguro (ver razonamiento equivalente en
+                    // SqlDelightSyncAdapter.applyIncomingChangesLww, misma entidad).
                     try await container.classesRepository.addStudentToClass(classId: classId, studentId: id)
                 }
                 for id in localIds.subtracting(remoteIds) {
-                    try await container.classesRepository.removeStudentFromClass(classId: classId, studentId: id)
+                    // Solo dar de baja si este snapshot es al menos tan reciente como
+                    // la última alta/baja local conocida para ESTE alumno: evita que un
+                    // snapshot de roster desactualizado borre a alguien recién añadido.
+                    let localEnrollmentAt = try await container.classesRepository.latestEnrollmentUpdatedAt(classId: classId, studentId: id)
+                    if localEnrollmentAt == nil || change.updatedAtEpochMs >= localEnrollmentAt! {
+                        try await container.classesRepository.removeStudentFromClass(classId: classId, studentId: id)
+                    }
                 }
 
             case "evaluation":
@@ -9669,6 +9720,10 @@ final class KmpBridge: ObservableObject {
             default:
                 continue
             }
+            // Si llegamos aquí, el upsert se aplicó (o quedó fuera antes de tiempo por
+            // un guard interno). Retirar el tombstone es seguro/idempotente en ambos
+            // casos: ya no bloquea futuros upserts legítimos de esta misma entidad.
+            try? await container.syncTombstoneRepository.clearTombstone(entity: change.entity, entityId: change.id)
             } catch {
                 // No abortar el pull completo por un único cambio defectuoso
                 // (p.ej. entidad fuera de orden o payload parcial).
@@ -10273,6 +10328,12 @@ final class KmpBridge: ObservableObject {
         syncSecureStore.delete(key: "sync.host")
         syncSecureStore.delete(key: "sync.server.id")
         syncSecureStore.delete(key: "sync.server.fingerprint")
+        // El cursor pertenece al servidor con el que estábamos emparejados; un Mac
+        // distinto tiene su propio reloj/epoch y no debe heredar este valor.
+        // (Los cambios pendientes de envío SÍ se conservan: son ediciones locales
+        // reales aún no sincronizadas y deben llegar al próximo dispositivo emparejado.)
+        lastSyncCursorEpochMs = 0
+        UserDefaults.standard.removeObject(forKey: "sync.last.cursor")
     }
 
     private func rebindPairedHostIfNeeded() {
@@ -10873,10 +10934,11 @@ final class LanSyncClient {
         )
     }
 
-    func pull(host: String, token: String, sinceEpochMs: Int64, pinnedFingerprint: String?) async throws -> LanPullResult {
+    func pull(host: String, token: String, sinceEpochMs: Int64, deviceId: String, pinnedFingerprint: String?) async throws -> LanPullResult {
         let normalizedHost = Self.normalizeHost(host)
         let url = try buildURL(host: normalizedHost, path: "/sync/pull", queryItems: [
-            URLQueryItem(name: "since", value: "\(sinceEpochMs)")
+            URLQueryItem(name: "since", value: "\(sinceEpochMs)"),
+            URLQueryItem(name: "deviceId", value: deviceId)
         ])
         var request = URLRequest(url: url)
         request.httpMethod = "GET"

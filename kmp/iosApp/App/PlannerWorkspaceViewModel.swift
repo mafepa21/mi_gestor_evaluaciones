@@ -148,8 +148,9 @@ final class PlannerWorkspaceViewModel: ObservableObject {
         guard !isLoaded else { return }
         self.bridge = bridge
         let current = IsoWeekHelper.shared.current()
-        week = Int(truncating: current.first ?? KotlinInt(value: Int32(PlannerCalendar.currentIsoWeek)))
-        year = Int(truncating: current.second ?? KotlinInt(value: Int32(PlannerCalendar.currentIsoYear)))
+        let currentIsoFallback = PlannerCalendar.currentIsoYearWeek
+        week = Int(truncating: current.first ?? KotlinInt(value: Int32(currentIsoFallback.week)))
+        year = Int(truncating: current.second ?? KotlinInt(value: Int32(currentIsoFallback.year)))
         timeSlots = bridge.plannerTimeSlots()
         await reloadPlannerBootstrap()
         await reloadScheduleOnly()
@@ -263,8 +264,9 @@ final class PlannerWorkspaceViewModel: ObservableObject {
 
     func goToCurrentWeek() async {
         let current = IsoWeekHelper.shared.current()
-        week = Int(truncating: current.first ?? KotlinInt(value: Int32(PlannerCalendar.currentIsoWeek)))
-        year = Int(truncating: current.second ?? KotlinInt(value: Int32(PlannerCalendar.currentIsoYear)))
+        let currentIsoFallback = PlannerCalendar.currentIsoYearWeek
+        week = Int(truncating: current.first ?? KotlinInt(value: Int32(currentIsoFallback.week)))
+        year = Int(truncating: current.second ?? KotlinInt(value: Int32(currentIsoFallback.year)))
         await reloadSessionsOnly(keepSelection: false)
         await selectTodaySessionIfPossible(preferredGroupId: selectedGroupId)
     }
@@ -316,8 +318,9 @@ final class PlannerWorkspaceViewModel: ObservableObject {
 
     func selectTodaySessionIfPossible(preferredGroupId: Int64?) async {
         let current = IsoWeekHelper.shared.current()
-        let currentWeek = Int(truncating: current.first ?? KotlinInt(value: Int32(PlannerCalendar.currentIsoWeek)))
-        let currentYear = Int(truncating: current.second ?? KotlinInt(value: Int32(PlannerCalendar.currentIsoYear)))
+        let currentIsoFallback = PlannerCalendar.currentIsoYearWeek
+        let currentWeek = Int(truncating: current.first ?? KotlinInt(value: Int32(currentIsoFallback.week)))
+        let currentYear = Int(truncating: current.second ?? KotlinInt(value: Int32(currentIsoFallback.year)))
         guard week == currentWeek, year == currentYear else { return }
 
         var calendar = Calendar(identifier: .iso8601)

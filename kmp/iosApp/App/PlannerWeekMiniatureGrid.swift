@@ -136,7 +136,8 @@ struct PlannerWeekMiniatureGrid: View {
     }
 
     private var isCurrentWeek: Bool {
-        weekBoard.week == PlannerCalendar.currentIsoWeek && weekBoard.year == PlannerCalendar.currentIsoYear
+        let current = PlannerCalendar.currentIsoYearWeek
+        return weekBoard.week == current.week && weekBoard.year == current.year
     }
 
     private var todayDayIndex: Int? {

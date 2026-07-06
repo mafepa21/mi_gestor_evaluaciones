@@ -118,59 +118,6 @@ struct NotebookPill: View {
     }
 }
 
-struct NotebookStatusBadge: View {
-    let text: String
-    let icon: String
-    let color: Color
-
-    var body: some View {
-        HStack(spacing: NotebookStyle.controlSpacing) {
-            Image(systemName: icon)
-                .font(.system(size: 12, weight: .bold))
-            Text(text)
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
-        }
-        .foregroundStyle(color)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(
-            Capsule(style: .continuous)
-                .fill(color.opacity(0.10))
-                .overlay(
-                    Capsule(style: .continuous)
-                        .stroke(color.opacity(0.14), lineWidth: 1)
-                )
-        )
-    }
-}
-
-struct NotebookPrimaryButton: View {
-    let title: String
-    let systemImage: String
-    var tint: Color = NotebookStyle.primaryTint
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: NotebookStyle.controlSpacing) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 14, weight: .bold))
-                Text(title)
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-            }
-            .foregroundStyle(contrastingTextColor(for: tint))
-            .frame(minHeight: NotebookStyle.actionHeight)
-            .padding(.horizontal, 20)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(tint)
-                    .shadow(color: tint.opacity(0.22), radius: 10, x: 0, y: 6)
-            )
-        }
-        .buttonStyle(.plain)
-    }
-}
-
 struct NotebookSummaryGenerationSheet: View {
     @ObservedObject var bridge: KmpBridge
     var initialTargetColumnId: String? = nil
@@ -483,6 +430,7 @@ struct NotebookSummaryGenerationSheet: View {
         Task { @MainActor in
             var savedCount = 0
             var skippedCount = 0
+            var fallbackCount = 0
 
             for (index, studentId) in studentIds.enumerated() {
                 let studentName = notebookData?.sheet.rows.first(where: { $0.student.id == studentId })?.student.fullName ?? "alumno"
@@ -496,15 +444,17 @@ struct NotebookSummaryGenerationSheet: View {
                     continue
                 }
 
-                let saved = await generateSummaryFromReportSystem(
+                let result = await generateSummaryFromReportSystem(
                     studentId: studentId,
                     targetColumnId: targetColumnId,
                     termLabel: nil
                 )
 
-                if saved {
+                switch result {
+                case .saved(let usedFallback):
                     savedCount += 1
-                } else {
+                    if usedFallback { fallbackCount += 1 }
+                case .skipped:
                     skippedCount += 1
                 }
             }
@@ -513,7 +463,10 @@ struct NotebookSummaryGenerationSheet: View {
             progressMessage = nil
 
             if savedCount > 0 {
-                onComplete("Síntesis pedagógicas guardadas: \(savedCount). Omitidas: \(skippedCount).", .success)
+                let fallbackNote = fallbackCount > 0
+                    ? " \(fallbackCount) generada\(fallbackCount == 1 ? "" : "s") por reglas locales (IA no disponible); revísalas."
+                    : ""
+                onComplete("Síntesis pedagógicas guardadas: \(savedCount). Omitidas: \(skippedCount).\(fallbackNote)", .success)
                 dismiss()
             } else {
                 feedbackMessage = "No se ha podido generar ninguna síntesis. Revisa que el cuaderno tenga datos suficientes."
@@ -521,13 +474,18 @@ struct NotebookSummaryGenerationSheet: View {
         }
     }
 
+    private enum SummaryGenerationResult {
+        case saved(usedFallback: Bool)
+        case skipped
+    }
+
     @MainActor
     private func generateSummaryFromReportSystem(
         studentId: Int64,
         targetColumnId: String,
         termLabel: String?
-    ) async -> Bool {
-        guard let data = notebookData else { return false }
+    ) async -> SummaryGenerationResult {
+        guard let data = notebookData else { return .skipped }
 
         do {
             let context = try await bridge.buildReportGenerationContext(
@@ -546,7 +504,7 @@ struct NotebookSummaryGenerationSheet: View {
             let text = compactNotebookSummary(from: draft, context: context, length: configuration.length)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
 
-            guard !text.isEmpty else { return false }
+            guard !text.isEmpty else { return .skipped }
 
             try await bridge.saveNotebookAICommentDirect(
                 classId: data.sheet.classId,
@@ -555,9 +513,9 @@ struct NotebookSummaryGenerationSheet: View {
                 text: text
             )
 
-            return true
+            return .saved(usedFallback: draft.appearsToBeRulesFallback)
         } catch {
-            return false
+            return .skipped
         }
     }
 

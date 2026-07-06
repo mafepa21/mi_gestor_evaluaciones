@@ -26,6 +26,7 @@ struct IOSRootView: View {
     @EnvironmentObject private var bridge: KmpBridge
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
 
     @StateObject private var layoutState = WorkspaceLayoutState()
     @StateObject private var selectionStore = IOSSelectionStore()
@@ -210,13 +211,17 @@ struct IOSRootView: View {
     private func selectModule(_ module: AppWorkspaceModule) {
         let module = normalizedModule(module)
         guard activeModule != module else { return }
-        activeModule = module
+        withAnimation(uiFeatureFlags.animation(.easeOut(duration: 0.22))) {
+            activeModule = module
+        }
         searchText = ""
     }
 
     func openModule(_ module: AppWorkspaceModule, classId: Int64? = nil, studentId: Int64? = nil) {
         let module = normalizedModule(module)
-        activeModule = module
+        withAnimation(uiFeatureFlags.animation(.easeOut(duration: 0.22))) {
+            activeModule = module
+        }
         if classId != nil || studentId != nil {
             let targetClassId = classId ?? selectionStore.selectedClassId
             let targetStudentId = studentId ?? selectionStore.selectedStudentId
@@ -243,11 +248,11 @@ struct IOSRootView: View {
     // MARK: Banner
     func showBanner(_ banner: IOSRootBanner) {
         bannerDismissTask?.cancel()
-        withAnimation(.snappy(duration: 0.18)) { self.banner = banner }
+        withAnimation(uiFeatureFlags.animation(.snappy(duration: 0.18))) { self.banner = banner }
         bannerDismissTask = Task {
             try? await Task.sleep(nanoseconds: 3_000_000_000)
             guard !Task.isCancelled else { return }
-            withAnimation(.snappy(duration: 0.18)) { self.banner = nil }
+            withAnimation(uiFeatureFlags.animation(.snappy(duration: 0.18))) { self.banner = nil }
         }
     }
 
@@ -921,6 +926,7 @@ struct IOSWorkspaceSidebar: View {
 struct IOSWorkspaceContent: View {
     @EnvironmentObject private var bridge: KmpBridge
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
@@ -943,6 +949,8 @@ struct IOSWorkspaceContent: View {
 
     var body: some View {
         moduleContent
+            .id(activeModule)
+            .transition(uiFeatureFlags.contentSwitchTransition)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .environmentObject(layoutState)
     }

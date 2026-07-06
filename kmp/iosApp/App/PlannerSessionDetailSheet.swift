@@ -66,7 +66,7 @@ struct PlannerSessionDetailSheet: View {
                 }
             }
         }
-        .task {
+        .task(id: session.id) {
             await loadDetailedPlan()
             await loadLinkedInstruments()
         }

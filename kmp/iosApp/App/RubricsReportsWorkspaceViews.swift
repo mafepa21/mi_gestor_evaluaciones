@@ -390,6 +390,7 @@ struct RubricsWorkspaceView: View {
             .padding(.vertical, 8)
         }
         .buttonStyle(.plain)
+        .appInteractiveHighlight()
     }
 
     @ViewBuilder
@@ -464,6 +465,7 @@ struct RubricsWorkspaceView: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    .appInteractiveHighlight()
                     .padding(16)
                     .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .accessibilityLabel("Evaluar \(usage.evaluationName) en \(usage.className)")
@@ -944,6 +946,7 @@ struct ReportsWorkspaceView: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .appInteractiveHighlight()
             }
         }
 
@@ -1376,6 +1379,7 @@ struct ReportsWorkspaceView: View {
             }
         }
         .buttonStyle(.plain)
+        .appInteractiveHighlight()
     }
 
     @MainActor

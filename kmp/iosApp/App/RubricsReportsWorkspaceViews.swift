@@ -220,7 +220,7 @@ struct RubricsWorkspaceView: View {
                                         bridge.startAssignRubric(rubric.rubric)
                                     }
                                     Button("Evaluación masiva", systemImage: "square.grid.3x3") {
-                                        onOpenModule(.evaluationHub, selectedClassId, nil)
+                                        Task { await openBulkEvaluation(for: rubric) }
                                     }
                                     Button("Eliminar", systemImage: "trash", role: .destructive) {
                                         bridge.deleteRubric(id: rubric.rubric.id)
@@ -379,7 +379,7 @@ struct RubricsWorkspaceView: View {
             .buttonStyle(.borderedProminent)
         } else if evaluationCount > 0 {
             Button {
-                onOpenModule(.evaluationHub, selectedClassId, nil)
+                Task { await openBulkEvaluation(for: rubric) }
             } label: {
                 Label(evaluationCount > 1 ? "Continuar evaluación" : "Evaluar grupo", systemImage: "square.grid.3x3")
             }
@@ -414,21 +414,33 @@ struct RubricsWorkspaceView: View {
 
             if let usageSummary, !usageSummary.evaluationUsages.isEmpty {
                 ForEach(Array(usageSummary.evaluationUsages.prefix(4))) { usage in
-                    HStack(spacing: 12) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(usage.evaluationName)
-                                .font(.subheadline.weight(.bold))
-                            Text("\(usage.className) · \(usage.evaluationType)")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
+                    Button {
+                        Task { await openBulkEvaluation(for: usage, rubric: rubric) }
+                    } label: {
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(usage.evaluationName)
+                                    .font(.subheadline.weight(.bold))
+                                    .foregroundStyle(.primary)
+                                Text("\(usage.className) · \(usage.evaluationType)")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            VStack(alignment: .trailing, spacing: 4) {
+                                Text("Peso \(String(format: "%.1f", usage.weight))")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                Label("Evaluar", systemImage: "square.grid.3x3")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(EvaluationDesign.accent)
+                            }
                         }
-                        Spacer()
-                        Text("Peso \(String(format: "%.1f", usage.weight))")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
                     }
+                    .buttonStyle(.plain)
                     .padding(16)
                     .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .accessibilityLabel("Evaluar \(usage.evaluationName) en \(usage.className)")
                 }
             } else {
                 WorkspaceDetailBlock(
@@ -488,6 +500,29 @@ struct RubricsWorkspaceView: View {
     @MainActor
     func reloadTeachingUnits() async {
         teachingUnits = (try? await bridge.plannerTeachingUnits(for: selectedClassId)) ?? []
+    }
+
+    @MainActor
+    func openBulkEvaluation(for rubric: RubricDetail) async {
+        let opened = await bridge.launchBulkRubricEvaluationFromRubric(
+            rubricId: rubric.rubric.id,
+            preferredClassId: selectedClassId
+        )
+        if !opened {
+            onOpenModule(.evaluationHub, selectedClassId, nil)
+        }
+    }
+
+    @MainActor
+    func openBulkEvaluation(for usage: KmpBridge.RubricUsageSnapshot.EvaluationUsage, rubric: RubricDetail) async {
+        let opened = await bridge.launchBulkRubricEvaluationFromUsage(
+            rubricId: rubric.rubric.id,
+            classId: usage.classId,
+            evaluationId: usage.evaluationId
+        )
+        if !opened {
+            onOpenModule(.evaluationHub, usage.classId, nil)
+        }
     }
 
     func ensureExpandedGroups() {

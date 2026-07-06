@@ -289,54 +289,86 @@ struct DashboardView: View {
     @ViewBuilder
     private func dashboardLoadedContent(snapshot: DashboardSnapshot) -> some View {
         VStack(alignment: .leading, spacing: EvaluationDesign.sectionSpacing) {
-            if loadPhase.includes(.ai) {
-                dashboardProactiveRadar(snapshot: snapshot)
+            // 1. Hoy — qué requiere atención inmediata
+            if loadPhase.includes(.lists) {
+                dashboardTodayBlock(snapshot: snapshot)
             } else {
-                dashboardRadarSkeleton
+                dashboardListSkeleton
             }
 
+            // 2. Alertas — accionables, priorizadas
+            if loadPhase.includes(.lists) {
+                dashboardAlertsSection(snapshot: snapshot)
+            }
+
+            // 3. KPIs — contexto cuantitativo
             if loadPhase.includes(.metrics) {
                 dashboardKpiRow(snapshot: snapshot)
             } else {
                 dashboardMetricsSkeleton
             }
 
+            dashboardFilterChips
+
+            // 4. Accesos rápidos — iniciar una tarea
             if loadPhase.includes(.lists) {
-                dashboardWorkCenter(snapshot: snapshot)
+                dashboardQuickEvalBlock(snapshot: snapshot)
+            }
 
-                let blocks: [DashboardBlock] = mode == .classroom
-                    ? [.quickEvaluation, .groupSummary, .agenda, .lomloeAudit]
-                    : [.lomloeAudit, .groupSummary, .agenda, .quickEvaluation]
-
-                ForEach(blocks, id: \.self) { block in
-                    switch block {
-                    case .today:
-                        dashboardTodayBlock(snapshot: snapshot)
-                    case .pending:
-                        dashboardPendingBlock(snapshot: snapshot)
-                    case .risk:
-                        dashboardRiskBlock(snapshot: snapshot)
-                    case .system:
-                        dashboardSystemBlock()
-                    case .alerts:
-                        dashboardAlertsBlock(snapshot: snapshot)
-                    case .quickEvaluation:
-                        dashboardQuickEvalBlock(snapshot: snapshot)
-                    case .groupSummary:
-                        dashboardGroupSummaryBlock(snapshot: snapshot)
-                    case .agenda:
-                        dashboardAgendaBlock(snapshot: snapshot)
-                    case .physicalEducation:
-                        dashboardPEBlock(snapshot: snapshot)
-                    case .lomloeAudit:
-                        dashboardLomloeAuditBlock(snapshot: snapshot)
-                    }
-                }
+            // 5. Insight proactivo — una única tarjeta, descartable
+            if loadPhase.includes(.ai) {
+                dashboardProactiveRadar(snapshot: snapshot)
             } else {
-                dashboardListSkeleton
+                dashboardRadarSkeleton
+            }
+
+            // 6. Contexto secundario — grupos, agenda, EF y sistema
+            if loadPhase.includes(.lists) {
+                dashboardSecondaryGrid(snapshot: snapshot)
             }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.82), value: loadPhase.rawValue)
+    }
+
+    @ViewBuilder
+    private func dashboardAlertsSection(snapshot: DashboardSnapshot) -> some View {
+        if isCompactWidth {
+            VStack(spacing: EvaluationDesign.cardSpacing) {
+                dashboardPendingBlock(snapshot: snapshot)
+                dashboardRiskBlock(snapshot: snapshot)
+            }
+        } else {
+            HStack(alignment: .top, spacing: EvaluationDesign.cardSpacing) {
+                dashboardPendingBlock(snapshot: snapshot)
+                dashboardRiskBlock(snapshot: snapshot)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func dashboardSecondaryGrid(snapshot: DashboardSnapshot) -> some View {
+        let blocks: [DashboardBlock] = mode == .classroom
+            ? [.groupSummary, .agenda, .physicalEducation, .lomloeAudit, .system]
+            : [.lomloeAudit, .groupSummary, .agenda, .physicalEducation, .system]
+
+        VStack(spacing: EvaluationDesign.cardSpacing) {
+            ForEach(blocks, id: \.self) { block in
+                switch block {
+                case .groupSummary:
+                    dashboardGroupSummaryBlock(snapshot: snapshot)
+                case .agenda:
+                    dashboardAgendaBlock(snapshot: snapshot)
+                case .physicalEducation:
+                    dashboardPEBlock(snapshot: snapshot)
+                case .lomloeAudit:
+                    dashboardLomloeAuditBlock(snapshot: snapshot)
+                case .system:
+                    dashboardSystemBlock()
+                case .today, .pending, .risk, .alerts, .quickEvaluation:
+                    EmptyView()
+                }
+            }
+        }
     }
 
     private var dashboardSkeletonContent: some View {
@@ -434,18 +466,25 @@ struct DashboardView: View {
     @ViewBuilder
     private func dashboardKpiRow(snapshot: DashboardSnapshot) -> some View {
         HStack(spacing: 12) {
-            dashboardKpiCard(title: "Hoy", value: "\(snapshot.todayCount)")
-            dashboardKpiCard(title: "Alertas", value: "\(snapshot.alertsCount)")
-            dashboardKpiCard(title: "Pendientes", value: "\(snapshot.pendingCount)")
-            dashboardKpiCard(title: "Próxima sesión", value: snapshot.nextSessionLabel)
+            dashboardKpiCard(title: "Hoy", value: "\(snapshot.todayCount)", isNumeric: true)
+            dashboardKpiCard(title: "Alertas", value: "\(snapshot.alertsCount)", isNumeric: true)
+            dashboardKpiCard(title: "Pendientes", value: "\(snapshot.pendingCount)", isNumeric: true)
+            dashboardKpiCard(title: "Próxima sesión", value: snapshot.nextSessionLabel, isNumeric: false)
         }
     }
 
     @ViewBuilder
-    private func dashboardKpiCard(title: String, value: String) -> some View {
+    private func dashboardKpiCard(title: String, value: String, isNumeric: Bool) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(.caption.bold()).foregroundStyle(.secondary)
-            Text(value).font(.headline)
+            Text(title).font(.footnote).foregroundStyle(.secondary)
+            if isNumeric {
+                Text(value)
+                    .font(.system(.title, design: .rounded).weight(.bold))
+                    .monospacedDigit()
+                    .lineLimit(1)
+            } else {
+                Text(value).font(.headline).lineLimit(2)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
@@ -569,33 +608,6 @@ struct DashboardView: View {
             RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
                 .stroke(Color.primary.opacity(colorScheme == .dark ? 0.15 : 0.06), lineWidth: 1)
         )
-    }
-
-    @ViewBuilder
-    private func dashboardWorkCenter(snapshot: DashboardSnapshot) -> some View {
-        if isCompactWidth {
-            VStack(spacing: EvaluationDesign.cardSpacing) {
-                dashboardTodayBlock(snapshot: snapshot)
-                dashboardPendingBlock(snapshot: snapshot)
-                dashboardRiskBlock(snapshot: snapshot)
-                dashboardSystemBlock()
-            }
-        } else {
-            VStack(spacing: EvaluationDesign.cardSpacing) {
-                dashboardTodayBlock(snapshot: snapshot)
-                
-                let columns = [
-                    GridItem(.flexible(), spacing: EvaluationDesign.cardSpacing, alignment: .top),
-                    GridItem(.flexible(), spacing: EvaluationDesign.cardSpacing, alignment: .top),
-                    GridItem(.flexible(), spacing: EvaluationDesign.cardSpacing, alignment: .top)
-                ]
-                LazyVGrid(columns: columns, alignment: .center, spacing: EvaluationDesign.cardSpacing) {
-                    dashboardPendingBlock(snapshot: snapshot)
-                    dashboardRiskBlock(snapshot: snapshot)
-                    dashboardSystemBlock()
-                }
-            }
-        }
     }
 
     @ViewBuilder
@@ -1868,5 +1880,6 @@ struct ScaleButtonStyle: ButtonStyle {
             .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
             .opacity(configuration.isPressed ? 0.92 : 1.0)
             .animation(.spring(response: 0.2, dampingFraction: 0.7), value: configuration.isPressed)
+            .appInteractiveHighlight()
     }
 }

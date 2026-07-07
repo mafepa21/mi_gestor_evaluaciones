@@ -6,6 +6,7 @@ struct MacRootView: View {
     @ObservedObject var session: MacAppSessionController
     @ObservedObject private var commandCenter: MacCommandCenterCoordinator
     @ObservedObject private var backupStore: MacBackupStore
+    @ObservedObject private var backupService = AppleBackupService.shared
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     @Environment(\.openWindow) private var openWindow
     @StateObject private var layoutState = WorkspaceLayoutState()
@@ -50,11 +51,16 @@ struct MacRootView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(MacAppStyle.pageBackground)
             case .failed(let message):
-                ContentUnavailableView(
-                    "No se pudo iniciar la shell Mac",
-                    systemImage: "exclamationmark.triangle",
-                    description: Text(message)
-                )
+                ContentUnavailableView {
+                    Label("No se pudo iniciar la shell Mac", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(message)
+                } actions: {
+                    Button("Reintentar") {
+                        session.retry()
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(MacAppStyle.pageBackground)
             case .ready:
@@ -84,6 +90,11 @@ struct MacRootView: View {
             session.inspectorVisible = newValue
         }
         .appWritingToolsDisabled()
+        .overlay {
+            if backupService.needsRestart {
+                RestartRequiredOverlay()
+            }
+        }
     }
 
     private func startCommandCenterAfterInitialLayout() async {
@@ -1255,7 +1266,11 @@ struct MacRootView: View {
         case .situations:
             selectFeature(.situations)
         default:
-            session.bridge.status = "El módulo \(module.title) todavía no está disponible en la shell Mac."
+            showBanner(
+                "\(module.title) todavía no está disponible en la shell Mac.",
+                systemImage: "exclamationmark.circle",
+                tint: MacAppStyle.warningTint
+            )
         }
     }
 }

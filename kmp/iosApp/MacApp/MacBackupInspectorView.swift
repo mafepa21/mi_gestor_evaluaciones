@@ -93,7 +93,7 @@ struct MacBackupInspectorView: View {
             }
             Button("Cancelar", role: .cancel) {}
         } message: {
-            Text("Se creará primero una copia de emergencia y después se reemplazará la base de datos actual por \(restoreCandidate?.displayName ?? "la copia seleccionada"). La aplicación se reiniciará automáticamente.")
+            Text("Se creará primero una copia de emergencia y después se reemplazará la base de datos actual por \(restoreCandidate?.displayName ?? "la copia seleccionada"). La aplicación se cerrará al terminar; tendrás que volver a abrirla para completar la restauración.")
         }
     }
 

@@ -41,7 +41,7 @@ struct MacAttendanceView: View {
     @State private var selectedDate = Date()
     @State private var mode: AttendanceBoardMode = .day
     @State private var searchText = ""
-    @State private var selectedStatusFilter = "TODOS"
+    @State private var selectedStatusFilter = AttendanceStatusOption.allFilterId
     @State private var recordsByStudentId: [Int64: KmpBridge.AttendanceRecordSnapshot] = [:]
     @State private var history: [KmpBridge.AttendanceRecordSnapshot] = []
     @State private var classOverviews: [KmpBridge.AttendanceClassOverview] = []
@@ -94,7 +94,7 @@ struct MacAttendanceView: View {
             .filter { row in
                 let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
                 let matchesSearch = query.isEmpty || row.student.fullName.localizedCaseInsensitiveContains(query)
-                let matchesStatus = selectedStatusFilter == "TODOS" || row.record?.status == selectedStatusFilter
+                let matchesStatus = selectedStatusFilter == AttendanceStatusOption.allFilterId || row.record?.status == selectedStatusFilter
                 return matchesSearch && matchesStatus
             }
     }
@@ -112,7 +112,7 @@ struct MacAttendanceView: View {
         attendanceStore.studentsInClass.filter { student in
             let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
             let matchesSearch = query.isEmpty || student.fullName.localizedCaseInsensitiveContains(query)
-            let matchesStatus = selectedStatusFilter == "TODOS" || history.contains {
+            let matchesStatus = selectedStatusFilter == AttendanceStatusOption.allFilterId || history.contains {
                 $0.studentId == student.id && $0.status == selectedStatusFilter
             }
             return matchesSearch && matchesStatus
@@ -311,7 +311,7 @@ struct MacAttendanceView: View {
 
     private func clearAttendanceFilters() {
         searchText = ""
-        selectedStatusFilter = "TODOS"
+        selectedStatusFilter = AttendanceStatusOption.allFilterId
     }
 
     private var attendanceFilterLabel: String {
@@ -319,14 +319,14 @@ struct MacAttendanceView: View {
         if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             active += 1
         }
-        if selectedStatusFilter != "TODOS" {
+        if selectedStatusFilter != AttendanceStatusOption.allFilterId {
             active += 1
         }
         return active == 0 ? "Filtrar" : "Filtros \(active)"
     }
 
     private var attendanceFilterIcon: String {
-        searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedStatusFilter == "TODOS"
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && selectedStatusFilter == AttendanceStatusOption.allFilterId
             ? "line.3.horizontal.decrease.circle"
             : "line.3.horizontal.decrease.circle.fill"
     }

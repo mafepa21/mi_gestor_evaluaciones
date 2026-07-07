@@ -23,7 +23,7 @@ struct BackupRestorePreviewSheet: View {
             .frame(width: 580, height: 480)
             .padding()
         #else
-        NavigationView {
+        NavigationStack {
             mainContent
                 .navigationTitle("Restaurar copia")
                 .navigationBarTitleDisplayMode(.inline)

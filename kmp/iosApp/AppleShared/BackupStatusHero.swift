@@ -142,7 +142,7 @@ struct CreateBackupSheet: View {
             .frame(width: 420, height: 260)
             .padding()
         #else
-        NavigationView {
+        NavigationStack {
             mainContent
                 .navigationTitle("Nueva copia")
                 .navigationBarTitleDisplayMode(.inline)

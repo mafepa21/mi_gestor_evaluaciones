@@ -45,6 +45,7 @@ struct AttendanceWorkspaceView: View {
     @State var noteDraft = ""
     @State var isAttendanceInspectorPresented = false
     @State var showAllPresent = false
+    @State var classSelectionTask: Task<Void, Never>?
 
     var boardSummary: (present: Int, absent: Int, late: Int, untracked: Int) {
         let rows = attendanceStore.studentsInClass.map { recordsByStudentId[$0.id] }
@@ -191,7 +192,8 @@ struct AttendanceWorkspaceView: View {
                 }
             }
             .appOnChange(of: selectedClassId) { _ in
-                Task { await syncClassSelection() }
+                classSelectionTask?.cancel()
+                classSelectionTask = Task { await syncClassSelection() }
             }
             .appOnChange(of: selectedDate) { _ in
                 Task {
@@ -696,8 +698,20 @@ struct AttendanceWorkspaceView: View {
     func syncClassSelection() async {
         selectedStudentId = nil
         historySelection = nil
+        localInjuryStatuses = [:]
+        noteDraft = ""
+        searchText = ""
+        selectedStatusFilter = "TODOS"
+        if selectedClassId == nil {
+            recordsByStudentId = [:]
+            history = []
+            incidents = []
+            sessions = []
+        }
         await bridge.selectStudentsClass(classId: selectedClassId)
+        guard !Task.isCancelled else { return }
         await reloadAttendance()
+        guard !Task.isCancelled else { return }
         syncAttendanceToolbar()
     }
 
@@ -705,11 +719,13 @@ struct AttendanceWorkspaceView: View {
     func reloadAttendance() async {
         guard let selectedClassId else { return }
         let records = (try? await bridge.attendanceRecords(for: selectedClassId, on: selectedDate)) ?? []
+        guard !Task.isCancelled else { return }
         recordsByStudentId = Dictionary(
             uniqueKeysWithValues: normalizedAttendanceRecords(records).map { ($0.studentId, $0) }
         )
         let range = monthRange(for: selectedDate)
         history = (try? await bridge.attendanceHistory(for: selectedClassId, from: range.start, to: range.end)) ?? []
+        guard !Task.isCancelled else { return }
         if let selection = historySelection {
             historySelection = AttendanceHistorySelection(
                 studentId: selection.studentId,
@@ -719,6 +735,7 @@ struct AttendanceWorkspaceView: View {
         }
         incidents = (try? await bridge.incidents(for: selectedClassId)) ?? []
         sessions = (try? await bridge.attendanceSessions(for: selectedClassId, on: selectedDate)) ?? []
+        guard !Task.isCancelled else { return }
         reconcileSelectedAttendanceSession()
         noteDraft = selectedInspectionAttendance?.note ?? ""
         syncAttendanceToolbar()

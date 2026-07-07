@@ -2709,7 +2709,7 @@ struct EditPESessionOperationalSheet: View {
             onCancel: { dismiss() },
             onSave: save
         ) {
-            IOSSectionCard(title: "Espacio y material", systemImage: "sportscourt") {
+            PremiumCard.section(title: "Espacio y material", systemImage: "sportscourt") {
                 VStack(alignment: .leading, spacing: 16) {
                     WorkspaceCreateTextField(title: "Espacio previsto", placeholder: "Pabellón", text: $scheduledSpace)
                     WorkspaceCreateTextField(title: "Espacio usado", placeholder: "Pista exterior", text: $usedSpace)
@@ -2718,7 +2718,7 @@ struct EditPESessionOperationalSheet: View {
                 }
             }
 
-            IOSSectionCard(title: "Seguimiento de clase", systemImage: "waveform.path.ecg") {
+            PremiumCard.section(title: "Seguimiento de clase", systemImage: "waveform.path.ecg") {
                 VStack(alignment: .leading, spacing: 16) {
                     Stepper("Intensidad \(intensity)/5", value: $intensity, in: 0...5)
                     WorkspaceCreateMultilineField(title: "Lesiones", placeholder: "Alumnado lesionado o adaptaciones", text: $injuries)
@@ -2728,7 +2728,7 @@ struct EditPESessionOperationalSheet: View {
                 }
             }
 
-            IOSSectionCard(title: "Diario", systemImage: "book.closed") {
+            PremiumCard.section(title: "Diario", systemImage: "book.closed") {
                 Picker("Estado de diario", selection: $journalStatus) {
                     Text("Vacío").tag(SessionJournalStatus.empty)
                     Text("Borrador").tag(SessionJournalStatus.draft)

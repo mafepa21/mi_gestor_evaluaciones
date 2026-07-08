@@ -81,4 +81,19 @@ class FormulaEvaluatorTest {
         val result = evaluator.evaluate("REDONDEAR([Nota1]*1,5;1)", mapOf("Nota1" to 4.0))
         assertEquals(6.0, result)
     }
+
+    @Test
+    fun `comma still separates arguments for formulas stored before the syntax change`() {
+        val result = evaluator.evaluate(
+            "REDONDEAR(PROMEDIO([eval_1],[rubric_1]),2)",
+            mapOf("eval_1" to 6.0, "rubric_1" to 8.0),
+        )
+        assertEquals(7.0, result)
+    }
+
+    @Test
+    fun `comma after a closing parenthesis separates arguments`() {
+        val result = evaluator.evaluate("REDONDEAR(1+1, 2)", emptyMap())
+        assertEquals(2.0, result)
+    }
 }

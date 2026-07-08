@@ -54,9 +54,23 @@ class FormulaEvaluator {
                     flushToken()
                     tokens += char.toString()
                 }
-                // ',' se trata como separador decimal (no como separador de argumentos)
-                // para que fórmulas en español como "[Nota1]*1,5" se evalúen correctamente.
-                char == ',' -> current.append('.')
+                char == ',' -> {
+                    // ',' es separador decimal solo entre dígitos puros (p.ej. "1,5"),
+                    // para que fórmulas en español como "[Nota1]*1,5" sigan funcionando.
+                    // En cualquier otro caso se trata como separador de argumentos, para
+                    // no romper fórmulas guardadas antes de este cambio de convención
+                    // (p.ej. "PROMEDIO([a],[b])" o "REDONDEAR(x, 2)").
+                    val isDecimalComma = current.isNotEmpty() &&
+                        current.all { it.isDigit() } &&
+                        i + 1 < input.length &&
+                        input[i + 1].isDigit()
+                    if (isDecimalComma) {
+                        current.append('.')
+                    } else {
+                        flushToken()
+                        tokens += ";"
+                    }
+                }
                 else -> current.append(char)
             }
             i += 1

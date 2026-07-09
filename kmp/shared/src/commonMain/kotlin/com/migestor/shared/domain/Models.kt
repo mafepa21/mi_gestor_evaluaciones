@@ -1451,7 +1451,7 @@ fun NotebookRow.gradeValueFor(
         ?: column.evaluationId?.let { evalId ->
             numericDrafts[studentId to "eval_$evalId"]?.replace(",", ".")?.toDoubleOrNull()
         }
-    if (draftValue != null) return draftValue
+    if (draftValue != null) return column.rescaleNumericGrade(draftValue)
 
     // 2. Check calculated formula values
     calculatedValuesByColumnId[column.id]?.let { return it }
@@ -1460,14 +1460,14 @@ fun NotebookRow.gradeValueFor(
     val evaluationValue = column.evaluationId?.let { evaluationId ->
         cells.firstOrNull { it.evaluationId == evaluationId }?.value
     }
-    if (evaluationValue != null) return evaluationValue
+    if (evaluationValue != null) return column.rescaleNumericGrade(evaluationValue)
 
     // 4. Check persisted grades (by columnId or evaluationId)
     val persistedGrade = persistedGrades.firstOrNull { it.columnId == column.id }?.value
         ?: column.evaluationId?.let { evalId ->
             persistedGrades.firstOrNull { it.evaluationId == evalId }?.value
         }
-    if (persistedGrade != null) return persistedGrade
+    if (persistedGrade != null) return column.rescaleNumericGrade(persistedGrade)
 
     // 5. Check persisted cells check/bool/ordinal value
     val persistedCell = persistedCells.firstOrNull { it.columnId == column.id }
@@ -1475,6 +1475,15 @@ fun NotebookRow.gradeValueFor(
         NotebookColumnType.CHECK -> persistedCell?.boolValue?.let { if (it) 10.0 else 0.0 }
         NotebookColumnType.ORDINAL -> persistedCell?.ordinalValue?.let { column.ordinalScoreForAverage(it) }
         else -> persistedCell?.boolValue?.let { if (it) 10.0 else 0.0 }
+    }
+}
+
+// FOUR_LEVEL is stored as a 1-4 level, not a 0-10 grade; other scale kinds pass through raw.
+fun NotebookColumnDefinition.rescaleNumericGrade(rawValue: Double): Double {
+    if (type != NotebookColumnType.NUMERIC) return rawValue
+    return when (scaleKind) {
+        NotebookScaleKind.FOUR_LEVEL -> (rawValue.coerceIn(1.0, 4.0) - 1.0) / 3.0 * 10.0
+        else -> rawValue
     }
 }
 

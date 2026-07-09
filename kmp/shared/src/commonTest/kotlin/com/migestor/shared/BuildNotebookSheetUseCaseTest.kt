@@ -63,7 +63,7 @@ class BuildNotebookSheetUseCaseTest {
                 id = "calc_final",
                 title = "Final",
                 type = NotebookColumnType.CALCULATED,
-                formula = "ROUND((EX1 * 0.4) + (TA1 * 0.6), 2)",
+                formula = "ROUND((EX1 * 0.4) + (TA1 * 0.6); 2)",
                 tabIds = listOf("eval"),
                 order = 2,
                 widthDp = 160.0,

@@ -32,6 +32,74 @@ struct LearningSituationAssessmentImportDraft: Identifiable, Codable {
     }
 }
 
+enum AssessmentInstrumentKind: String, Codable, CaseIterable {
+    case rubric
+    case observationGrid
+    case checklist
+    case teacherObservation
+    case submissionChecklist
+    case quizQuestions
+
+    var label: String {
+        switch self {
+        case .rubric: return "Rubrica"
+        case .observationGrid: return "Observacion"
+        case .checklist: return "Checklist"
+        case .teacherObservation: return "Observacion docente"
+        case .submissionChecklist: return "Checklist final"
+        case .quizQuestions: return "Quiz / Test"
+        }
+    }
+}
+
+enum AssessmentInstrumentScoreStrategy: String, Codable, CaseIterable {
+    case none
+    case numeric0To10
+    case rubric
+    case checklistAllOrNothing
+    case checklistProportional
+    case observationScale1To4
+    case quizPercentCorrect
+
+    var label: String {
+        switch self {
+        case .none: return "Auxiliar"
+        case .numeric0To10: return "Nota 0-10"
+        case .rubric: return "Rúbrica"
+        case .checklistAllOrNothing: return "Checklist todo/nada"
+        case .checklistProportional: return "Checklist proporcional"
+        case .observationScale1To4: return "Observación 1-4"
+        case .quizPercentCorrect: return "Porcentaje de aciertos"
+        }
+    }
+}
+
+enum AssessmentInstrumentEmptyCellPolicy: String, Codable, CaseIterable {
+    case excludeFromAverage
+    case countAsZero
+
+    var label: String {
+        switch self {
+        case .excludeFromAverage: return "Vacías excluidas"
+        case .countAsZero: return "Vacías como 0"
+        }
+    }
+}
+
+struct QuizQuestionDraft: Codable {
+    var questionText: String
+    var questionType: QuizQuestionType
+    var options: [String]
+    var correctAnswer: String?
+}
+
+enum QuizQuestionType: String, Codable {
+    case multipleChoice
+    case trueFalse
+    case fillInTheBlank
+    case openEnded
+}
+
 struct AssessmentInstrumentDraft: Identifiable, Codable {
     let id: UUID
     var title: String
@@ -44,6 +112,7 @@ struct AssessmentInstrumentDraft: Identifiable, Codable {
     var emptyCellPolicy: AssessmentInstrumentEmptyCellPolicy
     var rubric: RubricDraft?
     var checklistItems: [ChecklistItemDraft]
+    var quizQuestions: [QuizQuestionDraft]
     var observationFields: [ObservationFieldDraft]
     var note: String?
 
@@ -58,6 +127,7 @@ struct AssessmentInstrumentDraft: Identifiable, Codable {
         emptyCellPolicy: AssessmentInstrumentEmptyCellPolicy = .excludeFromAverage,
         rubric: RubricDraft?,
         checklistItems: [ChecklistItemDraft] = [],
+        quizQuestions: [QuizQuestionDraft] = [],
         observationFields: [ObservationFieldDraft] = [],
         note: String? = nil
     ) {
@@ -72,58 +142,9 @@ struct AssessmentInstrumentDraft: Identifiable, Codable {
         self.emptyCellPolicy = emptyCellPolicy
         self.rubric = rubric
         self.checklistItems = checklistItems
+        self.quizQuestions = quizQuestions
         self.observationFields = observationFields
         self.note = note
-    }
-}
-
-enum AssessmentInstrumentKind: String, Codable, CaseIterable {
-    case rubric
-    case observationGrid
-    case checklist
-    case teacherObservation
-    case submissionChecklist
-
-    var label: String {
-        switch self {
-        case .rubric: return "Rubrica"
-        case .observationGrid: return "Observacion"
-        case .checklist: return "Checklist"
-        case .teacherObservation: return "Observacion docente"
-        case .submissionChecklist: return "Checklist final"
-        }
-    }
-}
-
-enum AssessmentInstrumentScoreStrategy: String, Codable, CaseIterable {
-    case none
-    case numeric0To10
-    case rubric
-    case checklistAllOrNothing
-    case checklistProportional
-    case observationScale1To4
-
-    var label: String {
-        switch self {
-        case .none: return "Auxiliar"
-        case .numeric0To10: return "Nota 0-10"
-        case .rubric: return "Rúbrica"
-        case .checklistAllOrNothing: return "Checklist todo/nada"
-        case .checklistProportional: return "Checklist proporcional"
-        case .observationScale1To4: return "Observación 1-4"
-        }
-    }
-}
-
-enum AssessmentInstrumentEmptyCellPolicy: String, Codable, CaseIterable {
-    case excludeFromAverage
-    case countAsZero
-
-    var label: String {
-        switch self {
-        case .excludeFromAverage: return "Vacías excluidas"
-        case .countAsZero: return "Vacías como 0"
-        }
     }
 }
 
@@ -151,6 +172,13 @@ struct ChecklistItemDraft: Codable {
 struct ObservationFieldDraft: Codable {
     var title: String
     var scaleLabel: String?
+    var indicatorTitles: [String] = []
+}
+
+extension AssessmentInstrumentDraft {
+    var hasStructuredObservationIndicators: Bool {
+        observationFields.contains { !$0.indicatorTitles.isEmpty }
+    }
 }
 
 struct LearningSituationAssessmentInstrumentsImportService {
@@ -186,6 +214,9 @@ struct LearningSituationAssessmentInstrumentsImportService {
                 guard !cleanText.isEmpty else { continue }
                 if isDocumentTitle(cleanText) {
                     continue
+                } else if isImporterMetaNote(cleanText) {
+                    flushCurrent()
+                    currentHeading = nil
                 } else if isGradingLine(cleanText) {
                     gradingFormula = cleanText
                 } else if let heading = parseHeading(cleanText) {
@@ -245,7 +276,28 @@ struct LearningSituationAssessmentInstrumentsImportService {
         let kind = inferKind(title: normalizedTitle, tables: nonEmptyTables)
         let rubric = makeRubric(kind: kind, tables: nonEmptyTables)
         let checklistItems = makeChecklistItems(kind: kind, tables: nonEmptyTables, paragraphs: paragraphs)
+        let quizQuestions = kind == .quizQuestions ? makeQuizQuestions(paragraphs: paragraphs) : []
         let observationFields = makeObservationFields(kind: kind, tables: nonEmptyTables)
+
+        // Un parrafo que aporta contenido estructurado (item de checklist o pregunta de
+        // quiz) no se duplica como nota; si tenia texto de contexto antes del primer
+        // marcador, ese fragmento se conserva igualmente como anotacion.
+        let annotations: [String] = paragraphs.compactMap { paragraph -> String? in
+            let cleanPara = clean(paragraph)
+            guard !cleanPara.isEmpty else { return nil }
+            if kind == .checklist || kind == .submissionChecklist,
+               !parseChecklistItems(from: paragraph).isEmpty {
+                let preamble = checklistPreamble(from: paragraph)
+                return preamble.isEmpty ? nil : preamble
+            }
+            if kind == .quizQuestions, quizQuestion(from: paragraph) != nil {
+                return nil
+            }
+            return cleanPara
+        }
+
+        let note = annotations.isEmpty ? nil : annotations.joined(separator: "\n")
+        
         let selectedByDefault = (heading.weightPercent ?? 0) > 0
         let scoreStrategy = defaultScoreStrategy(
             kind: kind,
@@ -254,7 +306,7 @@ struct LearningSituationAssessmentInstrumentsImportService {
         )
         let countsTowardAverage = scoreStrategy != .none && (heading.weightPercent ?? 0) > 0
 
-        if rubric == nil, checklistItems.isEmpty, observationFields.isEmpty {
+        if rubric == nil, checklistItems.isEmpty, observationFields.isEmpty, quizQuestions.isEmpty {
             return nil
         }
         return AssessmentInstrumentDraft(
@@ -267,8 +319,9 @@ struct LearningSituationAssessmentInstrumentsImportService {
             scoreStrategy: scoreStrategy,
             rubric: rubric,
             checklistItems: checklistItems,
+            quizQuestions: quizQuestions,
             observationFields: observationFields,
-            note: countsTowardAverage ? nil : "Auxiliar o sin puntuación computable detectada"
+            note: note
         )
     }
 
@@ -287,6 +340,8 @@ struct LearningSituationAssessmentInstrumentsImportService {
             return .none
         case .teacherObservation:
             return .none
+        case .quizQuestions:
+            return .quizPercentCorrect
         }
     }
 
@@ -296,6 +351,68 @@ struct LearningSituationAssessmentInstrumentsImportService {
             let value = normalized(scale)
             return value.contains("1") && value.contains("4")
         }
+    }
+
+    private func makeQuizQuestions(paragraphs: [String]) -> [QuizQuestionDraft] {
+        paragraphs.compactMap(quizQuestion(from:))
+    }
+
+    private func slashOptions(in text: String) -> (questionText: String, options: [String])? {
+        let optionsPattern = #"([A-Za-z0-9\sáéíóúÁÉÍÓÚñÑ]+(?:\s*/\s*[A-Za-z0-9\sáéíóúÁÉÍÓÚñÑ]+)+)"#
+        guard let regex = try? NSRegularExpression(pattern: optionsPattern),
+              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let range = Range(match.range(at: 1), in: text) else { return nil }
+        let optionsText = String(text[range])
+        let options = optionsText.components(separatedBy: "/").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        guard options.count > 1 else { return nil }
+        let questionText = text.replacingOccurrences(of: optionsText, with: "").trimmingCharacters(in: CharacterSet(charactersIn: " :.\t\n\r"))
+        return (questionText.isEmpty ? text : questionText, options)
+    }
+
+    private func quizQuestion(from paragraph: String) -> QuizQuestionDraft? {
+        let cleanPara = clean(paragraph)
+        guard !cleanPara.isEmpty else { return nil }
+
+        if cleanPara.hasPrefix("- [ ]") || cleanPara.hasPrefix("[ ]") || cleanPara.hasPrefix("-") || cleanPara.hasPrefix("•") {
+            return nil
+        }
+
+        let hasQuestionMark = cleanPara.contains("?") || cleanPara.contains("¿")
+        let hasFillInBlank = cleanPara.contains("____")
+        let hasTrueFalse = normalized(cleanPara).contains("verdadero o falso") || normalized(cleanPara).contains("true or false")
+        let slash = slashOptions(in: cleanPara)
+
+        guard hasQuestionMark || hasFillInBlank || hasTrueFalse || slash != nil else { return nil }
+
+        if hasTrueFalse {
+            return QuizQuestionDraft(
+                questionText: cleanPara,
+                questionType: .trueFalse,
+                options: ["Verdadero", "Falso"],
+                correctAnswer: nil
+            )
+        } else if hasFillInBlank {
+            return QuizQuestionDraft(
+                questionText: cleanPara,
+                questionType: .fillInTheBlank,
+                options: [],
+                correctAnswer: nil
+            )
+        } else if let slash {
+            return QuizQuestionDraft(
+                questionText: slash.questionText,
+                questionType: .multipleChoice,
+                options: slash.options,
+                correctAnswer: nil
+            )
+        }
+
+        return QuizQuestionDraft(
+            questionText: cleanPara,
+            questionType: .openEnded,
+            options: [],
+            correctAnswer: nil
+        )
     }
 
     private func makeRubric(kind: AssessmentInstrumentKind, tables: [[[String]]]) -> RubricDraft? {
@@ -368,25 +485,59 @@ struct LearningSituationAssessmentInstrumentsImportService {
                 return ChecklistItemDraft(title: title, required: true)
             }
         }
-        let paragraphItems = paragraphs.flatMap(checklistItems(from:))
+        let paragraphItems = paragraphs.flatMap(parseChecklistItems(from:))
         return tableItems + paragraphItems
     }
 
     private func makeObservationFields(kind: AssessmentInstrumentKind, tables: [[[String]]]) -> [ObservationFieldDraft] {
         guard kind == .teacherObservation || kind == .observationGrid else { return [] }
-        return tables.flatMap { table in
+        return tables.flatMap { table -> [ObservationFieldDraft] in
             let header = table.first ?? []
             let scale = header.dropFirst().filter { !$0.isEmpty }.joined(separator: " / ")
             let fieldTitles = observationFieldTitles(from: table)
+            let indicatorTitles = observationIndicatorTitles(from: table)
             return fieldTitles.map { title in
-                ObservationFieldDraft(title: title, scaleLabel: scale.isEmpty ? nil : scale)
+                ObservationFieldDraft(
+                    title: title,
+                    scaleLabel: scale.isEmpty ? nil : scale,
+                    indicatorTitles: indicatorTitles
+                )
             }
         }
+    }
+
+    // Solo aporta indicadores cuando `observationFieldTitles` resolvio en modo
+    // "fila = titulo" (cabecera sin "student"/"exercise", ej. "Alumno/a"). En ese
+    // caso las columnas de indicador reales son todas las que no sean: la columna
+    // usada como titulo de fila (la que aporta el primer valor no vacio de cada
+    // fila, normalmente "Momento") ni ninguna cuyo nombre normalizado contenga
+    // "nota" (la columna de nota final de fila, no un indicador evaluable).
+    private func observationIndicatorTitles(from table: [[String]]) -> [String] {
+        guard let header = table.first else { return [] }
+        let firstHeader = normalized(header.first ?? "")
+        guard !(firstHeader.contains("student") || firstHeader.contains("exercise")) else { return [] }
+        let rows = table.dropFirst().isEmpty ? table : Array(table.dropFirst())
+        var excludedIndices = Set(rows.compactMap { row in
+            row.firstIndex(where: { !$0.isEmpty })
+        })
+        excludedIndices.insert(0) // primera columna: alumno/a, nunca es indicador
+        return header.enumerated().filter { index, column in
+            let cleanColumn = clean(column)
+            guard !cleanColumn.isEmpty else { return false }
+            guard !excludedIndices.contains(index) else { return false }
+            return !normalized(cleanColumn).contains("nota")
+        }.map { clean($0.element) }
     }
 
     private func inferKind(title: String, tables: [[[String]]]) -> AssessmentInstrumentKind {
         if title.contains("submission") || title.contains("entrega") || title.contains("final checklist") || title.contains("producto final") {
             return .submissionChecklist
+        }
+        if title.contains("quiz") || title.contains("test") || title.contains("cuestionario") {
+            if tables.isEmpty {
+                return .quizQuestions
+            }
+            return .checklist
         }
         if title.contains("passport") ||
             title.contains("pasaporte") ||
@@ -397,7 +548,7 @@ struct LearningSituationAssessmentInstrumentsImportService {
             title.contains("coevaluacion") {
             return .checklist
         }
-        if title.contains("quiz") || title.contains("safety") || title.contains("adjustment") || title.contains("tarea competencial") {
+        if title.contains("safety") || title.contains("adjustment") || title.contains("tarea competencial") {
             return .checklist
         }
         if title.contains("teacher") ||
@@ -430,7 +581,12 @@ struct LearningSituationAssessmentInstrumentsImportService {
     private func parseHeading(_ text: String) -> ParsedInstrumentHeading? {
         let cleanText = clean(text)
         let normalizedText = normalized(cleanText)
-        let isExplicitUnnumberedHeading = instrumentHeadingKeywords.contains { normalizedText.contains($0) }
+        // Un titulo sin numerar es corto (p.ej. "Checklist final de entrega - Sesion 10").
+        // Sin este limite de longitud, cualquier parrafo narrativo que mencione de pasada
+        // una palabra clave ("instrumento", "checklist", "coevaluacion"...) se confundiria
+        // con un encabezado nuevo y rompería el agrupamiento de tablas/anotaciones.
+        let isExplicitUnnumberedHeading = cleanText.count <= 70
+            && instrumentHeadingKeywords.contains { normalizedText.contains($0) }
         guard isNumberedInstrumentHeading(cleanText) || isExplicitUnnumberedHeading else {
             return nil
         }
@@ -445,23 +601,51 @@ struct LearningSituationAssessmentInstrumentsImportService {
         return ParsedInstrumentHeading(title: title, criterionLabel: criterion, weightPercent: weight)
     }
 
-    private func checklistItems(from paragraph: String) -> [ChecklistItemDraft] {
-        let markerPattern = #"(?:^|\s)-\s*\[\s?\]\s*"#
-        let normalizedMarkers = paragraph
-            .replacingOccurrences(of: markerPattern, with: "|||CHECK_ITEM|||", options: .regularExpression)
-            .replacingOccurrences(of: #"\[\s?\]\s*"#, with: "|||CHECK_ITEM|||", options: .regularExpression)
-        let splitItems = normalizedMarkers
-            .components(separatedBy: "|||CHECK_ITEM|||")
-            .map(clean)
-            .filter { !$0.isEmpty && !normalized($0).hasPrefix("tick before") }
-        if splitItems.count > 1 {
-            return splitItems.map { ChecklistItemDraft(title: $0, required: true) }
+    private func checklistPreamble(from paragraph: String) -> String {
+        let cleanText = clean(paragraph)
+        guard let regex = try? NSRegularExpression(pattern: #"(?:-\s*)?\[\s?\]"#),
+              let firstMatch = regex.firstMatch(in: cleanText, range: NSRange(cleanText.startIndex..., in: cleanText)),
+              let markerRange = Range(firstMatch.range, in: cleanText) else {
+            return ""
         }
-        let labelStripped = paragraph
-            .replacingOccurrences(of: #"^[^:]{1,40}:\s*"#, with: "", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !labelStripped.isEmpty else { return [] }
-        return [ChecklistItemDraft(title: labelStripped, required: true)]
+        return clean(String(cleanText[cleanText.startIndex..<markerRange.lowerBound]))
+    }
+
+    private func parseChecklistItems(from paragraph: String) -> [ChecklistItemDraft] {
+        let cleanText = clean(paragraph)
+        guard !cleanText.isEmpty else { return [] }
+
+        // Extrae solo el texto que sigue a cada marcador "- [ ] "/"[ ] ", ignorando
+        // cualquier frase de contexto que preceda al primer marcador en el parrafo.
+        let markerItemPattern = #"(?:-\s*)?\[\s?\]\s*(.+?)(?=\s*(?:-\s*)?\[\s?\]|$)"#
+        if let regex = try? NSRegularExpression(pattern: markerItemPattern) {
+            let range = NSRange(cleanText.startIndex..., in: cleanText)
+            let matches = regex.matches(in: cleanText, range: range)
+            let items = matches.compactMap { match -> ChecklistItemDraft? in
+                guard let itemRange = Range(match.range(at: 1), in: cleanText) else { return nil }
+                let title = clean(String(cleanText[itemRange]))
+                guard !title.isEmpty, !normalized(title).hasPrefix("tick before") else { return nil }
+                return ChecklistItemDraft(title: title, required: true)
+            }
+            if !items.isEmpty { return items }
+        }
+
+        if cleanText.hasPrefix("-") || cleanText.hasPrefix("•") || cleanText.hasPrefix("*") {
+            var itemText = cleanText
+            while itemText.hasPrefix("-") || itemText.hasPrefix("•") || itemText.hasPrefix("*") {
+                itemText.removeFirst()
+                itemText = itemText.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            if !itemText.isEmpty {
+                return [ChecklistItemDraft(title: itemText, required: true)]
+            }
+        }
+        
+        if cleanText.range(of: #"^\d+[\.\)]\s+"#, options: .regularExpression) != nil && cleanText.count < 120 {
+            return [ChecklistItemDraft(title: cleanText, required: true)]
+        }
+        
+        return []
     }
 
     private func observationFieldTitles(from table: [[String]]) -> [String] {
@@ -482,6 +666,13 @@ struct LearningSituationAssessmentInstrumentsImportService {
         return value.contains("assessment instruments") ||
             value.contains("instrumentos de evaluacion") ||
             value.contains("instrumentos de evaluación")
+    }
+
+    private func isImporterMetaNote(_ text: String) -> Bool {
+        let value = normalized(text)
+        return value.contains("nota para quien importe") ||
+            value.contains("nota para el importador") ||
+            value.contains("note for whoever imports")
     }
 
     private func isGradingLine(_ text: String) -> Bool {

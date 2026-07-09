@@ -1543,7 +1543,7 @@ private struct LearningSituationEvaluationSheet: View {
         var parts = [instrument.kind.label]
         if let criterion = instrument.criterionLabel, !criterion.isEmpty { parts.append(criterion) }
         parts.append(instrument.weightPercent.map { "\(Int($0.rounded()))%" } ?? "Auxiliar")
-        let detailCount = instrument.rubric?.criteria.count ?? instrument.checklistItems.count + instrument.observationFields.count
+        let detailCount = instrument.rubric?.criteria.count ?? instrument.checklistItems.count + instrument.quizQuestions.count + instrument.observationFields.count
         if detailCount > 0 { parts.append("\(detailCount) items") }
         return parts.joined(separator: " · ")
     }
@@ -1974,6 +1974,97 @@ private struct LearningSituationAssessmentImportPreviewSheet: View {
                 }
             }
 
+            if let note = editableDraft.instruments[index].note, !note.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Anotaciones de contexto", systemImage: "info.circle")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text(note)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(NotebookStyle.surfaceSoft, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+                .padding(.top, 8)
+            }
+
+            if editableDraft.instruments[index].kind == .rubric,
+               let rubric = editableDraft.instruments[index].rubric {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Estructura de Rúbrica").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    ForEach(rubric.criteria, id: \.title) { criterion in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(criterion.title)
+                                .font(.caption.weight(.bold))
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    ForEach(Array(criterion.descriptors.enumerated()), id: \.offset) { levelIndex, desc in
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(levelIndex < rubric.levels.count ? rubric.levels[levelIndex].label : "Nivel \(levelIndex + 1)")
+                                                .font(.system(size: 9, weight: .bold))
+                                                .foregroundStyle(NotebookStyle.primaryTint)
+                                            Text(desc)
+                                                .font(.system(size: 10))
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .frame(width: 120, alignment: .leading)
+                                        .padding(6)
+                                        .background(NotebookStyle.surface, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                                    }
+                                }
+                            }
+                        }
+                        .padding(8)
+                        .background(NotebookStyle.surfaceSoft, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+                }
+            }
+            
+            if editableDraft.instruments[index].kind == .quizQuestions,
+               !editableDraft.instruments[index].quizQuestions.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Preguntas Detectadas (\(editableDraft.instruments[index].quizQuestions.count))").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    ForEach(Array(editableDraft.instruments[index].quizQuestions.enumerated()), id: \.offset) { qIndex, question in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("\(qIndex + 1). \(question.questionText)")
+                                .font(.caption.weight(.semibold))
+                            if !question.options.isEmpty {
+                                Text("Opciones: " + question.options.joined(separator: " / "))
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Text("Respuesta abierta / rellenar hueco")
+                                    .font(.system(size: 10).italic())
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(NotebookStyle.surfaceSoft, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+                }
+            }
+
+            if (editableDraft.instruments[index].kind == .checklist || editableDraft.instruments[index].kind == .submissionChecklist),
+               !editableDraft.instruments[index].checklistItems.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Items de Checklist").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    ForEach(editableDraft.instruments[index].checklistItems, id: \.title) { item in
+                        HStack(spacing: 8) {
+                            Image(systemName: "square")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text(item.title)
+                                .font(.caption)
+                        }
+                        .padding(6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(NotebookStyle.surfaceSoft, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    }
+                }
+            }
+
             Text(subtitle(for: editableDraft.instruments[index]))
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -2039,7 +2130,10 @@ private struct LearningSituationAssessmentImportPreviewSheet: View {
     }
 
     private func detailCount(for instrument: AssessmentInstrumentDraft) -> Int {
-        instrument.rubric?.criteria.count ?? instrument.checklistItems.count + instrument.observationFields.count
+        if instrument.kind == .quizQuestions {
+            return instrument.quizQuestions.count
+        }
+        return instrument.rubric?.criteria.count ?? instrument.checklistItems.count + instrument.observationFields.count
     }
 
     private func kindBinding(for index: Int) -> Binding<AssessmentInstrumentKind> {
@@ -2079,6 +2173,8 @@ private struct LearningSituationAssessmentImportPreviewSheet: View {
             return hasObservationScale1To4(instrument) ? .observationScale1To4 : .none
         case .checklist, .submissionChecklist, .teacherObservation:
             return .none
+        case .quizQuestions:
+            return .quizPercentCorrect
         }
     }
 
@@ -2100,7 +2196,7 @@ private struct LearningSituationAssessmentImportPreviewSheet: View {
         parts.append(instrument.weightPercent.map { "\(Int($0.rounded()))%" } ?? "Auxiliar")
         parts.append(instrument.scoreStrategy.label)
         parts.append(instrument.emptyCellPolicy.label)
-        let detailCount = instrument.rubric?.criteria.count ?? instrument.checklistItems.count + instrument.observationFields.count
+        let detailCount = instrument.rubric?.criteria.count ?? instrument.checklistItems.count + instrument.quizQuestions.count + instrument.observationFields.count
         if detailCount > 0 { parts.append("\(detailCount) items") }
         return parts.joined(separator: " · ")
     }

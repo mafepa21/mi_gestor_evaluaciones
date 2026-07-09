@@ -45,6 +45,7 @@ struct AssessmentInstrumentDraft: Identifiable, Codable {
     var rubric: RubricDraft?
     var checklistItems: [ChecklistItemDraft]
     var observationFields: [ObservationFieldDraft]
+    var quizQuestions: [QuizQuestionDraft]
     var note: String?
 
     init(
@@ -59,6 +60,7 @@ struct AssessmentInstrumentDraft: Identifiable, Codable {
         rubric: RubricDraft?,
         checklistItems: [ChecklistItemDraft] = [],
         observationFields: [ObservationFieldDraft] = [],
+        quizQuestions: [QuizQuestionDraft] = [],
         note: String? = nil
     ) {
         self.id = UUID()
@@ -73,6 +75,7 @@ struct AssessmentInstrumentDraft: Identifiable, Codable {
         self.rubric = rubric
         self.checklistItems = checklistItems
         self.observationFields = observationFields
+        self.quizQuestions = quizQuestions
         self.note = note
     }
 }
@@ -83,6 +86,7 @@ enum AssessmentInstrumentKind: String, Codable, CaseIterable {
     case checklist
     case teacherObservation
     case submissionChecklist
+    case quizQuestions
 
     var label: String {
         switch self {
@@ -91,6 +95,7 @@ enum AssessmentInstrumentKind: String, Codable, CaseIterable {
         case .checklist: return "Checklist"
         case .teacherObservation: return "Observacion docente"
         case .submissionChecklist: return "Checklist final"
+        case .quizQuestions: return "Quiz"
         }
     }
 }
@@ -102,6 +107,7 @@ enum AssessmentInstrumentScoreStrategy: String, Codable, CaseIterable {
     case checklistAllOrNothing
     case checklistProportional
     case observationScale1To4
+    case quizPercentCorrect
 
     var label: String {
         switch self {
@@ -111,6 +117,7 @@ enum AssessmentInstrumentScoreStrategy: String, Codable, CaseIterable {
         case .checklistAllOrNothing: return "Checklist todo/nada"
         case .checklistProportional: return "Checklist proporcional"
         case .observationScale1To4: return "Observación 1-4"
+        case .quizPercentCorrect: return "Quiz % aciertos"
         }
     }
 }
@@ -151,6 +158,11 @@ struct ChecklistItemDraft: Codable {
 struct ObservationFieldDraft: Codable {
     var title: String
     var scaleLabel: String?
+}
+
+struct QuizQuestionDraft: Codable {
+    var questionText: String
+    var options: [String]
 }
 
 struct LearningSituationAssessmentInstrumentsImportService {
@@ -287,6 +299,8 @@ struct LearningSituationAssessmentInstrumentsImportService {
             return .none
         case .teacherObservation:
             return .none
+        case .quizQuestions:
+            return .quizPercentCorrect
         }
     }
 

@@ -5313,6 +5313,8 @@ final class KmpBridge: ObservableObject {
             return .form
         case .rubric:
             return .form
+        case .quizQuestions:
+            return .quiz
         }
     }
 
@@ -5326,6 +5328,8 @@ final class KmpBridge: ObservableObject {
             return .structuredForm
         case .rubric:
             return .structuredForm
+        case .quizQuestions:
+            return .structuredQuiz
         }
     }
 
@@ -5399,6 +5403,14 @@ final class KmpBridge: ObservableObject {
         if !instrument.observationFields.isEmpty {
             let specs = instrument.observationFields.enumerated().map { index, field in
                 ("field_\(index + 1)", field.title, NotebookInstrumentItemType.scale14, [] as [String])
+            }
+            return makeInstrumentItems(columnId: columnId, specs: specs)
+        }
+
+        if !instrument.quizQuestions.isEmpty {
+            let specs = instrument.quizQuestions.enumerated().map { index, question -> (String, String, NotebookInstrumentItemType, [String]) in
+                let itemType: NotebookInstrumentItemType = question.options.isEmpty ? .text : .choice
+                return ("question_\(index + 1)", question.questionText, itemType, question.options)
             }
             return makeInstrumentItems(columnId: columnId, specs: specs)
         }
@@ -5712,6 +5724,8 @@ final class KmpBridge: ObservableObject {
             return .check
         case .rubric:
             return .numeric
+        case .quizPercentCorrect:
+            return .numeric
         case .checklistProportional, .none:
             return .text
         }
@@ -5719,7 +5733,7 @@ final class KmpBridge: ObservableObject {
 
     private func canMaterializeAverage(for strategy: AssessmentInstrumentScoreStrategy) -> Bool {
         switch strategy {
-        case .numeric0To10, .rubric, .checklistAllOrNothing, .observationScale1To4:
+        case .numeric0To10, .rubric, .checklistAllOrNothing, .observationScale1To4, .quizPercentCorrect:
             return true
         case .checklistProportional, .none:
             return false
@@ -5738,6 +5752,8 @@ final class KmpBridge: ObservableObject {
             return .systematicObservation
         case .submissionChecklist:
             return .finalProduct
+        case .quizQuestions:
+            return .writtenTest
         }
     }
 
@@ -5752,6 +5768,8 @@ final class KmpBridge: ObservableObject {
             return .check
         case .rubric:
             return .numeric010
+        case .quizPercentCorrect:
+            return .percentage
         case .checklistProportional, .none:
             break
         }
@@ -5764,6 +5782,8 @@ final class KmpBridge: ObservableObject {
             return .structuredForm
         case .rubric:
             return .numeric010
+        case .quizQuestions:
+            return .structuredQuiz
         }
     }
 
@@ -5776,6 +5796,8 @@ final class KmpBridge: ObservableObject {
             return .fourLevel
         case .checklistAllOrNothing:
             return .yesNo
+        case .quizPercentCorrect:
+            return .percentage
         case .checklistProportional, .none:
             return .custom
         }
@@ -8907,7 +8929,7 @@ final class KmpBridge: ObservableObject {
                 entity: change.entity,
                 entityId: change.id,
                 updatedAtEpochMs: change.updatedAtEpochMs
-            )) ?? false
+            ))?.boolValue ?? false
             if isBlockedByTombstone {
                 continue
             }
@@ -8997,7 +9019,7 @@ final class KmpBridge: ObservableObject {
                     // la última alta/baja local conocida para ESTE alumno: evita que un
                     // snapshot de roster desactualizado borre a alguien recién añadido.
                     let localEnrollmentAt = try await container.classesRepository.latestEnrollmentUpdatedAt(classId: classId, studentId: id)
-                    if localEnrollmentAt == nil || change.updatedAtEpochMs >= localEnrollmentAt! {
+                    if localEnrollmentAt == nil || change.updatedAtEpochMs >= localEnrollmentAt!.int64Value {
                         try await container.classesRepository.removeStudentFromClass(classId: classId, studentId: id)
                     }
                 }

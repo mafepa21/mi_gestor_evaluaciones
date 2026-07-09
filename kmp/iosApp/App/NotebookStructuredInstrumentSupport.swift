@@ -84,18 +84,59 @@ struct StructuredInstrumentEvaluationSheet: View {
 
     private func formContent(_ model: Binding<StructuredInstrumentEvaluationModel>) -> some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 20) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(request.studentName)
-                        .font(.title2.weight(.semibold))
+                        .font(.title2.weight(.bold))
                     Text(progressText(for: model.wrappedValue))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
 
-                LazyVStack(spacing: 12) {
-                    ForEach(model.items) { $item in
-                        StructuredInstrumentItemEditor(item: $item)
+                if let description = model.wrappedValue.description, !description.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("Guía e Información del Instrumento", systemImage: "info.circle.fill")
+                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .foregroundStyle(NotebookStyle.primaryTint)
+                        Text(description)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .lineSpacing(4)
+                    }
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(NotebookStyle.primaryTint.opacity(0.08))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(NotebookStyle.primaryTint.opacity(0.18), lineWidth: 1)
+                    )
+                }
+
+                LazyVStack(alignment: .leading, spacing: 20) {
+                    ForEach(Array(groupedItems(model.wrappedValue.items).enumerated()), id: \.offset) { _, group in
+                        VStack(alignment: .leading, spacing: 10) {
+                            if let header = group.header {
+                                HStack {
+                                    Text(header)
+                                        .font(.subheadline.weight(.bold))
+                                        .foregroundStyle(NotebookStyle.primaryTint)
+                                    Spacer()
+                                    if let average = groupAverage(group.items) {
+                                        Text("Media: \(average, specifier: "%.1f")")
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                            VStack(spacing: 16) {
+                                ForEach(group.items) { item in
+                                    StructuredInstrumentItemEditor(item: itemBinding(for: item, in: model))
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -104,10 +145,48 @@ struct StructuredInstrumentEvaluationSheet: View {
         }
     }
 
+    // Agrupa items por el prefijo de titulo antes del separador " · " (convencion
+    // usada por instrumentos con estructura fila x indicador, ej. la rejilla de
+    // observacion "S3 - inicio · Tecnica"). Los items sin ese separador quedan sin
+    // agrupar, igual que antes de este cambio.
+    private func groupedItems(_ items: [StructuredInstrumentEvaluationItem]) -> [(header: String?, items: [StructuredInstrumentEvaluationItem])] {
+        var order: [String] = []
+        var buckets: [String: [StructuredInstrumentEvaluationItem]] = [:]
+        var ungrouped: [StructuredInstrumentEvaluationItem] = []
+        for item in items {
+            guard let separatorRange = item.title.range(of: " · ") else {
+                ungrouped.append(item)
+                continue
+            }
+            let header = String(item.title[..<separatorRange.lowerBound])
+            if buckets[header] == nil { order.append(header) }
+            buckets[header, default: []].append(item)
+        }
+        var result = order.map { (header: Optional($0), items: buckets[$0] ?? []) }
+        if !ungrouped.isEmpty { result.append((header: nil, items: ungrouped)) }
+        return result
+    }
+
+    private func groupAverage(_ items: [StructuredInstrumentEvaluationItem]) -> Double? {
+        let values = items.compactMap { Double($0.numberValue.replacingOccurrences(of: ",", with: ".")) }
+        guard !values.isEmpty else { return nil }
+        return values.reduce(0, +) / Double(values.count)
+    }
+
+    private func itemBinding(for item: StructuredInstrumentEvaluationItem, in model: Binding<StructuredInstrumentEvaluationModel>) -> Binding<StructuredInstrumentEvaluationItem> {
+        Binding(
+            get: { model.wrappedValue.items.first(where: { $0.id == item.id }) ?? item },
+            set: { newValue in
+                guard let index = model.wrappedValue.items.firstIndex(where: { $0.id == item.id }) else { return }
+                model.wrappedValue.items[index] = newValue
+            }
+        )
+    }
+
     private func progressText(for model: StructuredInstrumentEvaluationModel) -> String {
         let total = model.items.count
         let completed = model.items.filter(isCompleted).count
-        return completed == total && total > 0 ? "Completo" : "\(completed)/\(total) campos completados"
+        return completed == total && total > 0 ? "Evaluación completa" : "\(completed)/\(total) ítems respondidos"
     }
 
     private func isCompleted(_ item: StructuredInstrumentEvaluationItem) -> Bool {
@@ -159,45 +238,135 @@ private struct StructuredInstrumentItemEditor: View {
     @Binding var item: StructuredInstrumentEvaluationItem
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             Text(item.title)
                 .font(.headline)
                 .foregroundStyle(.primary)
 
             switch item.type {
             case .check:
-                Toggle("Completado", isOn: $item.boolValue)
-                    .toggleStyle(.switch)
-            case .choice:
-                Picker("Respuesta", selection: $item.textValue) {
-                    Text("Sin respuesta").tag("")
-                    ForEach(item.options, id: \.self) { option in
-                        Text(option).tag(option)
+                Button {
+                    item.boolValue.toggle()
+                } label: {
+                    HStack {
+                        Image(systemName: item.boolValue ? "checkmark.square.fill" : "square")
+                            .font(.system(size: 20))
+                            .foregroundStyle(item.boolValue ? NotebookStyle.primaryTint : .secondary)
+                        Text(item.boolValue ? "Completado" : "Marcar como completado")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(item.boolValue ? .primary : .secondary)
+                        Spacer()
                     }
+                    .padding(.vertical, 6)
+                    .contentShape(Rectangle())
                 }
-                .pickerStyle(.menu)
+                .buttonStyle(.plain)
+            case .choice:
+                if !item.options.isEmpty {
+                    VStack(spacing: 8) {
+                        ForEach(item.options, id: \.self) { option in
+                            let isSelected = item.textValue == option
+                            Button {
+                                item.textValue = option
+                            } label: {
+                                HStack {
+                                    Text(option)
+                                        .font(.subheadline.weight(.medium))
+                                        .foregroundStyle(isSelected ? NotebookStyle.primaryTint : .primary)
+                                    Spacer()
+                                    if isSelected {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundStyle(NotebookStyle.primaryTint)
+                                    } else {
+                                        Image(systemName: "circle")
+                                            .foregroundStyle(.secondary.opacity(0.5))
+                                    }
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 12)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .fill(isSelected ? NotebookStyle.primaryTint.opacity(0.08) : Color.clear)
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .stroke(isSelected ? NotebookStyle.primaryTint : NotebookStyle.softBorder, lineWidth: 1.5)
+                                )
+                                .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.top, 4)
+                } else {
+                    TextField("Escribe respuesta...", text: $item.textValue)
+                        .textFieldStyle(.roundedBorder)
+                }
             case .number:
-                TextField("Valor", text: $item.numberValue)
+                TextField("Valor numérico", text: $item.numberValue)
                     .textFieldStyle(.roundedBorder)
             case .scale14:
-                Picker("Nivel", selection: $item.numberValue) {
-                    Text("Sin nivel").tag("")
+                HStack(spacing: 8) {
                     ForEach(["1", "2", "3", "4"], id: \.self) { level in
-                        Text(level).tag(level)
+                        let isSelected = item.numberValue == level
+                        let color = levelColor(for: level)
+                        Button {
+                            item.numberValue = level
+                        } label: {
+                            VStack(spacing: 4) {
+                                Text(level)
+                                    .font(.title3.bold())
+                                Text(levelTitle(for: level))
+                                    .font(.system(size: 9, weight: .bold))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(isSelected ? color.opacity(0.12) : Color.clear)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .stroke(isSelected ? color : NotebookStyle.softBorder, lineWidth: isSelected ? 2 : 1)
+                            )
+                            .foregroundStyle(isSelected ? color : .secondary)
+                            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
-                .pickerStyle(.segmented)
+                .padding(.top, 4)
             default:
-                TextField("Respuesta", text: $item.textValue, axis: .vertical)
+                TextField("Respuesta de texto", text: $item.textValue, axis: .vertical)
                     .lineLimit(2...5)
                     .textFieldStyle(.roundedBorder)
             }
         }
-        .padding(14)
-        .background(NotebookStyle.surfaceSoft.opacity(0.55), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .padding(16)
+        .background(NotebookStyle.surfaceSoft.opacity(0.55), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(NotebookStyle.softBorder.opacity(0.35), lineWidth: 1)
         )
+    }
+
+    private func levelColor(for level: String) -> Color {
+        switch level {
+        case "1": return .red
+        case "2": return .orange
+        case "3": return .blue
+        case "4": return .green
+        default: return .secondary
+        }
+    }
+
+    private func levelTitle(for level: String) -> String {
+        switch level {
+        case "1": return "Insuf"
+        case "2": return "Sufi"
+        case "3": return "Notab"
+        case "4": return "Sobre"
+        default: return ""
+        }
     }
 }

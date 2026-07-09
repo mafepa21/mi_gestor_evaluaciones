@@ -14,6 +14,7 @@ struct StructuredInstrumentEvaluationModel: Identifiable {
     let title: String
     let kind: NotebookInstrumentTemplateKind
     var items: [StructuredInstrumentEvaluationItem]
+    var description: String?
 }
 
 struct StructuredInstrumentEvaluationItem: Identifiable {
@@ -2274,7 +2275,7 @@ final class KmpBridge: ObservableObject {
             payload: [
                 "id": savedId,
                 "name": unit.name,
-                "description": unit.description,
+                "description": unit.description_,
                 "colorHex": unit.colorHex,
                 "groupId": classId,
                 "schoolClassId": classId
@@ -2283,7 +2284,7 @@ final class KmpBridge: ObservableObject {
         return TeachingUnit(
             id: savedId,
             name: unit.name,
-            description: unit.description,
+            description: unit.description_,
             colorHex: unit.colorHex,
             groupId: unit.groupId,
             schoolClassId: unit.schoolClassId,
@@ -5030,7 +5031,29 @@ final class KmpBridge: ObservableObject {
         let instrumentsToCreate = selectedInstruments.filter { instrument in
             !existingInstrumentTitles.contains(normalizedAssessmentInstrumentTitle(instrument.title))
         }
-        guard !instrumentsToCreate.isEmpty else { return }
+
+        var columnIdsByInstrumentTitle: [String: String] = [:]
+        var evaluationIdsByInstrumentTitle: [String: Int64] = [:]
+        var rubricIdsByInstrumentTitle: [String: Int64] = [:]
+
+        let existingLinks = (try? await container.learningSituationsRepository.listLinkedResources(learningSituationId: situation.id)) ?? []
+        for link in existingLinks {
+            guard link.classId?.int64Value == classId else { continue }
+            if link.kind == .notebookColumn {
+                let normLabel = link.label.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+                columnIdsByInstrumentTitle[normLabel] = link.resourceId
+            } else if link.kind == .evaluation, let evaluationId = Int64(link.resourceId) {
+                evaluationIdsByInstrumentTitle[normalizedAssessmentInstrumentTitle(link.label)] = evaluationId
+            } else if link.kind == .rubric, let rubricId = Int64(link.resourceId) {
+                let rubricLabelPrefix = "Rubrica · "
+                if link.label.hasPrefix(rubricLabelPrefix) {
+                    let instrumentTitle = String(link.label.dropFirst(rubricLabelPrefix.count))
+                    rubricIdsByInstrumentTitle[normalizedAssessmentInstrumentTitle(instrumentTitle)] = rubricId
+                }
+            }
+        }
 
         for (index, instrument) in instrumentsToCreate.enumerated() {
             let rubricId = try await saveAssessmentInstrumentRubricIfNeeded(
@@ -5038,6 +5061,12 @@ final class KmpBridge: ObservableObject {
                 classId: classId,
                 sourceFileName: draft.sourceFileName
             )
+            let customDescription: String
+            if let note = instrument.note, !note.isEmpty {
+                customDescription = note + "\n\nImportado desde \(draft.sourceFileName) para \(situation.title)"
+            } else {
+                customDescription = "Instrumento importado desde \(draft.sourceFileName) para \(situation.title)"
+            }
             let evaluationId = try await container.evaluationsRepository.saveEvaluation(
                 id: nil,
                 classId: classId,
@@ -5047,7 +5076,7 @@ final class KmpBridge: ObservableObject {
                 weight: (instrument.weightPercent ?? 0) / 100.0,
                 formula: nil,
                 rubricId: rubricId.map { KotlinLong(value: $0) },
-                description: "Instrumento importado desde \(draft.sourceFileName) para \(situation.title)",
+                description: customDescription,
                 authorUserId: nil,
                 createdAtEpochMs: 0,
                 updatedAtEpochMs: 0,
@@ -5064,6 +5093,12 @@ final class KmpBridge: ObservableObject {
                 situationTitle: situation.title,
                 targetTabId: targetTabId
             )
+            
+            let normTitle = instrument.title.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            columnIdsByInstrumentTitle[normTitle] = columnId
+
             if rubricId == nil {
                 try await saveAssessmentInstrumentTemplateIfNeeded(
                     instrument: instrument,
@@ -5100,8 +5135,203 @@ final class KmpBridge: ObservableObject {
                 )
             }
         }
+
+        // Instrumentos ya vinculados a esta situacion+clase (de una importacion previa):
+        // no se duplican evaluacion/columna/vinculos, pero se refresca su plantilla
+        // estructurada (checklist/quiz/observacion) y se mueve la columna a la pestaña
+        // elegida si hace falta, para que un reimport pueda recoger cambios del parser
+        // (ej. la rejilla de observacion pasando de 1 valor a momento x indicador).
+        let instrumentsToRefresh = selectedInstruments.filter { instrument in
+            existingInstrumentTitles.contains(normalizedAssessmentInstrumentTitle(instrument.title))
+        }
+        for instrument in instrumentsToRefresh {
+            let normTitle = normalizedAssessmentInstrumentTitle(instrument.title)
+            guard let evaluationId = evaluationIdsByInstrumentTitle[normTitle] else { continue }
+            let existingRubricId = rubricIdsByInstrumentTitle[normTitle]
+            let columnId = try await ensureNotebookColumnForAssessmentInstrument(
+                classId: classId,
+                evaluationId: evaluationId,
+                title: instrument.title,
+                rubricId: existingRubricId,
+                instrument: instrument,
+                situationTitle: situation.title,
+                targetTabId: targetTabId
+            )
+            columnIdsByInstrumentTitle[normTitle] = columnId
+            // No regenerar una plantilla que ya existe: reconstruirla borraria y
+            // reinsertaria sus items, orfanando las respuestas de alumnado ya
+            // guardadas para este instrumento (aunque el reimport traiga la misma
+            // estructura). Solo se crea si de verdad falta.
+            if existingRubricId == nil,
+               try await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: columnId) == nil {
+                try await saveAssessmentInstrumentTemplateIfNeeded(
+                    instrument: instrument,
+                    classId: classId,
+                    evaluationId: evaluationId,
+                    columnId: columnId,
+                    sourceFileName: draft.sourceFileName
+                )
+            }
+        }
+
+        if let formulaLine = draft.gradingFormula, !formulaLine.isEmpty {
+            let pattern = #"([^+=]+)\s*\(\s*([0-9]+(?:[.,][0-9]+)?)\s*%\s*\)"#
+            let regex = try? NSRegularExpression(pattern: pattern, options: [])
+            let nsString = formulaLine as NSString
+            let matches = regex?.matches(in: formulaLine, options: [], range: NSRange(location: 0, length: nsString.length)) ?? []
+            
+            var terms: [String] = []
+            for match in matches {
+                guard match.numberOfRanges >= 3 else { continue }
+                let nameRange = match.range(at: 1)
+                let weightRange = match.range(at: 2)
+                let termName = nsString.substring(with: nameRange)
+                let weightStr = nsString.substring(with: weightRange).replacingOccurrences(of: ",", with: ".")
+                
+                if let weight = Double(weightStr),
+                   let colId = findColumnId(for: termName, columnIdsByInstrumentTitle: columnIdsByInstrumentTitle) {
+                    let factor = weight / 100.0
+                    terms.append("[\(colId)] * \(factor)")
+                }
+            }
+            
+            if !terms.isEmpty {
+                let resolvedFormula = terms.joined(separator: " + ")
+                
+                let existingFormulaId = existingLinks.first(where: {
+                    $0.classId?.int64Value == classId && $0.label == "Fórmula · Nota SA"
+                })?.resourceId
+                
+                if existingFormulaId == nil {
+                    let evaluationId = try await container.evaluationsRepository.saveEvaluation(
+                        id: nil,
+                        classId: classId,
+                        code: "SA\(situation.id)-FORMULA",
+                        name: "Nota final \(situation.title)",
+                        type: "Fórmula",
+                        weight: 0.0,
+                        formula: resolvedFormula,
+                        rubricId: nil,
+                        description: "Fórmula de calificación final importada desde \(draft.sourceFileName)",
+                        authorUserId: nil,
+                        createdAtEpochMs: 0,
+                        updatedAtEpochMs: 0,
+                        associatedGroupId: KotlinLong(value: classId),
+                        deviceId: localDeviceId,
+                        syncVersion: 1
+                    ).int64Value
+                    
+                    let columnId = "eval_\(evaluationId)"
+                    let resolvedTabId = try await resolveNotebookTargetTabId(classId: classId, preferredTabId: targetTabId)
+                    let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+                    let nowInstant = Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMs)
+                    
+                    let column = NotebookColumnDefinition(
+                        id: columnId,
+                        title: "Nota SA",
+                        type: .calculated,
+                        categoryKind: .evaluation,
+                        instrumentKind: .checklist,
+                        inputKind: .structuredForm,
+                        evaluationId: KotlinLong(value: evaluationId),
+                        rubricId: nil,
+                        formula: resolvedFormula,
+                        weight: 100.0,
+                        dateEpochMs: nil,
+                        unitOrSituation: situation.title,
+                        competencyCriteriaIds: [],
+                        scaleKind: .tenPoint,
+                        tabIds: [resolvedTabId],
+                        sessions: [],
+                        sharedAcrossTabs: false,
+                        colorHex: nil,
+                        iconName: "sum",
+                        order: -1,
+                        widthDp: 132,
+                        categoryId: nil,
+                        ordinalLevels: [],
+                        availableIcons: [],
+                        countsTowardAverage: true,
+                        isPinned: false,
+                        isHidden: false,
+                        visibility: .visible,
+                        isLocked: false,
+                        isTemplate: false,
+                        emptyCellPolicy: .excludeFromAverage,
+                        trace: AuditTrace(
+                            authorUserId: nil,
+                            createdAt: nowInstant,
+                            updatedAt: nowInstant,
+                            associatedGroupId: KotlinLong(value: classId),
+                            deviceId: localDeviceId,
+                            syncVersion: 1
+                        )
+                    )
+                    try await container.notebookRepository.saveColumn(classId: classId, column: column)
+                    
+                    try await saveLearningSituationLinkedResource(
+                        situationId: situation.id,
+                        kind: .evaluation,
+                        resourceId: "\(evaluationId)",
+                        classId: classId,
+                        label: "Fórmula · Nota SA",
+                        trace: situation.trace
+                    )
+                    try await saveLearningSituationLinkedResource(
+                        situationId: situation.id,
+                        kind: .notebookColumn,
+                        resourceId: columnId,
+                        classId: classId,
+                        label: "Fórmula · Nota SA",
+                        trace: situation.trace
+                    )
+                }
+            }
+        }
+
         refreshCurrentNotebook()
         scheduleNotebookSnapshotSync(forClassId: classId)
+    }
+
+    private func findColumnId(for term: String, columnIdsByInstrumentTitle: [String: String]) -> String? {
+        let normTerm = term.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        
+        if let colId = columnIdsByInstrumentTitle[normTerm] {
+            return colId
+        }
+        
+        for (title, colId) in columnIdsByInstrumentTitle {
+            if title.contains(normTerm) || normTerm.contains(title) {
+                return colId
+            }
+        }
+        
+        let keywords = ["quiz", "coach", "rejilla", "diseno", "comportamiento", "torneo", "respeto"]
+        for keyword in keywords {
+            if normTerm.contains(keyword) {
+                for (title, colId) in columnIdsByInstrumentTitle {
+                    if title.contains(keyword) {
+                        return colId
+                    }
+                }
+            }
+        }
+        
+        let pattern = #"(\d+\.\d+)"#
+        if let regex = try? NSRegularExpression(pattern: pattern),
+           let match = regex.firstMatch(in: term, range: NSRange(term.startIndex..., in: term)),
+           let range = Range(match.range(at: 1), in: term) {
+            let critCode = String(term[range])
+            for (title, colId) in columnIdsByInstrumentTitle {
+                if title.contains(critCode) {
+                    return colId
+                }
+            }
+        }
+        
+        return nil
     }
 
     private func existingLearningSituationAssessmentTitles(
@@ -5129,14 +5359,47 @@ final class KmpBridge: ObservableObject {
     }
 
     func repairLearningSituationAssessmentInstrumentImportIfNeeded(classId: Int64) async throws {
+        let repairedDescriptions = try await repairCorruptedEvaluationDescriptions(classId: classId)
         let repairedLevels = try await repairAssessmentInstrumentRubricLevelPoints(classId: classId)
         let repairedColumns = try await repairAssessmentInstrumentNotebookColumns(classId: classId)
         let repairedEvaluations = try await repairAssessmentInstrumentEvaluations(classId: classId)
         let repairedTemplates = try await repairStructuredAssessmentInstrumentTemplates(classId: classId)
-        if repairedLevels || repairedColumns || repairedEvaluations || repairedTemplates {
+        if repairedDescriptions || repairedLevels || repairedColumns || repairedEvaluations || repairedTemplates {
             refreshCurrentNotebook()
             scheduleNotebookSnapshotSync(forClassId: classId)
         }
+    }
+
+    // Migracion unica: limpia descripciones de evaluacion que ya quedaron corrompidas
+    // por el bug de sincronizacion (ver sanitizedSyncDescription) antes de corregirse
+    // en origen. El texto original es irrecuperable (esta anidado dentro del propio
+    // volcado), asi que se vacia en vez de intentar reconstruirlo.
+    private func repairCorruptedEvaluationDescriptions(classId: Int64) async throws -> Bool {
+        let evaluations = try await container.evaluationsRepository.listClassEvaluations(classId: classId)
+        var didRepair = false
+        for evaluation in evaluations {
+            guard let description = evaluation.description_,
+                  sanitizedSyncDescription(description) == nil else { continue }
+            _ = try await container.evaluationsRepository.saveEvaluation(
+                id: KotlinLong(value: evaluation.id),
+                classId: classId,
+                code: evaluation.code,
+                name: evaluation.name,
+                type: evaluation.type,
+                weight: evaluation.weight,
+                formula: evaluation.formula,
+                rubricId: evaluation.rubricId,
+                description: nil,
+                authorUserId: evaluation.trace.authorUserId,
+                createdAtEpochMs: evaluation.trace.createdAt.toEpochMilliseconds(),
+                updatedAtEpochMs: 0,
+                associatedGroupId: evaluation.trace.associatedGroupId,
+                deviceId: localDeviceId,
+                syncVersion: evaluation.trace.syncVersion
+            )
+            didRepair = true
+        }
+        return didRepair
     }
 
     private func saveAssessmentInstrumentRubricIfNeeded(
@@ -5234,14 +5497,77 @@ final class KmpBridge: ObservableObject {
         situationTitle: String,
         targetTabId: String?
     ) async throws -> String {
-        if let existingColumnId = try await container.notebookRepository.getColumnIdForEvaluation(evaluationId: evaluationId) {
-            return existingColumnId
-        }
-        let targetTabId = try await resolveNotebookTargetTabId(classId: classId, preferredTabId: targetTabId)
-
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
         let nowInstant = Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMs)
         let resolvedWeight = instrument.weightPercent ?? 0
+        let resolvedCountsTowardAverage = instrument.countsTowardAverage &&
+            resolvedWeight > 0 &&
+            canMaterializeAverage(for: instrument.scoreStrategy)
+
+        if let existingColumnId = try await container.notebookRepository.getColumnIdForEvaluation(evaluationId: evaluationId),
+           let existingColumn = try await container.notebookConfigRepository.listColumns(classId: classId).first(where: { $0.id == existingColumnId }) {
+            // Reimport de un instrumento ya materializado: se refresca el tipo/escala
+            // derivados (para recoger cambios del parser, ej. observationGrid pasando
+            // a formulario estructurado) y se mueve a la pestaña elegida si procede,
+            // preservando id, orden y demas ajustes visuales que el docente ya tocara.
+            // Si el lookup de rubrica (por el enlace de la situacion) no encuentra
+            // nada, se conserva el rubricId que la columna ya tenia en vez de
+            // borrarlo: un fallo de lookup nunca debe degradar una columna que ya
+            // era de tipo rubrica.
+            let effectiveRubricId = rubricId ?? existingColumn.rubricId?.int64Value
+            var tabIds = existingColumn.tabIds
+            if let targetTabId, !tabIds.contains(targetTabId) {
+                let tabs = try await container.notebookConfigRepository.listTabs(classId: classId)
+                if tabs.contains(where: { $0.id == targetTabId }) {
+                    tabIds = [targetTabId]
+                }
+            }
+            let refreshed = NotebookColumnDefinition(
+                id: existingColumn.id,
+                title: title,
+                type: notebookColumnType(for: instrument, rubricId: effectiveRubricId),
+                categoryKind: existingColumn.categoryKind,
+                instrumentKind: notebookInstrumentKind(for: instrument.kind),
+                inputKind: notebookInputKind(for: instrument, rubricId: effectiveRubricId),
+                evaluationId: KotlinLong(value: evaluationId),
+                rubricId: effectiveRubricId.map { KotlinLong(value: $0) },
+                formula: existingColumn.formula,
+                weight: resolvedWeight,
+                dateEpochMs: existingColumn.dateEpochMs,
+                unitOrSituation: situationTitle,
+                competencyCriteriaIds: existingColumn.competencyCriteriaIds,
+                scaleKind: notebookScaleKind(for: instrument, rubricId: effectiveRubricId),
+                tabIds: tabIds,
+                sessions: existingColumn.sessions,
+                sharedAcrossTabs: existingColumn.sharedAcrossTabs,
+                colorHex: existingColumn.colorHex,
+                iconName: existingColumn.iconName,
+                order: existingColumn.order,
+                widthDp: existingColumn.widthDp,
+                categoryId: existingColumn.categoryId,
+                ordinalLevels: existingColumn.ordinalLevels,
+                availableIcons: existingColumn.availableIcons,
+                countsTowardAverage: resolvedCountsTowardAverage,
+                isPinned: existingColumn.isPinned,
+                isHidden: existingColumn.isHidden,
+                visibility: existingColumn.visibility,
+                isLocked: existingColumn.isLocked,
+                isTemplate: existingColumn.isTemplate,
+                emptyCellPolicy: notebookEmptyCellPolicy(for: instrument.emptyCellPolicy),
+                trace: AuditTrace(
+                    authorUserId: nil,
+                    createdAt: existingColumn.trace.createdAt,
+                    updatedAt: nowInstant,
+                    associatedGroupId: KotlinLong(value: classId),
+                    deviceId: localDeviceId,
+                    syncVersion: existingColumn.trace.syncVersion
+                )
+            )
+            try await container.notebookRepository.saveColumn(classId: classId, column: refreshed)
+            return existingColumn.id
+        }
+
+        let resolvedTargetTabId = try await resolveNotebookTargetTabId(classId: classId, preferredTabId: targetTabId)
         let columnId = "eval_\(evaluationId)"
         let column = NotebookColumnDefinition(
             id: columnId,
@@ -5258,7 +5584,7 @@ final class KmpBridge: ObservableObject {
             unitOrSituation: situationTitle,
             competencyCriteriaIds: [],
             scaleKind: notebookScaleKind(for: instrument, rubricId: rubricId),
-            tabIds: [targetTabId],
+            tabIds: [resolvedTargetTabId],
             sessions: [],
             sharedAcrossTabs: false,
             colorHex: nil,
@@ -5268,9 +5594,7 @@ final class KmpBridge: ObservableObject {
             categoryId: nil,
             ordinalLevels: [],
             availableIcons: [],
-            countsTowardAverage: instrument.countsTowardAverage &&
-                resolvedWeight > 0 &&
-                canMaterializeAverage(for: instrument.scoreStrategy),
+            countsTowardAverage: resolvedCountsTowardAverage,
             isPinned: false,
             isHidden: false,
             visibility: .visible,
@@ -5313,6 +5637,8 @@ final class KmpBridge: ObservableObject {
             return .form
         case .rubric:
             return .form
+        case .quizQuestions:
+            return .form
         }
     }
 
@@ -5325,6 +5651,8 @@ final class KmpBridge: ObservableObject {
         case .observationGrid:
             return .structuredForm
         case .rubric:
+            return .structuredForm
+        case .quizQuestions:
             return .structuredForm
         }
     }
@@ -5389,9 +5717,40 @@ final class KmpBridge: ObservableObject {
             ])
         }
 
+        if !instrument.quizQuestions.isEmpty {
+            let specs = instrument.quizQuestions.enumerated().map { index, question -> (String, String, NotebookInstrumentItemType, [String]) in
+                let type: NotebookInstrumentItemType
+                switch question.questionType {
+                case .multipleChoice, .trueFalse:
+                    type = .choice
+                case .fillInTheBlank, .openEnded:
+                    type = .text
+                }
+                return ("q_\(index + 1)", question.questionText, type, question.options)
+            }
+            return makeInstrumentItems(columnId: columnId, specs: specs)
+        }
+
         if !instrument.checklistItems.isEmpty {
             let specs = instrument.checklistItems.enumerated().map { index, item in
                 ("check_\(index + 1)", item.title, NotebookInstrumentItemType.check, [] as [String])
+            }
+            return makeInstrumentItems(columnId: columnId, specs: specs)
+        }
+
+        if instrument.hasStructuredObservationIndicators {
+            var specs: [(String, String, NotebookInstrumentItemType, [String])] = []
+            for (rowIndex, field) in instrument.observationFields.enumerated() {
+                let rowKey = observationRowKey(for: field.title, index: rowIndex)
+                for indicator in field.indicatorTitles {
+                    let indicatorKey = observationIndicatorKey(for: indicator)
+                    specs.append((
+                        "\(rowKey)_\(indicatorKey)",
+                        "\(field.title) · \(indicator)",
+                        .scale14,
+                        []
+                    ))
+                }
             }
             return makeInstrumentItems(columnId: columnId, specs: specs)
         }
@@ -5404,6 +5763,22 @@ final class KmpBridge: ObservableObject {
         }
 
         return []
+    }
+
+    private func observationRowKey(for title: String, index: Int) -> String {
+        let normalizedTitle = title.lowercased().folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+        if let match = normalizedTitle.range(of: #"^[a-z]+\d+"#, options: .regularExpression) {
+            return String(normalizedTitle[match])
+        }
+        return "row_\(index + 1)"
+    }
+
+    private func observationIndicatorKey(for title: String) -> String {
+        let normalizedTitle = title.lowercased().folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+        let slug = normalizedTitle
+            .replacingOccurrences(of: #"[^a-z0-9]+"#, with: "_", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "_"))
+        return slug.isEmpty ? "indicator" : slug
     }
 
     private func makeInstrumentItems(
@@ -5452,7 +5827,7 @@ final class KmpBridge: ObservableObject {
                         criterionId: level.criterionId,
                         name: level.name,
                         points: Int32(expectedPoints),
-                        description: level.description,
+                        description: level.description_,
                         order: Int32(level.order),
                         updatedAtEpochMs: nowMs,
                         deviceId: localDeviceId,
@@ -5706,7 +6081,7 @@ final class KmpBridge: ObservableObject {
     private func notebookColumnType(for instrument: AssessmentInstrumentDraft, rubricId: Int64?) -> NotebookColumnType {
         if rubricId != nil { return .rubric }
         switch instrument.scoreStrategy {
-        case .numeric0To10, .observationScale1To4:
+        case .numeric0To10, .observationScale1To4, .quizPercentCorrect:
             return .numeric
         case .checklistAllOrNothing:
             return .check
@@ -5719,7 +6094,7 @@ final class KmpBridge: ObservableObject {
 
     private func canMaterializeAverage(for strategy: AssessmentInstrumentScoreStrategy) -> Bool {
         switch strategy {
-        case .numeric0To10, .rubric, .checklistAllOrNothing, .observationScale1To4:
+        case .numeric0To10, .rubric, .checklistAllOrNothing, .observationScale1To4, .quizPercentCorrect:
             return true
         case .checklistProportional, .none:
             return false
@@ -5738,6 +6113,8 @@ final class KmpBridge: ObservableObject {
             return .systematicObservation
         case .submissionChecklist:
             return .finalProduct
+        case .quizQuestions:
+            return .checklist
         }
     }
 
@@ -5747,10 +6124,12 @@ final class KmpBridge: ObservableObject {
         case .numeric0To10:
             return .numeric010
         case .observationScale1To4:
-            return .numeric14
+            return instrument.hasStructuredObservationIndicators ? .structuredForm : .numeric14
         case .checklistAllOrNothing:
             return .check
         case .rubric:
+            return .numeric010
+        case .quizPercentCorrect:
             return .numeric010
         case .checklistProportional, .none:
             break
@@ -5764,13 +6143,15 @@ final class KmpBridge: ObservableObject {
             return .structuredForm
         case .rubric:
             return .numeric010
+        case .quizQuestions:
+            return .structuredForm
         }
     }
 
     private func notebookScaleKind(for instrument: AssessmentInstrumentDraft, rubricId: Int64?) -> NotebookScaleKind {
         if rubricId != nil { return .tenPoint }
         switch instrument.scoreStrategy {
-        case .numeric0To10, .rubric:
+        case .numeric0To10, .rubric, .quizPercentCorrect:
             return .tenPoint
         case .observationScale1To4:
             return .fourLevel
@@ -5909,7 +6290,7 @@ final class KmpBridge: ObservableObject {
         let grades = try await container.gradesRepository.listGradesForClass(classId: classId)
 
         let physicalEvaluations = evaluations.filter { evaluation in
-            let normalized = "\(evaluation.type) \(evaluation.name) \(evaluation.description)".lowercased()
+            let normalized = "\(evaluation.type) \(evaluation.name) \(evaluation.description_ ?? "")".lowercased()
             return normalized.contains("physical")
                 || normalized.contains("física")
                 || normalized.contains("fisica")
@@ -7432,6 +7813,14 @@ final class KmpBridge: ObservableObject {
         guard let detail = try await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: columnId) else {
             return nil
         }
+        
+        let evaluationId = detail.template_.evaluationId?.int64Value
+        var evaluationDescription: String? = nil
+        if let evaluationId {
+            let evaluation = try? await container.evaluationsRepository.getEvaluation(evaluationId: evaluationId)
+            evaluationDescription = evaluation?.description_
+        }
+        
         let responses = try await container.notebookInstrumentsRepository.listResponsesForCell(
             classId: classId,
             studentId: studentId,
@@ -7457,7 +7846,8 @@ final class KmpBridge: ObservableObject {
             columnId: columnId,
             title: detail.template_.title,
             kind: detail.template_.kind,
-            items: items
+            items: items,
+            description: evaluationDescription
         )
     }
 
@@ -7491,9 +7881,42 @@ final class KmpBridge: ObservableObject {
             deviceId: localDeviceId,
             syncVersion: 1
         )
+        saveDerivedObservationGridGrade(for: model)
         refreshCurrentNotebook()
         scheduleNotebookSnapshotSync(forClassId: model.classId)
         return summary
+    }
+
+    // Cuando un formulario estructurado es enteramente escala 1-4 (ej. la rejilla
+    // de observacion sistematica, agrupada por momento x indicador vía " · " en el
+    // titulo de cada item), calcula la media de fila y la media final y la
+    // persiste como nota manual en escala 1-4 cruda (sin reescalar a 0-10 aqui;
+    // el reescalado por scaleKind vive en el motor de medias del Cuaderno).
+    private func saveDerivedObservationGridGrade(for model: StructuredInstrumentEvaluationModel) {
+        guard !model.items.isEmpty, model.items.allSatisfy({ $0.type == .scale14 }) else { return }
+        var order: [String] = []
+        var buckets: [String: [Double]] = [:]
+        for item in model.items {
+            let value = Double(item.numberValue.replacingOccurrences(of: ",", with: "."))
+            guard let value else { continue }
+            let header: String
+            if let separatorRange = item.title.range(of: " · ") {
+                header = String(item.title[..<separatorRange.lowerBound])
+            } else {
+                header = item.id
+            }
+            if buckets[header] == nil { order.append(header) }
+            buckets[header, default: []].append(value)
+        }
+        let rowAverages = order.compactMap { header -> Double? in
+            guard let values = buckets[header], !values.isEmpty else { return nil }
+            return values.reduce(0, +) / Double(values.count)
+        }
+        guard !rowAverages.isEmpty else { return }
+        let finalAverage = rowAverages.reduce(0, +) / Double(rowAverages.count)
+        guard let data = notebookState as? NotebookUiStateData,
+              let column = data.sheet.columns.first(where: { $0.id == model.columnId }) else { return }
+        saveColumnGrade(studentId: model.studentId, column: column, value: IosFormatting.decimal(from: finalAverage))
     }
 
     private func structuredTextValue(for item: StructuredInstrumentEvaluationItem) -> String? {
@@ -8555,7 +8978,7 @@ final class KmpBridge: ObservableObject {
                     "weight": evaluation.weight,
                     "formula": evaluation.formula ?? "",
                     "rubricId": evaluation.rubricId?.int64Value ?? 0,
-                    "description": evaluation.description
+                    "description": evaluation.description_ ?? ""
                 ],
                 shouldPersist: false,
                 shouldScheduleAutoSync: false
@@ -8572,7 +8995,7 @@ final class KmpBridge: ObservableObject {
                     "id": tab.id,
                     "classId": classId,
                     "title": tab.title,
-                    "description": tab.description,
+                    "description": tab.description_ ?? "",
                     "order": Int(tab.order),
                     "parentTabId": tab.parentTabId ?? ""
                 ],
@@ -8907,7 +9330,7 @@ final class KmpBridge: ObservableObject {
                 entity: change.entity,
                 entityId: change.id,
                 updatedAtEpochMs: change.updatedAtEpochMs
-            )) ?? false
+            ))?.boolValue ?? false
             if isBlockedByTombstone {
                 continue
             }
@@ -8997,7 +9420,7 @@ final class KmpBridge: ObservableObject {
                     // la última alta/baja local conocida para ESTE alumno: evita que un
                     // snapshot de roster desactualizado borre a alguien recién añadido.
                     let localEnrollmentAt = try await container.classesRepository.latestEnrollmentUpdatedAt(classId: classId, studentId: id)
-                    if localEnrollmentAt == nil || change.updatedAtEpochMs >= localEnrollmentAt! {
+                    if localEnrollmentAt == nil || change.updatedAtEpochMs >= localEnrollmentAt!.int64Value {
                         try await container.classesRepository.removeStudentFromClass(classId: classId, studentId: id)
                     }
                 }
@@ -9021,7 +9444,7 @@ final class KmpBridge: ObservableObject {
                     weight: weight,
                     formula: payloadObject["formula"] as? String,
                     rubricId: kotlinLong(rubricId),
-                    description: payloadObject["description"] as? String,
+                    description: sanitizedSyncDescription(payloadObject["description"] as? String),
                     authorUserId: nil,
                     createdAtEpochMs: change.updatedAtEpochMs,
                     updatedAtEpochMs: change.updatedAtEpochMs,
@@ -9089,9 +9512,9 @@ final class KmpBridge: ObservableObject {
                 let parentTabId = (payloadObject["parentTabId"] as? String)?
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                     .nilIfEmpty
-                let description = (payloadObject["description"] as? String)?
+                let description = sanitizedSyncDescription((payloadObject["description"] as? String)?
                     .trimmingCharacters(in: .whitespacesAndNewlines)
-                    .nilIfEmpty
+                    .nilIfEmpty)
                 let updatedAt = Instant.companion.fromEpochMilliseconds(epochMilliseconds: change.updatedAtEpochMs)
                 let trace = AuditTrace(
                     authorUserId: nil,
@@ -10116,6 +10539,19 @@ final class KmpBridge: ObservableObject {
 
     private func positiveInt64Value(_ raw: Any?) -> Int64? {
         int64Value(raw).flatMap { $0 > 0 ? $0 : nil }
+    }
+
+    // Salvaguarda receptora de SyncLAN: un payload de "description" nunca deberia
+    // parecer el toString() autogenerado de un data class Kotlin (ej. "Evaluation(id=...)").
+    // Si un emisor con el bug antiguo de KmpBridge.swift (leer `.description` en vez de
+    // `.description_` sobre un objeto Kotlin) sigue circulando, esto evita que el
+    // receptor persista el volcado y perpetue la corrupcion anidada.
+    private func sanitizedSyncDescription(_ raw: String?) -> String? {
+        guard let raw, let regex = try? NSRegularExpression(pattern: #"^[A-Za-z][A-Za-z0-9_]*\(id="#) else {
+            return raw
+        }
+        let range = NSRange(raw.startIndex..., in: raw)
+        return regex.firstMatch(in: raw, range: range) == nil ? raw : nil
     }
 
     private func doubleValue(_ raw: Any?) -> Double? {

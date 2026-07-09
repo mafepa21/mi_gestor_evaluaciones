@@ -415,6 +415,12 @@ struct NotebookModuleView: View {
                         },
                         onCreateTab: {
                             presentCreateNotebookTab()
+                        },
+                        onRenameTab: { tab in
+                            presentRenameNotebookTab(tab)
+                        },
+                        onDeleteTab: { tab in
+                            pendingDeleteNotebookTab = tab
                         }
                     )
                 }

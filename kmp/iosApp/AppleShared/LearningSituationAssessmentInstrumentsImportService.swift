@@ -346,7 +346,14 @@ struct LearningSituationAssessmentInstrumentsImportService {
     }
 
     private func hasObservationScale1To4(_ fields: [ObservationFieldDraft]) -> Bool {
-        fields.contains { field in
+        // Una rejilla momento x indicador (indicatorTitles no vacio) es
+        // graduable 1-4 por construccion, aunque su cabecera de tabla no
+        // contenga literalmente "1"/"4" (son nombres de indicador, no una
+        // etiqueta de escala).
+        if fields.contains(where: { !$0.indicatorTitles.isEmpty }) {
+            return true
+        }
+        return fields.contains { field in
             guard let scale = field.scaleLabel else { return false }
             let value = normalized(scale)
             return value.contains("1") && value.contains("4")

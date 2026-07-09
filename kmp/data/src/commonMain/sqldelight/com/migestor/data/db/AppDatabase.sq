@@ -1612,11 +1612,26 @@ deleteInstrumentItemsByTemplate:
 DELETE FROM notebook_instrument_items
 WHERE template_id = ?;
 
+deleteInstrumentItemsNotIn:
+DELETE FROM notebook_instrument_items
+WHERE template_id = ? AND id NOT IN ?;
+
 upsertInstrumentItem:
 INSERT OR REPLACE INTO notebook_instrument_items(
     id, template_id, item_key, title, item_type, options_csv, required, sort_order, help_text, updated_at_epoch_ms, device_id, sync_version
 )
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+insertInstrumentItem:
+INSERT INTO notebook_instrument_items(
+    id, template_id, item_key, title, item_type, options_csv, required, sort_order, help_text, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateInstrumentItem:
+UPDATE notebook_instrument_items
+SET item_key = ?, title = ?, item_type = ?, options_csv = ?, required = ?, sort_order = ?, help_text = ?, updated_at_epoch_ms = ?, device_id = ?, sync_version = ?
+WHERE id = ?;
 
 upsertInstrumentResponse:
 INSERT OR REPLACE INTO notebook_instrument_responses(

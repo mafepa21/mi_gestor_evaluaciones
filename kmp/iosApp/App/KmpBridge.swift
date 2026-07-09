@@ -5158,12 +5158,14 @@ final class KmpBridge: ObservableObject {
                 targetTabId: targetTabId
             )
             columnIdsByInstrumentTitle[normTitle] = columnId
-            // No regenerar una plantilla que ya existe: reconstruirla borraria y
-            // reinsertaria sus items, orfanando las respuestas de alumnado ya
-            // guardadas para este instrumento (aunque el reimport traiga la misma
-            // estructura). Solo se crea si de verdad falta.
-            if existingRubricId == nil,
-               try await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: columnId) == nil {
+            // Regenerar la plantilla en cada reimport (no solo cuando falta) para
+            // que recoja cambios del parser, ej. la rejilla de observacion pasando
+            // a items momento x indicador. `saveTemplate` hace un diff real
+            // (UPDATE de items que persisten por id, INSERT de los nuevos, DELETE
+            // solo de los que ya no estan) en vez de borrar+reinsertar todo, asi
+            // que las respuestas de alumnado ya guardadas para items que persisten
+            // no se orfanan.
+            if existingRubricId == nil {
                 try await saveAssessmentInstrumentTemplateIfNeeded(
                     instrument: instrument,
                     classId: classId,
@@ -5358,6 +5360,24 @@ final class KmpBridge: ObservableObject {
         try await container.notebookConfigRepository.listTabs(classId: classId)
     }
 
+    /// Pestaña donde ya viven las columnas de instrumentos vinculadas a esta
+    /// situación (si las hay), para preseleccionarla al reimportar en vez de
+    /// asumir la primera pestaña de la clase.
+    func preferredLearningSituationInstrumentTabId(situationId: Int64, classId: Int64) async throws -> String? {
+        let resources = try await container.learningSituationsRepository.listLinkedResources(learningSituationId: situationId)
+        let linkedColumnIds = Set(resources
+            .filter { $0.kind == .notebookColumn && $0.classId?.int64Value == classId }
+            .map { $0.resourceId })
+        guard !linkedColumnIds.isEmpty else { return nil }
+        let columns = try await container.notebookConfigRepository.listColumns(classId: classId)
+        for column in columns where linkedColumnIds.contains(column.id) {
+            if let firstTab = column.tabIds.first {
+                return firstTab
+            }
+        }
+        return nil
+    }
+
     func repairLearningSituationAssessmentInstrumentImportIfNeeded(classId: Int64) async throws {
         let repairedDescriptions = try await repairCorruptedEvaluationDescriptions(classId: classId)
         let repairedLevels = try await repairAssessmentInstrumentRubricLevelPoints(classId: classId)
@@ -5515,12 +5535,16 @@ final class KmpBridge: ObservableObject {
             // borrarlo: un fallo de lookup nunca debe degradar una columna que ya
             // era de tipo rubrica.
             let effectiveRubricId = rubricId ?? existingColumn.rubricId?.int64Value
+            // Un reimport NO debe reubicar una columna que el docente ya tiene
+            // colocada en una pestaña: `targetTabId` solo se adopta si la columna
+            // no tiene ya una pestaña valida (vacia o apuntando a una pestaña
+            // borrada), nunca para "mover" una columna que ya vive en otra
+            // pestaña distinta a la seleccionada en el sheet de import.
             var tabIds = existingColumn.tabIds
-            if let targetTabId, !tabIds.contains(targetTabId) {
-                let tabs = try await container.notebookConfigRepository.listTabs(classId: classId)
-                if tabs.contains(where: { $0.id == targetTabId }) {
-                    tabIds = [targetTabId]
-                }
+            let tabs = try await container.notebookConfigRepository.listTabs(classId: classId)
+            let hasValidTab = tabIds.contains { id in tabs.contains { $0.id == id } }
+            if !hasValidTab, let targetTabId, tabs.contains(where: { $0.id == targetTabId }) {
+                tabIds = [targetTabId]
             }
             let refreshed = NotebookColumnDefinition(
                 id: existingColumn.id,
@@ -5862,12 +5886,16 @@ final class KmpBridge: ObservableObject {
                 repairInputKind = repair.inputKind
                 repairScaleKind = repair.scaleKind
             } else if let detail = try? await container.notebookInstrumentsRepository.getTemplateForColumn(columnId: column.id) {
+                let templateInputKind = detail.template_.inputKind
+                // Si la columna ya refleja el inputKind de su propia plantilla, no
+                // es una columna legacy que reparar: forzar aqui type/scaleKind a
+                // texto/custom degradaria columnas ya tipadas correctamente por el
+                // mapeo nuevo (ej. rejilla de observacion 1-4 en .numeric/.fourLevel).
+                guard column.inputKind != templateInputKind else { continue }
                 repairType = .text
                 repairScaleKind = .custom
-                
-                let templateInputKind = detail.template_.inputKind
                 repairInputKind = templateInputKind
-                
+
                 switch detail.template_.kind {
                 case .checklist:
                     repairInstrumentKind = .checklist
@@ -5899,7 +5927,7 @@ final class KmpBridge: ObservableObject {
                 instrumentKind: repairInstrumentKind,
                 inputKind: repairInputKind,
                 evaluationId: column.evaluationId,
-                rubricId: nil,
+                rubricId: column.rubricId,
                 formula: column.formula,
                 weight: column.weight,
                 dateEpochMs: column.dateEpochMs,
@@ -9651,7 +9679,18 @@ final class KmpBridge: ObservableObject {
                 )
 
                 let sharedAcrossTabs = boolValue(payloadObject["sharedAcrossTabs"] ?? payloadObject["shared_across_tabs"]) ?? false
-                let finalTabIds = sharedAcrossTabs ? existingTabs.map { $0.id } : resolvedTabIds
+                // Si el peer no comparte ninguna pestaña por id/titulo (drift de
+                // nombres entre dispositivos) y la columna no es compartida, no
+                // dejarla con tabIds=[]: quedaria invisible en TODAS las pestañas
+                // en vez de solo en la que no pudo resolverse.
+                let finalTabIds: [String]
+                if sharedAcrossTabs {
+                    finalTabIds = existingTabs.map { $0.id }
+                } else if resolvedTabIds.isEmpty, let fallbackTabId = existingTabs.first?.id {
+                    finalTabIds = [fallbackTabId]
+                } else {
+                    finalTabIds = resolvedTabIds
+                }
                 let colorHex = normalizeHexColor(payloadObject["colorHex"] as? String)
                 let formula = payloadObject["formula"] as? String
                 let categoryIdRaw = (payloadObject["categoryId"] as? String) ?? (payloadObject["category_id"] as? String)

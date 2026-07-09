@@ -1484,7 +1484,16 @@ private struct LearningSituationEvaluationSheet: View {
                tabs.contains(where: { $0.id == selectedInstrumentTargetTabId }) {
                 return
             }
-            selectedInstrumentTargetTabId = tabs.first?.id
+            // Preseleccionar la pestaña donde ya viven las columnas de esta
+            // situación (si las hay) en vez de asumir la primera pestaña de la
+            // clase: reimportar no debe reubicar columnas que el docente ya
+            // tiene colocadas en otra pestaña.
+            let preferredTabId = try? await bridge.preferredLearningSituationInstrumentTabId(situationId: situation.id, classId: classId)
+            if let preferredTabId, tabs.contains(where: { $0.id == preferredTabId }) {
+                selectedInstrumentTargetTabId = preferredTabId
+            } else {
+                selectedInstrumentTargetTabId = tabs.first?.id
+            }
             try await bridge.repairLearningSituationAssessmentInstrumentImportIfNeeded(classId: classId)
         } catch {
             errorMessage = error.localizedDescription

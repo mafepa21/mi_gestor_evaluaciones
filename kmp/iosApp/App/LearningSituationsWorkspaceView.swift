@@ -1187,6 +1187,10 @@ private struct LearningSituationEvaluationSheet: View {
         instrumentImportDraft?.instruments.filter(\.isSelected) ?? []
     }
 
+    private var selectedWeightTotal: Double {
+        selectedImportedInstruments.compactMap(\.weightPercent).reduce(0, +)
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -1228,6 +1232,14 @@ private struct LearningSituationEvaluationSheet: View {
                     }
                 } else {
                     Section("Instrumentos detectados") {
+                        HStack {
+                            Text("\(selectedImportedInstruments.count) seleccionados")
+                            Spacer()
+                            Text("\(Int(selectedWeightTotal.rounded()))% ponderado")
+                                .fontWeight(.semibold)
+                                .foregroundStyle(abs(selectedWeightTotal - 100) < 0.5 ? NotebookStyle.successTint : NotebookStyle.warningTint)
+                        }
+                        .font(.caption)
                         importedInstrumentRows
                     }
                     Section("Pestaña del cuaderno") {
@@ -1354,18 +1366,35 @@ private struct LearningSituationEvaluationSheet: View {
 
     private var importedInstrumentRows: some View {
         ForEach(Array((instrumentImportDraft?.instruments ?? []).indices), id: \.self) { index in
+            let instrument = instrumentImportDraft?.instruments[index]
             Toggle(isOn: Binding(
                 get: { instrumentImportDraft?.instruments[index].isSelected ?? false },
                 set: { instrumentImportDraft?.instruments[index].isSelected = $0 }
             )) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(instrumentImportDraft?.instruments[index].title ?? "")
-                    Text(importedInstrumentSubtitle(instrumentImportDraft?.instruments[index]))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(instrument?.title ?? "")
+                            .font(.body.weight(.semibold))
+                        Text(importedInstrumentSubtitle(instrument))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 8)
+                    if let weight = instrument?.weightPercent, weight > 0 {
+                        Text("\(Int(weight.rounded()))%")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(NotebookStyle.primaryTint)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(NotebookStyle.primaryTint.opacity(0.12), in: Capsule())
+                    } else {
+                        Text("Auxiliar")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, 8)
         }
     }
 
@@ -1564,7 +1593,6 @@ private struct LearningSituationEvaluationSheet: View {
         guard let instrument else { return "" }
         var parts = [instrument.kind.label]
         if let criterion = instrument.criterionLabel, !criterion.isEmpty { parts.append(criterion) }
-        parts.append(instrument.weightPercent.map { "\(Int($0.rounded()))%" } ?? "Auxiliar")
         let detailCount = instrument.rubric?.criteria.count ?? instrument.checklistItems.count + instrument.quizQuestions.count + instrument.observationFields.count
         if detailCount > 0 { parts.append("\(detailCount) items") }
         return parts.joined(separator: " · ")

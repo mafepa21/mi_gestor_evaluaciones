@@ -1432,7 +1432,13 @@ private struct LearningSituationEvaluationSheet: View {
     private func handleInstrumentImport(_ result: Result<[URL], Error>) async {
         do {
             guard let url = try result.get().first else { return }
-            instrumentImportPreview = try LearningSituationAssessmentInstrumentsImportService().preview(from: url)
+            // El parseo del DOCX es sincrono y puede tardar (documentos
+            // grandes, texto con estructuras cuadraticas en el regex de
+            // preguntas de quiz); se saca del MainActor para que un
+            // documento patologico nunca congele la UI.
+            instrumentImportPreview = try await Task.detached {
+                try LearningSituationAssessmentInstrumentsImportService().preview(from: url)
+            }.value
         } catch {
             errorMessage = error.localizedDescription
         }

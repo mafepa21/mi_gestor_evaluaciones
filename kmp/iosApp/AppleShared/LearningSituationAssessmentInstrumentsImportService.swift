@@ -368,6 +368,11 @@ struct LearningSituationAssessmentInstrumentsImportService {
     }
 
     private func slashOptions(in text: String) -> (questionText: String, options: [String])? {
+        // Precheck barato: el patron de abajo es ~O(n^2) cuando el texto NO
+        // contiene "/" (el `[...]+` codicioso prueba cada posicion de inicio
+        // hasta el final del texto antes de fallar). Sin "/" no puede haber
+        // opciones separadas por barra, asi que se descarta sin tocar el regex.
+        guard text.contains("/") else { return nil }
         let optionsPattern = #"([A-Za-z0-9\sáéíóúÁÉÍÓÚñÑ]+(?:\s*/\s*[A-Za-z0-9\sáéíóúÁÉÍÓÚñÑ]+)+)"#
         guard let regex = try? NSRegularExpression(pattern: optionsPattern),
               let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
@@ -525,7 +530,7 @@ struct LearningSituationAssessmentInstrumentsImportService {
     private func observationIndicatorTitles(from table: [[String]]) -> [String] {
         guard let header = table.first else { return [] }
         let firstHeader = normalized(header.first ?? "")
-        guard !(firstHeader.contains("student") || firstHeader.contains("exercise")) else { return [] }
+        guard !(firstHeader.contains("student") || firstHeader.contains("exercise") || firstHeader.contains("alumno") || firstHeader.contains("ejercicio")) else { return [] }
         let rows = table.dropFirst().isEmpty ? table : Array(table.dropFirst())
         var excludedIndices = Set(rows.compactMap { row in
             row.firstIndex(where: { !$0.isEmpty })
@@ -699,7 +704,7 @@ struct LearningSituationAssessmentInstrumentsImportService {
         guard let header = table.first else { return [] }
         let firstHeader = normalized(header.first ?? "")
         let usefulHeaderFields = header.dropFirst().map(clean).filter { !$0.isEmpty }
-        if firstHeader.contains("student") || firstHeader.contains("exercise") {
+        if firstHeader.contains("student") || firstHeader.contains("exercise") || firstHeader.contains("alumno") || firstHeader.contains("ejercicio") {
             return usefulHeaderFields
         }
         let rows = table.dropFirst().isEmpty ? table : Array(table.dropFirst())

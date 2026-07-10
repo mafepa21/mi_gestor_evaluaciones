@@ -140,11 +140,15 @@ class NotebookInstrumentsRepositorySqlDelight(
         syncVersion: Long,
     ): NotebookInstrumentCellSummary = withContext(Dispatchers.Default) {
         val detail = getTemplateForColumn(columnId)
-            ?: return@withContext NotebookInstrumentCellSummary(0, 0, "Pendiente", false)
+            ?: run {
+                println("[CHECKLIST-DEBUG] saveResponses: sin plantilla para columnId=$columnId classId=$classId studentId=$studentId")
+                return@withContext NotebookInstrumentCellSummary(0, 0, "Pendiente", false)
+            }
         val now = if (updatedAtEpochMs > 0) updatedAtEpochMs else Clock.System.now().toEpochMilliseconds()
         val existingCell = db.appDatabaseQueries.selectNotebookCellEntry(classId, studentId, columnId).executeAsOneOrNull()
         val responsesByItem = responses.associateBy { it.itemId }
         val summary = summarize(detail.items, responsesByItem)
+        println("[CHECKLIST-DEBUG] saveResponses: columnId=$columnId title=${detail.template.title} itemCount=${detail.items.size} responseCount=${responses.size} requiredCount=${detail.items.count { it.required }} display=${summary.displayValue}")
 
         db.transaction {
             responses.forEach { response ->
@@ -204,6 +208,8 @@ class NotebookInstrumentsRepositorySqlDelight(
         // la siguiente mutación "normal". Invalidar aquí también para que cualquier instrumento
         // estructurado (checklist, quiz, observación) se refleje de inmediato al guardar.
         sheetCache.invalidate(classId)
+        val persistedAfter = db.appDatabaseQueries.selectNotebookCellEntry(classId, studentId, columnId).executeAsOneOrNull()
+        println("[CHECKLIST-DEBUG] saveResponses: post-write columnId=$columnId display_value=${persistedAfter?.display_value}")
 
         NotebookRefreshBus.emitRefresh()
         summary

@@ -95,6 +95,77 @@ class NotebookInstrumentsRepositorySqlDelightTest {
     }
 
     @Test
+    fun `saveResponses computes partial checklist progress like the real save from the sheet`() = runTest {
+        // Reproduce EXACTAMENTE lo que envía KmpBridge.saveStructuredInstrumentEvaluation:
+        // todos los items del modelo, incluidos los CHECK sin marcar, con boolValue = false
+        // explícito (nunca null) — no solo los que el usuario tocó.
+        val fixture = createFixture()
+        val studentId = fixture.students.saveStudent(firstName = "Carlos", lastName = "Ruiz", email = null)
+        val classId = fixture.classes.saveClass(name = "1 BAC B", course = 1, description = null)
+        fixture.classes.addStudentToClass(classId, studentId)
+        fixture.config.saveColumn(
+            classId,
+            NotebookColumnDefinition(
+                id = "final_checklist_col",
+                title = "Checklist final de entrega - Sesion 10",
+                type = NotebookColumnType.TEXT,
+                inputKind = NotebookCellInputKind.STRUCTURED_CHECKLIST,
+            )
+        )
+        val itemTitles = listOf(
+            "No puntua por separado", "Diagnostico inicial completo (S1)", "Plan FITT-PV validado (S2)",
+            "Registros de entrenamiento presentes", "Quiz de habitos completado (S8)",
+            "Coevaluacion del Coach firmada (S9)", "Autoevaluacion final completada (S10)",
+        )
+        fixture.instruments.saveTemplate(
+            template = NotebookInstrumentTemplate(
+                id = "template_final_checklist_col",
+                classId = classId,
+                columnId = "final_checklist_col",
+                title = "Checklist final de entrega - Sesion 10",
+                kind = NotebookInstrumentTemplateKind.CHECKLIST,
+                inputKind = NotebookCellInputKind.STRUCTURED_CHECKLIST,
+            ),
+            items = itemTitles.mapIndexed { index, title ->
+                NotebookInstrumentItem(
+                    id = "template_final_checklist_col_check_${index + 1}",
+                    templateId = "template_final_checklist_col",
+                    key = "check_${index + 1}",
+                    title = title,
+                    type = NotebookInstrumentItemType.CHECK,
+                )
+            }
+        )
+
+        // Los 5 primeros marcados, los 2 últimos enviados igualmente con boolValue = false.
+        val responses = itemTitles.indices.map { index ->
+            NotebookInstrumentResponse(
+                classId = classId,
+                studentId = studentId,
+                columnId = "final_checklist_col",
+                itemId = "template_final_checklist_col_check_${index + 1}",
+                boolValue = index < 5,
+            )
+        }
+        fixture.instruments.saveResponses(
+            classId = classId,
+            studentId = studentId,
+            columnId = "final_checklist_col",
+            responses = responses,
+            updatedAtEpochMs = 1L,
+            deviceId = "test",
+            syncVersion = 1L,
+        )
+
+        val sheet = fixture.notebook.loadNotebookSnapshot(classId)
+        val row = sheet.rows.single { it.student.id == studentId }
+        assertEquals(
+            "5/7",
+            row.persistedCells.first { it.columnId == "final_checklist_col" }.displayValue
+        )
+    }
+
+    @Test
     fun `saveResponses derives an observation grid score and it counts toward the average`() = runTest {
         val fixture = createFixture()
         val studentId = fixture.students.saveStudent(firstName = "Maria", lastName = "Lopez", email = null)

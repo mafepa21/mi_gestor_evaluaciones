@@ -1166,6 +1166,7 @@ private struct LearningSituationEvaluationSheet: View {
     @State private var selectedInstrumentTargetTabId: String?
     @State private var isNewTargetTabAlertPresented = false
     @State private var newTargetTabName = ""
+    @State private var isImportingInstrumentDocument = false
     @State private var rubricImportPreview: AppleRubricImportPreview?
     @State private var errorMessage = ""
 
@@ -1201,8 +1202,19 @@ private struct LearningSituationEvaluationSheet: View {
                     Button {
                         showingInstrumentImporter = true
                     } label: {
-                        Label("Adjuntar documento DOCX", systemImage: "doc.badge.plus")
+                        if isImportingInstrumentDocument {
+                            HStack(spacing: 8) {
+                                ProgressView()
+                                    #if os(macOS)
+                                    .controlSize(.small)
+                                    #endif
+                                Text("Leyendo documento…")
+                            }
+                        } else {
+                            Label("Adjuntar documento DOCX", systemImage: "doc.badge.plus")
+                        }
                     }
+                    .disabled(isImportingInstrumentDocument)
                     if let instrumentImportDraft {
                         Label("\(instrumentImportDraft.instruments.count) instrumentos detectados en \(instrumentImportDraft.sourceFileName)", systemImage: "checkmark.circle.fill")
                             .font(.caption)
@@ -1471,10 +1483,18 @@ private struct LearningSituationEvaluationSheet: View {
     }
 
     @MainActor
+    @MainActor
     private func handleInstrumentImport(_ result: Result<[URL], Error>) async {
         do {
             guard let url = try result.get().first else { return }
-            instrumentImportPreview = try LearningSituationAssessmentInstrumentsImportService().preview(from: url)
+            isImportingInstrumentDocument = true
+            defer { isImportingInstrumentDocument = false }
+            // La lectura del DOCX (Data(contentsOf:) + XMLParser) es E/S bloqueante y puede
+            // tardar si el archivo aún no está descargado localmente (p.ej. iCloud Desktop).
+            // Se ejecuta en un Task.detached para no congelar el hilo principal/UI mientras dura.
+            instrumentImportPreview = try await Task.detached(priority: .userInitiated) {
+                try LearningSituationAssessmentInstrumentsImportService().preview(from: url)
+            }.value
         } catch {
             errorMessage = error.localizedDescription
         }

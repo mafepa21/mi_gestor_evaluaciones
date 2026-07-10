@@ -37,6 +37,8 @@ struct RubricEvaluationView: View {
                                         summaryPanel(rubric: rubric, score: selectedScore)
                                     }
                                 }
+
+                                saveSection()
                             }
                             .padding(EvaluationDesign.screenPadding)
                         }
@@ -125,27 +127,27 @@ struct RubricEvaluationView: View {
 
             Spacer(minLength: 16)
 
-            VStack(alignment: .trailing, spacing: 12) {
-                EvaluationScoreBadge(
-                    title: "Nota actual",
-                    value: IosFormatting.scoreOutOfTen(from: score)
-                )
-
-                PrimaryActionButton(label: "Guardar evaluación", systemImage: "square.and.arrow.down.fill") {
-                    bridge.saveRubricEvaluation(
-                        manual: true,
-                        emitNotebookRefresh: !bridge.isNotebookRubricAutoAdvanceActive,
-                        onSuccess: {
-                            if !bridge.isNotebookRubricAutoAdvanceActive {
-                                bridge.refreshCurrentNotebook()
-                                closeRubric()
-                            }
-                        }
-                    )
-                }
-                .frame(width: 220)
-            }
+            EvaluationScoreBadge(
+                title: "Nota actual",
+                value: IosFormatting.scoreOutOfTen(from: score)
+            )
         }
+    }
+
+    private func saveSection() -> some View {
+        PrimaryActionButton(label: "Guardar evaluación", systemImage: "square.and.arrow.down.fill") {
+            bridge.saveRubricEvaluation(
+                manual: true,
+                emitNotebookRefresh: !bridge.isNotebookRubricAutoAdvanceActive,
+                onSuccess: {
+                    if !bridge.isNotebookRubricAutoAdvanceActive {
+                        bridge.refreshCurrentNotebook()
+                        closeRubric()
+                    }
+                }
+            )
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private func criteriaPanel(rubric: RubricDetail) -> some View {
@@ -263,36 +265,21 @@ struct RubricCriterionRow: View {
                         .foregroundStyle(.secondary)
                 }
 
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) {
                         ForEach(item.levels, id: \.id) { level in
-                            let isSelected = selectedLevelId == level.id
+                            levelTile(level)
+                        }
+                    }
+                    .padding(.horizontal, 2)
+                    .padding(.vertical, 4)
 
-                            EvaluationLevelTile(
-                                title: level.name,
-                                subtitle: level.description_ ?? "",
-                                isSelected: isSelected,
-                                tint: EvaluationDesign.accent
-                            ) {
-                                AppleInteractionFeedback.play(.selection)
-                                onSelectLevel(level.id)
-                            }
-                            .frame(width: 170, height: 110)
-                            .overlay(alignment: .bottomTrailing) {
-                                Text("\(Int(level.points)) pts")
-                                    .font(.system(size: 11, weight: .black, design: .rounded))
-                                    .foregroundStyle(isSelected ? .white : EvaluationDesign.accent)
-                                    .padding(.trailing, 12)
-                                    .padding(.bottom, 10)
-                            }
-                            .help(levelHelpText(level))
-                            .onHover { isHovering in
-                                if isHovering {
-                                    schedulePopover(for: level)
-                                } else {
-                                    cancelPopover(for: level)
-                                }
-                            }
+                    LazyVGrid(
+                        columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)],
+                        spacing: 8
+                    ) {
+                        ForEach(item.levels, id: \.id) { level in
+                            levelTile(level)
                         }
                     }
                     .padding(.horizontal, 2)
@@ -332,6 +319,36 @@ struct RubricCriterionRow: View {
         .animation(uiFeatureFlags.rubricContentReveal, value: selectedLevelDescription.isEmpty)
         .onDisappear {
             hoverTask?.cancel()
+        }
+    }
+
+    private func levelTile(_ level: RubricLevel) -> some View {
+        let isSelected = selectedLevelId == level.id
+
+        return EvaluationLevelTile(
+            title: level.name,
+            subtitle: level.description_ ?? "",
+            isSelected: isSelected,
+            tint: EvaluationDesign.accent
+        ) {
+            AppleInteractionFeedback.play(.selection)
+            onSelectLevel(level.id)
+        }
+        .frame(minWidth: 150, minHeight: 92)
+        .overlay(alignment: .bottomTrailing) {
+            Text("\(Int(level.points)) pts")
+                .font(.system(size: 11, weight: .black, design: .rounded))
+                .foregroundStyle(isSelected ? .white : EvaluationDesign.accent)
+                .padding(.trailing, 12)
+                .padding(.bottom, 10)
+        }
+        .help(levelHelpText(level))
+        .onHover { isHovering in
+            if isHovering {
+                schedulePopover(for: level)
+            } else {
+                cancelPopover(for: level)
+            }
         }
     }
 

@@ -5404,7 +5404,7 @@ final class KmpBridge: ObservableObject {
 
         if !instrument.observationFields.isEmpty {
             let specs = instrument.observationFields.enumerated().map { index, field in
-                ("field_\(index + 1)", field.title, NotebookInstrumentItemType.scale14, [] as [String])
+                (field.key ?? "field_\(index + 1)", field.title, NotebookInstrumentItemType.scale14, [] as [String])
             }
             return makeInstrumentItems(columnId: columnId, specs: specs)
         }
@@ -5490,6 +5490,15 @@ final class KmpBridge: ObservableObject {
         var didRepair = false
 
         for column in columns {
+            // Rejilla de observación con nota derivada de respuestas 1-4 (ver
+            // notebookInputKind/deriveObservationGridScore): ya está en el estado correcto
+            // (numérica, computable) aunque tenga una plantilla estructurada asociada. Sin
+            // este guard, la rama genérica de más abajo la degradaría a .text/.custom
+            // (auxiliar sin nota) en cuanto detectara esa plantilla.
+            if column.type == .numeric, column.scaleKind == .fourLevel {
+                continue
+            }
+
             var repairType = column.type
             var repairInstrumentKind = column.instrumentKind
             var repairInputKind = column.inputKind
@@ -5765,7 +5774,11 @@ final class KmpBridge: ObservableObject {
         case .numeric0To10:
             return .numeric010
         case .observationScale1To4:
-            return .numeric14
+            // La rejilla tiene una plantilla estructurada (sesiones × indicadores 1-4) con
+            // nota derivada calculada en NotebookInstrumentsRepositorySqlDelight.saveResponses:
+            // abre el sheet estructurado en vez de una casilla numérica manual. El tipo de
+            // columna sigue siendo .numeric (ver notebookColumnType) para que cuente en la media.
+            return .structuredObservation
         case .checklistAllOrNothing:
             return .check
         case .rubric:

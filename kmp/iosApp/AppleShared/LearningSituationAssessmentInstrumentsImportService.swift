@@ -158,6 +158,10 @@ struct ChecklistItemDraft: Codable {
 struct ObservationFieldDraft: Codable {
     var title: String
     var scaleLabel: String?
+    /// Cuando el campo procede de una rejilla "sesión × indicador" (`obs_s<N>_i<M>`),
+    /// esta clave permite a la capa de materialización/agregación reconocer a qué
+    /// sesión e indicador pertenece cada respuesta 1-4. `nil` para campos genéricos.
+    var key: String? = nil
 }
 
 struct QuizQuestionDraft: Codable {
@@ -450,7 +454,10 @@ struct LearningSituationAssessmentInstrumentsImportService {
 
     private func makeObservationFields(kind: AssessmentInstrumentKind, tables: [[[String]]]) -> [ObservationFieldDraft] {
         guard kind == .teacherObservation || kind == .observationGrid else { return [] }
-        return tables.flatMap { table in
+        return tables.flatMap { table -> [ObservationFieldDraft] in
+            if let sessionFields = sessionIndicatorObservationFields(from: table) {
+                return sessionFields
+            }
             let header = table.first ?? []
             let scale = header.dropFirst().filter { !$0.isEmpty }.joined(separator: " / ")
             let fieldTitles = observationFieldTitles(from: table)
@@ -458,6 +465,50 @@ struct LearningSituationAssessmentInstrumentsImportService {
                 ObservationFieldDraft(title: title, scaleLabel: scale.isEmpty ? nil : scale)
             }
         }
+    }
+
+    /// Detecta la forma "Alumno/a | Momento | indicador1 | ... | indicadorN | Nota (1-4)"
+    /// (una fila por sesión de observación fija) y genera un campo por sesión×indicador
+    /// en vez de un campo genérico por columna, para poder rellenar cada sesión con sus
+    /// indicadores 1-4 de forma independiente. Devuelve `nil` si la tabla no tiene esa forma.
+    private func sessionIndicatorObservationFields(from table: [[String]]) -> [ObservationFieldDraft]? {
+        guard let header = table.first, header.count >= 4 else { return nil }
+        let normalizedHeader = header.map(normalized)
+        guard let firstHeader = normalizedHeader.first,
+              firstHeader.contains("alumno") || firstHeader.contains("student"),
+              normalizedHeader.count > 1,
+              normalizedHeader[1].contains("momento") || normalizedHeader[1].contains("moment") else {
+            return nil
+        }
+
+        var indicatorEnd = header.count
+        if let lastHeader = normalizedHeader.last,
+           lastHeader.contains("nota") || lastHeader.contains("mark") || lastHeader.contains("score") {
+            indicatorEnd -= 1
+        }
+        let indicatorRange = 2..<indicatorEnd
+        guard !indicatorRange.isEmpty else { return nil }
+        let indicatorTitles = indicatorRange.map { clean(header[$0]) }
+
+        let dataRows = table.dropFirst().filter { row in
+            row.count > 1 && !row[1].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        guard !dataRows.isEmpty else { return nil }
+
+        var fields: [ObservationFieldDraft] = []
+        for (sessionIndex, row) in dataRows.enumerated() {
+            let sessionLabel = clean(row[1])
+            for (indicatorOffset, columnIndex) in indicatorRange.enumerated() {
+                guard columnIndex < row.count else { continue }
+                let indicatorTitle = indicatorTitles[indicatorOffset]
+                fields.append(ObservationFieldDraft(
+                    title: "\(sessionLabel) · \(indicatorTitle)",
+                    scaleLabel: "1-4",
+                    key: "obs_s\(sessionIndex)_i\(indicatorOffset)"
+                ))
+            }
+        }
+        return fields
     }
 
     private func inferKind(title: String, tables: [[[String]]]) -> AssessmentInstrumentKind {

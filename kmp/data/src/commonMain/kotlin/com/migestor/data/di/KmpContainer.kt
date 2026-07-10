@@ -63,7 +63,7 @@ class KmpContainer(val driver: SqlDriver) {
     val evaluationsRepository = EvaluationsRepositorySqlDelight(database)
     val gradesRepository = GradesRepositorySqlDelight(database)
     val notebookCellsRepository = NotebookCellsRepositorySqlDelight(database)
-    val notebookInstrumentsRepository = NotebookInstrumentsRepositorySqlDelight(database)
+    val notebookInstrumentsRepository = NotebookInstrumentsRepositorySqlDelight(database, gradesRepository)
     val rubricsRepository = RubricsRepositorySqlDelight(database)
     val attendanceRepository = AttendanceRepositorySqlDelight(database)
     val aiAuditRepository = AIAuditRepositorySqlDelight(database)

@@ -98,12 +98,16 @@ struct StructuredInstrumentEvaluationSheet: View {
                     }
                 }
 
-                NotebookSurface(padding: 0) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(model.items) { $item in
-                            StructuredInstrumentItemRow(item: $item)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 12)
+                if let sessionGroups = observationSessionGroups(for: model.wrappedValue.items) {
+                    ObservationGridInstrumentContent(model: model, groups: sessionGroups)
+                } else {
+                    NotebookSurface(padding: 0) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(model.items) { $item in
+                                StructuredInstrumentItemRow(item: $item)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 12)
+                            }
                         }
                     }
                 }

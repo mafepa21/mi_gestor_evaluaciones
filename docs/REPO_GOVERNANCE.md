@@ -78,7 +78,21 @@ Cada PR debe incluir:
 - Capturas o evidencias si afecta a UI.
 - Entrada de changelog si el cambio afecta a producto, datos, arquitectura, build o UX.
 
-La plantilla oficial vive en `.github/pull_request_template.md`.
+La plantilla oficial del proyecto con la estructura requerida vive en [.github/pull_request_template.md](file:///Users/mariofernandez/Projects/mi_gestor_evaluaciones/.github/pull_request_template.md).
+
+### Formato Exigido para Pull Requests
+
+Cada PR debe seguir obligatoriamente esta estructura de bloques para asegurar la trazabilidad del cambio:
+
+1. **Resumen:** De 2 a 5 líneas describiendo brevemente qué cambia y por qué.
+2. **Alcance:** Lista detallada de los límites de la intervención técnica.
+3. **Archivos o módulos afectados:** Listado de los ficheros implicados.
+4. **Cambios realizados:** Descripción de las modificaciones.
+5. **Qué no se ha tocado:** Exclusión explícita de componentes fuera de alcance para acotar regresiones.
+6. **Riesgos:** Identificación de riesgos residuales o dependencias.
+7. **Casos probados:** Checklist de validación (Build iOS/macOS, tests de KMP/shared, SQLDelight y capturas de pantalla de UI).
+8. **Documentación:** Links y menciones a ADRs, Roadmap o Changelog actualizados.
+9. **Evidencias:** Logs de compilación, logs de ejecución de tests o imágenes que evidencien el funcionamiento real.
 
 ## CI y verificaciones
 

@@ -145,7 +145,7 @@ struct AgendaRubricEvaluationSheet: View {
         RubricEvaluationView()
             .environmentObject(bridge)
             #if os(macOS)
-            .frame(minWidth: 980, minHeight: 700)
+            .frame(minWidth: 1180, minHeight: 700)
             #endif
             .task(id: target.id) {
                 guard !hasOpenedTarget else { return }

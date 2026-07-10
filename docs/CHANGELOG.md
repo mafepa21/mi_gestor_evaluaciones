@@ -13,6 +13,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ## Unreleased
 
+Cambios posteriores a `v0.3.0-traceability-baseline`.
+
+## v0.3.0-traceability-baseline — 2026-07-06
+
 ### Added
 
 - SyncLAN macOS incorpora notificacion local inmediata al helper: `KmpBridge` agrupa mutaciones locales con debounce corto y el helper acepta `POST /sync/local-changes` solo desde loopback para emitir SSE a los iPad enlazados sin esperar al polling de fallback.
@@ -325,6 +329,13 @@ El formato sigue una variante practica de Keep a Changelog:
 - `xcodegen generate` completado correctamente para incluir `AppleAppCommands.swift` en los targets Apple. `git diff --check` completado correctamente tras añadir comandos y shortcuts Apple. `xcodebuild -list -project kmp/iosApp/MiGestorKMPiOS.xcodeproj` y la misma prueba con `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` no pudieron ejecutarse porque el entorno apunta a `/Library/Developer/CommandLineTools` y no hay Xcode completo visible en `/Applications`.
 - `git diff --check -- kmp/iosApp/MacApp/MacRootView.swift kmp/iosApp/MacApp/MiGestorKMPMacApp.swift docs/CHANGELOG.md` completado correctamente. Prueba aislada `swift -module-cache-path /private/tmp/migestor-swift-module-cache -e '...'` completada para validar `toolbar(id:)` con `some CustomizableToolbarContent`. `xcodebuild -list -project kmp/iosApp/MiGestorKMPiOS.xcodeproj` no pudo ejecutarse porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y no hay `Xcode.app` ni `Xcode-beta.app` en `/Applications`.
 - `git diff --check -- kmp/iosApp/App/NotebookModuleView.swift kmp/iosApp/App/NotebookCompactCommandBar.swift` completado correctamente. `xcodebuild -quiet -project kmp/iosApp/MiGestorKMPiOS.xcodeproj -scheme MiGestorKMPiOS -configuration Debug -destination 'generic/platform=iOS Simulator' build` no pudo ejecutarse porque `xcode-select` apunta a `/Library/Developer/CommandLineTools` y no hay Xcode instalado en `/Applications`.
+
+### Accesibilidad
+- Soporte para contraste WCAG AA, Dynamic Type y Reduce Motion en vistas de planificador y cuaderno.
+- Atajos de teclado contextuales en macOS (`⌘N`, `⌘⇧C`, `⌘F`, `⌘S`, `⌘⇧H`, `⌘⌥R`, `⌘E`, `⌘1-3`).
+
+### Conocido / pendiente de validación
+- Validación completa de regresión de todos los módulos tras la integración masiva del 6 de julio de 2026.
 
 ## 0.3.0-alpha.2 - 2026-06-11
 

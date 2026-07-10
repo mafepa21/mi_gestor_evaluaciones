@@ -157,6 +157,17 @@ Como la app ya estaba empezada, no conviene inventar un historial perfecto. El e
 4. Crear ADRs solo para decisiones tecnicas que sigan condicionando el futuro.
 5. Usar `.workflow/` como evidencia auxiliar de auditorias y planes, no como fuente canonica.
 
+## Proceso futuro mínimo (Post-Baseline)
+
+A partir de la baseline `v0.3.0-traceability-baseline`, se aplican las siguientes cinco reglas operativas obligatorias para el control y la trazabilidad de los cambios:
+
+1. **Una tarea o issue antes de abrir una rama**: Cada rama de desarrollo (creada por un humano o un agente de IA) debe estar asociada a una issue abierta en GitHub que describa el alcance.
+2. **Una pull request por objetivo funcional**: Cada PR debe centrarse en un único propósito y documentar claramente el problema, las decisiones tomadas, los casos probados y los riesgos residuales.
+3. **Squash merge obligatorio para ramas de IA**: Las ramas generadas por agentes de IA se integrarán en `main` mediante *Squash and Merge*, resultando en un único commit atómico revisado y redactado por el desarrollador.
+4. **Referencia obligatoria a la issue**: Tanto el cuerpo del PR como el mensaje del commit final de squash deben contener la referencia explícita a la issue que resuelven (por ejemplo, `Closes #123`).
+5. **Tag + Release + evidencia de validación**: Cualquier versión distribuible o candidata a producción debe ser etiquetada en Git (`vX.Y.Z`), tener una GitHub Release asociada y registrar su hoja de evidencias de validación en `docs/audit/validation/`.
+
+
 ## Artefactos locales y privacidad
 
 No versionar bases SQLite locales, `.db`, `.sqlite`, `.sqlite3`, bundles generados, apps, DMG ni datos reales de alumnado. Si hace falta un fixture de datos, debe ser anonimo, minimo y vivir en una ruta de tests documentada.

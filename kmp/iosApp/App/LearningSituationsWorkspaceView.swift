@@ -1164,6 +1164,8 @@ private struct LearningSituationEvaluationSheet: View {
     @State private var instrumentImportPreview: LearningSituationAssessmentImportDraft?
     @State private var instrumentTargetTabs: [NotebookTab] = []
     @State private var selectedInstrumentTargetTabId: String?
+    @State private var isNewTargetTabAlertPresented = false
+    @State private var newTargetTabName = ""
     @State private var rubricImportPreview: AppleRubricImportPreview?
     @State private var errorMessage = ""
 
@@ -1242,6 +1244,12 @@ private struct LearningSituationEvaluationSheet: View {
                                 }
                             }
                         }
+                        Button {
+                            newTargetTabName = ""
+                            isNewTargetTabAlertPresented = true
+                        } label: {
+                            Label("Crear pestaña nueva…", systemImage: "folder.badge.plus")
+                        }
                     }
                 }
                 Text(statusMessage)
@@ -1302,6 +1310,11 @@ private struct LearningSituationEvaluationSheet: View {
             .alert("No se puede crear", isPresented: Binding(get: { !errorMessage.isEmpty }, set: { if !$0 { errorMessage = "" } })) {
                 Button("Cerrar", role: .cancel) {}
             } message: { Text(errorMessage) }
+            .alert("Nueva pestaña", isPresented: $isNewTargetTabAlertPresented) {
+                TextField("Nombre de la pestaña", text: $newTargetTabName)
+                Button("Cancelar", role: .cancel) {}
+                Button("Crear") { Task { await createInstrumentTargetTab() } }
+            }
         }
 #if os(macOS)
         .frame(minWidth: 620, minHeight: 560)
@@ -1489,6 +1502,15 @@ private struct LearningSituationEvaluationSheet: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    @MainActor
+    private func createInstrumentTargetTab() async {
+        let name = newTargetTabName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, let createdId = bridge.createTab(title: name) else { return }
+        await loadNotebookTabsAndRepairImport()
+        selectedInstrumentTargetTabId = createdId
+        newTargetTabName = ""
     }
 
     private func makeRubricImportPreview(from rows: [[String]]) -> AppleRubricImportPreview {

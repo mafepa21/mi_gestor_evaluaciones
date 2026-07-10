@@ -5109,9 +5109,11 @@ final class KmpBridge: ObservableObject {
         classId: Int64
     ) async throws -> Set<String> {
         let resources = try await container.learningSituationsRepository.listLinkedResources(learningSituationId: situationId)
+        let liveColumnIds = Set(try await container.notebookConfigRepository.listColumns(classId: classId).map(\.id))
         return Set(resources.compactMap { resource in
             guard resource.classId?.int64Value == classId else { return nil }
-            guard resource.kind == .evaluation || resource.kind == .notebookColumn else { return nil }
+            guard resource.kind == .notebookColumn else { return nil }
+            guard liveColumnIds.contains(resource.resourceId) else { return nil }
             return normalizedAssessmentInstrumentTitle(resource.label)
         })
     }

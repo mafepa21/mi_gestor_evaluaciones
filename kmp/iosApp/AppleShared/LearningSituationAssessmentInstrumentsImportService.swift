@@ -258,6 +258,7 @@ struct LearningSituationAssessmentInstrumentsImportService {
         let rubric = makeRubric(kind: kind, tables: nonEmptyTables)
         let checklistItems = makeChecklistItems(kind: kind, tables: nonEmptyTables, paragraphs: paragraphs)
         let observationFields = makeObservationFields(kind: kind, tables: nonEmptyTables)
+        let quizQuestions = makeQuizQuestions(kind: kind, tables: nonEmptyTables, paragraphs: paragraphs)
         let selectedByDefault = (heading.weightPercent ?? 0) > 0
         let scoreStrategy = defaultScoreStrategy(
             kind: kind,
@@ -266,7 +267,7 @@ struct LearningSituationAssessmentInstrumentsImportService {
         )
         let countsTowardAverage = scoreStrategy != .none && (heading.weightPercent ?? 0) > 0
 
-        if rubric == nil, checklistItems.isEmpty, observationFields.isEmpty {
+        if rubric == nil, checklistItems.isEmpty, observationFields.isEmpty, quizQuestions.isEmpty {
             return nil
         }
         return AssessmentInstrumentDraft(
@@ -280,6 +281,7 @@ struct LearningSituationAssessmentInstrumentsImportService {
             rubric: rubric,
             checklistItems: checklistItems,
             observationFields: observationFields,
+            quizQuestions: quizQuestions,
             note: countsTowardAverage ? nil : "Auxiliar o sin puntuación computable detectada"
         )
     }
@@ -386,6 +388,51 @@ struct LearningSituationAssessmentInstrumentsImportService {
         return tableItems + paragraphItems
     }
 
+    private func makeQuizQuestions(kind: AssessmentInstrumentKind, tables: [[[String]]], paragraphs: [String]) -> [QuizQuestionDraft] {
+        guard kind == .quizQuestions else { return [] }
+        let tableQuestions = tables.flatMap { table -> [QuizQuestionDraft] in
+            let rows = table.dropFirst().isEmpty ? table : Array(table.dropFirst())
+            return rows.compactMap { row -> QuizQuestionDraft? in
+                guard let text = row.first(where: { !$0.isEmpty }) else { return nil }
+                let options = Array(row.dropFirst()).map(clean).filter { !$0.isEmpty }
+                return QuizQuestionDraft(questionText: text, options: options)
+            }
+        }
+        let paragraphQuestions = paragraphs.compactMap(quizQuestion(from:))
+        return tableQuestions + paragraphQuestions
+    }
+
+    private func quizQuestion(from paragraph: String) -> QuizQuestionDraft? {
+        let isNumbered = paragraph.range(of: #"^\s*\d+[\.\)]\s+"#, options: .regularExpression) != nil
+        let isTrueFalse = normalized(paragraph).hasPrefix("verdadero o falso") || normalized(paragraph).hasPrefix("true or false")
+        guard isNumbered || paragraph.contains("?") || isTrueFalse else { return nil }
+        var text = paragraph.replacingOccurrences(of: #"^\s*\d+[\.\)]\s*"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        var options: [String] = []
+        if isTrueFalse {
+            options = ["Verdadero", "Falso"]
+        } else if let slashOptions = optionsFromSlashList(text) {
+            options = slashOptions
+            if let questionMarkRange = text.range(of: "?") {
+                text = String(text[..<questionMarkRange.upperBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        return QuizQuestionDraft(questionText: text, options: options)
+    }
+
+    private func optionsFromSlashList(_ text: String) -> [String]? {
+        guard let questionMarkRange = text.range(of: "?", options: .backwards) else { return nil }
+        let tail = String(text[questionMarkRange.upperBound...])
+        guard tail.contains(" / ") else { return nil }
+        let parts = tail
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "."))
+            .components(separatedBy: " / ")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        return parts.count > 1 ? parts : nil
+    }
+
     private func makeObservationFields(kind: AssessmentInstrumentKind, tables: [[[String]]]) -> [ObservationFieldDraft] {
         guard kind == .teacherObservation || kind == .observationGrid else { return [] }
         return tables.flatMap { table in
@@ -411,7 +458,10 @@ struct LearningSituationAssessmentInstrumentsImportService {
             title.contains("coevaluacion") {
             return .checklist
         }
-        if title.contains("quiz") || title.contains("safety") || title.contains("adjustment") || title.contains("tarea competencial") {
+        if title.contains("quiz") {
+            return .quizQuestions
+        }
+        if title.contains("safety") || title.contains("adjustment") || title.contains("tarea competencial") {
             return .checklist
         }
         if title.contains("teacher") ||
@@ -444,7 +494,8 @@ struct LearningSituationAssessmentInstrumentsImportService {
     private func parseHeading(_ text: String) -> ParsedInstrumentHeading? {
         let cleanText = clean(text)
         let normalizedText = normalized(cleanText)
-        let isExplicitUnnumberedHeading = instrumentHeadingKeywords.contains { normalizedText.contains($0) }
+        let isExplicitUnnumberedHeading = looksLikeHeadingProse(cleanText) &&
+            instrumentHeadingKeywords.contains { normalizedText.contains($0) }
         guard isNumberedInstrumentHeading(cleanText) || isExplicitUnnumberedHeading else {
             return nil
         }
@@ -506,6 +557,15 @@ struct LearningSituationAssessmentInstrumentsImportService {
             value.contains("modelo de calificación") ||
             value.contains("calificacion final") ||
             value.contains("calificación final")
+    }
+
+    /// Descarta párrafos de prosa (párrafos largos y/o con varias frases) para que no se
+    /// confundan con un título de instrumento solo por contener una keyword suelta
+    /// (p.ej. "Absorbe la antigua checklist de seguridad..." no es un heading).
+    private func looksLikeHeadingProse(_ text: String) -> Bool {
+        guard text.split(separator: " ").count <= 10 else { return false }
+        let interior = text.hasSuffix(".") || text.hasSuffix(":") ? String(text.dropLast()) : text
+        return !interior.contains(where: { ".!?".contains($0) })
     }
 
     private func isNumberedInstrumentHeading(_ text: String) -> Bool {

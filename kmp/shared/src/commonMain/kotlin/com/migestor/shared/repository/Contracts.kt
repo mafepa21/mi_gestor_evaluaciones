@@ -695,6 +695,7 @@ interface LearningSituationsRepository {
     suspend fun listClassLinks(learningSituationId: Long): List<LearningSituationClassLink>
     suspend fun saveLinkedResource(resource: LearningSituationLinkedResource): Long
     suspend fun listLinkedResources(learningSituationId: Long): List<LearningSituationLinkedResource>
+    suspend fun deleteLinkedResource(id: Long)
     suspend fun deleteSituation(id: Long)
 }
 

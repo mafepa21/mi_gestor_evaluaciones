@@ -5035,23 +5035,45 @@ final class KmpBridge: ObservableObject {
         var columnIdsByInstrumentTitle: [String: String] = [:]
         var evaluationIdsByInstrumentTitle: [String: Int64] = [:]
         var rubricIdsByInstrumentTitle: [String: Int64] = [:]
+        // Vinculos .evaluation/.notebookColumn cuyo recurso ya no existe (la
+        // evaluacion/columna se borro desde el Cuaderno sin limpiar el
+        // vinculo): se recogen aqui por titulo para borrarlos antes de crear
+        // el instrumento de nuevo, evitando que se acumulen duplicados.
+        var orphanedLinkIdsByInstrumentTitle: [String: [Int64]] = [:]
 
         let existingLinks = (try? await container.learningSituationsRepository.listLinkedResources(learningSituationId: situation.id)) ?? []
+        let liveColumnIds = Set(try await container.notebookConfigRepository.listColumns(classId: classId).map(\.id))
         for link in existingLinks {
             guard link.classId?.int64Value == classId else { continue }
             if link.kind == .notebookColumn {
                 let normLabel = link.label.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                     .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-                columnIdsByInstrumentTitle[normLabel] = link.resourceId
+                if liveColumnIds.contains(link.resourceId) {
+                    columnIdsByInstrumentTitle[normLabel] = link.resourceId
+                } else {
+                    orphanedLinkIdsByInstrumentTitle[normalizedAssessmentInstrumentTitle(link.label), default: []].append(link.id)
+                }
             } else if link.kind == .evaluation, let evaluationId = Int64(link.resourceId) {
-                evaluationIdsByInstrumentTitle[normalizedAssessmentInstrumentTitle(link.label)] = evaluationId
+                let normLabel = normalizedAssessmentInstrumentTitle(link.label)
+                if (try? await container.evaluationsRepository.getEvaluation(evaluationId: evaluationId)) != nil {
+                    evaluationIdsByInstrumentTitle[normLabel] = evaluationId
+                } else {
+                    orphanedLinkIdsByInstrumentTitle[normLabel, default: []].append(link.id)
+                }
             } else if link.kind == .rubric, let rubricId = Int64(link.resourceId) {
                 let rubricLabelPrefix = "Rubrica · "
                 if link.label.hasPrefix(rubricLabelPrefix) {
                     let instrumentTitle = String(link.label.dropFirst(rubricLabelPrefix.count))
                     rubricIdsByInstrumentTitle[normalizedAssessmentInstrumentTitle(instrumentTitle)] = rubricId
                 }
+            }
+        }
+
+        for instrument in instrumentsToCreate {
+            let normTitle = normalizedAssessmentInstrumentTitle(instrument.title)
+            for orphanedLinkId in orphanedLinkIdsByInstrumentTitle[normTitle] ?? [] {
+                try? await container.learningSituationsRepository.deleteLinkedResource(id: orphanedLinkId)
             }
         }
 
@@ -5341,11 +5363,28 @@ final class KmpBridge: ObservableObject {
         classId: Int64
     ) async throws -> Set<String> {
         let resources = try await container.learningSituationsRepository.listLinkedResources(learningSituationId: situationId)
-        return Set(resources.compactMap { resource in
-            guard resource.classId?.int64Value == classId else { return nil }
-            guard resource.kind == .evaluation || resource.kind == .notebookColumn else { return nil }
-            return normalizedAssessmentInstrumentTitle(resource.label)
-        })
+        // Borrar una columna del Cuaderno borra tambien su evaluacion, pero no
+        // limpia estos vinculos: quedan huerfanos apuntando a datos muertos.
+        // Un titulo solo cuenta como "ya vinculado" si al menos uno de sus
+        // vinculos resuelve a una evaluacion/columna que todavia existe; si no,
+        // se trata como instrumento nuevo a crear (ver limpieza de huerfanos en
+        // materializeLearningSituationAssessmentInstruments).
+        let liveColumnIds = Set(try await container.notebookConfigRepository.listColumns(classId: classId).map(\.id))
+        var titles: Set<String> = []
+        for resource in resources {
+            guard resource.classId?.int64Value == classId else { continue }
+            switch resource.kind {
+            case .evaluation:
+                guard let evaluationId = Int64(resource.resourceId),
+                      (try? await container.evaluationsRepository.getEvaluation(evaluationId: evaluationId)) != nil else { continue }
+            case .notebookColumn:
+                guard liveColumnIds.contains(resource.resourceId) else { continue }
+            default:
+                continue
+            }
+            titles.insert(normalizedAssessmentInstrumentTitle(resource.label))
+        }
+        return titles
     }
 
     private func normalizedAssessmentInstrumentTitle(_ value: String) -> String {

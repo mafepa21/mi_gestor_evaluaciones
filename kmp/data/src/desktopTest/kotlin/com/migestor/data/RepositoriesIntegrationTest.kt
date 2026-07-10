@@ -7,6 +7,7 @@ import com.migestor.data.repository.CompetenciesRepositorySqlDelight
 import com.migestor.data.repository.ConfigurationTemplateRepositorySqlDelight
 import com.migestor.data.repository.EvaluationsRepositorySqlDelight
 import com.migestor.data.repository.GradesRepositorySqlDelight
+import com.migestor.data.repository.LearningSituationsRepositorySqlDelight
 import com.migestor.data.repository.NotebookCellsRepositorySqlDelight
 import com.migestor.data.repository.NotebookConfigRepositorySqlDelight
 import com.migestor.data.repository.PlannerRepositorySqlDelight
@@ -15,6 +16,9 @@ import com.migestor.data.repository.StudentsRepositorySqlDelight
 import com.migestor.data.repository.TeacherScheduleRepositorySqlDelight
 import com.migestor.data.repository.CalendarRepositorySqlDelight
 import com.migestor.data.repository.queryStrings
+import com.migestor.shared.domain.LearningSituation
+import com.migestor.shared.domain.LearningSituationLinkedResource
+import com.migestor.shared.domain.LearningSituationResourceKind
 import com.migestor.shared.domain.NotebookColumnDefinition
 import com.migestor.shared.domain.NotebookColumnType
 import com.migestor.shared.domain.ConfigTemplateKind
@@ -567,5 +571,36 @@ class RepositoriesIntegrationTest {
         )
 
         assertTrue(indexes.containsAll(expectedIndexes))
+    }
+
+    @Test
+    fun `deleteLinkedResource removes only the targeted link`() = runTest {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        AppDatabase.Schema.create(driver)
+        val db = AppDatabase(driver)
+        val situations = LearningSituationsRepositorySqlDelight(db)
+
+        val situationId = situations.saveSituation(LearningSituation(title = "Situación demo"))
+        val keptId = situations.saveLinkedResource(
+            LearningSituationLinkedResource(
+                learningSituationId = situationId,
+                kind = LearningSituationResourceKind.EVALUATION,
+                resourceId = "eval_1",
+                label = "Instrumento vivo",
+            )
+        )
+        val orphanedId = situations.saveLinkedResource(
+            LearningSituationLinkedResource(
+                learningSituationId = situationId,
+                kind = LearningSituationResourceKind.EVALUATION,
+                resourceId = "eval_2",
+                label = "Instrumento borrado",
+            )
+        )
+
+        situations.deleteLinkedResource(orphanedId)
+
+        val remaining = situations.listLinkedResources(situationId)
+        assertEquals(listOf(keptId), remaining.map { it.id })
     }
 }

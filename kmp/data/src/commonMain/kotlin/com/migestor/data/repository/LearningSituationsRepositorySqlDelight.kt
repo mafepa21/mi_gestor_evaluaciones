@@ -247,6 +247,10 @@ class LearningSituationsRepositorySqlDelight(
         }
     }
 
+    override suspend fun deleteLinkedResource(id: Long) = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.deleteLearningSituationLink(id)
+    }
+
     override suspend fun deleteSituation(id: Long) = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.deleteLearningSituation(id)
     }

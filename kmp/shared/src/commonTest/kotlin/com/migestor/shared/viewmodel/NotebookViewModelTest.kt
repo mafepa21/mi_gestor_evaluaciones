@@ -799,6 +799,78 @@ class NotebookViewModelTest {
         }
     }
 
+    @Test
+    fun `a slower stale reload does not clobber the state written by a faster newer reload`() = runTest {
+        // Reproduce la carrera real que dejaba el Checklist "congelado" en el Cuaderno: tras
+        // guardar un instrumento estructurado, `refreshCurrentNotebook` (Swift) y el bus de
+        // refresco de Kotlin disparan dos `selectClass(force = true)` casi simultáneos, sin
+        // cancelarse entre sí. Si la carga más VIEJA en lanzarse tarda más en responder que la
+        // más NUEVA, antes de este fix la vieja ganaba igualmente por terminar la última — este
+        // test fuerza justo ese orden (vieja lenta, nueva rápida) con retrasos controlados por
+        // tiempo virtual y comprueba que el estado final es el de la carga más reciente.
+        val classId = 1L
+        val column = NotebookColumnDefinition(
+            id = "checklist_col",
+            title = "Checklist",
+            type = NotebookColumnType.TEXT,
+        )
+        val student = Student(id = 10L, firstName = "Ada", lastName = "Lovelace")
+
+        fun sheetWithDisplayValue(displayValue: String) = NotebookSheet(
+            classId = classId,
+            tabs = listOf(NotebookTab(id = "TAB_1", title = "Evaluación")),
+            columns = listOf(column),
+            rows = listOf(
+                NotebookRow(
+                    student = student,
+                    cells = emptyList(),
+                    weightedAverage = null,
+                    persistedCells = listOf(
+                        PersistedNotebookCell(
+                            classId = classId,
+                            studentId = student.id,
+                            columnId = column.id,
+                            displayValue = displayValue,
+                        )
+                    ),
+                )
+            ),
+        )
+
+        val initialSheet = sheetWithDisplayValue("Pendiente")
+        val staleSheet = sheetWithDisplayValue("3/7")
+        val freshSheet = sheetWithDisplayValue("5/7")
+
+        val repository = FakeNotebookRepository(
+            snapshot = initialSheet,
+            // 1ª llamada: carga inicial de selectClass(classId). 2ª: la recarga "vieja" (lenta,
+            // 500ms virtuales). 3ª: la recarga "nueva" (rápida, 50ms virtuales), lanzada después
+            // de la vieja pero que debe terminar antes y ganar.
+            snapshotQueue = mutableListOf(initialSheet, staleSheet, freshSheet),
+            delayQueueMs = mutableListOf(0L, 500L, 50L),
+        )
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val scope = CoroutineScope(SupervisorJob() + dispatcher)
+        val viewModel = createViewModel(repository, scope = scope)
+
+        try {
+            viewModel.selectClass(classId)
+            advanceUntilIdle()
+
+            viewModel.selectClass(classId, force = true) // vieja: arranca ya, tardará 500ms
+            advanceTimeBy(10) // deja que arranque sin terminar
+            viewModel.selectClass(classId, force = true) // nueva: arranca después, tardará 50ms
+            advanceUntilIdle()
+
+            val finalState = viewModel.state.value
+            check(finalState is NotebookUiState.Data) { "Se esperaba NotebookUiState.Data, fue $finalState" }
+            val finalCell = finalState.sheet.rows.single().persistedCells.first { it.columnId == column.id }
+            assertEquals("5/7", finalCell.displayValue)
+        } finally {
+            scope.cancel()
+        }
+    }
+
     private fun createViewModel(
         repository: FakeNotebookRepository,
         scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
@@ -817,6 +889,12 @@ class NotebookViewModelTest {
 
 private class FakeNotebookRepository(
     private val snapshot: NotebookSheet,
+    // Permiten reproducir en test la carrera real entre recargas concurrentes de
+    // `NotebookViewModel.selectClass`/`startObservingData`: cada llamada a `loadNotebookSnapshot`
+    // consume el siguiente retraso/snapshot de la cola en vez de devolver siempre el mismo valor
+    // al instante, para poder forzar que una carga "vieja" tarde más que una "nueva".
+    private val snapshotQueue: MutableList<NotebookSheet>? = null,
+    private val delayQueueMs: MutableList<Long>? = null,
 ) : NotebookRepository {
     private val studentChanges = MutableStateFlow<List<Student>>(emptyList())
     private val gradeChanges = MutableStateFlow<List<Grade>>(emptyList())
@@ -835,7 +913,16 @@ private class FakeNotebookRepository(
 
     override suspend fun loadNotebookSnapshot(classId: Long): NotebookSheet {
         loadNotebookSnapshotCount += 1
-        return snapshot
+        // Se capturan retraso Y snapshot juntos, de forma síncrona, en el momento de la
+        // LLAMADA (antes de suspender en el delay). Si se leyeran por separado (retraso ahora,
+        // snapshot tras el delay), el orden de FINALIZACIÓN decidiría qué snapshot recibe cada
+        // llamada en vez del orden de LANZAMIENTO, invalidando el propósito del test de carrera.
+        val delayMs = delayQueueMs?.removeFirstOrNull()
+        val nextSnapshot = snapshotQueue?.removeFirstOrNull() ?: snapshot
+        if (delayMs != null && delayMs > 0) {
+            kotlinx.coroutines.delay(delayMs)
+        }
+        return nextSnapshot
     }
     override fun observeStudentChanges(classId: Long): Flow<List<Student>> = studentChanges
     override fun observeGradesForClass(classId: Long): Flow<List<com.migestor.shared.domain.Grade>> = gradeChanges

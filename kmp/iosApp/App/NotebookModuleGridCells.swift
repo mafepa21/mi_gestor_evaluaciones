@@ -621,9 +621,6 @@ extension NotebookModuleView {
         case .attendance:
             return NotebookCellDisplaySnapshot(text: displayValue(for: item, column: column))
         default:
-            if column.inputKind.isStructuredInstrument {
-                print("[CHECKLIST-DEBUG] cellDisplaySnapshot: columnId=\(column.id) title=\(column.title) studentId=\(item.student.id) persistedCell.displayValue=\(persistedCell?.displayValue ?? "nil") persistedCell.textValue=\(persistedCell?.textValue ?? "nil") totalPersistedCellsInRow=\(item.row.persistedCells.count)")
-            }
             return NotebookCellDisplaySnapshot(text: persistedCell?.textValue ?? persistedCell?.displayValue ?? "")
         }
     }

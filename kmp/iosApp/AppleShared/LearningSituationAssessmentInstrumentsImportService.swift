@@ -341,7 +341,10 @@ struct LearningSituationAssessmentInstrumentsImportService {
         case .teacherObservation:
             return .none
         case .quizQuestions:
-            return .quizPercentCorrect
+            // El quiz se corrige fuera de la app (papel u otra plataforma):
+            // el instrumento es un input de nota numerica que cuenta en la
+            // media, no un desglose de preguntas con toggle.
+            return .numeric0To10
         }
     }
 
@@ -532,19 +535,42 @@ struct LearningSituationAssessmentInstrumentsImportService {
             let cleanColumn = clean(column)
             guard !cleanColumn.isEmpty else { return false }
             guard !excludedIndices.contains(index) else { return false }
-            return !normalized(cleanColumn).contains("nota")
+            return !isObservationScaleSummaryHeader(cleanColumn)
         }.map { clean($0.element) }
+    }
+
+    /// La última columna de una rejilla momento x indicador suele resumir la
+    /// media/escala de la fila ("Nota (1-4)", "Media", "1-4") y no es un
+    /// indicador real que puntuar por separado.
+    private func isObservationScaleSummaryHeader(_ column: String) -> Bool {
+        let value = normalized(column)
+        if value.contains("nota") || value.contains("media") || value.contains("promedio") || value.contains("puntuacion") {
+            return true
+        }
+        return value.range(of: #"^\s*[1-9]\s*[-–—]\s*[1-9]\s*$"#, options: .regularExpression) != nil
     }
 
     private func inferKind(title: String, tables: [[[String]]]) -> AssessmentInstrumentKind {
         if title.contains("submission") || title.contains("entrega") || title.contains("final checklist") || title.contains("producto final") {
             return .submissionChecklist
         }
+        // Señales estructurales (forma real de la tabla) ANTES que los
+        // keywords de título: un título sin "rúbrica"/"rejilla" explícitos
+        // (ej. "Momento único: Sesión 2...") no debe degradarse a checklist
+        // solo porque contenga palabras como "pasaporte" o "diagnóstico".
+        if tables.contains(where: looksLikeRubricTable) {
+            return .rubric
+        }
+        if tableHeaders(tables).contains(where: { $0.contains("student") || $0.contains("alumno") || $0.contains("exercise") }) {
+            return .observationGrid
+        }
+        if title.contains("rubrica") || title.contains("rubrica de") {
+            return .rubric
+        }
         if title.contains("quiz") || title.contains("test") || title.contains("cuestionario") {
-            if tables.isEmpty {
-                return .quizQuestions
-            }
-            return .checklist
+            // El quiz se corrige fuera de la app: siempre es un instrumento
+            // de nota numerica, con o sin tabla de preguntas en el DOCX.
+            return .quizQuestions
         }
         if title.contains("passport") ||
             title.contains("pasaporte") ||
@@ -571,11 +597,25 @@ struct LearningSituationAssessmentInstrumentsImportService {
             title.contains("diagnostic") ||
             title.contains("escala de valoracion") ||
             title.contains("diana de evaluacion") ||
-            title.contains("observacion sistematica") ||
-            tableHeaders(tables).contains(where: { $0.contains("student") || $0.contains("alumno") || $0.contains("exercise") }) {
+            title.contains("observacion sistematica") {
             return .observationGrid
         }
         return .rubric
+    }
+
+    /// Tabla criterio x nivel graduado: cabecera con >=2 niveles y cada fila
+    /// trae descriptores reales (no solo una marca) en >=2 columnas de nivel.
+    /// Distingue una rubrica real de un checklist (1 item + a lo sumo 1
+    /// columna extra tipo "Completado" por fila).
+    private func looksLikeRubricTable(_ table: [[String]]) -> Bool {
+        guard table.count >= 2 else { return false }
+        let levelCount = table[0].dropFirst().filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.count
+        guard levelCount >= 2 else { return false }
+        let rows = table.dropFirst().filter { row in row.first?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
+        guard !rows.isEmpty else { return false }
+        return rows.allSatisfy { row in
+            row.dropFirst().filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.count >= 2
+        }
     }
 
     private func headingFromTable(_ rows: [[String]]) -> ParsedInstrumentHeading? {

@@ -5741,19 +5741,10 @@ final class KmpBridge: ObservableObject {
             ])
         }
 
-        if !instrument.quizQuestions.isEmpty {
-            let specs = instrument.quizQuestions.enumerated().map { index, question -> (String, String, NotebookInstrumentItemType, [String]) in
-                let type: NotebookInstrumentItemType
-                switch question.questionType {
-                case .multipleChoice, .trueFalse:
-                    type = .choice
-                case .fillInTheBlank, .openEnded:
-                    type = .text
-                }
-                return ("q_\(index + 1)", question.questionText, type, question.options)
-            }
-            return makeInstrumentItems(columnId: columnId, specs: specs)
-        }
+        // El quiz (instrument.kind == .quizQuestions) no genera items
+        // estructurados: se corrige fuera de la app y su columna es un
+        // input de nota numerica simple (scoreStrategy .numeric0To10). Las
+        // preguntas detectadas quedan como referencia en `instrument.note`.
 
         if !instrument.checklistItems.isEmpty {
             let specs = instrument.checklistItems.enumerated().map { index, item in
@@ -7917,9 +7908,11 @@ final class KmpBridge: ObservableObject {
 
     // Cuando un formulario estructurado es enteramente escala 1-4 (ej. la rejilla
     // de observacion sistematica, agrupada por momento x indicador vía " · " en el
-    // titulo de cada item), calcula la media de fila y la media final y la
-    // persiste como nota manual en escala 1-4 cruda (sin reescalar a 0-10 aqui;
-    // el reescalado por scaleKind vive en el motor de medias del Cuaderno).
+    // titulo de cada item), calcula la media de fila y la media final en escala
+    // 1-4 y la reescala aqui mismo a base 0-10 antes de persistirla como nota
+    // manual: el motor de medias del Cuaderno (GetNotebookUseCase/FormulaEvaluator
+    // en kmp/shared) NO mira scaleKind y pondera el valor de la celda tal cual
+    // contra columnas 0-10, asi que el reescalado tiene que ocurrir en origen.
     private func saveDerivedObservationGridGrade(for model: StructuredInstrumentEvaluationModel) {
         guard !model.items.isEmpty, model.items.allSatisfy({ $0.type == .scale14 }) else { return }
         var order: [String] = []
@@ -7941,10 +7934,11 @@ final class KmpBridge: ObservableObject {
             return values.reduce(0, +) / Double(values.count)
         }
         guard !rowAverages.isEmpty else { return }
-        let finalAverage = rowAverages.reduce(0, +) / Double(rowAverages.count)
+        let finalAverageOn4 = rowAverages.reduce(0, +) / Double(rowAverages.count)
+        let finalAverageOn10 = finalAverageOn4 / 4.0 * 10.0
         guard let data = notebookState as? NotebookUiStateData,
               let column = data.sheet.columns.first(where: { $0.id == model.columnId }) else { return }
-        saveColumnGrade(studentId: model.studentId, column: column, value: IosFormatting.decimal(from: finalAverage))
+        saveColumnGrade(studentId: model.studentId, column: column, value: IosFormatting.decimal(from: finalAverageOn10))
     }
 
     private func structuredTextValue(for item: StructuredInstrumentEvaluationItem) -> String? {

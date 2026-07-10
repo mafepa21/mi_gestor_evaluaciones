@@ -12,6 +12,7 @@ import com.migestor.shared.domain.NotebookInstrumentTemplateKind
 import com.migestor.shared.domain.NotebookCellInputKind
 import com.migestor.shared.repository.GradesRepository
 import com.migestor.shared.repository.NotebookInstrumentsRepository
+import com.migestor.shared.usecase.NotebookSheetMemoryCache
 import com.migestor.shared.util.NotebookRefreshBus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -21,6 +22,7 @@ import kotlinx.datetime.Instant
 class NotebookInstrumentsRepositorySqlDelight(
     private val db: AppDatabase,
     private val gradesRepository: GradesRepository,
+    private val sheetCache: NotebookSheetMemoryCache,
 ) : NotebookInstrumentsRepository {
 
     override suspend fun saveTemplate(
@@ -195,6 +197,13 @@ class NotebookInstrumentsRepositorySqlDelight(
                 syncVersion = syncVersion,
             )
         }
+
+        // Guardar respuestas estructuradas no pasaba por NotebookRepositorySqlDelight (dueño
+        // original del caché de NotebookSheet), así que nunca lo invalidaba: el Cuaderno podía
+        // seguir sirviendo una hoja cacheada sin el `display_value`/nota recién guardados hasta
+        // la siguiente mutación "normal". Invalidar aquí también para que cualquier instrumento
+        // estructurado (checklist, quiz, observación) se refleje de inmediato al guardar.
+        sheetCache.invalidate(classId)
 
         NotebookRefreshBus.emitRefresh()
         summary

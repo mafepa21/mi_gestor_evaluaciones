@@ -7484,7 +7484,7 @@ final class KmpBridge: ObservableObject {
                 options: item.options,
                 textValue: response?.textValue ?? "",
                 boolValue: response?.boolValue?.boolValue ?? false,
-                numberValue: response?.numberValue.map { IosFormatting.decimal(from: $0.doubleValue) } ?? ""
+                numberValue: response?.numberValue.map { plainStructuredNumberString($0.doubleValue) } ?? ""
             )
         }
         return StructuredInstrumentEvaluationModel(
@@ -7541,6 +7541,17 @@ final class KmpBridge: ObservableObject {
         default:
             return nil
         }
+    }
+
+    /// `IosFormatting.decimal` fuerza siempre 2 decimales ("4.00"/"4,00" según locale), lo que
+    /// no coincide con los tags planos "1".."4" de los selectores segmentados (.scale14) ni con
+    /// lo que escribe una casilla numérica libre — el valor cargado no seleccionaba ningún nivel
+    /// al reabrir el sheet, pareciendo que el guardado se había perdido aunque sí persistía.
+    private func plainStructuredNumberString(_ value: Double) -> String {
+        if value.truncatingRemainder(dividingBy: 1) == 0, abs(value) < 1e15 {
+            return String(Int64(value))
+        }
+        return String(value)
     }
 
     private func structuredNumberValue(for item: StructuredInstrumentEvaluationItem) -> Double? {

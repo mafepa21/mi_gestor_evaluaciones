@@ -1483,7 +1483,6 @@ private struct LearningSituationEvaluationSheet: View {
     }
 
     @MainActor
-    @MainActor
     private func handleInstrumentImport(_ result: Result<[URL], Error>) async {
         do {
             guard let url = try result.get().first else { return }

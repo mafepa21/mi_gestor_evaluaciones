@@ -170,6 +170,14 @@ struct LearningSituationAssessmentInstrumentsImportService {
         let accessing = url.startAccessingSecurityScopedResource()
         defer { if accessing { url.stopAccessingSecurityScopedResource() } }
         let data = try Data(contentsOf: url)
+        return try preview(from: url, data: data)
+    }
+
+    /// Variante que recibe los bytes ya leídos: permite separar el acceso al recurso con
+    /// alcance de seguridad (rápido, hazlo en el hilo que ya tiene la autorización de
+    /// NSOpenPanel/.fileImporter) del parseo XML en sí (CPU-bound, seguro de despachar
+    /// a background sin volver a tocar la URL ni el security scope).
+    func preview(from url: URL, data: Data) throws -> LearningSituationAssessmentImportDraft {
         let blocks = try readBlocks(from: data)
         guard !blocks.isEmpty else { throw LearningSituationImportError.missingDocumentBody }
 

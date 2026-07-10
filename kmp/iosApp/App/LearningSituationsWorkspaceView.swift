@@ -1488,14 +1488,46 @@ private struct LearningSituationEvaluationSheet: View {
             guard let url = try result.get().first else { return }
             isImportingInstrumentDocument = true
             defer { isImportingInstrumentDocument = false }
-            // La lectura del DOCX (Data(contentsOf:) + XMLParser) es E/S bloqueante y puede
-            // tardar si el archivo aún no está descargado localmente (p.ej. iCloud Desktop).
-            // Se ejecuta en un Task.detached para no congelar el hilo principal/UI mientras dura.
-            instrumentImportPreview = try await Task.detached(priority: .userInitiated) {
-                try LearningSituationAssessmentInstrumentsImportService().preview(from: url)
-            }.value
+
+            // El acceso con alcance de seguridad y la lectura de bytes son rápidos (documento
+            // pequeño) y se hacen aquí, en el hilo que ya tiene la autorización de
+            // NSOpenPanel/.fileImporter, para no arriesgar una interacción rara entre
+            // startAccessingSecurityScopedResource() y un contexto de tarea aislado.
+            let accessing = url.startAccessingSecurityScopedResource()
+            defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+            let data = try Data(contentsOf: url)
+
+            // El parseo XML en sí (CPU-bound, sin E/S) se despacha a una cola GCD normal
+            // -deliberadamente NO Task.detached, que comparte el pool cooperativo de Swift
+            // Concurrency con el resto de tareas estructuradas de la app- con un timeout
+            // defensivo para que el spinner nunca quede colgado indefinidamente.
+            let service = LearningSituationAssessmentInstrumentsImportService()
+            instrumentImportPreview = try await withTimeout(seconds: 20) {
+                try await withCheckedThrowingContinuation { continuation in
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        do {
+                            continuation.resume(returning: try service.preview(from: url, data: data))
+                        } catch {
+                            continuation.resume(throwing: error)
+                        }
+                    }
+                }
+            }
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask { try await operation() }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                throw LearningSituationImportError.timedOut
+            }
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
         }
     }
 

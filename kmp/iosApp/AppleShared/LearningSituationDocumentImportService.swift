@@ -196,11 +196,13 @@ struct LearningSituationSessionSequenceImportDraft: Identifiable, Codable {
 enum LearningSituationImportError: LocalizedError {
     case unreadableDocument
     case missingDocumentBody
+    case timedOut
 
     var errorDescription: String? {
         switch self {
         case .unreadableDocument: return "No se ha podido leer el documento Word."
         case .missingDocumentBody: return "El documento no contiene texto reconocible."
+        case .timedOut: return "La lectura del documento ha tardado demasiado. Inténtalo de nuevo."
         }
     }
 }

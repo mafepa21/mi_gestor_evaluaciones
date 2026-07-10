@@ -198,6 +198,9 @@ struct LearningSituationAssessmentInstrumentsImportService {
                 guard !cleanText.isEmpty else { continue }
                 if isDocumentTitle(cleanText) {
                     continue
+                } else if isImporterNoteSection(cleanText) {
+                    flushCurrent()
+                    currentHeading = nil
                 } else if isGradingLine(cleanText) {
                     gradingFormula = cleanText
                 } else if let heading = parseHeading(cleanText) {
@@ -403,9 +406,13 @@ struct LearningSituationAssessmentInstrumentsImportService {
     }
 
     private func quizQuestion(from paragraph: String) -> QuizQuestionDraft? {
+        // Word numera estos párrafos vía su propio motor de listas (w:numPr): el texto
+        // extraído del XML no incluye el "1. " literal, así que el prefijo numerado por sí
+        // solo no basta para detectar todas las preguntas reales de una tabla/lista Word.
         let isNumbered = paragraph.range(of: #"^\s*\d+[\.\)]\s+"#, options: .regularExpression) != nil
         let isTrueFalse = normalized(paragraph).hasPrefix("verdadero o falso") || normalized(paragraph).hasPrefix("true or false")
-        guard isNumbered || paragraph.contains("?") || isTrueFalse else { return nil }
+        let looksLikeChoiceOrBlank = paragraph.contains(" / ") || paragraph.contains("___")
+        guard isNumbered || paragraph.contains("?") || isTrueFalse || looksLikeChoiceOrBlank else { return nil }
         var text = paragraph.replacingOccurrences(of: #"^\s*\d+[\.\)]\s*"#, with: "", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         var options: [String] = []
@@ -547,6 +554,13 @@ struct LearningSituationAssessmentInstrumentsImportService {
         return value.contains("assessment instruments") ||
             value.contains("instrumentos de evaluacion") ||
             value.contains("instrumentos de evaluación")
+    }
+
+    /// Marca el final del contenido evaluable: los párrafos de "notas para el importador"
+    /// (metainstrucciones dirigidas a quien procese el documento, no a docentes/alumnado)
+    /// no deben quedar enganchados como ítems del último instrumento/checklist detectado.
+    private func isImporterNoteSection(_ text: String) -> Bool {
+        normalized(text).contains("nota para quien importe")
     }
 
     private func isGradingLine(_ text: String) -> Bool {

@@ -28,13 +28,13 @@ struct RubricEvaluationView: View {
                                         criteriaPanel(rubric: rubric)
                                             .frame(maxWidth: .infinity, alignment: .leading)
 
-                                        summaryPanel(rubric: rubric, score: selectedScore)
+                                        summaryPanel(rubric: rubric)
                                             .frame(width: 300)
                                     }
                                 } else {
                                     VStack(spacing: EvaluationDesign.sectionSpacing) {
                                         criteriaPanel(rubric: rubric)
-                                        summaryPanel(rubric: rubric, score: selectedScore)
+                                        summaryPanel(rubric: rubric)
                                     }
                                 }
 
@@ -153,19 +153,11 @@ struct RubricEvaluationView: View {
     private func criteriaPanel(rubric: RubricDetail) -> some View {
         PremiumCard.glass(cornerRadius: 32, fillOpacity: 0.88) {
             VStack(alignment: .leading, spacing: EvaluationDesign.sectionSpacing) {
-                HStack(spacing: 12) {
-                    EvaluationChip(
-                        label: "\(rubric.criteria.count) criterios",
-                        systemImage: "checklist",
-                        tint: EvaluationDesign.accent
-                    )
-
-                    EvaluationChip(
-                        label: "Selecciona el nivel",
-                        systemImage: "hand.tap.fill",
-                        tint: EvaluationDesign.accent
-                    )
-                }
+                EvaluationChip(
+                    label: "\(rubric.criteria.count) criterios",
+                    systemImage: "checklist",
+                    tint: EvaluationDesign.accent
+                )
 
                 VStack(spacing: 16) {
                     ForEach(rubric.criteria, id: \.criterion.id) { criterion in
@@ -186,20 +178,14 @@ struct RubricEvaluationView: View {
         }
     }
 
-    private func summaryPanel(rubric: RubricDetail, score: Double) -> some View {
+    private func summaryPanel(rubric: RubricDetail) -> some View {
         PremiumCard.glass(cornerRadius: 32, fillOpacity: 0.92) {
             VStack(alignment: .leading, spacing: 20) {
-                HStack(spacing: 10) {
-                    EvaluationChip(
-                        label: "Resumen",
-                        systemImage: "sparkles",
-                        tint: EvaluationDesign.accent
-                    )
-                    Spacer()
-                    Text(IosFormatting.decimal(from: score))
-                        .font(.system(size: 18, weight: .black, design: .rounded))
-                        .foregroundStyle(EvaluationDesign.accent)
-                }
+                EvaluationChip(
+                    label: "Resumen",
+                    systemImage: "sparkles",
+                    tint: EvaluationDesign.accent
+                )
 
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Progreso")
@@ -243,13 +229,16 @@ struct RubricCriterionRow: View {
     @Binding var activePopoverLevel: RubricLevel?
     let onSelectLevel: (Int64) -> Void
     @State private var hoverTask: Task<Void, Never>?
+    @State private var levelsRowWidth: CGFloat = 1000
 
-    private var selectedLevel: RubricLevel? {
-        item.levels.first { $0.id == selectedLevelId }
-    }
+    private let levelTileMinWidth: CGFloat = 150
+    private let levelTileSpacing: CGFloat = 8
 
-    private var selectedLevelDescription: String {
-        selectedLevel?.description_?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    private var fitsSingleRow: Bool {
+        let count = CGFloat(item.levels.count)
+        guard count > 0 else { return true }
+        let requiredWidth = count * levelTileMinWidth + (count - 1) * levelTileSpacing
+        return levelsRowWidth >= requiredWidth
     }
 
     var body: some View {
@@ -265,58 +254,37 @@ struct RubricCriterionRow: View {
                         .foregroundStyle(.secondary)
                 }
 
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 8) {
-                        ForEach(item.levels, id: \.id) { level in
-                            levelTile(level)
+                Group {
+                    if fitsSingleRow {
+                        HStack(spacing: levelTileSpacing) {
+                            ForEach(item.levels, id: \.id) { level in
+                                levelTile(level)
+                            }
+                        }
+                    } else {
+                        LazyVGrid(
+                            columns: [GridItem(.flexible(), spacing: levelTileSpacing), GridItem(.flexible(), spacing: levelTileSpacing)],
+                            spacing: levelTileSpacing
+                        ) {
+                            ForEach(item.levels, id: \.id) { level in
+                                levelTile(level)
+                            }
                         }
                     }
-                    .padding(.horizontal, 2)
-                    .padding(.vertical, 4)
-
-                    LazyVGrid(
-                        columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)],
-                        spacing: 8
-                    ) {
-                        ForEach(item.levels, id: \.id) { level in
-                            levelTile(level)
-                        }
-                    }
-                    .padding(.horizontal, 2)
-                    .padding(.vertical, 4)
                 }
-
-                if !selectedLevelDescription.isEmpty {
-                    HStack(alignment: .top, spacing: 8) {
-                        Image(systemName: "text.quote")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(EvaluationDesign.accent.opacity(0.72))
-                            .padding(.top, 2)
-
-                        Text(selectedLevelDescription)
-                            .font(.system(size: 12, weight: .regular))
-                            .foregroundStyle(.secondary)
-                            .lineSpacing(2)
-                            .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 2)
+                .padding(.vertical, 4)
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear.preference(key: LevelsRowWidthKey.self, value: proxy.size.width)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(EvaluationDesign.accent.opacity(0.08))
-                    )
-                    .transition(
-                        uiFeatureFlags.reduceMotion ? .opacity : .asymmetric(
-                            insertion: .move(edge: .top).combined(with: .opacity),
-                            removal: .move(edge: .bottom).combined(with: .opacity)
-                        )
-                    )
+                )
+                .onPreferenceChange(LevelsRowWidthKey.self) { width in
+                    levelsRowWidth = width
                 }
             }
         }
         .animation(uiFeatureFlags.interactionAnimation, value: selectedLevelId)
-        .animation(uiFeatureFlags.rubricContentReveal, value: selectedLevelDescription.isEmpty)
         .onDisappear {
             hoverTask?.cancel()
         }
@@ -377,6 +345,13 @@ struct RubricCriterionRow: View {
         guard activePopoverLevel?.id == level.id else { return }
         withAnimation(uiFeatureFlags.popoverCloseAnimation) {
             activePopoverLevel = nil
+        }
+    }
+
+    private struct LevelsRowWidthKey: PreferenceKey {
+        static var defaultValue: CGFloat = 1000
+        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+            value = nextValue()
         }
     }
 }

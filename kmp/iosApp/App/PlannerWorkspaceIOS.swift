@@ -1159,7 +1159,7 @@ private struct PlannerAgendaSessionRow: View {
     let onComplete: () -> Void
 
     private var stateTint: Color {
-        vm.sessionStateTint(sessionStatus: session.status, journalStatus: vm.summary(for: session.id)?.status)
+        vm.sessionStateTint(for: session)
     }
 
     var body: some View {
@@ -1179,7 +1179,7 @@ private struct PlannerAgendaSessionRow: View {
                         .font(.headline)
                         .lineLimit(2)
                     Spacer()
-                    Label(vm.sessionStateLabel(for: session), systemImage: vm.sessionStateIcon(sessionStatus: session.status, journalStatus: vm.summary(for: session.id)?.status))
+                    Label(vm.sessionStateLabel(for: session), systemImage: vm.sessionStateIcon(for: session))
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(stateTint)
                         .labelStyle(.titleAndIcon)

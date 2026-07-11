@@ -44,7 +44,18 @@ extension PlannerWorkspaceViewModel {
     }
 
     func sessionStateLabel(for session: PlanningSession) -> String {
-        sessionStateLabel(sessionStatus: session.status, journalStatus: summary(for: session.id)?.status)
+        if isPendingConfirmation(session) { return "Confirmar impartida" }
+        return sessionStateLabel(sessionStatus: session.status, journalStatus: summary(for: session.id)?.status)
+    }
+
+    func sessionStateIcon(for session: PlanningSession) -> String {
+        if isPendingConfirmation(session) { return "clock.badge.exclamationmark.fill" }
+        return sessionStateIcon(sessionStatus: session.status, journalStatus: summary(for: session.id)?.status)
+    }
+
+    func sessionStateTint(for session: PlanningSession) -> Color {
+        if isPendingConfirmation(session) { return IOSAppStyle.warning }
+        return sessionStateTint(sessionStatus: session.status, journalStatus: summary(for: session.id)?.status)
     }
 
     func sessionStateLabel(sessionStatus: SessionStatus?, journalStatus: SessionJournalStatus?) -> String {

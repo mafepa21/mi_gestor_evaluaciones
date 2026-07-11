@@ -28,6 +28,7 @@ struct PlannerDayView: View {
     @State private var quickNoteSession: PlanningSession?
     @State private var quickNoteText = ""
     @State private var dragTranslation: CGFloat = 0
+    @State private var showingQuickJournal = false
 
     private let nowTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
@@ -63,6 +64,17 @@ struct PlannerDayView: View {
                     }
                 )
             }
+        }
+        .sheet(isPresented: $showingQuickJournal) {
+            PlannerDayQuickJournalSheet(
+                vm: vm,
+                sessions: sessions,
+                onOpenSession: { session in
+                    showingQuickJournal = false
+                    onOpenSession(session)
+                },
+                onClose: { showingQuickJournal = false }
+            )
         }
     }
 
@@ -136,6 +148,13 @@ struct PlannerDayView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                Button {
+                    showingQuickJournal = true
+                } label: {
+                    Label("Diario rápido", systemImage: "bolt.badge.clock")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
                 if let firstPending = firstPendingJournalSession {
                     Button("Cerrar") {
                         onOpenSession(firstPending)
@@ -348,7 +367,7 @@ private struct PlannerDaySessionRow: View {
     @State private var isHovering = false
 
     private var tint: Color { Color(hex: vm.classColorHex(for: session.groupId)) }
-    private var stateTint: Color { vm.sessionStateTint(sessionStatus: session.status, journalStatus: vm.summary(for: session.id)?.status) }
+    private var stateTint: Color { vm.sessionStateTint(for: session) }
 
     var body: some View {
         HStack(alignment: .top, spacing: 16) {
@@ -369,7 +388,7 @@ private struct PlannerDaySessionRow: View {
                     Spacer()
                     PlannerStatusBadge(
                         label: vm.sessionStateLabel(for: session),
-                        systemImage: vm.sessionStateIcon(sessionStatus: session.status, journalStatus: vm.summary(for: session.id)?.status),
+                        systemImage: vm.sessionStateIcon(for: session),
                         tint: stateTint
                     )
                 }

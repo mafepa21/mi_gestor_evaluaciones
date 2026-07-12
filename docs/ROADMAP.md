@@ -31,6 +31,7 @@ Prioridad: alta.
 - Rubricas: evaluacion fiable, integracion con cuaderno e informes.
 - Asistencia: flujo diario rapido y consistente.
 - Alumnado: perfiles utiles, busqueda y datos relevantes.
+  Avance: registro y seguimiento de medidas de respuesta educativa Nivel III/IV (Decreto 104/2018 + Orden 20/2019, CV) en la ficha de alumno de iOS/iPadOS y macOS, con badge en el Cuaderno y aviso determinista de revision anual, sin IA generativa ni contenido clinico persistido. Verificado con builds reales macOS e iOS Simulator (BUILD SUCCEEDED en ambos).
 - Planificacion: sesiones, situaciones de aprendizaje y continuidad docente.
   Avance: Planificación inicia su rediseño iPad/macOS con cuatro secciones claras (Semana, Día, Secuencia, Resumen), tab bar flotante en iOS/iPadOS y macOS sin inspector lateral invasivo.
   Avance: Semana de Planificación en iOS/iPadOS usa miniatura semafórica de 200pt con detalle contextual por sesión, franja o día, reduciendo densidad visual sin tocar lógica KMP.

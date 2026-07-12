@@ -544,6 +544,39 @@ data class Attendance(
     val trace: AuditTrace = AuditTrace(),
 )
 
+enum class SupportMeasureLevel { III, IV }
+
+enum class SupportMeasureType {
+    REFUERZO,
+    ENRIQUECIMIENTO,
+    ADAPTACION_ACCESO,
+    APOYO_PT,
+    APOYO_AL,
+    ACIS,
+    EXENCION,
+    FLEXIBILIZACION,
+    PERMANENCIA_EXTRAORDINARIA,
+    ESCOLARIZACION_ESPECIFICA,
+}
+
+enum class SupportMeasureIntensity { BAJA, MEDIA, ALTA }
+
+data class StudentSupportMeasure(
+    val id: Long,
+    val studentId: Long,
+    val level: SupportMeasureLevel,
+    val measureType: SupportMeasureType,
+    val startDate: LocalDate,
+    val endDate: LocalDate? = null,
+    val responsible: String? = null,
+    val intensity: SupportMeasureIntensity? = null,
+    val followUpNotes: String = "",
+    val documentRef: String? = null,
+    val reviewDue: LocalDate? = null,
+    val isActive: Boolean = true,
+    val trace: AuditTrace = AuditTrace(),
+)
+
 data class Incident(
     val id: Long,
     val classId: Long,

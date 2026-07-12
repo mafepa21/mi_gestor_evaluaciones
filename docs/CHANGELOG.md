@@ -27,6 +27,8 @@ Cambios posteriores a `v0.3.0-traceability-baseline`.
 
 ### Added
 
+- Alumnado incorpora registro y seguimiento de medidas de respuesta educativa Nivel III/IV (Decreto 104/2018 + Orden 20/2019, Comunidad Valenciana): nueva sección "Medidas de apoyo" en la ficha de alumno (iOS/iPadOS y macOS, sheet compartido de alta con nivel/tipo/fecha obligatorios y responsable/intensidad/notas/referencia al PAP como bloque opcional colapsado), badge discreto junto al nombre del alumno en el Cuaderno cuando tiene una medida activa, y aviso determinista de revisión anual vencida/próxima (sin IA generativa: los datos son sensibles — categoría especial RGPD — y el riesgo de alucinación sobre un PAP real es inaceptable). Nunca se guarda el informe sociopsicopedagógico ni diagnósticos clínicos, solo una referencia al documento oficial y las observaciones de seguimiento propias del docente de aula.
+
 - SyncLAN macOS incorpora notificacion local inmediata al helper: `KmpBridge` agrupa mutaciones locales con debounce corto y el helper acepta `POST /sync/local-changes` solo desde loopback para emitir SSE a los iPad enlazados sin esperar al polling de fallback.
 - El detalle de sesión del planificador permite abrir una previsualización nativa del DOCX original asociado a una secuenciación importada cuando el archivo está disponible localmente.
 - Cursos incorpora una primera gestion estructural de curso escolar activo: selector en `Cursos`, historial de cursos archivados, asistente de nuevo curso con copia de grupos y promocion de alumnado por matriculas nuevas.
@@ -221,6 +223,7 @@ Cambios posteriores a `v0.3.0-traceability-baseline`.
 
 ### Data
 
+- SQLDelight añade `student_support_measures` (migración `34.sqm`, aditiva) para medidas de respuesta educativa Nivel III/IV por alumno, con índice `idx_support_measures_student`. Cuelga del alumno global (no del curso escolar): una medida NEE/NESE no se archiva al cerrar el curso. Nuevo `StudentSupportMeasureRepository`/`StudentSupportMeasureRepositorySqlDelight` con retirada por `is_active` (nunca `DELETE`, conserva histórico) y test de integración `StudentSupportMeasureRepositoryIntegrationTest`.
 - `AcademicYearsRepository` expone `upsertAcademicYear` y `SqlDelightSyncAdapter` recoge/aplica snapshots de `academic_year` sin cambios de esquema, reutilizando la query SQLDelight existente.
 - SQLDelight añade snapshots ligeros para Dashboard, Cursos, ficha de alumno, Cuaderno paginado, evaluaciones pendientes e histórico EF, evitando abrir el `NotebookSheet` completo en vistas resumidas.
 - SQLDelight añade índices no destructivos para lecturas diarias de calificaciones, celdas del Cuaderno, evaluaciones, asistencia, incidencias y columnas por categoría mediante `34.sqm`.
@@ -233,6 +236,7 @@ Cambios posteriores a `v0.3.0-traceability-baseline`.
 
 ### Docs
 
+- ADR `kmp/docs/architecture/ADR-2026-07-12-student-support-measures.md` documenta la decisión de modelar las medidas Nivel III/IV como entidad ligera propia del alumno global, sin IA generativa y sin guardar contenido clínico.
 - ADR `kmp/docs/architecture/ADR-2026-06-19-notebook-split-ui-state.md` documenta la separación del estado observable del Cuaderno entre estructura, filas, selección, guardado, inspector y medias.
 - ADR `kmp/docs/architecture/ADR-2026-06-17-active-academic-year-enrollments.md` documenta la decision de usar `AcademicYear` activo y `StudentEnrollment` como frontera historica.
 - ADR `kmp/docs/architecture/ADR-2026-06-14-local-educational-intelligence.md` documenta la regla de arquitectura para IA educativa local: KMP calcula hechos y Foundation Models genera objetos renderizables.
@@ -241,6 +245,7 @@ Cambios posteriores a `v0.3.0-traceability-baseline`.
 
 ### Verification
 
+- Medidas de apoyo Nivel III/IV: `./gradlew :data:desktopTest` y `:shared:desktopTest` completados (incluye nuevo `StudentSupportMeasureRepositoryIntegrationTest`); los 3 fallos preexistentes de `NotebookViewModelTest`/`BuildNotebookSheetUseCaseTest`/`NotebookFormulaValidatorTest` se confirmaron con `git stash` como no relacionados con este cambio. `DEVELOPER_DIR=.../Xcode-beta.app/Contents/Developer xcodebuild` — macOS (`MiGestorKMPMac`) **BUILD SUCCEEDED** e iOS Simulator (`MiGestorKMPiOS`) **BUILD SUCCEEDED**, ambos sin errores, tras tres correcciones reales encontradas al compilar contra el framework: (1) `xcodegen generate` necesario para incluir el nuevo `SupportMeasureShared.swift` en el `.xcodeproj` (causa de la cascada de "Cannot find type"); (2) el formatter ISO vive en `AppDateTimeSupport.isoDateFormatter`, no en `EvaluationDesign` (5 referencias corregidas); (3) el `save` suspend de Kotlin devuelve `KotlinLong` en Swift, requiere `.int64Value`; y (4) `.onChange(of:)` con closure de dos parámetros es iOS 17+, sustituido por el helper `appOnChange` del repo (target mínimo iOS 16).
 - `git diff --check -- kmp/iosApp/App/IPadWorkspaceShell.swift kmp/iosApp/App/WorkspaceCreationSheets.swift kmp/iosApp/App/TournamentModule.swift docs/CHANGELOG.md` y `DEVELOPER_DIR=/Users/mariofernandez/Downloads/Xcode-beta.app/Contents/Developer ./scripts/verify_apple_builds.sh` completados correctamente tras dividir el shell principal y aislar sheets de creación y bloque de torneos en sus respectivos archivos.
 - `git diff --check -- kmp/iosApp/App/RubricBulkEvaluationSheet.swift docs/CHANGELOG.md` y `DEVELOPER_DIR=/Users/mariofernandez/Downloads/Xcode-beta.app/Contents/Developer ./scripts/verify_apple_builds.sh` completados correctamente tras habilitar los atajos hardware (Cmd+S, Esc, 1-5) en iPadOS, condicionando `.focusable()` y `.onMoveCommand` bajo macOS para cumplir el target mínimo de iOS 16.0.
 - `git diff --check -- kmp/iosApp/App/NotebookModuleView.swift kmp/iosApp/App/NotebookTabStrip.swift kmp/iosApp/App/NotebookModuleOrganization.swift docs/CHANGELOG.md` y `DEVELOPER_DIR=/Users/mariofernandez/Downloads/Xcode-beta.app/Contents/Developer ./scripts/verify_apple_builds.sh` completados correctamente tras reubicar la gestión de pestañas y vista compacta al menú de organización del Cuaderno.

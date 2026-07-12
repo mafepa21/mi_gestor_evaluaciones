@@ -1015,7 +1015,7 @@ struct SupportMeasureFormSheet: View {
         Task {
             let types: [SupportMeasureTypeUI] = level == .iii ? Array(selectedTypesIII) : [measureTypeIV]
             for type in types {
-                try? await bridge.saveSupportMeasure(draft: draft(for: type))
+                _ = try? await bridge.saveSupportMeasure(draft: draft(for: type))
             }
             onSaved()
             dismiss()

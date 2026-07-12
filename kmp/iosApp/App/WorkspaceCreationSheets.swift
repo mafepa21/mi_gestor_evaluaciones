@@ -851,6 +851,115 @@ struct CreateTournamentSheet: View {
     }
 }
 
+struct SupportMeasureFormSheet: View {
+    @EnvironmentObject var bridge: KmpBridge
+    @Environment(\.dismiss) var dismiss
+    let studentId: Int64
+    let onSaved: () -> Void
+
+    @State private var level: SupportMeasureLevelUI = .iii
+    @State private var measureType: SupportMeasureTypeUI = .refuerzo
+    @State private var startDate = Date()
+    @State private var responsible = ""
+    @State private var hasIntensity = false
+    @State private var intensity: SupportMeasureIntensityUI = .baja
+    @State private var followUpNotes = ""
+    @State private var documentRef = ""
+    @State private var hasReviewDue = true
+    @State private var reviewDueDate = Calendar.current.date(byAdding: .year, value: 1, to: Date()) ?? Date()
+
+    private var availableTypes: [SupportMeasureTypeUI] { SupportMeasureTypeUI.types(for: level) }
+
+    var body: some View {
+        WorkspaceCreateSheetScaffold(
+            title: "Nueva medida de apoyo",
+            subtitle: "Registra lo mínimo ahora. El detalle del PAP se consulta desde el documento oficial, no se transcribe aquí.",
+            systemImage: "person.text.rectangle.fill",
+            canSave: true,
+            onCancel: { dismiss() },
+            onSave: save
+        ) {
+            PremiumCard.section(title: "Medida", systemImage: "checkmark.seal") {
+                VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Nivel")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Picker("Nivel", selection: $level) {
+                            ForEach(SupportMeasureLevelUI.allCases) { option in
+                                Text(option.displayName).tag(option)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .appOnChange(of: level) { newLevel in
+                            if !SupportMeasureTypeUI.types(for: newLevel).contains(measureType) {
+                                measureType = SupportMeasureTypeUI.types(for: newLevel).first ?? measureType
+                            }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Tipo de medida")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Picker("Tipo de medida", selection: $measureType) {
+                            ForEach(availableTypes) { option in
+                                Text(option.displayName).tag(option)
+                            }
+                        }
+                    }
+
+                    DatePicker("Fecha de inicio", selection: $startDate, displayedComponents: .date)
+                }
+            }
+
+            PremiumCard.section(title: "Detalle (opcional)", systemImage: "ellipsis.circle") {
+                VStack(alignment: .leading, spacing: 16) {
+                    WorkspaceCreateTextField(title: "Responsable", placeholder: "Orientador, PT, AL…", text: $responsible)
+
+                    Toggle("Intensidad de apoyo", isOn: $hasIntensity)
+                    if hasIntensity {
+                        Picker("Intensidad", selection: $intensity) {
+                            ForEach(SupportMeasureIntensityUI.allCases) { option in
+                                Text(option.displayName).tag(option)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                    }
+
+                    WorkspaceCreateTextField(title: "Referencia al documento PAP", placeholder: "Ruta o código del documento oficial", text: $documentRef)
+
+                    WorkspaceCreateMultilineField(title: "Notas de seguimiento", placeholder: "Observaciones propias del aula", text: $followUpNotes)
+
+                    Toggle("Recordatorio de revisión anual", isOn: $hasReviewDue)
+                    if hasReviewDue {
+                        DatePicker("Revisar antes de", selection: $reviewDueDate, displayedComponents: .date)
+                    }
+                }
+            }
+        }
+    }
+
+    private func save() {
+        Task {
+            var draft = SupportMeasureDraft(
+                studentId: studentId,
+                level: level,
+                measureType: measureType,
+                startDateIso: AppDateTimeSupport.isoDateFormatter.string(from: startDate)
+            )
+            draft.responsible = responsible
+            draft.intensity = hasIntensity ? intensity : nil
+            draft.followUpNotes = followUpNotes
+            draft.documentRef = documentRef
+            draft.reviewDueIso = hasReviewDue ? AppDateTimeSupport.isoDateFormatter.string(from: reviewDueDate) : nil
+            try? await bridge.saveSupportMeasure(draft: draft)
+            onSaved()
+            dismiss()
+        }
+    }
+}
+
 private extension String {
     var nilIfBlank: String? {
         let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)

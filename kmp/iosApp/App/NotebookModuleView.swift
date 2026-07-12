@@ -55,6 +55,7 @@ struct NotebookModuleView: View {
     @State var surfaceMode: NotebookSurfaceMode = .grid
     @State var todayAttendanceByStudentId: [Int64: String] = [:]
     @State var incidentCountByStudentId: [Int64: Int] = [:]
+    @State var activeSupportMeasureStudentIds: Set<Int64> = []
     @State var localInjuryStatuses: [Int64: Bool] = [:]
     @State var seatPositions: [Int64: NotebookSeatPosition] = [:]
     @State var highlightedRandomStudentId: Int64? = nil
@@ -233,6 +234,7 @@ struct NotebookModuleView: View {
         undoStack = []
         todayAttendanceByStudentId = [:]
         incidentCountByStudentId = [:]
+        activeSupportMeasureStudentIds = []
         riskLevelCache = [:]
         riskComputationKey = nil
         isPrecomputingRiskLevels = false
@@ -1328,6 +1330,7 @@ struct NotebookModuleView: View {
                 .onAppear {
                     scheduleActiveNotebookTabSync(data: data)
                     scheduleToolbarStateSync(data: data)
+                    Task { await refreshNotebookSignals() }
                 }
                 .appOnChange(of: layoutState.notebookHiddenColumnsRequestID) { requestID in
                     guard requestID != nil else { return }
@@ -1336,6 +1339,7 @@ struct NotebookModuleView: View {
                 }
                 .appOnChange(of: "\(data.sheet.classId)") { _ in
                     resetNotebookTransientStateForClassChange()
+                    Task { await refreshNotebookSignals() }
                 }
                 .appOnChange(of: notebookTabsStateKey(data: data)) { _ in
                     scheduleActiveNotebookTabSync(data: data)

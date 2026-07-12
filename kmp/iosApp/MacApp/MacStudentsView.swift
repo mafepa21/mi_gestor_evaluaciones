@@ -30,6 +30,7 @@ final class MacStudentsStore: ObservableObject {
     @Published var profileLoadTask: Task<Void, Never>?
     @Published var profileLoadingStudentId: Int64?
     @Published var studentEditorMode: MacStudentEditorMode?
+    @Published var supportMeasures: [SupportMeasureRow] = []
 }
 
 struct MacStudentsView: View {
@@ -43,6 +44,7 @@ struct MacStudentsView: View {
     var reloadToken: Int = 0
 
     @State private var showingStudentFileImporter = false
+    @State private var showSupportMeasureSheet = false
     @State private var studentImportPreview: AppleStudentImportPreview?
     @State private var importErrorMessage: String?
     @FocusState private var isSearchFocused: Bool
@@ -201,6 +203,14 @@ struct MacStudentsView: View {
         .sheet(item: studentEditorModeBinding) { mode in
             MacStudentEditorSheet(mode: mode) { draft in
                 Task { await saveStudentDraft(draft, mode: mode) }
+            }
+        }
+        .sheet(isPresented: $showSupportMeasureSheet) {
+            if let studentId = store.localSelectedStudentId ?? selectedRow?.id {
+                SupportMeasureFormSheet(studentId: studentId) {
+                    loadProfileForSelection(studentId)
+                }
+                .environmentObject(bridge)
             }
         }
         .fileImporter(
@@ -594,6 +604,25 @@ struct MacStudentsView: View {
                             }
                         }
 
+                        inspectorSection("Medidas de apoyo") {
+                            VStack(alignment: .leading, spacing: 10) {
+                                if store.supportMeasures.isEmpty {
+                                    Text("Sin medidas registradas.")
+                                        .foregroundStyle(.secondary)
+                                } else {
+                                    ForEach(store.supportMeasures) { measure in
+                                        macSupportMeasureRow(measure)
+                                    }
+                                }
+                                Button {
+                                    showSupportMeasureSheet = true
+                                } label: {
+                                    Label("Añadir medida", systemImage: "plus.circle.fill")
+                                }
+                                .buttonStyle(.borderless)
+                            }
+                        }
+
                         inspectorSection("Accesos") {
                             MacPremiumInspectorActionGroup {
                                 Button {
@@ -635,6 +664,62 @@ struct MacStudentsView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .background(MacAppStyle.cardBackground)
+        }
+    }
+
+    private func macSupportMeasureRow(_ measure: SupportMeasureRow) -> some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text("\(measure.level.displayName) · \(measure.measureType.displayName)")
+                        .font(.subheadline.weight(.semibold))
+                    if !measure.isActive {
+                        Text("Retirada")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if let responsible = measure.responsible, !responsible.isEmpty {
+                    Text(responsible)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                switch measure.reviewStatus {
+                case .overdue:
+                    Text("Revisión vencida")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(MacAppStyle.dangerTint)
+                case .dueSoon:
+                    Text("Revisión próxima")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(MacAppStyle.warningTint)
+                case .none:
+                    EmptyView()
+                }
+            }
+            Spacer()
+            if measure.isActive {
+                Button("Retirar") {
+                    Task { await retireSupportMeasure(measure) }
+                }
+                .font(.caption.weight(.bold))
+                .buttonStyle(.borderless)
+            }
+        }
+        .padding(10)
+        .background(MacAppStyle.subtleFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    @MainActor
+    private func retireSupportMeasure(_ measure: SupportMeasureRow) async {
+        do {
+            try await bridge.retireSupportMeasure(
+                id: measure.id,
+                endDateIso: AppDateTimeSupport.isoDateFormatter.string(from: Date())
+            )
+            loadProfileForSelection(measure.studentId)
+        } catch {
+            store.profileErrorMessage = "No se pudo retirar la medida: \(error.localizedDescription)"
         }
     }
 
@@ -748,6 +833,7 @@ struct MacStudentsView: View {
             store.profile = nil
             store.riskPack = nil
             store.profileErrorMessage = nil
+            store.supportMeasures = []
             return
         }
 
@@ -761,8 +847,10 @@ struct MacStudentsView: View {
             do {
                 async let loadedProfile = bridge.loadStudentProfile(studentId: studentId, classId: requestedClassId)
                 async let loadedRiskPack = StudentRiskEvidenceBuilder.build(bridge: bridge, classId: requestedClassId, studentId: studentId)
+                async let loadedSupportMeasures = bridge.supportMeasures(for: studentId)
                 let resultProfile = try await loadedProfile
                 let resultRiskPack = try? await loadedRiskPack
+                let resultSupportMeasures = (try? await loadedSupportMeasures)?.map(\.asRow) ?? []
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
                     guard store.localSelectedStudentId == studentId,
@@ -770,6 +858,7 @@ struct MacStudentsView: View {
                           (selectedClassId ?? store.rows.first(where: { $0.id == studentId })?.classId) == requestedClassId else { return }
                     store.profile = resultProfile
                     store.riskPack = resultRiskPack
+                    store.supportMeasures = resultSupportMeasures
                     store.profileLoadingStudentId = nil
                     store.isLoadingProfile = false
                 }

@@ -373,6 +373,38 @@ final class KmpBridge: ObservableObject {
         let attendanceRate: Int
     }
 
+    struct SupportMeasureSnapshot: Identifiable {
+        let id: Int64
+        let studentId: Int64
+        let level: SupportMeasureLevelUI
+        let measureType: SupportMeasureTypeUI
+        let startDateIso: String
+        let endDateIso: String?
+        let responsible: String?
+        let intensity: SupportMeasureIntensityUI?
+        let followUpNotes: String
+        let documentRef: String?
+        let reviewDueIso: String?
+        let isActive: Bool
+
+        var asRow: SupportMeasureRow {
+            SupportMeasureRow(
+                id: id,
+                studentId: studentId,
+                level: level,
+                measureType: measureType,
+                startDateIso: startDateIso,
+                endDateIso: endDateIso,
+                responsible: responsible,
+                intensity: intensity,
+                followUpNotes: followUpNotes,
+                documentRef: documentRef,
+                reviewDueIso: reviewDueIso,
+                isActive: isActive
+            )
+        }
+    }
+
     struct AttendanceSessionSnapshot: Identifiable {
         let id: Int64
         let session: PlanningSession
@@ -3609,6 +3641,113 @@ final class KmpBridge: ObservableObject {
                 "sessionId": linkedSessionId ?? NSNull()
             ]
         )
+    }
+
+    /// Medidas de respuesta educativa Nivel III/IV (Decreto 104/2018 + Orden 20/2019, CV).
+    /// El docente de aula consulta e implementa; nunca redacta aquí el informe
+    /// sociopsicopedagógico ni el PAP, solo referencia el documento oficial.
+    func supportMeasures(for studentId: Int64) async throws -> [SupportMeasureSnapshot] {
+        let rows = try await container.studentSupportMeasureRepository.listByStudent(studentId: studentId)
+        return rows.compactMap(supportMeasureSnapshot(from:))
+    }
+
+    func activeSupportMeasureStudentIds() async throws -> Set<Int64> {
+        let ids = try await container.studentSupportMeasureRepository.listActiveStudentIds()
+        return Set(ids.map { $0.int64Value })
+    }
+
+    @discardableResult
+    func saveSupportMeasure(id: Int64? = nil, draft: SupportMeasureDraft) async throws -> Int64 {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let savedId = try await container.studentSupportMeasureRepository.save(
+            id: kotlinLong(id),
+            studentId: draft.studentId,
+            level: kotlinSupportMeasureLevel(draft.level),
+            measureType: kotlinSupportMeasureType(draft.measureType),
+            startDateIso: draft.startDateIso,
+            endDateIso: nil,
+            responsible: draft.responsible.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : draft.responsible,
+            intensity: draft.intensity.map(kotlinSupportMeasureIntensity(_:)),
+            followUpNotes: draft.followUpNotes,
+            documentRef: draft.documentRef.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : draft.documentRef,
+            reviewDueIso: draft.reviewDueIso,
+            isActive: true,
+            createdAtEpochMs: id == nil ? nowMs : 0,
+            updatedAtEpochMs: nowMs,
+            deviceId: localDeviceId,
+            syncVersion: 1
+        ).int64Value
+        enqueueLocalChange(
+            entity: "student_support_measures",
+            id: "\(savedId)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "studentId": draft.studentId,
+                "level": draft.level.rawValue,
+                "measureType": draft.measureType.rawValue,
+                "startDateIso": draft.startDateIso,
+                "responsible": draft.responsible,
+                "intensity": draft.intensity?.rawValue ?? NSNull(),
+                "followUpNotes": draft.followUpNotes,
+                "documentRef": draft.documentRef,
+                "reviewDueIso": draft.reviewDueIso ?? NSNull(),
+                "isActive": true
+            ]
+        )
+        return savedId
+    }
+
+    func retireSupportMeasure(id: Int64, endDateIso: String) async throws {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        try await container.studentSupportMeasureRepository.retire(
+            id: id,
+            endDateIso: endDateIso,
+            updatedAtEpochMs: nowMs,
+            deviceId: localDeviceId
+        )
+        enqueueLocalChange(
+            entity: "student_support_measures",
+            id: "\(id)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "id": id,
+                "endDateIso": endDateIso,
+                "isActive": false
+            ]
+        )
+    }
+
+    private func supportMeasureSnapshot(from measure: StudentSupportMeasure) -> SupportMeasureSnapshot? {
+        guard
+            let level = SupportMeasureLevelUI(rawValue: measure.level.name),
+            let measureType = SupportMeasureTypeUI(rawValue: measure.measureType.name)
+        else { return nil }
+        return SupportMeasureSnapshot(
+            id: measure.id,
+            studentId: measure.studentId,
+            level: level,
+            measureType: measureType,
+            startDateIso: measure.startDate.description(),
+            endDateIso: measure.endDate?.description(),
+            responsible: measure.responsible,
+            intensity: measure.intensity.flatMap { SupportMeasureIntensityUI(rawValue: $0.name) },
+            followUpNotes: measure.followUpNotes,
+            documentRef: measure.documentRef,
+            reviewDueIso: measure.reviewDue?.description(),
+            isActive: measure.isActive
+        )
+    }
+
+    private func kotlinSupportMeasureLevel(_ level: SupportMeasureLevelUI) -> SupportMeasureLevel {
+        SupportMeasureLevel.entries.first { $0.name == level.rawValue } ?? SupportMeasureLevel.entries[0]
+    }
+
+    private func kotlinSupportMeasureType(_ type: SupportMeasureTypeUI) -> SupportMeasureType {
+        SupportMeasureType.entries.first { $0.name == type.rawValue } ?? SupportMeasureType.entries[0]
+    }
+
+    private func kotlinSupportMeasureIntensity(_ intensity: SupportMeasureIntensityUI) -> SupportMeasureIntensity {
+        SupportMeasureIntensity.entries.first { $0.name == intensity.rawValue } ?? SupportMeasureIntensity.entries[0]
     }
 
     func saveAttendanceBatch(records drafts: [AttendanceDraft]) async throws {

@@ -46,4 +46,33 @@ class StudentSupportMeasureRepositoryIntegrationTest {
         assertEquals(false, measures.first().isActive)
         assertEquals(true, measuresRepo.listActiveStudentIds().isEmpty())
     }
+
+    @Test
+    fun `ignores rows with a stale measure_type instead of crashing`() = runTest {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        AppDatabase.Schema.create(driver)
+        val db = AppDatabase(driver)
+
+        val studentsRepo = StudentsRepositorySqlDelight(db)
+        val measuresRepo = StudentSupportMeasureRepositorySqlDelight(db)
+
+        val studentId = studentsRepo.saveStudent(firstName = "Luis", lastName = "Perez", email = null)
+
+        measuresRepo.save(
+            studentId = studentId,
+            level = SupportMeasureLevel.III,
+            measureType = SupportMeasureType.APR_FORMATO_EXAMEN,
+            startDateIso = "2026-09-15",
+        )
+        // Simula datos persistidos con un enum de una version anterior de la app
+        // (catalogo genérico ya eliminado), como puede quedar en el dispositivo de un docente
+        // tras actualizar. `listByStudent` no debe lanzar, debe descartar solo esa fila.
+        db.appDatabaseQueries.upsertSupportMeasure(
+            null, studentId, "III", "REFUERZO", "2026-09-01", null, null, null, "", null, null, 1, 0, 0, null, 0
+        )
+
+        val measures = measuresRepo.listByStudent(studentId)
+        assertEquals(1, measures.size, "la fila con enum obsoleto debe descartarse, no crashear")
+        assertEquals(SupportMeasureType.APR_FORMATO_EXAMEN, measures.first().measureType)
+    }
 }

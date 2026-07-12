@@ -49,6 +49,7 @@ struct MacStudentsView: View {
     @State private var showingStudentFileImporter = false
     @State private var showSupportMeasureSheet = false
     @State private var showBulkImportSheet = false
+    @State private var showGroupOverviewSheet = false
     @State private var studentImportPreview: AppleStudentImportPreview?
     @State private var importErrorMessage: String?
     @FocusState private var isSearchFocused: Bool
@@ -228,6 +229,13 @@ struct MacStudentsView: View {
                 .environmentObject(bridge)
             }
         }
+        .sheet(isPresented: $showGroupOverviewSheet) {
+            SupportMeasureGroupOverviewSheet(
+                className: studentsBridgeStore.classes.first(where: { $0.id == selectedClassId })?.name ?? "",
+                roster: studentsBridgeStore.studentsInClass
+            )
+            .environmentObject(bridge)
+        }
         .fileImporter(
             isPresented: $showingStudentFileImporter,
             allowedContentTypes: [.xlsx, .commaSeparatedText],
@@ -296,6 +304,14 @@ struct MacStudentsView: View {
                         }
                         .buttonStyle(.borderless)
                         .help("Importar medidas Nivel III desde Excel")
+
+                        Button {
+                            showGroupOverviewSheet = true
+                        } label: {
+                            Image(systemName: "list.bullet.clipboard")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Ver medidas del grupo")
                     }
                 }
                 Picker("Clase", selection: $selectedClassId) {

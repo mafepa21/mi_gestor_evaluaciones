@@ -233,6 +233,10 @@ enum SupportMeasureBulkImport {
 
             if !candidates.isEmpty {
                 row.matchStatus = .suggested(candidates)
+                // Precargado como punto de partida (el docente lo confirma o lo cambia en
+                // el desplegable); no se equipara a `.exact`, la fila sigue marcada como
+                // "sugerida" en la UI para que se revise antes de guardar.
+                row.confirmedStudent = candidates.first
             }
             return row
         }

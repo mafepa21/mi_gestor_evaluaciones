@@ -48,6 +48,7 @@ struct MacStudentsView: View {
 
     @State private var showingStudentFileImporter = false
     @State private var showSupportMeasureSheet = false
+    @State private var showBulkImportSheet = false
     @State private var studentImportPreview: AppleStudentImportPreview?
     @State private var importErrorMessage: String?
     @FocusState private var isSearchFocused: Bool
@@ -216,6 +217,17 @@ struct MacStudentsView: View {
                 .environmentObject(bridge)
             }
         }
+        .sheet(isPresented: $showBulkImportSheet) {
+            if let selectedClassId {
+                SupportMeasureBulkImportSheet(
+                    classId: selectedClassId,
+                    roster: studentsBridgeStore.studentsInClass
+                ) {
+                    loadProfileForSelection(store.localSelectedStudentId ?? selectedRow?.id)
+                }
+                .environmentObject(bridge)
+            }
+        }
         .fileImporter(
             isPresented: $showingStudentFileImporter,
             allowedContentTypes: [.xlsx, .commaSeparatedText],
@@ -271,9 +283,21 @@ struct MacStudentsView: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("Clase")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                HStack {
+                    Text("Clase")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    if selectedClassId != nil {
+                        Button {
+                            showBulkImportSheet = true
+                        } label: {
+                            Image(systemName: "tablecells.badge.ellipsis")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Importar medidas Nivel III desde Excel")
+                    }
+                }
                 Picker("Clase", selection: $selectedClassId) {
                     Text("Todas").tag(Optional<Int64>.none)
                     ForEach(studentsBridgeStore.classes, id: \.id) { schoolClass in

@@ -39,6 +39,7 @@ struct MacPlannerView: View {
     @Binding var selectedSessionIdFromRoot: Int64?
     @Binding var inspectorSession: PlanningSession?
     let onToolbarActionsChange: (PlannerMacToolbarActions?) -> Void
+    let onOpenDiaryDirect: (PlanningSession) -> Void
     @StateObject private var vm = PlannerWorkspaceViewModel()
     @State private var showingScheduleSettings = false
     @State private var showingClearSchedulelessWeekConfirmation = false
@@ -193,6 +194,13 @@ struct MacPlannerView: View {
         inspectorSession = session
     }
 
+    private func openMacSessionDiary(_ session: PlanningSession) {
+        Task {
+            await vm.select(session: session)
+        }
+        onOpenDiaryDirect(session)
+    }
+
     private func applySessionIdFromRoot(_ sessionId: Int64) async {
         do {
             let session = try await bridge.plannerGetSession(id: sessionId)
@@ -228,6 +236,7 @@ struct MacPlannerView: View {
                 selectedCell: $selectedWeekCell,
                 selectedDay: $selectedWeekDay,
                 onOpenSession: openMacSession,
+                onOpenDiary: openMacSessionDiary,
                 onDropSession: { sessionId, day, period in
                     cascadeCoordinator.handleDrop(sessionId: sessionId, day: day, period: period, vm: vm)
                 }

@@ -7,6 +7,7 @@ struct PlannerWeekMiniatureLayout: View {
     @Binding var selectedCell: PlannerCellKey?
     @Binding var selectedDay: Int?
     let onOpenSession: (PlanningSession) -> Void
+    var onOpenDiary: ((PlanningSession) -> Void)? = nil
     var onDropSession: ((Int64, Int, Int) -> Void)? = nil
 
     #if os(iOS)
@@ -78,6 +79,7 @@ struct PlannerWeekMiniatureLayout: View {
             selectedCell: $selectedCell,
             selectedDay: $selectedDay,
             onOpenSession: onOpenSession,
+            onOpenDiary: onOpenDiary,
             onDropSession: onDropSession
         )
     }

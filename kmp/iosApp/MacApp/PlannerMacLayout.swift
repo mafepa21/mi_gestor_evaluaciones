@@ -6,13 +6,15 @@ struct PlannerMacLayout: View {
     @Binding var selectedSessionId: Int64?
     @Binding var inspectorSession: PlanningSession?
     var onToolbarActionsChange: (PlannerMacToolbarActions?) -> Void = { _ in }
+    var onOpenDiaryDirect: (PlanningSession) -> Void = { _ in }
 
     var body: some View {
         MacPlannerView(
             bridge: bridge,
             selectedSessionIdFromRoot: $selectedSessionId,
             inspectorSession: $inspectorSession,
-            onToolbarActionsChange: onToolbarActionsChange
+            onToolbarActionsChange: onToolbarActionsChange,
+            onOpenDiaryDirect: onOpenDiaryDirect
         )
     }
 }

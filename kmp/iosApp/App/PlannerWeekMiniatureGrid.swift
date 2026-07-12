@@ -20,6 +20,7 @@ struct PlannerWeekMiniatureGrid: View {
     @Binding var selectedCell: PlannerCellKey?
     @Binding var selectedDay: Int?
     let onOpenSession: (PlanningSession) -> Void
+    var onOpenDiary: ((PlanningSession) -> Void)? = nil
     var onDropSession: ((Int64, Int, Int) -> Void)? = nil
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
 
@@ -121,6 +122,7 @@ struct PlannerWeekMiniatureGrid: View {
                                     }
                                 },
                                 onOpenSession: onOpenSession,
+                                onOpenDiary: onOpenDiary,
                                 onDropSession: onDropSession.map { handler in
                                     { sessionId in handler(sessionId, day, slot.period) }
                                 }
@@ -230,6 +232,7 @@ private struct PlannerWeekMiniatureCell: View {
     let vm: PlannerWorkspaceViewModel
     let onTap: () -> Void
     let onOpenSession: (PlanningSession) -> Void
+    var onOpenDiary: ((PlanningSession) -> Void)? = nil
     var onDropSession: ((Int64) -> Void)? = nil
 
     @State private var isDropTargeted = false
@@ -333,7 +336,11 @@ private struct PlannerWeekMiniatureCell: View {
            let sessionId = entry.sessionId,
            let session = vm.sessions.first(where: { $0.id == sessionId }) {
             Button {
-                onOpenSession(session)
+                if let onOpenDiary {
+                    onOpenDiary(session)
+                } else {
+                    onOpenSession(session)
+                }
             } label: {
                 Label("Abrir diario", systemImage: "book.pages")
             }

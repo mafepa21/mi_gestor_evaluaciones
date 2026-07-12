@@ -233,6 +233,18 @@ struct MacRootView: View {
         selectFeature(.diary)
     }
 
+    /// Navegación directa al Diario de aula desde el menú contextual de la
+    /// miniatura semanal (sin pasar por la ficha de detalle).
+    private func openDiaryDirect(_ session: PlanningSession) {
+        plannerDiaryContext = PlannerNavigationContext(
+            week: Int(session.weekNumber),
+            year: Int(session.year),
+            groupId: session.groupId,
+            sessionId: session.id
+        )
+        selectFeature(.diary)
+    }
+
     @ViewBuilder
     private var plannerInspectorSheetContent: some View {
         if let plannerSession = plannerInspectorSession {
@@ -405,7 +417,8 @@ struct MacRootView: View {
                 bridge: session.bridge,
                 selectedSessionId: $selectedPlannerSessionId,
                 inspectorSession: $plannerInspectorSession,
-                onToolbarActionsChange: setPlannerToolbarActions
+                onToolbarActionsChange: setPlannerToolbarActions,
+                onOpenDiaryDirect: openDiaryDirect
             )
         case .diary:
             DiaryWorkspaceView(

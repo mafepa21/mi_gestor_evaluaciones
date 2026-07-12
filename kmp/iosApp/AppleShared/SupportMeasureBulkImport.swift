@@ -20,12 +20,29 @@ enum SupportMeasureBulkImportError: LocalizedError {
     }
 }
 
+/// Resultado de emparejar el nombre crudo del Excel con el roster real de la clase.
+/// Nunca se autoselecciona una fila para importar salvo `.exact`: asignar una medida
+/// sensible (NEE) al alumno equivocado por una coincidencia parcial mal resuelta es un
+/// error grave, así que `.suggested`/`.none` siempre requieren que el docente confirme
+/// a mano en la pantalla de revisión, aunque solo haya un candidato sugerido.
+enum SupportMeasureMatchStatus {
+    case exact(Student)
+    case suggested([Student])
+    case none
+
+    var confirmedStudent: Student? {
+        if case .exact(let student) = self { return student }
+        return nil
+    }
+}
+
 struct SupportMeasureImportRow: Identifiable {
     let id = UUID()
     let rowIndex: Int
     let rawName: String
     let claseValue: String
-    var matchedStudent: Student?
+    var matchStatus: SupportMeasureMatchStatus = .none
+    var confirmedStudent: Student?
     let measures: [SupportMeasureTypeUI]
     let notes: String
 }
@@ -178,7 +195,6 @@ enum SupportMeasureBulkImport {
                     rowIndex: rowIndex,
                     rawName: rawName,
                     claseValue: clase,
-                    matchedStudent: nil,
                     measures: selectedMeasures,
                     notes: noteParts.joined(separator: "\n")
                 )
@@ -193,23 +209,56 @@ enum SupportMeasureBulkImport {
         )
     }
 
-    /// Empareja cada fila con un alumno real del grupo seleccionado por nombre completo
-    /// (y, si no hay coincidencia exacta, por nombre de pila si es único en el grupo).
+    /// Empareja cada fila con un alumno real del grupo. Soporta nombres de pila completos
+    /// con apellidos abreviados (p.ej. "IVÁN CA SA" para "Iván Cabanillas Sánchez"): el
+    /// nombre de pila debe coincidir palabra a palabra por completo, y cada fragmento de
+    /// apellido debe ser prefijo (mínimo 2 letras) de la palabra correspondiente del
+    /// apellido real, en orden. Nunca marca `.exact` salvo coincidencia exacta de nombre
+    /// completo; cualquier otra coincidencia queda como `.suggested` para confirmar a mano.
     static func match(rows: [SupportMeasureImportRow], against roster: [Student]) -> [SupportMeasureImportRow] {
         rows.map { row in
             var row = row
-            let normalized = row.rawName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let rawTokens = normalizedTokens(row.rawName)
+            guard !rawTokens.isEmpty else { return row }
 
-            if let exact = roster.first(where: { $0.fullName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == normalized }) {
-                row.matchedStudent = exact
+            if let exact = roster.first(where: { normalizedTokens($0.fullName) == rawTokens }) {
+                row.matchStatus = .exact(exact)
+                row.confirmedStudent = exact
                 return row
             }
 
-            let firstNameMatches = roster.filter { $0.firstName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == normalized }
-            if firstNameMatches.count == 1 {
-                row.matchedStudent = firstNameMatches.first
+            let candidates = roster.filter { candidate in
+                matchesAbbreviated(rawTokens: rawTokens, candidate: candidate)
+            }
+
+            if !candidates.isEmpty {
+                row.matchStatus = .suggested(candidates)
             }
             return row
         }
+    }
+
+    private static func matchesAbbreviated(rawTokens: [String], candidate: Student) -> Bool {
+        let firstNameWords = normalizedTokens(candidate.firstName)
+        guard !firstNameWords.isEmpty, rawTokens.count > firstNameWords.count else { return false }
+        guard Array(rawTokens.prefix(firstNameWords.count)) == firstNameWords else { return false }
+
+        let abbreviatedTokens = Array(rawTokens.suffix(from: firstNameWords.count))
+        let lastNameWords = normalizedTokens(candidate.lastName)
+        guard abbreviatedTokens.count <= lastNameWords.count else { return false }
+
+        for (index, token) in abbreviatedTokens.enumerated() {
+            guard token.count >= 2, lastNameWords[index].hasPrefix(token) else { return false }
+        }
+        return true
+    }
+
+    /// Mayúsculas, sin acentos/diacríticos, sin puntuación, separado en palabras.
+    private static func normalizedTokens(_ text: String) -> [String] {
+        let folded = text.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "es_ES"))
+        return folded
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .map { $0.uppercased() }
+            .filter { !$0.isEmpty }
     }
 }

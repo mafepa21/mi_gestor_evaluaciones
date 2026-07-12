@@ -5,6 +5,11 @@ import MiGestorKit
 /// Importación masiva de medidas Nivel III desde una tabla Excel propia del docente
 /// (un grupo entero de una vez). Comparte estilo con `StudentImportSheet`: cabecera,
 /// resumen, lista revisable fila a fila y confirmación explícita antes de guardar nada.
+///
+/// Ninguna fila se importa hasta que el alumno queda confirmado: una coincidencia
+/// exacta de nombre completo se preselecciona, pero cualquier coincidencia parcial
+/// (nombres/apellidos abreviados) o ambigua exige que el docente elija a mano en un
+/// desplegable — asignar una medida NEE al alumno equivocado es un error grave.
 struct SupportMeasureBulkImportSheet: View {
     @EnvironmentObject var bridge: KmpBridge
     @Environment(\.dismiss) private var dismiss
@@ -17,7 +22,6 @@ struct SupportMeasureBulkImportSheet: View {
     @State private var isPickingFile = false
     @State private var result: SupportMeasureBulkImportResult?
     @State private var claseFilter: String?
-    @State private var includedRowIDs: Set<UUID> = []
     @State private var isImporting = false
     @State private var errorMessage: String?
 
@@ -27,8 +31,8 @@ struct SupportMeasureBulkImportSheet: View {
         return result.rows.filter { $0.claseValue == claseFilter }
     }
 
-    private var matchedCount: Int { visibleRows.filter { $0.matchedStudent != nil }.count }
-    private var unmatchedCount: Int { visibleRows.count - matchedCount }
+    private var confirmedCount: Int { visibleRows.filter { $0.confirmedStudent != nil }.count }
+    private var needsReviewCount: Int { visibleRows.filter { $0.confirmedStudent == nil }.count }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -49,7 +53,7 @@ struct SupportMeasureBulkImportSheet: View {
             footer
         }
         .background(appPageBackground(for: colorScheme))
-        .frame(minWidth: 560, idealWidth: 680, minHeight: 480, idealHeight: 640)
+        .frame(minWidth: 620, idealWidth: 720, minHeight: 480, idealHeight: 680)
         .fileImporter(
             isPresented: $isPickingFile,
             allowedContentTypes: [.xlsx],
@@ -79,7 +83,7 @@ struct SupportMeasureBulkImportSheet: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Importar medidas Nivel III")
                     .font(.title2.weight(.bold))
-                Text("Alumnos en filas, medidas marcadas con 'x' en columnas. Revisa las coincidencias antes de guardar.")
+                Text("Alumnos en filas, medidas marcadas con 'x' en columnas. Confirma cada alumno antes de guardar.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -131,8 +135,8 @@ struct SupportMeasureBulkImportSheet: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 12) {
                 importMetric("Filas detectadas", "\(visibleRows.count)")
-                importMetric("Con alumno emparejado", "\(matchedCount)")
-                importMetric("Sin emparejar", "\(unmatchedCount)")
+                importMetric("Confirmados", "\(confirmedCount)")
+                importMetric("Por revisar", "\(needsReviewCount)")
                 Spacer()
             }
 
@@ -157,8 +161,8 @@ struct SupportMeasureBulkImportSheet: View {
                     .foregroundStyle(.orange)
             }
 
-            if unmatchedCount > 0 {
-                Label("Las filas sin alumno emparejado no se importarán.", systemImage: "person.crop.circle.badge.questionmark")
+            if needsReviewCount > 0 {
+                Label("Las filas sin alumno confirmado no se importarán. Elige el alumno correcto en el desplegable de cada fila.", systemImage: "person.crop.circle.badge.questionmark")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -183,40 +187,41 @@ struct SupportMeasureBulkImportSheet: View {
     }
 
     private func importRow(_ row: SupportMeasureImportRow) -> some View {
-        let isMatched = row.matchedStudent != nil
+        let isConfirmed = row.confirmedStudent != nil
         return HStack(alignment: .top, spacing: 12) {
-            Toggle(isOn: Binding(
-                get: { includedRowIDs.contains(row.id) },
-                set: { isOn in
-                    if isOn { includedRowIDs.insert(row.id) } else { includedRowIDs.remove(row.id) }
-                }
-            )) {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 8) {
-                        Text(isMatched ? row.matchedStudent!.fullName : row.rawName)
-                            .font(.body.weight(.medium))
-                        if !isMatched {
-                            Text("Sin coincidencia")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.orange)
-                        }
-                    }
-                    if !row.measures.isEmpty {
-                        WorkspaceFlowLayout(spacing: 6) {
-                            ForEach(row.measures) { measure in
-                                WorkspaceTag(text: measure.displayName, systemImage: "checkmark.seal")
-                            }
-                        }
-                    }
-                    if !row.notes.isEmpty {
-                        Text(row.notes)
-                            .font(.caption)
+            Image(systemName: isConfirmed ? "checkmark.circle.fill" : "questionmark.circle")
+                .foregroundStyle(isConfirmed ? .green : .orange)
+                .font(.body)
+                .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Text(row.rawName)
+                        .font(.body.weight(.medium))
+                    if isConfirmed {
+                        Text("→ \(row.confirmedStudent!.fullName)")
+                            .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
-                            .lineLimit(3)
                     }
+                }
+
+                studentPicker(for: row)
+
+                if !row.measures.isEmpty {
+                    WorkspaceFlowLayout(spacing: 6) {
+                        ForEach(row.measures) { measure in
+                            WorkspaceTag(text: measure.displayName, systemImage: "checkmark.seal")
+                        }
+                    }
+                }
+                if !row.notes.isEmpty {
+                    Text(row.notes)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
                 }
             }
-            .disabled(!isMatched)
+            Spacer(minLength: 0)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -227,9 +232,55 @@ struct SupportMeasureBulkImportSheet: View {
         }
     }
 
+    /// Desplegable de confirmación: prioriza los candidatos sugeridos por el emparejador
+    /// (nombre parcial/abreviado) y debajo ofrece el resto del roster, para que el
+    /// docente pueda corregir a mano cualquier caso — ambiguo, sin coincidencia o mal
+    /// interpretado por el algoritmo.
+    private func studentPicker(for row: SupportMeasureImportRow) -> some View {
+        let suggested: [Student]
+        if case .suggested(let candidates) = row.matchStatus {
+            suggested = candidates
+        } else {
+            suggested = []
+        }
+        let suggestedIds = Set(suggested.map(\.id))
+        let others = roster.filter { !suggestedIds.contains($0.id) }.sorted { $0.fullName < $1.fullName }
+
+        return Menu {
+            if !suggested.isEmpty {
+                Section("Sugerencias") {
+                    ForEach(suggested, id: \.id) { student in
+                        Button(student.fullName) { setConfirmedStudent(student, for: row.id) }
+                    }
+                }
+            }
+            Section(suggested.isEmpty ? "Alumnado del grupo" : "Otros alumnos del grupo") {
+                ForEach(others, id: \.id) { student in
+                    Button(student.fullName) { setConfirmedStudent(student, for: row.id) }
+                }
+            }
+            if row.confirmedStudent != nil {
+                Button("Quitar coincidencia", role: .destructive) { setConfirmedStudent(nil, for: row.id) }
+            }
+        } label: {
+            Label(
+                row.confirmedStudent == nil ? "Asignar alumno…" : "Cambiar alumno",
+                systemImage: "person.crop.circle.badge.questionmark"
+            )
+            .font(.caption.weight(.semibold))
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+    }
+
+    private func setConfirmedStudent(_ student: Student?, for rowID: UUID) {
+        guard let index = result?.rows.firstIndex(where: { $0.id == rowID }) else { return }
+        result?.rows[index].confirmedStudent = student
+    }
+
     private var footer: some View {
         HStack(spacing: 16) {
-            Text(includedRowIDs.isEmpty ? "Selecciona al menos un alumno para importar." : "\(includedRowIDs.count) alumnos listos para importar.")
+            Text(confirmedCount == 0 ? "Confirma al menos un alumno para importar." : "\(confirmedCount) alumnos listos para importar.")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
 
@@ -246,7 +297,7 @@ struct SupportMeasureBulkImportSheet: View {
             }
             .buttonStyle(.borderedProminent)
             .keyboardShortcut(.defaultAction)
-            .disabled(includedRowIDs.isEmpty || isImporting)
+            .disabled(confirmedCount == 0 || isImporting)
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 16)
@@ -272,7 +323,6 @@ struct SupportMeasureBulkImportSheet: View {
             var parsed = try SupportMeasureBulkImport.parse(url: url)
             parsed.rows = SupportMeasureBulkImport.match(rows: parsed.rows, against: roster)
             result = parsed
-            includedRowIDs = Set(parsed.rows.filter { $0.matchedStudent != nil }.map(\.id))
             claseFilter = nil
         } catch {
             errorMessage = error.localizedDescription
@@ -285,8 +335,8 @@ struct SupportMeasureBulkImportSheet: View {
         defer { isImporting = false }
 
         let nowIso = AppDateTimeSupport.isoDateFormatter.string(from: Date())
-        for row in visibleRows where includedRowIDs.contains(row.id) {
-            guard let student = row.matchedStudent else { continue }
+        for row in visibleRows {
+            guard let student = row.confirmedStudent else { continue }
             for measure in row.measures {
                 var draft = SupportMeasureDraft(
                     studentId: student.id,

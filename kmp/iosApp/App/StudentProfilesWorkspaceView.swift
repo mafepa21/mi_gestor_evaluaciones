@@ -38,6 +38,8 @@ struct StudentProfilesWorkspaceView: View {
     @State private var showFollowUpConfirm = false
     @State private var showIncidentsSheet = false
     @State private var updatingStudentIds: Set<Int64> = []
+    @State private var supportMeasures: [SupportMeasureRow] = []
+    @State private var showSupportMeasureSheet = false
 
     // MARK: - Computed
 
@@ -84,6 +86,14 @@ struct StudentProfilesWorkspaceView: View {
             }
             .appOnChange(of: selectedStudentId) { _ in
                 Task { await reloadProfile() }
+            }
+            .sheet(isPresented: $showSupportMeasureSheet) {
+                if let studentId = selectedStudentId {
+                    SupportMeasureFormSheet(studentId: studentId) {
+                        Task { await reloadProfile() }
+                    }
+                    .environmentObject(bridge)
+                }
             }
     }
 
@@ -365,6 +375,13 @@ struct StudentProfilesWorkspaceView: View {
                         isActive: profile.incidentCount > 0,
                         tint: IOSAppStyle.danger
                     )
+                    if let activeLevel = supportMeasures.first(where: \.isActive)?.level {
+                        IOSStatusPill(
+                            label: "Medida \(activeLevel.shortLabel)",
+                            isActive: true,
+                            tint: .indigo
+                        )
+                    }
                     Spacer()
                 }
 
@@ -428,6 +445,27 @@ struct StudentProfilesWorkspaceView: View {
                     }
                 }
 
+                // Medidas de apoyo (Nivel III/IV, Decreto 104/2018 + Orden 20/2019 CV)
+                PremiumCard.section(title: "Medidas de apoyo", systemImage: "person.text.rectangle.fill") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        if supportMeasures.isEmpty {
+                            Text("Sin medidas registradas.")
+                                .font(IOSAppStyle.bodyText)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            ForEach(supportMeasures) { measure in
+                                supportMeasureRow(measure)
+                            }
+                        }
+                        Button {
+                            showSupportMeasureSheet = true
+                        } label: {
+                            Label("Añadir medida", systemImage: "plus.circle.fill")
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                }
+
                 // Contexto pedagógico
                 if profile.adaptationsSummary != nil || profile.familyCommunicationSummary != nil {
                     PremiumCard.section(title: "Contexto pedagógico", systemImage: "person.text.rectangle") {
@@ -478,6 +516,49 @@ struct StudentProfilesWorkspaceView: View {
             Text(att.date.formatted(date: .abbreviated, time: .omitted))
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.secondary)
+        }
+        .padding(10)
+        .background(IOSAppStyle.subtleFill, in: RoundedRectangle(cornerRadius: IOSAppStyle.innerRadius, style: .continuous))
+    }
+
+    private func supportMeasureRow(_ measure: SupportMeasureRow) -> some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text("\(measure.level.displayName) · \(measure.measureType.displayName)")
+                        .font(.subheadline.weight(.bold))
+                    if !measure.isActive {
+                        Text("Retirada")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if let responsible = measure.responsible, !responsible.isEmpty {
+                    Text(responsible)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                switch measure.reviewStatus {
+                case .overdue:
+                    Text("Revisión vencida")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(IOSAppStyle.danger)
+                case .dueSoon:
+                    Text("Revisión próxima")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(IOSAppStyle.warning)
+                case .none:
+                    EmptyView()
+                }
+            }
+            Spacer()
+            if measure.isActive {
+                Button("Retirar") {
+                    Task { await retireSupportMeasure(measure) }
+                }
+                .font(.caption.weight(.bold))
+                .buttonStyle(.borderless)
+            }
         }
         .padding(10)
         .background(IOSAppStyle.subtleFill, in: RoundedRectangle(cornerRadius: IOSAppStyle.innerRadius, style: .continuous))
@@ -545,10 +626,12 @@ struct StudentProfilesWorkspaceView: View {
     private func reloadProfile() async {
         guard let studentId = selectedStudentId else {
             profile = nil
+            supportMeasures = []
             return
         }
         isLoadingProfile = true
         profile = try? await bridge.loadStudentProfile(studentId: studentId, classId: selectedClassId)
+        supportMeasures = ((try? await bridge.supportMeasures(for: studentId)) ?? []).map(\.asRow)
         isLoadingProfile = false
     }
 
@@ -571,6 +654,22 @@ struct StudentProfilesWorkspaceView: View {
             AppleInteractionFeedback.play(.success)
         } catch {
             bridge.status = "No se pudo actualizar la lesión: \(error.localizedDescription)"
+            AppleInteractionFeedback.play(.error)
+        }
+    }
+
+    @MainActor
+    private func retireSupportMeasure(_ measure: SupportMeasureRow) async {
+        do {
+            try await bridge.retireSupportMeasure(
+                id: measure.id,
+                endDateIso: AppDateTimeSupport.isoDateFormatter.string(from: Date())
+            )
+            await reloadProfile()
+            bridge.status = "Medida retirada."
+            AppleInteractionFeedback.play(.success)
+        } catch {
+            bridge.status = "No se pudo retirar la medida: \(error.localizedDescription)"
             AppleInteractionFeedback.play(.error)
         }
     }

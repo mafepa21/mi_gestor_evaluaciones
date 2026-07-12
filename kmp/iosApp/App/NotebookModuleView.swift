@@ -55,6 +55,7 @@ struct NotebookModuleView: View {
     @State var surfaceMode: NotebookSurfaceMode = .grid
     @State var todayAttendanceByStudentId: [Int64: String] = [:]
     @State var incidentCountByStudentId: [Int64: Int] = [:]
+    @State var activeSupportMeasureStudentIds: Set<Int64> = []
     @State var localInjuryStatuses: [Int64: Bool] = [:]
     @State var seatPositions: [Int64: NotebookSeatPosition] = [:]
     @State var highlightedRandomStudentId: Int64? = nil
@@ -237,6 +238,7 @@ struct NotebookModuleView: View {
         localInjuryStatuses = [:]
         seatPositions = [:]
         seatingGradingColumnId = nil
+        activeSupportMeasureStudentIds = []
         riskLevelCache = [:]
         riskComputationKey = nil
         isPrecomputingRiskLevels = false
@@ -459,6 +461,7 @@ struct NotebookModuleView: View {
             if let classId = Int64(newValue) {
                 loadClassLearningSituations(classId: classId)
             }
+            Task { await refreshNotebookSignals() }
         }
         .appOnChange(of: toolbarStateKey(data: data)) { _ in
             if !isMacInspectorOnly {
@@ -1339,12 +1342,14 @@ struct NotebookModuleView: View {
                 .onAppear {
                     scheduleActiveNotebookTabSync(data: data)
                     scheduleToolbarStateSync(data: data)
+                    Task { await refreshNotebookSignals() }
                 }
                 .appOnChange(of: layoutState.notebookHiddenColumnsRequestID) { requestID in
                     guard requestID != nil else { return }
                     isOrganizationMenuPresented = false
                     isHiddenColumnsSheetPresented = true
                 }
+
                 .appOnChange(of: notebookTabsStateKey(data: data)) { _ in
                     scheduleActiveNotebookTabSync(data: data)
                 }

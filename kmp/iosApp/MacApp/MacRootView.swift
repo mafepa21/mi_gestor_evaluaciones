@@ -27,8 +27,8 @@ struct MacRootView: View {
     @State private var dashboardToolbarActions: MacDashboardToolbarActions? = nil
     @State private var plannerToolbarActions: PlannerMacToolbarActions? = nil
     @State private var plannerInspectorSession: PlanningSession? = nil
-    @State private var plannerDiarySession: PlanningSession? = nil
     @State private var pendingPlannerDiarySession: PlanningSession? = nil
+    @State private var plannerDiaryContext = PlannerNavigationContext()
     @StateObject private var plannerDiaryLayoutState = WorkspaceLayoutState()
     @State private var studentsReloadToken = 0
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
@@ -119,7 +119,9 @@ struct MacRootView: View {
             // shell's system inspector too would nest two inspectors and reserve width twice.
             // Planner opts out too: its session detail needs the same wide layout used on
             // iPad (760-860pt), which the shell's generic inspector (maxWidth 440) can't give it.
-            if selectedFeature == .attendance || selectedFeature == .planner {
+            // Diary opts out too: DiaryWorkspaceView (shared with iPad/iOS) brings its own
+            // 3-panel layout with an internal inspector.
+            if selectedFeature == .attendance || selectedFeature == .planner || selectedFeature == .diary {
                 featureContent(for: selectedFeature)
                     .id(selectedFeature)
                     .transition(uiFeatureFlags.contentSwitchTransition)
@@ -200,9 +202,6 @@ struct MacRootView: View {
         .sheet(isPresented: isPlannerInspectorSessionPresented, onDismiss: presentPendingPlannerDiarySession) {
             plannerInspectorSheetContent
         }
-        .sheet(isPresented: isPlannerDiarySessionPresented) {
-            plannerDiarySheetContent
-        }
     }
 
     // Extraídos como propiedades tipadas (en vez de `Binding(get:set:)` inline en el
@@ -217,23 +216,21 @@ struct MacRootView: View {
         )
     }
 
-    private var isPlannerDiarySessionPresented: Binding<Bool> {
-        Binding(
-            get: { plannerDiarySession != nil },
-            set: { isPresented in
-                if !isPresented { plannerDiarySession = nil }
-            }
-        )
-    }
-
-    /// SwiftUI no encadena de forma fiable "cerrar un sheet y abrir otro" si ambas
-    /// mutaciones ocurren en el mismo ciclo (el segundo `.sheet` no llega a presentarse).
-    /// Por eso "Abrir ejecución" solo deja aparcada la sesión destino y el sheet del
-    /// diario se presenta aquí, en el `onDismiss` del primer sheet, una vez ha cerrado del todo.
+    /// SwiftUI no encadena de forma fiable "cerrar un sheet y navegar" si ambas
+    /// mutaciones ocurren en el mismo ciclo (el sheet de detalle todavía no ha
+    /// terminado de cerrarse). Por eso "Abrir ejecución" solo deja aparcada la
+    /// sesión destino y la navegación al módulo Diario de aula ocurre aquí, en el
+    /// `onDismiss` del sheet de detalle, una vez ha cerrado del todo.
     private func presentPendingPlannerDiarySession() {
         guard let pending = pendingPlannerDiarySession else { return }
         pendingPlannerDiarySession = nil
-        plannerDiarySession = pending
+        plannerDiaryContext = PlannerNavigationContext(
+            week: Int(pending.weekNumber),
+            year: Int(pending.year),
+            groupId: pending.groupId,
+            sessionId: pending.id
+        )
+        selectFeature(.diary)
     }
 
     @ViewBuilder
@@ -250,19 +247,6 @@ struct MacRootView: View {
                 presentation: .sheet
             )
             .environmentObject(session.bridge)
-        }
-    }
-
-    @ViewBuilder
-    private var plannerDiarySheetContent: some View {
-        if let plannerSession = plannerDiarySession {
-            MacPlannerDiarySheet(
-                session: plannerSession,
-                onOpenModule: open(module:classId:studentId:),
-                onClose: { plannerDiarySession = nil }
-            )
-            .environmentObject(session.bridge)
-            .environmentObject(plannerDiaryLayoutState)
         }
     }
 
@@ -423,6 +407,22 @@ struct MacRootView: View {
                 inspectorSession: $plannerInspectorSession,
                 onToolbarActionsChange: setPlannerToolbarActions
             )
+        case .diary:
+            DiaryWorkspaceView(
+                selectedClassId: studentSelection.selectedClassBinding,
+                navigationContext: plannerDiaryContext,
+                onOpenModule: open(module:classId:studentId:),
+                onOpenPlanner: { context in
+                    plannerDiaryContext = context
+                    if let sessionId = context.sessionId {
+                        selectedPlannerSessionId = sessionId
+                    }
+                    selectFeature(.planner)
+                },
+                onNavigationContextChange: { plannerDiaryContext = $0 }
+            )
+            .environmentObject(session.bridge)
+            .environmentObject(plannerDiaryLayoutState)
         case .situations:
             LearningSituationsWorkspaceView(
                 selectedClassId: studentSelection.selectedClassBinding,
@@ -968,6 +968,7 @@ struct MacRootView: View {
         case .notebook: return .purple
         case .attendance: return .green
         case .planner: return .orange
+        case .diary: return .pink
         case .situations: return .indigo
         case .students: return .blue
         case .rubrics: return .teal
@@ -1294,6 +1295,8 @@ struct MacRootView: View {
             selectFeature(.physicalTests)
         case .situations:
             selectFeature(.situations)
+        case .diary:
+            selectFeature(.diary)
         default:
             session.bridge.status = "El módulo \(module.title) todavía no está disponible en la shell Mac."
         }
@@ -1361,45 +1364,6 @@ private extension NavigationSplitViewVisibility {
         default:
             return MacRootColumnVisibilityValue.automatic
         }
-    }
-}
-
-/// Paridad macOS del diario de sesión: reutiliza `DiaryWorkspaceView` tal cual
-/// (misma vista que iPadOS/iOS) en un sheet flotante propio, en vez de reinventar
-/// el diario dentro del inspector genérico del shell Mac.
-private struct MacPlannerDiarySheet: View {
-    let session: PlanningSession
-    let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
-    let onClose: () -> Void
-
-    @State private var selectedClassId: Int64?
-
-    var body: some View {
-        VStack(spacing: 0) {
-            MacPopupActionBar(
-                title: "Diario de sesión",
-                subtitle: "\(session.groupName) · \(session.teachingUnitName)",
-                onClose: onClose
-            )
-            .frame(maxWidth: .infinity)
-            .zIndex(2)
-
-            DiaryWorkspaceView(
-                selectedClassId: $selectedClassId,
-                navigationContext: PlannerNavigationContext(
-                    week: Int(session.weekNumber),
-                    year: Int(session.year),
-                    groupId: session.groupId,
-                    sessionId: session.id
-                ),
-                onOpenModule: onOpenModule,
-                onOpenPlanner: { _ in onClose() },
-                onNavigationContextChange: { _ in }
-            )
-        }
-        .frame(minWidth: 1040, minHeight: 760)
-        .background(MacAppStyle.pageBackground)
-        .onAppear { selectedClassId = session.groupId }
     }
 }
 

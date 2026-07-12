@@ -14,6 +14,7 @@ struct MacFeatureDescriptor: Identifiable, Hashable {
         case notebook
         case attendance
         case planner
+        case diary
         case situations
         case students
         case rubrics
@@ -43,6 +44,7 @@ enum MacFeatureRegistry {
         .init(feature: .notebook, title: "Cuaderno", subtitle: "Vista de clase, edición y guardado", systemImage: "tablecells.fill", source: .parityIOS, enabledInV1: true),
         .init(feature: .attendance, title: "Asistencia", subtitle: "Pase e historial", systemImage: "checklist.checked", source: .parityIOS, enabledInV1: true),
         .init(feature: .planner, title: "Planificación", subtitle: "Sesiones, unidades y agenda docente", systemImage: "calendar.badge.clock", source: .parityIOS, enabledInV1: true),
+        .init(feature: .diary, title: "Diario de aula", subtitle: "Trazabilidad de sesión", systemImage: "doc.text.fill", source: .parityIOS, enabledInV1: true),
         .init(feature: .situations, title: "Situaciones", subtitle: "Programación e importación DOCX", systemImage: "doc.text.magnifyingglass", source: .parityIOS, enabledInV1: true),
         .init(feature: .students, title: "Alumnado", subtitle: "Directorio y seguimiento rápido", systemImage: "person.3.sequence.fill", source: .parityIOS, enabledInV1: true),
         .init(feature: .rubrics, title: "Rúbricas", subtitle: "Banco de evaluación y edición", systemImage: "checklist.checked", source: .parityIOS, enabledInV1: true),
@@ -73,7 +75,7 @@ enum MacFeatureSection: String, CaseIterable, Identifiable {
         case .evaluacion:
             return [.courses, .notebook, .attendance, .rubrics, .physicalTests]
         case .planificacion:
-            return [.planner, .situations, .students]
+            return [.planner, .diary, .situations, .students]
         case .sistema:
             return [.reports, .sync, .backups, .settings]
         }

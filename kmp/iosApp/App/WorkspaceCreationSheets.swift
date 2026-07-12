@@ -858,7 +858,8 @@ struct SupportMeasureFormSheet: View {
     let onSaved: () -> Void
 
     @State private var level: SupportMeasureLevelUI = .iii
-    @State private var measureType: SupportMeasureTypeUI = .refuerzo
+    @State private var selectedTypesIII: Set<SupportMeasureTypeUI> = []
+    @State private var measureTypeIV: SupportMeasureTypeUI = .acis
     @State private var startDate = Date()
     @State private var responsible = ""
     @State private var hasIntensity = false
@@ -868,14 +869,16 @@ struct SupportMeasureFormSheet: View {
     @State private var hasReviewDue = true
     @State private var reviewDueDate = Calendar.current.date(byAdding: .year, value: 1, to: Date()) ?? Date()
 
-    private var availableTypes: [SupportMeasureTypeUI] { SupportMeasureTypeUI.types(for: level) }
+    private var canSave: Bool {
+        level == .iii ? !selectedTypesIII.isEmpty : true
+    }
 
     var body: some View {
         WorkspaceCreateSheetScaffold(
             title: "Nueva medida de apoyo",
             subtitle: "Registra lo mínimo ahora. El detalle del PAP se consulta desde el documento oficial, no se transcribe aquí.",
             systemImage: "person.text.rectangle.fill",
-            canSave: true,
+            canSave: canSave,
             onCancel: { dismiss() },
             onSave: save
         ) {
@@ -891,25 +894,48 @@ struct SupportMeasureFormSheet: View {
                             }
                         }
                         .pickerStyle(.segmented)
-                        .appOnChange(of: level) { newLevel in
-                            if !SupportMeasureTypeUI.types(for: newLevel).contains(measureType) {
-                                measureType = SupportMeasureTypeUI.types(for: newLevel).first ?? measureType
-                            }
-                        }
-                    }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Tipo de medida")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                        Picker("Tipo de medida", selection: $measureType) {
-                            ForEach(availableTypes) { option in
-                                Text(option.displayName).tag(option)
-                            }
+                        .appOnChange(of: level) { _ in
+                            selectedTypesIII = []
                         }
                     }
 
                     DatePicker("Fecha de inicio", selection: $startDate, displayedComponents: .date)
+                }
+            }
+
+            if level == .iii {
+                PremiumCard.section(title: "Medidas (selecciona una o varias)", systemImage: "checklist") {
+                    VStack(alignment: .leading, spacing: 20) {
+                        ForEach(SupportMeasureCatalogGroup.allCases) { group in
+                            let items = SupportMeasureTypeUI.catalog(for: group)
+                            if !items.isEmpty {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text(group.rawValue)
+                                        .font(.caption.weight(.bold))
+                                        .foregroundStyle(.secondary)
+                                        .textCase(.uppercase)
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        ForEach(items) { item in
+                                            supportMeasureCatalogRow(item)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                PremiumCard.section(title: "Medida", systemImage: "checkmark.seal") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Tipo de medida")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Picker("Tipo de medida", selection: $measureTypeIV) {
+                            ForEach(SupportMeasureTypeUI.types(for: .iv)) { option in
+                                Text(option.displayName).tag(option)
+                            }
+                        }
+                    }
                 }
             }
 
@@ -940,20 +966,57 @@ struct SupportMeasureFormSheet: View {
         }
     }
 
+    private func supportMeasureCatalogRow(_ item: SupportMeasureTypeUI) -> some View {
+        Button {
+            if selectedTypesIII.contains(item) {
+                selectedTypesIII.remove(item)
+            } else {
+                selectedTypesIII.insert(item)
+            }
+        } label: {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: selectedTypesIII.contains(item) ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(selectedTypesIII.contains(item) ? Color.accentColor : Color.secondary)
+                    .font(.body)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.displayName)
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                    if !item.itacaCode.isEmpty {
+                        Text(item.itacaCode)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.vertical, 4)
+    }
+
+    private func draft(for type: SupportMeasureTypeUI) -> SupportMeasureDraft {
+        var draft = SupportMeasureDraft(
+            studentId: studentId,
+            level: level,
+            measureType: type,
+            startDateIso: AppDateTimeSupport.isoDateFormatter.string(from: startDate)
+        )
+        draft.responsible = responsible
+        draft.intensity = hasIntensity ? intensity : nil
+        draft.followUpNotes = followUpNotes
+        draft.documentRef = documentRef
+        draft.reviewDueIso = hasReviewDue ? AppDateTimeSupport.isoDateFormatter.string(from: reviewDueDate) : nil
+        return draft
+    }
+
     private func save() {
         Task {
-            var draft = SupportMeasureDraft(
-                studentId: studentId,
-                level: level,
-                measureType: measureType,
-                startDateIso: AppDateTimeSupport.isoDateFormatter.string(from: startDate)
-            )
-            draft.responsible = responsible
-            draft.intensity = hasIntensity ? intensity : nil
-            draft.followUpNotes = followUpNotes
-            draft.documentRef = documentRef
-            draft.reviewDueIso = hasReviewDue ? AppDateTimeSupport.isoDateFormatter.string(from: reviewDueDate) : nil
-            try? await bridge.saveSupportMeasure(draft: draft)
+            let types: [SupportMeasureTypeUI] = level == .iii ? Array(selectedTypesIII) : [measureTypeIV]
+            for type in types {
+                try? await bridge.saveSupportMeasure(draft: draft(for: type))
+            }
             onSaved()
             dismiss()
         }

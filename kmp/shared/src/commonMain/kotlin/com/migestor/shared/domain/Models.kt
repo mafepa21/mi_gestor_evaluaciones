@@ -547,16 +547,38 @@ data class Attendance(
 enum class SupportMeasureLevel { III, IV }
 
 enum class SupportMeasureType {
-    REFUERZO,
-    ENRIQUECIMIENTO,
-    ADAPTACION_ACCESO,
-    APOYO_PT,
-    APOYO_AL,
+    // Nivel IV: apoyos especializados extraordinarios (Orden 20/2019).
     ACIS,
     EXENCION,
     FLEXIBILIZACION,
     PERMANENCIA_EXTRAORDINARIA,
     ESCOLARIZACION_ESPECIFICA,
+
+    // Nivel III - Aprendizaje: catalogo docente de medidas de aula (ITACA).
+    APR_FORMATO_EXAMEN,
+    APR_REVISION_EXAMEN,
+    APR_ORTOGRAFIA_CV,
+    APR_REDUCIR_COPIA_ENUNCIADOS,
+    APR_LIBRETA_COMPARTIDA,
+    APR_LIBRETA_EXCLUSIVA,
+    APR_FOTOCOPIAS_UNA_CARA,
+    APR_SUPERVISION_AGENDA,
+    APR_UBICACION_AULA,
+    APR_CUADERNOS_CALIGRAFIA,
+    APR_ACTIVIDADES_TIC,
+
+    // Nivel III - Participacion.
+    PART_SUPERVISION_EXPOSICION,
+    PART_AVISO_LECTURA_VOZ_ALTA,
+    PART_TUTORIAS_PERSONALIZADAS,
+
+    // Nivel III - Flexibilizacion.
+    FLEX_PLAN_REPETICION,
+
+    // Nivel III - Acceso.
+    ACC_DESPLAZAMIENTO_AUTONOMO,
+    ACC_BANO_AYUDA_FAMILIA,
+    ACC_MESA_ADAPTADA,
 }
 
 enum class SupportMeasureIntensity { BAJA, MEDIA, ALTA }

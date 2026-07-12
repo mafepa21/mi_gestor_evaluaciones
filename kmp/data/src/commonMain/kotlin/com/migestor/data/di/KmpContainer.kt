@@ -19,6 +19,7 @@ import com.migestor.data.repository.NotebookCellsRepositorySqlDelight
 import com.migestor.data.repository.NotebookInstrumentsRepositorySqlDelight
 import com.migestor.data.repository.RubricsRepositorySqlDelight
 import com.migestor.data.repository.StudentsRepositorySqlDelight
+import com.migestor.data.repository.StudentSupportMeasureRepositorySqlDelight
 import com.migestor.data.repository.SubjectsRepositorySqlDelight
 import com.migestor.data.repository.NotebookRepositorySqlDelight
 import com.migestor.data.repository.PlannerRepositorySqlDelight
@@ -71,6 +72,7 @@ class KmpContainer(val driver: SqlDriver) {
     val notebookInstrumentsRepository = NotebookInstrumentsRepositorySqlDelight(database, gradesRepository, notebookSheetCache)
     val rubricsRepository = RubricsRepositorySqlDelight(database)
     val attendanceRepository = AttendanceRepositorySqlDelight(database)
+    val studentSupportMeasureRepository = StudentSupportMeasureRepositorySqlDelight(database)
     val aiAuditRepository = AIAuditRepositorySqlDelight(database)
     val competenciesRepository = CompetenciesRepositorySqlDelight(database)
     val incidentsRepository = IncidentsRepositorySqlDelight(database)
@@ -117,6 +119,10 @@ class KmpContainer(val driver: SqlDriver) {
     val saveCriterion = SaveCriterionUseCase(rubricsRepository)
     val saveLevel = SaveLevelUseCase(rubricsRepository)
     val saveAttendance = SaveAttendanceUseCase(attendanceRepository)
+    val saveStudentSupportMeasure = SaveStudentSupportMeasureUseCase(studentSupportMeasureRepository)
+    val retireStudentSupportMeasure = RetireStudentSupportMeasureUseCase(studentSupportMeasureRepository)
+    val listStudentSupportMeasures = ListStudentSupportMeasuresUseCase(studentSupportMeasureRepository)
+    val listActiveSupportMeasureStudentIds = ListActiveSupportMeasureStudentIdsUseCase(studentSupportMeasureRepository)
     val saveWeeklyTemplate = SaveWeeklyTemplateUseCase(weeklyTemplateRepository)
     val generateSessionsFromUD = GenerateSessionsFromUDUseCase(weeklyTemplateRepository, plannedSessionRepository)
     val deleteStudent = DeleteStudentUseCase(studentsRepository, classesRepository)

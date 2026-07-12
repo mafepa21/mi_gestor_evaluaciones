@@ -36,6 +36,10 @@ import com.migestor.shared.domain.SessionStatus
 import com.migestor.shared.domain.Student
 import com.migestor.shared.domain.StudentSex
 import com.migestor.shared.domain.StudentSexSource
+import com.migestor.shared.domain.StudentSupportMeasure
+import com.migestor.shared.domain.SupportMeasureIntensity
+import com.migestor.shared.domain.SupportMeasureLevel
+import com.migestor.shared.domain.SupportMeasureType
 import com.migestor.shared.domain.Subject
 import com.migestor.shared.domain.TeachingUnit
 import com.migestor.shared.util.IsoWeekHelper
@@ -57,6 +61,7 @@ import com.migestor.shared.repository.PendingEvaluationsSummary
 import com.migestor.shared.repository.PlannerRepository
 import com.migestor.shared.repository.RubricsRepository
 import com.migestor.shared.repository.StudentsRepository
+import com.migestor.shared.repository.StudentSupportMeasureRepository
 import com.migestor.shared.repository.StudentProfileSnapshot
 import com.migestor.shared.repository.AITrendsRepository
 import com.migestor.shared.repository.StudentGradeHistoryPoint
@@ -1754,6 +1759,84 @@ class AttendanceRepositorySqlDelight(
                 )
             )
         }
+    }
+}
+
+class StudentSupportMeasureRepositorySqlDelight(
+    private val db: AppDatabase,
+) : StudentSupportMeasureRepository {
+
+    private fun rowToModel(row: com.migestor.data.db.SelectSupportMeasuresByStudent) = StudentSupportMeasure(
+        id = row.id,
+        studentId = row.student_id,
+        level = SupportMeasureLevel.valueOf(row.level),
+        measureType = SupportMeasureType.valueOf(row.measure_type),
+        startDate = LocalDate.parse(row.start_date_iso),
+        endDate = localDateOrNull(row.end_date_iso),
+        responsible = row.responsible,
+        intensity = row.intensity?.let { SupportMeasureIntensity.valueOf(it) },
+        followUpNotes = row.follow_up_notes,
+        documentRef = row.document_ref,
+        reviewDue = localDateOrNull(row.review_due_iso),
+        isActive = row.is_active != 0L,
+        trace = AuditTrace(
+            updatedAt = Instant.fromEpochMilliseconds(row.updated_at_epoch_ms),
+            deviceId = row.device_id,
+            syncVersion = row.sync_version,
+        )
+    )
+
+    override suspend fun listByStudent(studentId: Long): List<StudentSupportMeasure> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectSupportMeasuresByStudent(studentId).executeAsList().map(::rowToModel)
+    }
+
+    override suspend fun listActiveStudentIds(): Set<Long> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectActiveSupportMeasureStudentIds().executeAsList().toSet()
+    }
+
+    override suspend fun save(
+        id: Long?,
+        studentId: Long,
+        level: SupportMeasureLevel,
+        measureType: SupportMeasureType,
+        startDateIso: String,
+        endDateIso: String?,
+        responsible: String?,
+        intensity: SupportMeasureIntensity?,
+        followUpNotes: String,
+        documentRef: String?,
+        reviewDueIso: String?,
+        isActive: Boolean,
+        createdAtEpochMs: Long,
+        updatedAtEpochMs: Long,
+        deviceId: String?,
+        syncVersion: Long,
+    ): Long = withContext(Dispatchers.Default) {
+        db.transactionWithResult {
+            db.appDatabaseQueries.upsertSupportMeasure(
+                id,
+                studentId,
+                level.name,
+                measureType.name,
+                startDateIso,
+                endDateIso,
+                responsible,
+                intensity?.name,
+                followUpNotes,
+                documentRef,
+                reviewDueIso,
+                if (isActive) 1 else 0,
+                createdAtEpochMs,
+                updatedAtEpochMs,
+                deviceId,
+                syncVersion,
+            )
+            id ?: db.appDatabaseQueries.lastInsertedId().executeAsOne()
+        }
+    }
+
+    override suspend fun retire(id: Long, endDateIso: String, updatedAtEpochMs: Long, deviceId: String?) = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.retireSupportMeasure(endDateIso, updatedAtEpochMs, deviceId, id)
     }
 }
 

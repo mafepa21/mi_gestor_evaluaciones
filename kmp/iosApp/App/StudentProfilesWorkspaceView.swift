@@ -40,6 +40,7 @@ struct StudentProfilesWorkspaceView: View {
     @State private var updatingStudentIds: Set<Int64> = []
     @State private var supportMeasures: [SupportMeasureRow] = []
     @State private var showSupportMeasureSheet = false
+    @State private var showBulkImportSheet = false
 
     // MARK: - Computed
 
@@ -226,18 +227,40 @@ struct StudentProfilesWorkspaceView: View {
                 .tracking(0.8)
                 .foregroundStyle(.secondary)
 
-            Picker("Grupo", selection: $selectedClassId) {
-                Text("Todos los grupos").tag(Optional<Int64>.none)
-                ForEach(studentsBridgeStore.classes, id: \.id) { schoolClass in
-                    Text(schoolClass.name).tag(Optional(schoolClass.id))
+            HStack(spacing: 8) {
+                Picker("Grupo", selection: $selectedClassId) {
+                    Text("Todos los grupos").tag(Optional<Int64>.none)
+                    ForEach(studentsBridgeStore.classes, id: \.id) { schoolClass in
+                        Text(schoolClass.name).tag(Optional(schoolClass.id))
+                    }
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .tint(IOSAppStyle.info)
+
+                if selectedClassId != nil {
+                    Button {
+                        showBulkImportSheet = true
+                    } label: {
+                        Image(systemName: "tablecells.badge.ellipsis")
+                    }
+                    .help("Importar medidas Nivel III desde Excel")
                 }
             }
-            .pickerStyle(.menu)
-            .labelsHidden()
-            .tint(IOSAppStyle.info)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
+        .sheet(isPresented: $showBulkImportSheet) {
+            if let selectedClassId {
+                SupportMeasureBulkImportSheet(
+                    classId: selectedClassId,
+                    roster: studentsBridgeStore.studentsInClass
+                ) {
+                    Task { await reloadProfile() }
+                }
+                .environmentObject(bridge)
+            }
+        }
     }
 
     // MARK: - Right Column

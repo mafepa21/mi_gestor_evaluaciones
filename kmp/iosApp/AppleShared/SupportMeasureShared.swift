@@ -53,6 +53,7 @@ enum SupportMeasureTypeUI: String, CaseIterable, Identifiable {
     case aprUbicacionAula = "APR_UBICACION_AULA"
     case aprCuadernosCaligrafia = "APR_CUADERNOS_CALIGRAFIA"
     case aprActividadesTic = "APR_ACTIVIDADES_TIC"
+    case aprRevisionRespuestasIncoherentes = "APR_REVISION_RESPUESTAS_INCOHERENTES"
 
     // Nivel III - Participación.
     case partSupervisionExposicion = "PART_SUPERVISION_EXPOSICION"
@@ -84,7 +85,7 @@ enum SupportMeasureTypeUI: String, CaseIterable, Identifiable {
         switch self {
         case .aprFormatoExamen, .aprRevisionExamen, .aprOrtografiaCV, .aprReducirCopiaEnunciados,
              .aprLibretaCompartida, .aprLibretaExclusiva, .aprFotocopiasUnaCara, .aprSupervisionAgenda,
-             .aprUbicacionAula, .aprCuadernosCaligrafia, .aprActividadesTic:
+             .aprUbicacionAula, .aprCuadernosCaligrafia, .aprActividadesTic, .aprRevisionRespuestasIncoherentes:
             return .aprendizaje
         case .partSupervisionExposicion, .partAvisoLecturaVozAlta, .partTutoriasPersonalizadas:
             return .participacion
@@ -116,6 +117,7 @@ enum SupportMeasureTypeUI: String, CaseIterable, Identifiable {
         case .aprUbicacionAula: return "Ubicación en primeras filas"
         case .aprCuadernosCaligrafia: return "Cuadernos de caligrafía"
         case .aprActividadesTic: return "Actividades TIC complementarias"
+        case .aprRevisionRespuestasIncoherentes: return "Revisar respuestas incoherentes tras corregir"
         case .partSupervisionExposicion: return "Supervisión previa de trabajo expuesto"
         case .partAvisoLecturaVozAlta: return "Aviso previo para leer en voz alta"
         case .partTutoriasPersonalizadas: return "Tutorías personalizadas"
@@ -145,6 +147,7 @@ enum SupportMeasureTypeUI: String, CaseIterable, Identifiable {
         case .aprUbicacionAula: return "Ubicación en las primeras filas del aula, si es posible, para permitir contacto directo con el docente."
         case .aprCuadernosCaligrafia: return "Realización de cuadernos de caligrafía para conseguir una grafía legible."
         case .aprActividadesTic: return "Propuesta de actividades TIC que complementan lo trabajado en clase."
+        case .aprRevisionRespuestasIncoherentes: return "Tras corregir las pruebas, revisar con él las posibles respuestas incoherentes."
         case .partSupervisionExposicion: return "Supervisión previa del trabajo que vaya a ser expuesto en público (revisión de faltas de ortografía)."
         case .partAvisoLecturaVozAlta: return "Si tiene que leer en voz alta, se le avisará con antelación para que se lo prepare."
         case .partTutoriasPersonalizadas: return "Tutorías personalizadas."
@@ -164,6 +167,7 @@ enum SupportMeasureTypeUI: String, CaseIterable, Identifiable {
         case .aprReducirCopiaEnunciados: return "1.3 Actividades"
         case .aprLibretaCompartida, .aprLibretaExclusiva, .aprFotocopiasUnaCara, .aprSupervisionAgenda: return "1.4 Materiales didácticos"
         case .aprUbicacionAula, .aprCuadernosCaligrafia, .aprActividadesTic: return "2.10 Otros"
+        case .aprRevisionRespuestasIncoherentes: return "1.5 Pruebas e instrumentos de evaluación"
         case .partSupervisionExposicion, .partAvisoLecturaVozAlta: return "11. Otros"
         case .partTutoriasPersonalizadas: return "1. Tutorías personalizadas"
         case .flexPlanRepeticion: return "Permanencia un año más en el mismo curso"
@@ -180,6 +184,42 @@ enum SupportMeasureTypeUI: String, CaseIterable, Identifiable {
     /// Medidas Nivel III agrupadas por categoría, en el orden del catálogo docente.
     static func catalog(for group: SupportMeasureCatalogGroup) -> [SupportMeasureTypeUI] {
         allCases.filter { $0.catalogGroup == group }
+    }
+
+    /// Código corto del catálogo docente propio (columna "Código" de la hoja de
+    /// codificación ITACA del usuario). Solo se usa para emparejar columnas al
+    /// importar una tabla Excel; no tiene relación con el nombre persistido en KMP.
+    var catalogCode: String? {
+        switch self {
+        case .aprFormatoExamen: return "1y2"
+        case .aprRevisionExamen: return "3"
+        case .aprOrtografiaCV: return "4"
+        case .aprReducirCopiaEnunciados: return "5"
+        case .aprLibretaCompartida: return "6"
+        case .aprLibretaExclusiva: return "7"
+        case .aprFotocopiasUnaCara: return "8"
+        case .aprSupervisionAgenda: return "9"
+        case .aprUbicacionAula: return "10"
+        case .partSupervisionExposicion: return "11"
+        case .partAvisoLecturaVozAlta: return "12"
+        case .aprCuadernosCaligrafia: return "13"
+        case .aprActividadesTic: return "14"
+        case .aprRevisionRespuestasIncoherentes: return "15"
+        case .partTutoriasPersonalizadas: return "SIEMPRE"
+        case .flexPlanRepeticion: return "REPETICION"
+        default: return nil
+        }
+    }
+
+    /// Busca una medida Nivel III por su código corto del catálogo docente,
+    /// normalizando variantes habituales de Excel ("3", "3.0", "1 y 2", espacios).
+    static func fromCatalogCode(_ raw: String) -> SupportMeasureTypeUI? {
+        let normalized = raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: ".0", with: "")
+        return allCases.first { $0.catalogCode?.uppercased() == normalized }
     }
 }
 

@@ -90,6 +90,10 @@ private fun localDateOrNull(value: String?): LocalDate? {
     return value?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
 }
 
+private inline fun <reified T : Enum<T>> enumValueOfOrNull(value: String): T? {
+    return runCatching { enumValueOf<T>(value) }.getOrNull()
+}
+
 private fun academicYearStatusOrDefault(value: String): AcademicYearStatus {
     return runCatching { AcademicYearStatus.valueOf(value) }.getOrDefault(AcademicYearStatus.ACTIVE)
 }
@@ -1766,28 +1770,39 @@ class StudentSupportMeasureRepositorySqlDelight(
     private val db: AppDatabase,
 ) : StudentSupportMeasureRepository {
 
-    private fun rowToModel(row: com.migestor.data.db.SelectSupportMeasuresByStudent) = StudentSupportMeasure(
-        id = row.id,
-        studentId = row.student_id,
-        level = SupportMeasureLevel.valueOf(row.level),
-        measureType = SupportMeasureType.valueOf(row.measure_type),
-        startDate = LocalDate.parse(row.start_date_iso),
-        endDate = localDateOrNull(row.end_date_iso),
-        responsible = row.responsible,
-        intensity = row.intensity?.let { SupportMeasureIntensity.valueOf(it) },
-        followUpNotes = row.follow_up_notes,
-        documentRef = row.document_ref,
-        reviewDue = localDateOrNull(row.review_due_iso),
-        isActive = row.is_active != 0L,
-        trace = AuditTrace(
-            updatedAt = Instant.fromEpochMilliseconds(row.updated_at_epoch_ms),
-            deviceId = row.device_id,
-            syncVersion = row.sync_version,
+    /**
+     * `null` si la fila persiste un `level`/`measure_type`/`intensity` que ya no existe en el
+     * enum actual (p.ej. datos de una version anterior del catalogo). Se descarta en vez de
+     * lanzar: un `valueOf` fallido aqui cruzaria como excepcion Kotlin no capturada hacia Swift
+     * y crashearia la app entera al cargar la ficha del alumno.
+     */
+    private fun rowToModel(row: com.migestor.data.db.SelectSupportMeasuresByStudent): StudentSupportMeasure? {
+        val level = enumValueOfOrNull<SupportMeasureLevel>(row.level) ?: return null
+        val measureType = enumValueOfOrNull<SupportMeasureType>(row.measure_type) ?: return null
+        val intensity = row.intensity?.let { enumValueOfOrNull<SupportMeasureIntensity>(it) }
+        return StudentSupportMeasure(
+            id = row.id,
+            studentId = row.student_id,
+            level = level,
+            measureType = measureType,
+            startDate = LocalDate.parse(row.start_date_iso),
+            endDate = localDateOrNull(row.end_date_iso),
+            responsible = row.responsible,
+            intensity = intensity,
+            followUpNotes = row.follow_up_notes,
+            documentRef = row.document_ref,
+            reviewDue = localDateOrNull(row.review_due_iso),
+            isActive = row.is_active != 0L,
+            trace = AuditTrace(
+                updatedAt = Instant.fromEpochMilliseconds(row.updated_at_epoch_ms),
+                deviceId = row.device_id,
+                syncVersion = row.sync_version,
+            )
         )
-    )
+    }
 
     override suspend fun listByStudent(studentId: Long): List<StudentSupportMeasure> = withContext(Dispatchers.Default) {
-        db.appDatabaseQueries.selectSupportMeasuresByStudent(studentId).executeAsList().map(::rowToModel)
+        db.appDatabaseQueries.selectSupportMeasuresByStudent(studentId).executeAsList().mapNotNull(::rowToModel)
     }
 
     override suspend fun listActiveStudentIds(): Set<Long> = withContext(Dispatchers.Default) {

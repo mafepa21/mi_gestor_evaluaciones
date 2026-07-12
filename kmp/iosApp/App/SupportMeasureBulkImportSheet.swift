@@ -187,10 +187,17 @@ struct SupportMeasureBulkImportSheet: View {
     }
 
     private func importRow(_ row: SupportMeasureImportRow) -> some View {
+        let isExact: Bool
+        if case .exact = row.matchStatus { isExact = true } else { isExact = false }
+        let isSuggested = row.confirmedStudent != nil && !isExact
         let isConfirmed = row.confirmedStudent != nil
+
+        let icon = isExact ? "checkmark.circle.fill" : (isSuggested ? "sparkle.magnifyingglass" : "questionmark.circle")
+        let tint: Color = isExact ? .green : (isSuggested ? .blue : .orange)
+
         return HStack(alignment: .top, spacing: 12) {
-            Image(systemName: isConfirmed ? "checkmark.circle.fill" : "questionmark.circle")
-                .foregroundStyle(isConfirmed ? .green : .orange)
+            Image(systemName: icon)
+                .foregroundStyle(tint)
                 .font(.body)
                 .padding(.top, 2)
 
@@ -201,7 +208,12 @@ struct SupportMeasureBulkImportSheet: View {
                     if isConfirmed {
                         Text("→ \(row.confirmedStudent!.fullName)")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(isSuggested ? Color.blue : .secondary)
+                        if isSuggested {
+                            Text("Sugerido, revisa")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(.blue)
+                        }
                     }
                 }
 

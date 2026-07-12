@@ -41,6 +41,7 @@ struct StudentProfilesWorkspaceView: View {
     @State private var supportMeasures: [SupportMeasureRow] = []
     @State private var showSupportMeasureSheet = false
     @State private var showBulkImportSheet = false
+    @State private var showGroupOverviewSheet = false
 
     // MARK: - Computed
 
@@ -245,6 +246,13 @@ struct StudentProfilesWorkspaceView: View {
                         Image(systemName: "tablecells.badge.ellipsis")
                     }
                     .help("Importar medidas Nivel III desde Excel")
+
+                    Button {
+                        showGroupOverviewSheet = true
+                    } label: {
+                        Image(systemName: "list.bullet.clipboard")
+                    }
+                    .help("Ver medidas del grupo")
                 }
             }
         }
@@ -260,6 +268,13 @@ struct StudentProfilesWorkspaceView: View {
                 }
                 .environmentObject(bridge)
             }
+        }
+        .sheet(isPresented: $showGroupOverviewSheet) {
+            SupportMeasureGroupOverviewSheet(
+                className: studentsBridgeStore.classes.first(where: { $0.id == selectedClassId })?.name ?? "",
+                roster: studentsBridgeStore.studentsInClass
+            )
+            .environmentObject(bridge)
         }
     }
 

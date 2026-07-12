@@ -60,6 +60,7 @@
 		21BBC6052C42456A62FA3759 /* MiGestorKMPiOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20918D0AFE00F50C0378076 /* MiGestorKMPiOSApp.swift */; };
 		21EC372D555174E20612BAD5 /* PlannerWeekMiniatureGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DA915360711FBD27A37EB78 /* PlannerWeekMiniatureGrid.swift */; };
 		233E4313DEDDC02CD056C9CA /* AppleFoundationContextualAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14C238867D14FCB6C59390D5 /* AppleFoundationContextualAIService.swift */; };
+		24CE11CD926F694D56F3EAFA /* SupportMeasureGroupOverviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C58CFF01D452588EAF8D687 /* SupportMeasureGroupOverviewSheet.swift */; };
 		24D47EF106F8AC88D8F44F8C /* NotebookClassPickerComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 808AE922E0187FD7FAEA5FFC /* NotebookClassPickerComponents.swift */; };
 		25030D55953EC835EE1792DD /* NotebookGridContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BD759479FF5E71467F7276D /* NotebookGridContent.swift */; };
 		25BA7CFC8B77B20BCAEC638E /* MacPhysicalTestsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B928B856CB84C9E4660F8B34 /* MacPhysicalTestsView.swift */; };
@@ -334,6 +335,7 @@
 		E57E3C904B9CDBC822B90397 /* IOSPremiumComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ED9DC6173D7A4938D83F2BB /* IOSPremiumComponents.swift */; };
 		E64EA04DCC7A06BDC27D0058 /* ClassroomCaptureBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ECAFCB0C2D05856472D5371 /* ClassroomCaptureBar.swift */; };
 		E6A9F709A5AD263330C65E61 /* SyncSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAB655B4792B2C5FBB76245E /* SyncSettingsView.swift */; };
+		E6AB578A3AAF0FF71FC6ADE9 /* SupportMeasureGroupOverviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C58CFF01D452588EAF8D687 /* SupportMeasureGroupOverviewSheet.swift */; };
 		E6E3B11097E285CF5867AFEF /* QRCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9892E60A7CF035F7B78B081 /* QRCodeView.swift */; };
 		E70D189984C90A480D272DAF /* PlannerDayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A82B65C635417DCFDEB7318 /* PlannerDayView.swift */; };
 		E74AE25F006ADDD1045FE4F6 /* NotebookStudentInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 152F4A693C9E37077F51E2F8 /* NotebookStudentInspector.swift */; };
@@ -492,6 +494,7 @@
 		66C430BD4F07BF647679F179 /* SettingsWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWorkspaceView.swift; sourceTree = "<group>"; };
 		6AB9B92354A1345110A45747 /* MacAttendanceDayRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacAttendanceDayRow.swift; sourceTree = "<group>"; };
 		6B06388784ADA4E7EFF4FDB4 /* NotebookCompactCommandBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookCompactCommandBar.swift; sourceTree = "<group>"; };
+		6C58CFF01D452588EAF8D687 /* SupportMeasureGroupOverviewSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportMeasureGroupOverviewSheet.swift; sourceTree = "<group>"; };
 		6C5CD32E3DCC1B6E976B4C0A /* PhysicalNotebookColumnMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhysicalNotebookColumnMode.swift; sourceTree = "<group>"; };
 		6C68F4452792ADF072EDE900 /* MacBackupInspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacBackupInspectorView.swift; sourceTree = "<group>"; };
 		6CA5E3F32F725E60EF71507B /* AppleLifecycleNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleLifecycleNotifications.swift; sourceTree = "<group>"; };
@@ -864,6 +867,7 @@
 				964764E602D3B6EF684BD755 /* StudentImportSheet.swift */,
 				B8E171DE6E69C0B8DA060197 /* StudentProfilesWorkspaceView.swift */,
 				26E65AEB66C13E89107AA8BA /* SupportMeasureBulkImportSheet.swift */,
+				6C58CFF01D452588EAF8D687 /* SupportMeasureGroupOverviewSheet.swift */,
 				4DB5D8A7B19B0874750549A0 /* TeacherRadarCard.swift */,
 				A5D2A61B5FA1C890A91EB2D9 /* TeacherRadarDetailView.swift */,
 				A93FFE1CAA3FC3A0F8E74115 /* TeacherRadarGroupSummaryView.swift */,
@@ -1259,6 +1263,7 @@
 				BC2B7AE09356DAEE25AAB21B /* StudentProfilesWorkspaceView.swift in Sources */,
 				7F9DEC07FE3E26C70A7F8BAF /* SupportMeasureBulkImport.swift in Sources */,
 				3FF1BF0D16BF0F5C1BDD8354 /* SupportMeasureBulkImportSheet.swift in Sources */,
+				24CE11CD926F694D56F3EAFA /* SupportMeasureGroupOverviewSheet.swift in Sources */,
 				F8E257A5666B11DB4B5671AF /* SupportMeasureShared.swift in Sources */,
 				141D04C442E3CD9754436746 /* SyncEventListener.swift in Sources */,
 				C98B0AE6088C90E8B2E58EDB /* SyncPairingViews.swift in Sources */,
@@ -1433,6 +1438,7 @@
 				8A83E0FD7E5A964AAB5A36A1 /* StudentProfilesWorkspaceView.swift in Sources */,
 				04891C59ED32BF9061BB8EBF /* SupportMeasureBulkImport.swift in Sources */,
 				EBA60E4775B5E9606BA03D00 /* SupportMeasureBulkImportSheet.swift in Sources */,
+				E6AB578A3AAF0FF71FC6ADE9 /* SupportMeasureGroupOverviewSheet.swift in Sources */,
 				B0E826181DFA287ECBDB84D5 /* SupportMeasureShared.swift in Sources */,
 				8EBCBE31F6DB70B8CE3C1CE0 /* SyncEventListener.swift in Sources */,
 				7DDDABF8E1E3132870B7E44F /* SyncPairingViews.swift in Sources */,

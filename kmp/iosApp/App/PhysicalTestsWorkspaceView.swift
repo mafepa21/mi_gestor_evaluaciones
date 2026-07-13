@@ -1207,7 +1207,9 @@ struct PhysicalTestsWorkspaceView: View {
                 name: name,
                 kind: kind,
                 weight: weight,
-                description: description
+                description: description,
+                formula: evaluation.formula,
+                rubricId: evaluation.rubricId?.int64Value
             )
             bridge.status = "\(name) actualizada."
             await reload()

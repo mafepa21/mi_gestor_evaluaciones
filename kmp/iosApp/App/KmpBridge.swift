@@ -6919,7 +6919,9 @@ final class KmpBridge: ObservableObject {
         name: String,
         kind: String,
         weight: Double,
-        description: String?
+        description: String?,
+        formula: String? = nil,
+        rubricId: Int64? = nil
     ) async throws {
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
         _ = try await container.saveEvaluation.invoke(
@@ -6929,8 +6931,8 @@ final class KmpBridge: ObservableObject {
             name: name,
             type: "Prueba física · \(kind)",
             weight: weight,
-            formula: nil,
-            rubricId: nil,
+            formula: formula,
+            rubricId: kotlinLong(rubricId),
             description: description,
             updatedAtEpochMs: nowMs,
             deviceId: localDeviceId,
@@ -6947,8 +6949,8 @@ final class KmpBridge: ObservableObject {
                 "name": name,
                 "type": "Prueba física · \(kind)",
                 "weight": weight,
-                "formula": NSNull(),
-                "rubricId": NSNull(),
+                "formula": formula ?? NSNull(),
+                "rubricId": rubricId ?? NSNull(),
                 "description": description ?? NSNull()
             ]
         )

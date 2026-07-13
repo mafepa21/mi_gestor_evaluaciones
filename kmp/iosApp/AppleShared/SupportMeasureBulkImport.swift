@@ -43,6 +43,11 @@ struct SupportMeasureImportRow: Identifiable {
     let claseValue: String
     var matchStatus: SupportMeasureMatchStatus = .none
     var confirmedStudent: Student?
+    /// `true` solo cuando el docente ha confirmado explícitamente el alumno (coincidencia
+    /// exacta automática, o elección/confirmación manual en la UI). `confirmedStudent` puede
+    /// estar precargado (p.ej. `.suggested`) sin que esto sea `true` todavía: la fila no debe
+    /// importarse hasta que el docente lo confirme a mano.
+    var isManuallyConfirmed = false
     let measures: [SupportMeasureTypeUI]
     let notes: String
 }
@@ -224,6 +229,7 @@ enum SupportMeasureBulkImport {
             if let exact = roster.first(where: { normalizedTokens($0.fullName) == rawTokens }) {
                 row.matchStatus = .exact(exact)
                 row.confirmedStudent = exact
+                row.isManuallyConfirmed = true
                 return row
             }
 
@@ -235,7 +241,8 @@ enum SupportMeasureBulkImport {
                 row.matchStatus = .suggested(candidates)
                 // Precargado como punto de partida (el docente lo confirma o lo cambia en
                 // el desplegable); no se equipara a `.exact`, la fila sigue marcada como
-                // "sugerida" en la UI para que se revise antes de guardar.
+                // "sugerida" en la UI y `isManuallyConfirmed` queda en `false` hasta que el
+                // docente la confirme explícitamente — no se importa solo por estar precargada.
                 row.confirmedStudent = candidates.first
             }
             return row

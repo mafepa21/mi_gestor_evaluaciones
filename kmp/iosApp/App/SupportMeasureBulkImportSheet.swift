@@ -31,8 +31,8 @@ struct SupportMeasureBulkImportSheet: View {
         return result.rows.filter { $0.claseValue == claseFilter }
     }
 
-    private var confirmedCount: Int { visibleRows.filter { $0.confirmedStudent != nil }.count }
-    private var needsReviewCount: Int { visibleRows.filter { $0.confirmedStudent == nil }.count }
+    private var confirmedCount: Int { visibleRows.filter(\.isManuallyConfirmed).count }
+    private var needsReviewCount: Int { visibleRows.filter { !$0.isManuallyConfirmed }.count }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -162,7 +162,7 @@ struct SupportMeasureBulkImportSheet: View {
             }
 
             if needsReviewCount > 0 {
-                Label("Las filas sin alumno confirmado no se importarán. Elige el alumno correcto en el desplegable de cada fila.", systemImage: "person.crop.circle.badge.questionmark")
+                Label("Las filas sin confirmar no se importarán. Pulsa \"Confirmar\" o elige el alumno correcto en el desplegable de cada fila.", systemImage: "person.crop.circle.badge.questionmark")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -192,8 +192,8 @@ struct SupportMeasureBulkImportSheet: View {
         let isSuggested = row.confirmedStudent != nil && !isExact
         let isConfirmed = row.confirmedStudent != nil
 
-        let icon = isExact ? "checkmark.circle.fill" : (isSuggested ? "sparkle.magnifyingglass" : "questionmark.circle")
-        let tint: Color = isExact ? .green : (isSuggested ? .blue : .orange)
+        let icon = row.isManuallyConfirmed ? "checkmark.circle.fill" : (isSuggested ? "sparkle.magnifyingglass" : "questionmark.circle")
+        let tint: Color = row.isManuallyConfirmed ? .green : (isSuggested ? .blue : .orange)
 
         return HStack(alignment: .top, spacing: 12) {
             Image(systemName: icon)
@@ -208,8 +208,8 @@ struct SupportMeasureBulkImportSheet: View {
                     if isConfirmed {
                         Text("→ \(row.confirmedStudent!.fullName)")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(isSuggested ? Color.blue : .secondary)
-                        if isSuggested {
+                            .foregroundStyle(isSuggested && !row.isManuallyConfirmed ? Color.blue : .secondary)
+                        if isSuggested && !row.isManuallyConfirmed {
                             Text("Sugerido, revisa")
                                 .font(.caption2.weight(.bold))
                                 .foregroundStyle(.blue)
@@ -217,7 +217,19 @@ struct SupportMeasureBulkImportSheet: View {
                     }
                 }
 
-                studentPicker(for: row)
+                HStack(spacing: 8) {
+                    studentPicker(for: row)
+                    if isConfirmed && !row.isManuallyConfirmed {
+                        Button {
+                            confirmSuggestedStudent(for: row.id)
+                        } label: {
+                            Label("Confirmar", systemImage: "checkmark")
+                        }
+                        .font(.caption.weight(.semibold))
+                        .buttonStyle(.borderedProminent)
+                        .tint(.blue)
+                    }
+                }
 
                 if !row.measures.isEmpty {
                     WorkspaceFlowLayout(spacing: 6) {
@@ -288,6 +300,14 @@ struct SupportMeasureBulkImportSheet: View {
     private func setConfirmedStudent(_ student: Student?, for rowID: UUID) {
         guard let index = result?.rows.firstIndex(where: { $0.id == rowID }) else { return }
         result?.rows[index].confirmedStudent = student
+        result?.rows[index].isManuallyConfirmed = student != nil
+    }
+
+    /// Confirma la sugerencia precargada por el emparejador (nombre/apellidos abreviados)
+    /// sin abrir el desplegable, para el caso feliz en el que la sugerencia es correcta.
+    private func confirmSuggestedStudent(for rowID: UUID) {
+        guard let index = result?.rows.firstIndex(where: { $0.id == rowID }) else { return }
+        result?.rows[index].isManuallyConfirmed = result?.rows[index].confirmedStudent != nil
     }
 
     private var footer: some View {
@@ -347,9 +367,32 @@ struct SupportMeasureBulkImportSheet: View {
         defer { isImporting = false }
 
         let nowIso = AppDateTimeSupport.isoDateFormatter.string(from: Date())
+        var savedCount = 0
+        var skippedCount = 0
+        var failedCount = 0
+        var lastError: String?
+
+        // Evita duplicar medidas si el docente reimporta el mismo Excel (o una versión
+        // actualizada) más de una vez: se consultan las medidas Nivel III ya activas por
+        // alumno antes de guardar, y se omite cualquier tipo que ya esté registrado.
+        var activeMeasuresByStudent: [Int64: Set<SupportMeasureTypeUI>] = [:]
+        func activeMeasureTypes(for studentId: Int64) async -> Set<SupportMeasureTypeUI> {
+            if let cached = activeMeasuresByStudent[studentId] { return cached }
+            let existing = ((try? await bridge.supportMeasures(for: studentId)) ?? [])
+                .filter { $0.isActive && $0.level == .iii }
+            let types = Set(existing.map(\.measureType))
+            activeMeasuresByStudent[studentId] = types
+            return types
+        }
+
         for row in visibleRows {
-            guard let student = row.confirmedStudent else { continue }
+            guard row.isManuallyConfirmed, let student = row.confirmedStudent else { continue }
+            let alreadyActive = await activeMeasureTypes(for: student.id)
             for measure in row.measures {
+                if alreadyActive.contains(measure) {
+                    skippedCount += 1
+                    continue
+                }
                 var draft = SupportMeasureDraft(
                     studentId: student.id,
                     level: .iii,
@@ -357,10 +400,33 @@ struct SupportMeasureBulkImportSheet: View {
                     startDateIso: nowIso
                 )
                 draft.followUpNotes = row.notes
-                _ = try? await bridge.saveSupportMeasure(draft: draft)
+                do {
+                    _ = try await bridge.saveSupportMeasure(draft: draft)
+                    savedCount += 1
+                    activeMeasuresByStudent[student.id]?.insert(measure)
+                } catch {
+                    failedCount += 1
+                    lastError = error.localizedDescription
+                }
             }
         }
-        onImported()
+
+        if savedCount > 0 {
+            onImported()
+        }
+
+        if failedCount > 0 {
+            var message = "Se han guardado \(savedCount) medidas; \(failedCount) han fallado."
+            if let lastError { message += " Último error: \(lastError)" }
+            if skippedCount > 0 { message += " (\(skippedCount) omitidas por estar ya registradas.)" }
+            errorMessage = message
+            return
+        }
+
+        if skippedCount > 0 {
+            bridge.status = "\(savedCount) medidas importadas, \(skippedCount) omitidas por estar ya registradas."
+        }
+
         dismiss()
     }
 }

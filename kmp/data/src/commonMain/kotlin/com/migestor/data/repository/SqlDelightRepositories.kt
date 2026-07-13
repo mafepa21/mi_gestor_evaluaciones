@@ -1828,25 +1828,45 @@ class StudentSupportMeasureRepositorySqlDelight(
         syncVersion: Long,
     ): Long = withContext(Dispatchers.Default) {
         db.transactionWithResult {
-            db.appDatabaseQueries.upsertSupportMeasure(
-                id,
-                studentId,
-                level.name,
-                measureType.name,
-                startDateIso,
-                endDateIso,
-                responsible,
-                intensity?.name,
-                followUpNotes,
-                documentRef,
-                reviewDueIso,
-                if (isActive) 1 else 0,
-                createdAtEpochMs,
-                updatedAtEpochMs,
-                deviceId,
-                syncVersion,
-            )
-            id ?: db.appDatabaseQueries.lastInsertedId().executeAsOne()
+            if (id != null) {
+                // UPDATE en el sitio de los campos editables: preserva created_at_epoch_ms y
+                // el estado de retirada (end_date_iso/is_active) de la fila existente en vez
+                // de machacarlos con los valores por defecto que envia el bridge al editar.
+                db.appDatabaseQueries.updateSupportMeasure(
+                    level.name,
+                    measureType.name,
+                    startDateIso,
+                    responsible,
+                    intensity?.name,
+                    followUpNotes,
+                    documentRef,
+                    reviewDueIso,
+                    updatedAtEpochMs,
+                    deviceId,
+                    id,
+                )
+                id
+            } else {
+                db.appDatabaseQueries.upsertSupportMeasure(
+                    null,
+                    studentId,
+                    level.name,
+                    measureType.name,
+                    startDateIso,
+                    endDateIso,
+                    responsible,
+                    intensity?.name,
+                    followUpNotes,
+                    documentRef,
+                    reviewDueIso,
+                    if (isActive) 1 else 0,
+                    createdAtEpochMs,
+                    updatedAtEpochMs,
+                    deviceId,
+                    syncVersion,
+                )
+                db.appDatabaseQueries.lastInsertedId().executeAsOne()
+            }
         }
     }
 

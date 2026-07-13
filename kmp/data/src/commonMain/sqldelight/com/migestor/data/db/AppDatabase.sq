@@ -1243,6 +1243,16 @@ upsertSupportMeasure:
 INSERT OR REPLACE INTO student_support_measures(id, student_id, level, measure_type, start_date_iso, end_date_iso, responsible, intensity, follow_up_notes, document_ref, review_due_iso, is_active, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
+-- A diferencia de upsertSupportMeasure (INSERT OR REPLACE, solo para altas), esto
+-- actualiza en el sitio los campos editables sin tocar created_at_epoch_ms ni el estado
+-- de retirada (end_date_iso/is_active): editar una medida no debe resetear su fecha de
+-- alta ni reactivar una medida ya retirada. sync_version se incrementa siempre para
+-- mantener la monotonia que usa la sincronizacion.
+updateSupportMeasure:
+UPDATE student_support_measures
+SET level = ?, measure_type = ?, start_date_iso = ?, responsible = ?, intensity = ?, follow_up_notes = ?, document_ref = ?, review_due_iso = ?, updated_at_epoch_ms = ?, device_id = ?, sync_version = sync_version + 1
+WHERE id = ?;
+
 retireSupportMeasure:
 UPDATE student_support_measures
 SET is_active = 0, end_date_iso = ?, updated_at_epoch_ms = ?, device_id = ?, sync_version = sync_version + 1

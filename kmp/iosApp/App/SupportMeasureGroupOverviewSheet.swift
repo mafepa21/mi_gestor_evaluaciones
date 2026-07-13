@@ -193,12 +193,23 @@ struct SupportMeasureGroupOverviewSheet: View {
     @MainActor
     private func loadMeasures() async {
         isLoading = true
-        var result: [Int64: [SupportMeasureRow]] = [:]
-        for student in roster {
-            let snapshots = (try? await bridge.supportMeasures(for: student.id)) ?? []
-            result[student.id] = snapshots.map(\.asRow).filter(\.isActive)
+        // Lanza una consulta por alumno en paralelo en vez de esperarlas en serie: con un
+        // grupo de 30 alumnos, esto son 30 round-trips secuenciales al bridge si se hace uno
+        // a uno.
+        let entries: [(Int64, [SupportMeasureRow])] = await withTaskGroup(of: (Int64, [SupportMeasureRow]).self) { group in
+            for student in roster {
+                group.addTask {
+                    let snapshots = (try? await bridge.supportMeasures(for: student.id)) ?? []
+                    return (student.id, snapshots.map(\.asRow).filter(\.isActive))
+                }
+            }
+            var collected: [(Int64, [SupportMeasureRow])] = []
+            for await entry in group {
+                collected.append(entry)
+            }
+            return collected
         }
-        activeMeasuresByStudent = result
+        activeMeasuresByStudent = Dictionary(uniqueKeysWithValues: entries)
         isLoading = false
     }
 }

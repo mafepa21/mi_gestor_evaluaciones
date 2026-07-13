@@ -67,7 +67,12 @@ extension PlannerWorkspaceViewModel {
 
     func deleteSession(_ session: PlanningSession) async {
         guard let bridge else { return }
-        try? await bridge.plannerDeleteSession(sessionId: session.id)
+        do {
+            try await bridge.plannerDeleteSession(sessionId: session.id)
+        } catch {
+            bulkSummary = "No se pudo eliminar la sesión: \(error.localizedDescription)"
+            return
+        }
         selectedSessionIds.remove(session.id)
         if selectedSession?.id == session.id {
             selectedSession = nil

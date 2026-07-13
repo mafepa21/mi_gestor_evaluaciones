@@ -950,11 +950,13 @@ struct SupportMeasureFormSheet: View {
     @State private var documentRef = ""
     @State private var hasReviewDue = true
     @State private var reviewDueDate = Calendar.current.date(byAdding: .year, value: 1, to: Date()) ?? Date()
+    @State private var errorMessage: String?
+    @State private var isSaving = false
 
     private var isEditing: Bool { existingMeasure != nil }
 
     private var canSave: Bool {
-        if isEditing { return true }
+        guard !isSaving else { return false }
         return level == .iii ? !selectedTypesIII.isEmpty : true
     }
 
@@ -1050,6 +1052,14 @@ struct SupportMeasureFormSheet: View {
             }
         }
         .onAppear(perform: prefillFromExistingMeasure)
+        .alert("No se pudo guardar", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("Aceptar", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
+        }
     }
 
     private func prefillFromExistingMeasure() {
@@ -1106,9 +1116,12 @@ struct SupportMeasureFormSheet: View {
     }
 
     private func draft(for type: SupportMeasureTypeUI) -> SupportMeasureDraft {
+        // El nivel se deriva siempre del tipo elegido (no del segmento `level` del picker):
+        // así es imposible persistir una fila cuyo `level` contradiga `measureType.level`
+        // aunque la UI quede momentáneamente desincronizada (p.ej. al cambiar de segmento).
         var draft = SupportMeasureDraft(
             studentId: studentId,
-            level: level,
+            level: type.level,
             measureType: type,
             startDateIso: AppDateTimeSupport.isoDateFormatter.string(from: startDate)
         )
@@ -1121,20 +1134,25 @@ struct SupportMeasureFormSheet: View {
     }
 
     private func save() {
+        guard canSave else { return }
+        isSaving = true
         Task {
-            if let existingMeasure {
-                let type = level == .iii ? (selectedTypesIII.first ?? existingMeasure.measureType) : measureTypeIV
-                _ = try? await bridge.saveSupportMeasure(id: existingMeasure.id, draft: draft(for: type))
+            defer { isSaving = false }
+            do {
+                if let existingMeasure {
+                    let type = level == .iii ? (selectedTypesIII.first ?? existingMeasure.measureType) : measureTypeIV
+                    _ = try await bridge.saveSupportMeasure(id: existingMeasure.id, draft: draft(for: type))
+                } else {
+                    let types: [SupportMeasureTypeUI] = level == .iii ? Array(selectedTypesIII) : [measureTypeIV]
+                    for type in types {
+                        _ = try await bridge.saveSupportMeasure(draft: draft(for: type))
+                    }
+                }
                 onSaved()
                 dismiss()
-                return
+            } catch {
+                errorMessage = "No se pudo guardar la medida: \(error.localizedDescription)"
             }
-            let types: [SupportMeasureTypeUI] = level == .iii ? Array(selectedTypesIII) : [measureTypeIV]
-            for type in types {
-                _ = try? await bridge.saveSupportMeasure(draft: draft(for: type))
-            }
-            onSaved()
-            dismiss()
         }
     }
 }

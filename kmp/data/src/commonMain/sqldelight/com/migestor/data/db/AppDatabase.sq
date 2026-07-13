@@ -1248,6 +1248,9 @@ UPDATE student_support_measures
 SET is_active = 0, end_date_iso = ?, updated_at_epoch_ms = ?, device_id = ?, sync_version = sync_version + 1
 WHERE id = ?;
 
+deleteSupportMeasure:
+DELETE FROM student_support_measures WHERE id = ?;
+
 selectBackupEntries:
 SELECT id, path, created_at_epoch_ms, platform, size_bytes
 FROM backup_entries
@@ -1449,6 +1452,9 @@ INSERT OR REPLACE INTO incidents(
     id, class_id, student_id, title, detail, severity, date_epoch_ms, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
 )
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteIncident:
+DELETE FROM incidents WHERE id = ?;
 
 selectEventsByClass:
 SELECT id, class_id, title, description, start_epoch_ms, end_epoch_ms, external_provider, external_id, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version

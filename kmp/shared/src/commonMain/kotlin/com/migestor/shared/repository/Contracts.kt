@@ -611,6 +611,7 @@ interface StudentSupportMeasureRepository {
         syncVersion: Long = 0,
     ): Long
     suspend fun retire(id: Long, endDateIso: String, updatedAtEpochMs: Long = 0, deviceId: String? = null)
+    suspend fun delete(id: Long)
 }
 
 interface CompetenciesRepository {
@@ -646,6 +647,7 @@ interface IncidentsRepository {
         deviceId: String? = null,
         syncVersion: Long = 0,
     ): Long
+    suspend fun deleteIncident(id: Long)
 }
 
 interface CalendarRepository {

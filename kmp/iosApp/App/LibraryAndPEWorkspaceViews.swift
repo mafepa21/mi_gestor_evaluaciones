@@ -311,6 +311,8 @@ struct EFIncidentsWorkspaceView: View {
     @State var selectedIncidentId: Int64?
     @State var metadata: [PEIncidentMetadata] = storedItems(forKey: peIncidentMetadataStorageKey, as: PEIncidentMetadata.self)
     @State var showingCreateSheet = false
+    @State var pendingDeleteIncident: Incident?
+    @State var editingIncident: Incident?
 
     var availableFilters: [String] {
         ["Todas", "Lesión", "Seguridad", "Conducta", "Material", "Equipación", "Críticas"]
@@ -396,6 +398,22 @@ struct EFIncidentsWorkspaceView: View {
             }
             .environmentObject(bridge)
         }
+        .sheet(
+            isPresented: Binding(
+                get: { editingIncident != nil },
+                set: { if !$0 { editingIncident = nil } }
+            )
+        ) {
+            if let editingIncident {
+                EditPEIncidentSheet(
+                    incident: editingIncident,
+                    category: metadata.first(where: { $0.id == editingIncident.id })?.category ?? incidentCategory(for: editingIncident),
+                    categories: ["Lesión", "Seguridad", "Conducta", "Material", "Equipación"]
+                ) { title, detail, severity, category in
+                    Task { await updateIncident(editingIncident, title: title, detail: detail, severity: severity, category: category) }
+                }
+            }
+        }
         .appOnChange(of: selectedClassId) { _ in
             Task { await reload() }
         }
@@ -408,6 +426,23 @@ struct EFIncidentsWorkspaceView: View {
             if selectedIncidentId == nil || !filteredIncidents.contains(where: { $0.id == selectedIncidentId }) {
                 selectedIncidentId = filteredIncidents.first?.id
             }
+        }
+        .confirmationDialog(
+            "Eliminar incidencia",
+            isPresented: Binding(
+                get: { pendingDeleteIncident != nil },
+                set: { if !$0 { pendingDeleteIncident = nil } }
+            ),
+            presenting: pendingDeleteIncident
+        ) { incident in
+            Button("Eliminar \(incident.title)", role: .destructive) {
+                Task { await deleteIncident(incident) }
+            }
+            Button("Cancelar", role: .cancel) {
+                pendingDeleteIncident = nil
+            }
+        } message: { _ in
+            Text("Se eliminará la incidencia y su seguimiento asociado.")
         }
     }
 
@@ -471,6 +506,29 @@ struct EFIncidentsWorkspaceView: View {
                     .padding(.vertical, 4)
                 }
                 .buttonStyle(.plain)
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    Button("Eliminar", role: .destructive) {
+                        pendingDeleteIncident = incident
+                    }
+                }
+                .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                    Button("Editar") {
+                        editingIncident = incident
+                    }
+                    .tint(.blue)
+                }
+                .contextMenu {
+                    Button {
+                        editingIncident = incident
+                    } label: {
+                        Label("Editar incidencia", systemImage: "pencil")
+                    }
+                    Button(role: .destructive) {
+                        pendingDeleteIncident = incident
+                    } label: {
+                        Label("Eliminar incidencia", systemImage: "trash")
+                    }
+                }
             }
             .listStyle(.plain)
         }
@@ -586,6 +644,46 @@ struct EFIncidentsWorkspaceView: View {
         incidents = (try? await bridge.incidents(for: selectedClassId)) ?? []
         if selectedIncidentId == nil || !incidents.contains(where: { $0.id == selectedIncidentId }) {
             selectedIncidentId = filteredIncidents.first?.id ?? incidents.first?.id
+        }
+    }
+
+    @MainActor
+    func deleteIncident(_ incident: Incident) async {
+        pendingDeleteIncident = nil
+        do {
+            try await bridge.deleteIncident(id: incident.id)
+            metadata.removeAll { $0.id == incident.id }
+            persistItems(metadata, forKey: peIncidentMetadataStorageKey)
+            await reload()
+        } catch {
+            bridge.status = "No se pudo eliminar la incidencia: \(error.localizedDescription)"
+        }
+    }
+
+    @MainActor
+    func updateIncident(_ incident: Incident, title: String, detail: String, severity: String, category: String) async {
+        editingIncident = nil
+        do {
+            try await bridge.updateIncident(
+                id: incident.id,
+                classId: incident.classId,
+                studentId: incident.studentId?.int64Value,
+                title: title,
+                detail: detail,
+                severity: severity,
+                dateEpochMs: Int64(incident.date.epochSeconds) * 1000
+            )
+            if var entry = metadata.first(where: { $0.id == incident.id }) {
+                entry.category = category
+                metadata.removeAll { $0.id == incident.id }
+                metadata.append(entry)
+            } else {
+                metadata.append(PEIncidentMetadata(id: incident.id, category: category, workflowState: .open, sessionId: nil, followUpNote: ""))
+            }
+            persistItems(metadata, forKey: peIncidentMetadataStorageKey)
+            await reload()
+        } catch {
+            bridge.status = "No se pudo actualizar la incidencia: \(error.localizedDescription)"
         }
     }
 
@@ -913,6 +1011,7 @@ struct PEMaterialWorkspaceView: View {
     @State var records: [PEMaterialRecord] = storedItems(forKey: peMaterialStorageKey, as: PEMaterialRecord.self)
     @State var selectedRecordId: UUID?
     @State var showingCreateSheet = false
+    @State var editingRecord: PEMaterialRecord?
 
     var filteredRecords: [PEMaterialRecord] {
         let scoped = selectedClassId.map { classId in
@@ -958,6 +1057,23 @@ struct PEMaterialWorkspaceView: View {
             }
             .environmentObject(bridge)
         }
+        .sheet(
+            isPresented: Binding(
+                get: { editingRecord != nil },
+                set: { if !$0 { editingRecord = nil } }
+            )
+        ) {
+            if let editingRecord {
+                CreatePEMaterialRecordSheet(defaultClassId: selectedClassId, sessions: sessions, existingRecord: editingRecord) { record in
+                    records.removeAll { $0.id == record.id }
+                    records.append(record)
+                    persistItems(records, forKey: peMaterialStorageKey)
+                    selectedRecordId = record.id
+                    Task { await reload() }
+                }
+                .environmentObject(bridge)
+            }
+        }
         .appOnChange(of: selectedClassId) { _ in
             Task { await reload() }
         }
@@ -998,10 +1114,41 @@ struct PEMaterialWorkspaceView: View {
                     .padding(.vertical, 4)
                 }
                 .buttonStyle(.plain)
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    Button("Eliminar", role: .destructive) {
+                        deleteMaterialRecord(record)
+                    }
+                }
+                .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                    Button("Editar") {
+                        editingRecord = record
+                    }
+                    .tint(.blue)
+                }
+                .contextMenu {
+                    Button {
+                        editingRecord = record
+                    } label: {
+                        Label("Editar material", systemImage: "pencil")
+                    }
+                    Button(role: .destructive) {
+                        deleteMaterialRecord(record)
+                    } label: {
+                        Label("Eliminar material", systemImage: "trash")
+                    }
+                }
             }
             .listStyle(.plain)
         }
         .background(appMutedCardBackground(for: colorScheme))
+    }
+
+    private func deleteMaterialRecord(_ record: PEMaterialRecord) {
+        records.removeAll { $0.id == record.id }
+        persistItems(records, forKey: peMaterialStorageKey)
+        if selectedRecordId == record.id {
+            selectedRecordId = filteredRecords.first?.id
+        }
     }
 
     private var materialDetailPane: some View {
@@ -1084,6 +1231,7 @@ struct PETournamentsWorkspaceView: View {
     @State var selectedMatchId: UUID?
     @State var showingCreateSheet = false
     @State var showingBoardScreen = false
+    @State var editingTournamentId: UUID?
 
     var scopedTournaments: [TournamentViewState] {
         tournaments
@@ -1139,6 +1287,16 @@ struct PETournamentsWorkspaceView: View {
             }
             .environmentObject(bridge)
         }
+        .sheet(
+            isPresented: Binding(
+                get: { editingTournamentId != nil },
+                set: { if !$0 { editingTournamentId = nil } }
+            )
+        ) {
+            if let editingTournamentId, let binding = tournamentBinding(for: editingTournamentId) {
+                EditTournamentSheet(tournament: binding)
+            }
+        }
         .appFullScreenCover(isPresented: $showingBoardScreen) {
             if let selectedTournament, let binding = tournamentBinding(for: selectedTournament.id) {
                 TournamentBoardScreen(
@@ -1185,12 +1343,44 @@ struct PETournamentsWorkspaceView: View {
                             .padding(.vertical, 4)
                         }
                         .buttonStyle(.plain)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button("Eliminar", role: .destructive) {
+                                deleteTournament(tournament)
+                            }
+                        }
+                        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                            Button("Editar") {
+                                editingTournamentId = tournament.id
+                            }
+                            .tint(.blue)
+                        }
+                        .contextMenu {
+                            Button {
+                                editingTournamentId = tournament.id
+                            } label: {
+                                Label("Editar torneo", systemImage: "pencil")
+                            }
+                            Button(role: .destructive) {
+                                deleteTournament(tournament)
+                            } label: {
+                                Label("Eliminar torneo", systemImage: "trash")
+                            }
+                        }
                     }
                 }
             }
             .listStyle(.plain)
         }
         .background(appMutedCardBackground(for: colorScheme))
+    }
+
+    private func deleteTournament(_ tournament: TournamentViewState) {
+        tournaments.removeAll { $0.id == tournament.id }
+        persistItems(tournaments, forKey: peTournamentStorageKey)
+        if selectedTournamentId == tournament.id {
+            selectedTournamentId = scopedTournaments.first?.id
+            selectedMatchId = selectedTournament?.matches.first?.id
+        }
     }
 
     private var tournamentMatchesPane: some View {

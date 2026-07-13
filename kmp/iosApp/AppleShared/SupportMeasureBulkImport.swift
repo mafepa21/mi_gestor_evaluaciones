@@ -166,7 +166,10 @@ enum SupportMeasureBulkImport {
             if let otrasColumn, otrasColumn < row.count {
                 let value = row[otrasColumn].trimmingCharacters(in: .whitespacesAndNewlines)
                 if !value.isEmpty {
-                    if value.uppercased() == "REPETICION", let measure = SupportMeasureTypeUI.fromCatalogCode("REPETICION") {
+                    // folding quita el acento de "Repetición" (grafía real en español) para que
+                    // coincida con el código del catálogo "REPETICION", sin acento.
+                    let normalizedValue = value.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "es_ES")).uppercased()
+                    if normalizedValue == "REPETICION", let measure = SupportMeasureTypeUI.fromCatalogCode("REPETICION") {
                         selectedMeasures.append(measure)
                     } else {
                         noteParts.append("Otras medidas: \(value)")

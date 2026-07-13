@@ -214,11 +214,15 @@ enum SupportMeasureTypeUI: String, CaseIterable, Identifiable {
     /// Busca una medida Nivel III por su código corto del catálogo docente,
     /// normalizando variantes habituales de Excel ("3", "3.0", "1 y 2", espacios).
     static func fromCatalogCode(_ raw: String) -> SupportMeasureTypeUI? {
-        let normalized = raw
+        var normalized = raw
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .uppercased()
             .replacingOccurrences(of: " ", with: "")
-            .replacingOccurrences(of: ".0", with: "")
+        // Solo el sufijo decimal que añade Excel a un entero ("3.0" -> "3"), no cualquier
+        // ocurrencia de ".0" dentro del código (evitaría que "1.05" se convirtiera en "15").
+        if normalized.hasSuffix(".0") {
+            normalized.removeLast(2)
+        }
         return allCases.first { $0.catalogCode?.uppercased() == normalized }
     }
 }

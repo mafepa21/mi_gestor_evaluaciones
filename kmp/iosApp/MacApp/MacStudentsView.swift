@@ -48,6 +48,7 @@ struct MacStudentsView: View {
 
     @State private var showingStudentFileImporter = false
     @State private var showSupportMeasureSheet = false
+    @State private var editingSupportMeasure: SupportMeasureRow?
     @State private var showBulkImportSheet = false
     @State private var showGroupOverviewSheet = false
     @State private var studentImportPreview: AppleStudentImportPreview?
@@ -213,6 +214,19 @@ struct MacStudentsView: View {
         .sheet(isPresented: $showSupportMeasureSheet) {
             if let studentId = store.localSelectedStudentId ?? selectedRow?.id {
                 SupportMeasureFormSheet(studentId: studentId) {
+                    loadProfileForSelection(studentId)
+                }
+                .environmentObject(bridge)
+            }
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { editingSupportMeasure != nil },
+                set: { if !$0 { editingSupportMeasure = nil } }
+            )
+        ) {
+            if let studentId = store.localSelectedStudentId ?? selectedRow?.id, let editingSupportMeasure {
+                SupportMeasureFormSheet(studentId: studentId, existingMeasure: editingSupportMeasure) {
                     loadProfileForSelection(studentId)
                 }
                 .environmentObject(bridge)
@@ -742,6 +756,12 @@ struct MacStudentsView: View {
             }
             Spacer()
             if measure.isActive {
+                Button("Editar") {
+                    editingSupportMeasure = measure
+                }
+                .font(.caption.weight(.bold))
+                .buttonStyle(.borderless)
+
                 Button("Retirar") {
                     Task { await retireSupportMeasure(measure) }
                 }
@@ -751,6 +771,20 @@ struct MacStudentsView: View {
         }
         .padding(10)
         .background(MacAppStyle.subtleFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .contextMenu {
+            if measure.isActive {
+                Button {
+                    editingSupportMeasure = measure
+                } label: {
+                    Label("Editar medida", systemImage: "pencil")
+                }
+            }
+            Button(role: .destructive) {
+                Task { await deleteSupportMeasure(measure) }
+            } label: {
+                Label("Eliminar medida", systemImage: "trash")
+            }
+        }
     }
 
     @MainActor
@@ -763,6 +797,16 @@ struct MacStudentsView: View {
             loadProfileForSelection(measure.studentId)
         } catch {
             store.profileErrorMessage = "No se pudo retirar la medida: \(error.localizedDescription)"
+        }
+    }
+
+    @MainActor
+    private func deleteSupportMeasure(_ measure: SupportMeasureRow) async {
+        do {
+            try await bridge.deleteSupportMeasure(id: measure.id)
+            loadProfileForSelection(measure.studentId)
+        } catch {
+            store.profileErrorMessage = "No se pudo eliminar la medida: \(error.localizedDescription)"
         }
     }
 

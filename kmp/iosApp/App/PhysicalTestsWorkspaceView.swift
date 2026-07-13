@@ -167,6 +167,8 @@ struct PhysicalTestsWorkspaceView: View {
     @State private var showingCreateSheet = false
     @State private var showingCapture = false
     @State private var showingScaleEditor = false
+    @State private var pendingDeleteTest: KmpBridge.PhysicalTestSnapshot?
+    @State private var editingTest: KmpBridge.PhysicalTestSnapshot?
     @State private var definitions: [MiGestorKit.PhysicalTestDefinition] = []
     @State private var batteries: [MiGestorKit.PhysicalTestBattery] = []
     @State private var batteryName = "Condición física inicial"
@@ -942,10 +944,63 @@ struct PhysicalTestsWorkspaceView: View {
                             .foregroundStyle(.secondary)
                     }
                     .tag(Optional(test.evaluation.id))
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button("Eliminar", role: .destructive) {
+                            pendingDeleteTest = test
+                        }
+                        .tint(IOSAppStyle.danger)
+                    }
+                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                        Button("Editar") {
+                            editingTest = test
+                        }
+                        .tint(.blue)
+                    }
+                    .contextMenu {
+                        Button {
+                            editingTest = test
+                        } label: {
+                            Label("Editar prueba", systemImage: "pencil")
+                        }
+                        Button(role: .destructive) {
+                            pendingDeleteTest = test
+                        } label: {
+                            Label("Eliminar prueba", systemImage: "trash")
+                        }
+                    }
                 }
             }
         }
         .listStyle(.sidebar)
+        .sheet(
+            isPresented: Binding(
+                get: { editingTest != nil },
+                set: { if !$0 { editingTest = nil } }
+            )
+        ) {
+            if let editingTest {
+                PhysicalTestEditSheet(test: editingTest) { name, weight, description in
+                    Task { await updatePhysicalTest(editingTest, name: name, weight: weight, description: description) }
+                }
+            }
+        }
+        .confirmationDialog(
+            "Eliminar prueba física",
+            isPresented: Binding(
+                get: { pendingDeleteTest != nil },
+                set: { if !$0 { pendingDeleteTest = nil } }
+            ),
+            presenting: pendingDeleteTest
+        ) { test in
+            Button("Eliminar \(test.evaluation.name)", role: .destructive) {
+                Task { await deletePhysicalTest(test) }
+            }
+            Button("Cancelar", role: .cancel) {
+                pendingDeleteTest = nil
+            }
+        } message: { test in
+            Text("Se eliminará \(test.evaluation.name) y todas sus marcas registradas.")
+        }
     }
 
     private var searchField: some View {
@@ -1121,6 +1176,43 @@ struct PhysicalTestsWorkspaceView: View {
             await reload()
         } catch {
             bridge.status = "No se pudo crear la prueba física: \(error.localizedDescription)"
+        }
+    }
+
+    @MainActor
+    private func deletePhysicalTest(_ test: KmpBridge.PhysicalTestSnapshot) async {
+        pendingDeleteTest = nil
+        do {
+            try await bridge.deletePhysicalTest(evaluationId: test.evaluation.id)
+            if selectedTestId == test.evaluation.id {
+                selectedTestId = nil
+            }
+            bridge.status = "\(test.evaluation.name) eliminada."
+            await reload()
+        } catch {
+            bridge.status = "No se pudo eliminar la prueba física: \(error.localizedDescription)"
+        }
+    }
+
+    @MainActor
+    private func updatePhysicalTest(_ test: KmpBridge.PhysicalTestSnapshot, name: String, weight: Double, description: String?) async {
+        editingTest = nil
+        let evaluation = test.evaluation
+        let kind = evaluation.type.components(separatedBy: " · ").last ?? evaluation.type
+        do {
+            try await bridge.updatePhysicalTest(
+                evaluationId: evaluation.id,
+                classId: evaluation.classId,
+                code: evaluation.code,
+                name: name,
+                kind: kind,
+                weight: weight,
+                description: description
+            )
+            bridge.status = "\(name) actualizada."
+            await reload()
+        } catch {
+            bridge.status = "No se pudo actualizar la prueba física: \(error.localizedDescription)"
         }
     }
 
@@ -1960,6 +2052,65 @@ private struct PhysicalEmptyState: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(24)
+    }
+}
+
+private struct PhysicalTestEditSheet: View {
+    let test: KmpBridge.PhysicalTestSnapshot
+    let onSave: (String, Double, String?) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var name: String
+    @State private var weightText: String
+    @State private var description: String
+
+    init(test: KmpBridge.PhysicalTestSnapshot, onSave: @escaping (String, Double, String?) -> Void) {
+        self.test = test
+        self.onSave = onSave
+        _name = State(initialValue: test.evaluation.name)
+        _weightText = State(initialValue: PhysicalTestsFormatting.decimal(test.evaluation.weight))
+        _description = State(initialValue: test.evaluation.description_ ?? "")
+    }
+
+    private var canSave: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Prueba física") {
+                    TextField("Nombre", text: $name)
+                    TextField("Peso", text: $weightText)
+                        #if os(iOS)
+                        .keyboardType(.decimalPad)
+                        #endif
+                    TextField("Descripción", text: $description)
+                }
+            }
+            .navigationTitle("Editar prueba")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancelar") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Guardar") {
+                        let weight = Double(weightText.replacingOccurrences(of: ",", with: ".")) ?? test.evaluation.weight
+                        let trimmedDescription = description.trimmingCharacters(in: .whitespacesAndNewlines)
+                        onSave(
+                            name.trimmingCharacters(in: .whitespacesAndNewlines),
+                            weight,
+                            trimmedDescription.isEmpty ? nil : trimmedDescription
+                        )
+                        dismiss()
+                    }
+                    .disabled(!canSave)
+                }
+            }
+        }
+        .presentationDetents([.medium])
     }
 }
 

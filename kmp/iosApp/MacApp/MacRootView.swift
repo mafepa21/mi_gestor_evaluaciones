@@ -440,6 +440,7 @@ struct MacRootView: View {
                     session: plannerSession,
                     onOpenDiary: { plannerToolbarActions?.onOpenDiary(plannerSession) },
                     onEdit: { plannerToolbarActions?.onEditSession(plannerSession) },
+                    onDelete: { plannerToolbarActions?.onDeleteSession(plannerSession) },
                     presentation: .inspector,
                     onClose: { plannerInspectorSession = nil }
                 )

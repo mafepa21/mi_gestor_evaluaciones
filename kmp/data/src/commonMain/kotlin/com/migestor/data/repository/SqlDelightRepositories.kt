@@ -1853,6 +1853,10 @@ class StudentSupportMeasureRepositorySqlDelight(
     override suspend fun retire(id: Long, endDateIso: String, updatedAtEpochMs: Long, deviceId: String?) = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.retireSupportMeasure(endDateIso, updatedAtEpochMs, deviceId, id)
     }
+
+    override suspend fun delete(id: Long) = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.deleteSupportMeasure(id)
+    }
 }
 
 class CompetenciesRepositorySqlDelight(
@@ -2021,6 +2025,10 @@ class IncidentsRepositorySqlDelight(
             )
             id ?: db.appDatabaseQueries.lastInsertedId().executeAsOne()
         }
+    }
+
+    override suspend fun deleteIncident(id: Long) = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.deleteIncident(id)
     }
 }
 

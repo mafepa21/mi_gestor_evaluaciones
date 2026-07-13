@@ -372,6 +372,15 @@ class RetireStudentSupportMeasureUseCase(
     }
 }
 
+class DeleteStudentSupportMeasureUseCase(
+    private val repository: StudentSupportMeasureRepository,
+) {
+    suspend operator fun invoke(id: Long) {
+        require(id > 0) { "Medida inválida" }
+        repository.delete(id)
+    }
+}
+
 class ListStudentSupportMeasuresUseCase(
     private val repository: StudentSupportMeasureRepository,
 ) {

@@ -49,6 +49,7 @@ struct MacStudentsView: View {
     @State private var showingStudentFileImporter = false
     @State private var showSupportMeasureSheet = false
     @State private var editingSupportMeasure: SupportMeasureRow?
+    @State private var pendingDeleteSupportMeasure: SupportMeasureRow?
     @State private var showBulkImportSheet = false
     @State private var showGroupOverviewSheet = false
     @State private var studentImportPreview: AppleStudentImportPreview?
@@ -249,6 +250,23 @@ struct MacStudentsView: View {
                 roster: studentsBridgeStore.studentsInClass
             )
             .environmentObject(bridge)
+        }
+        .confirmationDialog(
+            "Eliminar medida de apoyo",
+            isPresented: Binding(
+                get: { pendingDeleteSupportMeasure != nil },
+                set: { if !$0 { pendingDeleteSupportMeasure = nil } }
+            ),
+            presenting: pendingDeleteSupportMeasure
+        ) { measure in
+            Button("Eliminar \(measure.level.displayName) · \(measure.measureType.displayName)", role: .destructive) {
+                Task { await deleteSupportMeasure(measure) }
+            }
+            Button("Cancelar", role: .cancel) {
+                pendingDeleteSupportMeasure = nil
+            }
+        } message: { _ in
+            Text("Se eliminará este registro por completo. Si solo quieres cerrarla, usa \"Retirar\".")
         }
         .fileImporter(
             isPresented: $showingStudentFileImporter,
@@ -780,7 +798,7 @@ struct MacStudentsView: View {
                 }
             }
             Button(role: .destructive) {
-                Task { await deleteSupportMeasure(measure) }
+                pendingDeleteSupportMeasure = measure
             } label: {
                 Label("Eliminar medida", systemImage: "trash")
             }
@@ -802,6 +820,7 @@ struct MacStudentsView: View {
 
     @MainActor
     private func deleteSupportMeasure(_ measure: SupportMeasureRow) async {
+        pendingDeleteSupportMeasure = nil
         do {
             try await bridge.deleteSupportMeasure(id: measure.id)
             loadProfileForSelection(measure.studentId)

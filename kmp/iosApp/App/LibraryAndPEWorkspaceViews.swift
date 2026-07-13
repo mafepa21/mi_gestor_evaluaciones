@@ -1012,6 +1012,7 @@ struct PEMaterialWorkspaceView: View {
     @State var selectedRecordId: UUID?
     @State var showingCreateSheet = false
     @State var editingRecord: PEMaterialRecord?
+    @State var pendingDeleteRecord: PEMaterialRecord?
 
     var filteredRecords: [PEMaterialRecord] {
         let scoped = selectedClassId.map { classId in
@@ -1077,6 +1078,23 @@ struct PEMaterialWorkspaceView: View {
         .appOnChange(of: selectedClassId) { _ in
             Task { await reload() }
         }
+        .confirmationDialog(
+            "Eliminar material",
+            isPresented: Binding(
+                get: { pendingDeleteRecord != nil },
+                set: { if !$0 { pendingDeleteRecord = nil } }
+            ),
+            presenting: pendingDeleteRecord
+        ) { record in
+            Button("Eliminar \(record.itemName)", role: .destructive) {
+                deleteMaterialRecord(record)
+            }
+            Button("Cancelar", role: .cancel) {
+                pendingDeleteRecord = nil
+            }
+        } message: { _ in
+            Text("Se eliminará el registro de material.")
+        }
     }
 
     private var materialListPane: some View {
@@ -1116,7 +1134,7 @@ struct PEMaterialWorkspaceView: View {
                 .buttonStyle(.plain)
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     Button("Eliminar", role: .destructive) {
-                        deleteMaterialRecord(record)
+                        pendingDeleteRecord = record
                     }
                 }
                 .swipeActions(edge: .leading, allowsFullSwipe: false) {
@@ -1132,7 +1150,7 @@ struct PEMaterialWorkspaceView: View {
                         Label("Editar material", systemImage: "pencil")
                     }
                     Button(role: .destructive) {
-                        deleteMaterialRecord(record)
+                        pendingDeleteRecord = record
                     } label: {
                         Label("Eliminar material", systemImage: "trash")
                     }
@@ -1144,6 +1162,7 @@ struct PEMaterialWorkspaceView: View {
     }
 
     private func deleteMaterialRecord(_ record: PEMaterialRecord) {
+        pendingDeleteRecord = nil
         records.removeAll { $0.id == record.id }
         persistItems(records, forKey: peMaterialStorageKey)
         if selectedRecordId == record.id {
@@ -1232,6 +1251,7 @@ struct PETournamentsWorkspaceView: View {
     @State var showingCreateSheet = false
     @State var showingBoardScreen = false
     @State var editingTournamentId: UUID?
+    @State var pendingDeleteTournament: TournamentViewState?
 
     var scopedTournaments: [TournamentViewState] {
         tournaments
@@ -1311,6 +1331,23 @@ struct PETournamentsWorkspaceView: View {
         .appOnChange(of: selectedClassId) { _ in
             Task { await reloadTeams() }
         }
+        .confirmationDialog(
+            "Eliminar torneo",
+            isPresented: Binding(
+                get: { pendingDeleteTournament != nil },
+                set: { if !$0 { pendingDeleteTournament = nil } }
+            ),
+            presenting: pendingDeleteTournament
+        ) { tournament in
+            Button("Eliminar \(tournament.name)", role: .destructive) {
+                deleteTournament(tournament)
+            }
+            Button("Cancelar", role: .cancel) {
+                pendingDeleteTournament = nil
+            }
+        } message: { _ in
+            Text("Se eliminará el torneo, sus equipos y todos los resultados.")
+        }
     }
 
     private var tournamentListPane: some View {
@@ -1345,7 +1382,7 @@ struct PETournamentsWorkspaceView: View {
                         .buttonStyle(.plain)
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button("Eliminar", role: .destructive) {
-                                deleteTournament(tournament)
+                                pendingDeleteTournament = tournament
                             }
                         }
                         .swipeActions(edge: .leading, allowsFullSwipe: false) {
@@ -1361,7 +1398,7 @@ struct PETournamentsWorkspaceView: View {
                                 Label("Editar torneo", systemImage: "pencil")
                             }
                             Button(role: .destructive) {
-                                deleteTournament(tournament)
+                                pendingDeleteTournament = tournament
                             } label: {
                                 Label("Eliminar torneo", systemImage: "trash")
                             }
@@ -1375,6 +1412,7 @@ struct PETournamentsWorkspaceView: View {
     }
 
     private func deleteTournament(_ tournament: TournamentViewState) {
+        pendingDeleteTournament = nil
         tournaments.removeAll { $0.id == tournament.id }
         persistItems(tournaments, forKey: peTournamentStorageKey)
         if selectedTournamentId == tournament.id {

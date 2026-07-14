@@ -23,6 +23,10 @@ Cambios posteriores a `v0.3.0-traceability-baseline`.
 
 - Accesibilidad VoiceOver: se añaden `accessibilityLabel`/`accessibilityValue` a controles icon-only que carecían de ellos: el selector de modo de agrupación y la celda de categoría colapsada del Cuaderno, los botones de mostrar/ocultar columna, el menú de acciones por columna y el botón de ayuda del organizador de columnas, el botón de borrar búsqueda de gestión de grupos, el estado de selección de las pestañas del Cuaderno y el botón de quitar lesión en la evaluación rápida por rúbrica (bulk).
 
+### Fixed
+
+- macOS: se resuelve un marcador de conflicto de Git sin resolver (`<<<<<<<`/`=======`/`>>>>>>>`) que quedó literalmente en `MacRootView.swift` tras el merge `90d8216` ("Merge branch 'main' into feature/planner-diario-macos-sesion"), dejando el inspector del planner (`case .planner`) sin compilar en macOS. Ver detalle en `docs/audit/INCIDENCIA_2026-07-14-build-roto-post-merge.md`.
+
 ## v0.3.0-traceability-baseline — 2026-07-06
 
 ### Added

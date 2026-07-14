@@ -515,8 +515,6 @@ struct MacRootView: View {
                 selectedStudentId: studentSelection.selectedStudentBinding,
                 onOpenModule: open(module:classId:studentId:)
             )
-<<<<<<< HEAD
-=======
         case .planner:
             if let plannerSession = plannerInspectorSession {
                 PlannerSessionDetailSheet(
@@ -531,7 +529,6 @@ struct MacRootView: View {
             } else {
                 MacModuleInspectorPlaceholder(feature: MacFeatureRegistry.descriptor(for: feature))
             }
->>>>>>> main
         default:
             MacModuleInspectorPlaceholder(feature: MacFeatureRegistry.descriptor(for: feature))
         }

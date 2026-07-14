@@ -343,7 +343,7 @@ struct TournamentAutoBalanceSheet: View {
             onCancel: { dismiss() },
             onSave: generateBalancedTournament
         ) {
-            IOSSectionCard(title: "Configuración", systemImage: "person.3.fill") {
+            PremiumCard.section(title: "Configuración", systemImage: "person.3.fill") {
                 VStack(alignment: .leading, spacing: 16) {
                     Stepper("Equipos \(teamCount)", value: $teamCount, in: 2...8)
                     Text("\(students.count) alumnos disponibles")
@@ -352,7 +352,7 @@ struct TournamentAutoBalanceSheet: View {
                 }
             }
 
-            IOSSectionCard(title: "Nivel del alumnado", systemImage: "slider.horizontal.3") {
+            PremiumCard.section(title: "Nivel del alumnado", systemImage: "slider.horizontal.3") {
                 VStack(alignment: .leading, spacing: 12) {
                     ForEach($profiles) { $profile in
                         HStack(spacing: 12) {
@@ -371,7 +371,7 @@ struct TournamentAutoBalanceSheet: View {
                 }
             }
 
-            IOSSectionCard(title: "Incompatibilidades", systemImage: "person.2.slash") {
+            PremiumCard.section(title: "Incompatibilidades", systemImage: "person.2.slash") {
                 VStack(alignment: .leading, spacing: 14) {
                     Picker("Alumno A", selection: $studentA) {
                         Text("Selecciona").tag(Int64?.none)

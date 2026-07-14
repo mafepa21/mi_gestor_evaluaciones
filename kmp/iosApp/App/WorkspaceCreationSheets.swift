@@ -21,7 +21,7 @@ struct CreateCourseSheet: View {
             onCancel: close,
             onSave: save
         ) {
-            IOSSectionCard(title: "Datos esenciales", systemImage: "rectangle.and.pencil.and.ellipsis") {
+            PremiumCard.section(title: "Datos esenciales", systemImage: "rectangle.and.pencil.and.ellipsis") {
                 VStack(alignment: .leading, spacing: 16) {
                     WorkspaceCreateTextField(title: "Nombre del curso", placeholder: "1º ESO A", text: $name)
 
@@ -73,7 +73,7 @@ struct CreateStudentSheet: View {
             onCancel: close,
             onSave: save
         ) {
-            IOSSectionCard(title: "Identidad", systemImage: "person.text.rectangle") {
+            PremiumCard.section(title: "Identidad", systemImage: "person.text.rectangle") {
                 VStack(alignment: .leading, spacing: 16) {
                     WorkspaceCreateTextField(title: "Nombre", placeholder: "Nombre", text: $firstName)
                     WorkspaceCreateTextField(title: "Apellidos", placeholder: "Apellidos", text: $lastName)
@@ -92,7 +92,7 @@ struct CreateStudentSheet: View {
                 }
             }
 
-            IOSSectionCard(title: "Seguimiento", systemImage: "heart.text.square") {
+            PremiumCard.section(title: "Seguimiento", systemImage: "heart.text.square") {
                 VStack(alignment: .leading, spacing: 16) {
                     Toggle("Fecha de nacimiento", isOn: $hasBirthDate)
                     if hasBirthDate {
@@ -163,7 +163,7 @@ struct CreateEvaluationSheet: View {
             onCancel: close,
             onSave: save
         ) {
-            IOSSectionCard(title: "Instrumento", systemImage: "doc.badge.plus") {
+            PremiumCard.section(title: "Instrumento", systemImage: "doc.badge.plus") {
                 VStack(alignment: .leading, spacing: 16) {
                     WorkspaceCreateTextField(title: "Código", placeholder: "UD1-R1", text: $code)
                     WorkspaceCreateTextField(title: "Nombre", placeholder: "Rúbrica de técnica", text: $name)
@@ -357,7 +357,7 @@ struct CreatePESessionSheet: View {
             onCancel: close,
             onSave: save
         ) {
-            IOSSectionCard(title: "Sesión", systemImage: "calendar.badge.plus") {
+            PremiumCard.section(title: "Sesión", systemImage: "calendar.badge.plus") {
                 VStack(alignment: .leading, spacing: 16) {
                     WorkspaceCreateTextField(title: "Nombre", placeholder: "Circuito de coordinación", text: $title)
                     WorkspaceCreateMultilineField(title: "Objetivos", placeholder: "Objetivo docente principal", text: $objectives)
@@ -365,7 +365,7 @@ struct CreatePESessionSheet: View {
                 }
             }
 
-            IOSSectionCard(title: "Clase y logística", systemImage: "mappin.and.ellipse") {
+            PremiumCard.section(title: "Clase y logística", systemImage: "mappin.and.ellipse") {
                 VStack(alignment: .leading, spacing: 16) {
                     DatePicker("Fecha", selection: $sessionDate, displayedComponents: .date)
                     Stepper("Periodo \(period)", value: $period, in: 1...8)
@@ -375,7 +375,7 @@ struct CreatePESessionSheet: View {
                 }
             }
 
-            IOSSectionCard(title: "Estado", systemImage: "checkmark.seal") {
+            PremiumCard.section(title: "Estado", systemImage: "checkmark.seal") {
                 Picker("Estado", selection: $status) {
                     Text("Planificada").tag(SessionStatus.planned)
                     Text("Activa").tag(SessionStatus.inProgress)
@@ -446,7 +446,7 @@ struct CreatePhysicalTestSheet: View {
             onCancel: close,
             onSave: save
         ) {
-            IOSSectionCard(title: "Prueba", systemImage: "stopwatch") {
+            PremiumCard.section(title: "Prueba", systemImage: "stopwatch") {
                 VStack(alignment: .leading, spacing: 16) {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Tipo")
@@ -525,7 +525,7 @@ struct CreatePEIncidentSheet: View {
             onCancel: { dismiss() },
             onSave: save
         ) {
-            IOSSectionCard(title: "Incidencia", systemImage: "waveform.path.ecg.rectangle") {
+            PremiumCard.section(title: "Incidencia", systemImage: "waveform.path.ecg.rectangle") {
                 VStack(alignment: .leading, spacing: 16) {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Categoría")
@@ -557,7 +557,7 @@ struct CreatePEIncidentSheet: View {
                 }
             }
 
-            IOSSectionCard(title: "Contexto", systemImage: "person.crop.rectangle.stack") {
+            PremiumCard.section(title: "Contexto", systemImage: "person.crop.rectangle.stack") {
                 VStack(alignment: .leading, spacing: 16) {
                     Picker("Estado", selection: $workflowState) {
                         ForEach(PEIncidentWorkflowState.allCases) { state in
@@ -640,7 +640,7 @@ struct CreatePEMaterialRecordSheet: View {
             onCancel: { dismiss() },
             onSave: save
         ) {
-            IOSSectionCard(title: "Material", systemImage: "list.bullet.clipboard") {
+            PremiumCard.section(title: "Material", systemImage: "list.bullet.clipboard") {
                 VStack(alignment: .leading, spacing: 16) {
                     WorkspaceCreateTextField(title: "Material", placeholder: "Petos azules", text: $itemName)
                     Stepper("Cantidad \(quantity)", value: $quantity, in: 1...100)
@@ -728,7 +728,7 @@ struct CreateTournamentSheet: View {
             onCancel: { dismiss() },
             onSave: save
         ) {
-            IOSSectionCard(title: "Identidad", systemImage: "trophy") {
+            PremiumCard.section(title: "Identidad", systemImage: "trophy") {
                 VStack(alignment: .leading, spacing: 16) {
                     WorkspaceCreateTextField(title: "Nombre del torneo", placeholder: "Torneo de \(sport)", text: $name)
                     Menu {
@@ -752,7 +752,7 @@ struct CreateTournamentSheet: View {
                 }
             }
 
-            IOSSectionCard(title: "Equipos y puntuación", systemImage: "person.3.fill") {
+            PremiumCard.section(title: "Equipos y puntuación", systemImage: "person.3.fill") {
                 VStack(alignment: .leading, spacing: 16) {
                     Stepper("Equipos \(teamCount)", value: $teamCount, in: 2...8)
                     Stepper("Puntos victoria \(pointsWin)", value: $pointsWin, in: 0...10)

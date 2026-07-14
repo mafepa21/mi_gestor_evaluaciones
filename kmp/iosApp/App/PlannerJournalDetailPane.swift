@@ -168,7 +168,7 @@ private struct SessionJournalHeaderCard: View {
     let session: PlanningSession
 
     var body: some View {
-        EvaluationGlassCard {
+        PremiumCard.glass {
             VStack(alignment: .leading, spacing: 14) {
                 EvaluationSectionTitle(
                     eyebrow: "Diario",
@@ -218,7 +218,7 @@ private struct SessionJournalQuickPulseCard: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
 
     var body: some View {
-        EvaluationGlassCard {
+        PremiumCard.glass {
             VStack(alignment: .leading, spacing: 16) {
                 EvaluationSectionTitle(
                     eyebrow: "10 segundos",
@@ -713,7 +713,7 @@ private struct SessionJournalSectionCard<Content: View>: View {
     }
 
     var body: some View {
-        EvaluationGlassCard {
+        PremiumCard.glass {
             VStack(alignment: .leading, spacing: 16) {
                 EvaluationSectionTitle(eyebrow: eyebrow, title: title, subtitle: subtitle)
                 content

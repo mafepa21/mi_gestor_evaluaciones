@@ -1784,7 +1784,7 @@ private struct SessionJournalQuickPulseCard: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
 
     var body: some View {
-        EvaluationGlassCard {
+        PremiumCard.glass {
             VStack(alignment: .leading, spacing: 16) {
                 EvaluationSectionTitle(
                     eyebrow: "10 segundos",

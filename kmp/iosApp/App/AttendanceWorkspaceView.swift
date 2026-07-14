@@ -28,7 +28,7 @@ struct AttendanceWorkspaceView: View {
 
     @State var selectedDate = Date()
     @State var boardMode: AttendanceBoardMode = .day
-    @State var selectedStatusFilter = "TODOS"
+    @State var selectedStatusFilter = AttendanceStatusOption.allFilterId
     @State var searchText = ""
     @State var selectedStudentId: Int64?
     @State var historySelection: AttendanceHistorySelection?
@@ -67,7 +67,7 @@ struct AttendanceWorkspaceView: View {
                 )
             }
             .filter {
-                let matchesStatus = selectedStatusFilter == "TODOS" || $0.record?.status == selectedStatusFilter
+                let matchesStatus = selectedStatusFilter == AttendanceStatusOption.allFilterId || $0.record?.status == selectedStatusFilter
                 let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
                 let fullName = "\($0.student.firstName) \($0.student.lastName)"
                 let matchesSearch = query.isEmpty || fullName.localizedCaseInsensitiveContains(query)
@@ -122,7 +122,7 @@ struct AttendanceWorkspaceView: View {
         attendanceStore.studentsInClass.filter { student in
             let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
             let matchesSearch = query.isEmpty || student.fullName.localizedCaseInsensitiveContains(query)
-            let matchesStatus = selectedStatusFilter == "TODOS" || history.contains {
+            let matchesStatus = selectedStatusFilter == AttendanceStatusOption.allFilterId || history.contains {
                 $0.studentId == student.id && $0.status == selectedStatusFilter
             }
             return matchesSearch && matchesStatus
@@ -290,7 +290,7 @@ struct AttendanceWorkspaceView: View {
 
     var attendanceContextSummary: String {
         let className = selectedClass?.name ?? "Todos los cursos"
-        let filter = selectedStatusFilter == "TODOS"
+        let filter = selectedStatusFilter == AttendanceStatusOption.allFilterId
             ? nil
             : AttendanceStatusOption.all.first(where: { $0.id == selectedStatusFilter })?.label
         return [className, boardMode.rawValue, filter].compactMap { $0 }.joined(separator: " · ")
@@ -977,7 +977,7 @@ struct AttendanceWorkspaceView: View {
     }
 
     func attendanceWeekStatusCell(_ status: AttendanceStatusOption) -> some View {
-        let borderColor = Color.white.opacity(0.08)
+        let borderColor = Color.primary.opacity(0.08)
         return Text(status.shortLabel)
             .font(.caption.bold())
             .frame(width: 120, height: 54)

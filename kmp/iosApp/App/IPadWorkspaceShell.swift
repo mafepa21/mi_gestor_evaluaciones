@@ -879,7 +879,7 @@ struct AppWorkspaceShell: View {
             case .bulkRubricEvaluation:
                 RubricBulkEvaluationSheet(bridge: bridge)
                     #if os(macOS)
-                    .frame(width: 1180, height: 760)
+                    .frame(minWidth: 900, idealWidth: 1180, minHeight: 600, idealHeight: 760)
                     #else
                     .presentationDetents([.large])
                     #endif
@@ -2058,7 +2058,7 @@ struct AttendanceRowCard: View {
                     .background(appMutedCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .overlay(
                         RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
                     )
                 }
                 .buttonStyle(.plain)
@@ -2069,7 +2069,7 @@ struct AttendanceRowCard: View {
         .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(Color.white.opacity(0.05), lineWidth: 1)
+                .stroke(Color.primary.opacity(0.05), lineWidth: 1)
         )
         .listRowInsets(EdgeInsets(top: 12, leading: 24, bottom: 12, trailing: 24))
         .listRowSeparator(.hidden)

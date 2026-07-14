@@ -236,6 +236,7 @@ extension Date {
 
     private static let macBackupDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
+        formatter.locale = Locale.current
         formatter.dateStyle = .short
         formatter.timeStyle = .short
         return formatter
@@ -243,6 +244,7 @@ extension Date {
 
     private static let macBackupRelativeFormatter: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
+        formatter.locale = Locale.current
         formatter.unitsStyle = .full
         return formatter
     }()

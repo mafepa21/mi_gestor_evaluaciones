@@ -27,7 +27,7 @@ enum EvaluationDesign {
     static let surface = appSecondarySystemBackgroundColor()
     static let surfaceMuted = appSecondarySystemBackgroundColor()
     static let surfaceSoft = appTertiarySystemBackgroundColor()
-    static let border = Color.black.opacity(0.06)
+    static let border = Color.primary.opacity(0.06)
     static let shadow = AppleDesignSystem.shadow
     static let plannerCoursePalette: [String] = [
         "#2563EB",

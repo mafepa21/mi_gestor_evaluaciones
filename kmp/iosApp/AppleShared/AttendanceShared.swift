@@ -33,6 +33,10 @@ struct AttendanceStatusOption: Identifiable, Hashable {
     static func option(for status: String?) -> AttendanceStatusOption? {
         all.first { $0.id == status }
     }
+
+    // Valor centralizado del filtro "sin filtrar" para que iOS y macOS no puedan
+    // divergir usando literales "TODOS" distintos por accidente.
+    static let allFilterId = "TODOS"
 }
 
 struct AttendanceEntryRow: Identifiable {

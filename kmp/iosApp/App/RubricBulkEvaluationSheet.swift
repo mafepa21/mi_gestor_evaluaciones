@@ -26,7 +26,7 @@ struct RubricBulkEvaluationSheet: View {
             ZStack {
                 EvaluationBackdrop()
 
-                if state == nil || state!.isLoading {
+                if state?.isLoading ?? true {
                     ProgressView("Cargando evaluación masiva...")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(.secondary)

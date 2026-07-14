@@ -1997,7 +1997,7 @@ private struct PhysicalTestCreationSheet: View {
             onCancel: { dismiss() },
             onSave: { Task { await save() } }
         ) {
-            IOSSectionCard(title: "Plantilla", systemImage: "figure.run") {
+            PremiumCard.section(title: "Plantilla", systemImage: "figure.run") {
                 VStack(alignment: .leading, spacing: 14) {
                     Picker("Plantilla", selection: $selectedTemplateId) {
                         ForEach(templates) { template in
@@ -2013,7 +2013,7 @@ private struct PhysicalTestCreationSheet: View {
                 }
             }
 
-            IOSSectionCard(title: "Datos evaluables", systemImage: "number.square") {
+            PremiumCard.section(title: "Datos evaluables", systemImage: "number.square") {
                 VStack(spacing: 14) {
                     PhysicalTestSheetTextField(title: "Código", placeholder: "EF_NAVETTE", text: $code)
                     PhysicalTestSheetTextField(title: "Nombre", placeholder: "Course Navette", text: $name)
@@ -2022,7 +2022,7 @@ private struct PhysicalTestCreationSheet: View {
                 }
             }
 
-            IOSSectionCard(title: "Protocolo", systemImage: "checklist") {
+            PremiumCard.section(title: "Protocolo", systemImage: "checklist") {
                 TextField("Protocolo", text: $description, axis: .vertical)
                     .lineLimit(4...8)
                     .padding(.horizontal, 14)

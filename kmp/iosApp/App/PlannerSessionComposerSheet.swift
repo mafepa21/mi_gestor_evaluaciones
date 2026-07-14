@@ -107,7 +107,7 @@ struct PlannerSessionComposerSheet: View {
     private var composerContent: some View {
         ScrollView(.vertical, showsIndicators: true) {
             VStack(alignment: .leading, spacing: IOSAppStyle.sectionSpacing) {
-                IOSSectionCard(title: vm.composerDraft.sessionId == 0 ? "Nueva sesión" : "Editar sesión", systemImage: "pencil.and.outline") {
+                PremiumCard.section(title: vm.composerDraft.sessionId == 0 ? "Nueva sesión" : "Editar sesión", systemImage: "pencil.and.outline") {
                     VStack(alignment: .leading, spacing: 14) {
                         PlannerSaveStateInlineStatus(state: vm.composerSaveState)
 
@@ -157,7 +157,7 @@ struct PlannerSessionComposerSheet: View {
                     }
                 }
 
-                IOSSectionCard(title: "Instrumentos enlazados", systemImage: "doc.plaintext.fill") {
+                PremiumCard.section(title: "Instrumentos enlazados", systemImage: "doc.plaintext.fill") {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Selecciona evaluaciones o rúbricas filtradas por el curso y la situación de aprendizaje.")
                             .font(IOSAppStyle.captionText)
@@ -179,7 +179,7 @@ struct PlannerSessionComposerSheet: View {
                     }
                 }
 
-                IOSSectionCard(title: "Dónde cae la sesión", systemImage: "calendar.badge.clock") {
+                PremiumCard.section(title: "Dónde cae la sesión", systemImage: "calendar.badge.clock") {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Se guardará como planificada en la franja seleccionada.")
                             .font(IOSAppStyle.captionText)

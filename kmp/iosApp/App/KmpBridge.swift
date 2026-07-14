@@ -8907,7 +8907,7 @@ final class KmpBridge: ObservableObject {
                 entity: change.entity,
                 entityId: change.id,
                 updatedAtEpochMs: change.updatedAtEpochMs
-            )) ?? false
+            ))?.boolValue ?? false
             if isBlockedByTombstone {
                 continue
             }
@@ -8996,7 +8996,7 @@ final class KmpBridge: ObservableObject {
                     // Solo dar de baja si este snapshot es al menos tan reciente como
                     // la última alta/baja local conocida para ESTE alumno: evita que un
                     // snapshot de roster desactualizado borre a alguien recién añadido.
-                    let localEnrollmentAt = try await container.classesRepository.latestEnrollmentUpdatedAt(classId: classId, studentId: id)
+                    let localEnrollmentAt = (try await container.classesRepository.latestEnrollmentUpdatedAt(classId: classId, studentId: id))?.int64Value
                     if localEnrollmentAt == nil || change.updatedAtEpochMs >= localEnrollmentAt! {
                         try await container.classesRepository.removeStudentFromClass(classId: classId, studentId: id)
                     }

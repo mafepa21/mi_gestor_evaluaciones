@@ -541,38 +541,6 @@ struct DashboardView: View {
     }
 
     @ViewBuilder
-    private func dashboardAlertsSection(snapshot: DashboardSnapshot) -> some View {
-        if isCompactWidth {
-            VStack(spacing: EvaluationDesign.cardSpacing) {
-                dashboardPendingBlock(snapshot: snapshot)
-                dashboardRiskBlock(snapshot: snapshot)
-            }
-        } else {
-            HStack(alignment: .top, spacing: EvaluationDesign.cardSpacing) {
-                dashboardPendingBlock(snapshot: snapshot)
-                dashboardRiskBlock(snapshot: snapshot)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func dashboardSecondaryGrid(snapshot: DashboardSnapshot) -> some View {
-        if isCompactWidth {
-            VStack(spacing: EvaluationDesign.cardSpacing) {
-                dashboardAgendaBlock(snapshot: snapshot)
-                dashboardSystemBlock()
-            }
-        } else {
-            HStack(alignment: .top, spacing: EvaluationDesign.cardSpacing) {
-                dashboardAgendaBlock(snapshot: snapshot)
-                    .frame(maxWidth: .infinity, alignment: .top)
-                dashboardSystemBlock()
-                    .frame(maxWidth: .infinity, alignment: .top)
-            }
-        }
-    }
-
-    @ViewBuilder
     private func dashboardKpiRow(snapshot: DashboardSnapshot) -> some View {
         HStack(spacing: 12) {
             dashboardKpiCard(title: "Hoy", value: "\(snapshot.todayCount)", isNumeric: true)

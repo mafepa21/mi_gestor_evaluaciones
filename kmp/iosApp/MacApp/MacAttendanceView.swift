@@ -180,7 +180,9 @@ struct MacAttendanceView: View {
     }
 
     private var toolbarStateKey: String {
-        [
+        // La anotación explícita de tipo es necesaria: sin ella el type-checker de
+        // Swift agota el tiempo al inferir este literal heterogéneo.
+        let components: [String] = [
             selectedClassId.map(String.init) ?? "all",
             selectedStudentId.map(String.init) ?? "none",
             selectedStatusFilter,
@@ -189,7 +191,8 @@ struct MacAttendanceView: View {
             String(Int(selectedDate.timeIntervalSince1970)),
             selectedAttendanceSessionId.map(String.init) ?? "none",
             String(sessions.count)
-        ].joined(separator: "|")
+        ]
+        return components.joined(separator: "|")
     }
 
     var body: some View {

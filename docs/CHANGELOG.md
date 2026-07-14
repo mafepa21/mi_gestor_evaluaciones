@@ -15,6 +15,14 @@ El formato sigue una variante practica de Keep a Changelog:
 
 Cambios posteriores a `v0.3.0-traceability-baseline`.
 
+### Added
+
+- iPadOS/macOS: la toolbar del Cuaderno incorpora `SyncStatusBadge`, un indicador no intrusivo (`✓`/`⏱ N`/`✗`/inactivo) derivado del estado de sync LAN ya publicado por `DashboardBridgeStore`, con `accessibilityLabel` y `accessibilityHint` dinámicos. Sustituye al indicador previo de "N pnd." (que solo cubría el estado de cambios pendientes).
+
+### Changed
+
+- Accesibilidad VoiceOver: se añaden `accessibilityLabel`/`accessibilityValue` a controles icon-only que carecían de ellos: el selector de modo de agrupación y la celda de categoría colapsada del Cuaderno, los botones de mostrar/ocultar columna, el menú de acciones por columna y el botón de ayuda del organizador de columnas, el botón de borrar búsqueda de gestión de grupos, el estado de selección de las pestañas del Cuaderno y el botón de quitar lesión en la evaluación rápida por rúbrica (bulk).
+
 ## v0.3.0-traceability-baseline — 2026-07-06
 
 ### Added

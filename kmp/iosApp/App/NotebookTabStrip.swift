@@ -82,6 +82,9 @@ struct NotebookTabStrip: View {
         }
         .buttonStyle(NotebookScaleButtonStyle())
         .help("Abrir \(tab.title)")
+        .accessibilityLabel("Pestaña \(tab.title)")
+        .accessibilityValue(isSelected ? "Seleccionada" : "")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 

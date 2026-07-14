@@ -823,6 +823,7 @@ struct RubricBulkEvaluationSheet: View {
                                 }
                                 .buttonStyle(.plain)
                                 .disabled(savingInjuryStudentIds.contains(student.id))
+                                .accessibilityLabel("Quitar de lesionados a \(student.firstName) \(student.lastName)")
                             }
                             .padding(16)
                             .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous))

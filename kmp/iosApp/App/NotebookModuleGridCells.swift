@@ -138,6 +138,8 @@ extension NotebookModuleView {
                     }
                     .buttonStyle(.plain)
                     .help("Seleccionar modo de agrupación")
+                    .accessibilityLabel("Modo de agrupación")
+                    .accessibilityValue(groupByWorkGroup ? "Agrupado por grupo de trabajo" : "Sin agrupar")
                 }
                 .padding(.leading, 8)
                 .padding(.trailing, 6)
@@ -589,6 +591,10 @@ extension NotebookModuleView {
                     categoryContextMenu(category, data: data)
                 }
                 .help(total == 0 ? "Categoría vacía." : "Resumen de categoría colapsada: \(filled) de \(total) columnas con datos.")
+                .accessibilityLabel(
+                    "\(category.name), \(item.student.fullName), categoría colapsada"
+                )
+                .accessibilityValue(total == 0 ? "Vacía" : "\(filled) de \(total) columnas con datos")
             )
         }
     }

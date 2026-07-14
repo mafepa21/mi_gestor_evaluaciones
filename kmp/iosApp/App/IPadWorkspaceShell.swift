@@ -1566,19 +1566,13 @@ struct AppWorkspaceShell: View {
             notebookClassSelectorButton
         }
 
-        if bridge.syncPendingChanges > 0 {
-            ToolbarItem(placement: .navigationBarLeading) {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.footnote)
-                    Text("\(bridge.syncPendingChanges) pnd.")
-                        .font(.footnote.weight(.semibold))
-                }
-                .foregroundStyle(IOSAppStyle.warning)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(IOSAppStyle.warning.opacity(0.12), in: Capsule())
-            }
+        ToolbarItem(placement: .navigationBarTrailing) {
+            SyncStatusBadge(
+                syncStatusMessage: dashboardStore.syncStatusMessage,
+                syncPendingChanges: dashboardStore.syncPendingChanges,
+                syncLastRunAt: dashboardStore.syncLastRunAt,
+                pairedSyncHost: dashboardStore.pairedSyncHost
+            )
         }
 
         if !layoutState.notebookAvailableGroups.isEmpty {

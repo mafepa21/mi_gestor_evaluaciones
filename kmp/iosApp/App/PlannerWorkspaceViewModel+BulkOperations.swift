@@ -65,6 +65,22 @@ extension PlannerWorkspaceViewModel {
         await reloadSessionsOnly(keepSelection: false)
     }
 
+    func deleteSession(_ session: PlanningSession) async {
+        guard let bridge else { return }
+        do {
+            try await bridge.plannerDeleteSession(sessionId: session.id)
+        } catch {
+            bulkSummary = "No se pudo eliminar la sesión: \(error.localizedDescription)"
+            return
+        }
+        selectedSessionIds.remove(session.id)
+        if selectedSession?.id == session.id {
+            selectedSession = nil
+        }
+        bulkSummary = "Sesión eliminada."
+        await reloadSessionsOnly(keepSelection: false)
+    }
+
     /// Copia una única sesión a la semana siguiente sin activar el modo de selección
     /// múltiple ni tocar `selectedSessionIds` (a diferencia de `bulkCopyToNextWeek`).
     func copySessionToNextWeek(_ session: PlanningSession) async {

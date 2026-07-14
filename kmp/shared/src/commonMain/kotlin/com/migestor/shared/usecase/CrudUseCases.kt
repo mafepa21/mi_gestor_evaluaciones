@@ -3,6 +3,10 @@ package com.migestor.shared.usecase
 import com.migestor.shared.domain.PlanningSession
 import com.migestor.shared.domain.StudentSex
 import com.migestor.shared.domain.StudentSexSource
+import com.migestor.shared.domain.StudentSupportMeasure
+import com.migestor.shared.domain.SupportMeasureIntensity
+import com.migestor.shared.domain.SupportMeasureLevel
+import com.migestor.shared.domain.SupportMeasureType
 import com.migestor.shared.repository.AttendanceRepository
 import com.migestor.shared.repository.ClassesRepository
 import com.migestor.shared.repository.EvaluationsRepository
@@ -10,6 +14,7 @@ import com.migestor.shared.repository.GradesRepository
 import com.migestor.shared.repository.PlannerRepository
 import com.migestor.shared.repository.RubricsRepository
 import com.migestor.shared.repository.StudentsRepository
+import com.migestor.shared.repository.StudentSupportMeasureRepository
 import com.migestor.shared.repository.SubjectsRepository
 import kotlinx.datetime.LocalDate
 
@@ -306,4 +311,87 @@ class SaveAttendanceUseCase(
             syncVersion = syncVersion
         )
     }
+}
+
+/**
+ * Medidas de respuesta educativa Nivel III/IV (Decreto 104/2018 + Orden 20/2019, CV).
+ * El docente de aula registra y consulta; nunca redacta aquí el informe sociopsicopedagógico
+ * ni el PAP en sí, solo referencia el documento oficial y sus propias observaciones de seguimiento.
+ */
+class SaveStudentSupportMeasureUseCase(
+    private val repository: StudentSupportMeasureRepository,
+) {
+    suspend operator fun invoke(
+        id: Long? = null,
+        studentId: Long,
+        level: SupportMeasureLevel,
+        measureType: SupportMeasureType,
+        startDateIso: String,
+        endDateIso: String? = null,
+        responsible: String? = null,
+        intensity: SupportMeasureIntensity? = null,
+        followUpNotes: String = "",
+        documentRef: String? = null,
+        reviewDueIso: String? = null,
+        isActive: Boolean = true,
+        createdAtEpochMs: Long = 0,
+        updatedAtEpochMs: Long = 0,
+        deviceId: String? = null,
+        syncVersion: Long = 0,
+    ): Long {
+        require(studentId > 0) { "Alumno inválido" }
+        requireNotBlank(startDateIso, "Fecha de inicio")
+        return repository.save(
+            id = id,
+            studentId = studentId,
+            level = level,
+            measureType = measureType,
+            startDateIso = startDateIso,
+            endDateIso = endDateIso,
+            responsible = responsible?.trim()?.ifBlank { null },
+            intensity = intensity,
+            followUpNotes = followUpNotes.trim(),
+            documentRef = documentRef?.trim()?.ifBlank { null },
+            reviewDueIso = reviewDueIso,
+            isActive = isActive,
+            createdAtEpochMs = createdAtEpochMs,
+            updatedAtEpochMs = updatedAtEpochMs,
+            deviceId = deviceId,
+            syncVersion = syncVersion,
+        )
+    }
+}
+
+class RetireStudentSupportMeasureUseCase(
+    private val repository: StudentSupportMeasureRepository,
+) {
+    suspend operator fun invoke(id: Long, endDateIso: String, updatedAtEpochMs: Long = 0, deviceId: String? = null) {
+        require(id > 0) { "Medida inválida" }
+        requireNotBlank(endDateIso, "Fecha de fin")
+        repository.retire(id, endDateIso, updatedAtEpochMs, deviceId)
+    }
+}
+
+class DeleteStudentSupportMeasureUseCase(
+    private val repository: StudentSupportMeasureRepository,
+) {
+    suspend operator fun invoke(id: Long) {
+        require(id > 0) { "Medida inválida" }
+        repository.delete(id)
+    }
+}
+
+class ListStudentSupportMeasuresUseCase(
+    private val repository: StudentSupportMeasureRepository,
+) {
+    suspend operator fun invoke(studentId: Long): List<StudentSupportMeasure> {
+        require(studentId > 0) { "Alumno inválido" }
+        return repository.listByStudent(studentId)
+    }
+}
+
+class ListActiveSupportMeasureStudentIdsUseCase(
+    private val repository: StudentSupportMeasureRepository,
+) {
+    suspend operator fun invoke(): Set<Long> = repository.listActiveStudentIds()
 }

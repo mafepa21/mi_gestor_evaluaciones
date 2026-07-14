@@ -373,6 +373,38 @@ final class KmpBridge: ObservableObject {
         let attendanceRate: Int
     }
 
+    struct SupportMeasureSnapshot: Identifiable {
+        let id: Int64
+        let studentId: Int64
+        let level: SupportMeasureLevelUI
+        let measureType: SupportMeasureTypeUI
+        let startDateIso: String
+        let endDateIso: String?
+        let responsible: String?
+        let intensity: SupportMeasureIntensityUI?
+        let followUpNotes: String
+        let documentRef: String?
+        let reviewDueIso: String?
+        let isActive: Bool
+
+        var asRow: SupportMeasureRow {
+            SupportMeasureRow(
+                id: id,
+                studentId: studentId,
+                level: level,
+                measureType: measureType,
+                startDateIso: startDateIso,
+                endDateIso: endDateIso,
+                responsible: responsible,
+                intensity: intensity,
+                followUpNotes: followUpNotes,
+                documentRef: documentRef,
+                reviewDueIso: reviewDueIso,
+                isActive: isActive
+            )
+        }
+    }
+
     struct AttendanceSessionSnapshot: Identifiable {
         let id: Int64
         let session: PlanningSession
@@ -3611,6 +3643,124 @@ final class KmpBridge: ObservableObject {
         )
     }
 
+    /// Medidas de respuesta educativa Nivel III/IV (Decreto 104/2018 + Orden 20/2019, CV).
+    /// El docente de aula consulta e implementa; nunca redacta aquí el informe
+    /// sociopsicopedagógico ni el PAP, solo referencia el documento oficial.
+    func supportMeasures(for studentId: Int64) async throws -> [SupportMeasureSnapshot] {
+        let rows = try await container.studentSupportMeasureRepository.listByStudent(studentId: studentId)
+        return rows.compactMap(supportMeasureSnapshot(from:))
+    }
+
+    func activeSupportMeasureStudentIds() async throws -> Set<Int64> {
+        let ids = try await container.studentSupportMeasureRepository.listActiveStudentIds()
+        return Set(ids.map { $0.int64Value })
+    }
+
+    @discardableResult
+    func saveSupportMeasure(id: Int64? = nil, draft: SupportMeasureDraft) async throws -> Int64 {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let savedId = try await container.studentSupportMeasureRepository.save(
+            id: kotlinLong(id),
+            studentId: draft.studentId,
+            level: kotlinSupportMeasureLevel(draft.level),
+            measureType: kotlinSupportMeasureType(draft.measureType),
+            startDateIso: draft.startDateIso,
+            endDateIso: nil,
+            responsible: draft.responsible.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : draft.responsible,
+            intensity: draft.intensity.map(kotlinSupportMeasureIntensity(_:)),
+            followUpNotes: draft.followUpNotes,
+            documentRef: draft.documentRef.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : draft.documentRef,
+            reviewDueIso: draft.reviewDueIso,
+            isActive: true,
+            createdAtEpochMs: id == nil ? nowMs : 0,
+            updatedAtEpochMs: nowMs,
+            deviceId: localDeviceId,
+            syncVersion: 1
+        ).int64Value
+        enqueueLocalChange(
+            entity: "student_support_measures",
+            id: "\(savedId)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "studentId": draft.studentId,
+                "level": draft.level.rawValue,
+                "measureType": draft.measureType.rawValue,
+                "startDateIso": draft.startDateIso,
+                "responsible": draft.responsible,
+                "intensity": draft.intensity?.rawValue ?? NSNull(),
+                "followUpNotes": draft.followUpNotes,
+                "documentRef": draft.documentRef,
+                "reviewDueIso": draft.reviewDueIso ?? NSNull(),
+                "isActive": true
+            ]
+        )
+        return savedId
+    }
+
+    func retireSupportMeasure(id: Int64, endDateIso: String) async throws {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        try await container.studentSupportMeasureRepository.retire(
+            id: id,
+            endDateIso: endDateIso,
+            updatedAtEpochMs: nowMs,
+            deviceId: localDeviceId
+        )
+        enqueueLocalChange(
+            entity: "student_support_measures",
+            id: "\(id)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "id": id,
+                "endDateIso": endDateIso,
+                "isActive": false
+            ]
+        )
+    }
+
+    func deleteSupportMeasure(id: Int64) async throws {
+        try await container.studentSupportMeasureRepository.delete(id: id)
+        enqueueLocalChange(
+            entity: "student_support_measures",
+            id: "\(id)",
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+            payload: ["id": id],
+            op: "delete"
+        )
+    }
+
+    private func supportMeasureSnapshot(from measure: StudentSupportMeasure) -> SupportMeasureSnapshot? {
+        guard
+            let level = SupportMeasureLevelUI(rawValue: measure.level.name),
+            let measureType = SupportMeasureTypeUI(rawValue: measure.measureType.name)
+        else { return nil }
+        return SupportMeasureSnapshot(
+            id: measure.id,
+            studentId: measure.studentId,
+            level: level,
+            measureType: measureType,
+            startDateIso: measure.startDate.description(),
+            endDateIso: measure.endDate?.description(),
+            responsible: measure.responsible,
+            intensity: measure.intensity.flatMap { SupportMeasureIntensityUI(rawValue: $0.name) },
+            followUpNotes: measure.followUpNotes,
+            documentRef: measure.documentRef,
+            reviewDueIso: measure.reviewDue?.description(),
+            isActive: measure.isActive
+        )
+    }
+
+    private func kotlinSupportMeasureLevel(_ level: SupportMeasureLevelUI) -> SupportMeasureLevel {
+        SupportMeasureLevel.entries.first { $0.name == level.rawValue } ?? SupportMeasureLevel.entries[0]
+    }
+
+    private func kotlinSupportMeasureType(_ type: SupportMeasureTypeUI) -> SupportMeasureType {
+        SupportMeasureType.entries.first { $0.name == type.rawValue } ?? SupportMeasureType.entries[0]
+    }
+
+    private func kotlinSupportMeasureIntensity(_ intensity: SupportMeasureIntensityUI) -> SupportMeasureIntensity {
+        SupportMeasureIntensity.entries.first { $0.name == intensity.rawValue } ?? SupportMeasureIntensity.entries[0]
+    }
+
     func saveAttendanceBatch(records drafts: [AttendanceDraft]) async throws {
         guard !drafts.isEmpty else { return }
 
@@ -3735,6 +3885,56 @@ final class KmpBridge: ObservableObject {
             ]
         )
         return incidentId.int64Value
+    }
+
+    func updateIncident(
+        id: Int64,
+        classId: Int64,
+        studentId: Int64?,
+        title: String,
+        detail: String,
+        severity: String,
+        dateEpochMs: Int64
+    ) async throws {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        _ = try await container.incidentsRepository.saveIncident(
+            id: KotlinLong(value: id),
+            classId: classId,
+            studentId: kotlinLong(studentId),
+            title: title,
+            detail: detail,
+            severity: severity,
+            dateEpochMs: dateEpochMs,
+            authorUserId: nil,
+            updatedAtEpochMs: nowMs,
+            deviceId: localDeviceId,
+            syncVersion: 1
+        )
+        enqueueLocalChange(
+            entity: "incident",
+            id: "\(id)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "id": id,
+                "classId": classId,
+                "studentId": studentId ?? NSNull(),
+                "title": title,
+                "detail": detail,
+                "severity": severity,
+                "dateEpochMs": dateEpochMs
+            ]
+        )
+    }
+
+    func deleteIncident(id: Int64) async throws {
+        try await container.incidentsRepository.deleteIncident(id: id)
+        enqueueLocalChange(
+            entity: "incident",
+            id: "\(id)",
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+            payload: ["id": id],
+            op: "delete"
+        )
     }
 
     func loadCourseSummary(classId: Int64) async throws -> CourseInspectorSnapshot {
@@ -6712,6 +6912,61 @@ final class KmpBridge: ObservableObject {
         )
     }
 
+    func updatePhysicalTest(
+        evaluationId: Int64,
+        classId: Int64,
+        code: String,
+        name: String,
+        kind: String,
+        weight: Double,
+        description: String?,
+        formula: String? = nil,
+        rubricId: Int64? = nil
+    ) async throws {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        _ = try await container.saveEvaluation.invoke(
+            id: KotlinLong(value: evaluationId),
+            classId: classId,
+            code: code,
+            name: name,
+            type: "Prueba física · \(kind)",
+            weight: weight,
+            formula: formula,
+            rubricId: kotlinLong(rubricId),
+            description: description,
+            updatedAtEpochMs: nowMs,
+            deviceId: localDeviceId,
+            syncVersion: 1
+        )
+        enqueueLocalChange(
+            entity: "evaluation",
+            id: "\(evaluationId)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "id": evaluationId,
+                "classId": classId,
+                "code": code,
+                "name": name,
+                "type": "Prueba física · \(kind)",
+                "weight": weight,
+                "formula": formula ?? NSNull(),
+                "rubricId": rubricId ?? NSNull(),
+                "description": description ?? NSNull()
+            ]
+        )
+    }
+
+    func deletePhysicalTest(evaluationId: Int64) async throws {
+        try await container.evaluationsRepository.deleteEvaluation(evaluationId: evaluationId)
+        enqueueLocalChange(
+            entity: "evaluation",
+            id: "\(evaluationId)",
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+            payload: ["id": evaluationId],
+            op: "delete"
+        )
+    }
+
     func saveGrade(studentId: Int64, evaluationId: Int64, value: Double?, classId: Int64) async throws {
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
         try await container.recordGrade.invoke(
@@ -8179,6 +8434,35 @@ final class KmpBridge: ObservableObject {
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
+    func plannerRenameTeachingUnit(_ unit: TeachingUnit, newName: String) async throws {
+        let normalized = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return }
+        let renamed = TeachingUnit(
+            id: unit.id,
+            name: normalized,
+            description: unit.description,
+            colorHex: unit.colorHex,
+            groupId: unit.groupId,
+            schoolClassId: unit.schoolClassId,
+            startDate: unit.startDate,
+            endDate: unit.endDate
+        )
+        _ = try await container.plannerRepository.upsertTeachingUnit(unit: renamed)
+    }
+
+    func plannerDeleteTeachingUnit(_ unitId: Int64) async throws {
+        let sessionsUsingUnit = try await container.plannerRepository.listAllSessions()
+            .filter { $0.teachingUnitId == unitId }
+        guard sessionsUsingUnit.isEmpty else {
+            throw NSError(
+                domain: "KmpBridge",
+                code: 409,
+                userInfo: [NSLocalizedDescriptionKey: "No se puede eliminar: hay \(sessionsUsingUnit.count) sesión(es) que usan esta unidad. Elimínalas o cámbialas de unidad primero."]
+            )
+        }
+        _ = try await container.plannerRepository.deleteTeachingUnit(unitId: unitId)
+    }
+
     func plannerAvailableAssessmentInstruments(classId: Int64, teachingUnitId: Int64?) async throws -> [PlannerAssessmentInstrument] {
         let evaluations = try await container.evaluationsRepository.listClassEvaluations(classId: classId)
         let rubricDetails = try await container.rubricsRepository.listRubrics()
@@ -9044,8 +9328,8 @@ final class KmpBridge: ObservableObject {
                     // Solo dar de baja si este snapshot es al menos tan reciente como
                     // la última alta/baja local conocida para ESTE alumno: evita que un
                     // snapshot de roster desactualizado borre a alguien recién añadido.
-                    let localEnrollmentAt = try await container.classesRepository.latestEnrollmentUpdatedAt(classId: classId, studentId: id)
-                    if localEnrollmentAt == nil || change.updatedAtEpochMs >= localEnrollmentAt!.int64Value {
+                    let localEnrollmentAt = (try await container.classesRepository.latestEnrollmentUpdatedAt(classId: classId, studentId: id))?.int64Value
+                    if localEnrollmentAt == nil || change.updatedAtEpochMs >= localEnrollmentAt! {
                         try await container.classesRepository.removeStudentFromClass(classId: classId, studentId: id)
                     }
                 }

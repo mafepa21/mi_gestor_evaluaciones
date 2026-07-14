@@ -90,6 +90,10 @@ struct PlannerWorkspaceIOS: View {
                     onEdit: {
                         selectedDetailSession = nil
                         vm.openComposer(for: session)
+                    },
+                    onDelete: {
+                        selectedDetailSession = nil
+                        Task { await vm.deleteSession(session) }
                     }
                 )
                 .environmentObject(bridge)
@@ -1142,6 +1146,9 @@ private struct PlannerSessionsList: View {
                             },
                             onComplete: {
                                 Task { await vm.markCompleted(session) }
+                            },
+                            onDelete: {
+                                Task { await vm.deleteSession(session) }
                             }
                         )
                     }
@@ -1157,6 +1164,8 @@ private struct PlannerAgendaSessionRow: View {
     let onSelect: () -> Void
     let onOpen: () -> Void
     let onComplete: () -> Void
+    let onDelete: () -> Void
+    @State private var isDeleteConfirmationPresented = false
 
     private var stateTint: Color {
         vm.sessionStateTint(for: session)
@@ -1212,6 +1221,11 @@ private struct PlannerAgendaSessionRow: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button("Eliminar", role: .destructive) {
+                isDeleteConfirmationPresented = true
+            }
+            .tint(IOSAppStyle.danger)
+
             Button("Observación", action: onOpen)
                 .tint(EvaluationDesign.accent)
 
@@ -1222,6 +1236,21 @@ private struct PlannerAgendaSessionRow: View {
             Button("Abrir sesión", action: onOpen)
             Button("Marcar impartida", action: onComplete)
             Button("Registrar observación", action: onOpen)
+            Button(role: .destructive) {
+                isDeleteConfirmationPresented = true
+            } label: {
+                Label("Eliminar sesión", systemImage: "trash")
+            }
+        }
+        .confirmationDialog(
+            "Eliminar sesión",
+            isPresented: $isDeleteConfirmationPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Eliminar sesión", role: .destructive, action: onDelete)
+            Button("Cancelar", role: .cancel) {}
+        } message: {
+            Text("Se eliminará esta sesión planificada.")
         }
     }
 }
@@ -1389,6 +1418,37 @@ private struct PlannerForecastRowView: View {
     }
 }
 
+private extension SessionJournalMediaType {
+    var title: String {
+        switch self {
+        case .photo: return "Foto"
+        case .audio: return "Audio"
+        case .transcript: return "Dictado"
+        default: return "Media"
+        }
+    }
+}
+
+private extension SessionJournalLinkType {
+    var title: String {
+        switch self {
+        case .notebook: return "Cuaderno"
+        case .attendance: return "Asistencia"
+        case .incident: return "Incidencia"
+        case .family: return "Familias"
+        default: return "Enlace"
+        }
+    }
+}
+
+private extension Optional where Wrapped == String {
+    var nilIfBlank: String? {
+        switch self?.trimmingCharacters(in: .whitespacesAndNewlines) {
+        case .some(let value) where !value.isEmpty: return value
+        default: return nil
+        }
+    }
+}
 private extension String {
     var nilIfBlank: String? {
         trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : self

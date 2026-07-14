@@ -30,6 +30,10 @@ final class MacStudentsStore: ObservableObject {
     @Published var profileLoadTask: Task<Void, Never>?
     @Published var profileLoadingStudentId: Int64?
     @Published var studentEditorMode: MacStudentEditorMode?
+    deinit {
+        profileLoadTask?.cancel()
+    }
+    @Published var supportMeasures: [SupportMeasureRow] = []
 }
 
 struct MacStudentsView: View {
@@ -43,6 +47,11 @@ struct MacStudentsView: View {
     var reloadToken: Int = 0
 
     @State private var showingStudentFileImporter = false
+    @State private var showSupportMeasureSheet = false
+    @State private var editingSupportMeasure: SupportMeasureRow?
+    @State private var pendingDeleteSupportMeasure: SupportMeasureRow?
+    @State private var showBulkImportSheet = false
+    @State private var showGroupOverviewSheet = false
     @State private var studentImportPreview: AppleStudentImportPreview?
     @State private var importErrorMessage: String?
     @FocusState private var isSearchFocused: Bool
@@ -203,6 +212,62 @@ struct MacStudentsView: View {
                 Task { await saveStudentDraft(draft, mode: mode) }
             }
         }
+        .sheet(isPresented: $showSupportMeasureSheet) {
+            if let studentId = store.localSelectedStudentId ?? selectedRow?.id {
+                SupportMeasureFormSheet(studentId: studentId) {
+                    loadProfileForSelection(studentId)
+                }
+                .environmentObject(bridge)
+            }
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { editingSupportMeasure != nil },
+                set: { if !$0 { editingSupportMeasure = nil } }
+            )
+        ) {
+            if let studentId = store.localSelectedStudentId ?? selectedRow?.id, let editingSupportMeasure {
+                SupportMeasureFormSheet(studentId: studentId, existingMeasure: editingSupportMeasure) {
+                    loadProfileForSelection(studentId)
+                }
+                .environmentObject(bridge)
+            }
+        }
+        .sheet(isPresented: $showBulkImportSheet) {
+            if let selectedClassId {
+                SupportMeasureBulkImportSheet(
+                    classId: selectedClassId,
+                    roster: studentsBridgeStore.studentsInClass
+                ) {
+                    loadProfileForSelection(store.localSelectedStudentId ?? selectedRow?.id)
+                }
+                .environmentObject(bridge)
+            }
+        }
+        .sheet(isPresented: $showGroupOverviewSheet) {
+            SupportMeasureGroupOverviewSheet(
+                className: studentsBridgeStore.classes.first(where: { $0.id == selectedClassId })?.name ?? "",
+                roster: studentsBridgeStore.studentsInClass
+            )
+            .environmentObject(bridge)
+        }
+        .confirmationDialog(
+            "Eliminar medida de apoyo",
+            isPresented: Binding(
+                get: { pendingDeleteSupportMeasure != nil },
+                set: { if !$0 { pendingDeleteSupportMeasure = nil } }
+            ),
+            presenting: pendingDeleteSupportMeasure
+        ) { measure in
+            Button("Eliminar \(measure.level.displayName) · \(measure.measureType.displayName)", role: .destructive) {
+                Task { await deleteSupportMeasure(measure) }
+            }
+            Button("Cancelar", role: .cancel) {
+                pendingDeleteSupportMeasure = nil
+            }
+        } message: { _ in
+            Text("Se eliminará este registro por completo. Si solo quieres cerrarla, usa \"Retirar\".")
+        }
         .fileImporter(
             isPresented: $showingStudentFileImporter,
             allowedContentTypes: [.xlsx, .commaSeparatedText],
@@ -258,9 +323,29 @@ struct MacStudentsView: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("Clase")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                HStack {
+                    Text("Clase")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    if selectedClassId != nil {
+                        Button {
+                            showBulkImportSheet = true
+                        } label: {
+                            Image(systemName: "tablecells.badge.ellipsis")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Importar medidas Nivel III desde Excel")
+
+                        Button {
+                            showGroupOverviewSheet = true
+                        } label: {
+                            Image(systemName: "list.bullet.clipboard")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Ver medidas del grupo")
+                    }
+                }
                 Picker("Clase", selection: $selectedClassId) {
                     Text("Todas").tag(Optional<Int64>.none)
                     ForEach(studentsBridgeStore.classes, id: \.id) { schoolClass in
@@ -594,6 +679,25 @@ struct MacStudentsView: View {
                             }
                         }
 
+                        inspectorSection("Medidas de apoyo") {
+                            VStack(alignment: .leading, spacing: 10) {
+                                if store.supportMeasures.isEmpty {
+                                    Text("Sin medidas registradas.")
+                                        .foregroundStyle(.secondary)
+                                } else {
+                                    ForEach(store.supportMeasures) { measure in
+                                        macSupportMeasureRow(measure)
+                                    }
+                                }
+                                Button {
+                                    showSupportMeasureSheet = true
+                                } label: {
+                                    Label("Añadir medida", systemImage: "plus.circle.fill")
+                                }
+                                .buttonStyle(.borderless)
+                            }
+                        }
+
                         inspectorSection("Accesos") {
                             MacPremiumInspectorActionGroup {
                                 Button {
@@ -635,6 +739,93 @@ struct MacStudentsView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .background(MacAppStyle.cardBackground)
+        }
+    }
+
+    private func macSupportMeasureRow(_ measure: SupportMeasureRow) -> some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text("\(measure.level.displayName) · \(measure.measureType.displayName)")
+                        .font(.subheadline.weight(.semibold))
+                    if !measure.isActive {
+                        Text("Retirada")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if let responsible = measure.responsible, !responsible.isEmpty {
+                    Text(responsible)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                switch measure.reviewStatus {
+                case .overdue:
+                    Text("Revisión vencida")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(MacAppStyle.dangerTint)
+                case .dueSoon:
+                    Text("Revisión próxima")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(MacAppStyle.warningTint)
+                case .none:
+                    EmptyView()
+                }
+            }
+            Spacer()
+            if measure.isActive {
+                Button("Editar") {
+                    editingSupportMeasure = measure
+                }
+                .font(.caption.weight(.bold))
+                .buttonStyle(.borderless)
+
+                Button("Retirar") {
+                    Task { await retireSupportMeasure(measure) }
+                }
+                .font(.caption.weight(.bold))
+                .buttonStyle(.borderless)
+            }
+        }
+        .padding(10)
+        .background(MacAppStyle.subtleFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .contextMenu {
+            if measure.isActive {
+                Button {
+                    editingSupportMeasure = measure
+                } label: {
+                    Label("Editar medida", systemImage: "pencil")
+                }
+            }
+            Button(role: .destructive) {
+                pendingDeleteSupportMeasure = measure
+            } label: {
+                Label("Eliminar medida", systemImage: "trash")
+            }
+        }
+    }
+
+    @MainActor
+    private func retireSupportMeasure(_ measure: SupportMeasureRow) async {
+        do {
+            try await bridge.retireSupportMeasure(
+                id: measure.id,
+                endDateIso: AppDateTimeSupport.isoDateFormatter.string(from: Date())
+            )
+            loadProfileForSelection(measure.studentId)
+        } catch {
+            store.profileErrorMessage = "No se pudo retirar la medida: \(error.localizedDescription)"
+        }
+    }
+
+    @MainActor
+    private func deleteSupportMeasure(_ measure: SupportMeasureRow) async {
+        pendingDeleteSupportMeasure = nil
+        do {
+            try await bridge.deleteSupportMeasure(id: measure.id)
+            loadProfileForSelection(measure.studentId)
+        } catch {
+            store.profileErrorMessage = "No se pudo eliminar la medida: \(error.localizedDescription)"
         }
     }
 
@@ -748,6 +939,7 @@ struct MacStudentsView: View {
             store.profile = nil
             store.riskPack = nil
             store.profileErrorMessage = nil
+            store.supportMeasures = []
             return
         }
 
@@ -761,8 +953,10 @@ struct MacStudentsView: View {
             do {
                 async let loadedProfile = bridge.loadStudentProfile(studentId: studentId, classId: requestedClassId)
                 async let loadedRiskPack = StudentRiskEvidenceBuilder.build(bridge: bridge, classId: requestedClassId, studentId: studentId)
+                async let loadedSupportMeasures = bridge.supportMeasures(for: studentId)
                 let resultProfile = try await loadedProfile
                 let resultRiskPack = try? await loadedRiskPack
+                let resultSupportMeasures = (try? await loadedSupportMeasures)?.map(\.asRow) ?? []
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
                     guard store.localSelectedStudentId == studentId,
@@ -770,6 +964,7 @@ struct MacStudentsView: View {
                           (selectedClassId ?? store.rows.first(where: { $0.id == studentId })?.classId) == requestedClassId else { return }
                     store.profile = resultProfile
                     store.riskPack = resultRiskPack
+                    store.supportMeasures = resultSupportMeasures
                     store.profileLoadingStudentId = nil
                     store.isLoadingProfile = false
                 }

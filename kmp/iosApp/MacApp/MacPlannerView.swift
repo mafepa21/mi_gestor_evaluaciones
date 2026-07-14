@@ -31,6 +31,7 @@ struct PlannerMacToolbarActions {
     /// directo al `PlannerWorkspaceViewModel`, propio de `MacPlannerView`).
     let onOpenDiary: (PlanningSession) -> Void
     let onEditSession: (PlanningSession) -> Void
+    let onDeleteSession: (PlanningSession) -> Void
 }
 
 struct MacPlannerView: View {
@@ -182,6 +183,10 @@ struct MacPlannerView: View {
                 onEditSession: { session in
                     inspectorSession = nil
                     vm.openComposer(for: session)
+                },
+                onDeleteSession: { session in
+                    inspectorSession = nil
+                    Task { await vm.deleteSession(session) }
                 }
             )
         )

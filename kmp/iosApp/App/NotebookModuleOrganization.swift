@@ -389,6 +389,7 @@ extension NotebookModuleView {
                                     .minimumScaleFactor(0.6)
                                     .layoutPriority(1)
                                 riskBadge(for: item.student.id)
+                                supportMeasureBadge(for: item.student.id)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -475,6 +476,16 @@ extension NotebookModuleView {
                 .help("Atención puntual")
         case .seguimientoNormal, .none:
             EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    func supportMeasureBadge(for studentId: Int64) -> some View {
+        if activeSupportMeasureStudentIds.contains(studentId) {
+            Circle()
+                .fill(Color.indigo)
+                .frame(width: 6, height: 6)
+                .help("Medida de apoyo Nivel III/IV activa")
         }
     }
 

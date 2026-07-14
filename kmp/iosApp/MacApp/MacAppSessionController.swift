@@ -60,6 +60,12 @@ final class MacAppSessionController: ObservableObject {
         }
     }
 
+    func retry() {
+        guard case .failed = bootstrapState else { return }
+        bootstrapState = .idle
+        start()
+    }
+
     func handleScenePhase(_ phase: ScenePhase) {
         switch phase {
         case .active:

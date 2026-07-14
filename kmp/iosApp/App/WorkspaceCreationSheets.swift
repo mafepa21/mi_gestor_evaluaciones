@@ -614,11 +614,82 @@ struct CreatePEIncidentSheet: View {
     }
 }
 
+struct EditPEIncidentSheet: View {
+    let incident: Incident
+    let categories: [String]
+    let onSave: (String, String, String, String) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var title: String
+    @State private var detail: String
+    @State private var severity: String
+    @State private var category: String
+
+    init(incident: Incident, category: String, categories: [String], onSave: @escaping (String, String, String, String) -> Void) {
+        self.incident = incident
+        self.categories = categories
+        self.onSave = onSave
+        _title = State(initialValue: incident.title)
+        _detail = State(initialValue: incident.detail ?? "")
+        _severity = State(initialValue: incident.severity)
+        _category = State(initialValue: category)
+    }
+
+    private var canSave: Bool {
+        !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Incidencia") {
+                    Picker("Categoría", selection: $category) {
+                        ForEach(categories, id: \.self) { item in
+                            Text(item).tag(item)
+                        }
+                    }
+                    TextField("Título", text: $title)
+                    TextField("Detalle", text: $detail, axis: .vertical)
+                    Picker("Severidad", selection: $severity) {
+                        Text("Baja").tag("low")
+                        Text("Media").tag("medium")
+                        Text("Alta").tag("high")
+                        Text("Crítica").tag("critical")
+                    }
+                }
+            }
+            .navigationTitle("Editar incidencia")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancelar") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Guardar") {
+                        onSave(
+                            title.trimmingCharacters(in: .whitespacesAndNewlines),
+                            detail.trimmingCharacters(in: .whitespacesAndNewlines),
+                            severity,
+                            category
+                        )
+                        dismiss()
+                    }
+                    .disabled(!canSave)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+}
+
 struct CreatePEMaterialRecordSheet: View {
     @EnvironmentObject var bridge: KmpBridge
     @Environment(\.dismiss) var dismiss
     let defaultClassId: Int64?
     let sessions: [KmpBridge.PESessionSnapshot]
+    var existingRecord: PEMaterialRecord? = nil
     let onSaved: (PEMaterialRecord) -> Void
 
     @State var itemName = ""
@@ -627,13 +698,15 @@ struct CreatePEMaterialRecordSheet: View {
     @State var note = ""
     @State var selectedSessionId: Int64?
 
+    private var isEditing: Bool { existingRecord != nil }
+
     private var canSave: Bool {
         defaultClassId != nil && !itemName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
         WorkspaceCreateSheetScaffold(
-            title: "Nuevo material",
+            title: isEditing ? "Editar material" : "Nuevo material",
             subtitle: "Registra material preparado o usado y vincúlalo a una sesión si procede.",
             systemImage: "shippingbox.fill",
             canSave: canSave,
@@ -659,20 +732,28 @@ struct CreatePEMaterialRecordSheet: View {
                 }
             }
         }
+        .onAppear {
+            guard let existingRecord else { return }
+            itemName = existingRecord.itemName
+            quantity = existingRecord.quantity
+            status = existingRecord.status
+            note = existingRecord.note
+            selectedSessionId = existingRecord.sessionId
+        }
     }
 
     private func save() {
         Task {
             guard let defaultClassId, !itemName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
             let record = PEMaterialRecord(
-                id: UUID(),
+                id: existingRecord?.id ?? UUID(),
                 classId: defaultClassId,
                 sessionId: selectedSessionId,
                 itemName: itemName,
                 quantity: quantity,
                 status: status,
                 note: note,
-                createdAt: Date()
+                createdAt: existingRecord?.createdAt ?? Date()
             )
             if let session = sessions.first(where: { $0.id == selectedSessionId }) {
                 let materialLine = "\(itemName) x\(quantity)" + (note.nilIfBlank.map { " (\($0))" } ?? "")
@@ -847,6 +928,231 @@ struct CreateTournamentSheet: View {
             )
             onSaved(tournament)
             dismiss()
+        }
+    }
+}
+
+struct SupportMeasureFormSheet: View {
+    @EnvironmentObject var bridge: KmpBridge
+    @Environment(\.dismiss) var dismiss
+    let studentId: Int64
+    var existingMeasure: SupportMeasureRow? = nil
+    let onSaved: () -> Void
+
+    @State private var level: SupportMeasureLevelUI = .iii
+    @State private var selectedTypesIII: Set<SupportMeasureTypeUI> = []
+    @State private var measureTypeIV: SupportMeasureTypeUI = .acis
+    @State private var startDate = Date()
+    @State private var responsible = ""
+    @State private var hasIntensity = false
+    @State private var intensity: SupportMeasureIntensityUI = .baja
+    @State private var followUpNotes = ""
+    @State private var documentRef = ""
+    @State private var hasReviewDue = true
+    @State private var reviewDueDate = Calendar.current.date(byAdding: .year, value: 1, to: Date()) ?? Date()
+    @State private var errorMessage: String?
+    @State private var isSaving = false
+
+    private var isEditing: Bool { existingMeasure != nil }
+
+    private var canSave: Bool {
+        guard !isSaving else { return false }
+        return level == .iii ? !selectedTypesIII.isEmpty : true
+    }
+
+    var body: some View {
+        WorkspaceCreateSheetScaffold(
+            title: isEditing ? "Editar medida de apoyo" : "Nueva medida de apoyo",
+            subtitle: "Registra lo mínimo ahora. El detalle del PAP se consulta desde el documento oficial, no se transcribe aquí.",
+            systemImage: "person.text.rectangle.fill",
+            canSave: canSave,
+            onCancel: { dismiss() },
+            onSave: save
+        ) {
+            PremiumCard.section(title: "Medida", systemImage: "checkmark.seal") {
+                VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Nivel")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Picker("Nivel", selection: $level) {
+                            ForEach(SupportMeasureLevelUI.allCases) { option in
+                                Text(option.displayName).tag(option)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .appOnChange(of: level) { _ in
+                            selectedTypesIII = []
+                        }
+                    }
+
+                    DatePicker("Fecha de inicio", selection: $startDate, displayedComponents: .date)
+                }
+            }
+
+            if level == .iii {
+                PremiumCard.section(title: isEditing ? "Medida" : "Medidas (selecciona una o varias)", systemImage: "checklist") {
+                    VStack(alignment: .leading, spacing: 20) {
+                        ForEach(SupportMeasureCatalogGroup.allCases) { group in
+                            let items = SupportMeasureTypeUI.catalog(for: group)
+                            if !items.isEmpty {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text(group.rawValue)
+                                        .font(.caption.weight(.bold))
+                                        .foregroundStyle(.secondary)
+                                        .textCase(.uppercase)
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        ForEach(items) { item in
+                                            supportMeasureCatalogRow(item)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                PremiumCard.section(title: "Medida", systemImage: "checkmark.seal") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Tipo de medida")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Picker("Tipo de medida", selection: $measureTypeIV) {
+                            ForEach(SupportMeasureTypeUI.types(for: .iv)) { option in
+                                Text(option.displayName).tag(option)
+                            }
+                        }
+                    }
+                }
+            }
+
+            PremiumCard.section(title: "Detalle (opcional)", systemImage: "ellipsis.circle") {
+                VStack(alignment: .leading, spacing: 16) {
+                    WorkspaceCreateTextField(title: "Responsable", placeholder: "Orientador, PT, AL…", text: $responsible)
+
+                    Toggle("Intensidad de apoyo", isOn: $hasIntensity)
+                    if hasIntensity {
+                        Picker("Intensidad", selection: $intensity) {
+                            ForEach(SupportMeasureIntensityUI.allCases) { option in
+                                Text(option.displayName).tag(option)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                    }
+
+                    WorkspaceCreateTextField(title: "Referencia al documento PAP", placeholder: "Ruta o código del documento oficial", text: $documentRef)
+
+                    WorkspaceCreateMultilineField(title: "Notas de seguimiento", placeholder: "Observaciones propias del aula", text: $followUpNotes)
+
+                    Toggle("Recordatorio de revisión anual", isOn: $hasReviewDue)
+                    if hasReviewDue {
+                        DatePicker("Revisar antes de", selection: $reviewDueDate, displayedComponents: .date)
+                    }
+                }
+            }
+        }
+        .onAppear(perform: prefillFromExistingMeasure)
+        .alert("No se pudo guardar", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("Aceptar", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
+        }
+    }
+
+    private func prefillFromExistingMeasure() {
+        guard let existingMeasure else { return }
+        level = existingMeasure.level
+        if existingMeasure.level == .iii {
+            selectedTypesIII = [existingMeasure.measureType]
+        } else {
+            measureTypeIV = existingMeasure.measureType
+        }
+        startDate = AppDateTimeSupport.isoDateFormatter.date(from: existingMeasure.startDateIso) ?? Date()
+        responsible = existingMeasure.responsible ?? ""
+        hasIntensity = existingMeasure.intensity != nil
+        intensity = existingMeasure.intensity ?? .baja
+        followUpNotes = existingMeasure.followUpNotes
+        documentRef = existingMeasure.documentRef ?? ""
+        hasReviewDue = existingMeasure.reviewDueIso != nil
+        if let reviewDueIso = existingMeasure.reviewDueIso,
+           let date = AppDateTimeSupport.isoDateFormatter.date(from: reviewDueIso) {
+            reviewDueDate = date
+        }
+    }
+
+    private func supportMeasureCatalogRow(_ item: SupportMeasureTypeUI) -> some View {
+        Button {
+            if isEditing {
+                selectedTypesIII = [item]
+            } else if selectedTypesIII.contains(item) {
+                selectedTypesIII.remove(item)
+            } else {
+                selectedTypesIII.insert(item)
+            }
+        } label: {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: selectedTypesIII.contains(item) ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(selectedTypesIII.contains(item) ? Color.accentColor : Color.secondary)
+                    .font(.body)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.displayName)
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                    if !item.itacaCode.isEmpty {
+                        Text(item.itacaCode)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.vertical, 4)
+    }
+
+    private func draft(for type: SupportMeasureTypeUI) -> SupportMeasureDraft {
+        // El nivel se deriva siempre del tipo elegido (no del segmento `level` del picker):
+        // así es imposible persistir una fila cuyo `level` contradiga `measureType.level`
+        // aunque la UI quede momentáneamente desincronizada (p.ej. al cambiar de segmento).
+        var draft = SupportMeasureDraft(
+            studentId: studentId,
+            level: type.level,
+            measureType: type,
+            startDateIso: AppDateTimeSupport.isoDateFormatter.string(from: startDate)
+        )
+        draft.responsible = responsible
+        draft.intensity = hasIntensity ? intensity : nil
+        draft.followUpNotes = followUpNotes
+        draft.documentRef = documentRef
+        draft.reviewDueIso = hasReviewDue ? AppDateTimeSupport.isoDateFormatter.string(from: reviewDueDate) : nil
+        return draft
+    }
+
+    private func save() {
+        guard canSave else { return }
+        isSaving = true
+        Task {
+            defer { isSaving = false }
+            do {
+                if let existingMeasure {
+                    let type = level == .iii ? (selectedTypesIII.first ?? existingMeasure.measureType) : measureTypeIV
+                    _ = try await bridge.saveSupportMeasure(id: existingMeasure.id, draft: draft(for: type))
+                } else {
+                    let types: [SupportMeasureTypeUI] = level == .iii ? Array(selectedTypesIII) : [measureTypeIV]
+                    for type in types {
+                        _ = try await bridge.saveSupportMeasure(draft: draft(for: type))
+                    }
+                }
+                onSaved()
+                dismiss()
+            } catch {
+                errorMessage = "No se pudo guardar la medida: \(error.localizedDescription)"
+            }
         }
     }
 }

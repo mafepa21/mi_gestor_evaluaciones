@@ -589,6 +589,31 @@ interface AttendanceRepository {
     suspend fun getAttendanceForClassBetweenDates(classId: Long, startDateMs: Long, endDateMs: Long): List<Attendance>
 }
 
+interface StudentSupportMeasureRepository {
+    suspend fun listByStudent(studentId: Long): List<StudentSupportMeasure>
+    suspend fun listActiveStudentIds(): Set<Long>
+    suspend fun save(
+        id: Long? = null,
+        studentId: Long,
+        level: SupportMeasureLevel,
+        measureType: SupportMeasureType,
+        startDateIso: String,
+        endDateIso: String? = null,
+        responsible: String? = null,
+        intensity: SupportMeasureIntensity? = null,
+        followUpNotes: String = "",
+        documentRef: String? = null,
+        reviewDueIso: String? = null,
+        isActive: Boolean = true,
+        createdAtEpochMs: Long = 0,
+        updatedAtEpochMs: Long = 0,
+        deviceId: String? = null,
+        syncVersion: Long = 0,
+    ): Long
+    suspend fun retire(id: Long, endDateIso: String, updatedAtEpochMs: Long = 0, deviceId: String? = null)
+    suspend fun delete(id: Long)
+}
+
 interface CompetenciesRepository {
     fun observeCompetencies(): Flow<List<CompetencyCriterion>>
     suspend fun listCompetencies(): List<CompetencyCriterion>
@@ -622,6 +647,7 @@ interface IncidentsRepository {
         deviceId: String? = null,
         syncVersion: Long = 0,
     ): Long
+    suspend fun deleteIncident(id: Long)
 }
 
 interface CalendarRepository {

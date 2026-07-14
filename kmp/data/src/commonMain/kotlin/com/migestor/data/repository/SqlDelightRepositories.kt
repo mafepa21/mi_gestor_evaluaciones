@@ -36,6 +36,10 @@ import com.migestor.shared.domain.SessionStatus
 import com.migestor.shared.domain.Student
 import com.migestor.shared.domain.StudentSex
 import com.migestor.shared.domain.StudentSexSource
+import com.migestor.shared.domain.StudentSupportMeasure
+import com.migestor.shared.domain.SupportMeasureIntensity
+import com.migestor.shared.domain.SupportMeasureLevel
+import com.migestor.shared.domain.SupportMeasureType
 import com.migestor.shared.domain.Subject
 import com.migestor.shared.domain.TeachingUnit
 import com.migestor.shared.util.IsoWeekHelper
@@ -57,6 +61,7 @@ import com.migestor.shared.repository.PendingEvaluationsSummary
 import com.migestor.shared.repository.PlannerRepository
 import com.migestor.shared.repository.RubricsRepository
 import com.migestor.shared.repository.StudentsRepository
+import com.migestor.shared.repository.StudentSupportMeasureRepository
 import com.migestor.shared.repository.StudentProfileSnapshot
 import com.migestor.shared.repository.AITrendsRepository
 import com.migestor.shared.repository.StudentGradeHistoryPoint
@@ -83,6 +88,10 @@ private fun studentSexSourceOrDefault(value: String): StudentSexSource {
 
 private fun localDateOrNull(value: String?): LocalDate? {
     return value?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+}
+
+private inline fun <reified T : Enum<T>> enumValueOfOrNull(value: String): T? {
+    return runCatching { enumValueOf<T>(value) }.getOrNull()
 }
 
 private fun academicYearStatusOrDefault(value: String): AcademicYearStatus {
@@ -1757,6 +1766,119 @@ class AttendanceRepositorySqlDelight(
     }
 }
 
+class StudentSupportMeasureRepositorySqlDelight(
+    private val db: AppDatabase,
+) : StudentSupportMeasureRepository {
+
+    /**
+     * `null` si la fila persiste un `level`/`measure_type`/`intensity` que ya no existe en el
+     * enum actual (p.ej. datos de una version anterior del catalogo). Se descarta en vez de
+     * lanzar: un `valueOf` fallido aqui cruzaria como excepcion Kotlin no capturada hacia Swift
+     * y crashearia la app entera al cargar la ficha del alumno.
+     */
+    private fun rowToModel(row: com.migestor.data.db.SelectSupportMeasuresByStudent): StudentSupportMeasure? {
+        val level = enumValueOfOrNull<SupportMeasureLevel>(row.level) ?: return null
+        val measureType = enumValueOfOrNull<SupportMeasureType>(row.measure_type) ?: return null
+        val intensity = row.intensity?.let { enumValueOfOrNull<SupportMeasureIntensity>(it) }
+        return StudentSupportMeasure(
+            id = row.id,
+            studentId = row.student_id,
+            level = level,
+            measureType = measureType,
+            startDate = LocalDate.parse(row.start_date_iso),
+            endDate = localDateOrNull(row.end_date_iso),
+            responsible = row.responsible,
+            intensity = intensity,
+            followUpNotes = row.follow_up_notes,
+            documentRef = row.document_ref,
+            reviewDue = localDateOrNull(row.review_due_iso),
+            isActive = row.is_active != 0L,
+            trace = AuditTrace(
+                updatedAt = Instant.fromEpochMilliseconds(row.updated_at_epoch_ms),
+                deviceId = row.device_id,
+                syncVersion = row.sync_version,
+            )
+        )
+    }
+
+    override suspend fun listByStudent(studentId: Long): List<StudentSupportMeasure> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectSupportMeasuresByStudent(studentId).executeAsList().mapNotNull(::rowToModel)
+    }
+
+    override suspend fun listActiveStudentIds(): Set<Long> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectActiveSupportMeasureStudentIds().executeAsList().toSet()
+    }
+
+    override suspend fun save(
+        id: Long?,
+        studentId: Long,
+        level: SupportMeasureLevel,
+        measureType: SupportMeasureType,
+        startDateIso: String,
+        endDateIso: String?,
+        responsible: String?,
+        intensity: SupportMeasureIntensity?,
+        followUpNotes: String,
+        documentRef: String?,
+        reviewDueIso: String?,
+        isActive: Boolean,
+        createdAtEpochMs: Long,
+        updatedAtEpochMs: Long,
+        deviceId: String?,
+        syncVersion: Long,
+    ): Long = withContext(Dispatchers.Default) {
+        db.transactionWithResult {
+            if (id != null) {
+                // UPDATE en el sitio de los campos editables: preserva created_at_epoch_ms y
+                // el estado de retirada (end_date_iso/is_active) de la fila existente en vez
+                // de machacarlos con los valores por defecto que envia el bridge al editar.
+                db.appDatabaseQueries.updateSupportMeasure(
+                    level.name,
+                    measureType.name,
+                    startDateIso,
+                    responsible,
+                    intensity?.name,
+                    followUpNotes,
+                    documentRef,
+                    reviewDueIso,
+                    updatedAtEpochMs,
+                    deviceId,
+                    id,
+                )
+                id
+            } else {
+                db.appDatabaseQueries.upsertSupportMeasure(
+                    null,
+                    studentId,
+                    level.name,
+                    measureType.name,
+                    startDateIso,
+                    endDateIso,
+                    responsible,
+                    intensity?.name,
+                    followUpNotes,
+                    documentRef,
+                    reviewDueIso,
+                    if (isActive) 1 else 0,
+                    createdAtEpochMs,
+                    updatedAtEpochMs,
+                    deviceId,
+                    syncVersion,
+                )
+                db.appDatabaseQueries.lastInsertedId().executeAsOne()
+            }
+        }
+    }
+
+    override suspend fun retire(id: Long, endDateIso: String, updatedAtEpochMs: Long, deviceId: String?) = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.retireSupportMeasure(endDateIso, updatedAtEpochMs, deviceId, id)
+    }
+
+    override suspend fun delete(id: Long) = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.deleteSupportMeasure(id)
+    }
+}
+
 class CompetenciesRepositorySqlDelight(
     private val db: AppDatabase,
 ) : CompetenciesRepository {
@@ -1923,6 +2045,10 @@ class IncidentsRepositorySqlDelight(
             )
             id ?: db.appDatabaseQueries.lastInsertedId().executeAsOne()
         }
+    }
+
+    override suspend fun deleteIncident(id: Long) = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.deleteIncident(id)
     }
 }
 

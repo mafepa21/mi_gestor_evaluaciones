@@ -322,6 +322,12 @@ struct LearningSituationsWorkspaceView: View {
             }
             .buttonStyle(.bordered)
             Menu {
+                Button("Editar") {
+                    if let decoded = draft(for: situation) {
+                        importTargetId = situation.id
+                        importDraft = decoded
+                    }
+                }
                 Button("Importar nueva versión") {
                     importTargetId = situation.id
                     isImporterPresented = true
@@ -342,6 +348,22 @@ struct LearningSituationsWorkspaceView: View {
 
             .buttonStyle(.bordered)
         }
+    }
+
+    private func draft(for situation: LearningSituation) -> LearningSituationImportDraft? {
+        guard var decoded = try? JSONDecoder().decode(LearningSituationImportDraft.self, from: Data(situation.payloadJson.utf8)) else {
+            errorMessage = "No se pudo abrir esta situación para editarla."
+            return nil
+        }
+        decoded.title = situation.title
+        decoded.courseLabel = situation.courseLabel
+        decoded.subjectLabel = situation.subjectLabel
+        decoded.termLabel = situation.termLabel
+        decoded.sessionCount = Int(situation.sessionCount)
+        if let liveClassIds = classIdsBySituation[situation.id], !liveClassIds.isEmpty {
+            decoded.selectedClassIds = liveClassIds
+        }
+        return decoded
     }
 
     private var documentSection: some View {

@@ -16,6 +16,7 @@ struct NotebookMacLayout: View {
 
     @State private var searchText = ""
     @FocusState private var isSearchFocused: Bool
+    @SceneStorage("mac.notebook.lastSelectedClassId") private var lastSelectedClassIdRaw: Int = 0
 
     init(
         bridge: KmpBridge,
@@ -52,16 +53,26 @@ struct NotebookMacLayout: View {
             .background(MacAppStyle.pageBackground)
             .onAppear {
                 searchText = layoutState.notebookSearchText
-                
-                // Auto-select the first class on load if none is selected
+
+                // Si no hay clase activa, recuperar la última usada en el Cuaderno
+                // antes de caer en la primera de la lista, para no "olvidar" la
+                // selección del profesor entre lanzamientos de la app.
                 let activeId = selectedClassId ?? bridge.notebookViewModel.currentClassId?.int64Value
                 if activeId == nil {
-                    if let firstClass = sortedClasses.first {
+                    let rememberedId = lastSelectedClassIdRaw != 0 ? Int64(lastSelectedClassIdRaw) : nil
+                    if let rememberedId, sortedClasses.contains(where: { $0.id == rememberedId }) {
+                        selectedClassId = rememberedId
+                        selectedStudentId = nil
+                        bridge.selectClass(id: rememberedId)
+                    } else if let firstClass = sortedClasses.first {
                         selectedClassId = firstClass.id
                         selectedStudentId = nil
                         bridge.selectClass(id: firstClass.id)
                     }
                 }
+            }
+            .appOnChange(of: selectedClassId) { newValue in
+                lastSelectedClassIdRaw = Int(newValue ?? 0)
             }
     }
 

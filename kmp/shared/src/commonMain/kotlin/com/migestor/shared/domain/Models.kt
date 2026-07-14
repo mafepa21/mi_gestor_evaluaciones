@@ -544,6 +544,62 @@ data class Attendance(
     val trace: AuditTrace = AuditTrace(),
 )
 
+enum class SupportMeasureLevel { III, IV }
+
+enum class SupportMeasureType {
+    // Nivel IV: apoyos especializados extraordinarios (Orden 20/2019).
+    ACIS,
+    EXENCION,
+    FLEXIBILIZACION,
+    PERMANENCIA_EXTRAORDINARIA,
+    ESCOLARIZACION_ESPECIFICA,
+
+    // Nivel III - Aprendizaje: catalogo docente de medidas de aula (ITACA).
+    APR_FORMATO_EXAMEN,
+    APR_REVISION_EXAMEN,
+    APR_ORTOGRAFIA_CV,
+    APR_REDUCIR_COPIA_ENUNCIADOS,
+    APR_LIBRETA_COMPARTIDA,
+    APR_LIBRETA_EXCLUSIVA,
+    APR_FOTOCOPIAS_UNA_CARA,
+    APR_SUPERVISION_AGENDA,
+    APR_UBICACION_AULA,
+    APR_CUADERNOS_CALIGRAFIA,
+    APR_ACTIVIDADES_TIC,
+    APR_REVISION_RESPUESTAS_INCOHERENTES,
+
+    // Nivel III - Participacion.
+    PART_SUPERVISION_EXPOSICION,
+    PART_AVISO_LECTURA_VOZ_ALTA,
+    PART_TUTORIAS_PERSONALIZADAS,
+
+    // Nivel III - Flexibilizacion.
+    FLEX_PLAN_REPETICION,
+
+    // Nivel III - Acceso.
+    ACC_DESPLAZAMIENTO_AUTONOMO,
+    ACC_BANO_AYUDA_FAMILIA,
+    ACC_MESA_ADAPTADA,
+}
+
+enum class SupportMeasureIntensity { BAJA, MEDIA, ALTA }
+
+data class StudentSupportMeasure(
+    val id: Long,
+    val studentId: Long,
+    val level: SupportMeasureLevel,
+    val measureType: SupportMeasureType,
+    val startDate: LocalDate,
+    val endDate: LocalDate? = null,
+    val responsible: String? = null,
+    val intensity: SupportMeasureIntensity? = null,
+    val followUpNotes: String = "",
+    val documentRef: String? = null,
+    val reviewDue: LocalDate? = null,
+    val isActive: Boolean = true,
+    val trace: AuditTrace = AuditTrace(),
+)
+
 data class Incident(
     val id: Long,
     val classId: Long,
@@ -1451,7 +1507,7 @@ fun NotebookRow.gradeValueFor(
         ?: column.evaluationId?.let { evalId ->
             numericDrafts[studentId to "eval_$evalId"]?.replace(",", ".")?.toDoubleOrNull()
         }
-    if (draftValue != null) return draftValue
+    if (draftValue != null) return column.rescaleNumericGrade(draftValue)
 
     // 2. Check calculated formula values
     calculatedValuesByColumnId[column.id]?.let { return it }
@@ -1460,14 +1516,14 @@ fun NotebookRow.gradeValueFor(
     val evaluationValue = column.evaluationId?.let { evaluationId ->
         cells.firstOrNull { it.evaluationId == evaluationId }?.value
     }
-    if (evaluationValue != null) return evaluationValue
+    if (evaluationValue != null) return column.rescaleNumericGrade(evaluationValue)
 
     // 4. Check persisted grades (by columnId or evaluationId)
     val persistedGrade = persistedGrades.firstOrNull { it.columnId == column.id }?.value
         ?: column.evaluationId?.let { evalId ->
             persistedGrades.firstOrNull { it.evaluationId == evalId }?.value
         }
-    if (persistedGrade != null) return persistedGrade
+    if (persistedGrade != null) return column.rescaleNumericGrade(persistedGrade)
 
     // 5. Check persisted cells check/bool/ordinal value
     val persistedCell = persistedCells.firstOrNull { it.columnId == column.id }
@@ -1475,6 +1531,15 @@ fun NotebookRow.gradeValueFor(
         NotebookColumnType.CHECK -> persistedCell?.boolValue?.let { if (it) 10.0 else 0.0 }
         NotebookColumnType.ORDINAL -> persistedCell?.ordinalValue?.let { column.ordinalScoreForAverage(it) }
         else -> persistedCell?.boolValue?.let { if (it) 10.0 else 0.0 }
+    }
+}
+
+// FOUR_LEVEL is stored as a 1-4 level, not a 0-10 grade; other scale kinds pass through raw.
+fun NotebookColumnDefinition.rescaleNumericGrade(rawValue: Double): Double {
+    if (type != NotebookColumnType.NUMERIC) return rawValue
+    return when (scaleKind) {
+        NotebookScaleKind.FOUR_LEVEL -> (rawValue.coerceIn(1.0, 4.0) - 1.0) / 3.0 * 10.0
+        else -> rawValue
     }
 }
 

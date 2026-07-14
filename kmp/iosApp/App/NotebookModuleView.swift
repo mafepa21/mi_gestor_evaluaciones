@@ -55,6 +55,7 @@ struct NotebookModuleView: View {
     @State var surfaceMode: NotebookSurfaceMode = .grid
     @State var todayAttendanceByStudentId: [Int64: String] = [:]
     @State var incidentCountByStudentId: [Int64: Int] = [:]
+    @State var activeSupportMeasureStudentIds: Set<Int64> = []
     @State var localInjuryStatuses: [Int64: Bool] = [:]
     @State var seatPositions: [Int64: NotebookSeatPosition] = [:]
     @State var highlightedRandomStudentId: Int64? = nil
@@ -229,13 +230,24 @@ struct NotebookModuleView: View {
         activeChoiceCellId = nil
         focusedCellId = nil
         focusMode = .normal
+        searchText = ""
 
         undoStack = []
         todayAttendanceByStudentId = [:]
         incidentCountByStudentId = [:]
+        localInjuryStatuses = [:]
+        seatPositions = [:]
+        seatingGradingColumnId = nil
+        activeSupportMeasureStudentIds = []
         riskLevelCache = [:]
         riskComputationKey = nil
         isPrecomputingRiskLevels = false
+
+        formulaDraft = ""
+        expandedEmptyCategoryIds = []
+        pendingRubricColumnId = nil
+        pendingRubricStudentOrder = []
+        pendingRubricCurrentStudentId = nil
 
         rowReloadRevisions = [:]
         structuralGridRevision += 1
@@ -444,10 +456,12 @@ struct NotebookModuleView: View {
             }
         }
         .appOnChange(of: "\(data.sheet.classId)") { newValue in
+            resetNotebookTransientStateForClassChange()
             gridLayoutModel.configure(classId: data.sheet.classId)
             if let classId = Int64(newValue) {
                 loadClassLearningSituations(classId: classId)
             }
+            Task { await refreshNotebookSignals() }
         }
         .appOnChange(of: toolbarStateKey(data: data)) { _ in
             if !isMacInspectorOnly {
@@ -1328,15 +1342,14 @@ struct NotebookModuleView: View {
                 .onAppear {
                     scheduleActiveNotebookTabSync(data: data)
                     scheduleToolbarStateSync(data: data)
+                    Task { await refreshNotebookSignals() }
                 }
                 .appOnChange(of: layoutState.notebookHiddenColumnsRequestID) { requestID in
                     guard requestID != nil else { return }
                     isOrganizationMenuPresented = false
                     isHiddenColumnsSheetPresented = true
                 }
-                .appOnChange(of: "\(data.sheet.classId)") { _ in
-                    resetNotebookTransientStateForClassChange()
-                }
+
                 .appOnChange(of: notebookTabsStateKey(data: data)) { _ in
                     scheduleActiveNotebookTabSync(data: data)
                 }

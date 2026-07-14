@@ -458,6 +458,7 @@ private struct SearchBar: View {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundColor(.secondary)
                 }
+                .accessibilityLabel("Borrar búsqueda")
             }
         }
         .padding(8)

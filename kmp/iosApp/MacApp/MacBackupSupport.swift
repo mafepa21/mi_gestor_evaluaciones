@@ -168,7 +168,7 @@ final class MacBackupStore: ObservableObject {
         
         do {
             try await service.restoreBackup(backup.descriptor)
-            lastMessage = "Copia restaurada con éxito. Reiniciando..."
+            lastMessage = "Copia restaurada con éxito. Cerrando la app; vuelve a abrirla para completar la restauración."
             operationState = .saved("Restaurada")
             await loadBackups()
             

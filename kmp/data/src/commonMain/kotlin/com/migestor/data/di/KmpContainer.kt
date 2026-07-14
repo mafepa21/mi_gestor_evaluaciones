@@ -63,7 +63,12 @@ class KmpContainer(val driver: SqlDriver) {
     val evaluationsRepository = EvaluationsRepositorySqlDelight(database)
     val gradesRepository = GradesRepositorySqlDelight(database)
     val notebookCellsRepository = NotebookCellsRepositorySqlDelight(database)
-    val notebookInstrumentsRepository = NotebookInstrumentsRepositorySqlDelight(database)
+    // Compartida entre NotebookRepositorySqlDelight y NotebookInstrumentsRepositorySqlDelight
+    // para que guardar respuestas estructuradas (checklist/observación/quiz) invalide el mismo
+    // caché de NotebookSheet que usan los guardados de nota normales, y el Cuaderno refleje el
+    // cambio de inmediato en vez de servir una hoja cacheada desactualizada.
+    val notebookSheetCache = NotebookSheetMemoryCache()
+    val notebookInstrumentsRepository = NotebookInstrumentsRepositorySqlDelight(database, gradesRepository, notebookSheetCache)
     val rubricsRepository = RubricsRepositorySqlDelight(database)
     val attendanceRepository = AttendanceRepositorySqlDelight(database)
     val aiAuditRepository = AIAuditRepositorySqlDelight(database)
@@ -135,7 +140,8 @@ class KmpContainer(val driver: SqlDriver) {
         notebookConfigRepository = notebookConfigRepository,
         buildNotebookSheetUseCase = buildNotebookSheet,
         gradesRepository = gradesRepository,
-        notebookCellsRepository = notebookCellsRepository
+        notebookCellsRepository = notebookCellsRepository,
+        sheetCache = notebookSheetCache
     )
     val preloadClassWorkspace = PreloadClassWorkspaceUseCase(
         dashboardOperationalRepository = dashboardOperationalRepository,

@@ -136,6 +136,14 @@ class NotebookViewModel(
     private var observerJob: Job? = null
     private var cachedEvaluations: List<Evaluation> = emptyList()
 
+    // Guardar/instrumentos estructurados dispara varias recargas concurrentes de la misma
+    // clase (Swift `refreshCurrentNotebook` + `NotebookRefreshBus` + el observador reactivo de
+    // `startObservingData`), sin cancelación entre ellas. Sin este contador, la última lectura
+    // en TERMINAR gana aunque sea la más vieja en LANZARSE, dejando el Cuaderno "congelado" en
+    // un valor de un guardado anterior. Cada carga captura su generación antes del primer
+    // `suspend` y descarta su resultado si una carga más reciente ya se lanzó mientras esperaba.
+    private var loadGeneration: Long = 0
+
     private fun loadInitialData() {
         // Placeholder for initial data loading if needed
     }
@@ -261,10 +269,13 @@ class NotebookViewModel(
             _state.value = NotebookUiState.Loading
         }
 
+        val myGeneration = ++loadGeneration
+
         scope.launch {
             try {
                 val snapshot = notebookRepository.loadNotebookSnapshot(classId)
                 val evaluations = evaluationsRepository.listClassEvaluations(classId)
+                if (loadGeneration != myGeneration) return@launch
                 val currentData = _state.value as? NotebookUiState.Data
                 cachedEvaluations = evaluations
                 val freshDataState = buildDataState(snapshot, evaluations, currentData)
@@ -317,9 +328,11 @@ class NotebookViewModel(
                 val currentState = _state.value
                 if (currentState is NotebookUiState.Data) {
                     if (shouldSkipObserverReloadForInlineSave()) return@onEach
+                    val myGeneration = ++loadGeneration
                     try {
                         val updatedSnapshot = notebookRepository.loadNotebookSnapshot(classId)
                         val evaluations = evaluationsRepository.listClassEvaluations(classId)
+                        if (loadGeneration != myGeneration) return@onEach
                         cachedEvaluations = evaluations
                         val freshState = buildDataState(updatedSnapshot, evaluations, currentState)
 

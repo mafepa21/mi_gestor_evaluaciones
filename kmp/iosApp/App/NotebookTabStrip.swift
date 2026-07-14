@@ -6,6 +6,8 @@ struct NotebookTabStrip: View {
     let activeTabId: String?
     let onSelect: (String) -> Void
     let onCreateTab: () -> Void
+    let onRenameTab: (NotebookTab) -> Void
+    let onDeleteTab: (NotebookTab) -> Void
 
     var body: some View {
         HStack(spacing: 10) {
@@ -82,6 +84,20 @@ struct NotebookTabStrip: View {
         }
         .buttonStyle(NotebookScaleButtonStyle())
         .help("Abrir \(tab.title)")
+        .contextMenu {
+            Button {
+                onRenameTab(tab)
+            } label: {
+                Label("Renombrar", systemImage: "pencil")
+            }
+
+            Button(role: .destructive) {
+                onDeleteTab(tab)
+            } label: {
+                Label("Eliminar pestaña", systemImage: "trash")
+            }
+            .disabled(tabs.count <= 1)
+        }
         .accessibilityLabel("Pestaña \(tab.title)")
         .accessibilityValue(isSelected ? "Seleccionada" : "")
         .accessibilityAddTraits(isSelected ? .isSelected : [])

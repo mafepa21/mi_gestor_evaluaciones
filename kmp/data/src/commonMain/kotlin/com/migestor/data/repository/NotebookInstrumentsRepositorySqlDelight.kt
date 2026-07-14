@@ -10,7 +10,9 @@ import com.migestor.shared.domain.NotebookInstrumentResponse
 import com.migestor.shared.domain.NotebookInstrumentTemplate
 import com.migestor.shared.domain.NotebookInstrumentTemplateKind
 import com.migestor.shared.domain.NotebookCellInputKind
+import com.migestor.shared.repository.GradesRepository
 import com.migestor.shared.repository.NotebookInstrumentsRepository
+import com.migestor.shared.usecase.NotebookSheetMemoryCache
 import com.migestor.shared.util.NotebookRefreshBus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -19,6 +21,8 @@ import kotlinx.datetime.Instant
 
 class NotebookInstrumentsRepositorySqlDelight(
     private val db: AppDatabase,
+    private val gradesRepository: GradesRepository,
+    private val sheetCache: NotebookSheetMemoryCache,
 ) : NotebookInstrumentsRepository {
 
     override suspend fun saveTemplate(
@@ -181,8 +185,52 @@ class NotebookInstrumentsRepositorySqlDelight(
                 sync_version = syncVersion,
             )
         }
+        deriveObservationGridScore(detail.items, responsesByItem)?.let { derivedScore ->
+            gradesRepository.saveGrade(
+                classId = classId,
+                studentId = studentId,
+                columnId = columnId,
+                evaluationId = null,
+                value = derivedScore,
+                updatedAtEpochMs = now,
+                deviceId = deviceId,
+                syncVersion = syncVersion,
+            )
+        }
+
+        // Guardar respuestas estructuradas no pasaba por NotebookRepositorySqlDelight (dueño
+        // original del caché de NotebookSheet), así que nunca lo invalidaba: el Cuaderno podía
+        // seguir sirviendo una hoja cacheada sin el `display_value`/nota recién guardados hasta
+        // la siguiente mutación "normal". Invalidar aquí también para que cualquier instrumento
+        // estructurado (checklist, quiz, observación) se refleje de inmediato al guardar.
+        sheetCache.invalidate(classId)
+
         NotebookRefreshBus.emitRefresh()
         summary
+    }
+
+    /// Traduce las respuestas 1-4 de una rejilla de observación "sesión × indicador"
+    /// (items con key `obs_s<sesión>_i<indicador>`, ver LearningSituationAssessmentInstrumentsImportService.swift
+    /// en el cliente Apple) en una nota numérica: media de indicadores respondidos por
+    /// sesión, y luego media de las sesiones con al menos un indicador respondido.
+    /// Devuelve `null` si el instrumento no sigue esta convención (checklists, quizzes,
+    /// formularios genéricos) — no afecta a ningún otro tipo de instrumento.
+    private fun deriveObservationGridScore(
+        items: List<NotebookInstrumentItem>,
+        responsesByItem: Map<String, NotebookInstrumentResponse>,
+    ): Double? {
+        val sessionKeyPattern = Regex("""^obs_s(\d+)_i(\d+)$""")
+        val valuesBySession = items
+            .mapNotNull { item ->
+                val match = sessionKeyPattern.matchEntire(item.key) ?: return@mapNotNull null
+                if (item.type != NotebookInstrumentItemType.SCALE_1_4) return@mapNotNull null
+                val value = responsesByItem[item.id]?.numberValue ?: return@mapNotNull null
+                match.groupValues[1].toInt() to value
+            }
+            .groupBy({ it.first }, { it.second })
+        if (valuesBySession.isEmpty()) return null
+        val sessionAverages = valuesBySession.values.map { it.average() }
+        return sessionAverages.average()
     }
 
     private fun summarize(

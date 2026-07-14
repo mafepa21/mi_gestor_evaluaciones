@@ -1164,6 +1164,9 @@ private struct LearningSituationEvaluationSheet: View {
     @State private var instrumentImportPreview: LearningSituationAssessmentImportDraft?
     @State private var instrumentTargetTabs: [NotebookTab] = []
     @State private var selectedInstrumentTargetTabId: String?
+    @State private var isNewTargetTabAlertPresented = false
+    @State private var newTargetTabName = ""
+    @State private var isImportingInstrumentDocument = false
     @State private var rubricImportPreview: AppleRubricImportPreview?
     @State private var errorMessage = ""
 
@@ -1185,6 +1188,10 @@ private struct LearningSituationEvaluationSheet: View {
         instrumentImportDraft?.instruments.filter(\.isSelected) ?? []
     }
 
+    private var selectedWeightTotal: Double {
+        selectedImportedInstruments.compactMap(\.weightPercent).reduce(0, +)
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -1195,8 +1202,19 @@ private struct LearningSituationEvaluationSheet: View {
                     Button {
                         showingInstrumentImporter = true
                     } label: {
-                        Label("Adjuntar documento DOCX", systemImage: "doc.badge.plus")
+                        if isImportingInstrumentDocument {
+                            HStack(spacing: 8) {
+                                ProgressView()
+                                    #if os(macOS)
+                                    .controlSize(.small)
+                                    #endif
+                                Text("Leyendo documento…")
+                            }
+                        } else {
+                            Label("Adjuntar documento DOCX", systemImage: "doc.badge.plus")
+                        }
                     }
+                    .disabled(isImportingInstrumentDocument)
                     if let instrumentImportDraft {
                         Label("\(instrumentImportDraft.instruments.count) instrumentos detectados en \(instrumentImportDraft.sourceFileName)", systemImage: "checkmark.circle.fill")
                             .font(.caption)
@@ -1226,6 +1244,14 @@ private struct LearningSituationEvaluationSheet: View {
                     }
                 } else {
                     Section("Instrumentos detectados") {
+                        HStack {
+                            Text("\(selectedImportedInstruments.count) seleccionados")
+                            Spacer()
+                            Text("\(Int(selectedWeightTotal.rounded()))% ponderado")
+                                .fontWeight(.semibold)
+                                .foregroundStyle(abs(selectedWeightTotal - 100) < 0.5 ? NotebookStyle.successTint : NotebookStyle.warningTint)
+                        }
+                        .font(.caption)
                         importedInstrumentRows
                     }
                     Section("Pestaña del cuaderno") {
@@ -1241,6 +1267,12 @@ private struct LearningSituationEvaluationSheet: View {
                                     Text(tab.title).tag(Optional(tab.id))
                                 }
                             }
+                        }
+                        Button {
+                            newTargetTabName = ""
+                            isNewTargetTabAlertPresented = true
+                        } label: {
+                            Label("Crear pestaña nueva…", systemImage: "folder.badge.plus")
                         }
                     }
                 }
@@ -1302,6 +1334,11 @@ private struct LearningSituationEvaluationSheet: View {
             .alert("No se puede crear", isPresented: Binding(get: { !errorMessage.isEmpty }, set: { if !$0 { errorMessage = "" } })) {
                 Button("Cerrar", role: .cancel) {}
             } message: { Text(errorMessage) }
+            .alert("Nueva pestaña", isPresented: $isNewTargetTabAlertPresented) {
+                TextField("Nombre de la pestaña", text: $newTargetTabName)
+                Button("Cancelar", role: .cancel) {}
+                Button("Crear") { Task { await createInstrumentTargetTab() } }
+            }
         }
 #if os(macOS)
         .frame(minWidth: 620, minHeight: 560)
@@ -1341,18 +1378,35 @@ private struct LearningSituationEvaluationSheet: View {
 
     private var importedInstrumentRows: some View {
         ForEach(Array((instrumentImportDraft?.instruments ?? []).indices), id: \.self) { index in
+            let instrument = instrumentImportDraft?.instruments[index]
             Toggle(isOn: Binding(
                 get: { instrumentImportDraft?.instruments[index].isSelected ?? false },
                 set: { instrumentImportDraft?.instruments[index].isSelected = $0 }
             )) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(instrumentImportDraft?.instruments[index].title ?? "")
-                    Text(importedInstrumentSubtitle(instrumentImportDraft?.instruments[index]))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(instrument?.title ?? "")
+                            .font(.body.weight(.semibold))
+                        Text(importedInstrumentSubtitle(instrument))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 8)
+                    if let weight = instrument?.weightPercent, weight > 0 {
+                        Text("\(Int(weight.rounded()))%")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(NotebookStyle.primaryTint)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(NotebookStyle.primaryTint.opacity(0.12), in: Capsule())
+                    } else {
+                        Text("Auxiliar")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, 8)
         }
     }
 
@@ -1432,9 +1486,48 @@ private struct LearningSituationEvaluationSheet: View {
     private func handleInstrumentImport(_ result: Result<[URL], Error>) async {
         do {
             guard let url = try result.get().first else { return }
-            instrumentImportPreview = try LearningSituationAssessmentInstrumentsImportService().preview(from: url)
+            isImportingInstrumentDocument = true
+            defer { isImportingInstrumentDocument = false }
+
+            // El acceso con alcance de seguridad y la lectura de bytes son rápidos (documento
+            // pequeño) y se hacen aquí, en el hilo que ya tiene la autorización de
+            // NSOpenPanel/.fileImporter, para no arriesgar una interacción rara entre
+            // startAccessingSecurityScopedResource() y un contexto de tarea aislado.
+            let accessing = url.startAccessingSecurityScopedResource()
+            defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+            let data = try Data(contentsOf: url)
+
+            // El parseo XML en sí (CPU-bound, sin E/S) se despacha a una cola GCD normal
+            // -deliberadamente NO Task.detached, que comparte el pool cooperativo de Swift
+            // Concurrency con el resto de tareas estructuradas de la app- con un timeout
+            // defensivo para que el spinner nunca quede colgado indefinidamente.
+            let service = LearningSituationAssessmentInstrumentsImportService()
+            instrumentImportPreview = try await withTimeout(seconds: 20) {
+                try await withCheckedThrowingContinuation { continuation in
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        do {
+                            continuation.resume(returning: try service.preview(from: url, data: data))
+                        } catch {
+                            continuation.resume(throwing: error)
+                        }
+                    }
+                }
+            }
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask { try await operation() }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                throw LearningSituationImportError.timedOut
+            }
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
         }
     }
 
@@ -1491,6 +1584,15 @@ private struct LearningSituationEvaluationSheet: View {
         }
     }
 
+    @MainActor
+    private func createInstrumentTargetTab() async {
+        let name = newTargetTabName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, let createdId = bridge.createTab(title: name) else { return }
+        await loadNotebookTabsAndRepairImport()
+        selectedInstrumentTargetTabId = createdId
+        newTargetTabName = ""
+    }
+
     private func makeRubricImportPreview(from rows: [[String]]) -> AppleRubricImportPreview {
         let tsv = rows.tsvText
         let nonEmptyRows = rows.filter { row in
@@ -1542,8 +1644,7 @@ private struct LearningSituationEvaluationSheet: View {
         guard let instrument else { return "" }
         var parts = [instrument.kind.label]
         if let criterion = instrument.criterionLabel, !criterion.isEmpty { parts.append(criterion) }
-        parts.append(instrument.weightPercent.map { "\(Int($0.rounded()))%" } ?? "Auxiliar")
-        let detailCount = instrument.rubric?.criteria.count ?? instrument.checklistItems.count + instrument.observationFields.count
+        let detailCount = instrument.rubric?.criteria.count ?? instrument.checklistItems.count + instrument.quizQuestions.count + instrument.observationFields.count
         if detailCount > 0 { parts.append("\(detailCount) items") }
         return parts.joined(separator: " · ")
     }
@@ -1974,6 +2075,97 @@ private struct LearningSituationAssessmentImportPreviewSheet: View {
                 }
             }
 
+            if let note = editableDraft.instruments[index].note, !note.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Anotaciones de contexto", systemImage: "info.circle")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text(note)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(NotebookStyle.surfaceSoft, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+                .padding(.top, 8)
+            }
+
+            if editableDraft.instruments[index].kind == .rubric,
+               let rubric = editableDraft.instruments[index].rubric {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Estructura de Rúbrica").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    ForEach(rubric.criteria, id: \.title) { criterion in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(criterion.title)
+                                .font(.caption.weight(.bold))
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 8) {
+                                    ForEach(Array(criterion.descriptors.enumerated()), id: \.offset) { levelIndex, desc in
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(levelIndex < rubric.levels.count ? rubric.levels[levelIndex].label : "Nivel \(levelIndex + 1)")
+                                                .font(.system(size: 9, weight: .bold))
+                                                .foregroundStyle(NotebookStyle.primaryTint)
+                                            Text(desc)
+                                                .font(.system(size: 10))
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .frame(width: 120, alignment: .leading)
+                                        .padding(6)
+                                        .background(NotebookStyle.surface, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                                    }
+                                }
+                            }
+                        }
+                        .padding(8)
+                        .background(NotebookStyle.surfaceSoft, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+                }
+            }
+            
+            if editableDraft.instruments[index].kind == .quizQuestions,
+               !editableDraft.instruments[index].quizQuestions.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Preguntas Detectadas (\(editableDraft.instruments[index].quizQuestions.count))").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    ForEach(Array(editableDraft.instruments[index].quizQuestions.enumerated()), id: \.offset) { qIndex, question in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("\(qIndex + 1). \(question.questionText)")
+                                .font(.caption.weight(.semibold))
+                            if !question.options.isEmpty {
+                                Text("Opciones: " + question.options.joined(separator: " / "))
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Text("Respuesta abierta / rellenar hueco")
+                                    .font(.system(size: 10).italic())
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(NotebookStyle.surfaceSoft, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+                }
+            }
+
+            if (editableDraft.instruments[index].kind == .checklist || editableDraft.instruments[index].kind == .submissionChecklist),
+               !editableDraft.instruments[index].checklistItems.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Items de Checklist").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    ForEach(editableDraft.instruments[index].checklistItems, id: \.title) { item in
+                        HStack(spacing: 8) {
+                            Image(systemName: "square")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text(item.title)
+                                .font(.caption)
+                        }
+                        .padding(6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(NotebookStyle.surfaceSoft, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    }
+                }
+            }
+
             Text(subtitle(for: editableDraft.instruments[index]))
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -2039,7 +2231,10 @@ private struct LearningSituationAssessmentImportPreviewSheet: View {
     }
 
     private func detailCount(for instrument: AssessmentInstrumentDraft) -> Int {
-        instrument.rubric?.criteria.count ?? instrument.checklistItems.count + instrument.observationFields.count
+        if instrument.kind == .quizQuestions {
+            return instrument.quizQuestions.count
+        }
+        return instrument.rubric?.criteria.count ?? instrument.checklistItems.count + instrument.observationFields.count
     }
 
     private func kindBinding(for index: Int) -> Binding<AssessmentInstrumentKind> {
@@ -2079,6 +2274,8 @@ private struct LearningSituationAssessmentImportPreviewSheet: View {
             return hasObservationScale1To4(instrument) ? .observationScale1To4 : .none
         case .checklist, .submissionChecklist, .teacherObservation:
             return .none
+        case .quizQuestions:
+            return .quizPercentCorrect
         }
     }
 
@@ -2100,7 +2297,7 @@ private struct LearningSituationAssessmentImportPreviewSheet: View {
         parts.append(instrument.weightPercent.map { "\(Int($0.rounded()))%" } ?? "Auxiliar")
         parts.append(instrument.scoreStrategy.label)
         parts.append(instrument.emptyCellPolicy.label)
-        let detailCount = instrument.rubric?.criteria.count ?? instrument.checklistItems.count + instrument.observationFields.count
+        let detailCount = instrument.rubric?.criteria.count ?? instrument.checklistItems.count + instrument.quizQuestions.count + instrument.observationFields.count
         if detailCount > 0 { parts.append("\(detailCount) items") }
         return parts.joined(separator: " · ")
     }

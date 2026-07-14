@@ -425,6 +425,12 @@ struct NotebookModuleView: View {
                         },
                         onCreateTab: {
                             presentCreateNotebookTab()
+                        },
+                        onRenameTab: { tab in
+                            presentRenameNotebookTab(tab)
+                        },
+                        onDeleteTab: { tab in
+                            pendingDeleteNotebookTab = tab
                         }
                     )
                 }
@@ -1309,7 +1315,7 @@ struct NotebookModuleView: View {
                     RubricEvaluationView()
                         .environmentObject(bridge)
                         #if os(macOS)
-                        .frame(minWidth: 980, minHeight: 700)
+                        .frame(minWidth: 1180, minHeight: 700)
                         #endif
                 }
                 .sheet(isPresented: Binding(

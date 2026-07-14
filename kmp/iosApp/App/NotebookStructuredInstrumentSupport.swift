@@ -84,18 +84,31 @@ struct StructuredInstrumentEvaluationSheet: View {
 
     private func formContent(_ model: Binding<StructuredInstrumentEvaluationModel>) -> some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 32) {
+                VStack(alignment: .leading, spacing: 8) {
                     Text(request.studentName)
-                        .font(.title2.weight(.semibold))
-                    Text(progressText(for: model.wrappedValue))
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .font(.title2.weight(.bold))
+                    HStack(spacing: 8) {
+                        ProgressView(value: progressFraction(for: model.wrappedValue))
+                            .tint(NotebookStyle.successTint)
+                            .frame(maxWidth: 160)
+                        Text(progressText(for: model.wrappedValue))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
-                LazyVStack(spacing: 12) {
-                    ForEach(model.items) { $item in
-                        StructuredInstrumentItemEditor(item: $item)
+                if let sessionGroups = observationSessionGroups(for: model.wrappedValue.items) {
+                    ObservationGridInstrumentContent(model: model, groups: sessionGroups)
+                } else {
+                    NotebookSurface(padding: 0) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(model.items) { $item in
+                                StructuredInstrumentItemRow(item: $item)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 12)
+                            }
+                        }
                     }
                 }
             }
@@ -108,6 +121,13 @@ struct StructuredInstrumentEvaluationSheet: View {
         let total = model.items.count
         let completed = model.items.filter(isCompleted).count
         return completed == total && total > 0 ? "Completo" : "\(completed)/\(total) campos completados"
+    }
+
+    private func progressFraction(for model: StructuredInstrumentEvaluationModel) -> Double {
+        let total = model.items.count
+        guard total > 0 else { return 0 }
+        let completed = model.items.filter(isCompleted).count
+        return Double(completed) / Double(total)
     }
 
     private func isCompleted(_ item: StructuredInstrumentEvaluationItem) -> Bool {
@@ -155,49 +175,60 @@ struct StructuredInstrumentEvaluationSheet: View {
     }
 }
 
-private struct StructuredInstrumentItemEditor: View {
+private struct StructuredInstrumentItemRow: View {
     @Binding var item: StructuredInstrumentEvaluationItem
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(item.title)
-                .font(.headline)
-                .foregroundStyle(.primary)
+        switch item.type {
+        case .check:
+            Button {
+                item.boolValue.toggle()
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: item.boolValue ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(item.boolValue ? NotebookStyle.successTint : Color.secondary.opacity(0.35))
+                    Text(item.title)
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                        .multilineTextAlignment(.leading)
+                    Spacer(minLength: 8)
+                }
+            }
+            .buttonStyle(.plain)
+        default:
+            VStack(alignment: .leading, spacing: 8) {
+                Text(item.title)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.primary)
 
-            switch item.type {
-            case .check:
-                Toggle("Completado", isOn: $item.boolValue)
-                    .toggleStyle(.switch)
-            case .choice:
-                Picker("Respuesta", selection: $item.textValue) {
-                    Text("Sin respuesta").tag("")
-                    ForEach(item.options, id: \.self) { option in
-                        Text(option).tag(option)
+                switch item.type {
+                case .choice:
+                    Picker("Respuesta", selection: $item.textValue) {
+                        Text("Sin respuesta").tag("")
+                        ForEach(item.options, id: \.self) { option in
+                            Text(option).tag(option)
+                        }
                     }
-                }
-                .pickerStyle(.menu)
-            case .number:
-                TextField("Valor", text: $item.numberValue)
-                    .textFieldStyle(.roundedBorder)
-            case .scale14:
-                Picker("Nivel", selection: $item.numberValue) {
-                    Text("Sin nivel").tag("")
-                    ForEach(["1", "2", "3", "4"], id: \.self) { level in
-                        Text(level).tag(level)
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                case .number:
+                    TextField("Valor", text: $item.numberValue)
+                        .textFieldStyle(.roundedBorder)
+                case .scale14:
+                    Picker("Nivel", selection: $item.numberValue) {
+                        Text("Sin nivel").tag("")
+                        ForEach(["1", "2", "3", "4"], id: \.self) { level in
+                            Text(level).tag(level)
+                        }
                     }
+                    .pickerStyle(.segmented)
+                default:
+                    TextField("Respuesta", text: $item.textValue, axis: .vertical)
+                        .lineLimit(2...5)
+                        .textFieldStyle(.roundedBorder)
                 }
-                .pickerStyle(.segmented)
-            default:
-                TextField("Respuesta", text: $item.textValue, axis: .vertical)
-                    .lineLimit(2...5)
-                    .textFieldStyle(.roundedBorder)
             }
         }
-        .padding(14)
-        .background(NotebookStyle.surfaceSoft.opacity(0.55), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(NotebookStyle.softBorder.opacity(0.35), lineWidth: 1)
-        )
     }
 }

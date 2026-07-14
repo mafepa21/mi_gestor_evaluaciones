@@ -5109,9 +5109,11 @@ final class KmpBridge: ObservableObject {
         classId: Int64
     ) async throws -> Set<String> {
         let resources = try await container.learningSituationsRepository.listLinkedResources(learningSituationId: situationId)
+        let liveColumnIds = Set(try await container.notebookConfigRepository.listColumns(classId: classId).map(\.id))
         return Set(resources.compactMap { resource in
             guard resource.classId?.int64Value == classId else { return nil }
-            guard resource.kind == .evaluation || resource.kind == .notebookColumn else { return nil }
+            guard resource.kind == .notebookColumn else { return nil }
+            guard liveColumnIds.contains(resource.resourceId) else { return nil }
             return normalizedAssessmentInstrumentTitle(resource.label)
         })
     }
@@ -5313,6 +5315,8 @@ final class KmpBridge: ObservableObject {
             return .form
         case .rubric:
             return .form
+        case .quizQuestions:
+            return .quiz
         }
     }
 
@@ -5326,6 +5330,8 @@ final class KmpBridge: ObservableObject {
             return .structuredForm
         case .rubric:
             return .structuredForm
+        case .quizQuestions:
+            return .structuredQuiz
         }
     }
 
@@ -5398,7 +5404,15 @@ final class KmpBridge: ObservableObject {
 
         if !instrument.observationFields.isEmpty {
             let specs = instrument.observationFields.enumerated().map { index, field in
-                ("field_\(index + 1)", field.title, NotebookInstrumentItemType.scale14, [] as [String])
+                (field.key ?? "field_\(index + 1)", field.title, NotebookInstrumentItemType.scale14, [] as [String])
+            }
+            return makeInstrumentItems(columnId: columnId, specs: specs)
+        }
+
+        if !instrument.quizQuestions.isEmpty {
+            let specs = instrument.quizQuestions.enumerated().map { index, question -> (String, String, NotebookInstrumentItemType, [String]) in
+                let itemType: NotebookInstrumentItemType = question.options.isEmpty ? .text : .choice
+                return ("question_\(index + 1)", question.questionText, itemType, question.options)
             }
             return makeInstrumentItems(columnId: columnId, specs: specs)
         }
@@ -5476,6 +5490,15 @@ final class KmpBridge: ObservableObject {
         var didRepair = false
 
         for column in columns {
+            // Rejilla de observación con nota derivada de respuestas 1-4 (ver
+            // notebookInputKind/deriveObservationGridScore): ya está en el estado correcto
+            // (numérica, computable) aunque tenga una plantilla estructurada asociada. Sin
+            // este guard, la rama genérica de más abajo la degradaría a .text/.custom
+            // (auxiliar sin nota) en cuanto detectara esa plantilla.
+            if column.type == .numeric, column.scaleKind == .fourLevel {
+                continue
+            }
+
             var repairType = column.type
             var repairInstrumentKind = column.instrumentKind
             var repairInputKind = column.inputKind
@@ -5712,6 +5735,8 @@ final class KmpBridge: ObservableObject {
             return .check
         case .rubric:
             return .numeric
+        case .quizPercentCorrect:
+            return .numeric
         case .checklistProportional, .none:
             return .text
         }
@@ -5719,7 +5744,7 @@ final class KmpBridge: ObservableObject {
 
     private func canMaterializeAverage(for strategy: AssessmentInstrumentScoreStrategy) -> Bool {
         switch strategy {
-        case .numeric0To10, .rubric, .checklistAllOrNothing, .observationScale1To4:
+        case .numeric0To10, .rubric, .checklistAllOrNothing, .observationScale1To4, .quizPercentCorrect:
             return true
         case .checklistProportional, .none:
             return false
@@ -5738,6 +5763,8 @@ final class KmpBridge: ObservableObject {
             return .systematicObservation
         case .submissionChecklist:
             return .finalProduct
+        case .quizQuestions:
+            return .writtenTest
         }
     }
 
@@ -5747,11 +5774,17 @@ final class KmpBridge: ObservableObject {
         case .numeric0To10:
             return .numeric010
         case .observationScale1To4:
-            return .numeric14
+            // La rejilla tiene una plantilla estructurada (sesiones × indicadores 1-4) con
+            // nota derivada calculada en NotebookInstrumentsRepositorySqlDelight.saveResponses:
+            // abre el sheet estructurado en vez de una casilla numérica manual. El tipo de
+            // columna sigue siendo .numeric (ver notebookColumnType) para que cuente en la media.
+            return .structuredObservation
         case .checklistAllOrNothing:
             return .check
         case .rubric:
             return .numeric010
+        case .quizPercentCorrect:
+            return .percentage
         case .checklistProportional, .none:
             break
         }
@@ -5764,6 +5797,8 @@ final class KmpBridge: ObservableObject {
             return .structuredForm
         case .rubric:
             return .numeric010
+        case .quizQuestions:
+            return .structuredQuiz
         }
     }
 
@@ -5776,6 +5811,8 @@ final class KmpBridge: ObservableObject {
             return .fourLevel
         case .checklistAllOrNothing:
             return .yesNo
+        case .quizPercentCorrect:
+            return .percentage
         case .checklistProportional, .none:
             return .custom
         }
@@ -7447,7 +7484,7 @@ final class KmpBridge: ObservableObject {
                 options: item.options,
                 textValue: response?.textValue ?? "",
                 boolValue: response?.boolValue?.boolValue ?? false,
-                numberValue: response?.numberValue.map { IosFormatting.decimal(from: $0.doubleValue) } ?? ""
+                numberValue: response?.numberValue.map { plainStructuredNumberString($0.doubleValue) } ?? ""
             )
         }
         return StructuredInstrumentEvaluationModel(
@@ -7504,6 +7541,17 @@ final class KmpBridge: ObservableObject {
         default:
             return nil
         }
+    }
+
+    /// `IosFormatting.decimal` fuerza siempre 2 decimales ("4.00"/"4,00" según locale), lo que
+    /// no coincide con los tags planos "1".."4" de los selectores segmentados (.scale14) ni con
+    /// lo que escribe una casilla numérica libre — el valor cargado no seleccionaba ningún nivel
+    /// al reabrir el sheet, pareciendo que el guardado se había perdido aunque sí persistía.
+    private func plainStructuredNumberString(_ value: Double) -> String {
+        if value.truncatingRemainder(dividingBy: 1) == 0, abs(value) < 1e15 {
+            return String(Int64(value))
+        }
+        return String(value)
     }
 
     private func structuredNumberValue(for item: StructuredInstrumentEvaluationItem) -> Double? {

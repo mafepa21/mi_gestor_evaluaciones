@@ -45,6 +45,7 @@ struct AssessmentInstrumentDraft: Identifiable, Codable {
     var rubric: RubricDraft?
     var checklistItems: [ChecklistItemDraft]
     var observationFields: [ObservationFieldDraft]
+    var quizQuestions: [QuizQuestionDraft]
     var note: String?
 
     init(
@@ -59,6 +60,7 @@ struct AssessmentInstrumentDraft: Identifiable, Codable {
         rubric: RubricDraft?,
         checklistItems: [ChecklistItemDraft] = [],
         observationFields: [ObservationFieldDraft] = [],
+        quizQuestions: [QuizQuestionDraft] = [],
         note: String? = nil
     ) {
         self.id = UUID()
@@ -73,6 +75,7 @@ struct AssessmentInstrumentDraft: Identifiable, Codable {
         self.rubric = rubric
         self.checklistItems = checklistItems
         self.observationFields = observationFields
+        self.quizQuestions = quizQuestions
         self.note = note
     }
 }
@@ -83,6 +86,7 @@ enum AssessmentInstrumentKind: String, Codable, CaseIterable {
     case checklist
     case teacherObservation
     case submissionChecklist
+    case quizQuestions
 
     var label: String {
         switch self {
@@ -91,6 +95,7 @@ enum AssessmentInstrumentKind: String, Codable, CaseIterable {
         case .checklist: return "Checklist"
         case .teacherObservation: return "Observacion docente"
         case .submissionChecklist: return "Checklist final"
+        case .quizQuestions: return "Quiz"
         }
     }
 }
@@ -102,6 +107,7 @@ enum AssessmentInstrumentScoreStrategy: String, Codable, CaseIterable {
     case checklistAllOrNothing
     case checklistProportional
     case observationScale1To4
+    case quizPercentCorrect
 
     var label: String {
         switch self {
@@ -111,6 +117,7 @@ enum AssessmentInstrumentScoreStrategy: String, Codable, CaseIterable {
         case .checklistAllOrNothing: return "Checklist todo/nada"
         case .checklistProportional: return "Checklist proporcional"
         case .observationScale1To4: return "Observación 1-4"
+        case .quizPercentCorrect: return "Quiz % aciertos"
         }
     }
 }
@@ -151,6 +158,15 @@ struct ChecklistItemDraft: Codable {
 struct ObservationFieldDraft: Codable {
     var title: String
     var scaleLabel: String?
+    /// Cuando el campo procede de una rejilla "sesión × indicador" (`obs_s<N>_i<M>`),
+    /// esta clave permite a la capa de materialización/agregación reconocer a qué
+    /// sesión e indicador pertenece cada respuesta 1-4. `nil` para campos genéricos.
+    var key: String? = nil
+}
+
+struct QuizQuestionDraft: Codable {
+    var questionText: String
+    var options: [String]
 }
 
 struct LearningSituationAssessmentInstrumentsImportService {
@@ -158,6 +174,14 @@ struct LearningSituationAssessmentInstrumentsImportService {
         let accessing = url.startAccessingSecurityScopedResource()
         defer { if accessing { url.stopAccessingSecurityScopedResource() } }
         let data = try Data(contentsOf: url)
+        return try preview(from: url, data: data)
+    }
+
+    /// Variante que recibe los bytes ya leídos: permite separar el acceso al recurso con
+    /// alcance de seguridad (rápido, hazlo en el hilo que ya tiene la autorización de
+    /// NSOpenPanel/.fileImporter) del parseo XML en sí (CPU-bound, seguro de despachar
+    /// a background sin volver a tocar la URL ni el security scope).
+    func preview(from url: URL, data: Data) throws -> LearningSituationAssessmentImportDraft {
         let blocks = try readBlocks(from: data)
         guard !blocks.isEmpty else { throw LearningSituationImportError.missingDocumentBody }
 
@@ -186,6 +210,9 @@ struct LearningSituationAssessmentInstrumentsImportService {
                 guard !cleanText.isEmpty else { continue }
                 if isDocumentTitle(cleanText) {
                     continue
+                } else if isImporterNoteSection(cleanText) {
+                    flushCurrent()
+                    currentHeading = nil
                 } else if isGradingLine(cleanText) {
                     gradingFormula = cleanText
                 } else if let heading = parseHeading(cleanText) {
@@ -246,6 +273,7 @@ struct LearningSituationAssessmentInstrumentsImportService {
         let rubric = makeRubric(kind: kind, tables: nonEmptyTables)
         let checklistItems = makeChecklistItems(kind: kind, tables: nonEmptyTables, paragraphs: paragraphs)
         let observationFields = makeObservationFields(kind: kind, tables: nonEmptyTables)
+        let quizQuestions = makeQuizQuestions(kind: kind, tables: nonEmptyTables, paragraphs: paragraphs)
         let selectedByDefault = (heading.weightPercent ?? 0) > 0
         let scoreStrategy = defaultScoreStrategy(
             kind: kind,
@@ -254,7 +282,7 @@ struct LearningSituationAssessmentInstrumentsImportService {
         )
         let countsTowardAverage = scoreStrategy != .none && (heading.weightPercent ?? 0) > 0
 
-        if rubric == nil, checklistItems.isEmpty, observationFields.isEmpty {
+        if rubric == nil, checklistItems.isEmpty, observationFields.isEmpty, quizQuestions.isEmpty {
             return nil
         }
         return AssessmentInstrumentDraft(
@@ -268,6 +296,7 @@ struct LearningSituationAssessmentInstrumentsImportService {
             rubric: rubric,
             checklistItems: checklistItems,
             observationFields: observationFields,
+            quizQuestions: quizQuestions,
             note: countsTowardAverage ? nil : "Auxiliar o sin puntuación computable detectada"
         )
     }
@@ -287,6 +316,8 @@ struct LearningSituationAssessmentInstrumentsImportService {
             return .none
         case .teacherObservation:
             return .none
+        case .quizQuestions:
+            return .quizPercentCorrect
         }
     }
 
@@ -372,9 +403,61 @@ struct LearningSituationAssessmentInstrumentsImportService {
         return tableItems + paragraphItems
     }
 
+    private func makeQuizQuestions(kind: AssessmentInstrumentKind, tables: [[[String]]], paragraphs: [String]) -> [QuizQuestionDraft] {
+        guard kind == .quizQuestions else { return [] }
+        let tableQuestions = tables.flatMap { table -> [QuizQuestionDraft] in
+            let rows = table.dropFirst().isEmpty ? table : Array(table.dropFirst())
+            return rows.compactMap { row -> QuizQuestionDraft? in
+                guard let text = row.first(where: { !$0.isEmpty }) else { return nil }
+                let options = Array(row.dropFirst()).map(clean).filter { !$0.isEmpty }
+                return QuizQuestionDraft(questionText: text, options: options)
+            }
+        }
+        let paragraphQuestions = paragraphs.compactMap(quizQuestion(from:))
+        return tableQuestions + paragraphQuestions
+    }
+
+    private func quizQuestion(from paragraph: String) -> QuizQuestionDraft? {
+        // Word numera estos párrafos vía su propio motor de listas (w:numPr): el texto
+        // extraído del XML no incluye el "1. " literal, así que el prefijo numerado por sí
+        // solo no basta para detectar todas las preguntas reales de una tabla/lista Word.
+        let isNumbered = paragraph.range(of: #"^\s*\d+[\.\)]\s+"#, options: .regularExpression) != nil
+        let isTrueFalse = normalized(paragraph).hasPrefix("verdadero o falso") || normalized(paragraph).hasPrefix("true or false")
+        let looksLikeChoiceOrBlank = paragraph.contains(" / ") || paragraph.contains("___")
+        guard isNumbered || paragraph.contains("?") || isTrueFalse || looksLikeChoiceOrBlank else { return nil }
+        var text = paragraph.replacingOccurrences(of: #"^\s*\d+[\.\)]\s*"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        var options: [String] = []
+        if isTrueFalse {
+            options = ["Verdadero", "Falso"]
+        } else if let slashOptions = optionsFromSlashList(text) {
+            options = slashOptions
+            if let questionMarkRange = text.range(of: "?") {
+                text = String(text[..<questionMarkRange.upperBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        return QuizQuestionDraft(questionText: text, options: options)
+    }
+
+    private func optionsFromSlashList(_ text: String) -> [String]? {
+        guard let questionMarkRange = text.range(of: "?", options: .backwards) else { return nil }
+        let tail = String(text[questionMarkRange.upperBound...])
+        guard tail.contains(" / ") else { return nil }
+        let parts = tail
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "."))
+            .components(separatedBy: " / ")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        return parts.count > 1 ? parts : nil
+    }
+
     private func makeObservationFields(kind: AssessmentInstrumentKind, tables: [[[String]]]) -> [ObservationFieldDraft] {
         guard kind == .teacherObservation || kind == .observationGrid else { return [] }
-        return tables.flatMap { table in
+        return tables.flatMap { table -> [ObservationFieldDraft] in
+            if let sessionFields = sessionIndicatorObservationFields(from: table) {
+                return sessionFields
+            }
             let header = table.first ?? []
             let scale = header.dropFirst().filter { !$0.isEmpty }.joined(separator: " / ")
             let fieldTitles = observationFieldTitles(from: table)
@@ -382,6 +465,50 @@ struct LearningSituationAssessmentInstrumentsImportService {
                 ObservationFieldDraft(title: title, scaleLabel: scale.isEmpty ? nil : scale)
             }
         }
+    }
+
+    /// Detecta la forma "Alumno/a | Momento | indicador1 | ... | indicadorN | Nota (1-4)"
+    /// (una fila por sesión de observación fija) y genera un campo por sesión×indicador
+    /// en vez de un campo genérico por columna, para poder rellenar cada sesión con sus
+    /// indicadores 1-4 de forma independiente. Devuelve `nil` si la tabla no tiene esa forma.
+    private func sessionIndicatorObservationFields(from table: [[String]]) -> [ObservationFieldDraft]? {
+        guard let header = table.first, header.count >= 4 else { return nil }
+        let normalizedHeader = header.map(normalized)
+        guard let firstHeader = normalizedHeader.first,
+              firstHeader.contains("alumno") || firstHeader.contains("student"),
+              normalizedHeader.count > 1,
+              normalizedHeader[1].contains("momento") || normalizedHeader[1].contains("moment") else {
+            return nil
+        }
+
+        var indicatorEnd = header.count
+        if let lastHeader = normalizedHeader.last,
+           lastHeader.contains("nota") || lastHeader.contains("mark") || lastHeader.contains("score") {
+            indicatorEnd -= 1
+        }
+        let indicatorRange = 2..<indicatorEnd
+        guard !indicatorRange.isEmpty else { return nil }
+        let indicatorTitles = indicatorRange.map { clean(header[$0]) }
+
+        let dataRows = table.dropFirst().filter { row in
+            row.count > 1 && !row[1].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        guard !dataRows.isEmpty else { return nil }
+
+        var fields: [ObservationFieldDraft] = []
+        for (sessionIndex, row) in dataRows.enumerated() {
+            let sessionLabel = clean(row[1])
+            for (indicatorOffset, columnIndex) in indicatorRange.enumerated() {
+                guard columnIndex < row.count else { continue }
+                let indicatorTitle = indicatorTitles[indicatorOffset]
+                fields.append(ObservationFieldDraft(
+                    title: "\(sessionLabel) · \(indicatorTitle)",
+                    scaleLabel: "1-4",
+                    key: "obs_s\(sessionIndex)_i\(indicatorOffset)"
+                ))
+            }
+        }
+        return fields
     }
 
     private func inferKind(title: String, tables: [[[String]]]) -> AssessmentInstrumentKind {
@@ -397,7 +524,10 @@ struct LearningSituationAssessmentInstrumentsImportService {
             title.contains("coevaluacion") {
             return .checklist
         }
-        if title.contains("quiz") || title.contains("safety") || title.contains("adjustment") || title.contains("tarea competencial") {
+        if title.contains("quiz") {
+            return .quizQuestions
+        }
+        if title.contains("safety") || title.contains("adjustment") || title.contains("tarea competencial") {
             return .checklist
         }
         if title.contains("teacher") ||
@@ -430,7 +560,8 @@ struct LearningSituationAssessmentInstrumentsImportService {
     private func parseHeading(_ text: String) -> ParsedInstrumentHeading? {
         let cleanText = clean(text)
         let normalizedText = normalized(cleanText)
-        let isExplicitUnnumberedHeading = instrumentHeadingKeywords.contains { normalizedText.contains($0) }
+        let isExplicitUnnumberedHeading = looksLikeHeadingProse(cleanText) &&
+            instrumentHeadingKeywords.contains { normalizedText.contains($0) }
         guard isNumberedInstrumentHeading(cleanText) || isExplicitUnnumberedHeading else {
             return nil
         }
@@ -484,6 +615,13 @@ struct LearningSituationAssessmentInstrumentsImportService {
             value.contains("instrumentos de evaluación")
     }
 
+    /// Marca el final del contenido evaluable: los párrafos de "notas para el importador"
+    /// (metainstrucciones dirigidas a quien procese el documento, no a docentes/alumnado)
+    /// no deben quedar enganchados como ítems del último instrumento/checklist detectado.
+    private func isImporterNoteSection(_ text: String) -> Bool {
+        normalized(text).contains("nota para quien importe")
+    }
+
     private func isGradingLine(_ text: String) -> Bool {
         let value = normalized(text)
         return value == "grading model" ||
@@ -492,6 +630,15 @@ struct LearningSituationAssessmentInstrumentsImportService {
             value.contains("modelo de calificación") ||
             value.contains("calificacion final") ||
             value.contains("calificación final")
+    }
+
+    /// Descarta párrafos de prosa (párrafos largos y/o con varias frases) para que no se
+    /// confundan con un título de instrumento solo por contener una keyword suelta
+    /// (p.ej. "Absorbe la antigua checklist de seguridad..." no es un heading).
+    private func looksLikeHeadingProse(_ text: String) -> Bool {
+        guard text.split(separator: " ").count <= 10 else { return false }
+        let interior = text.hasSuffix(".") || text.hasSuffix(":") ? String(text.dropLast()) : text
+        return !interior.contains(where: { ".!?".contains($0) })
     }
 
     private func isNumberedInstrumentHeading(_ text: String) -> Bool {

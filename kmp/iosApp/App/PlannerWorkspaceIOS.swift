@@ -1420,7 +1420,6 @@ private extension Optional where Wrapped == String {
         }
     }
 }
-
 private extension String {
     var nilIfBlank: String? {
         trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : self

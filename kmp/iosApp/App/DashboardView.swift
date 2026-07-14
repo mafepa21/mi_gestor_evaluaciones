@@ -36,6 +36,19 @@ private struct DashboardGroupRow: Identifiable {
     let studentsInFollowUp: Int
 }
 
+private enum DashboardBlock: Hashable {
+    case today
+    case pending
+    case risk
+    case system
+    case alerts
+    case quickEvaluation
+    case groupSummary
+    case agenda
+    case physicalEducation
+    case lomloeAudit
+}
+
 private enum DashboardLoadPhase: Int {
     case shell
     case metrics

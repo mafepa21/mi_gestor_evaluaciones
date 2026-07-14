@@ -26,6 +26,7 @@ Cambios posteriores a `v0.3.0-traceability-baseline`.
 ### Fixed
 
 - macOS: se resuelve un marcador de conflicto de Git sin resolver (`<<<<<<<`/`=======`/`>>>>>>>`) que quedó literalmente en `MacRootView.swift` tras el merge `90d8216` ("Merge branch 'main' into feature/planner-diario-macos-sesion"), dejando el inspector del planner (`case .planner`) sin compilar en macOS. Ver detalle en `docs/audit/INCIDENCIA_2026-07-14-build-roto-post-merge.md`.
+- iOS/macOS: se registran en `MiGestorKMPiOS.xcodeproj` cinco archivos Swift que el mismo merge trajo al repositorio sin darlos de alta en el target de ningún esquema (`SyncStatusBadge.swift`, `SupportMeasureBulkImportSheet.swift`, `SupportMeasureGroupOverviewSheet.swift`, `SupportMeasureShared.swift`, `SupportMeasureBulkImport.swift`), lo que impedía compilar y hacía que la sección "Medidas de apoyo" de la ficha de alumno no apareciera en ninguna build generada tras el merge aunque el código ya estuviera en `main`.
 
 ## v0.3.0-traceability-baseline — 2026-07-06
 

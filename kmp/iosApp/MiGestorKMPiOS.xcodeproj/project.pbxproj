@@ -377,6 +377,16 @@
 		FE7FB36A220367CDED1D8E56 /* AppleAIReadinessFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9066EF34A52C09F07E8CFAE7 /* AppleAIReadinessFixtures.swift */; };
 		FED6693A0057C3BFB3B39773 /* TeacherRadarCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DB5D8A7B19B0874750549A0 /* TeacherRadarCard.swift */; };
 		FEF8B70AE33C8ABB44582F1C /* WorkspaceLayoutState+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FB9B3E078267BD94A53D6B2 /* WorkspaceLayoutState+Extensions.swift */; };
+		92AFFB3D3C6075FB82CF5B11 /* SyncStatusBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83554694A38E2465B07DB1B9 /* SyncStatusBadge.swift */; };
+		6B6D91305090C7AC2EC87A21 /* SyncStatusBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83554694A38E2465B07DB1B9 /* SyncStatusBadge.swift */; };
+		34995AD328B0ACC3DC24A106 /* SupportMeasureBulkImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FED06106A0061E24062A20A /* SupportMeasureBulkImportSheet.swift */; };
+		A3EBB863327C83256DFFA14F /* SupportMeasureBulkImportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FED06106A0061E24062A20A /* SupportMeasureBulkImportSheet.swift */; };
+		739E39AAE2D603A5660D5B5C /* SupportMeasureGroupOverviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07E405BEB17C6D4C7EDBDABE /* SupportMeasureGroupOverviewSheet.swift */; };
+		5FBDA621AB716B17DCE438BB /* SupportMeasureGroupOverviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07E405BEB17C6D4C7EDBDABE /* SupportMeasureGroupOverviewSheet.swift */; };
+		82814ED65B8B56634D48E4C4 /* SupportMeasureShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = B11CFF82A8FFE4E00405B1DA /* SupportMeasureShared.swift */; };
+		E75D97A7D88C02834F3F7DBE /* SupportMeasureShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = B11CFF82A8FFE4E00405B1DA /* SupportMeasureShared.swift */; };
+		BE7945097B20FFDDE72D8743 /* SupportMeasureBulkImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CB9AE2E4984BCC4F54090DA /* SupportMeasureBulkImport.swift */; };
+		B54504A94F8AE5D4E066AF68 /* SupportMeasureBulkImport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CB9AE2E4984BCC4F54090DA /* SupportMeasureBulkImport.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -604,6 +614,11 @@
 		FD37D3647E23B5BBF18CD01E /* MacPremiumComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacPremiumComponents.swift; sourceTree = "<group>"; };
 		FD67BA2D3B2271344013D4FC /* MacLiquidGlassStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacLiquidGlassStyle.swift; sourceTree = "<group>"; };
 		FEB05410ADED16A84A47A761 /* TournamentModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TournamentModule.swift; sourceTree = "<group>"; };
+		83554694A38E2465B07DB1B9 /* SyncStatusBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncStatusBadge.swift; sourceTree = "<group>"; };
+		4FED06106A0061E24062A20A /* SupportMeasureBulkImportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportMeasureBulkImportSheet.swift; sourceTree = "<group>"; };
+		07E405BEB17C6D4C7EDBDABE /* SupportMeasureGroupOverviewSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportMeasureGroupOverviewSheet.swift; sourceTree = "<group>"; };
+		B11CFF82A8FFE4E00405B1DA /* SupportMeasureShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportMeasureShared.swift; sourceTree = "<group>"; };
+		3CB9AE2E4984BCC4F54090DA /* SupportMeasureBulkImport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportMeasureBulkImport.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -672,6 +687,8 @@
 				3608E02A0A212158D57BB063 /* AppleAppCommands.swift */,
 				996E1D0739D88B5507B110B6 /* AppleAppEnvironment.swift */,
 				4BE36C2FC3CA10A0D5E7F322 /* AppleAppRootView.swift */,
+				B11CFF82A8FFE4E00405B1DA /* SupportMeasureShared.swift */,
+				3CB9AE2E4984BCC4F54090DA /* SupportMeasureBulkImport.swift */,
 				F6B44EBC79907A49017DC0CD /* AppleBackupModels.swift */,
 				E44007C231E03029435B056F /* AppleBackupService.swift */,
 				C4DF051FC8473FCD24BCC26C /* AppleBridgeBootstrap.swift */,
@@ -761,6 +778,9 @@
 				2BAD893EC7E90121671F7BDB /* Assets.xcassets */,
 				893DD0805D75AD4923832EDD /* AssignRubricToTabView.swift */,
 				284EFC5D21CE71AE69E43094 /* AttendanceWorkspaceView.swift */,
+				83554694A38E2465B07DB1B9 /* SyncStatusBadge.swift */,
+				4FED06106A0061E24062A20A /* SupportMeasureBulkImportSheet.swift */,
+				07E405BEB17C6D4C7EDBDABE /* SupportMeasureGroupOverviewSheet.swift */,
 				776A4EE42CD278E7AD2E5E2A /* BackupsWorkspaceView.swift */,
 				0ECAFCB0C2D05856472D5371 /* ClassroomCaptureBar.swift */,
 				574A36D51DB905768D1450DF /* ContentView.swift */,
@@ -1088,6 +1108,8 @@
 				901C7CD23263A71A3D9090D9 /* AppleAppCommands.swift in Sources */,
 				740FE4946BFED011E3EE355F /* AppleAppEnvironment.swift in Sources */,
 				F0B171DB64DE32129BFBCE30 /* AppleAppRootView.swift in Sources */,
+				82814ED65B8B56634D48E4C4 /* SupportMeasureShared.swift in Sources */,
+				BE7945097B20FFDDE72D8743 /* SupportMeasureBulkImport.swift in Sources */,
 				EC465FA1A3AA49BBF03CF1B5 /* AppleBackupModels.swift in Sources */,
 				7054EE8C0407272790015F8C /* AppleBackupService.swift in Sources */,
 				9A31C548996D137897FA1C75 /* AppleBridgeBootstrap.swift in Sources */,
@@ -1210,6 +1232,9 @@
 				FD6F861A6B411D998DA2AF5E /* PhysicalTestsColumnOptionsView.swift in Sources */,
 				6F2534D44F3E87C86FBE5D2A /* PhysicalTestsMacInspectorState.swift in Sources */,
 				64ED57DB32C7EBBDD5F2F1BD /* PhysicalTestsWorkspaceView.swift in Sources */,
+				92AFFB3D3C6075FB82CF5B11 /* SyncStatusBadge.swift in Sources */,
+				34995AD328B0ACC3DC24A106 /* SupportMeasureBulkImportSheet.swift in Sources */,
+				739E39AAE2D603A5660D5B5C /* SupportMeasureGroupOverviewSheet.swift in Sources */,
 				BBC5F1C39B098542EEAC79CA /* PlannerCascadeDropCoordinator.swift in Sources */,
 				30522773CDA11490C28FB1F6 /* PlannerDayQuickJournalSheet.swift in Sources */,
 				E70D189984C90A480D272DAF /* PlannerDayView.swift in Sources */,
@@ -1287,6 +1312,8 @@
 				5E00FCB168FF7174CD518DA4 /* AppleAppCommands.swift in Sources */,
 				89A42DAB37443B7552C21222 /* AppleAppEnvironment.swift in Sources */,
 				1286D99337F554322E21CD9C /* AppleAppRootView.swift in Sources */,
+				E75D97A7D88C02834F3F7DBE /* SupportMeasureShared.swift in Sources */,
+				B54504A94F8AE5D4E066AF68 /* SupportMeasureBulkImport.swift in Sources */,
 				39B06EC818722E4C75CA4E8E /* AppleBackupModels.swift in Sources */,
 				0B3B32F606E1E6961B27FFB9 /* AppleBackupService.swift in Sources */,
 				5E3F7337F3A6A0EC2C17DA4E /* AppleBridgeBootstrap.swift in Sources */,
@@ -1384,6 +1411,9 @@
 				802527B386B74746FC01044B /* PhysicalTestsColumnCreationPolicy.swift in Sources */,
 				27AF804AC32BE9BB7CB8E3BC /* PhysicalTestsColumnOptionsView.swift in Sources */,
 				0D80693A9F28A17CBBB51A33 /* PhysicalTestsWorkspaceView.swift in Sources */,
+				6B6D91305090C7AC2EC87A21 /* SyncStatusBadge.swift in Sources */,
+				A3EBB863327C83256DFFA14F /* SupportMeasureBulkImportSheet.swift in Sources */,
+				5FBDA621AB716B17DCE438BB /* SupportMeasureGroupOverviewSheet.swift in Sources */,
 				11284216DC1FBF43634C4B86 /* PlannerCascadeDropCoordinator.swift in Sources */,
 				57A5317C5BC18AA83AD50E93 /* PlannerDayQuickJournalSheet.swift in Sources */,
 				9061345C3F3EA74011DB2B7C /* PlannerDayView.swift in Sources */,

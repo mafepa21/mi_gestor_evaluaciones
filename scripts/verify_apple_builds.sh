@@ -16,6 +16,15 @@ NC='\033[0;m' # No Color
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 IOS_APP_DIR="${PROJECT_ROOT}/kmp/iosApp"
 
+# Sufijo único por checkout (worktree) para que sesiones paralelas de Claude/agentes
+# que operan sobre distintos worktrees del mismo repo no colisionen en /tmp:
+# xcodebuild serializa/bloquea accesos concurrentes a un mismo derivedDataPath, y el
+# `rm -rf` de abajo podría borrar el build en curso de otra sesión.
+WORKTREE_SUFFIX="$(basename "${PROJECT_ROOT}" | tr -c 'A-Za-z0-9_-' '_')"
+WORKTREE_SUFFIX="${WORKTREE_SUFFIX%_}"
+MAC_LOG="/tmp/mac_build_${WORKTREE_SUFFIX}.log"
+IOS_LOG="/tmp/ios_build_${WORKTREE_SUFFIX}.log"
+
 echo -e "${BLUE}===> Iniciando verificación de builds de Apple <===${NC}"
 echo -e "Directorio raíz del proyecto: ${PROJECT_ROOT}"
 
@@ -40,7 +49,7 @@ echo -e "\n${BLUE}[2/3] Compilando target macOS (MiGestorKMPMac)...${NC}"
 cd "${PROJECT_ROOT}"
 
 # Usamos xcodebuild con derivedData en tmp para no ensuciar y evitar conflictos de caché
-DERIVED_DATA_MAC="/tmp/MiGestorMacBuildVerify"
+DERIVED_DATA_MAC="/tmp/MiGestorMacBuildVerify_${WORKTREE_SUFFIX}"
 rm -rf "${DERIVED_DATA_MAC}"
 
 echo -e "Ejecutando xcodebuild para macOS..."
@@ -50,17 +59,17 @@ if xcodebuild -project "${IOS_APP_DIR}/MiGestorKMPiOS.xcodeproj" \
              -configuration Debug \
              -derivedDataPath "${DERIVED_DATA_MAC}" \
              CODE_SIGNING_ALLOWED=NO \
-             build > /tmp/mac_build.log 2>&1; then
+             build > "${MAC_LOG}" 2>&1; then
   echo -e "${GREEN}✓ Compilación de macOS SUCCEEDED.${NC}"
   MAC_STATUS="OK"
 else
-  echo -e "${RED}✗ Compilación de macOS FAILED. Revisa el log en /tmp/mac_build.log${NC}"
+  echo -e "${RED}✗ Compilación de macOS FAILED. Revisa el log en ${MAC_LOG}${NC}"
   MAC_STATUS="FAIL"
 fi
 
 # 3. Compilar Target iOS Simulator
 echo -e "\n${BLUE}[3/3] Compilando target iOS Simulator (MiGestorKMPiOS)...${NC}"
-DERIVED_DATA_IOS="/tmp/MiGestorIOSBuildVerify"
+DERIVED_DATA_IOS="/tmp/MiGestorIOSBuildVerify_${WORKTREE_SUFFIX}"
 rm -rf "${DERIVED_DATA_IOS}"
 
 echo -e "Ejecutando xcodebuild para iOS Simulator..."
@@ -71,11 +80,11 @@ if xcodebuild -project "${IOS_APP_DIR}/MiGestorKMPiOS.xcodeproj" \
              -configuration Debug \
              -derivedDataPath "${DERIVED_DATA_IOS}" \
              CODE_SIGNING_ALLOWED=NO \
-             build > /tmp/ios_build.log 2>&1; then
+             build > "${IOS_LOG}" 2>&1; then
   echo -e "${GREEN}✓ Compilación de iOS Simulator SUCCEEDED.${NC}"
   IOS_STATUS="OK"
 else
-  echo -e "${RED}✗ Compilación de iOS Simulator FAILED. Revisa el log en /tmp/ios_build.log${NC}"
+  echo -e "${RED}✗ Compilación de iOS Simulator FAILED. Revisa el log en ${IOS_LOG}${NC}"
   IOS_STATUS="FAIL"
 fi
 
@@ -87,13 +96,13 @@ echo -e "${BLUE}=======================================${NC}"
 if [ "${MAC_STATUS}" = "OK" ]; then
   echo -e "macOS Native / Catalyst:  ${GREEN}✓ COMPILADO CORRECTAMENTE${NC}"
 else
-  echo -e "macOS Native / Catalyst:  ${RED}✗ ERROR EN COMPILACIÓN${NC} (Log: /tmp/mac_build.log)"
+  echo -e "macOS Native / Catalyst:  ${RED}✗ ERROR EN COMPILACIÓN${NC} (Log: ${MAC_LOG})"
 fi
 
 if [ "${IOS_STATUS}" = "OK" ]; then
   echo -e "iOS Simulator:            ${GREEN}✓ COMPILADO CORRECTAMENTE${NC}"
 else
-  echo -e "iOS Simulator:            ${RED}✗ ERROR EN COMPILACIÓN${NC} (Log: /tmp/ios_build.log)"
+  echo -e "iOS Simulator:            ${RED}✗ ERROR EN COMPILACIÓN${NC} (Log: ${IOS_LOG})"
 fi
 
 echo -e "${BLUE}=======================================${NC}"

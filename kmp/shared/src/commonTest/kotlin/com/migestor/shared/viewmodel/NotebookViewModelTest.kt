@@ -215,13 +215,13 @@ class NotebookViewModelTest {
             name = "Final",
             type = NotebookColumnType.CALCULATED.name,
             weight = 1.0,
-            formula = "REDONDEAR(1+1, 2)"
+            formula = "REDONDEAR(1+1; 2)"
         )
         advanceUntilIdle()
 
         val saved = repository.savedColumns.last()
         assertEquals(NotebookColumnType.CALCULATED, saved.type)
-        assertEquals("REDONDEAR(1+1, 2)", saved.formula)
+        assertEquals("REDONDEAR(1+1; 2)", saved.formula)
     }
 
     @Test

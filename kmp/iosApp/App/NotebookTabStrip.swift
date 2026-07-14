@@ -98,6 +98,9 @@ struct NotebookTabStrip: View {
             }
             .disabled(tabs.count <= 1)
         }
+        .accessibilityLabel("Pestaña \(tab.title)")
+        .accessibilityValue(isSelected ? "Seleccionada" : "")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 

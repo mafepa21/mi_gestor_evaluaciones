@@ -26,7 +26,7 @@ struct RubricBulkEvaluationSheet: View {
             ZStack {
                 EvaluationBackdrop()
 
-                if state == nil || state!.isLoading {
+                if state?.isLoading ?? true {
                     ProgressView("Cargando evaluación masiva...")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(.secondary)
@@ -823,6 +823,7 @@ struct RubricBulkEvaluationSheet: View {
                                 }
                                 .buttonStyle(.plain)
                                 .disabled(savingInjuryStudentIds.contains(student.id))
+                                .accessibilityLabel("Quitar de lesionados a \(student.firstName) \(student.lastName)")
                             }
                             .padding(16)
                             .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous))

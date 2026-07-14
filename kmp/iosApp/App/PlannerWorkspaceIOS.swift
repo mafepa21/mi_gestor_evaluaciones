@@ -1389,6 +1389,37 @@ private struct PlannerForecastRowView: View {
     }
 }
 
+private extension SessionJournalMediaType {
+    var title: String {
+        switch self {
+        case .photo: return "Foto"
+        case .audio: return "Audio"
+        case .transcript: return "Dictado"
+        default: return "Media"
+        }
+    }
+}
+
+private extension SessionJournalLinkType {
+    var title: String {
+        switch self {
+        case .notebook: return "Cuaderno"
+        case .attendance: return "Asistencia"
+        case .incident: return "Incidencia"
+        case .family: return "Familias"
+        default: return "Enlace"
+        }
+    }
+}
+
+private extension Optional where Wrapped == String {
+    var nilIfBlank: String? {
+        switch self?.trimmingCharacters(in: .whitespacesAndNewlines) {
+        case .some(let value) where !value.isEmpty: return value
+        default: return nil
+        }
+    }
+}
 private extension String {
     var nilIfBlank: String? {
         trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : self

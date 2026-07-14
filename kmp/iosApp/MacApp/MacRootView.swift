@@ -6,6 +6,7 @@ struct MacRootView: View {
     @ObservedObject var session: MacAppSessionController
     @ObservedObject private var commandCenter: MacCommandCenterCoordinator
     @ObservedObject private var backupStore: MacBackupStore
+    @ObservedObject private var backupService = AppleBackupService.shared
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     @Environment(\.openWindow) private var openWindow
     @StateObject private var layoutState = WorkspaceLayoutState()
@@ -50,11 +51,16 @@ struct MacRootView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(MacAppStyle.pageBackground)
             case .failed(let message):
-                ContentUnavailableView(
-                    "No se pudo iniciar la shell Mac",
-                    systemImage: "exclamationmark.triangle",
-                    description: Text(message)
-                )
+                ContentUnavailableView {
+                    Label("No se pudo iniciar la shell Mac", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(message)
+                } actions: {
+                    Button("Reintentar") {
+                        session.retry()
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(MacAppStyle.pageBackground)
             case .ready:
@@ -84,6 +90,11 @@ struct MacRootView: View {
             session.inspectorVisible = newValue
         }
         .appWritingToolsDisabled()
+        .overlay {
+            if backupService.needsRestart {
+                RestartRequiredOverlay()
+            }
+        }
     }
 
     private func startCommandCenterAfterInitialLayout() async {
@@ -108,42 +119,57 @@ struct MacRootView: View {
         }
     }
 
-    private var navigationSplitContent: some View {
+    // Esta vista se trocea en subexpresiones a propósito: como una sola cadena
+    // (split view + detalle ramificado + overlay + los .onReceive) agota el
+    // tiempo del type-checker de Swift en máquinas lentas.
+    @ViewBuilder
+    private var detailPane: some View {
+        // Attendance applies its own .inspector() internally; wrapping it in the
+        // shell's system inspector too would nest two inspectors and reserve width twice.
+        if selectedFeature == .attendance {
+            featureContent(for: selectedFeature)
+                .id(selectedFeature)
+                .transition(uiFeatureFlags.contentSwitchTransition)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(MacAppStyle.pageBackground)
+        } else {
+            featureContent(for: selectedFeature)
+                .id(selectedFeature)
+                .transition(uiFeatureFlags.contentSwitchTransition)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(MacAppStyle.pageBackground)
+                .inspector(isPresented: $isInspectorVisible) {
+                    featureInspector(for: selectedFeature)
+                        .frame(minWidth: 320, idealWidth: 360, maxWidth: 440)
+                        .background(.thinMaterial)
+                }
+        }
+    }
+
+    @ViewBuilder
+    private var bannerOverlay: some View {
+        if let banner {
+            MacRootTransientBanner(banner: banner)
+                .padding(.top, 12)
+                .padding(.trailing, 16)
+                .transition(uiFeatureFlags.bannerTransition)
+        }
+    }
+
+    private var splitViewShell: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             macSidebar
         } detail: {
-            // Attendance applies its own .inspector() internally; wrapping it in the
-            // shell's system inspector too would nest two inspectors and reserve width twice.
-            if selectedFeature == .attendance {
-                featureContent(for: selectedFeature)
-                    .id(selectedFeature)
-                    .transition(uiFeatureFlags.contentSwitchTransition)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(MacAppStyle.pageBackground)
-            } else {
-                featureContent(for: selectedFeature)
-                    .id(selectedFeature)
-                    .transition(uiFeatureFlags.contentSwitchTransition)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(MacAppStyle.pageBackground)
-                    .inspector(isPresented: $isInspectorVisible) {
-                        featureInspector(for: selectedFeature)
-                            .frame(minWidth: 320, idealWidth: 360, maxWidth: 440)
-                            .background(.thinMaterial)
-                    }
-            }
+            detailPane
         }
         .navigationSplitViewStyle(.balanced)
         .scrollEdgeEffectStyle(.soft, for: .top)
-        .overlay(alignment: .topTrailing) {
-            if let banner {
-                MacRootTransientBanner(banner: banner)
-                    .padding(.top, 12)
-                    .padding(.trailing, 16)
-                    .transition(uiFeatureFlags.bannerTransition)
-            }
-        }
+        .overlay(alignment: .topTrailing) { bannerOverlay }
         .animation(uiFeatureFlags.interactionAnimation, value: banner?.id)
+    }
+
+    private var navigationSplitContent: some View {
+        splitViewShell
         .onReceive(NotificationCenter.default.publisher(for: .appleAppAddNotebookColumnRequested)) { _ in
             performPrimaryCreation()
         }
@@ -1240,7 +1266,11 @@ struct MacRootView: View {
         case .situations:
             selectFeature(.situations)
         default:
-            session.bridge.status = "El módulo \(module.title) todavía no está disponible en la shell Mac."
+            showBanner(
+                "\(module.title) todavía no está disponible en la shell Mac.",
+                systemImage: "exclamationmark.circle",
+                tint: MacAppStyle.warningTint
+            )
         }
     }
 }

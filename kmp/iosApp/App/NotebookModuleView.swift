@@ -229,13 +229,23 @@ struct NotebookModuleView: View {
         activeChoiceCellId = nil
         focusedCellId = nil
         focusMode = .normal
+        searchText = ""
 
         undoStack = []
         todayAttendanceByStudentId = [:]
         incidentCountByStudentId = [:]
+        localInjuryStatuses = [:]
+        seatPositions = [:]
+        seatingGradingColumnId = nil
         riskLevelCache = [:]
         riskComputationKey = nil
         isPrecomputingRiskLevels = false
+
+        formulaDraft = ""
+        expandedEmptyCategoryIds = []
+        pendingRubricColumnId = nil
+        pendingRubricStudentOrder = []
+        pendingRubricCurrentStudentId = nil
 
         rowReloadRevisions = [:]
         structuralGridRevision += 1
@@ -444,6 +454,7 @@ struct NotebookModuleView: View {
             }
         }
         .appOnChange(of: "\(data.sheet.classId)") { newValue in
+            resetNotebookTransientStateForClassChange()
             gridLayoutModel.configure(classId: data.sheet.classId)
             if let classId = Int64(newValue) {
                 loadClassLearningSituations(classId: classId)
@@ -1333,9 +1344,6 @@ struct NotebookModuleView: View {
                     guard requestID != nil else { return }
                     isOrganizationMenuPresented = false
                     isHiddenColumnsSheetPresented = true
-                }
-                .appOnChange(of: "\(data.sheet.classId)") { _ in
-                    resetNotebookTransientStateForClassChange()
                 }
                 .appOnChange(of: notebookTabsStateKey(data: data)) { _ in
                     scheduleActiveNotebookTabSync(data: data)

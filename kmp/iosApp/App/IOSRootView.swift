@@ -46,6 +46,7 @@ struct IOSRootView: View {
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var banner: IOSRootBanner?
     @State private var bannerDismissTask: Task<Void, Never>?
+    @State private var classSelectionTask: Task<Void, Never>?
     @State private var plannerContext = PlannerNavigationContext()
     @State private var activeSheet: ActiveWorkspaceSheet?
     @State private var showingRubricBuilder = false
@@ -137,11 +138,17 @@ struct IOSRootView: View {
         .appOnChange(of: selectionStore.selectedClassId) { newId in
             persistedClassId = Int(newId ?? 0)
             plannerContext.groupId = newId
-            Task {
+            if let newId {
+                bridge.selectClass(id: newId)
+            }
+            classSelectionTask?.cancel()
+            classSelectionTask = Task {
                 await bridge.selectStudentsClass(classId: newId)
+                guard !Task.isCancelled else { return }
                 if let newId = newId {
                     if let studentId = selectionStore.selectedStudentId {
                         let students = (try? await bridge.students(forClassId: newId)) ?? bridge.studentsInClass
+                        guard !Task.isCancelled else { return }
                         if !students.contains(where: { $0.id == studentId }) {
                             await MainActor.run {
                                 selectionStore.selectedStudentId = nil
@@ -153,9 +160,6 @@ struct IOSRootView: View {
                         selectionStore.selectedStudentId = nil
                     }
                 }
-            }
-            if let newId {
-                bridge.selectClass(id: newId)
             }
         }
         .task(id: selectionStore.selectedClassId) {

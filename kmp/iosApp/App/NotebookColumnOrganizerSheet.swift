@@ -188,6 +188,7 @@ struct NotebookColumnOrganizerSheet: View {
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut(.cancelAction)
+                .accessibilityLabel("Cerrar")
             }
         }
         .padding(.horizontal, 18)
@@ -351,6 +352,7 @@ struct NotebookColumnOrganizerSheet: View {
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
                     .help("Ocultar columna")
+                    .accessibilityLabel("Ocultar columna \(column.title)")
                 } else if column.isTemporarilyHidden {
                     Button {
                         onSetVisibility(column, .visible)
@@ -360,6 +362,7 @@ struct NotebookColumnOrganizerSheet: View {
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
                     .help("Mostrar columna")
+                    .accessibilityLabel("Mostrar columna \(column.title)")
                 }
 
                 Menu {
@@ -382,6 +385,7 @@ struct NotebookColumnOrganizerSheet: View {
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
+                .accessibilityLabel("Más acciones de la columna \(column.title)")
             }
         }
         .contentShape(Rectangle())
@@ -469,6 +473,7 @@ struct NotebookColumnOrganizerSheet: View {
                     .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Ayuda sobre ocultar, archivar y eliminar")
             .popover(isPresented: $isHelpPopoverPresented) {
                 Text("Ocultar limpia la rejilla. Archivar retira la columna del uso diario. Eliminar borra la columna tras confirmación.")
                     .font(.callout)

@@ -30,6 +30,10 @@ final class MacStudentsStore: ObservableObject {
     @Published var profileLoadTask: Task<Void, Never>?
     @Published var profileLoadingStudentId: Int64?
     @Published var studentEditorMode: MacStudentEditorMode?
+
+    deinit {
+        profileLoadTask?.cancel()
+    }
 }
 
 struct MacStudentsView: View {

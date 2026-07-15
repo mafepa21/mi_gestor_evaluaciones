@@ -40,6 +40,7 @@ struct IOSRootView: View {
     @AppStorage("workspace.active.module") private var persistedModule = AppWorkspaceModule.dashboard.rawValue
     @AppStorage("workspace.selected.class.id") private var persistedClassId: Int = 0
     @AppStorage("workspace.selected.student.id") private var persistedStudentId: Int = 0
+    @AppStorage("teacher.enabledSubjectProfiles.v1") private var enabledSubjectProfilesRaw = TeacherSubjectProfile.general.rawValue
 
     @State private var activeModule: AppWorkspaceModule = .dashboard
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
@@ -131,6 +132,12 @@ struct IOSRootView: View {
         .appOnChange(of: activeModule) { newValue in
             persistedModule = newValue.rawValue
         }
+        .appOnChange(of: enabledSubjectProfilesRaw) { _ in
+            let normalized = normalizedModule(activeModule)
+            if normalized != activeModule {
+                activeModule = normalized
+            }
+        }
         .appOnChange(of: selectionStore.selectedClassId) { newId in
             persistedClassId = Int(newId ?? 0)
             plannerContext.groupId = newId
@@ -192,7 +199,12 @@ struct IOSRootView: View {
     }
 
     private func normalizedModule(_ module: AppWorkspaceModule) -> AppWorkspaceModule {
-        module == .teacherRadar ? .dashboard : module
+        if module == .teacherRadar { return .dashboard }
+        if module.requiresPhysicalEducationProfile {
+            let enabledProfiles = TeacherSubjectProfile.decodeSet(enabledSubjectProfilesRaw)
+            if !enabledProfiles.contains(.physicalEducation) { return .dashboard }
+        }
+        return module
     }
 
     private func restorePersistedDataState() async {

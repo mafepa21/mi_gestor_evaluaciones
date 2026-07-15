@@ -617,7 +617,7 @@ struct NotebookModuleView: View {
         .background(.thinMaterial)
         .overlay(alignment: .bottom) {
             Rectangle()
-                .fill(NotebookStyle.softBorder)
+                .fill(NotebookGridStyle.gridLineStrong)
                 .frame(height: 1)
         }
     }

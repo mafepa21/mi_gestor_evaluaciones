@@ -12,7 +12,7 @@ struct RubricEvaluationView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                EvaluationBackdrop()
+                RubricEvaluationBackdrop()
 
                 if let rubric = state.rubricDetail {
                     GeometryReader { proxy in
@@ -117,7 +117,7 @@ struct RubricEvaluationView: View {
                     .foregroundStyle(.secondary)
 
                 Text(state.studentName)
-                    .font(.system(size: 28, weight: .black, design: .rounded))
+                    .font(.title2.weight(.semibold))
                     .foregroundStyle(.primary)
 
                 Text(rubric.rubric.name)
@@ -151,7 +151,7 @@ struct RubricEvaluationView: View {
     }
 
     private func criteriaPanel(rubric: RubricDetail) -> some View {
-        PremiumCard.glass(cornerRadius: 32, fillOpacity: 0.88) {
+        PremiumCard.glass(cornerRadius: RubricEvaluationStyle.cardRadius, fillOpacity: 0.88) {
             VStack(alignment: .leading, spacing: EvaluationDesign.sectionSpacing) {
                 HStack(spacing: 12) {
                     EvaluationChip(
@@ -187,7 +187,7 @@ struct RubricEvaluationView: View {
     }
 
     private func summaryPanel(rubric: RubricDetail, score: Double) -> some View {
-        PremiumCard.glass(cornerRadius: 32, fillOpacity: 0.92) {
+        PremiumCard.glass(cornerRadius: RubricEvaluationStyle.cardRadius, fillOpacity: 0.92) {
             VStack(alignment: .leading, spacing: 20) {
                 HStack(spacing: 10) {
                     EvaluationChip(
@@ -253,7 +253,7 @@ struct RubricCriterionRow: View {
     }
 
     var body: some View {
-        PremiumCard.glass(cornerRadius: 24, fillOpacity: 0.96) {
+        PremiumCard.glass(cornerRadius: RubricEvaluationStyle.rowRadius, fillOpacity: 0.96) {
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(item.criterion.description_)
@@ -325,7 +325,7 @@ struct RubricCriterionRow: View {
     private func levelTile(_ level: RubricLevel) -> some View {
         let isSelected = selectedLevelId == level.id
 
-        return EvaluationLevelTile(
+        return RubricLevelTile(
             title: level.name,
             subtitle: level.description_ ?? "",
             isSelected: isSelected,
@@ -338,7 +338,7 @@ struct RubricCriterionRow: View {
         .overlay(alignment: .bottomTrailing) {
             Text("\(Int(level.points)) pts")
                 .font(.system(size: 11, weight: .black, design: .rounded))
-                .foregroundStyle(isSelected ? .white : EvaluationDesign.accent)
+                .foregroundStyle(EvaluationDesign.accent)
                 .padding(.trailing, 12)
                 .padding(.bottom, 10)
         }

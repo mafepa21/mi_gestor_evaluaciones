@@ -220,6 +220,17 @@ struct AttendanceWorkspaceView: View {
             .appOnChange(of: layoutState.isFocusModeEnabled) { _ in
                 isAttendanceInspectorPresented = isInspectorPresented
             }
+            .appOnChange(of: isAttendanceInspectorPresented) { presented in
+                // Si el usuario cierra el inspector con el gesto del sistema (arrastrar
+                // el borde) en vez de "Cerrar ficha", `selectedStudentId`/`historySelection`
+                // seguían activos y volver a tocar el mismo alumno no disparaba el
+                // appOnChange correspondiente, así que la ficha no reabría. Al detectar
+                // ese cierre externo, limpiamos la selección para que quede consistente
+                // con el inspector oculto.
+                guard !presented, isInspectorPresented else { return }
+                selectedStudentId = nil
+                historySelection = nil
+            }
             .onAppear(perform: syncAttendanceToolbar)
             .appOnChange(of: toolbarStateKey) { _ in
                 syncAttendanceToolbar()

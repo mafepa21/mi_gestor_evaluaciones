@@ -37,7 +37,6 @@ struct IOSRootView: View {
 
     // Scene storage keeps state across scene lifecycle
     @SceneStorage("ios.root.sidebarVisible") private var sidebarVisible = true
-    @SceneStorage("ios.root.inspectorVisible") private var inspectorVisible = true
     @AppStorage("workspace.active.module") private var persistedModule = AppWorkspaceModule.dashboard.rawValue
     @AppStorage("workspace.selected.class.id") private var persistedClassId: Int = 0
     @AppStorage("workspace.selected.student.id") private var persistedStudentId: Int = 0
@@ -127,7 +126,7 @@ struct IOSRootView: View {
             try? await bridge.refreshRubricClassLinks()
             
             // Restore class and student selection after KMP data is loaded
-            restorePersistedDataState()
+            await restorePersistedDataState()
         }
         .appOnChange(of: activeModule) { newValue in
             persistedModule = newValue.rawValue
@@ -196,15 +195,18 @@ struct IOSRootView: View {
         module == .teacherRadar ? .dashboard : module
     }
 
-    private func restorePersistedDataState() {
+    private func restorePersistedDataState() async {
         if persistedClassId > 0,
            bridge.classes.contains(where: { $0.id == Int64(persistedClassId) }) {
             selectionStore.selectedClassId = Int64(persistedClassId)
         } else if selectionStore.selectedClassId == nil {
             selectionStore.selectedClassId = bridge.selectedStudentsClassId ?? bridge.classes.first?.id
         }
-        if persistedStudentId > 0 {
-            selectionStore.selectedStudentId = Int64(persistedStudentId)
+        guard persistedStudentId > 0, let classId = selectionStore.selectedClassId else { return }
+        let studentId = Int64(persistedStudentId)
+        let students = (try? await bridge.students(forClassId: classId)) ?? bridge.studentsInClass
+        if students.contains(where: { $0.id == studentId }) {
+            selectionStore.selectedStudentId = studentId
         }
     }
 
@@ -234,7 +236,6 @@ struct IOSRootView: View {
 
     // MARK: Inspector
     private func toggleInspector() {
-        inspectorVisible.toggle()
         // Delegate to module-specific inspector action when available
         switch activeModule {
         case .notebook:  layoutState.toggleNotebookInspector()

@@ -17,6 +17,7 @@ Cambios posteriores a `v0.3.0-traceability-baseline`.
 
 ### Added
 
+- Cuaderno: se introduce `NotebookGridStyle`, una escala de tokens visuales (hairlines, tipografía de datos, estados de foco unificados hover/columna/selección, radios concéntricos) que sustituye al patrón de opacidades apiladas sobre `NotebookStyle.softBorder`. Es la base plana del rediseño premium del grid; ver `docs/planes/plan_rediseno_cuaderno_2026-07-15.md`. Sin cambios visuales todavía: el token aún no está en uso, se adopta en los siguientes PRs del plan.
 - iPadOS/macOS: la toolbar del Cuaderno incorpora `SyncStatusBadge`, un indicador no intrusivo (`✓`/`⏱ N`/`✗`/inactivo) derivado del estado de sync LAN ya publicado por `DashboardBridgeStore`, con `accessibilityLabel` y `accessibilityHint` dinámicos. Sustituye al indicador previo de "N pnd." (que solo cubría el estado de cambios pendientes).
 
 ### Changed

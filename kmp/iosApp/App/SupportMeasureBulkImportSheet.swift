@@ -53,7 +53,13 @@ struct SupportMeasureBulkImportSheet: View {
             footer
         }
         .background(appPageBackground(for: colorScheme))
+        #if os(macOS)
         .frame(minWidth: 620, idealWidth: 720, minHeight: 480, idealHeight: 680)
+        #else
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+        #endif
         .fileImporter(
             isPresented: $isPickingFile,
             allowedContentTypes: [.xlsx],

@@ -1218,7 +1218,7 @@ struct IOSContextualToolbar: ToolbarContent {
 private extension AppWorkspaceModule {
     var supportsInspector: Bool {
         switch self {
-        case .dashboard, .diary, .students: return true
+        case .dashboard, .diary: return true
         default: return false
         }
     }

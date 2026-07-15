@@ -270,13 +270,16 @@ extension NotebookModuleView {
             }
         }()
 
+        // Sin fill/borde propio: la columna Media ya se distingue como panel fijo
+        // con fondo sólido (`NotebookDataGrid.fixedColumnBackground`); el valor se
+        // destaca por tipografía y tinte semántico, no por otra caja encima.
         return VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 5) {
                 Image(systemName: icon)
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(tint)
                 Text(averageText(for: item))
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .font(NotebookGridStyle.cellFont.weight(.semibold))
                     .foregroundStyle(state == .insufficient ? .secondary : .primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
@@ -290,14 +293,6 @@ extension NotebookModuleView {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(tint.opacity(state == .insufficient ? 0.08 : 0.12))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(tint.opacity(state == .insufficient ? 0.12 : 0.22), lineWidth: 1)
-        )
         .help(averageHelpText(for: state))
     }
 

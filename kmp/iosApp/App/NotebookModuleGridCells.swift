@@ -391,20 +391,17 @@ extension NotebookModuleView {
         return normalized != "FFFFFF" && normalized != "FFFFFFFF"
     }
 
+    /// Fondo de celda: única técnica de separación de filas (zebra plana + wash de
+    /// color de columna cuando aplica). No hay borde por celda; la selección se
+    /// marca con un anillo aparte (ver `rowCell`), no con este fill.
     func notebookColumnCellFill(for column: NotebookColumnDefinition, rowIndex: Int, isActive: Bool) -> Color {
         if isActive {
-            return Color.accentColor.opacity(0.10)
+            return NotebookGridStyle.cellSelectionFill
         }
         if hasCustomColumnColor(column) {
             return displayTint(for: column).opacity(0.035)
         }
-        return rowIndex.isMultiple(of: 2) ? NotebookStyle.surfaceSoft.opacity(0.18) : Color.clear
-    }
-
-    func notebookColumnCellBorder(for column: NotebookColumnDefinition, isActive: Bool) -> Color {
-        if isActive { return Color.accentColor.opacity(0.75) }
-        if hasCustomColumnColor(column) { return displayTint(for: column).opacity(0.10) }
-        return NotebookStyle.softBorder.opacity(0.26)
+        return rowIndex.isMultiple(of: 2) ? NotebookGridStyle.zebra : Color.clear
     }
 
     @MainActor
@@ -509,10 +506,6 @@ extension NotebookModuleView {
                     )
                 }
                 .frame(width: resolvedColumnWidth(for: column), height: notebookGridRowHeight)
-                .overlay(
-                    Rectangle()
-                        .stroke(notebookColumnCellBorder(for: column, isActive: isCellSelected), lineWidth: isCellSelected ? 1.4 : 0.5)
-                )
                 .contextMenu {
                     Button("Abrir inspector") {
                         selectedColumnId = nil

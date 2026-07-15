@@ -129,6 +129,15 @@ Decisión recomendada: **patrón macOS nativo = filas alternas sutiles + hairlin
 2. Sesión de capturas comparativas antes/después: Mac 14" y iPad 11", light y dark, con clase real (35 alumnos, 25+ columnas). Test del Aire y del Bizqueo documentados en el PR.
 3. Verificar Dynamic Type básico (AX1-AX2) en cabeceras y celdas: `minimumScaleFactor` ya existente, comprobar que los tokens nuevos no lo rompen.
 
+### Resultado de la ejecución (2026-07-15)
+
+Este entorno solo tiene Xcode Command Line Tools (sin `Xcode.app`), igual que en la ejecución previa documentada en `docs/plan_cuaderno_premium.md` Fase 0: no se puede lanzar el simulador, hacer capturas reales ni medir Dynamic Type end-to-end aquí. Lo ejecutado en su lugar:
+
+1. **Auditoría cruzada completada**: se encontró y corrigió un chip suelto que PR3 no cubrió — la cabecera especial de la columna "Nombre" (con el menú de agrupación embebido, en `NotebookModuleGridCells.swift`, rama `if fixed == .name`) seguía teniendo su propia caja (fill/borde/sombra, radio 12) porque no pasa por la función compartida `headerChip(title:subtitle:...)`. Se aplanó con el mismo idioma (tipografía `columnTitle`/`columnMeta`, sin fill/sombra/borde). Confirmado por grep que no quedan `RoundedBorderTextFieldStyle` en `NotebookEditableTableCell.swift`, ni chips con sombra `Color.black.opacity(0.03)` en los archivos del grid, ni usos de `EvaluationBackdrop` en las vistas de rúbrica (las coincidencias de grep eran falsos positivos de `RubricEvaluationBackdrop`, el nuevo componente).
+2. **Verificación de sintaxis**: `swiftc -parse` sobre los 12 archivos Swift tocados en el plan — todos limpios.
+3. **Registro en Xcode**: `xcodegen generate` para dar de alta `NotebookGridStyle.swift` y `RubricEvaluationStyle.swift` en el proyecto (`project.yml` usa `path:` por carpeta, así que XcodeGen los recoge solos; sin este paso no compilarían en ninguna build, el mismo bug documentado en `docs/audit/INCIDENCIA_2026-07-14-build-roto-post-merge.md`).
+4. **Pendiente para el dev**: `./scripts/verify_apple_builds.sh` (requiere Xcode.app completo) y la sesión real de capturas antes/después en Mac e iPad, light/dark, con una clase de 35 alumnos y 25+ columnas — no se puede sustituir por una revisión estática del código.
+
 ---
 
 ## Orden, estimación y riesgo

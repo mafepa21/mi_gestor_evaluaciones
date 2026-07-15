@@ -52,17 +52,20 @@ extension NotebookModuleView {
         switch segment {
         case .fixed(let fixed):
             if fixed == .name {
+                // Mismo tratamiento plano que `headerChip`: sin fill/sombra/borde
+                // propios (antes tenía su propia caja, inconsistente con el resto
+                // de cabeceras del sistema tras el rediseño de PR3).
                 let chip = HStack(spacing: 8) {
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(fixed.title)
-                            .font(.caption.weight(.semibold))
+                            .font(.footnote.weight(.semibold))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
 
                         Text(fixed.subtitle)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.tertiary)
+                            .font(NotebookGridStyle.columnMeta)
+                            .foregroundStyle(.secondary)
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
                     }
@@ -121,19 +124,11 @@ extension NotebookModuleView {
                 }
                 .padding(.leading, 8)
                 .padding(.trailing, 6)
-                .padding(.vertical, 8)
+                .padding(.top, 8)
+                .padding(.bottom, 10)
                 .frame(width: resolvedFixedWidth(for: fixed), alignment: .leading)
                 .frame(minHeight: 52, alignment: .topLeading)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(NotebookStyle.surfaceSoft.opacity(0.50))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(NotebookStyle.softBorder.opacity(0.55), lineWidth: 0.6)
-                        )
-                        .shadow(color: Color.black.opacity(0.03), radius: 4, x: 0, y: 2)
-                )
-                
+
                 return AnyView(chip)
             }
             

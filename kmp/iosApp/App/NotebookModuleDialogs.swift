@@ -278,7 +278,13 @@ extension NotebookModuleView {
                         systemImage: "rectangle.3.group",
                         description: "Carga una clase para organizar sus columnas."
                     )
+#if os(macOS)
                     .frame(minWidth: 420, minHeight: 260)
+#else
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+#endif
                 }
             }
                 .sheet(isPresented: $isHiddenColumnsSheetPresented) {
@@ -292,14 +298,24 @@ extension NotebookModuleView {
                                 showAllManagedColumns(data: data)
                             }
                         )
+#if os(macOS)
                         .frame(minWidth: 420, minHeight: 360)
+#else
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+#endif
                     } else {
                         NotebookContentUnavailableView(
                             "Sin datos del cuaderno",
                             systemImage: "eye.slash",
                             description: "Carga una clase para revisar columnas ocultas."
                         )
+#if os(macOS)
                         .frame(minWidth: 420, minHeight: 260)
+#else
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .presentationDetents([.medium, .large])
+                        .presentationDragIndicator(.visible)
+#endif
                     }
                 }
                 .task {

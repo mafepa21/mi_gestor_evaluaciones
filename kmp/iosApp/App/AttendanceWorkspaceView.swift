@@ -46,6 +46,7 @@ struct AttendanceWorkspaceView: View {
     @State var isAttendanceInspectorPresented = false
     @State var showAllPresent = false
     @State var classSelectionTask: Task<Void, Never>?
+    @State var dateReloadTask: Task<Void, Never>?
 
     var boardSummary: (present: Int, absent: Int, late: Int, untracked: Int) {
         let rows = attendanceStore.studentsInClass.map { recordsByStudentId[$0.id] }
@@ -196,8 +197,10 @@ struct AttendanceWorkspaceView: View {
                 classSelectionTask = Task { await syncClassSelection() }
             }
             .appOnChange(of: selectedDate) { _ in
-                Task {
+                dateReloadTask?.cancel()
+                dateReloadTask = Task {
                     await reloadClassOverviews()
+                    guard !Task.isCancelled else { return }
                     await reloadAttendance()
                 }
             }
@@ -744,12 +747,15 @@ struct AttendanceWorkspaceView: View {
     @MainActor
     func reloadClassOverviews() async {
         await bridge.ensureClassesLoaded()
+        guard !Task.isCancelled else { return }
         let range = monthRange(for: selectedDate)
-        classOverviews = (try? await bridge.attendanceOverview(
+        let overviews = (try? await bridge.attendanceOverview(
             for: attendanceStore.classes.map(\.id),
             from: range.start,
             to: range.end
         )) ?? []
+        guard !Task.isCancelled else { return }
+        classOverviews = overviews
     }
 
     func normalizedAttendanceRecords(

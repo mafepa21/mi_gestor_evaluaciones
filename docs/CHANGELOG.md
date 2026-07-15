@@ -23,6 +23,10 @@ Cambios posteriores a `v0.3.0-traceability-baseline`.
 
 - Accesibilidad VoiceOver: se añaden `accessibilityLabel`/`accessibilityValue` a controles icon-only que carecían de ellos: el selector de modo de agrupación y la celda de categoría colapsada del Cuaderno, los botones de mostrar/ocultar columna, el menú de acciones por columna y el botón de ayuda del organizador de columnas, el botón de borrar búsqueda de gestión de grupos, el estado de selección de las pestañas del Cuaderno y el botón de quitar lesión en la evaluación rápida por rúbrica (bulk).
 
+### Docs
+
+- Se añade `CLAUDE.md` en la raíz con el flujo obligatorio de registro de avances para agentes: rama nueva por tarea desde `origin/main` (nunca commitear directamente en `main`), worktree limpio y aislado por tarea, commits atómicos por intención con la entrada de `docs/CHANGELOG.md` en el mismo commit, plan documentado cuando la tarea agrupa varios fixes, push + PR con la plantilla del repo, y verificación honesta (nunca afirmar builds/tests no ejecutados).
+
 ## v0.3.0-traceability-baseline — 2026-07-06
 
 ### Added

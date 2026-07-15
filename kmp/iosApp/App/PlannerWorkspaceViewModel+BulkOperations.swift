@@ -108,26 +108,31 @@ extension PlannerWorkspaceViewModel {
     /// deshacer de la vista Día, que necesita poder restaurar el estado previo).
     func setSessionStatus(_ session: PlanningSession, status: SessionStatus) async {
         guard let bridge else { return }
-        _ = try? await bridge.plannerUpsertSession(
-            id: session.id,
-            teachingUnitId: session.teachingUnitId,
-            teachingUnitName: session.teachingUnitName,
-            teachingUnitColor: session.teachingUnitColor,
-            groupId: session.groupId,
-            groupName: session.groupName,
-            dayOfWeek: Int(session.dayOfWeek),
-            period: Int(session.period),
-            weekNumber: Int(session.weekNumber),
-            year: Int(session.year),
-            objectives: session.objectives,
-            activities: session.activities,
-            evaluation: session.evaluation,
-            linkedAssessmentIdsCsv: session.linkedAssessmentIdsCsv,
-            teacherScheduleSlotId: session.teacherScheduleSlotId?.int64Value,
-            startTime: session.startTime,
-            endTime: session.endTime,
-            status: status
-        )
+        do {
+            _ = try await bridge.plannerUpsertSession(
+                id: session.id,
+                teachingUnitId: session.teachingUnitId,
+                teachingUnitName: session.teachingUnitName,
+                teachingUnitColor: session.teachingUnitColor,
+                groupId: session.groupId,
+                groupName: session.groupName,
+                dayOfWeek: Int(session.dayOfWeek),
+                period: Int(session.period),
+                weekNumber: Int(session.weekNumber),
+                year: Int(session.year),
+                objectives: session.objectives,
+                activities: session.activities,
+                evaluation: session.evaluation,
+                linkedAssessmentIdsCsv: session.linkedAssessmentIdsCsv,
+                teacherScheduleSlotId: session.teacherScheduleSlotId?.int64Value,
+                startTime: session.startTime,
+                endTime: session.endTime,
+                status: status
+            )
+        } catch {
+            bulkSummary = "No se pudo actualizar el estado de la sesión: \(error.localizedDescription)"
+            return
+        }
         updateLocalSession(session, status: status)
         await reloadJournalSummaries()
     }

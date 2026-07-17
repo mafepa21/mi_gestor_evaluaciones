@@ -79,26 +79,31 @@ private struct NotebookTabButton: View {
     @State private var isHovered = false
 
     var body: some View {
-        Button(action: onSelect) {
-            ZStack {
-                if isSelected {
-                    NotebookTabSelectionBackground(namespace: namespace)
-                        .allowsHitTesting(false)
-                        .transition(.opacity.combined(with: .scale(scale: 0.96)))
-                }
-
-                Text(tab.title)
-                    .font(.footnote.weight(isSelected ? .semibold : .medium))
-                    .lineLimit(1)
-                    .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+        Button {
+            // El cambio de pestaña se envuelve en animación para que la pastilla
+            // (glassEffectID / matchedGeometryEffect) se deslice de una posición a
+            // otra en vez de aparecer/desaparecer.
+            withAnimation(.spring(response: 0.34, dampingFraction: 0.82)) {
+                onSelect()
             }
-            .padding(.horizontal, 14)
-            .frame(minHeight: 32)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(isHovered && !isSelected ? Color.primary.opacity(0.05) : Color.clear)
-            )
-            .contentShape(Capsule(style: .continuous))
+        } label: {
+            Text(tab.title)
+                .font(.footnote.weight(isSelected ? .semibold : .medium))
+                .lineLimit(1)
+                .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+                .padding(.horizontal, 16)
+                .frame(minHeight: 32)
+                // La pastilla de selección va SIEMPRE de fondo, nunca como capa
+                // hermana en un ZStack: así el cristal no puede componer por encima
+                // del texto (era el bug de "el cristal tapa el título").
+                .background {
+                    if isSelected {
+                        NotebookTabSelectionPill(namespace: namespace)
+                    } else if isHovered {
+                        Capsule(style: .continuous).fill(Color.primary.opacity(0.05))
+                    }
+                }
+                .contentShape(Capsule(style: .continuous))
         }
         .buttonStyle(.plain)
         #if os(macOS)
@@ -145,33 +150,47 @@ private struct NotebookTabGlassContainer<Content: View>: View {
     }
 }
 
-/// Fondo de la selección: capa glass translúcida que hace morphing entre
-/// pestañas. Un único `glassEffectID`/`matchedGeometryEffect` constante (no por
-/// `tab.id`): solo existe una instancia montada a la vez —la de la pestaña
-/// activa—, así que es el mismo patrón de "elemento viajero" que
-/// `PlannerFloatingTabBar.PlannerFloatingTabSelectionBackground`, no uno nuevo.
-/// Tint neutro (`Color.primary`), nunca el azul de acento del sistema: decisión
-/// de producto ya corregida dos veces en el proyecto (ver skill liquid-glass-design).
-private struct NotebookTabSelectionBackground: View {
+/// Pastilla de la pestaña activa. Va como **fondo** de la etiqueta (no como capa
+/// hermana), así que el texto siempre queda por encima y legible. Una sola
+/// instancia montada a la vez —la de la pestaña activa— con un `glassEffectID`
+/// (macOS/iOS 26) o `matchedGeometryEffect` (fallback) constante, para que la
+/// pastilla se deslice de una pestaña a otra (patrón "elemento viajero", igual
+/// que `PlannerFloatingTabBar`). Cristal translúcido con presencia real: sobre
+/// fondo claro los tints al 1–3% no se veían; aquí la pastilla tiene material +
+/// hairline + brillo superior para leerse en claro y oscuro sin tapar el texto.
+private struct NotebookTabSelectionPill: View {
     let namespace: Namespace.ID
+
+    private static let morphID = "notebook-tab-selection"
 
     var body: some View {
         let shape = Capsule(style: .continuous)
 
-        shape
-            .fill(selectionFallbackFill)
-            .notebookTabNativeSelectionGlass(in: shape, namespace: namespace)
-            .overlay {
-                shape.stroke(NotebookGridStyle.gridLineStrong, lineWidth: 0.5)
-            }
-            .matchedGeometryEffect(id: "notebook-tab-selection", in: namespace)
-    }
-
-    private var selectionFallbackFill: AnyShapeStyle {
         if #available(iOS 26.0, macOS 26.0, *) {
-            return AnyShapeStyle(Color.primary.opacity(0.02))
+            Color.clear
+                .glassEffect(.regular.interactive(), in: shape)
+                .glassEffectID(Self.morphID, in: namespace)
+                .overlay {
+                    shape.strokeBorder(NotebookGridStyle.gridLineStrong, lineWidth: 0.5)
+                }
+        } else {
+            shape
+                .fill(.regularMaterial)
+                .overlay {
+                    // Brillo superior sutil: da relieve de "pastilla elevada".
+                    shape.strokeBorder(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.5), Color.white.opacity(0.05)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 0.75
+                    )
+                }
+                .overlay { shape.strokeBorder(NotebookGridStyle.gridLine, lineWidth: 0.5) }
+                .shadow(color: .black.opacity(0.10), radius: 3, x: 0, y: 1)
+                .matchedGeometryEffect(id: Self.morphID, in: namespace)
         }
-        return AnyShapeStyle(.ultraThinMaterial)
     }
 }
 
@@ -185,28 +204,16 @@ private extension View {
 
         if #available(iOS 26.0, macOS 26.0, *) {
             self
-                .background { shape.fill(Color.primary.opacity(0.008)) }
-                .glassEffect(.regular.tint(Color.primary.opacity(0.012)).interactive(), in: shape)
+                .glassEffect(.regular.interactive(), in: shape)
                 .overlay {
-                    shape.stroke(NotebookGridStyle.gridLine, lineWidth: 0.5)
+                    shape.strokeBorder(NotebookGridStyle.gridLine, lineWidth: 0.5)
                 }
         } else {
             self
                 .background(.ultraThinMaterial, in: shape)
                 .overlay {
-                    shape.stroke(NotebookGridStyle.gridLine, lineWidth: 0.5)
+                    shape.strokeBorder(NotebookGridStyle.gridLine, lineWidth: 0.5)
                 }
-        }
-    }
-
-    @ViewBuilder
-    func notebookTabNativeSelectionGlass(in shape: Capsule, namespace: Namespace.ID) -> some View {
-        if #available(iOS 26.0, macOS 26.0, *) {
-            self
-                .glassEffect(.regular.tint(Color.primary.opacity(0.03)).interactive(), in: shape)
-                .glassEffectID("notebook-tab-selection", in: namespace)
-        } else {
-            self
         }
     }
 

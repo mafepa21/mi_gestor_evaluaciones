@@ -531,7 +531,7 @@ struct AddColumnSheet: View {
             #endif
         }
 #if os(macOS)
-        .frame(minWidth: 520, idealWidth: 560, maxWidth: 640, minHeight: 560, idealHeight: 620)
+        .frame(minWidth: 640, idealWidth: 840, maxWidth: 960, minHeight: 620, idealHeight: 760)
 #else
         .frame(maxWidth: .infinity, maxHeight: .infinity)
 #endif
@@ -620,34 +620,32 @@ struct AddColumnSheet: View {
     }
 
     private var blueprintSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        // Rejilla adaptable que aprovecha el ancho extra de la hoja: todos los
+        // tipos básicos se ven a la vez (antes un carrusel horizontal de píldoras
+        // donde no cabían todas las opciones a la vista).
+        let cardColumns = [GridItem(.adaptive(minimum: 190), spacing: 12)]
+
+        return VStack(alignment: .leading, spacing: 16) {
             Text("Tipo de columna")
                 .font(.headline)
 
             subjectTemplateSection
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(basicBlueprints) { blueprint in
-                        NotebookPill(
-                            label: blueprint.title,
-                            systemImage: blueprint.icon,
-                            active: blueprint.id == selectedBlueprint?.id,
-                            tint: color(for: blueprint.categoryKind),
-                            compact: true
-                        )
-                        .onTapGesture {
-                            selectedBlueprintId = blueprint.id
-                        }
+            LazyVGrid(columns: cardColumns, spacing: 12) {
+                ForEach(basicBlueprints) { blueprint in
+                    ColumnBlueprintCard(
+                        blueprint: blueprint,
+                        isSelected: blueprint.id == selectedBlueprint?.id,
+                        tint: color(for: blueprint.categoryKind)
+                    ) {
+                        selectedBlueprintId = blueprint.id
                     }
                 }
-                .padding(.vertical, 2)
             }
 
             DisclosureGroup {
-                let columns = [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)]
                 VStack(alignment: .leading, spacing: 16) {
-                    LazyVGrid(columns: columns, spacing: 16) {
+                    LazyVGrid(columns: cardColumns, spacing: 12) {
                         ForEach(advancedBlueprints) { blueprint in
                             ColumnBlueprintCard(
                                 blueprint: blueprint,

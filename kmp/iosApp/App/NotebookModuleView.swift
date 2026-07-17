@@ -1716,7 +1716,7 @@ struct NotebookModuleView: View {
 
         #if os(macOS)
         content
-            .frame(minWidth: 520, idealWidth: 560, maxWidth: 640, minHeight: 560, idealHeight: 620)
+            .frame(minWidth: 640, idealWidth: 840, maxWidth: 960, minHeight: 620, idealHeight: 760)
         #else
         content
             .presentationDetents([.large])

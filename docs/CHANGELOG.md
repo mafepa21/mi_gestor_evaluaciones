@@ -22,6 +22,7 @@ Cambios posteriores a `v0.3.0-traceability-baseline`.
 
 ### Changed
 
+- Cuaderno: profundidad y selección premium del grid (R1, sobre feedback del rediseño). El módulo pasa del `EvaluationBackdrop` (gradiente + halos de acento, aspecto "webby") a un lienzo neutro y calmado (`NotebookCanvasBackground`), y el panel central de datos —antes transparente, dejando ver el gradiente tras las celdas— recibe una superficie sólida propia, de modo que las celdas se leen sobre una superficie de datos limpia. El wash de columna resaltada deja de ser azul de acento (que inundaba toda la columna sobre fondo claro y leía como un bloque plano) y pasa a un wash **neutro** (`columnActiveWash`), con la identidad de "columna activa" trasladada a una barra de acento bajo la cabecera. La celda seleccionada deja de teñirse de azul y pasa a **elevarse**: superficie opaca que tapa el wash inferior + sombra suave + anillo de acento, como una tecla pulsada.
 - Cuaderno: pasada de consistencia del rediseño premium (PR7). Se aplana la cabecera especial de la columna "Nombre" (con el menú de agrupación embebido), que había quedado con su propia caja (fill/borde/sombra, radio 12) porque no pasa por la función compartida `headerChip` rediseñada en PR3.
 
 ### Verification

@@ -38,11 +38,16 @@ extension NotebookModuleView {
         .padding(.bottom, 10)
         .frame(width: width, alignment: .leading)
         .frame(minHeight: 52, alignment: .topLeading)
-        .background(isHighlighted ? NotebookGridStyle.columnHighlight(tint: tint) : Color.clear)
+        .background(isHighlighted ? NotebookGridStyle.columnActiveWash : Color.clear)
         .overlay(alignment: .bottom) {
             if !isSystemColumn {
+                // Columna activa → barra de acento (la identidad de "resaltada"
+                // vive aquí, no en un flood de azul sobre las celdas). Con color
+                // propio → tinte de la columna; en reposo → hairline neutro.
                 Rectangle()
-                    .fill((hasColumnColor || folderStyle) ? tint.opacity(0.9) : NotebookGridStyle.gridLineStrong)
+                    .fill(isHighlighted
+                          ? Color.accentColor
+                          : ((hasColumnColor || folderStyle) ? tint.opacity(0.9) : NotebookGridStyle.gridLineStrong))
                     .frame(height: 3)
             }
         }
@@ -358,15 +363,13 @@ extension NotebookModuleView {
     }
 
     /// Fondo de celda: única técnica de separación de filas (zebra plana + wash de
-    /// color de columna o de columna resaltada cuando aplica). No hay borde por
-    /// celda; la selección se marca con un anillo aparte (ver `rowCell`), no con
-    /// este fill.
-    func notebookColumnCellFill(for column: NotebookColumnDefinition, rowIndex: Int, isActive: Bool) -> Color {
-        if isActive {
-            return NotebookGridStyle.cellSelectionFill
-        }
+    /// color de columna o de columna resaltada cuando aplica). La selección **no**
+    /// se pinta aquí: la dibuja la celda editable interior como un chip elevado
+    /// (superficie + sombra + anillo), para que se lea sobre un fondo limpio sin
+    /// doble tinte de acento.
+    func notebookColumnCellFill(for column: NotebookColumnDefinition, rowIndex: Int) -> Color {
         if isColumnHighlighted(column) {
-            return NotebookGridStyle.columnHighlight(tint: displayTint(for: column))
+            return NotebookGridStyle.columnActiveWash
         }
         if hasCustomColumnColor(column) {
             return displayTint(for: column).opacity(0.035)
@@ -394,7 +397,7 @@ extension NotebookModuleView {
             return AnyView(
                 ZStack {
                     Rectangle()
-                        .fill(notebookColumnCellFill(for: column, rowIndex: rowIndex, isActive: isCellSelected))
+                        .fill(notebookColumnCellFill(for: column, rowIndex: rowIndex))
 
                     NotebookEditableTableCell(
                         displaySnapshot: displaySnapshot,

@@ -654,6 +654,12 @@ private struct NotebookStatefulEditableTableCell: View {
                     RoundedRectangle(cornerRadius: NotebookGridStyle.Radius.cell, style: .continuous)
                         .stroke(editableCellBorder, lineWidth: editableCellBorderWidth)
                 )
+                .shadow(
+                    color: isSelected ? NotebookGridStyle.cellSelectionShadow : .clear,
+                    radius: isSelected ? 4 : 0,
+                    x: 0,
+                    y: isSelected ? 1.5 : 0
+                )
                 .padding(2)
 
             content
@@ -725,7 +731,9 @@ private struct NotebookStatefulEditableTableCell: View {
     /// necesitan su propia señal (bloqueada, calculada, borrador pendiente, selección/edición).
     private var editableCellFill: Color {
         if isSelected {
-            return NotebookGridStyle.cellSelectionFill
+            // Superficie opaca (no tinte de acento): tapa el wash de columna por
+            // debajo para que la celda se eleve limpia con sombra + anillo.
+            return NotebookGridStyle.cellSelectionSurface
         }
         if column.isLocked {
             return NotebookStyle.surfaceMuted.opacity(0.45)
@@ -1838,6 +1846,12 @@ private struct NotebookReadOnlyCellChrome<Content: View>: View {
                     RoundedRectangle(cornerRadius: NotebookGridStyle.Radius.cell, style: .continuous)
                         .stroke(cellBorder, lineWidth: isSelected ? NotebookGridStyle.cellSelectionRingWidth : 0.6)
                 )
+                .shadow(
+                    color: isSelected ? NotebookGridStyle.cellSelectionShadow : .clear,
+                    radius: isSelected ? 4 : 0,
+                    x: 0,
+                    y: isSelected ? 1.5 : 0
+                )
                 .padding(2)
 
             content
@@ -1882,7 +1896,7 @@ private struct NotebookReadOnlyCellChrome<Content: View>: View {
     /// en `NotebookModuleGridCells.rowCell`.
     private var cellFill: Color {
         if isSelected {
-            return NotebookGridStyle.cellSelectionFill
+            return NotebookGridStyle.cellSelectionSurface
         }
         if column.isLocked {
             return NotebookStyle.surfaceMuted.opacity(0.45)

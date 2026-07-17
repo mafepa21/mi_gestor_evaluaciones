@@ -49,17 +49,32 @@ enum NotebookGridStyle {
     /// nativo de `NSTableView`, que no anima su hover.
     static let rowHover = Color.primary.opacity(0.04)
 
-    /// Wash plano cuando una columna está resaltada (menú de columna abierto,
-    /// selección con foco en el inspector). Cubre cabecera + celdas.
-    static func columnHighlight(tint: Color = .accentColor) -> Color {
-        tint.opacity(0.05)
-    }
+    /// Wash de columna resaltada (menú de columna abierto, foco de inspector).
+    /// **Neutro, no de acento**: el azul inundando toda la columna sobre un fondo
+    /// claro leía como un bloque plano poco premium. La identidad de acento vive
+    /// en la barra bajo la cabecera (ver `headerChip`), no en un flood de color.
+    static let columnActiveWash = Color.primary.opacity(0.04)
 
     /// Anillo de una celda seleccionada o en edición.
     static let cellSelectionRing = Color.accentColor
     static let cellSelectionRingWidth: CGFloat = 2
-    /// Relleno plano bajo el anillo de selección.
+
+    /// Fill plano de acento para selección de **tarjetas** (blueprint cards,
+    /// niveles de rúbrica), donde no hay wash de columna que tapar. En las celdas
+    /// del grid se usa `cellSelectionSurface` en su lugar (elevación, no tinte).
     static let cellSelectionFill = Color.accentColor.opacity(0.08)
+
+    /// Relleno de la celda seleccionada: superficie **opaca** que tapa cualquier
+    /// wash de columna por debajo, para que la celda se eleve limpia (como una
+    /// tecla pulsada) en vez de teñirse de azul. La elevación real la dan el
+    /// anillo + la sombra `cellSelectionShadow`.
+    static var cellSelectionSurface: Color { appSecondarySystemBackgroundColor() }
+    static let cellSelectionShadow = Color.accentColor.opacity(0.22)
+
+    // MARK: - Superficie del grid
+
+    /// Sombra suave del grid como tarjeta elevada sobre el lienzo del módulo.
+    static let gridSurfaceShadow = Color.black.opacity(0.06)
 
     // MARK: - Estados semánticos (puntos/anillos discretos, nunca fills grandes)
 
@@ -75,5 +90,19 @@ enum NotebookGridStyle {
         static let chip: CGFloat = 8
         /// Tarjeta contenedora.
         static let card: CGFloat = 12
+    }
+}
+
+/// Lienzo del Cuaderno: fondo neutro y calmado sobre el que el grid (superficie
+/// más clara) se lee como una tarjeta elevada. Sustituye a `EvaluationBackdrop`
+/// (gradiente + halos de acento), que hacía que las celdas parecieran flotar
+/// sobre un fondo "webby" en vez de sobre una superficie de datos sólida.
+struct NotebookCanvasBackground: View {
+    var body: some View {
+        #if os(macOS)
+        Color(nsColor: .windowBackgroundColor)
+        #else
+        Color(.systemGroupedBackground)
+        #endif
     }
 }

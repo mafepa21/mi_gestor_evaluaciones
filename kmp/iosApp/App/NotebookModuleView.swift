@@ -447,7 +447,7 @@ struct NotebookModuleView: View {
                     .background(.ultraThinMaterial)
             }
         }
-        .background(EvaluationBackdrop())
+        .background(NotebookCanvasBackground())
         .onAppear {
             gridLayoutModel.configure(classId: data.sheet.classId)
             loadClassLearningSituations(classId: data.sheet.classId)

@@ -288,6 +288,10 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, TrailingFi
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        // Superficie sólida del grid: el panel central era transparente y dejaba
+        // ver el lienzo del módulo tras las celdas. Con una superficie propia (más
+        // clara que el lienzo) el área de datos se lee como una tarjeta elevada.
+        .background(appSecondarySystemBackgroundColor())
     }
 
     private static func instrumentBody(

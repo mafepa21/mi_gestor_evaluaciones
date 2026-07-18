@@ -69,6 +69,10 @@ struct NotebookModuleView: View {
     var groupByWorkGroup: Bool {
         groupByWorkGroupMode != "none"
     }
+    /// Color semántico de nota + heat de celda (rediseño radical del grid).
+    /// Toggle propio en el menú de acciones; `NotebookStatefulEditableTableCell`
+    /// lee la misma clave con su propio `@AppStorage` (ver `NotebookGridStyle`).
+    @AppStorage(NotebookGridStyle.semanticGradeColorDefaultsKey) var semanticGradeColorEnabled = true
     @State var categoryDraft = ""
     @State var editingCategoryId: String? = nil
     @State var isNotebookTabAlertPresented = false
@@ -711,6 +715,10 @@ struct NotebookModuleView: View {
                 Label("Plano", systemImage: surfaceMode == .seatingPlan ? "checkmark" : "rectangle.3.group")
             }
             .disabled(focusMode != .normal)
+        }
+
+        Toggle(isOn: $semanticGradeColorEnabled) {
+            Label("Colorear notas por banda", systemImage: "paintpalette")
         }
 
         Menu("Pestañas") {

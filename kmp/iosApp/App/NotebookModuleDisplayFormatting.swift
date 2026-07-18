@@ -195,6 +195,23 @@ extension NotebookModuleView {
         .frame(width: 36, height: 36)
     }
 
+    /// Monograma de identidad para la celda de Nombre (rediseño radical del
+    /// grid): color determinista por alumno — mismo id, mismo color siempre,
+    /// como en Contactos — para distinguir alumnos de un vistazo en vez de una
+    /// columna de texto suelto. Distinto de `studentAvatar(for:)`, que usa
+    /// siempre el tinte de marca y vive en la columna Foto independiente.
+    func studentMonogram(for student: Student) -> some View {
+        let accent = NotebookGridStyle.studentAccent(for: student.id)
+        return ZStack {
+            Circle().fill(accent.opacity(0.16))
+            Text(initials(for: student))
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .foregroundStyle(accent)
+        }
+        .frame(width: 28, height: 28)
+        .accessibilityHidden(true)
+    }
+
     func initials(for student: Student) -> String {
         String(student.firstName.prefix(1)) + String(student.lastName.prefix(1))
     }
@@ -245,23 +262,31 @@ extension NotebookModuleView {
         item.row.averageExplanation?.pendingCells.count ?? 0
     }
 
+    /// La Media como "héroe" del rediseño radical del grid: nota grande
+    /// coloreada por banda (mismo toggle `semanticGradeColorEnabled` que las
+    /// celdas), medidor de completitud y estado — no un badge menudo con icono.
     func averageBadge(for item: NotebookTableRow) -> some View {
         let state = averageState(for: item)
         let pendingCount = averagePendingCount(for: item)
+        let totalCount = item.row.averageExplanation?.includedColumns.count ?? 0
+        let completedFraction: Double = totalCount > 0
+            ? Double(totalCount - pendingCount) / Double(totalCount)
+            : (state == .complete ? 1 : 0)
+
+        let band: NotebookGradeBand? = {
+            guard semanticGradeColorEnabled, let average = item.row.weightedAverage?.doubleValue else { return nil }
+            return NotebookGradeBand(scoreOutOfTen: average)
+        }()
+
         let tint: Color = {
+            if let band { return band.color }
             switch state {
             case .complete: return NotebookStyle.successTint
             case .pending: return NotebookStyle.warningTint
             case .insufficient: return .secondary
             }
         }()
-        let icon: String = {
-            switch state {
-            case .complete: return "checkmark.circle.fill"
-            case .pending: return "clock.fill"
-            case .insufficient: return "minus.circle"
-            }
-        }()
+
         let statusText: String = {
             switch state {
             case .complete: return "Completa"
@@ -273,26 +298,30 @@ extension NotebookModuleView {
         // Sin fill/borde propio: la columna Media ya se distingue como panel fijo
         // con fondo sólido (`NotebookDataGrid.fixedColumnBackground`); el valor se
         // destaca por tipografía y tinte semántico, no por otra caja encima.
-        return VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 5) {
-                Image(systemName: icon)
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(tint)
-                Text(averageText(for: item))
-                    .font(NotebookGridStyle.cellFont.weight(.semibold))
-                    .foregroundStyle(state == .insufficient ? .secondary : .primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.82)
-            }
-
-            Text(statusText)
-                .font(.system(size: 9, weight: .semibold, design: .rounded))
-                .foregroundStyle(tint)
+        return VStack(alignment: .leading, spacing: 6) {
+            Text(averageText(for: item))
+                .font(.system(.title3, design: .rounded).weight(.bold))
+                .foregroundStyle(state == .insufficient ? .secondary : tint)
                 .lineLimit(1)
-                .minimumScaleFactor(0.75)
+                .minimumScaleFactor(0.7)
+
+            ProgressView(value: completedFraction)
+                .tint(tint)
+                .frame(maxWidth: .infinity)
+
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(tint)
+                    .frame(width: 5, height: 5)
+                Text(statusText)
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundStyle(tint)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+            }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
         .help(averageHelpText(for: state))
     }
 

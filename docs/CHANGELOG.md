@@ -17,6 +17,12 @@ Cambios posteriores a `v0.3.0-traceability-baseline`.
 
 ### Added
 
+- Cuaderno: rediseño radical del grid con identidad, color semántico y modo heat (sobre feedback del rediseño premium — el grid "no se veía premium ni en macOS ni en iPad"). Tres piezas:
+  - **Identidad de alumno**: la celda de Nombre incorpora un monograma con color determinista por alumno (mismo id → mismo color siempre, como en Contactos), en vez de una columna de texto suelto (`studentMonogram`, `NotebookGridStyle.studentAccent`).
+  - **Color semántico de nota**: el número de una celda numérica se tiñe por banda (rojo &lt;5 · ámbar 5–6,9 · verde ≥7) y la tipografía de datos (`NotebookGridStyle.cellFont`) pasa a diseño redondeado + semibold ("números con carácter"). Se excluyen explícitamente las columnas de dato bruto de pruebas físicas (tiempo/distancia/repeticiones): un "6,5" ahí es un tiempo, no una nota, y colorearlo por banda sería engañoso.
+  - **Modo heat** (mismo toggle): tinte de fondo suave por banda en la celda, para leer la clase entera como mapa de calor de un vistazo.
+  - Todo el conjunto tiene un **toggle** único ("Colorear notas por banda", menú de acciones del cuaderno, `@AppStorage` compartida) para desactivarlo — algunos docentes no quieren "colorear" alumnos.
+  - La columna Media pasa de un badge pequeño con icono a una tarjeta "héroe": nota grande coloreada por banda, medidor de completitud (`ProgressView`) y estado.
 - Cuaderno: se introduce `NotebookGridStyle`, una escala de tokens visuales (hairlines, tipografía de datos, estados de foco unificados hover/columna/selección, radios concéntricos) que sustituye al patrón de opacidades apiladas sobre `NotebookStyle.softBorder`. Es la base plana del rediseño premium del grid; ver `docs/planes/plan_rediseno_cuaderno_2026-07-15.md`.
 - iPadOS/macOS: la toolbar del Cuaderno incorpora `SyncStatusBadge`, un indicador no intrusivo (`✓`/`⏱ N`/`✗`/inactivo) derivado del estado de sync LAN ya publicado por `DashboardBridgeStore`, con `accessibilityLabel` y `accessibilityHint` dinámicos. Sustituye al indicador previo de "N pnd." (que solo cubría el estado de cambios pendientes).
 

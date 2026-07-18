@@ -36,11 +36,14 @@ enum NotebookGridStyle {
     /// Metadatos de cabecera (peso, fecha, tipo), en una sola línea.
     static let columnMeta: Font = .caption2
 
-    /// Tipografía de toda celda numérica y de la columna Media.
+    /// Tipografía de toda celda numérica y de la columna Media. Diseño
+    /// redondeado + semibold ("números con carácter" del rediseño radical): la
+    /// nota es la protagonista de la celda, no un dato menudo alineado a la
+    /// derecha. `.system(_:design:)` conserva el escalado de Dynamic Type.
     #if os(macOS)
-    static let cellFont: Font = .callout.monospacedDigit()
+    static let cellFont: Font = .system(.callout, design: .rounded).weight(.semibold).monospacedDigit()
     #else
-    static let cellFont: Font = .body.monospacedDigit()
+    static let cellFont: Font = .system(.body, design: .rounded).weight(.semibold).monospacedDigit()
     #endif
 
     // MARK: - Estados de foco (única fuente de verdad para celda/columna/fila)
@@ -91,6 +94,68 @@ enum NotebookGridStyle {
         /// Tarjeta contenedora.
         static let card: CGFloat = 12
     }
+
+    // MARK: - Color semántico de nota (rediseño radical del grid)
+
+    /// <5 suspenso · 5–6,9 aprobado · ≥7 notable+. Mismo corte de "aprobado" que
+    /// ya usa el resto de la app (ver `averageState`); no es un umbral nuevo.
+    static let gradeLow = appAdaptiveBrandColor(light: (0.86, 0.20, 0.18), dark: (1.0, 0.38, 0.36))
+    static let gradeMid = appAdaptiveBrandColor(light: (0.79, 0.53, 0.0), dark: (0.94, 0.67, 0.19))
+    static let gradeHigh = appAdaptiveBrandColor(light: (0.12, 0.60, 0.32), dark: (0.28, 0.80, 0.50))
+
+    /// Clave de `@AppStorage` compartida por varias vistas (`NotebookModuleView`,
+    /// `NotebookStatefulEditableTableCell`): color semántico de nota + heat de
+    /// celda, con un único ajuste on/off desde el menú de acciones del cuaderno.
+    /// Cada vista declara su propio `@AppStorage` con esta misma clave en vez de
+    /// enhebrar un booleano por los inits — patrón estándar de SwiftUI para un
+    /// ajuste que cruza muchos tipos de celda sin acoplarlos entre sí.
+    static let semanticGradeColorDefaultsKey = "notebook.semanticGradeColorEnabled"
+
+    // MARK: - Identidad de alumno (rediseño radical del grid)
+
+    private static let studentAccentPalette: [Color] = [
+        appAdaptiveBrandColor(light: (0.11, 0.42, 0.90), dark: (0.36, 0.62, 1.0)),
+        appAdaptiveBrandColor(light: (0.62, 0.24, 0.85), dark: (0.75, 0.48, 0.98)),
+        appAdaptiveBrandColor(light: (0.86, 0.30, 0.55), dark: (0.98, 0.52, 0.70)),
+        appAdaptiveBrandColor(light: (0.80, 0.42, 0.0), dark: (0.98, 0.62, 0.28)),
+        appAdaptiveBrandColor(light: (0.0, 0.55, 0.55), dark: (0.30, 0.78, 0.78)),
+        appAdaptiveBrandColor(light: (0.35, 0.55, 0.10), dark: (0.55, 0.78, 0.30)),
+    ]
+
+    /// Color determinista por alumno (mismo id → mismo color siempre), para que
+    /// el monograma de la columna Nombre distinga alumnos de un vistazo, como
+    /// Contactos — no es un color aleatorio en cada render.
+    static func studentAccent(for studentId: Int64) -> Color {
+        let index = Int(abs(studentId) % Int64(studentAccentPalette.count))
+        return studentAccentPalette[index]
+    }
+}
+
+/// Banda de una nota 0–10 para el color semántico y el modo heat del grid.
+enum NotebookGradeBand {
+    case low, mid, high
+
+    init(scoreOutOfTen score: Double) {
+        if score < 5 {
+            self = .low
+        } else if score < 7 {
+            self = .mid
+        } else {
+            self = .high
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .low: return NotebookGridStyle.gradeLow
+        case .mid: return NotebookGridStyle.gradeMid
+        case .high: return NotebookGridStyle.gradeHigh
+        }
+    }
+
+    /// Tinte de fondo suave para el modo heat (mismo toggle que el color del
+    /// número, nunca un fill fuerte: color con contención, no un bloque relleno).
+    var softFill: Color { color.opacity(0.12) }
 }
 
 /// Lienzo del Cuaderno: fondo neutro y calmado sobre el que el grid (superficie

@@ -531,7 +531,7 @@ struct AddColumnSheet: View {
             #endif
         }
 #if os(macOS)
-        .frame(minWidth: 640, idealWidth: 840, maxWidth: 960, minHeight: 620, idealHeight: 760)
+        .frame(minWidth: 820, idealWidth: 900, maxWidth: 1000, minHeight: 640, idealHeight: 780)
 #else
         .frame(maxWidth: .infinity, maxHeight: .infinity)
 #endif
@@ -623,7 +623,9 @@ struct AddColumnSheet: View {
         // Rejilla adaptable que aprovecha el ancho extra de la hoja: todos los
         // tipos básicos se ven a la vez (antes un carrusel horizontal de píldoras
         // donde no cabían todas las opciones a la vista).
-        let cardColumns = [GridItem(.adaptive(minimum: 190), spacing: 12)]
+        // A ~820pt de ancho de hoja el área útil ronda 760pt → 3 columnas
+        // (200×3 + espaciados). Aprovecha el ancho, no deja tarjetas sueltas.
+        let cardColumns = [GridItem(.adaptive(minimum: 200), spacing: 12)]
 
         return VStack(alignment: .leading, spacing: 16) {
             Text("Tipo de columna")

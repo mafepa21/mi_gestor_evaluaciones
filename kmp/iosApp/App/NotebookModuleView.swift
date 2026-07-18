@@ -437,6 +437,19 @@ struct NotebookModuleView: View {
                     )
                 }
                 spreadsheetContent(data: data, rows: rows)
+                    // Tarjeta elevada: el grid flota como superficie redondeada
+                    // sobre el lienzo neutro del módulo (margen a los lados y
+                    // abajo), en vez de ir a sangre completa. Es lo que da el aire
+                    // premium; el clip + borde + sombra separan datos de lienzo.
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(NotebookGridStyle.gridLine, lineWidth: 1)
+                    )
+                    .shadow(color: NotebookGridStyle.gridSurfaceShadow, radius: 14, x: 0, y: 6)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 2)
+                    .padding(.bottom, 16)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 

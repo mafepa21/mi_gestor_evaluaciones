@@ -22,6 +22,7 @@ Cambios posteriores a `v0.3.0-traceability-baseline`.
 
 ### Fixed
 
+- Cuaderno: la pastilla de la pestaña activa seguía sin verse translúcida (F2, segunda ronda de feedback). El primer intento usaba cristal `.regular` sobre el cristal de la barra: sin contraste ni sombra, casi invisible sobre fondo claro. Pasa a un material translúcido (`.regularMaterial`) con sombra, borde y brillo superior que la hacen **flotar** visiblemente sobre la barra en cualquier versión, y se apoya en `matchedGeometryEffect` para el deslizamiento (en vez de un `glassEffectID` que no llegaba a renderizar con contraste).
 - Cuaderno: el cristal de la pestaña activa tapaba el título (ilegible). La pastilla de selección se dibujaba como capa hermana dentro de un `ZStack` y el `.glassEffect` componía por encima del texto; ahora va como **fondo** (`.background`) de la etiqueta, con el texto siempre en primer plano. Además la pastilla tenía tints al 1–3% que sobre fondo claro no se veían: pasa a cristal translúcido con presencia real (material + hairline + brillo superior en el fallback). Y se añade **animación de deslizamiento** entre pestañas: una sola pastilla viaja con `glassEffectID` (macOS/iOS 26) o `matchedGeometryEffect` (fallback), con el cambio de pestaña envuelto en `withAnimation(.spring)`.
 
 ### Changed

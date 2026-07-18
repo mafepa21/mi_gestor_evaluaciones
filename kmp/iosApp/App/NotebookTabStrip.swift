@@ -166,31 +166,26 @@ private struct NotebookTabSelectionPill: View {
     var body: some View {
         let shape = Capsule(style: .continuous)
 
-        if #available(iOS 26.0, macOS 26.0, *) {
-            Color.clear
-                .glassEffect(.regular.interactive(), in: shape)
-                .glassEffectID(Self.morphID, in: namespace)
-                .overlay {
-                    shape.strokeBorder(NotebookGridStyle.gridLineStrong, lineWidth: 0.5)
-                }
-        } else {
-            shape
-                .fill(.regularMaterial)
-                .overlay {
-                    // Brillo superior sutil: da relieve de "pastilla elevada".
-                    shape.strokeBorder(
-                        LinearGradient(
-                            colors: [Color.white.opacity(0.5), Color.white.opacity(0.05)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        ),
-                        lineWidth: 0.75
-                    )
-                }
-                .overlay { shape.strokeBorder(NotebookGridStyle.gridLine, lineWidth: 0.5) }
-                .shadow(color: .black.opacity(0.10), radius: 3, x: 0, y: 1)
-                .matchedGeometryEffect(id: Self.morphID, in: namespace)
-        }
+        // Material translúcido (no cristal sobre cristal, que no contrastaba):
+        // `.regularMaterial` es una superficie frosted claramente visible en
+        // cualquier versión. Sombra + borde + brillo superior la hacen **flotar**
+        // sobre la barra; el `matchedGeometryEffect` la desliza entre pestañas.
+        shape
+            .fill(.regularMaterial)
+            .overlay {
+                // Brillo superior: relieve de pastilla elevada.
+                shape.strokeBorder(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.55), Color.white.opacity(0.06)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 0.8
+                )
+            }
+            .overlay { shape.strokeBorder(NotebookGridStyle.gridLineStrong, lineWidth: 0.5) }
+            .shadow(color: Color.black.opacity(0.14), radius: 5, x: 0, y: 2)
+            .matchedGeometryEffect(id: Self.morphID, in: namespace)
     }
 }
 

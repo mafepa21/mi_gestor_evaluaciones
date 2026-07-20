@@ -585,17 +585,17 @@ struct RubricBulkEvaluationSheet: View {
         }
         .padding(8)
         .frame(width: width)
-        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: RubricsStyle.rowRadius, style: .continuous))
         .onTapGesture {
             focusedBulkStudentId = studentId
             focusedBulkCriterionId = criterion.criterion.id
         }
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: RubricsStyle.rowRadius, style: .continuous)
                 .fill(selectedLevel == nil ? Color.clear : levelColor(for: selectedLevel, in: criterion).opacity(0.08))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: RubricsStyle.rowRadius, style: .continuous)
                 .stroke(isFocused ? EvaluationDesign.accent.opacity(0.65) : Color.clear, lineWidth: 2)
         )
     }
@@ -674,7 +674,7 @@ struct RubricBulkEvaluationSheet: View {
             .frame(minHeight: 44)
             .background(
                 tint?.opacity(0.12) ?? Color.clear,
-                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                in: RoundedRectangle(cornerRadius: RubricsStyle.blueprintCardRadius, style: .continuous)
             )
     }
 

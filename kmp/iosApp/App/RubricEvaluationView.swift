@@ -313,7 +313,7 @@ struct RubricCriterionRow: View {
                     .padding(.vertical, 8)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        RoundedRectangle(cornerRadius: RubricsStyle.blueprintCardRadius, style: .continuous)
                             .fill(EvaluationDesign.accent.opacity(0.08))
                     )
                     .transition(

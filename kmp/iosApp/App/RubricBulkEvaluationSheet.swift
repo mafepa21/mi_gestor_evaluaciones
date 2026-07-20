@@ -203,11 +203,29 @@ struct RubricBulkEvaluationSheet: View {
                             .foregroundStyle(.primary)
 
                         ForEach(state.students, id: \.id) { student in
+                            let isInjured = isStudentInjured(student, cache: cache)
+                            let pendingCount = cache.pendingCriteriaCount(for: student.id)
+
                             HStack(alignment: .center, spacing: 12) {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(student.firstName + " " + student.lastName)
                                         .font(.subheadline.weight(.bold))
                                         .lineLimit(1)
+
+                                    if isInjured {
+                                        Text("Lesionado")
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundStyle(EvaluationDesign.danger)
+                                    } else if pendingCount > 0 {
+                                        Text("\(pendingCount) pendiente\(pendingCount == 1 ? "" : "s")")
+                                            .font(.system(size: 10, weight: .medium))
+                                            .foregroundStyle(EvaluationDesign.accent.opacity(0.9))
+                                    } else {
+                                        Text("Disponible")
+                                            .font(.system(size: 10, weight: .medium))
+                                            .foregroundStyle(EvaluationDesign.success.opacity(0.8))
+                                    }
+
                                     scorePill(for: student.id, width: 72, cache: cache)
                                 }
                                 .frame(width: 144, alignment: .leading)
@@ -618,6 +636,14 @@ struct RubricBulkEvaluationSheet: View {
         }
     }
 
+    /// Deliberadamente NO usa `RubricsStyle.gradeColor` (3 bandas, pensado para
+    /// "nota global 0-10"): esta función tiñe varios botones de nivel del
+    /// mismo criterio a la vez (`inlineCriterionCell`) para que se distingan
+    /// entre sí de un vistazo — un propósito distinto (orden relativo entre
+    /// opciones) al de una nota final. Colapsar sus 4 bandas a las 3 de
+    /// `gradeColor` fusionaría niveles adyacentes en el mismo color con más
+    /// frecuencia, perdiendo justo la distinción que esta función existe para
+    /// dar.
     private func levelColor(for level: RubricLevel?, in criterion: RubricCriterionWithLevels) -> Color {
         guard let level else { return EvaluationDesign.accent }
         let maxPoints = criterion.levels.map(\.points).max() ?? 0
@@ -639,15 +665,15 @@ struct RubricBulkEvaluationSheet: View {
     private func scorePill(for studentId: Int64, width: CGFloat, cache: BulkRubricEvaluationCache) -> some View {
         let score = cache.score(for: studentId)
         let scoreText = score.map { String(format: "%.1f", $0) } ?? "—"
-        let tint = (score ?? 0) >= 5 ? EvaluationDesign.success : EvaluationDesign.danger
+        let tint = score.map { RubricsStyle.gradeColor(forScoreOutOfTen: $0) }
 
         return Text(scoreText)
             .font(.system(size: 20, weight: .black, design: .rounded))
-            .foregroundStyle(score == nil ? .secondary : tint)
+            .foregroundStyle(tint ?? .secondary)
             .frame(width: width, alignment: .center)
             .frame(minHeight: 44)
             .background(
-                score == nil ? Color.clear : tint.opacity(0.12),
+                tint?.opacity(0.12) ?? Color.clear,
                 in: RoundedRectangle(cornerRadius: 12, style: .continuous)
             )
     }

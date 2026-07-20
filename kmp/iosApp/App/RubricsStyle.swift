@@ -38,6 +38,18 @@ enum RubricsStyle {
     /// y Cuaderno son la misma familia de superficies de datos.
     static let blueprintCardRadius = NotebookGridStyle.Radius.card
 
+    /// Radio de los campos de formulario dentro del grid del builder (nombre
+    /// de nivel, descripción de criterio, descripción de nivel). Mismo valor
+    /// que `NotebookGridStyle.Radius.chip` (8) — hasta ahora sin ningún
+    /// consumidor real; el builder es el primero en usarlo, con nombre propio
+    /// porque un campo de texto no es un chip.
+    static let fieldRadius = NotebookGridStyle.Radius.chip
+
+    /// Borde en reposo de un campo de formulario del builder. Mismo literal
+    /// (`Color.primary.opacity(0.08)`) que ya usaban, sin nombre, los 4 campos
+    /// de `RubricBuilderGridView` — ahora con un solo sitio del que depender.
+    static let fieldBorder = Color.primary.opacity(0.08)
+
     /// Hover de superficies de rúbrica en macOS. Mismo valor que
     /// `NotebookGridStyle.rowHover` (0.04); token propio para que las vistas de
     /// rúbrica no tengan que nombrar "Notebook". Sustituye al literal

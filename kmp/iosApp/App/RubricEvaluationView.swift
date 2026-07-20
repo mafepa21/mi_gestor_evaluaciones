@@ -127,10 +127,7 @@ struct RubricEvaluationView: View {
 
             Spacer(minLength: 16)
 
-            EvaluationScoreBadge(
-                title: "Nota actual",
-                value: IosFormatting.scoreOutOfTen(from: score)
-            )
+            RubricScoreBadge(title: "Nota actual", scoreOutOfTen: score)
         }
     }
 
@@ -198,7 +195,7 @@ struct RubricEvaluationView: View {
                     Spacer()
                     Text(IosFormatting.decimal(from: score))
                         .font(.system(size: 18, weight: .black, design: .rounded))
-                        .foregroundStyle(EvaluationDesign.accent)
+                        .foregroundStyle(RubricsStyle.gradeColor(forScoreOutOfTen: score))
                 }
 
                 VStack(alignment: .leading, spacing: 12) {

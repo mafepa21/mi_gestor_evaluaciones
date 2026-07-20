@@ -19,28 +19,41 @@ struct RubricEvaluationView: View {
                         let isWide = proxy.size.width >= 720
                         let selectedScore = state.totalScore
 
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: EvaluationDesign.sectionSpacing) {
-                                headerSection(rubric: rubric, score: selectedScore)
-
-                                if isWide {
-                                    HStack(alignment: .top, spacing: EvaluationDesign.sectionSpacing) {
-                                        criteriaPanel(rubric: rubric)
-                                            .frame(maxWidth: .infinity, alignment: .leading)
-
-                                        summaryPanel(rubric: rubric, score: selectedScore)
-                                            .frame(width: 300)
+                        Group {
+                            if isWide {
+                                // El resumen y Guardar viven fuera del ScrollView de los
+                                // criterios a propósito: a este ancho sobra sitio para
+                                // fijarlos en vez de que suban y bajen con el scroll.
+                                HStack(alignment: .top, spacing: EvaluationDesign.sectionSpacing) {
+                                    ScrollView {
+                                        VStack(alignment: .leading, spacing: EvaluationDesign.sectionSpacing) {
+                                            headerSection(rubric: rubric, score: selectedScore)
+                                            criteriaPanel(rubric: rubric)
+                                        }
+                                        .padding(.leading, EvaluationDesign.screenPadding)
+                                        .padding(.vertical, EvaluationDesign.screenPadding)
                                     }
-                                } else {
-                                    VStack(spacing: EvaluationDesign.sectionSpacing) {
-                                        criteriaPanel(rubric: rubric)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                                    VStack(alignment: .leading, spacing: EvaluationDesign.sectionSpacing) {
                                         summaryPanel(rubric: rubric, score: selectedScore)
+                                        saveSection()
                                     }
+                                    .frame(width: 300)
+                                    .padding(.trailing, EvaluationDesign.screenPadding)
+                                    .padding(.vertical, EvaluationDesign.screenPadding)
                                 }
-
-                                saveSection()
+                            } else {
+                                ScrollView {
+                                    VStack(alignment: .leading, spacing: EvaluationDesign.sectionSpacing) {
+                                        headerSection(rubric: rubric, score: selectedScore)
+                                        criteriaPanel(rubric: rubric)
+                                        summaryPanel(rubric: rubric, score: selectedScore)
+                                        saveSection()
+                                    }
+                                    .padding(EvaluationDesign.screenPadding)
+                                }
                             }
-                            .padding(EvaluationDesign.screenPadding)
                         }
                     }
                     .appOnChange(of: state.isSaveSuccessful) { saved in

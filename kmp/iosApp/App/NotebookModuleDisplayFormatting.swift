@@ -298,30 +298,43 @@ extension NotebookModuleView {
         // Sin fill/borde propio: la columna Media ya se distingue como panel fijo
         // con fondo sólido (`NotebookDataGrid.fixedColumnBackground`); el valor se
         // destaca por tipografía y tinte semántico, no por otra caja encima.
-        return VStack(alignment: .leading, spacing: 6) {
+        //
+        // El número es el dato más importante de la columna: debe dominar sobre
+        // el medidor y el estado, no competir con ellos. El `ProgressView` nativo
+        // reservaba una altura variable por plataforma que, sumada al resto,
+        // desbordaba la altura de fila (`notebookGridRowHeight`, 50pt en macOS) y
+        // se veía como texto solapado con la fila de abajo; el medidor pasa a una
+        // cápsula propia de 3pt de alto, exacta, para que las tres líneas quepan
+        // siempre dentro de la fila.
+        return VStack(alignment: .leading, spacing: 3) {
             Text(averageText(for: item))
-                .font(.system(.title3, design: .rounded).weight(.bold))
+                .font(.system(size: 19, weight: .heavy, design: .rounded))
                 .foregroundStyle(state == .insufficient ? .secondary : tint)
                 .lineLimit(1)
-                .minimumScaleFactor(0.7)
+                .minimumScaleFactor(0.6)
 
-            ProgressView(value: completedFraction)
-                .tint(tint)
+            Capsule()
+                .fill(NotebookGridStyle.gridLineStrong)
                 .frame(maxWidth: .infinity)
+                .frame(height: 3)
+                .overlay(alignment: .leading) {
+                    GeometryReader { proxy in
+                        Capsule()
+                            .fill(tint)
+                            .frame(width: max(3, proxy.size.width * completedFraction))
+                    }
+                }
 
-            HStack(spacing: 4) {
-                Circle()
-                    .fill(tint)
-                    .frame(width: 5, height: 5)
-                Text(statusText)
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
-                    .foregroundStyle(tint)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-            }
+            Text(statusText)
+                .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                .foregroundStyle(tint)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .frame(maxHeight: .infinity, alignment: .center)
+        .clipped()
         .help(averageHelpText(for: state))
     }
 

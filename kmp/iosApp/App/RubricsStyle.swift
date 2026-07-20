@@ -170,7 +170,7 @@ struct RubricLevelTile: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .top, spacing: 6) {
                     Text(title)
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .font(.system(.subheadline, design: .rounded).weight(.bold))
                         .foregroundStyle(.primary)
 
                     Spacer(minLength: 0)
@@ -181,7 +181,7 @@ struct RubricLevelTile: View {
                 }
 
                 Text(subtitle)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .lineLimit(3)
 

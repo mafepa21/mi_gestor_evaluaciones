@@ -28,10 +28,10 @@ struct RubricsBuilderScreen: View {
                         TextEditor(text: instructionsBinding)
                             .frame(height: 88)
                             .padding(8)
-                            .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: RubricsStyle.blueprintCardRadius, style: .continuous))
                             .overlay(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                                RoundedRectangle(cornerRadius: RubricsStyle.blueprintCardRadius, style: .continuous)
+                                    .stroke(RubricsStyle.fieldBorder, lineWidth: 1)
                             )
 
                         RubricBuilderGridView(state: state)
@@ -46,7 +46,7 @@ struct RubricsBuilderScreen: View {
                                 .foregroundStyle(Color.accentColor)
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 16)
-                                .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: RubricsStyle.blueprintCardRadius, style: .continuous))
                         }
                         .buttonStyle(.plain)
 
@@ -83,7 +83,7 @@ struct RubricsBuilderScreen: View {
                                 .foregroundStyle(contrastingTextColor(for: Color.accentColor))
                                 .padding(.horizontal, 24)
                                 .padding(.vertical, 16)
-                                .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .background(Color.accentColor, in: RoundedRectangle(cornerRadius: RubricsStyle.blueprintCardRadius, style: .continuous))
                             }
                             .buttonStyle(.plain)
                             .disabled(state.rubricName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || state.isSaving)

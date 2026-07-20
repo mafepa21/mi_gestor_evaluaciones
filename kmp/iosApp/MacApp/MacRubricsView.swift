@@ -115,11 +115,11 @@ struct MacRubricsView: View {
                     description: Text("Aún no hay rúbricas cargadas en el bridge.")
                 )
             } else {
-                HStack(alignment: .top, spacing: MacAppStyle.sectionSpacing) {
+                HSplitView {
                     rubricsTable
-                        .frame(minWidth: 400, idealWidth: 480, maxWidth: 560)
+                        .frame(minWidth: 340, idealWidth: 460, maxWidth: 560)
                     rubricDetailPanel
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
             }
         }

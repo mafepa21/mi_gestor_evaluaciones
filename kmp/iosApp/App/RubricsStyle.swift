@@ -197,78 +197,64 @@ struct RubricScoreRing: View {
     }
 }
 
-/// Tarjeta de nivel de una rúbrica. Sustituye a `EvaluationLevelTile`
-/// (definida en `EvaluationDesign.swift`, bloqueado) solo en las vistas de
-/// rúbrica del Cuaderno: en reposo es una superficie plana sin borde; al
-/// seleccionar, un anillo de 2pt en el tinte del nivel + fill plano — mismo
-/// idioma de selección que las celdas del grid y las blueprint cards de
-/// "Nueva columna" — en vez de rellenar toda la tarjeta con el color y texto
-/// blanco encima.
-///
-/// **Pendiente de retirada**: `docs/planes/plan_rediseno_evaluacion_rubricas_2026-07-20.md`
-/// (PR 3) lo sustituye por una píldora compacta sin tarjeta contenedora. No
-/// se borra en este PR porque `RubricEvaluationView` todavía lo usa.
-struct RubricLevelTile: View {
+/// Píldora compacta de nivel de rúbrica en la evaluación individual.
+/// Sustituye a `RubricLevelTile` (PR 3 de
+/// `docs/planes/plan_rediseno_evaluacion_rubricas_2026-07-20.md`): solo
+/// nombre + puntos en una línea, sin subtítulo de descripción permanente —
+/// la descripción se pide aparte (botón "i"), nunca se muestra sin pedirla.
+/// Seleccionada = fill con el color **del propio nivel**
+/// (`RubricsStyle.levelColor`, por ratio de puntos) en vez de un acento fijo
+/// para todos los niveles como hacía `RubricLevelTile`; el color ya es la
+/// señal de selección, sin checkmark adicional.
+struct RubricLevelPill: View {
     let title: String
-    let subtitle: String
+    let points: Double
+    let maxPoints: Double
     let isSelected: Bool
-    var tint: Color = EvaluationDesign.accent
-    let action: () -> Void
+    let onSelect: () -> Void
+    let onShowDescription: () -> Void
 
     @State private var isHovered = false
 
+    private var color: Color { RubricsStyle.levelColor(points: points, maxPoints: maxPoints) }
+
     var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .top, spacing: 6) {
+        HStack(spacing: 4) {
+            Button(action: onSelect) {
+                HStack(spacing: 6) {
                     Text(title)
-                        .font(.system(.subheadline, design: .rounded).weight(.bold))
-                        .foregroundStyle(.primary)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
 
-                    Spacer(minLength: 0)
-
-                    if isSelected {
-                        selectionCheckmark
-                    }
+                    Text("\(Int(points))")
+                        .font(.caption2.weight(.medium))
+                        .monospacedDigit()
+                        .opacity(0.7)
                 }
-
-                Text(subtitle)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(3)
-
-                Spacer(minLength: 0)
+                .foregroundStyle(isSelected ? contrastingTextColor(for: color) : .primary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(
+                    Capsule()
+                        .fill(isSelected ? color : (isHovered ? RubricsStyle.hover : Color.clear))
+                )
+                .overlay(
+                    Capsule()
+                        .stroke(isSelected ? Color.clear : RubricsStyle.hairlineStrong, lineWidth: 1)
+                )
             }
-            .frame(maxWidth: .infinity, minHeight: 88, alignment: .leading)
-            .padding(12)
-            .background(
-                RoundedRectangle(cornerRadius: RubricsStyle.rowRadius, style: .continuous)
-                    .fill(isSelected ? tint.opacity(0.08) : (isHovered ? RubricsStyle.hover : EvaluationDesign.surface))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: RubricsStyle.rowRadius, style: .continuous)
-                            .stroke(isSelected ? tint : Color.clear, lineWidth: isSelected ? 2 : 0)
-                    )
-            )
+            .buttonStyle(.plain)
+
+            Button(action: onShowDescription) {
+                Image(systemName: "info.circle")
+                    .font(.caption)
+                    .foregroundStyle(isSelected ? contrastingTextColor(for: color).opacity(0.7) : .tertiary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Descripción de \(title)")
         }
-        .buttonStyle(.plain)
-        #if os(macOS)
         .onHover { hovering in
             isHovered = hovering
-        }
-        #endif
-    }
-
-    @ViewBuilder
-    private var selectionCheckmark: some View {
-        if #available(iOS 18.0, macOS 14.0, *) {
-            Image(systemName: "checkmark.circle.fill")
-                .symbolEffect(.bounce, value: isSelected)
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(tint)
-        } else {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(tint)
         }
     }
 }

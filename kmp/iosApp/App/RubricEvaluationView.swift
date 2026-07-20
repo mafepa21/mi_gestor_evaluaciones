@@ -159,23 +159,26 @@ struct RubricEvaluationView: View {
     }
 
     private func criteriaPanel(rubric: RubricDetail) -> some View {
-        PremiumCard.glass(cornerRadius: RubricsStyle.cardRadius, fillOpacity: 0.88) {
-            VStack(alignment: .leading, spacing: EvaluationDesign.sectionSpacing) {
-                VStack(spacing: 16) {
-                    ForEach(rubric.criteria, id: \.criterion.id) { criterion in
-                        RubricCriterionRow(
-                            item: criterion,
-                            selectedLevelId: state.selectedLevels[KotlinLong(value: criterion.criterion.id)]?.int64Value,
-                            activePopoverLevel: $activePopoverLevel,
-                            onSelectLevel: { levelId in
-                                bridge.rubricEvaluationViewModel.selectLevel(
-                                    criterionId: criterion.criterion.id,
-                                    levelId: levelId
-                                )
-                            }
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(rubric.criteria.enumerated()), id: \.element.criterion.id) { index, criterion in
+                if index > 0 {
+                    Rectangle()
+                        .fill(RubricsStyle.hairline)
+                        .frame(height: 1)
+                }
+
+                RubricCriterionRow(
+                    item: criterion,
+                    selectedLevelId: state.selectedLevels[KotlinLong(value: criterion.criterion.id)]?.int64Value,
+                    activePopoverLevel: $activePopoverLevel,
+                    onSelectLevel: { levelId in
+                        bridge.rubricEvaluationViewModel.selectLevel(
+                            criterionId: criterion.criterion.id,
+                            levelId: levelId
                         )
                     }
-                }
+                )
+                .padding(.vertical, 18)
             }
         }
     }
@@ -218,112 +221,57 @@ struct RubricEvaluationView: View {
 
 struct RubricCriterionRow: View {
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
-    @Environment(\.colorScheme) private var colorScheme
     let item: RubricCriterionWithLevels
     let selectedLevelId: Int64?
     @Binding var activePopoverLevel: RubricLevel?
     let onSelectLevel: (Int64) -> Void
     @State private var hoverTask: Task<Void, Never>?
 
-    private var selectedLevel: RubricLevel? {
-        item.levels.first { $0.id == selectedLevelId }
-    }
-
-    private var selectedLevelDescription: String {
-        selectedLevel?.description_?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-    }
-
     var body: some View {
-        PremiumCard.glass(cornerRadius: RubricsStyle.rowRadius, fillOpacity: 0.96) {
-            VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(item.criterion.description_)
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
-                        .foregroundStyle(.primary)
+        VStack(alignment: .leading, spacing: 12) {
+            Text(item.criterion.description_)
+                .font(.system(.body, design: .rounded).weight(.semibold))
+                .foregroundStyle(.primary)
 
-                    Text("Elige el nivel que mejor describe el desempeño")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.secondary)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    ForEach(item.levels, id: \.id) { level in
+                        levelPill(level)
+                    }
                 }
 
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 8) {
-                        ForEach(item.levels, id: \.id) { level in
-                            levelTile(level)
-                        }
+                LazyVGrid(
+                    columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)],
+                    spacing: 8
+                ) {
+                    ForEach(item.levels, id: \.id) { level in
+                        levelPill(level)
                     }
-                    .padding(.horizontal, 2)
-                    .padding(.vertical, 4)
-
-                    LazyVGrid(
-                        columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)],
-                        spacing: 8
-                    ) {
-                        ForEach(item.levels, id: \.id) { level in
-                            levelTile(level)
-                        }
-                    }
-                    .padding(.horizontal, 2)
-                    .padding(.vertical, 4)
-                }
-
-                if !selectedLevelDescription.isEmpty {
-                    HStack(alignment: .top, spacing: 8) {
-                        Image(systemName: "text.quote")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(EvaluationDesign.accent.opacity(0.72))
-                            .padding(.top, 2)
-
-                        Text(selectedLevelDescription)
-                            .font(.system(size: 12, weight: .regular))
-                            .foregroundStyle(.secondary)
-                            .lineSpacing(2)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        RoundedRectangle(cornerRadius: RubricsStyle.blueprintCardRadius, style: .continuous)
-                            .fill(EvaluationDesign.accent.opacity(0.08))
-                    )
-                    .transition(
-                        uiFeatureFlags.reduceMotion ? .opacity : .asymmetric(
-                            insertion: .move(edge: .top).combined(with: .opacity),
-                            removal: .move(edge: .bottom).combined(with: .opacity)
-                        )
-                    )
                 }
             }
         }
         .animation(uiFeatureFlags.interactionAnimation, value: selectedLevelId)
-        .animation(uiFeatureFlags.rubricContentReveal, value: selectedLevelDescription.isEmpty)
         .onDisappear {
             hoverTask?.cancel()
         }
     }
 
-    private func levelTile(_ level: RubricLevel) -> some View {
-        let isSelected = selectedLevelId == level.id
+    private func levelPill(_ level: RubricLevel) -> some View {
+        let maxPoints = item.levels.map(\.points).max() ?? 0
 
-        return RubricLevelTile(
+        return RubricLevelPill(
             title: level.name,
-            subtitle: level.description_ ?? "",
-            isSelected: isSelected,
-            tint: EvaluationDesign.accent
-        ) {
-            AppleInteractionFeedback.play(.selection)
-            onSelectLevel(level.id)
-        }
-        .frame(minWidth: 150, minHeight: 92)
-        .overlay(alignment: .bottomTrailing) {
-            Text("\(Int(level.points)) pts")
-                .font(.system(size: 11, weight: .black, design: .rounded))
-                .foregroundStyle(EvaluationDesign.accent)
-                .padding(.trailing, 12)
-                .padding(.bottom, 10)
-        }
-        .help(levelHelpText(level))
+            points: Double(level.points),
+            maxPoints: Double(maxPoints),
+            isSelected: selectedLevelId == level.id,
+            onSelect: {
+                AppleInteractionFeedback.play(.selection)
+                onSelectLevel(level.id)
+            },
+            onShowDescription: {
+                activePopoverLevel = level
+            }
+        )
         .onHover { isHovering in
             if isHovering {
                 schedulePopover(for: level)
@@ -331,12 +279,6 @@ struct RubricCriterionRow: View {
                 cancelPopover(for: level)
             }
         }
-    }
-
-    private func levelHelpText(_ level: RubricLevel) -> String {
-        let description = level.description_?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !description.isEmpty else { return level.name }
-        return "\(level.name): \(description)"
     }
 
     private func schedulePopover(for level: RubricLevel) {

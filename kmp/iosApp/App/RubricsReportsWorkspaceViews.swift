@@ -128,10 +128,10 @@ struct RubricsWorkspaceView: View {
                     .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                        WorkspaceCompactStat(title: "Rúbricas", value: "\(rubricMetrics.total)", tint: EvaluationDesign.accent)
-                        WorkspaceCompactStat(title: "Vinculadas", value: "\(rubricMetrics.linked)", tint: EvaluationDesign.success)
-                        WorkspaceCompactStat(title: "Criterios", value: String(format: "%.1f", rubricMetrics.avgCriteria), tint: IOSAppStyle.warning)
-                        WorkspaceCompactStat(title: "Situaciones", value: "\(availableTeachingUnits.count)", tint: .purple)
+                        WorkspaceCompactStat(title: "Rúbricas", value: "\(rubricMetrics.total)", tint: RubricsStyle.statAccent)
+                        WorkspaceCompactStat(title: "Vinculadas", value: "\(rubricMetrics.linked)", tint: RubricsStyle.statSuccess)
+                        WorkspaceCompactStat(title: "Criterios", value: String(format: "%.1f", rubricMetrics.avgCriteria), tint: RubricsStyle.statWarning)
+                        WorkspaceCompactStat(title: "Situaciones", value: "\(availableTeachingUnits.count)", tint: RubricsStyle.statQuaternary)
                     }
 
                     ViewThatFits(in: .horizontal) {

@@ -49,6 +49,24 @@ enum RubricsStyle {
     static let hairline = NotebookGridStyle.gridLine
     static let hairlineStrong = NotebookGridStyle.gridLineStrong
 
+    /// Fill de una fila seleccionada en el banco/listado. Mismo valor que
+    /// `NotebookGridStyle.cellSelectionFill` (0.08) — el banco Mac usaba un
+    /// 0.10 suelto sin relación con el resto del idioma de selección.
+    static let selectionFill = NotebookGridStyle.cellSelectionFill
+
+    /// Tintes de las estadísticas compactas del banco iOS/iPad
+    /// (`RubricsWorkspaceView`, fila "Rúbricas/Vinculadas/Criterios/
+    /// Situaciones"). No son color semántico de nota (no hay una puntuación
+    /// 0-10 detrás de "cuántas rúbricas hay"): son 4 tintes de categoría que
+    /// antes venían de tres fuentes sin relación (`EvaluationDesign`,
+    /// `IOSAppStyle`, un `.purple` suelto). Mismos colores de siempre —
+    /// reexportados aquí para que este archivo sea la única fuente que la
+    /// vista tenga que nombrar.
+    static let statAccent = EvaluationDesign.accent
+    static let statSuccess = EvaluationDesign.success
+    static let statWarning = IOSAppStyle.warning
+    static let statQuaternary = Color.purple
+
     /// Color semántico de una puntuación 0-10. Reexporta `NotebookGradeBand`
     /// (mismo corte `<5` suspenso / `5-6,9` aprobado / `≥7` notable+ que ya usa
     /// el grid del Cuaderno) para que el badge de la evaluación individual, el

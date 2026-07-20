@@ -636,30 +636,14 @@ struct RubricBulkEvaluationSheet: View {
         }
     }
 
-    /// Deliberadamente NO usa `RubricsStyle.gradeColor` (3 bandas, pensado para
-    /// "nota global 0-10"): esta función tiñe varios botones de nivel del
-    /// mismo criterio a la vez (`inlineCriterionCell`) para que se distingan
-    /// entre sí de un vistazo — un propósito distinto (orden relativo entre
-    /// opciones) al de una nota final. Colapsar sus 4 bandas a las 3 de
-    /// `gradeColor` fusionaría niveles adyacentes en el mismo color con más
-    /// frecuencia, perdiendo justo la distinción que esta función existe para
-    /// dar.
+    /// Envoltorio sobre `RubricsStyle.levelColor(points:maxPoints:)` que
+    /// resuelve `maxPoints` a partir del criterio — la lógica de bandas (y por
+    /// qué no es `gradeColor`) vive ahora en `RubricsStyle`, compartida con la
+    /// evaluación individual.
     private func levelColor(for level: RubricLevel?, in criterion: RubricCriterionWithLevels) -> Color {
         guard let level else { return EvaluationDesign.accent }
         let maxPoints = criterion.levels.map(\.points).max() ?? 0
-        guard maxPoints > 0 else { return EvaluationDesign.accent }
-        let ratio = Double(level.points) / Double(maxPoints)
-
-        switch ratio {
-        case 0.8...:
-            return EvaluationDesign.success
-        case 0.6..<0.8:
-            return EvaluationDesign.accent
-        case 0.4..<0.6:
-            return .orange
-        default:
-            return EvaluationDesign.danger
-        }
+        return RubricsStyle.levelColor(points: Double(level.points), maxPoints: Double(maxPoints))
     }
 
     private func scorePill(for studentId: Int64, width: CGFloat, cache: BulkRubricEvaluationCache) -> some View {

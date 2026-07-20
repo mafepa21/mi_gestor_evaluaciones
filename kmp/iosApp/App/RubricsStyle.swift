@@ -93,6 +93,32 @@ enum RubricsStyle {
     static func gradeSoftFill(forScoreOutOfTen score: Double) -> Color {
         NotebookGradeBand(scoreOutOfTen: score).softFill
     }
+
+    /// Color de un nivel según su ratio de puntos frente al máximo del
+    /// criterio (4 bandas: ≥0,8 éxito · 0,6-0,8 acento · 0,4-0,6 naranja ·
+    /// resto peligro). Deliberadamente **no** es `gradeColor` (3 bandas,
+    /// pensada para "nota global 0-10"): esta función tiñe varios niveles del
+    /// mismo criterio a la vez para que se distingan entre sí de un vistazo —
+    /// un propósito distinto (orden relativo entre opciones) al de una nota
+    /// final. Colapsar sus 4 bandas a las 3 de `gradeColor` fusionaría
+    /// niveles adyacentes en el mismo color con más frecuencia, perdiendo
+    /// justo la distinción que existe para dar. Compartida entre la
+    /// evaluación masiva (`RubricBulkEvaluationSheet`) y la individual.
+    static func levelColor(points: Double, maxPoints: Double) -> Color {
+        guard maxPoints > 0 else { return EvaluationDesign.accent }
+        let ratio = points / maxPoints
+
+        switch ratio {
+        case 0.8...:
+            return EvaluationDesign.success
+        case 0.6..<0.8:
+            return EvaluationDesign.accent
+        case 0.4..<0.6:
+            return .orange
+        default:
+            return EvaluationDesign.danger
+        }
+    }
 }
 
 /// Fondo de las vistas de rúbrica: sustituye a `EvaluationBackdrop`
@@ -119,104 +145,116 @@ struct RubricEvaluationBackdrop: View {
     }
 }
 
-/// Badge de puntuación de una rúbrica. Sustituye a `EvaluationScoreBadge`
-/// (`EvaluationDesign.swift`, bloqueado) solo en las vistas de rúbrica del
-/// Cuaderno: mismo patrón que `RubricLevelTile`, override local. La cabecera
-/// de `RubricEvaluationView` ya migró su tipografía a `.title2.weight(.semibold)`
-/// (Dynamic Type) pero el badge de al lado se quedó con el tinte de acento
-/// fijo y radio literal de `EvaluationScoreBadge` — este componente cierra
-/// ese hueco con el color de banda unificado (`gradeColor`).
-struct RubricScoreBadge: View {
-    let title: String
+/// Anillo de progreso compacto para la cabecera de la evaluación individual:
+/// el arco es la fracción de criterios ya resueltos (`progress`, 0-1); el
+/// número central es la nota actual, coloreada por banda. Sustituye a
+/// `RubricScoreBadge` — un solo elemento hace el trabajo que antes eran el
+/// badge de cabecera *y* el bloque "Progreso" del panel resumen (PR 2 de
+/// `docs/planes/plan_rediseno_evaluacion_rubricas_2026-07-20.md`).
+///
+/// Dibujado a mano (`Circle().trim`) en vez de `Gauge(.accessoryCircularCapacity)`
+/// (nativo desde iOS 16/macOS 13, pensado para esto): ese estilo está
+/// diseñado para complicaciones/widgets y su aspecto fuera de ese contexto no
+/// se puede verificar sin Xcode real en este entorno. El trazo a mano da
+/// control total y es el mismo que se validó en el mockup aprobado por el
+/// usuario.
+///
+/// Antes de que haya al menos un criterio resuelto (`progress == 0`), la nota
+/// real sería 0.0 y caería en la banda "suspenso" de `gradeColor` — mostrar
+/// un cero en rojo en una rúbrica que sencillamente no se ha empezado a
+/// puntuar sería engañoso. En ese caso se muestra un guion neutro en vez de
+/// la nota.
+struct RubricScoreRing: View {
+    let progress: Double
     let scoreOutOfTen: Double
+    var diameter: CGFloat = 56
+
+    private var hasStarted: Bool { progress > 0 }
+    private var color: Color { RubricsStyle.gradeColor(forScoreOutOfTen: scoreOutOfTen) }
 
     var body: some View {
-        let color = RubricsStyle.gradeColor(forScoreOutOfTen: scoreOutOfTen)
+        ZStack {
+            Circle()
+                .stroke(RubricsStyle.hairlineStrong, lineWidth: 3)
 
-        VStack(alignment: .trailing, spacing: 2) {
-            Text(title)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
+            Circle()
+                .trim(from: 0, to: min(max(progress, 0), 1))
+                .stroke(color, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .rotationEffect(.degrees(-90))
 
-            Text(IosFormatting.scoreOutOfTen(from: scoreOutOfTen))
-                .font(.title2.weight(.bold))
-                .foregroundStyle(color)
+            Text(hasStarted ? IosFormatting.scoreOutOfTen(from: scoreOutOfTen) : "–")
+                .font(.system(.footnote, design: .rounded).weight(.bold))
+                .foregroundStyle(hasStarted ? color : .secondary)
                 .monospacedDigit()
+                .minimumScaleFactor(0.7)
+                .lineLimit(1)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: RubricsStyle.blueprintCardRadius, style: .continuous))
+        .frame(width: diameter, height: diameter)
+        .animation(.easeInOut(duration: 0.25), value: progress)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Nota actual")
+        .accessibilityValue(hasStarted ? IosFormatting.scoreOutOfTen(from: scoreOutOfTen) : "Sin empezar")
     }
 }
 
-/// Tarjeta de nivel de una rúbrica. Sustituye a `EvaluationLevelTile`
-/// (definida en `EvaluationDesign.swift`, bloqueado) solo en las vistas de
-/// rúbrica del Cuaderno: en reposo es una superficie plana sin borde; al
-/// seleccionar, un anillo de 2pt en el tinte del nivel + fill plano — mismo
-/// idioma de selección que las celdas del grid y las blueprint cards de
-/// "Nueva columna" — en vez de rellenar toda la tarjeta con el color y texto
-/// blanco encima.
-struct RubricLevelTile: View {
+/// Píldora compacta de nivel de rúbrica en la evaluación individual.
+/// Sustituye a `RubricLevelTile` (PR 3 de
+/// `docs/planes/plan_rediseno_evaluacion_rubricas_2026-07-20.md`): solo
+/// nombre + puntos en una línea, sin subtítulo de descripción permanente —
+/// la descripción se pide aparte (botón "i"), nunca se muestra sin pedirla.
+/// Seleccionada = fill con el color **del propio nivel**
+/// (`RubricsStyle.levelColor`, por ratio de puntos) en vez de un acento fijo
+/// para todos los niveles como hacía `RubricLevelTile`; el color ya es la
+/// señal de selección, sin checkmark adicional.
+struct RubricLevelPill: View {
     let title: String
-    let subtitle: String
+    let points: Double
+    let maxPoints: Double
     let isSelected: Bool
-    var tint: Color = EvaluationDesign.accent
-    let action: () -> Void
+    let onSelect: () -> Void
+    let onShowDescription: () -> Void
 
     @State private var isHovered = false
 
+    private var color: Color { RubricsStyle.levelColor(points: points, maxPoints: maxPoints) }
+
     var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .top, spacing: 6) {
+        HStack(spacing: 4) {
+            Button(action: onSelect) {
+                HStack(spacing: 6) {
                     Text(title)
-                        .font(.system(.subheadline, design: .rounded).weight(.bold))
-                        .foregroundStyle(.primary)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
 
-                    Spacer(minLength: 0)
-
-                    if isSelected {
-                        selectionCheckmark
-                    }
+                    Text("\(Int(points))")
+                        .font(.caption2.weight(.medium))
+                        .monospacedDigit()
+                        .opacity(0.7)
                 }
-
-                Text(subtitle)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(3)
-
-                Spacer(minLength: 0)
+                .foregroundStyle(isSelected ? contrastingTextColor(for: color) : .primary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(
+                    Capsule()
+                        .fill(isSelected ? color : (isHovered ? RubricsStyle.hover : Color.clear))
+                )
+                .overlay(
+                    Capsule()
+                        .stroke(isSelected ? Color.clear : RubricsStyle.hairlineStrong, lineWidth: 1)
+                )
             }
-            .frame(maxWidth: .infinity, minHeight: 88, alignment: .leading)
-            .padding(12)
-            .background(
-                RoundedRectangle(cornerRadius: RubricsStyle.rowRadius, style: .continuous)
-                    .fill(isSelected ? tint.opacity(0.08) : (isHovered ? RubricsStyle.hover : EvaluationDesign.surface))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: RubricsStyle.rowRadius, style: .continuous)
-                            .stroke(isSelected ? tint : Color.clear, lineWidth: isSelected ? 2 : 0)
-                    )
-            )
+            .buttonStyle(.plain)
+
+            Button(action: onShowDescription) {
+                Image(systemName: "info.circle")
+                    .font(.caption)
+                    .foregroundStyle(isSelected ? contrastingTextColor(for: color).opacity(0.7) : .tertiary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Descripción de \(title)")
         }
-        .buttonStyle(.plain)
-        #if os(macOS)
         .onHover { hovering in
             isHovered = hovering
-        }
-        #endif
-    }
-
-    @ViewBuilder
-    private var selectionCheckmark: some View {
-        if #available(iOS 18.0, macOS 14.0, *) {
-            Image(systemName: "checkmark.circle.fill")
-                .symbolEffect(.bounce, value: isSelected)
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(tint)
-        } else {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(tint)
         }
     }
 }

@@ -15,7 +15,11 @@ El formato sigue una variante practica de Keep a Changelog:
 
 Cambios posteriores a `v0.3.0-traceability-baseline`.
 
-### Added
+### Changed
+
+- Rúbricas: ejecución completa del plan de rediseño de evaluación individual y masiva (`docs/planes/plan_rediseno_evaluacion_rubricas_2026-07-20.md`, PRs 1 a 7):
+  - **Evaluación Individual (`RubricEvaluationView`)**: layout de columna única centrada (maxWidth 640pt) en cualquier pantalla; cabecera minimalista con anillo circular de nota y progreso (`RubricScoreRing`); lista plana de criterios sin tarjetas anidadas redundantes; píldoras compactas de nivel (`RubricLevelPill`) con color por ratio de puntos (`levelColor`); botón de guardado dinámico con estado de criterios resueltos o nota final.
+  - **Evaluación Masiva (`RubricBulkEvaluationSheet`)**: avatar de alumno con punto de estado silencioso (rojo lesionado, gris pendiente, verde completo); nota final en texto plano sin caja rellena; menú colapsado ("···") para acciones por fila; indicador ambiental discreto de autoguardado ("Guardando…" / "Guardado") en cabecera.
 
 - Rúbricas: se introduce `RubricsStyle` (antes `RubricEvaluationStyle`, renombrado y ampliado para cubrir todo el módulo — banco/listado, builder y vinculación a pestaña — en vez de solo la evaluación embebida en el Cuaderno). Añade color semántico de nota unificado (reexporta `NotebookGradeBand`, mismo corte `<5`/`5-6,9`/`≥7` que ya usa el grid del Cuaderno, sustituyendo a las tres escalas de color independientes que convivían sin relacionarse), un único token de hover y los hairlines/radio de blueprint-card que usarán los siguientes PR. Fundación (PR 1 de 6) de `docs/planes/plan_rediseno_rubricas_2026-07-20.md`; sin cambios visuales todavía, los tokens nuevos aún no tienen consumidores.
 - Cuaderno: rediseño radical del grid con identidad, color semántico y modo heat (sobre feedback del rediseño premium — el grid "no se veía premium ni en macOS ni en iPad"). Tres piezas:

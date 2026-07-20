@@ -168,17 +168,16 @@ struct RubricBulkEvaluationSheet: View {
                     tint: cache.totalPendingCriteria == 0 ? EvaluationDesign.success : EvaluationDesign.accent
                 )
 
-                VStack(alignment: .trailing, spacing: 4) {
-                    PrimaryActionButton(label: "Guardar Todo", systemImage: "square.and.arrow.down.fill") {
-                        bridge.bulkSaveAll()
-                    }
-                    .frame(width: 180)
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(state.isSaving ? EvaluationDesign.accent : EvaluationDesign.success)
+                        .frame(width: 8, height: 8)
 
-                    Text(state.isSaving ? "Guardando cambios..." : "Cambios listos para guardar")
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                        .foregroundStyle(state.isSaving ? EvaluationDesign.accent : .secondary.opacity(0.6))
-                        .padding(.trailing, 8)
+                    Text(state.isSaving ? "Guardando…" : "Guardado")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(.secondary)
                 }
+                .padding(.trailing, 8)
             }
         }
         .padding(.bottom, 8)
@@ -207,28 +206,20 @@ struct RubricBulkEvaluationSheet: View {
                             let pendingCount = cache.pendingCriteriaCount(for: student.id)
 
                             HStack(alignment: .center, spacing: 12) {
-                                VStack(alignment: .leading, spacing: 4) {
+                                HStack(spacing: 8) {
+                                    Circle()
+                                        .fill(statusDotColor(isInjured: isInjured, pendingCount: pendingCount))
+                                        .frame(width: 8, height: 8)
+
                                     Text(student.firstName + " " + student.lastName)
                                         .font(.subheadline.weight(.bold))
                                         .lineLimit(1)
 
-                                    if isInjured {
-                                        Text("Lesionado")
-                                            .font(.system(size: 10, weight: .bold))
-                                            .foregroundStyle(EvaluationDesign.danger)
-                                    } else if pendingCount > 0 {
-                                        Text("\(pendingCount) pendiente\(pendingCount == 1 ? "" : "s")")
-                                            .font(.system(size: 10, weight: .medium))
-                                            .foregroundStyle(EvaluationDesign.accent.opacity(0.9))
-                                    } else {
-                                        Text("Disponible")
-                                            .font(.system(size: 10, weight: .medium))
-                                            .foregroundStyle(EvaluationDesign.success.opacity(0.8))
-                                    }
+                                    Spacer(minLength: 4)
 
-                                    scorePill(for: student.id, width: 72, cache: cache)
+                                    scorePill(for: student.id, width: 44, cache: cache)
                                 }
-                                .frame(width: 144, alignment: .leading)
+                                .frame(width: 160, alignment: .leading)
 
                                 inlineCriterionCell(
                                     studentId: student.id,
@@ -401,29 +392,20 @@ struct RubricBulkEvaluationSheet: View {
         let pendingCount = cache.pendingCriteriaCount(for: student.id)
 
         return HStack(spacing: 0) {
-            HStack(spacing: 16) {
-                EvaluationAvatar(initials: initials(for: student))
+            HStack(spacing: 12) {
+                ZStack(alignment: .bottomTrailing) {
+                    EvaluationAvatar(initials: initials(for: student))
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(student.firstName + " " + student.lastName)
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-
-                    if isInjured {
-                        Text("Lesionado")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(EvaluationDesign.danger)
-                    } else if pendingCount > 0 {
-                        Text("\(pendingCount) pendiente\(pendingCount == 1 ? "" : "s")")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(EvaluationDesign.accent.opacity(0.9))
-                    } else {
-                        Text("Disponible")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(EvaluationDesign.success.opacity(0.8))
-                    }
+                    Circle()
+                        .fill(statusDotColor(isInjured: isInjured, pendingCount: pendingCount))
+                        .frame(width: 10, height: 10)
+                        .overlay(Circle().stroke(appCardBackground(for: colorScheme), lineWidth: 1.5))
                 }
+
+                Text(student.firstName + " " + student.lastName)
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
             }
             .frame(width: studentWidth, alignment: .leading)
             .padding(.leading, 16)
@@ -459,33 +441,36 @@ struct RubricBulkEvaluationSheet: View {
 
                 scorePill(for: student.id, width: scoreWidth, cache: cache)
 
-                HStack(spacing: 8) {
-                    rowActionButton(
-                        title: isInjured ? "Quitar lesión" : "Marcar lesión",
-                        systemImage: isInjured ? "heart.slash" : "bandage",
-                        tint: isInjured ? EvaluationDesign.danger : EvaluationDesign.success,
-                        isEnabled: !savingInjuryStudentIds.contains(student.id)
-                    ) {
+                Menu {
+                    Button {
                         Task { await toggleInjuryStatus(for: student, classId: state.classId, cache: cache) }
+                    } label: {
+                        Label(
+                            isInjured ? "Quitar lesión" : "Marcar lesión",
+                            systemImage: isInjured ? "heart.slash" : "bandage"
+                        )
                     }
+                    .disabled(savingInjuryStudentIds.contains(student.id))
 
-                    rowActionButton(
-                        title: "Copiar evaluación",
-                        systemImage: "doc.on.doc",
-                        tint: EvaluationDesign.accent
-                    ) {
+                    Button {
                         bridge.bulkCopyAssessment(studentId: student.id)
+                    } label: {
+                        Label("Copiar evaluación", systemImage: "doc.on.doc")
                     }
 
-                    rowActionButton(
-                        title: "Pegar evaluación",
-                        systemImage: "doc.on.clipboard",
-                        tint: EvaluationDesign.success,
-                        isEnabled: state.copiedAssessment != nil
-                    ) {
+                    Button {
                         bridge.bulkPasteAssessment(studentId: student.id)
+                    } label: {
+                        Label("Pegar evaluación", systemImage: "doc.on.clipboard")
                     }
+                    .disabled(state.copiedAssessment == nil)
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 34, height: 34)
                 }
+                .buttonStyle(.plain)
                 .frame(width: actionsWidth, alignment: .center)
             }
             .padding(.trailing, 16)
@@ -646,6 +631,16 @@ struct RubricBulkEvaluationSheet: View {
         return RubricsStyle.levelColor(points: Double(level.points), maxPoints: Double(maxPoints))
     }
 
+    private func statusDotColor(isInjured: Bool, pendingCount: Int) -> Color {
+        if isInjured {
+            return EvaluationDesign.danger
+        } else if pendingCount > 0 {
+            return Color.gray.opacity(0.5)
+        } else {
+            return EvaluationDesign.success
+        }
+    }
+
     private func scorePill(for studentId: Int64, width: CGFloat, cache: BulkRubricEvaluationCache) -> some View {
         let score = cache.score(for: studentId)
         let scoreText = score.map { String(format: "%.1f", $0) } ?? "—"
@@ -655,11 +650,6 @@ struct RubricBulkEvaluationSheet: View {
             .font(.system(size: 20, weight: .black, design: .rounded))
             .foregroundStyle(tint ?? .secondary)
             .frame(width: width, alignment: .center)
-            .frame(minHeight: 44)
-            .background(
-                tint?.opacity(0.12) ?? Color.clear,
-                in: RoundedRectangle(cornerRadius: RubricsStyle.blueprintCardRadius, style: .continuous)
-            )
     }
 
     private func rowActionButton(

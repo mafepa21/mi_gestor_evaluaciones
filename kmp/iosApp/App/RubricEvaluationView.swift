@@ -15,48 +15,19 @@ struct RubricEvaluationView: View {
                 RubricEvaluationBackdrop()
 
                 if let rubric = state.rubricDetail {
-                    GeometryReader { proxy in
-                        let isWide = proxy.size.width >= 720
-                        let selectedScore = state.totalScore
-                        let progress = rubric.criteria.isEmpty ? 0.0 : Double(state.selectedLevels.count) / Double(rubric.criteria.count)
+                    let selectedScore = state.totalScore
+                    let progress = rubric.criteria.isEmpty ? 0.0 : Double(state.selectedLevels.count) / Double(rubric.criteria.count)
 
-                        Group {
-                            if isWide {
-                                // El resumen y Guardar viven fuera del ScrollView de los
-                                // criterios a propósito: a este ancho sobra sitio para
-                                // fijarlos en vez de que suban y bajen con el scroll.
-                                HStack(alignment: .top, spacing: EvaluationDesign.sectionSpacing) {
-                                    ScrollView {
-                                        VStack(alignment: .leading, spacing: EvaluationDesign.sectionSpacing) {
-                                            headerSection(rubric: rubric, score: selectedScore, progress: progress)
-                                            criteriaPanel(rubric: rubric)
-                                        }
-                                        .padding(.leading, EvaluationDesign.screenPadding)
-                                        .padding(.vertical, EvaluationDesign.screenPadding)
-                                    }
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                                    VStack(alignment: .leading, spacing: EvaluationDesign.sectionSpacing) {
-                                        summaryPanel(rubric: rubric, score: selectedScore)
-                                        saveSection()
-                                    }
-                                    .frame(width: 300)
-                                    .padding(.trailing, EvaluationDesign.screenPadding)
-                                    .padding(.vertical, EvaluationDesign.screenPadding)
-                                }
-                            } else {
-                                ScrollView {
-                                    VStack(alignment: .leading, spacing: EvaluationDesign.sectionSpacing) {
-                                        headerSection(rubric: rubric, score: selectedScore, progress: progress)
-                                        criteriaPanel(rubric: rubric)
-                                        summaryPanel(rubric: rubric, score: selectedScore)
-                                        saveSection()
-                                    }
-                                    .padding(EvaluationDesign.screenPadding)
-                                }
-                            }
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: EvaluationDesign.sectionSpacing) {
+                            headerSection(rubric: rubric, score: selectedScore, progress: progress)
+                            criteriaPanel(rubric: rubric)
+                            saveSection(rubric: rubric, score: selectedScore)
                         }
+                        .padding(EvaluationDesign.screenPadding)
+                        .frame(maxWidth: 640)
                     }
+                    .frame(maxWidth: .infinity, alignment: .center)
                     .appOnChange(of: state.isSaveSuccessful) { saved in
                         guard saved else { return }
                         guard !bridge.isNotebookRubricAutoAdvanceActive else { return }
@@ -142,8 +113,16 @@ struct RubricEvaluationView: View {
         }
     }
 
-    private func saveSection() -> some View {
-        PrimaryActionButton(label: "Guardar evaluación", systemImage: "square.and.arrow.down.fill") {
+    private func saveSection(rubric: RubricDetail, score: Double) -> some View {
+        let totalCriteria = rubric.criteria.count
+        let answeredCriteria = state.selectedLevels.count
+        let isComplete = totalCriteria > 0 && answeredCriteria >= totalCriteria
+
+        let labelText = isComplete
+            ? "Guardar · \(IosFormatting.scoreOutOfTen(from: score))"
+            : "Guardar · \(answeredCriteria) de \(totalCriteria) criterios"
+
+        return PrimaryActionButton(label: labelText, systemImage: "square.and.arrow.down.fill") {
             bridge.saveRubricEvaluation(
                 manual: true,
                 emitNotebookRefresh: !bridge.isNotebookRubricAutoAdvanceActive,
@@ -179,37 +158,6 @@ struct RubricEvaluationView: View {
                     }
                 )
                 .padding(.vertical, 18)
-            }
-        }
-    }
-
-    private func summaryPanel(rubric: RubricDetail, score: Double) -> some View {
-        PremiumCard.glass(cornerRadius: RubricsStyle.cardRadius, fillOpacity: 0.92) {
-            VStack(alignment: .leading, spacing: 20) {
-                HStack(spacing: 10) {
-                    EvaluationChip(
-                        label: "Resumen",
-                        systemImage: "sparkles",
-                        tint: EvaluationDesign.accent
-                    )
-                    Spacer()
-                    Text(IosFormatting.decimal(from: score))
-                        .font(.system(size: 18, weight: .black, design: .rounded))
-                        .foregroundStyle(RubricsStyle.gradeColor(forScoreOutOfTen: score))
-                }
-
-                EvaluationDivider()
-
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Siguiente paso")
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
-                        .foregroundStyle(.secondary)
-
-                    Text("Revisa cada criterio y guarda cuando la rúbrica quede completa.")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
             }
         }
     }

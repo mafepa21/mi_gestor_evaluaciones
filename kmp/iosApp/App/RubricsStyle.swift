@@ -145,37 +145,55 @@ struct RubricEvaluationBackdrop: View {
     }
 }
 
-/// Badge de puntuación de una rúbrica. Sustituye a `EvaluationScoreBadge`
-/// (`EvaluationDesign.swift`, bloqueado) solo en las vistas de rúbrica del
-/// Cuaderno: mismo patrón que `RubricLevelTile`, override local. La cabecera
-/// de `RubricEvaluationView` ya migró su tipografía a `.title2.weight(.semibold)`
-/// (Dynamic Type) pero el badge de al lado se quedó con el tinte de acento
-/// fijo y radio literal de `EvaluationScoreBadge` — este componente cierra
-/// ese hueco con el color de banda unificado (`gradeColor`).
+/// Anillo de progreso compacto para la cabecera de la evaluación individual:
+/// el arco es la fracción de criterios ya resueltos (`progress`, 0-1); el
+/// número central es la nota actual, coloreada por banda. Sustituye a
+/// `RubricScoreBadge` — un solo elemento hace el trabajo que antes eran el
+/// badge de cabecera *y* el bloque "Progreso" del panel resumen (PR 2 de
+/// `docs/planes/plan_rediseno_evaluacion_rubricas_2026-07-20.md`).
 ///
-/// **Pendiente de retirada**: `docs/planes/plan_rediseno_evaluacion_rubricas_2026-07-20.md`
-/// (PR 2) lo sustituye por un anillo de progreso circular en la cabecera. No
-/// se borra en este PR porque `RubricEvaluationView` todavía lo usa.
-struct RubricScoreBadge: View {
-    let title: String
+/// Dibujado a mano (`Circle().trim`) en vez de `Gauge(.accessoryCircularCapacity)`
+/// (nativo desde iOS 16/macOS 13, pensado para esto): ese estilo está
+/// diseñado para complicaciones/widgets y su aspecto fuera de ese contexto no
+/// se puede verificar sin Xcode real en este entorno. El trazo a mano da
+/// control total y es el mismo que se validó en el mockup aprobado por el
+/// usuario.
+///
+/// Antes de que haya al menos un criterio resuelto (`progress == 0`), la nota
+/// real sería 0.0 y caería en la banda "suspenso" de `gradeColor` — mostrar
+/// un cero en rojo en una rúbrica que sencillamente no se ha empezado a
+/// puntuar sería engañoso. En ese caso se muestra un guion neutro en vez de
+/// la nota.
+struct RubricScoreRing: View {
+    let progress: Double
     let scoreOutOfTen: Double
+    var diameter: CGFloat = 56
+
+    private var hasStarted: Bool { progress > 0 }
+    private var color: Color { RubricsStyle.gradeColor(forScoreOutOfTen: scoreOutOfTen) }
 
     var body: some View {
-        let color = RubricsStyle.gradeColor(forScoreOutOfTen: scoreOutOfTen)
+        ZStack {
+            Circle()
+                .stroke(RubricsStyle.hairlineStrong, lineWidth: 3)
 
-        VStack(alignment: .trailing, spacing: 2) {
-            Text(title)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
+            Circle()
+                .trim(from: 0, to: min(max(progress, 0), 1))
+                .stroke(color, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .rotationEffect(.degrees(-90))
 
-            Text(IosFormatting.scoreOutOfTen(from: scoreOutOfTen))
-                .font(.title2.weight(.bold))
-                .foregroundStyle(color)
+            Text(hasStarted ? IosFormatting.scoreOutOfTen(from: scoreOutOfTen) : "–")
+                .font(.system(.footnote, design: .rounded).weight(.bold))
+                .foregroundStyle(hasStarted ? color : .secondary)
                 .monospacedDigit()
+                .minimumScaleFactor(0.7)
+                .lineLimit(1)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: RubricsStyle.blueprintCardRadius, style: .continuous))
+        .frame(width: diameter, height: diameter)
+        .animation(.easeInOut(duration: 0.25), value: progress)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Nota actual")
+        .accessibilityValue(hasStarted ? IosFormatting.scoreOutOfTen(from: scoreOutOfTen) : "Sin empezar")
     }
 }
 

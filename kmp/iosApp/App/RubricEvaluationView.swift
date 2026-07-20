@@ -18,6 +18,7 @@ struct RubricEvaluationView: View {
                     GeometryReader { proxy in
                         let isWide = proxy.size.width >= 720
                         let selectedScore = state.totalScore
+                        let progress = rubric.criteria.isEmpty ? 0.0 : Double(state.selectedLevels.count) / Double(rubric.criteria.count)
 
                         Group {
                             if isWide {
@@ -27,7 +28,7 @@ struct RubricEvaluationView: View {
                                 HStack(alignment: .top, spacing: EvaluationDesign.sectionSpacing) {
                                     ScrollView {
                                         VStack(alignment: .leading, spacing: EvaluationDesign.sectionSpacing) {
-                                            headerSection(rubric: rubric, score: selectedScore)
+                                            headerSection(rubric: rubric, score: selectedScore, progress: progress)
                                             criteriaPanel(rubric: rubric)
                                         }
                                         .padding(.leading, EvaluationDesign.screenPadding)
@@ -46,7 +47,7 @@ struct RubricEvaluationView: View {
                             } else {
                                 ScrollView {
                                     VStack(alignment: .leading, spacing: EvaluationDesign.sectionSpacing) {
-                                        headerSection(rubric: rubric, score: selectedScore)
+                                        headerSection(rubric: rubric, score: selectedScore, progress: progress)
                                         criteriaPanel(rubric: rubric)
                                         summaryPanel(rubric: rubric, score: selectedScore)
                                         saveSection()
@@ -115,32 +116,29 @@ struct RubricEvaluationView: View {
         }
     }
 
-    private func headerSection(rubric: RubricDetail, score: Double) -> some View {
+    private func headerSection(rubric: RubricDetail, score: Double, progress: Double) -> some View {
         HStack(alignment: .top, spacing: 16) {
-            EvaluationIconButton(systemImage: "chevron.down", tint: .primary) {
-                closeRubric()
-            }
-
-            EvaluationAvatar(initials: String(state.studentName.prefix(2)))
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Evaluación individual")
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .tracking(1.0)
+            Button(action: closeRubric) {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Cerrar")
 
+            VStack(alignment: .leading, spacing: 4) {
                 Text(state.studentName)
                     .font(.title2.weight(.semibold))
                     .foregroundStyle(.primary)
 
                 Text(rubric.rubric.name)
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
             }
 
             Spacer(minLength: 16)
 
-            RubricScoreBadge(title: "Nota actual", scoreOutOfTen: score)
+            RubricScoreRing(progress: progress, scoreOutOfTen: score)
         }
     }
 
@@ -163,20 +161,6 @@ struct RubricEvaluationView: View {
     private func criteriaPanel(rubric: RubricDetail) -> some View {
         PremiumCard.glass(cornerRadius: RubricsStyle.cardRadius, fillOpacity: 0.88) {
             VStack(alignment: .leading, spacing: EvaluationDesign.sectionSpacing) {
-                HStack(spacing: 12) {
-                    EvaluationChip(
-                        label: "\(rubric.criteria.count) criterios",
-                        systemImage: "checklist",
-                        tint: EvaluationDesign.accent
-                    )
-
-                    EvaluationChip(
-                        label: "Selecciona el nivel",
-                        systemImage: "hand.tap.fill",
-                        tint: EvaluationDesign.accent
-                    )
-                }
-
                 VStack(spacing: 16) {
                     ForEach(rubric.criteria, id: \.criterion.id) { criterion in
                         RubricCriterionRow(
@@ -209,19 +193,6 @@ struct RubricEvaluationView: View {
                     Text(IosFormatting.decimal(from: score))
                         .font(.system(size: 18, weight: .black, design: .rounded))
                         .foregroundStyle(RubricsStyle.gradeColor(forScoreOutOfTen: score))
-                }
-
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Progreso")
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
-                        .foregroundStyle(.secondary)
-
-                    Text("\(state.selectedLevels.count) de \(rubric.criteria.count) criterios resueltos")
-                        .font(.system(size: 16, weight: .bold, design: .rounded))
-                        .foregroundStyle(.primary)
-
-                    ProgressView(value: Double(state.selectedLevels.count), total: Double(max(rubric.criteria.count, 1)))
-                        .tint(EvaluationDesign.accent)
                 }
 
                 EvaluationDivider()

@@ -618,6 +618,14 @@ struct RubricBulkEvaluationSheet: View {
         }
     }
 
+    /// Deliberadamente NO usa `RubricsStyle.gradeColor` (3 bandas, pensado para
+    /// "nota global 0-10"): esta función tiñe varios botones de nivel del
+    /// mismo criterio a la vez (`inlineCriterionCell`) para que se distingan
+    /// entre sí de un vistazo — un propósito distinto (orden relativo entre
+    /// opciones) al de una nota final. Colapsar sus 4 bandas a las 3 de
+    /// `gradeColor` fusionaría niveles adyacentes en el mismo color con más
+    /// frecuencia, perdiendo justo la distinción que esta función existe para
+    /// dar.
     private func levelColor(for level: RubricLevel?, in criterion: RubricCriterionWithLevels) -> Color {
         guard let level else { return EvaluationDesign.accent }
         let maxPoints = criterion.levels.map(\.points).max() ?? 0
@@ -639,15 +647,15 @@ struct RubricBulkEvaluationSheet: View {
     private func scorePill(for studentId: Int64, width: CGFloat, cache: BulkRubricEvaluationCache) -> some View {
         let score = cache.score(for: studentId)
         let scoreText = score.map { String(format: "%.1f", $0) } ?? "—"
-        let tint = (score ?? 0) >= 5 ? EvaluationDesign.success : EvaluationDesign.danger
+        let tint = score.map { RubricsStyle.gradeColor(forScoreOutOfTen: $0) }
 
         return Text(scoreText)
             .font(.system(size: 20, weight: .black, design: .rounded))
-            .foregroundStyle(score == nil ? .secondary : tint)
+            .foregroundStyle(tint ?? .secondary)
             .frame(width: width, alignment: .center)
             .frame(minHeight: 44)
             .background(
-                score == nil ? Color.clear : tint.opacity(0.12),
+                tint?.opacity(0.12) ?? Color.clear,
                 in: RoundedRectangle(cornerRadius: 12, style: .continuous)
             )
     }

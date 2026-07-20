@@ -248,7 +248,7 @@ struct RubricLevelPill: View {
             Button(action: onShowDescription) {
                 Image(systemName: "info.circle")
                     .font(.caption)
-                    .foregroundStyle(isSelected ? contrastingTextColor(for: color).opacity(0.7) : .tertiary)
+                    .foregroundStyle(isSelected ? contrastingTextColor(for: color).opacity(0.7) : Color.secondary.opacity(0.7))
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Descripción de \(title)")

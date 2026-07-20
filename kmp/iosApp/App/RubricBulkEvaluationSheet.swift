@@ -203,11 +203,29 @@ struct RubricBulkEvaluationSheet: View {
                             .foregroundStyle(.primary)
 
                         ForEach(state.students, id: \.id) { student in
+                            let isInjured = isStudentInjured(student, cache: cache)
+                            let pendingCount = cache.pendingCriteriaCount(for: student.id)
+
                             HStack(alignment: .center, spacing: 12) {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(student.firstName + " " + student.lastName)
                                         .font(.subheadline.weight(.bold))
                                         .lineLimit(1)
+
+                                    if isInjured {
+                                        Text("Lesionado")
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundStyle(EvaluationDesign.danger)
+                                    } else if pendingCount > 0 {
+                                        Text("\(pendingCount) pendiente\(pendingCount == 1 ? "" : "s")")
+                                            .font(.system(size: 10, weight: .medium))
+                                            .foregroundStyle(EvaluationDesign.accent.opacity(0.9))
+                                    } else {
+                                        Text("Disponible")
+                                            .font(.system(size: 10, weight: .medium))
+                                            .foregroundStyle(EvaluationDesign.success.opacity(0.8))
+                                    }
+
                                     scorePill(for: student.id, width: 72, cache: cache)
                                 }
                                 .frame(width: 144, alignment: .leading)

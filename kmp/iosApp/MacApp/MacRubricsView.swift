@@ -446,7 +446,7 @@ struct MacRubricsView: View {
             .padding(.vertical, 12)
             .background(
                 selectedRubricId == rubric.rubric.id
-                    ? Color.accentColor.opacity(0.10)
+                    ? RubricsStyle.selectionFill
                     : Color.clear
             )
         }

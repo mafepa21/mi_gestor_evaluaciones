@@ -49,6 +49,11 @@ enum RubricsStyle {
     static let hairline = NotebookGridStyle.gridLine
     static let hairlineStrong = NotebookGridStyle.gridLineStrong
 
+    /// Fill de una fila seleccionada en el banco/listado. Mismo valor que
+    /// `NotebookGridStyle.cellSelectionFill` (0.08) — el banco Mac usaba un
+    /// 0.10 suelto sin relación con el resto del idioma de selección.
+    static let selectionFill = NotebookGridStyle.cellSelectionFill
+
     /// Color semántico de una puntuación 0-10. Reexporta `NotebookGradeBand`
     /// (mismo corte `<5` suspenso / `5-6,9` aprobado / `≥7` notable+ que ya usa
     /// el grid del Cuaderno) para que el badge de la evaluación individual, el

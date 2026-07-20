@@ -151,7 +151,7 @@ struct RubricEvaluationView: View {
     }
 
     private func criteriaPanel(rubric: RubricDetail) -> some View {
-        PremiumCard.glass(cornerRadius: RubricEvaluationStyle.cardRadius, fillOpacity: 0.88) {
+        PremiumCard.glass(cornerRadius: RubricsStyle.cardRadius, fillOpacity: 0.88) {
             VStack(alignment: .leading, spacing: EvaluationDesign.sectionSpacing) {
                 HStack(spacing: 12) {
                     EvaluationChip(
@@ -187,7 +187,7 @@ struct RubricEvaluationView: View {
     }
 
     private func summaryPanel(rubric: RubricDetail, score: Double) -> some View {
-        PremiumCard.glass(cornerRadius: RubricEvaluationStyle.cardRadius, fillOpacity: 0.92) {
+        PremiumCard.glass(cornerRadius: RubricsStyle.cardRadius, fillOpacity: 0.92) {
             VStack(alignment: .leading, spacing: 20) {
                 HStack(spacing: 10) {
                     EvaluationChip(
@@ -253,7 +253,7 @@ struct RubricCriterionRow: View {
     }
 
     var body: some View {
-        PremiumCard.glass(cornerRadius: RubricEvaluationStyle.rowRadius, fillOpacity: 0.96) {
+        PremiumCard.glass(cornerRadius: RubricsStyle.rowRadius, fillOpacity: 0.96) {
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(item.criterion.description_)

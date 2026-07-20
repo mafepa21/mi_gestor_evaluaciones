@@ -119,6 +119,36 @@ struct RubricEvaluationBackdrop: View {
     }
 }
 
+/// Badge de puntuación de una rúbrica. Sustituye a `EvaluationScoreBadge`
+/// (`EvaluationDesign.swift`, bloqueado) solo en las vistas de rúbrica del
+/// Cuaderno: mismo patrón que `RubricLevelTile`, override local. La cabecera
+/// de `RubricEvaluationView` ya migró su tipografía a `.title2.weight(.semibold)`
+/// (Dynamic Type) pero el badge de al lado se quedó con el tinte de acento
+/// fijo y radio literal de `EvaluationScoreBadge` — este componente cierra
+/// ese hueco con el color de banda unificado (`gradeColor`).
+struct RubricScoreBadge: View {
+    let title: String
+    let scoreOutOfTen: Double
+
+    var body: some View {
+        let color = RubricsStyle.gradeColor(forScoreOutOfTen: scoreOutOfTen)
+
+        VStack(alignment: .trailing, spacing: 2) {
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            Text(IosFormatting.scoreOutOfTen(from: scoreOutOfTen))
+                .font(.title2.weight(.bold))
+                .foregroundStyle(color)
+                .monospacedDigit()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: RubricsStyle.blueprintCardRadius, style: .continuous))
+    }
+}
+
 /// Tarjeta de nivel de una rúbrica. Sustituye a `EvaluationLevelTile`
 /// (definida en `EvaluationDesign.swift`, bloqueado) solo en las vistas de
 /// rúbrica del Cuaderno: en reposo es una superficie plana sin borde; al
@@ -140,7 +170,7 @@ struct RubricLevelTile: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .top, spacing: 6) {
                     Text(title)
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .font(.system(.subheadline, design: .rounded).weight(.bold))
                         .foregroundStyle(.primary)
 
                     Spacer(minLength: 0)
@@ -151,7 +181,7 @@ struct RubricLevelTile: View {
                 }
 
                 Text(subtitle)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .lineLimit(3)
 

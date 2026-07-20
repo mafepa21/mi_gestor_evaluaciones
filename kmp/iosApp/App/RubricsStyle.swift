@@ -93,6 +93,32 @@ enum RubricsStyle {
     static func gradeSoftFill(forScoreOutOfTen score: Double) -> Color {
         NotebookGradeBand(scoreOutOfTen: score).softFill
     }
+
+    /// Color de un nivel según su ratio de puntos frente al máximo del
+    /// criterio (4 bandas: ≥0,8 éxito · 0,6-0,8 acento · 0,4-0,6 naranja ·
+    /// resto peligro). Deliberadamente **no** es `gradeColor` (3 bandas,
+    /// pensada para "nota global 0-10"): esta función tiñe varios niveles del
+    /// mismo criterio a la vez para que se distingan entre sí de un vistazo —
+    /// un propósito distinto (orden relativo entre opciones) al de una nota
+    /// final. Colapsar sus 4 bandas a las 3 de `gradeColor` fusionaría
+    /// niveles adyacentes en el mismo color con más frecuencia, perdiendo
+    /// justo la distinción que existe para dar. Compartida entre la
+    /// evaluación masiva (`RubricBulkEvaluationSheet`) y la individual.
+    static func levelColor(points: Double, maxPoints: Double) -> Color {
+        guard maxPoints > 0 else { return EvaluationDesign.accent }
+        let ratio = points / maxPoints
+
+        switch ratio {
+        case 0.8...:
+            return EvaluationDesign.success
+        case 0.6..<0.8:
+            return EvaluationDesign.accent
+        case 0.4..<0.6:
+            return .orange
+        default:
+            return EvaluationDesign.danger
+        }
+    }
 }
 
 /// Fondo de las vistas de rúbrica: sustituye a `EvaluationBackdrop`
@@ -126,6 +152,10 @@ struct RubricEvaluationBackdrop: View {
 /// (Dynamic Type) pero el badge de al lado se quedó con el tinte de acento
 /// fijo y radio literal de `EvaluationScoreBadge` — este componente cierra
 /// ese hueco con el color de banda unificado (`gradeColor`).
+///
+/// **Pendiente de retirada**: `docs/planes/plan_rediseno_evaluacion_rubricas_2026-07-20.md`
+/// (PR 2) lo sustituye por un anillo de progreso circular en la cabecera. No
+/// se borra en este PR porque `RubricEvaluationView` todavía lo usa.
 struct RubricScoreBadge: View {
     let title: String
     let scoreOutOfTen: Double
@@ -156,6 +186,10 @@ struct RubricScoreBadge: View {
 /// idioma de selección que las celdas del grid y las blueprint cards de
 /// "Nueva columna" — en vez de rellenar toda la tarjeta con el color y texto
 /// blanco encima.
+///
+/// **Pendiente de retirada**: `docs/planes/plan_rediseno_evaluacion_rubricas_2026-07-20.md`
+/// (PR 3) lo sustituye por una píldora compacta sin tarjeta contenedora. No
+/// se borra en este PR porque `RubricEvaluationView` todavía lo usa.
 struct RubricLevelTile: View {
     let title: String
     let subtitle: String

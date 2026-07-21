@@ -1,6 +1,6 @@
 import Foundation
 
-extension Optional where Wrapped == String {
+public extension Optional where Wrapped == String {
     var nilIfBlank: String? {
         switch self?.trimmingCharacters(in: .whitespacesAndNewlines) {
         case .some(let value) where !value.isEmpty: return value
@@ -9,7 +9,7 @@ extension Optional where Wrapped == String {
     }
 }
 
-extension String {
+public extension String {
     var nilIfBlank: String? {
         trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : self
     }

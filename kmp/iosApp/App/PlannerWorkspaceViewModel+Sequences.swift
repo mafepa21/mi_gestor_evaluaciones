@@ -7,22 +7,19 @@ extension PlannerWorkspaceViewModel {
         let grouped = Dictionary(grouping: filteredPlannerSessions()) { session in
             "\(session.groupId)-\(session.teachingUnitId)-\(normalizedSituationTitle(session.teachingUnitName))"
         }
-        return grouped.compactMap { key, sessions in
+        let items: [(key: String, title: String, groupName: String, sessions: [PlanningSession])] = grouped.compactMap { key, sessions in
             guard let first = sessions.first else { return nil }
-            return (
-                key: key,
-                title: first.teachingUnitName.nilIfBlank ?? "Situación sin título",
-                groupName: first.groupName,
-                sessions: sessions.sorted {
-                    if $0.weekNumber == $1.weekNumber {
-                        if $0.dayOfWeek == $1.dayOfWeek { return $0.period < $1.period }
-                        return $0.dayOfWeek < $1.dayOfWeek
-                    }
-                    return $0.weekNumber < $1.weekNumber
+            let titleText = first.teachingUnitName.nilIfBlank ?? "Situación sin título"
+            let sortedSessions = sessions.sorted { lhs, rhs in
+                if lhs.weekNumber == rhs.weekNumber {
+                    if lhs.dayOfWeek == rhs.dayOfWeek { return lhs.period < rhs.period }
+                    return lhs.dayOfWeek < rhs.dayOfWeek
                 }
-            )
+                return lhs.weekNumber < rhs.weekNumber
+            }
+            return (key: key, title: titleText, groupName: first.groupName, sessions: sortedSessions)
         }
-        .sorted { lhs, rhs in
+        return items.sorted { lhs, rhs in
             lhs.groupName == rhs.groupName ? lhs.title < rhs.title : lhs.groupName < rhs.groupName
         }
     }
@@ -88,9 +85,9 @@ extension PlannerWorkspaceViewModel {
                     for (seqId, seqSessions) in sessionsBySeqId {
                         guard let sortedPlans = sessionPlansBySequence[seqId] else { continue }
                         let firstSeqSession = seqSessions.first
-                        let seqTitle = sortedPlans.first?.title.nilIfBlank 
-                            ?? firstSeqSession?.teachingUnitName.nilIfBlank 
-                            ?? "Secuencia didáctica"
+                        let planTitle = sortedPlans.first?.title
+                        let sessionTitle = firstSeqSession?.teachingUnitName
+                        let seqTitle = planTitle.nilIfBlank ?? sessionTitle.nilIfBlank ?? "Secuencia didáctica"
                         
                         var rows: [PlannerSequenceRow] = []
                         var mappedSessionIds = Set<Int64>()

@@ -94,11 +94,13 @@ extension PlannerWorkspaceViewModel {
             if composerDraft.repeatWeeksCount > 1 && composerDraft.sessionId == 0 {
                 let repeatCount = composerDraft.repeatWeeksCount
                 let draft = composerDraft
-                Task.detached { [weak self] in
+                let startWeek = week
+                let startYear = year
+                Task { [weak self] in
                     guard let self else { return }
                     for weekOffset in 1..<repeatCount {
-                        var targetWeek = await self.week + weekOffset
-                        var targetYear = await self.year
+                        var targetWeek = startWeek + weekOffset
+                        var targetYear = startYear
                         let maxIsoWeeks = Self.isoWeeks(in: targetYear)
                         if targetWeek > maxIsoWeeks {
                             targetWeek -= maxIsoWeeks

@@ -48,8 +48,13 @@ class RubricBulkEvaluationViewModel(
             RubricEvaluationBus.events.collect { event ->
                 val current = _uiState.value
                 val rubricId = current.rubricDetail?.rubric?.id ?: return@collect
-                
-                if (event.rubricId == rubricId) {
+
+                // event.rubricId no basta: una misma rubrica puede estar vinculada a mas
+                // de una evaluacion/columna del cuaderno a la vez. Sin comparar tambien el
+                // columnId, un guardado individual en OTRA evaluacion que comparte esta
+                // rubrica se mezclaba en el estado de esta hoja masiva, y el siguiente
+                // auto-save volcaba esa mezcla en la columna equivocada.
+                if (event.rubricId == rubricId && event.columnId == current.columnId) {
                     val updatedAssessments = current.assessments.toMutableMap()
                     val studentAssessments = updatedAssessments[event.studentId]?.toMutableMap() ?: mutableMapOf()
                     

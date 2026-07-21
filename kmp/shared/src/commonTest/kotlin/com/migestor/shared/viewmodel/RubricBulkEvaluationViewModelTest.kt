@@ -83,4 +83,55 @@ class RubricBulkEvaluationViewModelTest {
         assertNotNull(state.error, "Debe surgir un error explicando el fallo parcial")
         assertTrue(state.error!!.contains("1"), "El error debe indicar cuantos alumnos fallaron")
     }
+
+    @Test
+    fun `bus events for a different notebook column sharing the same rubric are ignored`() = runTest {
+        // Regresion: el colector de RubricEvaluationBus filtraba solo por rubricId. Una
+        // misma rubrica vinculada a mas de una evaluacion/columna del cuaderno a la vez
+        // hacia que un guardado individual en OTRA evaluacion (misma rubrica) se
+        // mezclara en el estado de esta hoja masiva, y el siguiente auto-save volcara
+        // esa mezcla en la columna equivocada.
+        val testRubricId = 1L
+        val studentId = 1L
+        val rubricDetail = RubricDetail(rubric = Rubric(id = testRubricId, name = "Rubrica compartida"), criteria = emptyList())
+
+        val fakeNotebook = object : FakeRubricEvalNotebookRepository() {
+            override suspend fun listStudentsInClass(classId: Long): List<Student> =
+                listOf(Student(id = studentId, firstName = "Ana", lastName = "Lopez"))
+        }
+        val fakeRubrics = object : FakeRubricEvalRubricsRepository() {
+            override suspend fun listRubrics(): List<RubricDetail> = listOf(rubricDetail)
+        }
+
+        val viewModel = RubricBulkEvaluationViewModel(
+            rubricsRepository = fakeRubrics,
+            studentsRepository = FakeRubricEvalStudentsRepository(),
+            notebookRepository = fakeNotebook,
+            gradesRepository = FakeRubricEvalGradesRepository(),
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        )
+
+        // Esta hoja masiva esta evaluando la columna "col_eval1".
+        viewModel.load(classId = 100L, evaluationId = 1L, rubricId = testRubricId, columnId = "col_eval1")
+        advanceUntilIdle()
+
+        // Llega un guardado individual de la MISMA rubrica pero en OTRA evaluacion/columna
+        // ("col_eval2"), p. ej. desde el cuaderno de otra clase o pestana.
+        RubricEvaluationBus.emit(
+            RubricEvaluationSavedEvent(
+                studentId = studentId,
+                rubricId = testRubricId,
+                selectedLevels = mapOf(99L to 999L),
+                score = 7.0,
+                columnId = "col_eval2",
+            )
+        )
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertTrue(
+            state.assessments[studentId].isNullOrEmpty(),
+            "Un evento de otra columna/evaluacion no debe mezclarse en el estado de esta hoja"
+        )
+    }
 }

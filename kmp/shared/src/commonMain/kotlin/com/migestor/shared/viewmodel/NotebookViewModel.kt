@@ -283,16 +283,17 @@ class NotebookViewModel(
                 // Si hay un dirty en curso (usuario editando), preservar sus drafts
                 // para no pisar valores que aún no han disparado su guardado.
                 if (_isDirty.value && currentData != null) {
-                    val mergedNumeric = freshDataState.numericDrafts + _numericDrafts.value
-                    val mergedText = freshDataState.textDrafts + _textDrafts.value
-                    val mergedCheck = freshDataState.checkDrafts + _checkDrafts.value
-                    _numericDrafts.value = mergedNumeric
-                    _textDrafts.value = mergedText
-                    _checkDrafts.value = mergedCheck
+                    // .update{} en vez de leer .value y reasignarlo: si el usuario teclea
+                    // otra celda (updateDraft, en otro hilo) justo entre leer y reasignar,
+                    // una asignacion directa pisaria ese draft nuevo con un merge calculado
+                    // antes de que existiera.
+                    _numericDrafts.update { freshDataState.numericDrafts + it }
+                    _textDrafts.update { freshDataState.textDrafts + it }
+                    _checkDrafts.update { freshDataState.checkDrafts + it }
                     _state.value = freshDataState.copy(
-                        numericDrafts = mergedNumeric,
-                        textDrafts = mergedText,
-                        checkDrafts = mergedCheck
+                        numericDrafts = _numericDrafts.value,
+                        textDrafts = _textDrafts.value,
+                        checkDrafts = _checkDrafts.value
                     ).withActiveTabAverages()
                 } else {
                     _numericDrafts.value = freshDataState.numericDrafts
@@ -340,16 +341,15 @@ class NotebookViewModel(
                         // Esto evita que el eco de nuestras propias escrituras en DB pise
                         // los valores locales de las celdas antes de que el usuario confirme.
                         if (_isDirty.value) {
-                            val mergedNumeric = freshState.numericDrafts + _numericDrafts.value
-                            val mergedText = freshState.textDrafts + _textDrafts.value
-                            val mergedCheck = freshState.checkDrafts + _checkDrafts.value
-                            _numericDrafts.value = mergedNumeric
-                            _textDrafts.value = mergedText
-                            _checkDrafts.value = mergedCheck
+                            // Mismo motivo que en selectClass: .update{} evita pisar un draft
+                            // tecleado justo entre leer _numericDrafts.value y reasignarlo.
+                            _numericDrafts.update { freshState.numericDrafts + it }
+                            _textDrafts.update { freshState.textDrafts + it }
+                            _checkDrafts.update { freshState.checkDrafts + it }
                             _state.value = freshState.copy(
-                                numericDrafts = mergedNumeric,
-                                textDrafts = mergedText,
-                                checkDrafts = mergedCheck
+                                numericDrafts = _numericDrafts.value,
+                                textDrafts = _textDrafts.value,
+                                checkDrafts = _checkDrafts.value
                             ).withActiveTabAverages()
                         } else {
                             _numericDrafts.value = freshState.numericDrafts

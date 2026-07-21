@@ -642,6 +642,11 @@ private struct NotebookStatefulEditableTableCell: View {
         switch column.scaleKind {
         case .time, .distance, .repetitions:
             return nil
+        case .fourLevel, .percentage:
+            // Escalas 1–4 (observación) y 0–100 (%): un "4" o un "45" no son notas
+            // sobre 10; colorearlos por banda 0–10 pinta el máximo de 1–4 en rojo y
+            // un 45% suspenso en verde.
+            return nil
         default:
             break
         }

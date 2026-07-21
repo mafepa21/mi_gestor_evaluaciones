@@ -359,7 +359,12 @@ extension NotebookModuleView {
     /// La columna está resaltada (menú de columna abierto o selección con foco en
     /// el inspector): mismo criterio que usa la cabecera (`headerChip(for:)`).
     func isColumnHighlighted(_ column: NotebookColumnDefinition) -> Bool {
-        selectedColumnId == column.id || highlightedColumnId == column.id || highlightedCategoryId == column.categoryId
+        if selectedColumnId == column.id || highlightedColumnId == column.id { return true }
+        // Solo se resalta por categoría cuando hay una categoría resaltada activa:
+        // comparar dos `Optional` directamente daría `nil == nil == true`, marcando
+        // como resaltada toda columna sin categoría en reposo (inunda el grid).
+        guard let highlightedCategoryId else { return false }
+        return highlightedCategoryId == column.categoryId
     }
 
     /// Fondo de celda: única técnica de separación de filas (zebra plana + wash de

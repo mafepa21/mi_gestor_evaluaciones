@@ -978,20 +978,18 @@ class GradesRepositorySqlDelight(
         deviceId: String?,
         syncVersion: Long,
     ): Long = withContext(Dispatchers.Default) {
-        val now = if (updatedAtEpochMs > 0) updatedAtEpochMs else Clock.System.now().toEpochMilliseconds()
-        val created = if (createdAtEpochMs > 0) createdAtEpochMs else now
+        val requestedNow = if (updatedAtEpochMs > 0) updatedAtEpochMs else Clock.System.now().toEpochMilliseconds()
         val existingRecord = db.appDatabaseQueries.selectGradeByStudentClassAndColumn(classId, studentId, columnId).executeAsOneOrNull()
         val existingValue = existingRecord?.value_
-        
-        val canApply = shouldApplyIncomingChange(
-            existingUpdatedAtEpochMs = existingRecord?.updated_at_epoch_ms,
-            existingDeviceId = existingRecord?.device_id,
-            incomingUpdatedAtEpochMs = now,
-            incomingDeviceId = deviceId
-        )
-        if (!canApply) {
-            return@withContext id ?: 0L
-        }
+
+        // Escritura local: la profesora acaba de decidir este valor ahora mismo, no
+        // se descarta nunca por LWW (esa comparacion es cosa de upsertGrade, el
+        // camino de sync). Se garantiza monotonia frente a lo que ya hay en BD
+        // -por ejemplo un registro con reloj adelantado llegado por sync- para que
+        // esta escritura no quede "por detras" y una sync futura del valor viejo
+        // no la pise a su vez.
+        val now = maxOf(requestedNow, (existingRecord?.updated_at_epoch_ms ?: 0L) + 1)
+        val created = if (createdAtEpochMs > 0) createdAtEpochMs else now
 
         db.transactionWithResult {
             db.appDatabaseQueries.upsertGrade(

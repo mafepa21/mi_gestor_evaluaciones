@@ -29,6 +29,10 @@ Cambios posteriores a `v0.3.0-traceability-baseline`.
 - iOS/macOS: se registran en `MiGestorKMPiOS.xcodeproj` cinco archivos Swift que el mismo merge trajo al repositorio sin darlos de alta en el target de ningún esquema (`SyncStatusBadge.swift`, `SupportMeasureBulkImportSheet.swift`, `SupportMeasureGroupOverviewSheet.swift`, `SupportMeasureShared.swift`, `SupportMeasureBulkImport.swift`), lo que impedía compilar y hacía que la sección "Medidas de apoyo" de la ficha de alumno no apareciera en ninguna build generada tras el merge aunque el código ya estuviera en `main`.
 - macOS: `MacStudentsStore.profileLoadTask` se marca `nonisolated(unsafe)` para permitir cancelarla desde `deinit`; al ser una clase `@MainActor`, el `deinit` (que Swift ejecuta en un contexto no aislado) no podía acceder a una propiedad aislada al actor principal.
 
+### Data
+
+- Cuaderno: `GradesRepositorySqlDelight.saveGrade` (escritura local de una nota) reutilizaba el mismo guard *last-write-wins* que `upsertGrade` (camino de sync). Si el registro existente tenía un `updated_at` futuro respecto al reloj local — por ejemplo tras una sync desde un dispositivo con el reloj adelantado — la corrección de la profesora se descartaba en silencio: `saveGrade` devolvía un id como si hubiera guardado, pero el valor nunca llegaba a BD. Las escrituras locales ya no se descartan por LWW (esa comparación queda solo para `upsertGrade`); se garantiza monotonía frente al registro existente para no romper el orden de una sync futura. Test de regresión en `RepositoriesIntegrationTest`.
+
 ## v0.3.0-traceability-baseline — 2026-07-06
 
 ### Added

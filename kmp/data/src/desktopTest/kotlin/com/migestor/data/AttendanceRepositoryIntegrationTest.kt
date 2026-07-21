@@ -50,4 +50,47 @@ class AttendanceRepositoryIntegrationTest {
         assertEquals("PRESENTE", results[0].status) // Ordered by date desc
         assertEquals("AUSENTE", results[1].status)
     }
+
+    @Test
+    fun `listAttendanceByDate returns note, incident, follow-up and session id`() = runTest {
+        // Regresion: listAttendanceByDate omitia note/hasIncident/followUpRequired/
+        // sessionId en el mapeo (quedaban en sus defaults ""/false/false/null).
+        // KmpBridge.saveAttendance usa este resultado como "existing" para
+        // emparejar y conservar esos campos al cambiar solo el estado; con el
+        // mapeo incompleto, la observacion y el flag de incidencia guardados se
+        // borraban en cada cambio de estado.
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        AppDatabase.Schema.create(driver)
+        val db = AppDatabase(driver)
+
+        val attendanceRepo = AttendanceRepositorySqlDelight(db)
+        val classesRepo = ClassesRepositorySqlDelight(db)
+        val studentsRepo = StudentsRepositorySqlDelight(db)
+
+        val classId = classesRepo.saveClass(name = "Test Class", course = 1, description = null)
+        val studentId = studentsRepo.saveStudent(firstName = "John", lastName = "Doe", email = null)
+        classesRepo.addStudentToClass(classId, studentId)
+
+        val todayMs = Clock.System.now().toEpochMilliseconds()
+        attendanceRepo.saveAttendance(
+            id = null,
+            studentId = studentId,
+            classId = classId,
+            dateEpochMs = todayMs,
+            status = "AUSENTE",
+            note = "Justificante medico pendiente",
+            hasIncident = true,
+            followUpRequired = true,
+            sessionId = 42L,
+        )
+
+        val results = attendanceRepo.listAttendanceByDate(classId, todayMs)
+
+        assertEquals(1, results.size)
+        val record = results.first()
+        assertEquals("Justificante medico pendiente", record.note)
+        assertEquals(true, record.hasIncident)
+        assertEquals(true, record.followUpRequired)
+        assertEquals(42L, record.sessionId)
+    }
 }

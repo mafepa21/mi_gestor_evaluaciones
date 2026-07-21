@@ -1700,6 +1700,10 @@ class AttendanceRepositorySqlDelight(
                 classId = it.class_id,
                 date = Instant.fromEpochMilliseconds(it.date_epoch_ms),
                 status = it.status,
+                note = it.note,
+                hasIncident = it.has_incident != 0L,
+                followUpRequired = it.follow_up_required != 0L,
+                sessionId = it.session_id,
                 trace = AuditTrace(
                     updatedAt = Instant.fromEpochMilliseconds(it.updated_at_epoch_ms),
                     deviceId = it.device_id,

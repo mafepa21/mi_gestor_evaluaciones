@@ -262,14 +262,14 @@ class RubricsViewModel(
     fun removeLevel(index: Int) {
         _uiState.update { state ->
             val levelToRemove = state.levels.getOrNull(index) ?: return@update state
+            // Solo se reasigna `order` (posicion): `points` viaja con cada nivel y no debe
+            // reescribirse por posicion tras un borrado, o una escala personalizada o
+            // descendente (p. ej. Excelente=4, Bien=3, Suficiente=2, Insuficiente=1) queda
+            // invertida/rota para el resto de niveles que sobreviven. Mismo criterio que
+            // reorderLevels, que ya solo toca `order`.
             val newLevels = state.levels.toMutableList().apply { removeAt(index) }
-                .mapIndexed { idx, level -> 
-                    level.copy(
-                        order = idx,
-                        points = idx + 1
-                    ) 
-                }
-            
+                .mapIndexed { idx, level -> level.copy(order = idx) }
+
             val newCriteria = state.criteria.map { criterion ->
                 val newDesc = criterion.levelDescriptions.toMutableMap()
                 newDesc.remove(levelToRemove.uid)
@@ -537,16 +537,18 @@ class RubricsViewModel(
                         .forEach { rubricsRepository.deleteCriterion(it.id) }
                 }
 
-                val retainedLevelOrders = state.levels.map { it.order }.toSet()
+                // Emparejar por `id` (estable, viaja con el nivel a traves de reordenar/editar),
+                // no por `order`: la posicion cambia con cada reorderLevels, y reutilizar el id
+                // que HABIA en esa posicion para un nivel DISTINTO reescribiria en sitio el
+                // nombre/puntos de un nivel ya referenciado por evaluaciones guardadas -mismo
+                // id, significado distinto- corrompiendo en silencio las notas ya calculadas.
+                val retainedLevelIds = state.levels.mapNotNull { it.id }.toSet()
                 state.criteria.forEach { c ->
-                    val existingLevelsByOrder = c.id
-                        ?.let { rubricsRepository.listLevelsByCriterion(it) }
-                        ?.also { levels ->
-                            levels.filterNot { it.order in retainedLevelOrders }
-                                .forEach { rubricsRepository.deleteLevel(it.id) }
-                        }
-                        ?.associateBy { it.order }
-                        .orEmpty()
+                    if (c.id != null) {
+                        rubricsRepository.listLevelsByCriterion(c.id)
+                            .filterNot { it.id in retainedLevelIds }
+                            .forEach { rubricsRepository.deleteLevel(it.id) }
+                    }
 
                     val criterionId = rubricsRepository.saveCriterion(
                         id = c.id,
@@ -555,10 +557,10 @@ class RubricsViewModel(
                         weight = c.weight,
                         order = c.order
                     )
-                    
+
                     state.levels.forEach { levelDef ->
                         rubricsRepository.saveLevel(
-                            id = existingLevelsByOrder[levelDef.order]?.id,
+                            id = levelDef.id,
                             criterionId = criterionId,
                             name = levelDef.name,
                             points = levelDef.points,

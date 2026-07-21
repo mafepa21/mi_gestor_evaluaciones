@@ -14,3 +14,9 @@ fun getIosAppDataPath(fileName: String): String = appleAppSupportPath(
     appSupportDirectoryName = IOS_APP_SUPPORT_DIR,
     fileName = fileName,
 )
+
+/** Nombre del fichero de base de datos que realmente abre la app iOS. */
+fun iosDatabaseFileName(): String = IOS_DB_NAME
+
+/** Ruta completa de la base de datos que abre la app iOS. */
+fun getIosDatabasePath(): String = getIosAppDataPath(IOS_DB_NAME)

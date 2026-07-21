@@ -10915,19 +10915,12 @@ final class KmpBridge: ObservableObject {
         #endif
     }
 
+    /// Ruta de la base de datos activa. Se pide al bootstrap, que a su vez la pide al
+    /// módulo que abre el driver: es la única fuente de verdad. Reconstruirla a mano aquí
+    /// ya produjo dos rutas divergentes (macOS apuntaba a un fichero fantasma, e iOS a
+    /// "MiGestor/" cuando su directorio real es "MiGestorKMPiOS/").
     private func getDatabaseURL() -> URL? {
-        let fileManager = FileManager.default
-        guard let appSupportURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            return nil
-        }
-        #if os(macOS)
-        let dbName = "desktop_mi_gestor_kmp.db"
-        #else
-        let dbName = "mi_gestor_kmp.db"
-        #endif
-        return appSupportURL
-            .appendingPathComponent("MiGestor", isDirectory: true)
-            .appendingPathComponent(dbName, isDirectory: false)
+        URL(fileURLWithPath: appleBootstrap.databasePath)
     }
 
     private func checkLocalDbFileModification() async {

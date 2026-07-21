@@ -581,12 +581,20 @@ class RubricsViewModel(
                     )
                 }
 
-                // If a class is selected, create an evaluation linked to this rubric
+                // Si hay clase seleccionada, crear (o actualizar) la evaluacion vinculada a
+                // esta rubrica. Sin comprobar si ya existe una "RUB-<id>" para esta
+                // rubrica+clase, cada guardado de una rubrica ya asignada (p. ej. corregir un
+                // texto) creaba una evaluacion NUEVA (id = null) ademas de la existente:
+                // duplicados con weight=1.0 que desbalanceaban la nota final de la clase.
                 state.selectedClassId?.let { classId ->
+                    val evaluationCode = "RUB-${rubricId}"
+                    val existingEvaluationId = evaluationsRepository.listClassEvaluations(classId)
+                        .firstOrNull { it.code == evaluationCode }
+                        ?.id
                     evaluationsRepository.saveEvaluation(
-                        id = null,
+                        id = existingEvaluationId,
                         classId = classId,
-                        code = "RUB-${rubricId}",
+                        code = evaluationCode,
                         name = state.rubricName,
                         type = "Rúbrica",
                         weight = 1.0,

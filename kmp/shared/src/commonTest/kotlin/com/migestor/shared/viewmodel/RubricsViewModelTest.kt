@@ -133,6 +133,56 @@ class RubricsViewModelTest {
     }
 
     @Test
+    fun `saveRubric does not duplicate the linked evaluation on repeated saves`() = runTest {
+        // Regresion: saveRubric creaba SIEMPRE una evaluacion nueva (id = null) cuando
+        // habia clase seleccionada, sin comprobar si ya existia una "RUB-<id>" para esa
+        // rubrica+clase. Editar una rubrica ya asignada (loadRubric fija selectedClassId
+        // al de la rubrica) y guardar dos veces duplicaba la evaluacion vinculada, con
+        // weight=1.0 cada una, desbalanceando la nota final de la clase.
+        val classId = 10L
+        val savedEvaluations = mutableListOf<Evaluation>()
+        var nextEvalId = 500L
+
+        val fakeEvaluations = object : RubricsTestFakeEvaluationsRepository() {
+            override suspend fun listClassEvaluations(classId: Long): List<Evaluation> =
+                savedEvaluations.filter { it.classId == classId }
+            override suspend fun saveEvaluation(
+                id: Long?, classId: Long, code: String, name: String, type: String, weight: Double,
+                formula: String?, rubricId: Long?, description: String?, authorUserId: Long?,
+                createdAtEpochMs: Long, updatedAtEpochMs: Long, associatedGroupId: Long?,
+                deviceId: String?, syncVersion: Long,
+            ): Long {
+                val resolvedId = id ?: nextEvalId++
+                savedEvaluations.removeAll { it.id == resolvedId }
+                savedEvaluations += Evaluation(
+                    id = resolvedId, classId = classId, code = code, name = name,
+                    type = type, weight = weight, rubricId = rubricId,
+                )
+                return resolvedId
+            }
+        }
+
+        val viewModel = createViewModel(evaluationsRepository = fakeEvaluations)
+        viewModel.loadRubric(
+            RubricDetail(rubric = Rubric(id = 7L, name = "Rubrica", classId = classId), criteria = emptyList())
+        )
+        advanceUntilIdle()
+
+        var completedFirst = false
+        viewModel.saveRubric { completedFirst = true }
+        advanceUntilIdle()
+
+        var completedSecond = false
+        viewModel.saveRubric { completedSecond = true }
+        advanceUntilIdle()
+
+        assertEquals(true, completedFirst)
+        assertEquals(true, completedSecond)
+        val linkedEvaluations = savedEvaluations.filter { it.classId == classId && it.rubricId != null }
+        assertEquals(1, linkedEvaluations.size, "Guardar la rubrica dos veces no debe duplicar su evaluacion vinculada: $linkedEvaluations")
+    }
+
+    @Test
     fun `workspace summaries reflect rubric usage and keep selection inside filter`() = runTest {
         val rubricA = sampleRubricDetail(id = 1, name = "Rúbrica A", classId = 10)
         val rubricB = sampleRubricDetail(id = 2, name = "Rúbrica B", classId = 20)
@@ -320,7 +370,7 @@ private class RubricsTestFakeClassesRepository(
     override suspend fun listStudentsInClass(classId: Long): List<Student> = emptyList()
 }
 
-private class RubricsTestFakeEvaluationsRepository(
+private open class RubricsTestFakeEvaluationsRepository(
     private val evaluationsByClass: Map<Long, List<Evaluation>> = emptyMap()
 ) : EvaluationsRepository {
     override fun observeClassEvaluations(classId: Long): Flow<List<Evaluation>> = flowOf(emptyList())

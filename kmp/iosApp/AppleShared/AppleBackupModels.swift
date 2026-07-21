@@ -92,6 +92,48 @@ extension AppleBackupDescriptor {
     public var sizeText: String {
         ByteCountFormatter.string(fromByteCount: sizeBytes, countStyle: .file)
     }
+
+    /// La copia contiene una base de datos vacía, así que restaurarla destruiría los datos
+    /// actuales sin aportar nada. El checksum de estas copias es válido —el hash del vacío
+    /// también es un hash— por lo que `isVerified` no basta para detectarlas.
+    public var hasEmptyDatabase: Bool {
+        manifest.databaseSizeBytes <= 0
+    }
+
+    /// Puede ofrecerse al usuario para restaurar.
+    public var isRestorable: Bool {
+        isVerified && !hasEmptyDatabase
+    }
+}
+
+/// Base de datos que el arranque apartó porque no pudo abrirla, renombrándola a
+/// `<nombre>.backup_<epoch>` y arrancando con una vacía. El fichero sigue en disco y
+/// normalmente es recuperable: esta estructura existe para poder decírselo al usuario.
+public struct AppleQuarantinedDatabase: Identifiable, Hashable {
+    public var id: String { url.path }
+    public let url: URL
+    public let quarantinedAt: Date
+    public let sizeBytes: Int64
+    /// Recuentos leídos del propio fichero, para que el usuario vea qué contiene
+    /// antes de decidir. `nil` si no se pudo abrir.
+    public let summary: AppleBackupSummary?
+
+    public init(url: URL, quarantinedAt: Date, sizeBytes: Int64, summary: AppleBackupSummary?) {
+        self.url = url
+        self.quarantinedAt = quarantinedAt
+        self.sizeBytes = sizeBytes
+        self.summary = summary
+    }
+
+    public var sizeText: String {
+        ByteCountFormatter.string(fromByteCount: sizeBytes, countStyle: .file)
+    }
+
+    /// Contiene datos que merece la pena recuperar.
+    public var looksRecoverable: Bool {
+        guard let summary else { return false }
+        return sizeBytes > 0 && (summary.classCount > 0 || summary.studentCount > 0)
+    }
 }
 
 public enum AppleBackupOperationState: Equatable {

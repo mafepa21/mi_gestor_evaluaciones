@@ -58,13 +58,15 @@ internal fun createAppleDriver(
             println("[AppleDriver] Renaming database $databasePath -> $backupPath to recover")
             fileManager.moveItemAtPath(databasePath, backupPath, null)
 
-            val walPath = "$databasePath-wal"
-            if (fileManager.fileExistsAtPath(walPath)) {
-                fileManager.removeItemAtPath(walPath, null)
-            }
-            val shmPath = "$databasePath-shm"
-            if (fileManager.fileExistsAtPath(shmPath)) {
-                fileManager.removeItemAtPath(shmPath, null)
+            // El WAL contiene transacciones ya confirmadas que aún no se han volcado al
+            // fichero principal. Borrarlo destruye datos reales del usuario, y además deja
+            // el .db en cuarentena incompleto e irrecuperable. Se mueven junto al .db para
+            // que la cuarentena sea restaurable tal cual.
+            for (suffix in listOf("-wal", "-shm")) {
+                val sidecarPath = "$databasePath$suffix"
+                if (fileManager.fileExistsAtPath(sidecarPath)) {
+                    fileManager.moveItemAtPath(sidecarPath, "$backupPath$suffix", null)
+                }
             }
         }
 

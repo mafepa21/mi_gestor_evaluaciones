@@ -147,7 +147,16 @@ struct BackupRowView: View {
                     
                     // Verification Status Badge
                     HStack(spacing: 4) {
-                        if backup.isVerified {
+                        if backup.hasEmptyDatabase {
+                            // El checksum de un fichero vacío es válido, así que estas copias
+                            // se mostraban como "Válida". Restaurarlas borra los datos actuales
+                            // y no repone nada.
+                            Image(systemName: "xmark.octagon.fill")
+                                .foregroundStyle(IOSAppStyle.danger)
+                            Text("Vacía")
+                                .font(IOSAppStyle.captionText)
+                                .foregroundStyle(IOSAppStyle.danger)
+                        } else if backup.isVerified {
                             if backup.verificationError != nil {
                                 Image(systemName: "exclamationmark.triangle.fill")
                                     .foregroundStyle(IOSAppStyle.danger)
@@ -174,9 +183,11 @@ struct BackupRowView: View {
                     .background(
                         Capsule()
                             .fill(
-                                backup.isVerified
-                                    ? (backup.verificationError != nil ? IOSAppStyle.danger.opacity(0.12) : IOSAppStyle.success.opacity(0.12))
-                                    : Color.secondary.opacity(0.12)
+                                backup.hasEmptyDatabase
+                                    ? IOSAppStyle.danger.opacity(0.12)
+                                    : (backup.isVerified
+                                        ? (backup.verificationError != nil ? IOSAppStyle.danger.opacity(0.12) : IOSAppStyle.success.opacity(0.12))
+                                        : Color.secondary.opacity(0.12))
                             )
                     )
                 }
@@ -226,7 +237,9 @@ struct BackupRowView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
+                    .disabled(backup.hasEmptyDatabase)
                     .accessibilityLabel("Restaurar copia")
+                    .help(backup.hasEmptyDatabase ? "Esta copia no contiene datos: restaurarla borraría los actuales sin reponer nada." : "Restaurar copia")
                 }
             }
         }
@@ -240,6 +253,7 @@ struct BackupRowView: View {
             Button(action: onRestore) {
                 Label("Restaurar", systemImage: "arrow.clockwise.to.line")
             }
+            .disabled(backup.hasEmptyDatabase)
             Divider()
             Button(role: .destructive, action: onDelete) {
                 Label("Eliminar", systemImage: "trash")

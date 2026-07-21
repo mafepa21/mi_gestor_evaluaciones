@@ -497,6 +497,12 @@ interface PlannerRepository {
         SessionCascadeMoveResult()
     suspend fun restoreCascadeMove(previousPlacements: List<SessionPlacement>): SessionCascadeMoveResult =
         SessionCascadeMoveResult()
+    @Throws(Exception::class)
+    suspend fun listSessionTemplates(): List<PlannerSessionTemplate> = emptyList()
+    @Throws(Exception::class)
+    suspend fun saveSessionTemplate(template: PlannerSessionTemplate): Long = 0
+    @Throws(Exception::class)
+    suspend fun deleteSessionTemplate(templateId: Long): Boolean = false
 }
 
 interface SessionJournalRepository {

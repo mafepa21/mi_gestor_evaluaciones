@@ -34,7 +34,7 @@ Cambios posteriores a `v0.3.0-traceability-baseline`.
 - Planner: Eliminado el botón de grabación de audio en macOS que no ofrecía respuesta; ahora muestra un estado deshabilitado con el mensaje claro "Grabación de audio disponible solo en iPad".
 - Planner: Eliminado force unwrap crasheable (`seqIdBySessionId[$0.id]!`) en la vista de Secuencias (`PlannerWorkspaceViewModel+Sequences.swift`), reemplazado por iteración segura.
 - Planner: Eliminado `import Combine` duplicado en `PlannerDayView.swift` y deduplicadas las extensiones privadas `nilIfBlank` hacia `AppleShared/StringHelpers.swift`.
-- Planner: Optimización de rendimiento al desacoplar el cómputo O(N²) de Secuencias hacia `Task.detached` y al aislar el temporizador de 60 segundos de la vista Día en la clase `@Observable PlannerDayTimeTick`.
+- Planner: Optimización de rendimiento al desacoplar el cómputo O(N²) de Secuencias hacia `Task.detached` y al aislar el temporizador de 60 segundos de la vista Día en la clase `PlannerDayTimeTick` (`ObservableObject` compatible con iOS 16+).
 - Planner: Cacheado de `PlannerSummaryStats` en `@State` para evitar re-filtrado pesado en cada ciclo de render del resumen.
 
 ### Data

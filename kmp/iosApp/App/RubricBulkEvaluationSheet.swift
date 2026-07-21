@@ -641,14 +641,28 @@ struct RubricBulkEvaluationSheet: View {
         }
     }
 
+    /// Nota compacta con separador decimal localizado (coma en es-ES), coherente
+    /// con el resto de la app; `String(format: "%.1f")` forzaba siempre el punto.
+    private static let scorePillFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 1
+        formatter.maximumFractionDigits = 1
+        return formatter
+    }()
+
     private func scorePill(for studentId: Int64, width: CGFloat, cache: BulkRubricEvaluationCache) -> some View {
         let score = cache.score(for: studentId)
-        let scoreText = score.map { String(format: "%.1f", $0) } ?? "—"
+        let scoreText = score.map {
+            Self.scorePillFormatter.string(from: NSNumber(value: $0)) ?? String(format: "%.1f", $0)
+        } ?? "—"
         let tint = score.map { RubricsStyle.gradeColor(forScoreOutOfTen: $0) }
 
         return Text(scoreText)
             .font(.system(size: 20, weight: .black, design: .rounded))
             .foregroundStyle(tint ?? .secondary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
             .frame(width: width, alignment: .center)
     }
 

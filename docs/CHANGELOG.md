@@ -35,7 +35,7 @@ Cambios posteriores a `v0.3.0-traceability-baseline`.
 - Planner: Eliminado force unwrap crasheable (`seqIdBySessionId[$0.id]!`) en la vista de Secuencias (`PlannerWorkspaceViewModel+Sequences.swift`), reemplazado por iteración segura.
 - Planner: Eliminado `import Combine` duplicado en `PlannerDayView.swift` y deduplicadas las extensiones privadas `nilIfBlank` hacia `AppleShared/StringHelpers.swift`.
 - Planner: Optimización de rendimiento al desacoplar el cómputo O(N²) de Secuencias hacia `Task.detached` y al aislar el temporizador de 60 segundos de la vista Día en la clase `PlannerDayTimeTick` (`ObservableObject` compatible con iOS 16+).
-- Planner: Cacheado de `PlannerSummaryStats` en `@State` para evitar re-filtrado pesado en cada ciclo de render del resumen.
+- Planner & Attendance: Resueltos errores de compilación para iOS 16 y macOS (`AttendanceWorkspaceView` `.inspector` con `#available(iOS 17.0, macOS 14.0, *)`, aislamiento de actor de `isoWeeks` en `Task`, simplificación de tipos en `sequenceGroups()`, visibilidad pública de `nilIfBlank` en `StringHelpers.swift` añadida a ambos targets de Xcode y migración a `ObservableObject` para `PlannerDayTimeTick`).
 
 ### Data
 

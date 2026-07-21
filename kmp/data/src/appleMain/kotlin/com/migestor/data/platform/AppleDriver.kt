@@ -58,13 +58,18 @@ internal fun createAppleDriver(
             println("[AppleDriver] Renaming database $databasePath -> $backupPath to recover")
             fileManager.moveItemAtPath(databasePath, backupPath, null)
 
+            // Renombrar junto al .db de rescate, nunca borrar: el -wal puede
+            // contener transacciones confirmadas pendientes de checkpoint (las
+            // notas del ultimo dia). Borrarlas aqui las perderia de forma
+            // irreversible justo en el camino que se activa tras un fallo al
+            // abrir la BD (crash o estado raro previo).
             val walPath = "$databasePath-wal"
             if (fileManager.fileExistsAtPath(walPath)) {
-                fileManager.removeItemAtPath(walPath, null)
+                fileManager.moveItemAtPath(walPath, "$backupPath-wal", null)
             }
             val shmPath = "$databasePath-shm"
             if (fileManager.fileExistsAtPath(shmPath)) {
-                fileManager.removeItemAtPath(shmPath, null)
+                fileManager.moveItemAtPath(shmPath, "$backupPath-shm", null)
             }
         }
 

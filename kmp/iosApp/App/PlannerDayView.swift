@@ -1,9 +1,8 @@
 import SwiftUI
 import MiGestorKit
 
-@Observable
-class PlannerDayTimeTick {
-    var currentTime = Date()
+final class PlannerDayTimeTick: ObservableObject {
+    @Published var currentTime = Date()
     private var timer: Timer?
     
     func start() {
@@ -39,7 +38,7 @@ struct PlannerDayView: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
     let onOpenSession: (PlanningSession) -> Void
 
-    @State private var timeTick = PlannerDayTimeTick()
+    @StateObject private var timeTick = PlannerDayTimeTick()
     private var currentTime: Date { timeTick.currentTime }
     @State private var completionUndo: (session: PlanningSession, previousStatus: SessionStatus)?
     @State private var undoDismissTask: Task<Void, Never>?

@@ -89,6 +89,43 @@ extension PlannerWorkspaceViewModel {
             composerSaveState = .saved(Date())
             showingComposer = false
             updateSessionFromComposerSave(result: result, groupId: groupId, groupName: groupName, slotMetadata: slotMetadata)
+
+            // Recurrencia: guardar en semanas consecutivas si repeatWeeksCount > 1
+            if composerDraft.repeatWeeksCount > 1 && composerDraft.sessionId == 0 {
+                let repeatCount = composerDraft.repeatWeeksCount
+                let draft = composerDraft
+                Task.detached { [weak self] in
+                    guard let self else { return }
+                    for weekOffset in 1..<repeatCount {
+                        var targetWeek = await self.week + weekOffset
+                        var targetYear = await self.year
+                        let maxIsoWeeks = Self.isoWeeks(in: targetYear)
+                        if targetWeek > maxIsoWeeks {
+                            targetWeek -= maxIsoWeeks
+                            targetYear += 1
+                        }
+                        _ = try? await bridge.plannerSaveSessionWithLinks(
+                            id: 0,
+                            groupId: groupId,
+                            groupName: groupName,
+                            dayOfWeek: draft.dayOfWeek,
+                            period: draft.period,
+                            weekNumber: targetWeek,
+                            year: targetYear,
+                            teachingUnitId: result.teachingUnitId,
+                            newTeachingUnitName: draft.unitTitle,
+                            objectives: draft.objectives,
+                            activities: draft.activities,
+                            teacherScheduleSlotId: slotMetadata.slotId,
+                            startTime: slotMetadata.startTime,
+                            endTime: slotMetadata.endTime,
+                            learningSituationSessionPlanId: draft.learningSituationSessionPlanId,
+                            selectedInstruments: selectedInstruments
+                        )
+                    }
+                }
+            }
+
             return true
         } catch {
             composerContextError = "No se pudo guardar la sesión: \(error.localizedDescription)"
@@ -116,6 +153,46 @@ extension PlannerWorkspaceViewModel {
         composerTeachingUnits = composerStore.teachingUnits
         composerAvailableInstruments = composerStore.availableInstruments
         composerContextError = composerStore.contextError
+        await loadSessionTemplates()
+    }
+
+    func loadSessionTemplates() async {
+        guard let bridge else { return }
+        sessionTemplates = (try? await bridge.plannerListSessionTemplates()) ?? []
+    }
+
+    func applyTemplate(_ template: PlannerSessionTemplate) {
+        if !template.objectives.isEmpty { composerDraft.objectives = template.objectives }
+        if !template.activities.isEmpty { composerDraft.activities = template.activities }
+        if composerDraft.unitTitle.isEmpty && !template.title.isEmpty {
+            composerDraft.unitTitle = template.title
+        }
+    }
+
+    func saveCurrentDraftAsTemplate(title: String, category: String = "GENERAL") async -> Bool {
+        guard let bridge else { return false }
+        let templateTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !templateTitle.isEmpty else { return false }
+        do {
+            _ = try await bridge.plannerSaveSessionTemplate(
+                id: 0,
+                title: templateTitle,
+                category: category,
+                objectives: composerDraft.objectives,
+                activities: composerDraft.activities,
+                evaluation: ""
+            )
+            await loadSessionTemplates()
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    func deleteSessionTemplate(_ template: PlannerSessionTemplate) async {
+        guard let bridge else { return }
+        _ = try? await bridge.plannerDeleteSessionTemplate(id: template.id)
+        await loadSessionTemplates()
     }
 
     private func updateSessionFromComposerSave(

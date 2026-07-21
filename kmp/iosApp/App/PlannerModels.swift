@@ -257,6 +257,7 @@ struct PlannerComposerDraft {
     var endTime: String? = nil
     var selectedInstrumentIds: Set<String> = []
     var learningSituationSessionPlanId: Int64? = nil
+    var repeatWeeksCount = 1
 }
 
 enum PlannerSaveState: Equatable {

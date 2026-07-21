@@ -2903,6 +2903,34 @@ final class KmpBridge: ObservableObject {
         )
     }
 
+    func plannerListSessionTemplates() async throws -> [PlannerSessionTemplate] {
+        try await container.plannerRepository.listSessionTemplates()
+    }
+
+    func plannerSaveSessionTemplate(
+        id: Int64 = 0,
+        title: String,
+        category: String = "GENERAL",
+        objectives: String,
+        activities: String,
+        evaluation: String = ""
+    ) async throws -> Int64 {
+        let template = PlannerSessionTemplate(
+            id: id,
+            title: title,
+            category: category,
+            objectives: objectives,
+            activities: activities,
+            evaluation: evaluation,
+            createdAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000)
+        )
+        return try await container.plannerRepository.saveSessionTemplate(template: template).int64Value
+    }
+
+    func plannerDeleteSessionTemplate(id: Int64) async throws -> Bool {
+        try await container.plannerRepository.deleteSessionTemplate(templateId: id).boolValue
+    }
+
     func plannerJournal(for session: PlanningSession) async throws -> SessionJournalAggregate {
         try await container.sessionJournalRepository.getOrCreateJournal(session: session)
     }

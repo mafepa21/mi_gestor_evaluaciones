@@ -864,19 +864,25 @@ class NotebookViewModel(
         setSyncing(true)
         return try {
             currentState.sheet.rows.forEach { row ->
-                currentState.sheet.columns.forEach { column ->
+                currentState.sheet.columns.forEach columnLoop@{ column ->
                     val key = row.student.id to column.id
                     when (column.type) {
                         NotebookColumnType.NUMERIC,
                         NotebookColumnType.RUBRIC -> {
                             val draft = currentState.numericDrafts[key]
                             if (draft != null) {
+                                val raw = draft.trim()
+                                val numericValue = raw.replace(",", ".").toDoubleOrNull()
+                                // Mismo guard que internalSaveGrade: un draft no vacio que no
+                                // parsea (p. ej. "7,,5") no debe guardarse como null, pisando
+                                // la nota ya existente en BD con un valor vacio.
+                                if (raw.isNotEmpty() && numericValue == null) return@columnLoop
                                 notebookRepository.saveGrade(
                                     classId = classId,
                                     studentId = row.student.id,
                                     columnId = column.id,
                                     evaluationId = column.evaluationId,
-                                    value = draft.replace(",", ".").toDoubleOrNull()
+                                    value = numericValue
                                 )
                             }
                         }

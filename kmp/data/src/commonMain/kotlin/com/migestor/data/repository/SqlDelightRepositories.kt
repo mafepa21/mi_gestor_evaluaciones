@@ -454,6 +454,48 @@ class StudentsRepositorySqlDelight(
         }
     }
 
+    private fun shouldApplyIncomingChange(
+        existingUpdatedAtEpochMs: Long?,
+        existingDeviceId: String?,
+        incomingUpdatedAtEpochMs: Long,
+        incomingDeviceId: String?,
+    ): Boolean {
+        val existingUpdatedAt = existingUpdatedAtEpochMs ?: return true
+        if (incomingUpdatedAtEpochMs > existingUpdatedAt) return true
+        if (incomingUpdatedAtEpochMs < existingUpdatedAt) return false
+        val incoming = incomingDeviceId ?: ""
+        val existing = existingDeviceId ?: ""
+        return incoming >= existing
+    }
+
+    override suspend fun upsertStudent(
+        id: Long?,
+        firstName: String,
+        lastName: String,
+        email: String?,
+        photoPath: String?,
+        isInjured: Boolean,
+        sex: StudentSex,
+        sexSource: StudentSexSource,
+        birthDate: LocalDate?,
+        updatedAtEpochMs: Long,
+        deviceId: String?,
+        syncVersion: Long,
+    ) = withContext(Dispatchers.Default) {
+        val now = if (updatedAtEpochMs > 0) updatedAtEpochMs else Clock.System.now().toEpochMilliseconds()
+        val existing = id?.let { db.appDatabaseQueries.selectStudentById(it).executeAsOneOrNull() }
+        val canApply = shouldApplyIncomingChange(
+            existingUpdatedAtEpochMs = existing?.updated_at_epoch_ms,
+            existingDeviceId = existing?.device_id,
+            incomingUpdatedAtEpochMs = now,
+            incomingDeviceId = deviceId,
+        )
+        if (!canApply) return@withContext
+
+        val injured = if (isInjured) 1L else 0L
+        db.appDatabaseQueries.upsertStudent(id, firstName, lastName, email, photoPath, injured, sex.name, sexSource.name, birthDate?.toString(), now, deviceId, syncVersion)
+    }
+
     override suspend fun deleteStudent(studentId: Long) = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.deleteStudent(studentId)
     }

@@ -20,6 +20,8 @@ import com.migestor.shared.domain.NotebookTab
 import com.migestor.shared.domain.PlannerEvaluationPeriod
 import com.migestor.shared.domain.PlanningSession
 import com.migestor.shared.domain.SessionStatus
+import com.migestor.shared.domain.StudentSex
+import com.migestor.shared.domain.StudentSexSource
 import com.migestor.shared.domain.TeacherSchedule
 import com.migestor.shared.domain.TeacherScheduleSlot
 import com.migestor.shared.domain.TeachingUnit
@@ -1128,13 +1130,22 @@ class SqlDelightSyncAdapter(
                         val id = payload.long("id")
                         val firstName = payload.string("firstName") ?: return@forEach
                         val lastName = payload.string("lastName") ?: return@forEach
-                        container.studentsRepository.saveStudent(
+                        // upsertStudent (no saveStudent, pensado para ediciones locales): aplica
+                        // guard LWW por updated_at y no reemplaza sexo/fecha de nacimiento con los
+                        // defaults UNSPECIFIED/UNKNOWN/null cuando el emisor si los envio.
+                        container.studentsRepository.upsertStudent(
                             id = id?.takeIf { it > 0L },
                             firstName = firstName,
                             lastName = lastName,
                             email = payload.string("email"),
                             photoPath = payload.string("photoPath"),
                             isInjured = payload.bool("isInjured") ?: false,
+                            sex = payload.string("sex")?.let { runCatching { StudentSex.valueOf(it) }.getOrNull() }
+                                ?: StudentSex.UNSPECIFIED,
+                            sexSource = payload.string("sexSource")?.let { runCatching { StudentSexSource.valueOf(it) }.getOrNull() }
+                                ?: StudentSexSource.UNKNOWN,
+                            birthDate = payload.string("birthDate")
+                                ?.let { runCatching { kotlinx.datetime.LocalDate.parse(it) }.getOrNull() },
                             updatedAtEpochMs = change.updatedAtEpochMs,
                             deviceId = change.deviceId,
                             syncVersion = 1,

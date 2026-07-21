@@ -1,7 +1,23 @@
 import SwiftUI
-import Combine
 import MiGestorKit
-import Combine
+
+@Observable
+class PlannerDayTimeTick {
+    var currentTime = Date()
+    private var timer: Timer?
+    
+    func start() {
+        if timer == nil {
+            timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+                self?.currentTime = Date()
+            }
+        }
+    }
+    func stop() {
+        timer?.invalidate()
+        timer = nil
+    }
+}
 
 private enum PlannerDayTimelineRow: Identifiable {
     case session(PlanningSession)
@@ -23,15 +39,14 @@ struct PlannerDayView: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
     let onOpenSession: (PlanningSession) -> Void
 
-    @State private var currentTime = Date()
+    @State private var timeTick = PlannerDayTimeTick()
+    private var currentTime: Date { timeTick.currentTime }
     @State private var completionUndo: (session: PlanningSession, previousStatus: SessionStatus)?
     @State private var undoDismissTask: Task<Void, Never>?
     @State private var quickNoteSession: PlanningSession?
     @State private var quickNoteText = ""
     @State private var dragTranslation: CGFloat = 0
     @State private var showingQuickJournal = false
-
-    private let nowTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
     private var sessions: [PlanningSession] { vm.daySessions() }
 
@@ -45,7 +60,8 @@ struct PlannerDayView: View {
             .padding(EvaluationDesign.screenPadding)
         }
         .simultaneousGesture(daySwipeGesture)
-        .onReceive(nowTimer) { currentTime = $0 }
+        .onAppear { timeTick.start() }
+        .onDisappear { timeTick.stop() }
         .sheet(
             isPresented: Binding(
                 get: { quickNoteSession != nil },

@@ -1851,8 +1851,17 @@ class NotebookViewModel(
 
         calculatedColumns.forEach { column ->
             val formula = column.formula ?: return@forEach
-            val result = runCatching { formulaEvaluator.evaluate(formula, vars) }.getOrNull() ?: return@forEach
-            numericDrafts[studentId to column.id] = result.toString()
+            val result = runCatching { formulaEvaluator.evaluate(formula, vars) }.getOrNull()
+            if (result != null) {
+                numericDrafts[studentId to column.id] = result.toString()
+            } else {
+                // La formula fallo (variable ausente tras borrar la nota que referenciaba,
+                // division por cero, ...): no debe conservarse un valor calculado stale de
+                // un draft/persistencia anterior. Se vacia para que la celda y la media
+                // dejen de contar ese valor caduco, en vez de seguir mostrandolo como si
+                // siguiera siendo valido.
+                numericDrafts.remove(studentId to column.id)
+            }
         }
     }
 

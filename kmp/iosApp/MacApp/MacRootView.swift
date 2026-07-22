@@ -133,7 +133,12 @@ struct MacRootView: View {
         // iPad (760-860pt), which the shell's generic inspector (maxWidth 440) can't give it.
         // Diary opts out too: DiaryWorkspaceView (shared with iPad/iOS) brings its own
         // 3-panel layout with an internal inspector.
-        if selectedFeature == .attendance || selectedFeature == .planner || selectedFeature == .diary {
+        // Rubrics opts out too: featureInspector(for:) has no real case for .rubrics (falls
+        // to the generic MacModuleInspectorPlaceholder), and MacRubricsView already has its
+        // own HSplitView detail panel — the shell inspector was just reserving 320-440pt for
+        // nothing (UI-13 de plan_auditoria_ui_2026-07-15.md).
+        if selectedFeature == .attendance || selectedFeature == .planner || selectedFeature == .diary
+            || selectedFeature == .rubrics {
             featureContent(for: selectedFeature)
                 .id(selectedFeature)
                 .transition(uiFeatureFlags.contentSwitchTransition)

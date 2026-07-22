@@ -69,6 +69,10 @@ struct NotebookModuleView: View {
     var groupByWorkGroup: Bool {
         groupByWorkGroupMode != "none"
     }
+    /// Color semántico de nota + heat de celda (rediseño radical del grid).
+    /// Toggle propio en el menú de acciones; `NotebookStatefulEditableTableCell`
+    /// lee la misma clave con su propio `@AppStorage` (ver `NotebookGridStyle`).
+    @AppStorage(NotebookGridStyle.semanticGradeColorDefaultsKey) var semanticGradeColorEnabled = true
     @State var categoryDraft = ""
     @State var editingCategoryId: String? = nil
     @State var isNotebookTabAlertPresented = false
@@ -437,6 +441,19 @@ struct NotebookModuleView: View {
                     )
                 }
                 spreadsheetContent(data: data, rows: rows)
+                    // Tarjeta elevada: el grid flota como superficie redondeada
+                    // sobre el lienzo neutro del módulo (margen a los lados y
+                    // abajo), en vez de ir a sangre completa. Es lo que da el aire
+                    // premium; el clip + borde + sombra separan datos de lienzo.
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(NotebookGridStyle.gridLine, lineWidth: 1)
+                    )
+                    .shadow(color: NotebookGridStyle.gridSurfaceShadow, radius: 14, x: 0, y: 6)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 2)
+                    .padding(.bottom, 16)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
@@ -447,7 +464,7 @@ struct NotebookModuleView: View {
                     .background(.ultraThinMaterial)
             }
         }
-        .background(EvaluationBackdrop())
+        .background(NotebookCanvasBackground())
         .onAppear {
             gridLayoutModel.configure(classId: data.sheet.classId)
             loadClassLearningSituations(classId: data.sheet.classId)
@@ -617,7 +634,7 @@ struct NotebookModuleView: View {
         .background(.thinMaterial)
         .overlay(alignment: .bottom) {
             Rectangle()
-                .fill(NotebookStyle.softBorder)
+                .fill(NotebookGridStyle.gridLineStrong)
                 .frame(height: 1)
         }
     }
@@ -698,6 +715,10 @@ struct NotebookModuleView: View {
                 Label("Plano", systemImage: surfaceMode == .seatingPlan ? "checkmark" : "rectangle.3.group")
             }
             .disabled(focusMode != .normal)
+        }
+
+        Toggle(isOn: $semanticGradeColorEnabled) {
+            Label("Colorear notas por banda", systemImage: "paintpalette")
         }
 
         Menu("Pestañas") {
@@ -1716,7 +1737,7 @@ struct NotebookModuleView: View {
 
         #if os(macOS)
         content
-            .frame(minWidth: 520, idealWidth: 560, maxWidth: 640, minHeight: 560, idealHeight: 620)
+            .frame(minWidth: 820, idealWidth: 900, maxWidth: 1000, minHeight: 640, idealHeight: 780)
         #else
         content
             .presentationDetents([.large])

@@ -39,7 +39,11 @@ struct StudentProfilesWorkspaceView: View {
     @State private var showIncidentsSheet = false
     @State private var updatingStudentIds: Set<Int64> = []
     @State private var supportMeasures: [SupportMeasureRow] = []
+    @State private var tutoringSessions: [TutoringSessionRow] = []
     @State private var showSupportMeasureSheet = false
+    @State private var showTutoringSheet = false
+    @State private var editingTutoringSession: TutoringSessionRow?
+    @State private var pendingDeleteTutoringSession: TutoringSessionRow?
     @State private var showBulkImportSheet = false
     @State private var showGroupOverviewSheet = false
     @State private var pendingDeleteStudent: Student?
@@ -92,6 +96,27 @@ struct StudentProfilesWorkspaceView: View {
             }
             .appOnChange(of: selectedStudentId) { _ in
                 Task { await reloadProfile() }
+            }
+            .sheet(isPresented: $showTutoringSheet) {
+                if let studentId = selectedStudentId {
+                    TutoringSessionFormSheet(studentId: studentId) {
+                        Task { await reloadProfile() }
+                    }
+                    .environmentObject(bridge)
+                }
+            }
+            .sheet(
+                isPresented: Binding(
+                    get: { editingTutoringSession != nil },
+                    set: { if !$0 { editingTutoringSession = nil } }
+                )
+            ) {
+                if let studentId = selectedStudentId, let editingTutoringSession {
+                    TutoringSessionFormSheet(studentId: studentId, existingSession: editingTutoringSession) {
+                        Task { await reloadProfile() }
+                    }
+                    .environmentObject(bridge)
+                }
             }
             .sheet(isPresented: $showSupportMeasureSheet) {
                 if let studentId = selectedStudentId {
@@ -147,6 +172,23 @@ struct StudentProfilesWorkspaceView: View {
                 }
             } message: { student in
                 Text("\(student.firstName) \(student.lastName) tiene evaluaciones, asistencia y medidas vinculadas. Elige si quieres quitarlo solo de este grupo o eliminarlo por completo.")
+            }
+            .confirmationDialog(
+                "Eliminar tutoría",
+                isPresented: Binding(
+                    get: { pendingDeleteTutoringSession != nil },
+                    set: { if !$0 { pendingDeleteTutoringSession = nil } }
+                ),
+                presenting: pendingDeleteTutoringSession
+            ) { session in
+                Button("Eliminar la tutoría del \(session.dateDisplay)", role: .destructive) {
+                    Task { await deleteTutoringSession(session) }
+                }
+                Button("Cancelar", role: .cancel) {
+                    pendingDeleteTutoringSession = nil
+                }
+            } message: { _ in
+                Text("El acta de la entrevista se elimina de forma permanente.")
             }
             .confirmationDialog(
                 "Eliminar medida de apoyo",
@@ -595,6 +637,27 @@ struct StudentProfilesWorkspaceView: View {
                     }
                 }
 
+                // Tutorías con familias: acta documental de cada entrevista.
+                PremiumCard.section(title: "Tutorías con familias", systemImage: "person.2.wave.2.fill") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        if tutoringSessions.isEmpty {
+                            Text("Sin entrevistas registradas.")
+                                .font(IOSAppStyle.bodyText)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            ForEach(tutoringSessions) { session in
+                                tutoringSessionRow(session)
+                            }
+                        }
+                        Button {
+                            showTutoringSheet = true
+                        } label: {
+                            Label("Registrar tutoría", systemImage: "plus.circle.fill")
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                }
+
                 // Contexto pedagógico
                 if profile.adaptationsSummary != nil || profile.familyCommunicationSummary != nil {
                     PremiumCard.section(title: "Contexto pedagógico", systemImage: "person.text.rectangle") {
@@ -648,6 +711,64 @@ struct StudentProfilesWorkspaceView: View {
         }
         .padding(10)
         .background(IOSAppStyle.subtleFill, in: RoundedRectangle(cornerRadius: IOSAppStyle.innerRadius, style: .continuous))
+    }
+
+    private func tutoringSessionRow(_ session: TutoringSessionRow) -> some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Image(systemName: session.channel.systemImage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(session.dateDisplay)
+                        .font(.subheadline.weight(.bold))
+                    if session.isClosed {
+                        Text("Cerrada")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if !session.attendees.isEmpty {
+                    Text(session.attendees)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if !session.agreements.isEmpty {
+                    Text(session.agreements)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+                switch session.reviewStatus {
+                case .overdue:
+                    Text("Revisión vencida\(session.reviewDueDisplay.map { " · \($0)" } ?? "")")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(IOSAppStyle.danger)
+                case .dueSoon:
+                    Text("Revisión próxima\(session.reviewDueDisplay.map { " · \($0)" } ?? "")")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(IOSAppStyle.warning)
+                case .none:
+                    EmptyView()
+                }
+            }
+            Spacer()
+            Button("Editar") {
+                editingTutoringSession = session
+            }
+            .font(.caption.weight(.bold))
+            .buttonStyle(.borderless)
+
+            Button(role: .destructive) {
+                pendingDeleteTutoringSession = session
+            } label: {
+                Image(systemName: "trash")
+            }
+            .font(.caption.weight(.bold))
+            .buttonStyle(.borderless)
+        }
+        .padding(10)
+        .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func supportMeasureRow(_ measure: SupportMeasureRow) -> some View {
@@ -776,11 +897,13 @@ struct StudentProfilesWorkspaceView: View {
         guard let studentId = selectedStudentId else {
             profile = nil
             supportMeasures = []
+            tutoringSessions = []
             return
         }
         isLoadingProfile = true
         profile = try? await bridge.loadStudentProfile(studentId: studentId, classId: selectedClassId)
         supportMeasures = ((try? await bridge.supportMeasures(for: studentId)) ?? []).map(\.asRow)
+        tutoringSessions = ((try? await bridge.tutoringSessions(for: studentId)) ?? []).map(\.asRow)
         isLoadingProfile = false
     }
 
@@ -824,6 +947,19 @@ struct StudentProfilesWorkspaceView: View {
     }
 
     @MainActor
+    private func deleteTutoringSession(_ session: TutoringSessionRow) async {
+        pendingDeleteTutoringSession = nil
+        do {
+            try await bridge.deleteTutoringSession(id: session.id)
+            await reloadProfile()
+            bridge.status = "Tutoría eliminada."
+            AppleInteractionFeedback.play(.success)
+        } catch {
+            bridge.status = "No se pudo eliminar la tutoría: \(error.localizedDescription)"
+            AppleInteractionFeedback.play(.error)
+        }
+    }
+
     private func deleteSupportMeasure(_ measure: SupportMeasureRow) async {
         pendingDeleteSupportMeasure = nil
         do {

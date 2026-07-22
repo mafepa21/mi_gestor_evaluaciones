@@ -1823,12 +1823,21 @@ struct AnalyticsHorizontalBarsView: View {
 struct AnalyticsHeatmapView: View {
     let cells: [KmpBridge.HeatmapCell]
 
+    /// Las filas sí se ordenan alfabéticamente: hoy son etiquetas de semana
+    /// (`S-1`…`S-6`), donde el orden alfabético coincide con el cronológico
+    /// mientras no se superen las 9 semanas.
     var rows: [String] {
         Array(Set(cells.map(\.rowLabel))).sorted()
     }
 
+    /// Orden de aparición en `cells`, **no** alfabético. Las columnas son días
+    /// de la semana (`L`, `M`, `X`, `J`, `V`, `S`, `D`) y ordenarlas
+    /// alfabéticamente las dejaba como `D, J, L, M, S, V, X`, que hace el
+    /// heatmap ilegible. Quien construye las celdas ya las genera en el orden
+    /// correcto, así que basta con respetarlo.
     var columns: [String] {
-        Array(Set(cells.map(\.columnLabel))).sorted()
+        var seen = Set<String>()
+        return cells.map(\.columnLabel).filter { seen.insert($0).inserted }
     }
 
     var maxValue: Double {

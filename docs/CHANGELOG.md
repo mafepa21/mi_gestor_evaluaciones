@@ -15,6 +15,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 Cambios posteriores a `v0.3.0-traceability-baseline`.
 
+### Fixed
+
+- **Heatmap de incidencias: los días de la semana salían en orden alfabético.** `AnalyticsHeatmapView` derivaba las columnas con `Array(Set(...)).sorted()`, así que las etiquetas `L, M, X, J, V, S, D` se renderizaban como `D, J, L, M, S, V, X` y el gráfico era ilegible como serie semanal. Afectaba al heatmap ya publicado en Informes. Las columnas pasan a respetar el orden de aparición en las celdas, que es el que ya genera correctamente el productor de los datos; las filas (semanas `S-1`…`S-6`) mantienen el orden alfabético, que ahí coincide con el cronológico.
+
 ### Changed
 
 - Planner: Vista Secuencia (Gantt) rediseñada con un strip de progreso global superior que muestra de un vistazo la barra visual de avance y métricas compactas (sesiones impartidas, planificadas y sin ubicar), subtítulo reorientado a la acción y empty state descriptivo.

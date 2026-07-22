@@ -46,6 +46,9 @@ struct AttendanceWorkspaceView: View {
     @State var isAttendanceInspectorPresented = false
     @State var showAllPresent = false
     @State var classSelectionTask: Task<Void, Never>?
+    @State var incidentHeatmapFacts: KmpBridge.ChartFacts?
+    @State var isLoadingIncidentHeatmap = false
+    @State var incidentHeatmapTask: Task<Void, Never>?
 
     var boardSummary: (present: Int, absent: Int, late: Int, untracked: Int) {
         let rows = attendanceStore.studentsInClass.map { recordsByStudentId[$0.id] }
@@ -199,10 +202,17 @@ struct AttendanceWorkspaceView: View {
                     selectedStudentId = preselectedStudentId
                     self.preselectedStudentId = nil
                 }
+                // El modo puede venir restaurado en .history sin que
+                // selectedClassId llegue a cambiar, así que no basta con el
+                // appOnChange.
+                await reloadIncidentHeatmap()
             }
             .appOnChange(of: selectedClassId) { _ in
                 classSelectionTask?.cancel()
                 classSelectionTask = Task { await syncClassSelection() }
+                incidentHeatmapFacts = nil
+                incidentHeatmapTask?.cancel()
+                incidentHeatmapTask = Task { await reloadIncidentHeatmap() }
             }
             .appOnChange(of: selectedDate) { _ in
                 Task {
@@ -214,6 +224,10 @@ struct AttendanceWorkspaceView: View {
                 if boardMode == .courses {
                     selectedStudentId = nil
                     historySelection = nil
+                }
+                if boardMode == .history {
+                    incidentHeatmapTask?.cancel()
+                    incidentHeatmapTask = Task { await reloadIncidentHeatmap() }
                 }
             }
             .appOnChange(of: selectedStudentId) { _ in
@@ -232,6 +246,7 @@ struct AttendanceWorkspaceView: View {
             }
             .onDisappear {
                 layoutState.clearAttendanceToolbar()
+                incidentHeatmapTask?.cancel()
             }
             .animation(uiFeatureFlags.inspectorAnimation(presented: isInspectorPresented), value: isInspectorPresented)
     }
@@ -465,44 +480,133 @@ struct AttendanceWorkspaceView: View {
     }
 
     var monthlyHistoryContent: some View {
-        ScrollView([.horizontal, .vertical]) {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 0) {
-                    weekCellHeader("Alumno", width: 220)
-                    ForEach(monthDates, id: \.self) { date in
-                        weekCellHeader(Self.dayHeaderString(date), width: 48)
-                    }
-                }
+        // Scroll vertical externo + scroll horizontal solo para la rejilla: así
+        // la tarjeta de patrones no se desplaza lateralmente al recorrer el mes.
+        ScrollView(.vertical) {
+            VStack(alignment: .leading, spacing: 24) {
+                incidentPatternsCard
+                    .padding(.horizontal, 24)
+                    .padding(.top, 4)
 
-                ForEach(visibleHistoryRows, id: \.id) { student in
-                    HStack(spacing: 0) {
-                        Button {
-                            historySelection = nil
-                            selectedStudentId = student.id
-                        } label: {
-                            HStack {
-                                Text(student.fullName)
-                                    .font(.subheadline.weight(.semibold))
-                                    .lineLimit(1)
-                                Spacer()
+                ScrollView(.horizontal) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack(spacing: 0) {
+                            weekCellHeader("Alumno", width: 220)
+                            ForEach(monthDates, id: \.self) { date in
+                                weekCellHeader(Self.dayHeaderString(date), width: 48)
                             }
-                            .padding(.horizontal, 12)
-                            .frame(width: 220, height: 48)
                         }
-                        .buttonStyle(.plain)
-                        .background(appCardBackground(for: colorScheme))
 
-                        ForEach(monthDates, id: \.self) { date in
-                            let record = historyRecord(for: student.id, date: date)
-                            historyStatusCell(record: record, studentId: student.id, date: date)
+                        ForEach(visibleHistoryRows, id: \.id) { student in
+                            HStack(spacing: 0) {
+                                Button {
+                                    historySelection = nil
+                                    selectedStudentId = student.id
+                                } label: {
+                                    HStack {
+                                        Text(student.fullName)
+                                            .font(.subheadline.weight(.semibold))
+                                            .lineLimit(1)
+                                        Spacer()
+                                    }
+                                    .padding(.horizontal, 12)
+                                    .frame(width: 220, height: 48)
+                                }
+                                .buttonStyle(.plain)
+                                .background(appCardBackground(for: colorScheme))
+
+                                ForEach(monthDates, id: \.self) { date in
+                                    let record = historyRecord(for: student.id, date: date)
+                                    historyStatusCell(record: record, studentId: student.id, date: date)
+                                }
+                            }
                         }
                     }
+                    .padding(.horizontal, 24)
                 }
             }
-            .padding(.horizontal, 24)
             .padding(.bottom, 24)
         }
         .background(appPageBackground(for: colorScheme))
+    }
+
+    /// Heatmap de incidencias por semana y día lectivo. Reutiliza el mismo
+    /// cálculo (`ChartKind.incidentHeatmap`) y el mismo render
+    /// (`AnalyticsHeatmapView`) que la pantalla de Informes: aquí solo se trae
+    /// al sitio donde el docente mira el histórico del grupo.
+    @ViewBuilder
+    var incidentPatternsCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Patrones de incidencias")
+                    .font(.headline.weight(.bold))
+                Text(incidentHeatmapFacts?.subtitle ?? "Concentración de incidencias por semana y día lectivo.")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            if isLoadingIncidentHeatmap {
+                ProgressView()
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 24)
+            } else if let facts = incidentHeatmapFacts, facts.hasEnoughData {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                    ForEach(facts.metrics) { metric in
+                        overviewMiniStat(metric.title, Int(metric.value) ?? 0, .orange)
+                    }
+                }
+
+                AnalyticsHeatmapView(cells: facts.heatmapCells)
+                    .frame(minHeight: 220)
+
+                ForEach(facts.factLines, id: \.self) { line in
+                    Text(line)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            } else {
+                Text(incidentHeatmapFacts?.emptyStateMessage ?? "No hay datos suficientes para construir el heatmap de incidencias.")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 8)
+            }
+        }
+        .padding(24)
+        .frame(maxWidth: 720, alignment: .leading)
+        .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+    }
+
+    /// Carga perezosa: solo cuando el docente entra en el histórico y hay grupo
+    /// en foco. Se cancela y se relanza al cambiar de grupo para no dejar en
+    /// pantalla el heatmap del grupo anterior.
+    @MainActor
+    func reloadIncidentHeatmap() async {
+        guard boardMode == .history, let classId = selectedClassId else {
+            incidentHeatmapFacts = nil
+            return
+        }
+        isLoadingIncidentHeatmap = true
+        defer { isLoadingIncidentHeatmap = false }
+        do {
+            let facts = try await bridge.buildChartFacts(
+                classId: classId,
+                request: KmpBridge.AnalyticsRequest(
+                    chartKind: .incidentHeatmap,
+                    timeRange: .last30Days,
+                    selectedClassIds: [classId],
+                    selectedClassNames: [],
+                    prompt: nil,
+                    querySummary: "Patrones de incidencias por día de la semana."
+                )
+            )
+            guard !Task.isCancelled else { return }
+            incidentHeatmapFacts = facts
+        } catch {
+            guard !Task.isCancelled else { return }
+            incidentHeatmapFacts = nil
+        }
     }
 
     var attendanceToolbar: some View {

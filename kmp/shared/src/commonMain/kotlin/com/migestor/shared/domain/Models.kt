@@ -600,6 +600,32 @@ data class StudentSupportMeasure(
     val trace: AuditTrace = AuditTrace(),
 )
 
+/**
+ * Entrevista con la familia de un alumno. El acta es documental: fecha, quien
+ * asistio, que se trato y que se acordo. Los acuerdos van en texto libre a
+ * proposito; estructurarlos con responsable y vencimiento propios seria una
+ * tabla hija, no un cambio de esta.
+ */
+data class StudentTutoringSession(
+    val id: Long,
+    val studentId: Long,
+    val date: LocalDate,
+    val channel: TutoringChannel = TutoringChannel.IN_PERSON,
+    val attendees: String = "",
+    val topics: String = "",
+    val agreements: String = "",
+    val reviewDue: LocalDate? = null,
+    val isClosed: Boolean = false,
+    val trace: AuditTrace = AuditTrace(),
+)
+
+enum class TutoringChannel {
+    IN_PERSON,
+    PHONE,
+    VIDEO_CALL,
+    WRITTEN,
+}
+
 data class Incident(
     val id: Long,
     val classId: Long,

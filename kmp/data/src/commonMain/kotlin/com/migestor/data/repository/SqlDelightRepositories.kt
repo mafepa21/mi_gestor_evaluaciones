@@ -37,9 +37,11 @@ import com.migestor.shared.domain.Student
 import com.migestor.shared.domain.StudentSex
 import com.migestor.shared.domain.StudentSexSource
 import com.migestor.shared.domain.StudentSupportMeasure
+import com.migestor.shared.domain.StudentTutoringSession
 import com.migestor.shared.domain.SupportMeasureIntensity
 import com.migestor.shared.domain.SupportMeasureLevel
 import com.migestor.shared.domain.SupportMeasureType
+import com.migestor.shared.domain.TutoringChannel
 import com.migestor.shared.domain.Subject
 import com.migestor.shared.domain.TeachingUnit
 import com.migestor.shared.util.IsoWeekHelper
@@ -62,6 +64,7 @@ import com.migestor.shared.repository.PlannerRepository
 import com.migestor.shared.repository.RubricsRepository
 import com.migestor.shared.repository.StudentsRepository
 import com.migestor.shared.repository.StudentSupportMeasureRepository
+import com.migestor.shared.repository.StudentTutoringSessionRepository
 import com.migestor.shared.repository.StudentProfileSnapshot
 import com.migestor.shared.repository.AITrendsRepository
 import com.migestor.shared.repository.StudentGradeHistoryPoint
@@ -1928,6 +1931,124 @@ class StudentSupportMeasureRepositorySqlDelight(
 
     override suspend fun delete(id: Long) = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.deleteSupportMeasure(id)
+    }
+}
+
+class StudentTutoringSessionRepositorySqlDelight(
+    private val db: AppDatabase,
+) : StudentTutoringSessionRepository {
+
+    /**
+     * `null` si la fila persiste un `channel` que ya no existe en el enum actual
+     * (datos de una version anterior). Se descarta en vez de lanzar: un `valueOf`
+     * fallido cruzaria como excepcion Kotlin no capturada hacia Swift y tumbaria
+     * la app al abrir la ficha del alumno. Mismo criterio que las medidas de apoyo.
+     */
+    private fun rowToModel(
+        id: Long,
+        studentId: Long,
+        dateIso: String,
+        channel: String,
+        attendees: String,
+        topics: String,
+        agreements: String,
+        reviewDueIso: String?,
+        isClosed: Long,
+        updatedAtEpochMs: Long,
+        deviceId: String?,
+        syncVersion: Long,
+    ): StudentTutoringSession? {
+        val parsedChannel = enumValueOfOrNull<TutoringChannel>(channel) ?: return null
+        return StudentTutoringSession(
+            id = id,
+            studentId = studentId,
+            date = LocalDate.parse(dateIso),
+            channel = parsedChannel,
+            attendees = attendees,
+            topics = topics,
+            agreements = agreements,
+            reviewDue = localDateOrNull(reviewDueIso),
+            isClosed = isClosed != 0L,
+            trace = AuditTrace(
+                updatedAt = Instant.fromEpochMilliseconds(updatedAtEpochMs),
+                deviceId = deviceId,
+                syncVersion = syncVersion,
+            )
+        )
+    }
+
+    override suspend fun listByStudent(studentId: Long): List<StudentTutoringSession> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectTutoringSessionsByStudent(studentId).executeAsList().mapNotNull {
+            rowToModel(
+                it.id, it.student_id, it.date_iso, it.channel, it.attendees, it.topics,
+                it.agreements, it.review_due_iso, it.is_closed, it.updated_at_epoch_ms,
+                it.device_id, it.sync_version,
+            )
+        }
+    }
+
+    override suspend fun listPendingReviews(onOrBeforeIso: String): List<StudentTutoringSession> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectPendingTutoringReviews(onOrBeforeIso).executeAsList().mapNotNull {
+            rowToModel(
+                it.id, it.student_id, it.date_iso, it.channel, it.attendees, it.topics,
+                it.agreements, it.review_due_iso, it.is_closed, it.updated_at_epoch_ms,
+                it.device_id, it.sync_version,
+            )
+        }
+    }
+
+    override suspend fun save(
+        id: Long?,
+        studentId: Long,
+        dateIso: String,
+        channel: TutoringChannel,
+        attendees: String,
+        topics: String,
+        agreements: String,
+        reviewDueIso: String?,
+        isClosed: Boolean,
+        createdAtEpochMs: Long,
+        updatedAtEpochMs: Long,
+        deviceId: String?,
+        syncVersion: Long,
+    ): Long = withContext(Dispatchers.Default) {
+        db.transactionWithResult {
+            if (id != null) {
+                db.appDatabaseQueries.updateTutoringSession(
+                    dateIso,
+                    channel.name,
+                    attendees,
+                    topics,
+                    agreements,
+                    reviewDueIso,
+                    if (isClosed) 1 else 0,
+                    updatedAtEpochMs,
+                    deviceId,
+                    id,
+                )
+                id
+            } else {
+                db.appDatabaseQueries.insertTutoringSession(
+                    studentId,
+                    dateIso,
+                    channel.name,
+                    attendees,
+                    topics,
+                    agreements,
+                    reviewDueIso,
+                    if (isClosed) 1 else 0,
+                    createdAtEpochMs,
+                    updatedAtEpochMs,
+                    deviceId,
+                    syncVersion,
+                )
+                db.appDatabaseQueries.lastInsertedId().executeAsOne()
+            }
+        }
+    }
+
+    override suspend fun delete(id: Long) = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.deleteTutoringSession(id)
     }
 }
 

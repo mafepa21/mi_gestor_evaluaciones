@@ -644,6 +644,28 @@ interface StudentSupportMeasureRepository {
     suspend fun delete(id: Long)
 }
 
+interface StudentTutoringSessionRepository {
+    suspend fun listByStudent(studentId: Long): List<StudentTutoringSession>
+    /** Seguimientos abiertos cuya revision vence en o antes de `onOrBeforeIso`. */
+    suspend fun listPendingReviews(onOrBeforeIso: String): List<StudentTutoringSession>
+    suspend fun save(
+        id: Long? = null,
+        studentId: Long,
+        dateIso: String,
+        channel: TutoringChannel = TutoringChannel.IN_PERSON,
+        attendees: String = "",
+        topics: String = "",
+        agreements: String = "",
+        reviewDueIso: String? = null,
+        isClosed: Boolean = false,
+        createdAtEpochMs: Long = 0,
+        updatedAtEpochMs: Long = 0,
+        deviceId: String? = null,
+        syncVersion: Long = 0,
+    ): Long
+    suspend fun delete(id: Long)
+}
+
 interface CompetenciesRepository {
     fun observeCompetencies(): Flow<List<CompetencyCriterion>>
     suspend fun listCompetencies(): List<CompetencyCriterion>

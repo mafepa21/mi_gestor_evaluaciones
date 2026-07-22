@@ -227,6 +227,25 @@ CREATE TABLE IF NOT EXISTS student_support_measures (
 );
 CREATE INDEX IF NOT EXISTS idx_support_measures_student ON student_support_measures(student_id, is_active);
 
+CREATE TABLE IF NOT EXISTS student_tutoring_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER NOT NULL,
+    date_iso TEXT NOT NULL,
+    channel TEXT NOT NULL DEFAULT 'IN_PERSON',
+    attendees TEXT NOT NULL DEFAULT '',
+    topics TEXT NOT NULL DEFAULT '',
+    agreements TEXT NOT NULL DEFAULT '',
+    review_due_iso TEXT,
+    is_closed INTEGER NOT NULL DEFAULT 0,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_tutoring_sessions_student ON student_tutoring_sessions(student_id, date_iso DESC);
+CREATE INDEX IF NOT EXISTS idx_tutoring_sessions_review ON student_tutoring_sessions(review_due_iso) WHERE is_closed = 0;
+
 CREATE TABLE IF NOT EXISTS backup_entries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     path TEXT NOT NULL,
@@ -1260,6 +1279,39 @@ WHERE id = ?;
 
 deleteSupportMeasure:
 DELETE FROM student_support_measures WHERE id = ?;
+
+selectTutoringSessionsByStudent:
+SELECT id, student_id, date_iso, channel, attendees, topics, agreements, review_due_iso, is_closed, updated_at_epoch_ms, device_id, sync_version
+FROM student_tutoring_sessions
+WHERE student_id = ?
+ORDER BY date_iso DESC, id DESC;
+
+selectPendingTutoringReviews:
+SELECT id, student_id, date_iso, channel, attendees, topics, agreements, review_due_iso, is_closed, updated_at_epoch_ms, device_id, sync_version
+FROM student_tutoring_sessions
+WHERE is_closed = 0 AND review_due_iso IS NOT NULL AND review_due_iso <= ?
+ORDER BY review_due_iso ASC, id ASC;
+
+insertTutoringSession:
+INSERT INTO student_tutoring_sessions(student_id, date_iso, channel, attendees, topics, agreements, review_due_iso, is_closed, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- Actualiza en el sitio los campos editables sin tocar created_at_epoch_ms:
+-- corregir el acta de una entrevista no debe reescribir cuando se registro.
+-- sync_version se incrementa siempre, para mantener la monotonia que usa la
+-- sincronizacion (mismo criterio que updateSupportMeasure).
+updateTutoringSession:
+UPDATE student_tutoring_sessions
+SET date_iso = ?, channel = ?, attendees = ?, topics = ?, agreements = ?, review_due_iso = ?, is_closed = ?, updated_at_epoch_ms = ?, device_id = ?, sync_version = sync_version + 1
+WHERE id = ?;
+
+deleteTutoringSession:
+DELETE FROM student_tutoring_sessions WHERE id = ?;
+
+-- created_at no viaja en el SELECT del repositorio (no se muestra); se consulta
+-- aparte para poder verificar en test que editar un acta no lo reescribe.
+selectTutoringSessionCreatedAt:
+SELECT created_at_epoch_ms FROM student_tutoring_sessions WHERE id = ?;
 
 selectBackupEntries:
 SELECT id, path, created_at_epoch_ms, platform, size_bytes

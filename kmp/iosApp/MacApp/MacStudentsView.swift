@@ -34,6 +34,7 @@ final class MacStudentsStore: ObservableObject {
         profileLoadTask?.cancel()
     }
     @Published var supportMeasures: [SupportMeasureRow] = []
+    @Published var tutoringSessions: [TutoringSessionRow] = []
 }
 
 struct MacStudentsView: View {
@@ -48,6 +49,9 @@ struct MacStudentsView: View {
 
     @State private var showingStudentFileImporter = false
     @State private var showSupportMeasureSheet = false
+    @State private var showTutoringSheet = false
+    @State private var editingTutoringSession: TutoringSessionRow?
+    @State private var pendingDeleteTutoringSession: TutoringSessionRow?
     @State private var editingSupportMeasure: SupportMeasureRow?
     @State private var pendingDeleteSupportMeasure: SupportMeasureRow?
     @State private var showBulkImportSheet = false
@@ -211,6 +215,47 @@ struct MacStudentsView: View {
             MacStudentEditorSheet(mode: mode) { draft in
                 Task { await saveStudentDraft(draft, mode: mode) }
             }
+        }
+        .sheet(isPresented: $showTutoringSheet) {
+            if let studentId = store.localSelectedStudentId ?? selectedRow?.id {
+                TutoringSessionFormSheet(studentId: studentId) {
+                    loadProfileForSelection(studentId)
+                }
+                .environmentObject(bridge)
+            }
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { editingTutoringSession != nil },
+                set: { if !$0 { editingTutoringSession = nil } }
+            )
+        ) {
+            if let studentId = store.localSelectedStudentId ?? selectedRow?.id, let editingTutoringSession {
+                TutoringSessionFormSheet(studentId: studentId, existingSession: editingTutoringSession) {
+                    loadProfileForSelection(studentId)
+                }
+                .environmentObject(bridge)
+            }
+        }
+        .alert(
+            "¿Borrar esta tutoría?",
+            isPresented: Binding(
+                get: { pendingDeleteTutoringSession != nil },
+                set: { if !$0 { pendingDeleteTutoringSession = nil } }
+            )
+        ) {
+            Button("Cancelar", role: .cancel) { pendingDeleteTutoringSession = nil }
+            Button("Borrar", role: .destructive) {
+                if let session = pendingDeleteTutoringSession {
+                    Task {
+                        try? await bridge.deleteTutoringSession(id: session.id)
+                        loadProfileForSelection(session.studentId)
+                    }
+                }
+                pendingDeleteTutoringSession = nil
+            }
+        } message: {
+            Text("El acta de la entrevista se elimina de forma permanente.")
         }
         .sheet(isPresented: $showSupportMeasureSheet) {
             if let studentId = store.localSelectedStudentId ?? selectedRow?.id {
@@ -698,6 +743,25 @@ struct MacStudentsView: View {
                             }
                         }
 
+                        inspectorSection("Tutorías con familias") {
+                            VStack(alignment: .leading, spacing: 10) {
+                                if store.tutoringSessions.isEmpty {
+                                    Text("Sin entrevistas registradas.")
+                                        .foregroundStyle(.secondary)
+                                } else {
+                                    ForEach(store.tutoringSessions) { session in
+                                        macTutoringSessionRow(session)
+                                    }
+                                }
+                                Button {
+                                    showTutoringSheet = true
+                                } label: {
+                                    Label("Registrar tutoría", systemImage: "plus.circle.fill")
+                                }
+                                .buttonStyle(.borderless)
+                            }
+                        }
+
                         inspectorSection("Accesos") {
                             MacPremiumInspectorActionGroup {
                                 Button {
@@ -740,6 +804,61 @@ struct MacStudentsView: View {
             }
             .background(MacAppStyle.cardBackground)
         }
+    }
+
+    private func macTutoringSessionRow(_ session: TutoringSessionRow) -> some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Image(systemName: session.channel.systemImage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(session.dateDisplay)
+                        .font(.subheadline.weight(.semibold))
+                    if session.isClosed {
+                        Text("Cerrada")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if !session.attendees.isEmpty {
+                    Text(session.attendees)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if !session.agreements.isEmpty {
+                    Text(session.agreements)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+                switch session.reviewStatus {
+                case .overdue:
+                    Text("Revisión vencida\(session.reviewDueDisplay.map { " · \($0)" } ?? "")")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(MacAppStyle.dangerTint)
+                case .dueSoon:
+                    Text("Revisión próxima\(session.reviewDueDisplay.map { " · \($0)" } ?? "")")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(MacAppStyle.warningTint)
+                case .none:
+                    EmptyView()
+                }
+            }
+            Spacer()
+            Button("Editar") {
+                editingTutoringSession = session
+            }
+            .buttonStyle(.borderless)
+            Button(role: .destructive) {
+                pendingDeleteTutoringSession = session
+            } label: {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+        }
+        .padding(10)
+        .background(MacAppStyle.subtleFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func macSupportMeasureRow(_ measure: SupportMeasureRow) -> some View {
@@ -940,6 +1059,7 @@ struct MacStudentsView: View {
             store.riskPack = nil
             store.profileErrorMessage = nil
             store.supportMeasures = []
+            store.tutoringSessions = []
             return
         }
 
@@ -954,9 +1074,11 @@ struct MacStudentsView: View {
                 async let loadedProfile = bridge.loadStudentProfile(studentId: studentId, classId: requestedClassId)
                 async let loadedRiskPack = StudentRiskEvidenceBuilder.build(bridge: bridge, classId: requestedClassId, studentId: studentId)
                 async let loadedSupportMeasures = bridge.supportMeasures(for: studentId)
+                async let loadedTutoringSessions = bridge.tutoringSessions(for: studentId)
                 let resultProfile = try await loadedProfile
                 let resultRiskPack = try? await loadedRiskPack
                 let resultSupportMeasures = (try? await loadedSupportMeasures)?.map(\.asRow) ?? []
+                let resultTutoringSessions = (try? await loadedTutoringSessions)?.map(\.asRow) ?? []
                 guard !Task.isCancelled else { return }
                 await MainActor.run {
                     guard store.localSelectedStudentId == studentId,
@@ -965,6 +1087,7 @@ struct MacStudentsView: View {
                     store.profile = resultProfile
                     store.riskPack = resultRiskPack
                     store.supportMeasures = resultSupportMeasures
+                    store.tutoringSessions = resultTutoringSessions
                     store.profileLoadingStudentId = nil
                     store.isLoadingProfile = false
                 }

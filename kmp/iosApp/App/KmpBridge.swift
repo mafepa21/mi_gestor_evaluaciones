@@ -373,6 +373,29 @@ final class KmpBridge: ObservableObject {
         let attendanceRate: Int
     }
 
+    struct TutoringSessionSnapshot: Identifiable, Hashable {
+        let id: Int64
+        let studentId: Int64
+        let dateIso: String
+        let channel: TutoringChannelUI
+        let attendees: String
+        let topics: String
+        let agreements: String
+        let reviewDueIso: String?
+        let isClosed: Bool
+    }
+
+    struct TutoringSessionDraft {
+        var studentId: Int64
+        var dateIso: String
+        var channel: TutoringChannelUI = .inPerson
+        var attendees: String = ""
+        var topics: String = ""
+        var agreements: String = ""
+        var reviewDueIso: String?
+        var isClosed: Bool = false
+    }
+
     struct SupportMeasureSnapshot: Identifiable {
         let id: Int64
         let studentId: Int64
@@ -3761,6 +3784,85 @@ final class KmpBridge: ObservableObject {
             payload: ["id": id],
             op: "delete"
         )
+    }
+
+    func tutoringSessions(for studentId: Int64) async throws -> [TutoringSessionSnapshot] {
+        let rows = try await container.studentTutoringSessionRepository.listByStudent(studentId: studentId)
+        return rows.compactMap(tutoringSessionSnapshot(from:))
+    }
+
+    /// Seguimientos abiertos cuya revisión vence en o antes de `onOrBeforeIso`.
+    func pendingTutoringReviews(onOrBefore onOrBeforeIso: String) async throws -> [TutoringSessionSnapshot] {
+        let rows = try await container.studentTutoringSessionRepository.listPendingReviews(onOrBeforeIso: onOrBeforeIso)
+        return rows.compactMap(tutoringSessionSnapshot(from:))
+    }
+
+    @discardableResult
+    func saveTutoringSession(id: Int64? = nil, draft: TutoringSessionDraft) async throws -> Int64 {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let savedId = try await container.studentTutoringSessionRepository.save(
+            id: kotlinLong(id),
+            studentId: draft.studentId,
+            dateIso: draft.dateIso,
+            channel: kotlinTutoringChannel(draft.channel),
+            attendees: draft.attendees,
+            topics: draft.topics,
+            agreements: draft.agreements,
+            reviewDueIso: draft.reviewDueIso,
+            isClosed: draft.isClosed,
+            createdAtEpochMs: id == nil ? nowMs : 0,
+            updatedAtEpochMs: nowMs,
+            deviceId: localDeviceId,
+            syncVersion: 1
+        ).int64Value
+        enqueueLocalChange(
+            entity: "student_tutoring_sessions",
+            id: "\(savedId)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "studentId": draft.studentId,
+                "dateIso": draft.dateIso,
+                "channel": draft.channel.rawValue,
+                "attendees": draft.attendees,
+                "topics": draft.topics,
+                "agreements": draft.agreements,
+                "reviewDueIso": draft.reviewDueIso ?? NSNull(),
+                "isClosed": draft.isClosed
+            ]
+        )
+        return savedId
+    }
+
+    func deleteTutoringSession(id: Int64) async throws {
+        try await container.studentTutoringSessionRepository.delete(id: id)
+        enqueueLocalChange(
+            entity: "student_tutoring_sessions",
+            id: "\(id)",
+            updatedAtEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+            payload: ["id": id],
+            op: "delete"
+        )
+    }
+
+    /// `nil` si la fila trae un canal que esta version no conoce. Se descarta en
+    /// vez de forzar un valor: mismo criterio que las medidas de apoyo.
+    private func tutoringSessionSnapshot(from session: StudentTutoringSession) -> TutoringSessionSnapshot? {
+        guard let channel = TutoringChannelUI(rawValue: session.channel.name) else { return nil }
+        return TutoringSessionSnapshot(
+            id: session.id,
+            studentId: session.studentId,
+            dateIso: session.date.description(),
+            channel: channel,
+            attendees: session.attendees,
+            topics: session.topics,
+            agreements: session.agreements,
+            reviewDueIso: session.reviewDue?.description(),
+            isClosed: session.isClosed
+        )
+    }
+
+    private func kotlinTutoringChannel(_ channel: TutoringChannelUI) -> TutoringChannel {
+        TutoringChannel.entries.first { $0.name == channel.rawValue } ?? TutoringChannel.entries[0]
     }
 
     private func supportMeasureSnapshot(from measure: StudentSupportMeasure) -> SupportMeasureSnapshot? {

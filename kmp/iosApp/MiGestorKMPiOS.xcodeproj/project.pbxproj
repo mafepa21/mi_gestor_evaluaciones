@@ -108,6 +108,7 @@
 		404152863CFAC7A84D37B872 /* NotebookClassPickerComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 808AE922E0187FD7FAEA5FFC /* NotebookClassPickerComponents.swift */; };
 		42355FA614EB4F899CB54DBA /* RubricsBuilderScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = CABF3C938060DE09EB0F96BB /* RubricsBuilderScreen.swift */; };
 		428537EEF8A394024D951475 /* AttendanceShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = F42B9FCF55764453E68E5BB6 /* AttendanceShared.swift */; };
+		30391F3F648B4D45BCE7F887 /* TutoringShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 640333E22FB74DC6981E001C /* TutoringShared.swift */; };
 		67B49945FF8F4757B47E23B6 /* ScheduleGridPDFRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE68D432B0174FD0B007786D /* ScheduleGridPDFRenderer.swift */; };
 		87AA1CEE4BBF49A5BDAA17B6 /* ScheduleWeekGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85E8648625AD46C1947791EA /* ScheduleWeekGridView.swift */; };
 		42B06F3786219357754DA73D /* TeacherRadarStudentInsightRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AD45ACA95D963773FDADD4C /* TeacherRadarStudentInsightRow.swift */; };
@@ -194,6 +195,7 @@
 		727DC013672A58DEC4CCB567 /* MiGestorKMPMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7F324EED74CBC624894170D /* MiGestorKMPMacApp.swift */; };
 		733437AB0213E2D83A1686C7 /* ScheduleImportPreviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2383FA2AFCB17CB773F8D8C /* ScheduleImportPreviewSheet.swift */; };
 		7342286FCDBCE94224A61888 /* AttendanceShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = F42B9FCF55764453E68E5BB6 /* AttendanceShared.swift */; };
+		9A0C8C8C15224C088B6C2B5B /* TutoringShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 640333E22FB74DC6981E001C /* TutoringShared.swift */; };
 		C94C4C0D869B4E1A8605C3AA /* ScheduleGridPDFRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE68D432B0174FD0B007786D /* ScheduleGridPDFRenderer.swift */; };
 		32C24A41862749828019A5A7 /* ScheduleWeekGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85E8648625AD46C1947791EA /* ScheduleWeekGridView.swift */; };
 		738EEEE78B67FE32320DC5E1 /* AppleFoundationContextualAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14C238867D14FCB6C59390D5 /* AppleFoundationContextualAIService.swift */; };
@@ -621,6 +623,7 @@
 		ED160717C62AAA3AB794905E /* PlannerWorkspaceViewModel+CascadeMove.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerWorkspaceViewModel+CascadeMove.swift"; sourceTree = "<group>"; };
 		F0BFD8699A1E65C7A09163CF /* NotebookAverageEditorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookAverageEditorSheet.swift; sourceTree = "<group>"; };
 		F42B9FCF55764453E68E5BB6 /* AttendanceShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttendanceShared.swift; sourceTree = "<group>"; };
+		640333E22FB74DC6981E001C /* TutoringShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TutoringShared.swift; sourceTree = "<group>"; };
 		FE68D432B0174FD0B007786D /* ScheduleGridPDFRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleGridPDFRenderer.swift; sourceTree = "<group>"; };
 		85E8648625AD46C1947791EA /* ScheduleWeekGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleWeekGridView.swift; sourceTree = "<group>"; };
 		F6B44EBC79907A49017DC0CD /* AppleBackupModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleBackupModels.swift; sourceTree = "<group>"; };
@@ -713,6 +716,7 @@
 				75BBE6314E371EFE7E28E853 /* AppSettingsModels.swift */,
 				863347F9ECD4F8B4496AA0AD /* AppSettingsStore.swift */,
 				F42B9FCF55764453E68E5BB6 /* AttendanceShared.swift */,
+				640333E22FB74DC6981E001C /* TutoringShared.swift */,
 				FE68D432B0174FD0B007786D /* ScheduleGridPDFRenderer.swift */,
 				85E8648625AD46C1947791EA /* ScheduleWeekGridView.swift */,
 				1027C324D7108B1CD8EB79AC /* BackupCenterView.swift */,
@@ -1142,6 +1146,7 @@
 				BEE09F01DFABE9A8498C8B0E /* AppleViewCompatibility.swift in Sources */,
 				DFEEA8B716E874E7C7BE0E8B /* AssignRubricToTabView.swift in Sources */,
 				7342286FCDBCE94224A61888 /* AttendanceShared.swift in Sources */,
+				9A0C8C8C15224C088B6C2B5B /* TutoringShared.swift in Sources */,
 				C94C4C0D869B4E1A8605C3AA /* ScheduleGridPDFRenderer.swift in Sources */,
 				32C24A41862749828019A5A7 /* ScheduleWeekGridView.swift in Sources */,
 				5AA56A1A703EDF8406F8B991 /* AttendanceWorkspaceView.swift in Sources */,
@@ -1351,6 +1356,7 @@
 				BEE5A4B10ED6EF26DC223E17 /* AppleViewCompatibility.swift in Sources */,
 				1862DCED173C424EA7C21B6F /* AssignRubricToTabView.swift in Sources */,
 				428537EEF8A394024D951475 /* AttendanceShared.swift in Sources */,
+				30391F3F648B4D45BCE7F887 /* TutoringShared.swift in Sources */,
 				67B49945FF8F4757B47E23B6 /* ScheduleGridPDFRenderer.swift in Sources */,
 				87AA1CEE4BBF49A5BDAA17B6 /* ScheduleWeekGridView.swift in Sources */,
 				9AA8BC06ED560D826F02901B /* AttendanceWorkspaceView.swift in Sources */,

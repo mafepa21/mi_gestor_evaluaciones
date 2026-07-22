@@ -1,6 +1,9 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import MiGestorKit
+#if os(macOS)
+import AppKit
+#endif
 
 @MainActor
 final class TeacherScheduleSettingsViewModel: ObservableObject {
@@ -547,9 +550,59 @@ struct MacTeacherScheduleSettingsPanel: View {
     @StateObject private var vm = TeacherScheduleSettingsViewModel()
     @State private var isScheduleImporterPresented = false
     @State private var pendingScheduleSlotDeletionId: Int64?
+    @State private var scheduleExportError = ""
+
+    /// Mapea las franjas al modelo neutro de la rejilla, resolviendo el nombre
+    /// del grupo aquí (la rejilla no conoce el puente KMP).
+    private var scheduleGridEntries: [ScheduleWeekGridView.Entry] {
+        vm.effectiveScheduleSlots.map { slot in
+            ScheduleWeekGridView.Entry(
+                id: slot.id,
+                dayOfWeek: Int(slot.dayOfWeek),
+                startTime: slot.startTime,
+                endTime: slot.endTime,
+                subject: slot.subjectLabel,
+                groupName: vm.groups.first(where: { $0.id == slot.schoolClassId })?.name ?? "Grupo \(slot.schoolClassId)",
+                unit: slot.unitLabel
+            )
+        }
+    }
+
+    private var schedulePDFPage: some View {
+        ScheduleWeekGridPage(
+            title: vm.scheduleName.isEmpty ? "Horario" : vm.scheduleName,
+            subtitle: selectedClassId
+                .flatMap { id in vm.groups.first(where: { $0.id == id })?.name }
+                .map { "Grupo: \($0)" } ?? "Todos los grupos",
+            entries: scheduleGridEntries,
+            activeWeekdays: Array(vm.activeWeekdays),
+            dayLabel: vm.dayLabel(for:)
+        )
+    }
+
+    /// Genera el PDF y lo abre con la app por omisión (Vista Previa), desde
+    /// donde el docente puede imprimirlo o guardarlo donde quiera. Es el gesto
+    /// que espera en septiembre: horario en papel, un clic.
+    private func exportSchedulePDF() {
+        scheduleExportError = ""
+        guard let url = ScheduleGridPDFRenderer.writeToTemporaryFile(
+            page: schedulePDFPage,
+            suggestedName: vm.scheduleName.isEmpty ? "horario" : vm.scheduleName
+        ) else {
+            scheduleExportError = "No se pudo generar el PDF del horario."
+            return
+        }
+        NSWorkspace.shared.open(url)
+    }
 
     var body: some View {
         LazyVStack(alignment: .leading, spacing: 14) {
+            if !scheduleExportError.isEmpty {
+                Text(scheduleExportError)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(EvaluationDesign.danger)
+                    .padding(.horizontal, 12)
+            }
             if !vm.scheduleError.isEmpty {
                 Text(vm.scheduleError)
                     .font(.caption.weight(.semibold))
@@ -760,6 +813,13 @@ struct MacTeacherScheduleSettingsPanel: View {
                         Label("Importar horario", systemImage: "square.and.arrow.down")
                     }
                     .buttonStyle(.bordered)
+                    Button {
+                        exportSchedulePDF()
+                    } label: {
+                        Label("Exportar horario", systemImage: "square.and.arrow.up")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(vm.effectiveScheduleSlots.isEmpty)
                     if vm.editingScheduleSlotId != nil {
                         Button("Cancelar edición") {
                             vm.cancelEditingScheduleSlot()
@@ -783,6 +843,18 @@ struct MacTeacherScheduleSettingsPanel: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, 8)
                 } else {
+                    // La rejilla es la lectura de la semana; la lista de abajo
+                    // se conserva porque es donde viven editar, duplicar y
+                    // borrar.
+                    ScheduleWeekGridView(
+                        entries: scheduleGridEntries,
+                        activeWeekdays: Array(vm.activeWeekdays),
+                        dayLabel: vm.dayLabel(for:),
+                        compact: true
+                    )
+
+                    Divider()
+
                     VStack(spacing: 0) {
                         ForEach(vm.effectiveScheduleSlots, id: \.id) { slot in
                             slotRow(slot)

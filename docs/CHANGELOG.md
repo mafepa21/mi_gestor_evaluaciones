@@ -17,7 +17,7 @@ Cambios posteriores a `v0.3.0-traceability-baseline`.
 
 ### Added
 
-- Asistencia: tarjeta "Patrones de incidencias" en el modo Histórico, con el heatmap de incidencias por semana y día lectivo, sus métricas (incidencias, pico, semanas) y la línea de mayor concentración. Reutiliza el cálculo (`ChartKind.incidentHeatmap`) y el render (`AnalyticsHeatmapView`) que hasta ahora solo eran accesibles desde Informes, de modo que el patrón temporal queda donde el docente revisa el histórico del grupo. Carga perezosa al entrar en el modo Histórico y recarga al cambiar de grupo. Ver `docs/planes/plan_paridad_cuaderno_docente_2026-07-22.md` (F-1).
+- Asistencia: tarjeta "Patrones de incidencias" en el modo Histórico, con el heatmap de incidencias por semana y día lectivo, sus métricas (incidencias, pico, semanas) y la línea de mayor concentración. Reutiliza el cálculo (`ChartKind.incidentHeatmap`) y el render (`AnalyticsHeatmapView`) que hasta ahora solo eran accesibles desde Informes, de modo que el patrón temporal queda donde el docente revisa el histórico del grupo. Carga perezosa al entrar en el modo Histórico y recarga al cambiar de grupo. Implementada por separado en iOS/iPadOS (`AttendanceWorkspaceView`) y en macOS (`MacAttendanceView`), que son vistas distintas. Ver `docs/planes/plan_paridad_cuaderno_docente_2026-07-22.md` (F-1).
 
 ### Fixed
 

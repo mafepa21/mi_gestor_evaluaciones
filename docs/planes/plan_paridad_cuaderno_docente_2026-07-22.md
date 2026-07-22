@@ -58,9 +58,16 @@ La tarjeta contiene:
 - Cambiar de grupo recarga los datos sin quedarse con los del anterior.
 - Regresión en Informes: el heatmap sigue funcionando y ahora también con los días ordenados.
 
+### Hallazgos de la verificación en la app real (2026-07-22)
+
+1. **Asistencia no es una vista compartida.** El plan asumía que bastaba con tocar `AttendanceWorkspaceView`. Falso: macOS usa `MacApp/MacAttendanceView.swift`, una implementación **completamente separada** (1244 líneas, su propio `mode`, su propio `historyContent`). La primera versión del cambio no aparecía en la app de Mac. La tarjeta está ahora duplicada en las dos vistas.
+   **Consecuencia para F-2 y para el backlog: dar por hecho que un cambio en `App/` llega a macOS es incorrecto.** Comprobar siempre si existe un equivalente en `MacApp/`.
+2. **`ChartFacts.hasEnoughData` no sirve para decidir el empty state del heatmap.** Vale `!cells.isEmpty`, y `buildIncidentHeatmapFacts` genera una celda por cada combinación semana × día aunque todas valgan 0. Un grupo sin ninguna incidencia pintaba la rejilla completa de ceros, "Se han revisado 0 incidencias" y la línea absurda "Mayor concentración: S-3 · L con 0 incidencias". El empty state se decide ahora mirando si hay algún valor > 0.
+3. **Pendiente de verificar: el estado con datos.** La base de datos local tiene `select count(*) from incidents` = **0**, así que solo se ha podido comprobar el empty state y el orden de columnas. La intensidad de color, el pico y la línea de mayor concentración siguen sin verse con datos reales.
+
 ### Coste estimado
 
-Medio día. Es el mejor ratio impacto/coste de todo el análisis.
+Medio día. Es el mejor ratio impacto/coste de todo el análisis. (Real: algo más, por la duplicación iOS/macOS no prevista.)
 
 ---
 

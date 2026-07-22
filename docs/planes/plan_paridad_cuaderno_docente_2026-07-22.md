@@ -63,7 +63,7 @@ La tarjeta contiene:
 1. **Asistencia no es una vista compartida.** El plan asumía que bastaba con tocar `AttendanceWorkspaceView`. Falso: macOS usa `MacApp/MacAttendanceView.swift`, una implementación **completamente separada** (1244 líneas, su propio `mode`, su propio `historyContent`). La primera versión del cambio no aparecía en la app de Mac. La tarjeta está ahora duplicada en las dos vistas.
    **Consecuencia para F-2 y para el backlog: dar por hecho que un cambio en `App/` llega a macOS es incorrecto.** Comprobar siempre si existe un equivalente en `MacApp/`.
 2. **`ChartFacts.hasEnoughData` no sirve para decidir el empty state del heatmap.** Vale `!cells.isEmpty`, y `buildIncidentHeatmapFacts` genera una celda por cada combinación semana × día aunque todas valgan 0. Un grupo sin ninguna incidencia pintaba la rejilla completa de ceros, "Se han revisado 0 incidencias" y la línea absurda "Mayor concentración: S-3 · L con 0 incidencias". El empty state se decide ahora mirando si hay algún valor > 0.
-3. **Pendiente de verificar: el estado con datos.** La base de datos local tiene `select count(*) from incidents` = **0**, así que solo se ha podido comprobar el empty state y el orden de columnas. La intensidad de color, el pico y la línea de mayor concentración siguen sin verse con datos reales.
+3. **Estado con datos verificado con incidencias temporales** (7 registros insertados en 3 ESO A y borrados después; la base quedó de nuevo en `count(*) = 0`). Totales, pico, rampa de color, orden de columnas y línea de mayor concentración: correctos.
 
 ### Coste estimado
 
@@ -114,6 +114,7 @@ Un día. La rejilla es la mitad del trabajo; el PDF sale casi gratis una vez exi
 ## Defectos detectados de paso
 
 - **D-1** — Columnas del heatmap en orden alfabético. Incluido en F-1 (fichero permitido).
+- **D-3** — **Las filas del heatmap no son semanas lectivas, sino ventanas móviles de 7 días contadas desde hoy.** `weeksDifference` sale de `dateComponents([.weekOfYear], from: date, to: Date())` ([KmpBridge.swift:12532](../../kmp/iosApp/App/KmpBridge.swift:12532)), que cuenta semanas transcurridas, no límites de semana natural. Comprobado con datos: incidencias del **viernes 17-jul** y del **lunes 20-jul** —semanas escolares distintas— cayeron ambas en la fila `S-3`. Para un docente que lee `S-3` como "esta semana", el reparto es engañoso justo en el eje que da sentido al gráfico. Se suma que el etiquetado `S-1`…`S-3` va de más antigua a más reciente, lo que se lee al revés de lo que sugiere el nombre. Ambos están en `KmpBridge.swift`: **requieren autorización explícita**.
 - **D-2** — `buildIncidentHeatmapFacts` itera `for weekday in 2...8` ([KmpBridge.swift:12529](../../kmp/iosApp/App/KmpBridge.swift:12529)), pero `Calendar.component(.weekday)` devuelve 1…7. Consecuencias: la columna "D" **nunca puede tener valor** (weekday 8 no existe) y el domingo real (weekday 1) no se cuenta en ninguna columna. Es cosmético en un contexto escolar —nadie registra incidencias en domingo— pero deja una columna muerta permanente en el gráfico. **Está en `KmpBridge.swift`: requiere autorización explícita para tocarlo.** Si no se autoriza, F-1 sigue siendo válido; simplemente se ve una columna "D" siempre vacía.
 
 ---

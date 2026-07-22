@@ -549,7 +549,7 @@ struct AttendanceWorkspaceView: View {
                 ProgressView()
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 24)
-            } else if let facts = incidentHeatmapFacts, facts.hasEnoughData {
+            } else if let facts = incidentHeatmapFacts, Self.hasIncidentData(facts) {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                     ForEach(facts.metrics) { metric in
                         overviewMiniStat(metric.title, Int(metric.value) ?? 0, .orange)
@@ -566,7 +566,7 @@ struct AttendanceWorkspaceView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             } else {
-                Text(incidentHeatmapFacts?.emptyStateMessage ?? "No hay datos suficientes para construir el heatmap de incidencias.")
+                Text("Sin incidencias registradas en las últimas semanas de este grupo.")
                     .font(.callout.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -576,6 +576,15 @@ struct AttendanceWorkspaceView: View {
         .padding(24)
         .frame(maxWidth: 720, alignment: .leading)
         .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+    }
+
+    /// `ChartFacts.hasEnoughData` vale `!cells.isEmpty`, y las celdas se generan
+    /// siempre (una por semana y día, aunque valgan 0), así que nunca es falso.
+    /// Para decidir si hay algo que enseñar hace falta mirar los valores: un
+    /// grupo sin incidencias merece un empty state, no una rejilla de ceros con
+    /// un "mayor concentración: S-3 · L con 0 incidencias".
+    static func hasIncidentData(_ facts: KmpBridge.ChartFacts) -> Bool {
+        facts.hasEnoughData && facts.heatmapCells.contains { $0.value > 0 }
     }
 
     /// Carga perezosa: solo cuando el docente entra en el histórico y hay grupo

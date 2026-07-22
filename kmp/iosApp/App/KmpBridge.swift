@@ -12519,24 +12519,67 @@ extension KmpBridge {
         prompt: String?
     ) async throws -> ChartFacts {
         let incidents = try await incidents(for: schoolClass.id)
-        let cutoff = Calendar.current.date(byAdding: .day, value: -timeRange.dayCount, to: Date()) ?? Date.distantPast
-        let filtered = incidents.filter { Date(timeIntervalSince1970: TimeInterval($0.date.epochSeconds)) >= cutoff }
-        let weekdaySymbols = ["L", "M", "X", "J", "V", "S", "D"]
+
+        // Semana escolar: empieza en lunes, y las filas son semanas naturales,
+        // no ventanas móviles de 7 días contadas desde hoy. Con el reparto
+        // anterior, el viernes de una semana y el lunes de la siguiente caían
+        // en la misma fila, que es justo el eje que da sentido al gráfico.
+        let calendar = Calendar.current
+
+        // Lunes de la semana de `date`, calculado a mano a partir del día de la
+        // semana. Deliberadamente NO se usa `dateInterval(of: .weekOfYear:)`:
+        // depende de `firstWeekday` y de la configuración regional, y su rama de
+        // fallo obliga a un fallback que, si se activa, convierte las filas en
+        // días sueltos y deja la rejilla entera a cero sin avisar.
+        func startOfWeek(for date: Date) -> Date {
+            let day = calendar.startOfDay(for: date)
+            // `weekday`: 1 = domingo … 7 = sábado. Lunes -> 0, domingo -> 6.
+            let daysSinceMonday = (calendar.component(.weekday, from: day) + 5) % 7
+            return calendar.date(byAdding: .day, value: -daysSinceMonday, to: day) ?? day
+        }
+
+        // Días en el orden lectivo L→D. `Calendar.component(.weekday)` devuelve
+        // 1 = domingo … 7 = sábado; el bucle anterior iteraba 2...8, así que la
+        // columna del domingo nunca podía recibir nada y el propio domingo no
+        // se contaba en ninguna columna.
+        let weekdayColumns: [(symbol: String, weekday: Int)] = [
+            ("L", 2), ("M", 3), ("X", 4), ("J", 5), ("V", 6), ("S", 7), ("D", 1)
+        ]
+
         let weeksBack = max(2, min(6, timeRange.dayCount / 14 + 1))
+        let currentWeekStart = startOfWeek(for: Date())
+        let oldestWeekStart = calendar.date(byAdding: .weekOfYear, value: -(weeksBack - 1), to: currentWeekStart) ?? currentWeekStart
+
+        // El recorte es el inicio de la semana más antigua que se pinta, no
+        // `timeRange.dayCount` días naturales: así el total y el pico describen
+        // exactamente lo que se ve en la rejilla y no un periodo más ancho.
+        let filtered = incidents.filter {
+            Date(timeIntervalSince1970: TimeInterval($0.date.epochSeconds)) >= oldestWeekStart
+        }
+
+        let weekLabelFormatter = DateFormatter()
+        weekLabelFormatter.locale = Locale(identifier: "es_ES")
+        weekLabelFormatter.setLocalizedDateFormatFromTemplate("d/M")
+
+        // De la semana más antigua a la más reciente, para que la rejilla se lea
+        // de arriba abajo en orden cronológico. Las etiquetas son la fecha del
+        // lunes de cada semana: `S-1`…`S-6` se leía al revés de lo que sugiere.
         var cells: [HeatmapCell] = []
-        for offset in 0..<weeksBack {
-            let weekLabel = "S-\(weeksBack - offset)"
-            for weekday in 2...8 {
+        for offset in stride(from: weeksBack - 1, through: 0, by: -1) {
+            guard let weekStart = calendar.date(byAdding: .weekOfYear, value: -offset, to: currentWeekStart) else { continue }
+            let weekLabel = weekLabelFormatter.string(from: weekStart)
+            for column in weekdayColumns {
                 let count = filtered.filter { incident in
                     let date = Date(timeIntervalSince1970: TimeInterval(incident.date.epochSeconds))
-                    let weeksDifference = Calendar.current.dateComponents([.weekOfYear], from: date, to: Date()).weekOfYear ?? 0
-                    let weekdayValue = Calendar.current.component(.weekday, from: date)
-                    return weeksDifference == offset && weekdayValue == weekday
+                    // Comparación por día, no por `Date` exacta: los cambios de
+                    // hora dejan medianoches que no son iguales al segundo.
+                    return calendar.isDate(startOfWeek(for: date), inSameDayAs: weekStart)
+                        && calendar.component(.weekday, from: date) == column.weekday
                 }.count
                 cells.append(
                     HeatmapCell(
                         rowLabel: weekLabel,
-                        columnLabel: weekdaySymbols[max(0, min(weekdaySymbols.count - 1, weekday - 2))],
+                        columnLabel: column.symbol,
                         value: Double(count)
                     )
                 )
@@ -12558,7 +12601,7 @@ extension KmpBridge {
             ],
             factLines: compactSuggestions(
                 "Se han revisado \(total) incidencias en el periodo seleccionado.",
-                maxCell.map { "Mayor concentración: \($0.rowLabel) · \($0.columnLabel) con \(Int($0.value)) incidencias." }
+                maxCell.map { "Mayor concentración: semana del \($0.rowLabel), \($0.columnLabel), con \(Int($0.value)) incidencias." }
             ),
             highlights: compactSuggestions(
                 total == 0 ? "No hay incidencias registradas en el periodo." : nil,

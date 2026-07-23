@@ -626,6 +626,51 @@ enum class TutoringChannel {
     WRITTEN,
 }
 
+/**
+ * Reunion de centro (claustro, equipo docente, departamento...) con su acta. A
+ * diferencia de la tutoria con familias, que es de ambito alumno, esto es de
+ * ambito centro y no cuelga de ninguna otra fila. Los `agreements` si van
+ * estructurados en su propia tabla hija ([MeetingAgreement]) porque el valor del
+ * acta esta en poder decir quien se hace cargo de que y para cuando; eso es lo
+ * que la migracion 36 de las tutorias dejo dicho que llegaria aqui.
+ */
+data class Meeting(
+    val id: Long,
+    val title: String,
+    val date: LocalDate,
+    val type: MeetingType = MeetingType.OTRA,
+    val location: String = "",
+    val attendees: String = "",
+    val summary: String = "",
+    val isClosed: Boolean = false,
+    val agreements: List<MeetingAgreement> = emptyList(),
+    val trace: AuditTrace = AuditTrace(),
+)
+
+enum class MeetingType {
+    CLAUSTRO,
+    EQUIPO_DOCENTE,
+    DEPARTAMENTO,
+    CCP,
+    COORDINACION,
+    OTRA,
+}
+
+/**
+ * Un acuerdo tomado en una reunion. `due` es la fecha limite y `responsible` el
+ * texto libre de quien responde; `isDone` se marca por separado segun se van
+ * cerrando, sin reescribir el acta. Cuelga de [Meeting] con ON DELETE CASCADE.
+ */
+data class MeetingAgreement(
+    val id: Long,
+    val meetingId: Long,
+    val description: String,
+    val responsible: String = "",
+    val due: LocalDate? = null,
+    val isDone: Boolean = false,
+    val trace: AuditTrace = AuditTrace(),
+)
+
 data class Incident(
     val id: Long,
     val classId: Long,

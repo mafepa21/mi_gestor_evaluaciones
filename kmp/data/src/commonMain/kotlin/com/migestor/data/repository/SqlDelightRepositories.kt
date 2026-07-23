@@ -38,6 +38,9 @@ import com.migestor.shared.domain.StudentSex
 import com.migestor.shared.domain.StudentSexSource
 import com.migestor.shared.domain.StudentSupportMeasure
 import com.migestor.shared.domain.StudentTutoringSession
+import com.migestor.shared.domain.Meeting
+import com.migestor.shared.domain.MeetingAgreement
+import com.migestor.shared.domain.MeetingType
 import com.migestor.shared.domain.SupportMeasureIntensity
 import com.migestor.shared.domain.SupportMeasureLevel
 import com.migestor.shared.domain.SupportMeasureType
@@ -65,6 +68,7 @@ import com.migestor.shared.repository.RubricsRepository
 import com.migestor.shared.repository.StudentsRepository
 import com.migestor.shared.repository.StudentSupportMeasureRepository
 import com.migestor.shared.repository.StudentTutoringSessionRepository
+import com.migestor.shared.repository.MeetingRepository
 import com.migestor.shared.repository.StudentProfileSnapshot
 import com.migestor.shared.repository.AITrendsRepository
 import com.migestor.shared.repository.StudentGradeHistoryPoint
@@ -2049,6 +2053,208 @@ class StudentTutoringSessionRepositorySqlDelight(
 
     override suspend fun delete(id: Long) = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.deleteTutoringSession(id)
+    }
+}
+
+class MeetingRepositorySqlDelight(
+    private val db: AppDatabase,
+) : MeetingRepository {
+
+    /**
+     * `null` si la fila persiste un `type` que ya no existe en el enum actual
+     * (datos de una version anterior). Se descarta en vez de lanzar, mismo
+     * criterio que las tutorias y las medidas de apoyo: un `valueOf` fallido
+     * cruzaria como excepcion no capturada hacia Swift y tumbaria el modulo.
+     */
+    private fun meetingRowToModel(
+        id: Long,
+        title: String,
+        dateIso: String,
+        type: String,
+        location: String,
+        attendees: String,
+        summary: String,
+        isClosed: Long,
+        updatedAtEpochMs: Long,
+        deviceId: String?,
+        syncVersion: Long,
+        agreements: List<MeetingAgreement>,
+    ): Meeting? {
+        val parsedType = enumValueOfOrNull<MeetingType>(type) ?: return null
+        return Meeting(
+            id = id,
+            title = title,
+            date = LocalDate.parse(dateIso),
+            type = parsedType,
+            location = location,
+            attendees = attendees,
+            summary = summary,
+            isClosed = isClosed != 0L,
+            agreements = agreements,
+            trace = AuditTrace(
+                updatedAt = Instant.fromEpochMilliseconds(updatedAtEpochMs),
+                deviceId = deviceId,
+                syncVersion = syncVersion,
+            )
+        )
+    }
+
+    private fun agreementRowToModel(
+        id: Long,
+        meetingId: Long,
+        description: String,
+        responsible: String,
+        dueIso: String?,
+        isDone: Long,
+        updatedAtEpochMs: Long,
+        deviceId: String?,
+        syncVersion: Long,
+    ): MeetingAgreement = MeetingAgreement(
+        id = id,
+        meetingId = meetingId,
+        description = description,
+        responsible = responsible,
+        due = localDateOrNull(dueIso),
+        isDone = isDone != 0L,
+        trace = AuditTrace(
+            updatedAt = Instant.fromEpochMilliseconds(updatedAtEpochMs),
+            deviceId = deviceId,
+            syncVersion = syncVersion,
+        )
+    )
+
+    private fun agreementsFor(meetingId: Long): List<MeetingAgreement> =
+        db.appDatabaseQueries.selectAgreementsByMeeting(meetingId).executeAsList().map {
+            agreementRowToModel(
+                it.id, it.meeting_id, it.description, it.responsible, it.due_iso,
+                it.is_done, it.updated_at_epoch_ms, it.device_id, it.sync_version,
+            )
+        }
+
+    override suspend fun listAll(): List<Meeting> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectAllMeetings().executeAsList().mapNotNull {
+            meetingRowToModel(
+                it.id, it.title, it.date_iso, it.type, it.location, it.attendees,
+                it.summary, it.is_closed, it.updated_at_epoch_ms, it.device_id,
+                it.sync_version, agreementsFor(it.id),
+            )
+        }
+    }
+
+    override suspend fun getById(id: Long): Meeting? = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectMeetingById(id).executeAsOneOrNull()?.let {
+            meetingRowToModel(
+                it.id, it.title, it.date_iso, it.type, it.location, it.attendees,
+                it.summary, it.is_closed, it.updated_at_epoch_ms, it.device_id,
+                it.sync_version, agreementsFor(it.id),
+            )
+        }
+    }
+
+    override suspend fun listPendingAgreements(onOrBeforeIso: String): List<MeetingAgreement> = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectPendingAgreements(onOrBeforeIso).executeAsList().map {
+            agreementRowToModel(
+                it.id, it.meeting_id, it.description, it.responsible, it.due_iso,
+                it.is_done, it.updated_at_epoch_ms, it.device_id, it.sync_version,
+            )
+        }
+    }
+
+    override suspend fun saveMeeting(
+        id: Long?,
+        title: String,
+        dateIso: String,
+        type: MeetingType,
+        location: String,
+        attendees: String,
+        summary: String,
+        isClosed: Boolean,
+        createdAtEpochMs: Long,
+        updatedAtEpochMs: Long,
+        deviceId: String?,
+        syncVersion: Long,
+    ): Long = withContext(Dispatchers.Default) {
+        db.transactionWithResult {
+            if (id != null) {
+                db.appDatabaseQueries.updateMeeting(
+                    title,
+                    dateIso,
+                    type.name,
+                    location,
+                    attendees,
+                    summary,
+                    if (isClosed) 1 else 0,
+                    updatedAtEpochMs,
+                    deviceId,
+                    id,
+                )
+                id
+            } else {
+                db.appDatabaseQueries.insertMeeting(
+                    title,
+                    dateIso,
+                    type.name,
+                    location,
+                    attendees,
+                    summary,
+                    if (isClosed) 1 else 0,
+                    createdAtEpochMs,
+                    updatedAtEpochMs,
+                    deviceId,
+                    syncVersion,
+                )
+                db.appDatabaseQueries.lastInsertedId().executeAsOne()
+            }
+        }
+    }
+
+    override suspend fun deleteMeeting(id: Long) = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.deleteMeeting(id)
+    }
+
+    override suspend fun saveAgreement(
+        id: Long?,
+        meetingId: Long,
+        description: String,
+        responsible: String,
+        dueIso: String?,
+        isDone: Boolean,
+        createdAtEpochMs: Long,
+        updatedAtEpochMs: Long,
+        deviceId: String?,
+        syncVersion: Long,
+    ): Long = withContext(Dispatchers.Default) {
+        db.transactionWithResult {
+            if (id != null) {
+                db.appDatabaseQueries.updateMeetingAgreement(
+                    description,
+                    responsible,
+                    dueIso,
+                    if (isDone) 1 else 0,
+                    updatedAtEpochMs,
+                    deviceId,
+                    id,
+                )
+                id
+            } else {
+                db.appDatabaseQueries.insertMeetingAgreement(
+                    meetingId,
+                    description,
+                    responsible,
+                    dueIso,
+                    if (isDone) 1 else 0,
+                    createdAtEpochMs,
+                    updatedAtEpochMs,
+                    deviceId,
+                    syncVersion,
+                )
+                db.appDatabaseQueries.lastInsertedId().executeAsOne()
+            }
+        }
+    }
+
+    override suspend fun deleteAgreement(id: Long) = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.deleteMeetingAgreement(id)
     }
 }
 

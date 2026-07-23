@@ -1313,6 +1313,90 @@ DELETE FROM student_tutoring_sessions WHERE id = ?;
 selectTutoringSessionCreatedAt:
 SELECT created_at_epoch_ms FROM student_tutoring_sessions WHERE id = ?;
 
+CREATE TABLE IF NOT EXISTS meetings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL DEFAULT '',
+    date_iso TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'OTRA',
+    location TEXT NOT NULL DEFAULT '',
+    attendees TEXT NOT NULL DEFAULT '',
+    summary TEXT NOT NULL DEFAULT '',
+    is_closed INTEGER NOT NULL DEFAULT 0,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS meeting_agreements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    meeting_id INTEGER NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    responsible TEXT NOT NULL DEFAULT '',
+    due_iso TEXT,
+    is_done INTEGER NOT NULL DEFAULT 0,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_meetings_date ON meetings(date_iso DESC);
+CREATE INDEX IF NOT EXISTS idx_meeting_agreements_meeting ON meeting_agreements(meeting_id, id);
+CREATE INDEX IF NOT EXISTS idx_meeting_agreements_due ON meeting_agreements(due_iso) WHERE is_done = 0;
+
+selectAllMeetings:
+SELECT id, title, date_iso, type, location, attendees, summary, is_closed, updated_at_epoch_ms, device_id, sync_version
+FROM meetings
+ORDER BY date_iso DESC, id DESC;
+
+selectMeetingById:
+SELECT id, title, date_iso, type, location, attendees, summary, is_closed, updated_at_epoch_ms, device_id, sync_version
+FROM meetings
+WHERE id = ?;
+
+insertMeeting:
+INSERT INTO meetings(title, date_iso, type, location, attendees, summary, is_closed, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- Actualiza en el sitio sin tocar created_at_epoch_ms e incrementando siempre
+-- sync_version, igual que updateTutoringSession: corregir el acta no debe
+-- reescribir cuando se creo la reunion.
+updateMeeting:
+UPDATE meetings
+SET title = ?, date_iso = ?, type = ?, location = ?, attendees = ?, summary = ?, is_closed = ?, updated_at_epoch_ms = ?, device_id = ?, sync_version = sync_version + 1
+WHERE id = ?;
+
+deleteMeeting:
+DELETE FROM meetings WHERE id = ?;
+
+selectMeetingCreatedAt:
+SELECT created_at_epoch_ms FROM meetings WHERE id = ?;
+
+selectAgreementsByMeeting:
+SELECT id, meeting_id, description, responsible, due_iso, is_done, updated_at_epoch_ms, device_id, sync_version
+FROM meeting_agreements
+WHERE meeting_id = ?
+ORDER BY id ASC;
+
+-- Acuerdos abiertos con fecha limite ya vencida o proxima, para el aviso de pendientes.
+selectPendingAgreements:
+SELECT id, meeting_id, description, responsible, due_iso, is_done, updated_at_epoch_ms, device_id, sync_version
+FROM meeting_agreements
+WHERE is_done = 0 AND due_iso IS NOT NULL AND due_iso <= ?
+ORDER BY due_iso ASC, id ASC;
+
+insertMeetingAgreement:
+INSERT INTO meeting_agreements(meeting_id, description, responsible, due_iso, is_done, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateMeetingAgreement:
+UPDATE meeting_agreements
+SET description = ?, responsible = ?, due_iso = ?, is_done = ?, updated_at_epoch_ms = ?, device_id = ?, sync_version = sync_version + 1
+WHERE id = ?;
+
+deleteMeetingAgreement:
+DELETE FROM meeting_agreements WHERE id = ?;
+
 selectBackupEntries:
 SELECT id, path, created_at_epoch_ms, platform, size_bytes
 FROM backup_entries

@@ -93,11 +93,21 @@ struct PlannerWeekDetailPane: View {
     }
 
     private var emptyState: some View {
-        PlannerEmptyState(
-            title: "Selecciona una franja",
-            systemImage: "calendar.day.timeline.left",
-            message: "Toca una celda para revisar la sesión o la cabecera de un día para ver su agenda."
-        )
+        VStack(alignment: .leading, spacing: 16) {
+            if let classId = vm.selectedGroupId, let bridge = vm.bridge {
+                PlannerWeekPlanSection(
+                    bridge: bridge,
+                    classId: classId,
+                    year: vm.year,
+                    week: vm.week
+                )
+            }
+            PlannerEmptyState(
+                title: "Selecciona una franja",
+                systemImage: "calendar.day.timeline.left",
+                message: "Toca una celda para revisar la sesión o la cabecera de un día para ver su agenda."
+            )
+        }
     }
 
     private func emptyCellDetail(for key: PlannerCellKey) -> some View {

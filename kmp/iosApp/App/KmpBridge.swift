@@ -435,6 +435,25 @@ final class KmpBridge: ObservableObject {
         var isDone: Bool = false
     }
 
+    struct WeekPlanSnapshot: Identifiable, Hashable {
+        let id: Int64?
+        let classId: Int64
+        let year: Int
+        let week: Int
+        let strategyKeys: [String]
+        let instrumentKeys: [String]
+        let notes: String
+    }
+
+    struct WeekPlanDraft {
+        var classId: Int64
+        var year: Int
+        var week: Int
+        var strategyKeys: [String] = []
+        var instrumentKeys: [String] = []
+        var notes: String = ""
+    }
+
     struct SupportMeasureSnapshot: Identifiable {
         let id: Int64
         let studentId: Int64
@@ -4041,6 +4060,62 @@ final class KmpBridge: ObservableObject {
 
     private func kotlinMeetingType(_ type: MeetingTypeUI) -> MeetingType {
         MeetingType.entries.first { $0.name == type.rawValue } ?? MeetingType.entries[0]
+    }
+
+    // MARK: - Plan pedagógico semanal (B-3)
+
+    /// `nil` si aún no hay plan guardado para esa (clase, año, semana).
+    func weekPlan(classId: Int64, year: Int, week: Int) async throws -> WeekPlanSnapshot? {
+        guard let plan = try await container.plannerWeekPlanRepository.getPlan(
+            classId: classId,
+            year: Int32(year),
+            week: Int32(week)
+        ) else { return nil }
+        return weekPlanSnapshot(from: plan)
+    }
+
+    @discardableResult
+    func saveWeekPlan(id: Int64? = nil, draft: WeekPlanDraft) async throws -> Int64 {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let savedId = try await container.plannerWeekPlanRepository.save(
+            id: kotlinLong(id),
+            classId: draft.classId,
+            year: Int32(draft.year),
+            week: Int32(draft.week),
+            strategies: draft.strategyKeys,
+            instruments: draft.instrumentKeys,
+            notes: draft.notes,
+            createdAtEpochMs: id == nil ? nowMs : 0,
+            updatedAtEpochMs: nowMs,
+            deviceId: localDeviceId,
+            syncVersion: 1
+        ).int64Value
+        enqueueLocalChange(
+            entity: "planner_week_plan",
+            id: "\(savedId)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "classId": draft.classId,
+                "year": draft.year,
+                "week": draft.week,
+                "strategies": draft.strategyKeys,
+                "instruments": draft.instrumentKeys,
+                "notes": draft.notes
+            ]
+        )
+        return savedId
+    }
+
+    private func weekPlanSnapshot(from plan: PlannerWeekPlan) -> WeekPlanSnapshot {
+        WeekPlanSnapshot(
+            id: plan.id,
+            classId: plan.classId,
+            year: Int(plan.year),
+            week: Int(plan.week),
+            strategyKeys: plan.strategies.map { String(describing: $0) },
+            instrumentKeys: plan.instruments.map { String(describing: $0) },
+            notes: plan.notes
+        )
     }
 
     private func supportMeasureSnapshot(from measure: StudentSupportMeasure) -> SupportMeasureSnapshot? {

@@ -112,6 +112,8 @@
 		32CE6F86DE9C33DC5491ED7B /* MeetingsShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47568F8E8704DECBB09A436E /* MeetingsShared.swift */; };
 		C4E2B1D8F3A5690B7D1E2F3A /* MeetingActaPDF.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3D1A0C7E2F4589A6C0D1E2F /* MeetingActaPDF.swift */; };
 		B8C9D0E1F2A3405566778899 /* PlannerPedagogyShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B8C9D0E1F2304556677889 /* PlannerPedagogyShared.swift */; };
+		E2F3A4B5C6D7809900AABBCD /* DashboardRecommendations.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1E2F3A4B5C6708899AABBCC /* DashboardRecommendations.swift */; };
+		F3A4B5C6D7E890AABBCCDDEE /* DashboardRecommendations.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1E2F3A4B5C6708899AABBCC /* DashboardRecommendations.swift */; };
 		C9D0E1F2A3B4506677889900 /* PlannerPedagogyShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B8C9D0E1F2304556677889 /* PlannerPedagogyShared.swift */; };
 		D5F3C2E9A4B6701C8E2F3A4B /* MeetingActaPDF.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3D1A0C7E2F4589A6C0D1E2F /* MeetingActaPDF.swift */; };
 		6A99C09975E50A2E4BC202C4 /* MeetingsShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47568F8E8704DECBB09A436E /* MeetingsShared.swift */; };
@@ -637,6 +639,7 @@
 		47568F8E8704DECBB09A436E /* MeetingsShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingsShared.swift; sourceTree = "<group>"; };
 		B3D1A0C7E2F4589A6C0D1E2F /* MeetingActaPDF.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingActaPDF.swift; sourceTree = "<group>"; };
 		A7B8C9D0E1F2304556677889 /* PlannerPedagogyShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerPedagogyShared.swift; sourceTree = "<group>"; };
+		D1E2F3A4B5C6708899AABBCC /* DashboardRecommendations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardRecommendations.swift; sourceTree = "<group>"; };
 		9F0625FAD874A1699AAFC8CC /* MacMeetingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacMeetingsView.swift; sourceTree = "<group>"; };
 		FE68D432B0174FD0B007786D /* ScheduleGridPDFRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleGridPDFRenderer.swift; sourceTree = "<group>"; };
 		85E8648625AD46C1947791EA /* ScheduleWeekGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleWeekGridView.swift; sourceTree = "<group>"; };
@@ -735,6 +738,7 @@
 				47568F8E8704DECBB09A436E /* MeetingsShared.swift */,
 				B3D1A0C7E2F4589A6C0D1E2F /* MeetingActaPDF.swift */,
 				A7B8C9D0E1F2304556677889 /* PlannerPedagogyShared.swift */,
+				D1E2F3A4B5C6708899AABBCC /* DashboardRecommendations.swift */,
 				FE68D432B0174FD0B007786D /* ScheduleGridPDFRenderer.swift */,
 				85E8648625AD46C1947791EA /* ScheduleWeekGridView.swift */,
 				1027C324D7108B1CD8EB79AC /* BackupCenterView.swift */,
@@ -1169,6 +1173,7 @@
 				32CE6F86DE9C33DC5491ED7B /* MeetingsShared.swift in Sources */,
 				C4E2B1D8F3A5690B7D1E2F3A /* MeetingActaPDF.swift in Sources */,
 				B8C9D0E1F2A3405566778899 /* PlannerPedagogyShared.swift in Sources */,
+				E2F3A4B5C6D7809900AABBCD /* DashboardRecommendations.swift in Sources */,
 				C94C4C0D869B4E1A8605C3AA /* ScheduleGridPDFRenderer.swift in Sources */,
 				32C24A41862749828019A5A7 /* ScheduleWeekGridView.swift in Sources */,
 				5AA56A1A703EDF8406F8B991 /* AttendanceWorkspaceView.swift in Sources */,
@@ -1384,6 +1389,7 @@
 				6A99C09975E50A2E4BC202C4 /* MeetingsShared.swift in Sources */,
 				D5F3C2E9A4B6701C8E2F3A4B /* MeetingActaPDF.swift in Sources */,
 				C9D0E1F2A3B4506677889900 /* PlannerPedagogyShared.swift in Sources */,
+				F3A4B5C6D7E890AABBCCDDEE /* DashboardRecommendations.swift in Sources */,
 				67B49945FF8F4757B47E23B6 /* ScheduleGridPDFRenderer.swift in Sources */,
 				87AA1CEE4BBF49A5BDAA17B6 /* ScheduleWeekGridView.swift in Sources */,
 				9AA8BC06ED560D826F02901B /* AttendanceWorkspaceView.swift in Sources */,

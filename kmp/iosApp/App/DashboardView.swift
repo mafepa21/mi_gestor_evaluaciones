@@ -914,14 +914,21 @@ struct DashboardView: View {
             }
 
             ForEach(riskAlerts.prefix(4), id: \.id) { alert in
-                dashboardActionRow(
-                    title: riskTitle(alert),
-                    subtitle: alert.detail,
-                    systemImage: riskIcon(alert),
-                    tint: riskTint(alert.severity)
-                ) {
-                    inspectorSelection = .alert(alert.id)
-                    isInspectorPresented = true
+                VStack(alignment: .leading, spacing: 6) {
+                    dashboardActionRow(
+                        title: riskTitle(alert),
+                        subtitle: alert.detail,
+                        systemImage: riskIcon(alert),
+                        tint: riskTint(alert.severity)
+                    ) {
+                        inspectorSelection = .alert(alert.id)
+                        isInspectorPresented = true
+                    }
+                    if let recommendation = DashboardRecommendations.action(
+                        type: alert.type, title: alert.title, detail: alert.detail
+                    ) {
+                        dashboardRecommendationLine(recommendation)
+                    }
                 }
             }
 
@@ -1359,6 +1366,24 @@ struct DashboardView: View {
             dashboardRowContent(title: title, subtitle: subtitle, systemImage: systemImage, tint: tint)
         }
         .buttonStyle(ScaleButtonStyle())
+    }
+
+    /// El "qué hacer" que acompaña a una alerta de riesgo (B-4). Deriva de la
+    /// propia alerta; no es una acción con estado, solo una guía visible.
+    private func dashboardRecommendationLine(_ text: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "lightbulb.fill")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(.yellow)
+                .frame(width: 16)
+            Text(text)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.bottom, 2)
     }
 
     private func dashboardStaticRow(

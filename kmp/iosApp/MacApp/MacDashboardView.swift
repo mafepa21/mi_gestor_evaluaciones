@@ -1112,6 +1112,20 @@ private struct DashboardRiskCard: View {
                                     Text(item.subtitle)
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
+                                    if let recommendation = DashboardRecommendations.action(
+                                        type: "", title: item.title, detail: item.subtitle
+                                    ) {
+                                        HStack(alignment: .top, spacing: 6) {
+                                            Image(systemName: "lightbulb.fill")
+                                                .font(.caption2.weight(.bold))
+                                                .foregroundStyle(.yellow)
+                                            Text(recommendation)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                                .fixedSize(horizontal: false, vertical: true)
+                                        }
+                                        .padding(.top, 2)
+                                    }
                                 }
                                 Spacer()
                             }

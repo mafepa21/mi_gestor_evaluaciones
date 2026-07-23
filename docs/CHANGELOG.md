@@ -15,6 +15,10 @@ El formato sigue una variante practica de Keep a Changelog:
 
 Cambios posteriores a `v0.3.0-traceability-baseline`.
 
+### Fixed
+
+- Reuniones (macOS): el módulo tumbaba la app con un crash intermitente de AppKit ("Update Constraints in Window pass") al abrirlo o al cambiar de reunión. Lo causaba el `HSplitView` (`NSSplitView`) del maestro-detalle, anidado dentro del `NavigationSplitView` raíz. Se sustituye por un `HStack` con panel de ancho fijo y `Divider`, sin `NSSplitView`. De paso, en el detalle las acciones (exportar, editar, borrar) pasan a solo-icono y el título gana prioridad de layout, para que en un panel estrecho no lo estrujen hasta partirlo carácter a carácter.
+
 ### Added
 
 - Reuniones y actas: **exportación del acta a PDF** desde el detalle de una reunión, en macOS ("Exportar PDF", abre en Vista Previa) y en iPad (`ShareLink`). El PDF es un A4 vertical maquetado con la identidad de la Fundación Educativa Madre Micaela: cabecera con el logo del centro, tarjeta de metadatos (tipo, fecha, lugar, asistentes), cuerpo del acta y la lista numerada de acuerdos, cada uno con responsable, fecha límite y un distintivo de estado (cumplido, vencido, próximo o pendiente) en verde, rojo, ámbar o gris. Se rasteriza `MeetingActaPage` con `ImageRenderer` paginando por franjas, de modo que en actas largas el texto conserva su tamaño en vez de encogerse hasta caber en una hoja. Ver `docs/planes/plan_paridad_cuaderno_docente_2026-07-22.md` (B-2).

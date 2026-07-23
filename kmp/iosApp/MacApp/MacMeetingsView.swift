@@ -44,11 +44,17 @@ struct MacMeetingsView: View {
                 .buttonStyle(.borderedProminent)
             }
 
-            HSplitView {
+            // Se usa un HStack con ancho fijo a la izquierda en vez de HSplitView:
+            // el NSSplitView que respalda a HSplitView, anidado dentro del detail
+            // del NavigationSplitView raíz, entra en un bucle de "Update Constraints
+            // in Window pass" de AppKit y tumba la app de forma intermitente al
+            // interactuar. Un ancho fijo elimina esa maquinaria de constraints.
+            HStack(spacing: 0) {
                 meetingsList
-                    .frame(minWidth: 300, idealWidth: 340, maxWidth: 420)
+                    .frame(width: 340)
+                Divider()
                 detail
-                    .frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         }
         .padding(MacAppStyle.pagePadding)
@@ -293,10 +299,12 @@ private struct MacMeetingDetailView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top) {
+            HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(meeting.displayTitle)
                         .font(.largeTitle.weight(.bold))
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 8) {
                         Label(meeting.type.displayName, systemImage: meeting.type.systemImage)
                         Text(meeting.dateDisplay)
@@ -307,22 +315,23 @@ private struct MacMeetingDetailView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 }
-                Spacer()
-                Button {
-                    exportPDF()
-                } label: {
-                    Label("Exportar PDF", systemImage: "square.and.arrow.up")
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(1)
+
+                // Acciones en solo-icono: con etiquetas completas y el panel de
+                // detalle estrecho, los tres botones estrujaban el título hasta
+                // partirlo carácter a carácter.
+                HStack(spacing: 4) {
+                    Button { exportPDF() } label: { Image(systemName: "square.and.arrow.up") }
+                        .help("Exportar el acta a PDF")
+                    Button { onEdit() } label: { Image(systemName: "pencil") }
+                        .help("Editar la reunión")
+                    Button(role: .destructive) { onDelete() } label: { Image(systemName: "trash") }
+                        .help("Borrar la reunión")
                 }
-                Button {
-                    onEdit()
-                } label: {
-                    Label("Editar", systemImage: "pencil")
-                }
-                Button(role: .destructive) {
-                    onDelete()
-                } label: {
-                    Label("Borrar", systemImage: "trash")
-                }
+                .buttonStyle(.borderless)
+                .imageScale(.large)
+                .fixedSize()
             }
 
             if !meeting.location.isEmpty {

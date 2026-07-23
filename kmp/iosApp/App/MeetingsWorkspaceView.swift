@@ -209,6 +209,7 @@ private struct MeetingDetailScreen: View {
     @State private var editingAgreement: MeetingAgreementRow?
     @State private var pendingDeleteAgreement: MeetingAgreementRow?
     @State private var pendingDeleteMeeting = false
+    @State private var actaPDFURL: URL?
 
     var body: some View {
         ScrollView {
@@ -240,6 +241,9 @@ private struct MeetingDetailScreen: View {
         #endif
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
+                if let actaPDFURL {
+                    ShareLink(item: actaPDFURL) { Image(systemName: "square.and.arrow.up") }
+                }
                 Button { onEdit() } label: { Image(systemName: "pencil") }
                 Button(role: .destructive) { pendingDeleteMeeting = true } label: {
                     Image(systemName: "trash")
@@ -407,8 +411,17 @@ private struct MeetingDetailScreen: View {
 
     private func reload() async {
         do {
-            meeting = try await bridge.meeting(id: meetingId)?.asRow
+            let loaded = try await bridge.meeting(id: meetingId)?.asRow
+            meeting = loaded
             errorMessage = nil
+            // Regenera el PDF del acta con el estado actual (incluye los cambios
+            // de acuerdos), para que "Exportar" comparta siempre lo que se ve.
+            if let loaded {
+                actaPDFURL = MeetingActaPDFRenderer.writeToTemporaryFile(
+                    acta: MeetingActaPage(meeting: loaded),
+                    suggestedName: "Acta - \(loaded.displayTitle)"
+                )
+            }
         } catch {
             errorMessage = "No se pudo cargar la reunión: \(error.localizedDescription)"
         }

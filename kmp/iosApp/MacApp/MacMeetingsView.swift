@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import MiGestorKit
 
 @MainActor
@@ -308,6 +309,11 @@ private struct MacMeetingDetailView: View {
                 }
                 Spacer()
                 Button {
+                    exportPDF()
+                } label: {
+                    Label("Exportar PDF", systemImage: "square.and.arrow.up")
+                }
+                Button {
                     onEdit()
                 } label: {
                     Label("Editar", systemImage: "pencil")
@@ -428,6 +434,19 @@ private struct MacMeetingDetailView: View {
                 .font(.headline)
             content()
         }
+    }
+
+    /// Genera el PDF del acta y lo abre con la app por omisión (Vista Previa),
+    /// desde donde se imprime o se guarda. Mismo gesto que el PDF del horario.
+    private func exportPDF() {
+        guard let url = MeetingActaPDFRenderer.writeToTemporaryFile(
+            acta: MeetingActaPage(meeting: meeting),
+            suggestedName: "Acta - \(meeting.displayTitle)"
+        ) else {
+            errorMessage = "No se pudo generar el PDF del acta."
+            return
+        }
+        NSWorkspace.shared.open(url)
     }
 
     private func toggleDone(_ agreement: MeetingAgreementRow) async {

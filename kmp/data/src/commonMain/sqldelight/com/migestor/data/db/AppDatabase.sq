@@ -1397,6 +1397,44 @@ WHERE id = ?;
 deleteMeetingAgreement:
 DELETE FROM meeting_agreements WHERE id = ?;
 
+CREATE TABLE IF NOT EXISTS planner_week_plan (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    class_id INTEGER NOT NULL,
+    year INTEGER NOT NULL,
+    week INTEGER NOT NULL,
+    strategies TEXT NOT NULL DEFAULT '',
+    instruments TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_planner_week_plan_key ON planner_week_plan(class_id, year, week);
+
+selectWeekPlan:
+SELECT id, class_id, year, week, strategies, instruments, notes, updated_at_epoch_ms, device_id, sync_version
+FROM planner_week_plan
+WHERE class_id = ? AND year = ? AND week = ?;
+
+insertWeekPlan:
+INSERT INTO planner_week_plan(class_id, year, week, strategies, instruments, notes, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- Actualiza en el sitio sin tocar created_at_epoch_ms e incrementando siempre
+-- sync_version, mismo criterio que el resto de tablas documentales.
+updateWeekPlan:
+UPDATE planner_week_plan
+SET strategies = ?, instruments = ?, notes = ?, updated_at_epoch_ms = ?, device_id = ?, sync_version = sync_version + 1
+WHERE id = ?;
+
+deleteWeekPlan:
+DELETE FROM planner_week_plan WHERE id = ?;
+
+selectWeekPlanCreatedAt:
+SELECT created_at_epoch_ms FROM planner_week_plan WHERE id = ?;
+
 selectBackupEntries:
 SELECT id, path, created_at_epoch_ms, platform, size_bytes
 FROM backup_entries

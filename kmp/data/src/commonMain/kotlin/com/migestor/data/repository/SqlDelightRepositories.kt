@@ -41,6 +41,7 @@ import com.migestor.shared.domain.StudentTutoringSession
 import com.migestor.shared.domain.Meeting
 import com.migestor.shared.domain.MeetingAgreement
 import com.migestor.shared.domain.MeetingType
+import com.migestor.shared.domain.PlannerWeekPlan
 import com.migestor.shared.domain.SupportMeasureIntensity
 import com.migestor.shared.domain.SupportMeasureLevel
 import com.migestor.shared.domain.SupportMeasureType
@@ -69,6 +70,7 @@ import com.migestor.shared.repository.StudentsRepository
 import com.migestor.shared.repository.StudentSupportMeasureRepository
 import com.migestor.shared.repository.StudentTutoringSessionRepository
 import com.migestor.shared.repository.MeetingRepository
+import com.migestor.shared.repository.PlannerWeekPlanRepository
 import com.migestor.shared.repository.StudentProfileSnapshot
 import com.migestor.shared.repository.AITrendsRepository
 import com.migestor.shared.repository.StudentGradeHistoryPoint
@@ -2255,6 +2257,84 @@ class MeetingRepositorySqlDelight(
 
     override suspend fun deleteAgreement(id: Long) = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.deleteMeetingAgreement(id)
+    }
+}
+
+class PlannerWeekPlanRepositorySqlDelight(
+    private val db: AppDatabase,
+) : PlannerWeekPlanRepository {
+
+    // Las listas viajan como texto separado por saltos de linea. Se filtran los
+    // vacios para que un campo en blanco no se convierta en una clave "".
+    private fun encodeList(items: List<String>): String =
+        items.filter { it.isNotBlank() }.joinToString("\n")
+
+    private fun decodeList(raw: String): List<String> =
+        raw.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+
+    override suspend fun getPlan(classId: Long, year: Int, week: Int): PlannerWeekPlan? = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.selectWeekPlan(classId, year.toLong(), week.toLong()).executeAsOneOrNull()?.let {
+            PlannerWeekPlan(
+                id = it.id,
+                classId = it.class_id,
+                year = it.year.toInt(),
+                week = it.week.toInt(),
+                strategies = decodeList(it.strategies),
+                instruments = decodeList(it.instruments),
+                notes = it.notes,
+                trace = AuditTrace(
+                    updatedAt = Instant.fromEpochMilliseconds(it.updated_at_epoch_ms),
+                    deviceId = it.device_id,
+                    syncVersion = it.sync_version,
+                )
+            )
+        }
+    }
+
+    override suspend fun save(
+        id: Long?,
+        classId: Long,
+        year: Int,
+        week: Int,
+        strategies: List<String>,
+        instruments: List<String>,
+        notes: String,
+        createdAtEpochMs: Long,
+        updatedAtEpochMs: Long,
+        deviceId: String?,
+        syncVersion: Long,
+    ): Long = withContext(Dispatchers.Default) {
+        db.transactionWithResult {
+            if (id != null) {
+                db.appDatabaseQueries.updateWeekPlan(
+                    encodeList(strategies),
+                    encodeList(instruments),
+                    notes,
+                    updatedAtEpochMs,
+                    deviceId,
+                    id,
+                )
+                id
+            } else {
+                db.appDatabaseQueries.insertWeekPlan(
+                    classId,
+                    year.toLong(),
+                    week.toLong(),
+                    encodeList(strategies),
+                    encodeList(instruments),
+                    notes,
+                    createdAtEpochMs,
+                    updatedAtEpochMs,
+                    deviceId,
+                    syncVersion,
+                )
+                db.appDatabaseQueries.lastInsertedId().executeAsOne()
+            }
+        }
+    }
+
+    override suspend fun delete(id: Long) = withContext(Dispatchers.Default) {
+        db.appDatabaseQueries.deleteWeekPlan(id)
     }
 }
 

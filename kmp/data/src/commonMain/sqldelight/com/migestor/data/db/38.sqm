@@ -1,0 +1,28 @@
+-- Migration 38: Plan pedagogico semanal (estrategias didacticas e instrumentos)
+--
+-- El competidor asocia a cada semana un banco cerrado de tecnicas (evocacion,
+-- codificacion dual, ejemplos multiples...) y de instrumentos de evaluacion. En
+-- el Planner una "semana" no era una entidad persistida: solo una clave calculada
+-- (anio, semana ISO) por grupo. Esta tabla le da un sitio a esos metadatos.
+--
+-- Las estrategias e instrumentos marcados se guardan como listas de claves
+-- estables separadas por '\n'; el banco (clave -> etiqueta) vive en la UI, que es
+-- donde es un asunto de presentacion. Ambito grupo, con ON DELETE CASCADE sobre
+-- classes. Clave natural (class_id, year, week) unica: un plan por grupo y semana.
+CREATE TABLE IF NOT EXISTS planner_week_plan (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    class_id INTEGER NOT NULL,
+    year INTEGER NOT NULL,
+    week INTEGER NOT NULL,
+    strategies TEXT NOT NULL DEFAULT '',
+    instruments TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE
+);
+
+-- Consulta dominante: el plan de un grupo en una semana concreta.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_planner_week_plan_key ON planner_week_plan(class_id, year, week);

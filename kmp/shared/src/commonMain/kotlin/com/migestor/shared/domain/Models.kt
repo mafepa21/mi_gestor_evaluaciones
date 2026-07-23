@@ -671,6 +671,24 @@ data class MeetingAgreement(
     val trace: AuditTrace = AuditTrace(),
 )
 
+/**
+ * Plan pedagogico de una semana de un grupo: que estrategias didacticas e
+ * instrumentos de evaluacion se marcan para esa semana. `strategies` e
+ * `instruments` son listas de claves estables de un banco cerrado definido en la
+ * UI; aqui viajan como listas para no acoplar el dominio a ese banco. Clave
+ * natural (classId, year, week).
+ */
+data class PlannerWeekPlan(
+    val id: Long,
+    val classId: Long,
+    val year: Int,
+    val week: Int,
+    val strategies: List<String> = emptyList(),
+    val instruments: List<String> = emptyList(),
+    val notes: String = "",
+    val trace: AuditTrace = AuditTrace(),
+)
+
 data class Incident(
     val id: Long,
     val classId: Long,

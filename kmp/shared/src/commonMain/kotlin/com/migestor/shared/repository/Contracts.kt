@@ -703,6 +703,25 @@ interface MeetingRepository {
     suspend fun deleteAgreement(id: Long)
 }
 
+interface PlannerWeekPlanRepository {
+    /** El plan de un grupo en una semana ISO concreta, o `null` si aun no existe. */
+    suspend fun getPlan(classId: Long, year: Int, week: Int): PlannerWeekPlan?
+    suspend fun save(
+        id: Long? = null,
+        classId: Long,
+        year: Int,
+        week: Int,
+        strategies: List<String> = emptyList(),
+        instruments: List<String> = emptyList(),
+        notes: String = "",
+        createdAtEpochMs: Long = 0,
+        updatedAtEpochMs: Long = 0,
+        deviceId: String? = null,
+        syncVersion: Long = 0,
+    ): Long
+    suspend fun delete(id: Long)
+}
+
 interface CompetenciesRepository {
     fun observeCompetencies(): Flow<List<CompetencyCriterion>>
     suspend fun listCompetencies(): List<CompetencyCriterion>

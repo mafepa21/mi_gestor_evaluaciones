@@ -137,8 +137,11 @@ struct MacRootView: View {
         // to the generic MacModuleInspectorPlaceholder), and MacRubricsView already has its
         // own HSplitView detail panel — the shell inspector was just reserving 320-440pt for
         // nothing (UI-13 de plan_auditoria_ui_2026-07-15.md).
+        // Meetings opts out for the same reason: MacMeetingsView brings its own HSplitView
+        // (lista + detalle del acta), y superponer el inspector del shell provocaba un bucle
+        // de "Update Constraints in Window pass" de AppKit (dos gestores de anchura compitiendo).
         if selectedFeature == .attendance || selectedFeature == .planner || selectedFeature == .diary
-            || selectedFeature == .rubrics {
+            || selectedFeature == .rubrics || selectedFeature == .meetings {
             featureContent(for: selectedFeature)
                 .id(selectedFeature)
                 .transition(uiFeatureFlags.contentSwitchTransition)
@@ -473,6 +476,9 @@ struct MacRootView: View {
                 onOpenModule: open(module:classId:studentId:)
             )
             .environmentObject(session.bridge)
+        case .meetings:
+            MacMeetingsView(bridge: session.bridge)
+                .environmentObject(session.bridge)
         case .sync:
             MacSyncView(bridge: session.bridge, commandCenter: commandCenter)
         case .backups:
@@ -1028,6 +1034,7 @@ struct MacRootView: View {
         case .planner: return .orange
         case .diary: return .pink
         case .situations: return .indigo
+        case .meetings: return .brown
         case .students: return .blue
         case .rubrics: return .teal
         case .physicalTests: return .orange

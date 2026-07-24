@@ -29,8 +29,7 @@ internal fun createAppleDriver(
         legacySourcePaths = legacySourcePaths,
     )
 
-    var firstAttemptDriver: NativeSqliteDriver? = null
-    val driver = try {
+    fun openAndValidate(): NativeSqliteDriver {
         val d = NativeSqliteDriver(
             schema = AppleAppDatabaseSchema,
             name = databaseName,
@@ -40,43 +39,34 @@ internal fun createAppleDriver(
                 )
             },
         )
-        firstAttemptDriver = d
-        getVersion(d)
-        d
-    } catch (e: Throwable) {
-        println("[AppleDriver] Error initializing NativeSqliteDriver: ${e.message}")
         try {
-            firstAttemptDriver?.close()
-        } catch (closeEx: Throwable) {
-            println("[AppleDriver] Error closing failed driver: ${closeEx.message}")
-        }
-
-        val fileManager = NSFileManager.defaultManager
-        if (fileManager.fileExistsAtPath(databasePath)) {
-            val timestamp = platform.posix.time(null)
-            val backupPath = "$databasePath.backup_$timestamp"
-            println("[AppleDriver] Renaming database $databasePath -> $backupPath to recover")
-            fileManager.moveItemAtPath(databasePath, backupPath, null)
-
-            val walPath = "$databasePath-wal"
-            if (fileManager.fileExistsAtPath(walPath)) {
-                fileManager.removeItemAtPath(walPath, null)
+            getVersion(d)
+        } catch (e: Throwable) {
+            try {
+                d.close()
+            } catch (closeEx: Throwable) {
+                println("[AppleDriver] Error closing failed driver: ${closeEx.message}")
             }
-            val shmPath = "$databasePath-shm"
-            if (fileManager.fileExistsAtPath(shmPath)) {
-                fileManager.removeItemAtPath(shmPath, null)
-            }
+            throw e
         }
+        return d
+    }
 
-        NativeSqliteDriver(
-            schema = AppleAppDatabaseSchema,
-            name = databaseName,
-            onConfiguration = { config ->
-                config.copy(
-                    extendedConfig = DatabaseConfiguration.Extended(basePath = basePath)
-                )
-            },
-        )
+    val driver = try {
+        openAndValidate()
+    } catch (firstError: Throwable) {
+        println("[AppleDriver] Error initializing NativeSqliteDriver (intento 1/2): ${firstError.message}")
+        // La mayoria de fallos de apertura son transitorios (bloqueo de fichero,
+        // disco lleno momentaneamente): un segundo intento evita renombrar y vaciar
+        // una base de datos sana por un error que ya se ha resuelto solo.
+        platform.posix.usleep(300_000u)
+        try {
+            openAndValidate()
+        } catch (secondError: Throwable) {
+            println("[AppleDriver] Error initializing NativeSqliteDriver (intento 2/2): ${secondError.message}")
+            rescueUnreadableDatabase(databasePath, secondError)
+            openAndValidate()
+        }
     }
 
     val currentVersion = getVersion(driver)
@@ -95,6 +85,70 @@ internal fun createAppleDriver(
     ensurePlannerScheduleTables(driver)
 
     return driver
+}
+
+/**
+ * La base de datos no se pudo abrir tras dos intentos. En vez de perderla, se renombra
+ * a un fichero `.backup_<epoch>` junto al original y se deja un marcador en disco para
+ * que la capa SwiftUI avise a la docente en el proximo arranque y le ofrezca reintentar
+ * o restaurar, en lugar de seguir en silencio con una base vacia (ver docs/QUALITY_NORTH_STAR.md, I3).
+ */
+@OptIn(ExperimentalForeignApi::class)
+private fun rescueUnreadableDatabase(databasePath: String, error: Throwable) {
+    val fileManager = NSFileManager.defaultManager
+    if (!fileManager.fileExistsAtPath(databasePath)) return
+
+    val timestamp = platform.posix.time(null)
+    val backupPath = "$databasePath.backup_$timestamp"
+    println("[AppleDriver] Renaming database $databasePath -> $backupPath to recover")
+    fileManager.moveItemAtPath(databasePath, backupPath, null)
+
+    // El WAL contiene transacciones ya confirmadas que aún no se han volcado al fichero
+    // principal. Borrarlo destruye datos reales del usuario y deja el .db en cuarentena
+    // incompleto e irrecuperable. Se mueven junto al .db para que la cuarentena sea
+    // restaurable tal cual.
+    for (suffix in listOf("-wal", "-shm")) {
+        val sidecarPath = "$databasePath$suffix"
+        if (fileManager.fileExistsAtPath(sidecarPath)) {
+            fileManager.moveItemAtPath(sidecarPath, "$backupPath$suffix", null)
+        }
+    }
+
+    writeRescueMarker(
+        markerPath = "$databasePath.rescue_marker",
+        backupPath = backupPath,
+        timestampEpochSeconds = timestamp,
+        reason = error.message ?: error.toString(),
+    )
+}
+
+@OptIn(ExperimentalForeignApi::class)
+private fun writeRescueMarker(
+    markerPath: String,
+    backupPath: String,
+    timestampEpochSeconds: Long,
+    reason: String,
+) {
+    val json = """{"backupPath":"${jsonEscape(backupPath)}","timestampEpochSeconds":$timestampEpochSeconds,"reason":"${jsonEscape(reason)}"}"""
+    val file = platform.posix.fopen(markerPath, "w")
+    if (file == null) {
+        println("[AppleDriver] No se pudo escribir el marcador de rescate en $markerPath")
+        return
+    }
+    platform.posix.fputs(json, file)
+    platform.posix.fclose(file)
+}
+
+private fun jsonEscape(value: String): String {
+    val escaped = value
+        .replace("\\", "\\\\")
+        .replace("\"", "\\\"")
+        .replace("\n", " ")
+        .replace("\r", " ")
+        .replace("\t", " ")
+    // Cualquier otro caracter de control roto el JSON si se cuela sin escapar
+    // (p.ej. en un mensaje de excepcion arbitrario); se sustituye por espacio.
+    return escaped.map { if (it.code < 0x20) ' ' else it }.joinToString("")
 }
 
 private fun runRescueMigrations(driver: SqlDriver) {

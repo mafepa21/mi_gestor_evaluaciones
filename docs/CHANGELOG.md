@@ -17,6 +17,7 @@ Cambios posteriores a `v0.3.0-traceability-baseline`.
 
 ### Added
 
+- **Apple (iOS/macOS): rescate de base de datos ilegible al arrancar**. `AppleDriver` reintenta abrir la base tras un fallo (espera 300ms; la mayoría de fallos de apertura son transitorios: bloqueo de fichero, disco lleno momentáneo) antes de renombrarla como sospechosa de corrupción. Si el segundo intento también falla, se renombra a `<db>.backup_<timestamp>` (sin borrarla) y se escribe un `.rescue_marker` con el motivo; el WAL/SHM se mueven junto al backup en vez de borrarse, porque contienen transacciones ya confirmadas que aún no se han volcado al fichero principal. `AppleDatabaseRescueService` detecta ese marcador al lanzar la app y ofrece reintentar la apertura del backup (verificándolo antes con una conexión SQLite de solo lectura) o seguir con una base vacía, en vez de arrancar en silencio sin avisar.
 - iPadOS/macOS: la toolbar del Cuaderno incorpora `SyncStatusBadge`, un indicador no intrusivo (`✓`/`⏱ N`/`✗`/inactivo) derivado del estado de sync LAN ya publicado por `DashboardBridgeStore`, con `accessibilityLabel` y `accessibilityHint` dinámicos. Sustituye al indicador previo de "N pnd." (que solo cubría el estado de cambios pendientes).
 
 ### Changed

@@ -13,10 +13,9 @@ struct PlannerSummaryDashboard: View {
     @State private var isGeneratingReport = false
     @State private var reportURL: URL?
     @State private var reportError: String?
+    @State private var showingReportShare = false
 
-    private var stats: PlannerSummaryStats {
-        PlannerSummaryStats(vm: vm, rangeData: rangeData, onOpenSession: onOpenSession)
-    }
+    @State private var stats: PlannerSummaryStats = PlannerSummaryStats()
 
     var body: some View {
         ScrollView {
@@ -48,6 +47,64 @@ struct PlannerSummaryDashboard: View {
         } message: {
             Text(reportError ?? "")
         }
+        .sheet(isPresented: $showingReportShare) {
+            if let reportURL {
+                #if os(iOS)
+                NavigationStack {
+                    reportSuccessView(reportURL: reportURL)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Cerrar") { showingReportShare = false }
+                            }
+                        }
+                }
+                .presentationDetents([.medium])
+                #else
+                VStack(spacing: 0) {
+                    reportSuccessView(reportURL: reportURL)
+                    
+                    HStack {
+                        Spacer()
+                        Button("Cerrar") { showingReportShare = false }
+                    }
+                    .padding()
+                }
+                .frame(width: 320, height: 280)
+                #endif
+            }
+        }
+    }
+    
+    private func reportSuccessView(reportURL: URL) -> some View {
+        VStack(spacing: 24) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 48))
+                .foregroundStyle(EvaluationDesign.success)
+            
+            VStack(spacing: 8) {
+                Text("Informe generado")
+                    .font(.title2.weight(.bold))
+                
+                Text("El documento PDF está listo.")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            
+            ShareLink(item: reportURL) {
+                Label("Compartir informe", systemImage: "square.and.arrow.up")
+                    .font(.headline)
+                    #if os(iOS)
+                    .frame(maxWidth: .infinity)
+                    #endif
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            #if os(iOS)
+            .padding(.horizontal, 32)
+            #endif
+        }
+        .padding(32)
     }
 
     private var rangeTaskKey: String {
@@ -61,8 +118,10 @@ struct PlannerSummaryDashboard: View {
         reportURL = nil
         defer { isLoadingRange = false }
         let data = await vm.loadRangeData(selectedRange, groupId: vm.selectedGroupId)
+        let newStats = PlannerSummaryStats(vm: vm, rangeData: data, onOpenSession: onOpenSession)
         withAnimation(uiFeatureFlags.interactionAnimation) {
             rangeData = data
+            stats = newStats
         }
     }
 
@@ -117,11 +176,6 @@ struct PlannerSummaryDashboard: View {
         if isGeneratingReport {
             ProgressView()
                 .controlSize(.small)
-        } else if let reportURL {
-            ShareLink(item: reportURL) {
-                Label("Compartir informe", systemImage: "square.and.arrow.up")
-            }
-            .buttonStyle(.borderedProminent)
         } else {
             Button {
                 Task { await generateReport() }
@@ -134,7 +188,11 @@ struct PlannerSummaryDashboard: View {
     }
 
     private func generateReport() async {
-        guard reportURL == nil else { return }
+        if reportURL != nil {
+            showingReportShare = true
+            return
+        }
+        
         isGeneratingReport = true
         defer { isGeneratingReport = false }
 
@@ -145,6 +203,7 @@ struct PlannerSummaryDashboard: View {
             return
         }
         reportURL = url
+        showingReportShare = true
     }
 
     private var sortedEvaluationPeriods: [PlannerEvaluationPeriod] {
@@ -208,6 +267,21 @@ private struct PlannerSummaryStats {
     let upcomingSessions: [PlanningSession]
     let coverageRows: [PlannerCoverageRow]
     let alerts: [PlannerSummaryAlert]
+
+    init() {
+        self.completedSessions = 0
+        self.plannedSessions = 0
+        self.pendingSessions = 0
+        self.cancelledSessions = 0
+        self.notDeliveredSessions = 0
+        self.completionPercent = 0
+        self.coveredSlots = 0
+        self.totalSlots = 0
+        self.coveragePercent = 0
+        self.upcomingSessions = []
+        self.coverageRows = []
+        self.alerts = []
+    }
 
     @MainActor
     init(vm: PlannerWorkspaceViewModel, rangeData: PlannerRangeData, onOpenSession: @escaping (PlanningSession) -> Void) {

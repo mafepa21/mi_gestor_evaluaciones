@@ -115,11 +115,11 @@ struct MacRubricsView: View {
                     description: Text("Aún no hay rúbricas cargadas en el bridge.")
                 )
             } else {
-                HStack(alignment: .top, spacing: MacAppStyle.sectionSpacing) {
+                HSplitView {
                     rubricsTable
-                        .frame(minWidth: 400, idealWidth: 480, maxWidth: 560)
+                        .frame(minWidth: 340, idealWidth: 460, maxWidth: 560)
                     rubricDetailPanel
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
             }
         }
@@ -239,7 +239,7 @@ struct MacRubricsView: View {
         .sheet(isPresented: $showingBuilder) {
             RubricsBuilderScreen()
                 .environmentObject(bridge)
-                .frame(minWidth: 1200, minHeight: 820)
+                .frame(minWidth: 860, idealWidth: 1200, minHeight: 560, idealHeight: 800)
         }
         .fileImporter(
             isPresented: $showingRubricFileImporter,
@@ -288,7 +288,7 @@ struct MacRubricsView: View {
         ) {
             RubricBulkEvaluationSheet(bridge: bridge)
                 .environmentObject(bridge)
-                .frame(minWidth: 1320, minHeight: 860)
+                .frame(minWidth: 900, idealWidth: 1180, minHeight: 600, idealHeight: 760)
         }
     }
 
@@ -446,7 +446,7 @@ struct MacRubricsView: View {
             .padding(.vertical, 12)
             .background(
                 selectedRubricId == rubric.rubric.id
-                    ? Color.accentColor.opacity(0.10)
+                    ? RubricsStyle.selectionFill
                     : Color.clear
             )
         }

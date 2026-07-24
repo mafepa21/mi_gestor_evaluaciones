@@ -1843,6 +1843,16 @@ data class PlanningSession(
     val status: SessionStatus = SessionStatus.PLANNED
 )
 
+data class PlannerSessionTemplate(
+    val id: Long = 0,
+    val title: String,
+    val category: String = "GENERAL",
+    val objectives: String = "",
+    val activities: String = "",
+    val evaluation: String = "",
+    val createdAtEpochMs: Long = 0
+)
+
 enum class CollisionResolution {
     OVERWRITE,
     SKIP,

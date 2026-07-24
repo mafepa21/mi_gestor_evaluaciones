@@ -174,12 +174,21 @@ struct AttendanceWorkspaceView: View {
 
 
     var body: some View {
-        attendanceWorkspacePrimaryPane
-            .inspector(isPresented: $isAttendanceInspectorPresented) {
-                attendanceInspector
-                    .inspectorColumnWidth(min: 300, ideal: 336, max: 420)
+        Group {
+            if #available(iOS 17.0, macOS 14.0, *) {
+                attendanceWorkspacePrimaryPane
+                    .inspector(isPresented: $isAttendanceInspectorPresented) {
+                        attendanceInspector
+                            .inspectorColumnWidth(min: 300, ideal: 336, max: 420)
+                    }
+            } else {
+                attendanceWorkspacePrimaryPane
+                    .sheet(isPresented: $isAttendanceInspectorPresented) {
+                        attendanceInspector
+                    }
             }
-            .task {
+        }
+        .task {
                 await bridge.ensureClassesLoaded()
                 if selectedClassId == nil {
                     selectedClassId = attendanceStore.classes.first?.id

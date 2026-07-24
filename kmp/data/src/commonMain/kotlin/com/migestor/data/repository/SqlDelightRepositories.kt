@@ -454,6 +454,48 @@ class StudentsRepositorySqlDelight(
         }
     }
 
+    private fun shouldApplyIncomingChange(
+        existingUpdatedAtEpochMs: Long?,
+        existingDeviceId: String?,
+        incomingUpdatedAtEpochMs: Long,
+        incomingDeviceId: String?,
+    ): Boolean {
+        val existingUpdatedAt = existingUpdatedAtEpochMs ?: return true
+        if (incomingUpdatedAtEpochMs > existingUpdatedAt) return true
+        if (incomingUpdatedAtEpochMs < existingUpdatedAt) return false
+        val incoming = incomingDeviceId ?: ""
+        val existing = existingDeviceId ?: ""
+        return incoming >= existing
+    }
+
+    override suspend fun upsertStudent(
+        id: Long?,
+        firstName: String,
+        lastName: String,
+        email: String?,
+        photoPath: String?,
+        isInjured: Boolean,
+        sex: StudentSex,
+        sexSource: StudentSexSource,
+        birthDate: LocalDate?,
+        updatedAtEpochMs: Long,
+        deviceId: String?,
+        syncVersion: Long,
+    ) = withContext(Dispatchers.Default) {
+        val now = if (updatedAtEpochMs > 0) updatedAtEpochMs else Clock.System.now().toEpochMilliseconds()
+        val existing = id?.let { db.appDatabaseQueries.selectStudentById(it).executeAsOneOrNull() }
+        val canApply = shouldApplyIncomingChange(
+            existingUpdatedAtEpochMs = existing?.updated_at_epoch_ms,
+            existingDeviceId = existing?.device_id,
+            incomingUpdatedAtEpochMs = now,
+            incomingDeviceId = deviceId,
+        )
+        if (!canApply) return@withContext
+
+        val injured = if (isInjured) 1L else 0L
+        db.appDatabaseQueries.upsertStudent(id, firstName, lastName, email, photoPath, injured, sex.name, sexSource.name, birthDate?.toString(), now, deviceId, syncVersion)
+    }
+
     override suspend fun deleteStudent(studentId: Long) = withContext(Dispatchers.Default) {
         db.appDatabaseQueries.deleteStudent(studentId)
     }
@@ -978,20 +1020,18 @@ class GradesRepositorySqlDelight(
         deviceId: String?,
         syncVersion: Long,
     ): Long = withContext(Dispatchers.Default) {
-        val now = if (updatedAtEpochMs > 0) updatedAtEpochMs else Clock.System.now().toEpochMilliseconds()
-        val created = if (createdAtEpochMs > 0) createdAtEpochMs else now
+        val requestedNow = if (updatedAtEpochMs > 0) updatedAtEpochMs else Clock.System.now().toEpochMilliseconds()
         val existingRecord = db.appDatabaseQueries.selectGradeByStudentClassAndColumn(classId, studentId, columnId).executeAsOneOrNull()
         val existingValue = existingRecord?.value_
-        
-        val canApply = shouldApplyIncomingChange(
-            existingUpdatedAtEpochMs = existingRecord?.updated_at_epoch_ms,
-            existingDeviceId = existingRecord?.device_id,
-            incomingUpdatedAtEpochMs = now,
-            incomingDeviceId = deviceId
-        )
-        if (!canApply) {
-            return@withContext id ?: 0L
-        }
+
+        // Escritura local: la profesora acaba de decidir este valor ahora mismo, no
+        // se descarta nunca por LWW (esa comparacion es cosa de upsertGrade, el
+        // camino de sync). Se garantiza monotonia frente a lo que ya hay en BD
+        // -por ejemplo un registro con reloj adelantado llegado por sync- para que
+        // esta escritura no quede "por detras" y una sync futura del valor viejo
+        // no la pise a su vez.
+        val now = maxOf(requestedNow, (existingRecord?.updated_at_epoch_ms ?: 0L) + 1)
+        val created = if (createdAtEpochMs > 0) createdAtEpochMs else now
 
         db.transactionWithResult {
             db.appDatabaseQueries.upsertGrade(
@@ -1224,56 +1264,64 @@ class NotebookCellsRepositorySqlDelight(
         syncVersion: Long,
     ) = withContext(Dispatchers.Default) {
         val now = if (updatedAtEpochMs > 0) updatedAtEpochMs else Clock.System.now().toEpochMilliseconds()
-        val existing = db.appDatabaseQueries.selectNotebookCellEntry(classId, studentId, columnId).executeAsOneOrNull()
-        
-        // Detect changes for audit
-        val textChanged = textValue != null && textValue != existing?.value_text
-        val boolChanged = boolValue != null && (boolValue != (existing?.value_bool == 1L))
-        val iconChanged = iconValue != null && iconValue != existing?.value_icon
-        val ordinalChanged = ordinalValue != null && ordinalValue != existing?.value_ordinal
-        
-        db.appDatabaseQueries.upsertNotebookCellEntry(
-            class_id = classId,
-            student_id = studentId,
-            column_id = columnId,
-            value_text = textValue ?: existing?.value_text,
-            value_bool = boolValue?.let { if (it) 1L else 0L } ?: existing?.value_bool,
-            value_icon = iconValue ?: existing?.value_icon,
-            value_ordinal = ordinalValue ?: existing?.value_ordinal,
-            display_value = existing?.display_value,
-            observed_at_epoch_ms = existing?.observed_at_epoch_ms,
-            competency_criteria_ids_csv = existing?.competency_criteria_ids_csv ?: "",
-            effective_weight = existing?.effective_weight,
-            counts_toward_average = existing?.counts_toward_average,
-            note = note ?: existing?.note,
-            color_hex = colorHex ?: existing?.color_hex,
-            attachment_uris_csv = attachmentUris.takeIf { it.isNotEmpty() }?.joinToString("|") ?: existing?.attachment_uris_csv,
-            author_user_id = authorUserId ?: existing?.author_user_id,
-            created_at_epoch_ms = existing?.created_at_epoch_ms ?: now,
-            updated_at_epoch_ms = now,
-            associated_group_id = associatedGroupId ?: existing?.associated_group_id,
-            device_id = deviceId,
-            sync_version = syncVersion,
-        )
 
-        if (textChanged || boolChanged || iconChanged || ordinalChanged) {
-            val prevText = listOfNotNull(existing?.value_text, existing?.value_icon, existing?.value_ordinal).joinToString(" | ")
-            val nextText = listOfNotNull(textValue, iconValue, ordinalValue).joinToString(" | ")
-            
-            db.appDatabaseQueries.insertNotebookCellAudit(
+        // select + upsert + audit deben ser atomicos: sin transaccion, dos
+        // escrituras concurrentes sobre la misma celda (edicion local mientras
+        // aplica un cambio de sync LAN) pueden leer el mismo "existing" y la
+        // segunda reconstruye la fila pisando los campos que puso la primera; un
+        // crash entre el upsert y el audit dejaria ademas el historial incompleto.
+        db.transaction {
+            val existing = db.appDatabaseQueries.selectNotebookCellEntry(classId, studentId, columnId).executeAsOneOrNull()
+
+            // Detect changes for audit
+            val textChanged = textValue != null && textValue != existing?.value_text
+            val boolChanged = boolValue != null && (boolValue != (existing?.value_bool == 1L))
+            val iconChanged = iconValue != null && iconValue != existing?.value_icon
+            val ordinalChanged = ordinalValue != null && ordinalValue != existing?.value_ordinal
+
+            db.appDatabaseQueries.upsertNotebookCellEntry(
                 class_id = classId,
                 student_id = studentId,
                 column_id = columnId,
-                previous_numeric_value = null,
-                new_numeric_value = null,
-                previous_text_value = prevText.takeIf { it.isNotBlank() },
-                new_text_value = nextText.takeIf { it.isNotBlank() },
-                action = if (existing == null) NotebookCellAuditAction.CREATED.name else NotebookCellAuditAction.UPDATED.name,
-                changed_at_epoch_ms = now,
-                author_user_id = authorUserId,
+                value_text = textValue ?: existing?.value_text,
+                value_bool = boolValue?.let { if (it) 1L else 0L } ?: existing?.value_bool,
+                value_icon = iconValue ?: existing?.value_icon,
+                value_ordinal = ordinalValue ?: existing?.value_ordinal,
+                display_value = existing?.display_value,
+                observed_at_epoch_ms = existing?.observed_at_epoch_ms,
+                competency_criteria_ids_csv = existing?.competency_criteria_ids_csv ?: "",
+                effective_weight = existing?.effective_weight,
+                counts_toward_average = existing?.counts_toward_average,
+                note = note ?: existing?.note,
+                color_hex = colorHex ?: existing?.color_hex,
+                attachment_uris_csv = attachmentUris.takeIf { it.isNotEmpty() }?.joinToString("|") ?: existing?.attachment_uris_csv,
+                author_user_id = authorUserId ?: existing?.author_user_id,
+                created_at_epoch_ms = existing?.created_at_epoch_ms ?: now,
+                updated_at_epoch_ms = now,
+                associated_group_id = associatedGroupId ?: existing?.associated_group_id,
                 device_id = deviceId,
-                sync_version = syncVersion
+                sync_version = syncVersion,
             )
+
+            if (textChanged || boolChanged || iconChanged || ordinalChanged) {
+                val prevText = listOfNotNull(existing?.value_text, existing?.value_icon, existing?.value_ordinal).joinToString(" | ")
+                val nextText = listOfNotNull(textValue, iconValue, ordinalValue).joinToString(" | ")
+
+                db.appDatabaseQueries.insertNotebookCellAudit(
+                    class_id = classId,
+                    student_id = studentId,
+                    column_id = columnId,
+                    previous_numeric_value = null,
+                    new_numeric_value = null,
+                    previous_text_value = prevText.takeIf { it.isNotBlank() },
+                    new_text_value = nextText.takeIf { it.isNotBlank() },
+                    action = if (existing == null) NotebookCellAuditAction.CREATED.name else NotebookCellAuditAction.UPDATED.name,
+                    changed_at_epoch_ms = now,
+                    author_user_id = authorUserId,
+                    device_id = deviceId,
+                    sync_version = syncVersion
+                )
+            }
         }
     }
 
@@ -1702,6 +1750,10 @@ class AttendanceRepositorySqlDelight(
                 classId = it.class_id,
                 date = Instant.fromEpochMilliseconds(it.date_epoch_ms),
                 status = it.status,
+                note = it.note,
+                hasIncident = it.has_incident != 0L,
+                followUpRequired = it.follow_up_required != 0L,
+                sessionId = it.session_id,
                 trace = AuditTrace(
                     updatedAt = Instant.fromEpochMilliseconds(it.updated_at_epoch_ms),
                     deviceId = it.device_id,

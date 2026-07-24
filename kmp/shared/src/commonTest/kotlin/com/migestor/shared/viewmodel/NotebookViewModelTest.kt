@@ -703,6 +703,61 @@ class NotebookViewModelTest {
     }
 
     @Test
+    fun `saveCurrentNotebook does not overwrite a grade when the draft fails to parse`() = runTest {
+        // Regresion: saveCurrentNotebook llamaba a saveGrade con
+        // draft.replace(",", ".").toDoubleOrNull() sin el guard que si tiene
+        // internalSaveGrade; un draft no vacio que no parsea ("7,,5") se
+        // convertia en null y pisaba la nota ya guardada en BD con un valor vacio.
+        val classId = 1L
+        val student = Student(id = 1L, firstName = "Ana", lastName = "Lopez")
+        val column = NotebookColumnDefinition(
+            id = "custom_numeric",
+            title = "Proyecto",
+            type = NotebookColumnType.NUMERIC,
+        )
+        val repository = FakeNotebookRepository(
+            snapshot = NotebookSheet(
+                classId = classId,
+                tabs = emptyList(),
+                columns = listOf(column),
+                rows = listOf(
+                    NotebookRow(
+                        student = student,
+                        cells = emptyList(),
+                        weightedAverage = null,
+                        persistedGrades = listOf(
+                            Grade(
+                                id = 1L,
+                                classId = classId,
+                                studentId = student.id,
+                                columnId = column.id,
+                                evaluationId = null,
+                                value = 7.5,
+                            )
+                        ),
+                    )
+                ),
+            )
+        )
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val viewModel = createViewModel(repository, scope = scope)
+        try {
+            viewModel.selectClass(classId)
+            advanceUntilIdle()
+
+            viewModel.updateDraft(student.id, column.id, NotebookColumnType.NUMERIC, "7,,5")
+
+            val saved = viewModel.saveCurrentNotebook()
+            advanceUntilIdle()
+
+            assertEquals(true, saved)
+            assertEquals(0, repository.saveGradeCalls.size, "No debe llamar a saveGrade con un draft no parseable")
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
     fun `direct evaluation grade save updates local state without observer reload`() = runTest {
         val classId = 1L
         val evaluationId = 9L

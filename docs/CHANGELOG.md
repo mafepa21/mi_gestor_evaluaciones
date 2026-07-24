@@ -119,6 +119,7 @@ Cambios posteriores a `v0.3.0-traceability-baseline`.
 ### Docs
 
 - Se añade `docs/planes/plan_rediseno_evaluacion_rubricas_2026-07-20.md`: plan de 7 PR para un rediseño desde cero (no una unificación de tokens) de la evaluación individual y masiva de rúbricas — estilo Apple, minimalista, sin información duplicada. Parte de un mockup interactivo revisado y aprobado por el usuario, que expuso redundancias concretas en la pantalla actual (nota mostrada dos veces, descripción de nivel repetida hasta tres veces, texto instructivo estático). Retira intencionadamente `RubricScoreBadge` y `RubricLevelTile`, introducidos apenas en el plan anterior (`plan_rediseno_rubricas_2026-07-20.md`, ya mergeado), en favor de un anillo de progreso y una píldora de nivel más silenciosos. Sin código todavía.
+- Se añade `CLAUDE.md` en la raíz con el flujo obligatorio de registro de avances para agentes: rama nueva por tarea desde `origin/main` (nunca commitear directamente en `main`), worktree limpio y aislado por tarea, commits atómicos por intención con la entrada de `docs/CHANGELOG.md` en el mismo commit, plan documentado cuando la tarea agrupa varios fixes, push + PR con la plantilla del repo, y verificación honesta (nunca afirmar builds/tests no ejecutados).
 
 ## v0.3.0-traceability-baseline — 2026-07-06
 

@@ -37,6 +37,8 @@ kmp/local.properties
 *.db
 *.sqlite
 *.sqlite3
+# Fixtures sinteticas del harness de regresion (datos inventados, ver tests/fixtures/README.md)
+!tests/fixtures/demo_*.db
 *.log
 kmp/iosApp/build_output.txt
 

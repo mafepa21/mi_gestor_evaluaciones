@@ -42,22 +42,50 @@ class NotebookInstrumentsRepositorySqlDelight(
                 device_id = template.trace.deviceId,
                 sync_version = template.trace.syncVersion,
             )
-            db.appDatabaseQueries.deleteInstrumentItemsByTemplate(template.id)
+            val existingIds = db.appDatabaseQueries
+                .selectInstrumentItemsByTemplate(template.id)
+                .executeAsList()
+                .map { it.id }
+                .toSet()
+            val newIds = items.map { it.id }
+            if (newIds.isEmpty()) {
+                db.appDatabaseQueries.deleteInstrumentItemsByTemplate(template.id)
+            } else {
+                db.appDatabaseQueries.deleteInstrumentItemsNotIn(template.id, newIds)
+            }
             items.forEachIndexed { index, item ->
-                db.appDatabaseQueries.upsertInstrumentItem(
-                    id = item.id,
-                    template_id = template.id,
-                    item_key = item.key,
-                    title = item.title,
-                    item_type = item.type.name,
-                    options_csv = item.options.joinToString("|"),
-                    required = if (item.required) 1L else 0L,
-                    sort_order = item.order.takeIf { it >= 0 }?.toLong() ?: index.toLong(),
-                    help_text = item.helpText,
-                    updated_at_epoch_ms = item.trace.updatedAt.toEpochMilliseconds().takeIf { it > 0 } ?: now,
-                    device_id = item.trace.deviceId,
-                    sync_version = item.trace.syncVersion,
-                )
+                val sortOrder = item.order.takeIf { it >= 0 }?.toLong() ?: index.toLong()
+                val updatedAt = item.trace.updatedAt.toEpochMilliseconds().takeIf { it > 0 } ?: now
+                if (item.id in existingIds) {
+                    db.appDatabaseQueries.updateInstrumentItem(
+                        item_key = item.key,
+                        title = item.title,
+                        item_type = item.type.name,
+                        options_csv = item.options.joinToString("|"),
+                        required = if (item.required) 1L else 0L,
+                        sort_order = sortOrder,
+                        help_text = item.helpText,
+                        updated_at_epoch_ms = updatedAt,
+                        device_id = item.trace.deviceId,
+                        sync_version = item.trace.syncVersion,
+                        id = item.id,
+                    )
+                } else {
+                    db.appDatabaseQueries.insertInstrumentItem(
+                        id = item.id,
+                        template_id = template.id,
+                        item_key = item.key,
+                        title = item.title,
+                        item_type = item.type.name,
+                        options_csv = item.options.joinToString("|"),
+                        required = if (item.required) 1L else 0L,
+                        sort_order = sortOrder,
+                        help_text = item.helpText,
+                        updated_at_epoch_ms = updatedAt,
+                        device_id = item.trace.deviceId,
+                        sync_version = item.trace.syncVersion,
+                    )
+                }
             }
         }
         NotebookRefreshBus.emitRefresh()

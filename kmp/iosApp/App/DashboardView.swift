@@ -27,15 +27,6 @@ private enum DashboardInspectorSelection: Hashable {
     case pe(String)
 }
 
-private struct DashboardGroupRow: Identifiable {
-    let id: Int64
-    let groupName: String
-    let attendancePct: Int
-    let evaluationCompletedPct: Int
-    let averageScore: Double
-    let studentsInFollowUp: Int
-}
-
 private enum DashboardBlock: Hashable {
     case today
     case pending
@@ -479,7 +470,7 @@ struct DashboardView: View {
             // los mismos contadores que ya llevan esas tarjetas en su
             // cabecera; ahora es el resumen y las tarjetas dejan de duplicar
             // el número de la KPI correspondiente.
-            dashboardKpiRow(snapshot: snapshot)
+            dashboardKpiRow(snapshot: snapshot, colorScheme: colorScheme)
 
             // 2. Filtros — justo antes de lo que filtran (Hoy/Pendiente/
             // Riesgo), no varias secciones después.
@@ -541,13 +532,22 @@ struct DashboardView: View {
             ForEach(blocks, id: \.self) { block in
                 switch block {
                 case .groupSummary:
-                    dashboardGroupSummaryBlock(snapshot: snapshot)
+                    dashboardGroupSummaryBlock(snapshot: snapshot, isWide: showsWideSummary)
                 case .agenda:
-                    dashboardAgendaBlock(snapshot: snapshot)
+                    dashboardAgendaBlock(snapshot: snapshot, colorScheme: colorScheme, onOpenModule: onOpenModule)
                 case .physicalEducation:
-                    dashboardPEBlock(snapshot: snapshot)
+                    dashboardPEBlock(snapshot: snapshot, colorScheme: colorScheme) { item in
+                        inspectorSelection = .pe(item.id)
+                        isInspectorPresented = true
+                    }
                 case .lomloeAudit:
-                    dashboardLomloeAuditBlock(snapshot: snapshot)
+                    dashboardLomloeAuditBlock(
+                        trends: classTrends,
+                        isLoading: isLoadingClassTrends,
+                        loadFailed: classTrendsLoadFailed
+                    ) {
+                        Task { await loadClassTrends() }
+                    }
                 case .system:
                     dashboardSystemBlock()
                 case .today, .pending, .risk, .alerts, .quickEvaluation:
@@ -685,56 +685,6 @@ struct DashboardView: View {
         .buttonStyle(.bordered)
     }
 
-    /// Empareja una alerta con el `AgendaItem` ("recordatorio") que el backend
-    /// genera a partir de ella para transportar sus `navigationTargets`
-    /// (rúbrica + alumno pendientes de evaluar). El backend no enlaza ambos
-    /// por id, así que el emparejamiento se hace por contenido (mismo grupo,
-    /// título y detalle), que es información suficiente porque el
-    /// `AgendaItem` "recordatorio" siempre se construye 1:1 desde la alerta.
-    private func agendaNavigationTargets(for alert: AlertItem, snapshot: DashboardSnapshot) -> [AgendaNavigationTarget] {
-        snapshot.agendaItems.first {
-            $0.type == "recordatorio"
-                && $0.title == alert.title
-                && $0.subtitle == alert.detail
-                && $0.classId?.int64Value == alert.classId?.int64Value
-        }?.navigationTargets ?? []
-    }
-
-    private func navigateAgendaItem(_ item: AgendaItem) {
-        if let target = item.navigationTargets.first {
-            onOpenModule(.rubrics, target.classId?.int64Value, target.studentId?.int64Value)
-            return
-        }
-        let classId = item.classId?.int64Value
-        switch item.type {
-        case "sesion":
-            onOpenModule(.attendance, classId, nil)
-        case "revision":
-            onOpenModule(.planner, classId, nil)
-        default:
-            guard let classId else { return }
-            onOpenModule(.notebook, classId, nil)
-        }
-    }
-
-    /// Los `PEOperationalItem` del backend nunca llevan `classId` (se agregan
-    /// a nivel de todas las clases de EF), así que la navegación solo puede
-    /// llevar al módulo relevante, no a un grupo o alumno concretos.
-    private func peDestination(for item: PEOperationalItem) -> AppWorkspaceModule? {
-        switch item.type {
-        case "incidencias_fisicas":
-            return .peIncidents
-        case "exentos_adaptacion":
-            return .students
-        case "prueba_rubrica_activa":
-            return .peRubrics
-        case "material_hoy":
-            return .peMaterial
-        default:
-            return nil
-        }
-    }
-
     private var selectedClassLabel: String {
         guard let selectedClassId,
               let schoolClass = dashboardStore.classes.first(where: { $0.id == selectedClassId }) else {
@@ -777,35 +727,6 @@ struct DashboardView: View {
                 dashboardSessionFilterPicker(title: "Sesiones", selection: $sessionStatusFilter, options: DashboardSessionFilterOption.allCases)
             }
         }
-    }
-
-    @ViewBuilder
-    private func dashboardKpiRow(snapshot: DashboardSnapshot) -> some View {
-        HStack(spacing: 12) {
-            dashboardKpiCard(title: "Hoy", value: "\(snapshot.todayCount)", isNumeric: true)
-            dashboardKpiCard(title: "Alertas", value: "\(snapshot.alertsCount)", isNumeric: true)
-            dashboardKpiCard(title: "Pendientes", value: "\(snapshot.pendingCount)", isNumeric: true)
-            dashboardKpiCard(title: "Próxima sesión", value: snapshot.nextSessionLabel, isNumeric: false)
-        }
-    }
-
-    @ViewBuilder
-    private func dashboardKpiCard(title: String, value: String, isNumeric: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(.footnote).foregroundStyle(.secondary)
-            if isNumeric {
-                Text(value)
-                    .font(.system(.title, design: .rounded).weight(.bold))
-                    .monospacedDigit()
-                    .lineLimit(1)
-            } else {
-                Text(value).font(.headline).lineLimit(2)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(appCardBackground(for: colorScheme))
-        .cornerRadius(12)
     }
 
     private var dashboardMetricsSkeleton: some View {
@@ -1100,7 +1021,7 @@ struct DashboardView: View {
                     systemImage: "calendar.badge.exclamationmark",
                     tint: .orange
                 ) {
-                    navigateAgendaItem(item)
+                    navigateAgendaItem(item, onOpenModule: onOpenModule)
                 }
             }
 
@@ -1313,148 +1234,6 @@ struct DashboardView: View {
         .shadow(color: EvaluationDesign.accent.opacity(colorScheme == .dark ? 0.22 : 0.05), radius: 14, x: 0, y: 8)
     }
 
-    @ViewBuilder
-    private func dashboardGroupSummaryBlock(snapshot: DashboardSnapshot) -> some View {
-        let rows = snapshot.groupSummaries.map {
-            DashboardGroupRow(
-                id: $0.classId,
-                groupName: $0.groupName,
-                attendancePct: Int($0.attendancePct),
-                evaluationCompletedPct: Int($0.evaluationCompletedPct),
-                averageScore: $0.averageScore,
-                studentsInFollowUp: Int($0.studentsInFollowUp)
-            )
-        }
-        dashboardSecondaryCard {
-            VStack(alignment: .leading, spacing: 12) {
-                dashboardSecondaryTitle("Resumen por grupo", systemImage: "person.3")
-                if showsWideSummary {
-                    Table(rows) {
-                        TableColumn("Grupo") { Text($0.groupName) }
-                        TableColumn("Asist") { Text("\($0.attendancePct)%") }
-                        TableColumn("Eval") { Text("\($0.evaluationCompletedPct)%") }
-                        TableColumn("Media") { Text(IosFormatting.decimal(from: $0.averageScore)) }
-                        TableColumn("Seguim.") { Text("\($0.studentsInFollowUp)") }
-                    }
-                    .frame(minHeight: 180)
-                } else {
-                    ForEach(rows) { summary in
-                        HStack {
-                            Text(summary.groupName).bold()
-                            Spacer()
-                            Text("As \(summary.attendancePct)% · Ev \(summary.evaluationCompletedPct)%")
-                        }
-                        .font(.system(size: 13, weight: .medium))
-                    }
-                }
-                if snapshot.groupSummaries.isEmpty {
-                    Text("Sin datos de grupos")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func dashboardAgendaBlock(snapshot: DashboardSnapshot) -> some View {
-        dashboardSecondaryCard {
-            VStack(alignment: .leading, spacing: 12) {
-                dashboardSecondaryTitle("Agenda docente", systemImage: "list.bullet.clipboard")
-                ForEach(snapshot.agendaItems, id: \.id) { item in
-                    let isNavigable = !item.navigationTargets.isEmpty || item.classId != nil
-                    Button {
-                        navigateAgendaItem(item)
-                    } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(item.title)
-                                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                                Text(item.subtitle)
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Text(item.timeLabel)
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundStyle(.tertiary)
-                            if isNavigable {
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundStyle(.tertiary)
-                            }
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                        .background(
-                            appMutedCardBackground(for: colorScheme)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: EvaluationDesign.pillRadius, style: .continuous)
-                                        .stroke(Color.primary.opacity(0.04), lineWidth: 1)
-                                )
-                        )
-                        .cornerRadius(EvaluationDesign.pillRadius)
-                    }
-                    .buttonStyle(ScaleButtonStyle())
-                    .disabled(!isNavigable)
-                }
-                if snapshot.agendaItems.isEmpty {
-                    Text("Sin agenda para hoy")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func dashboardPEBlock(snapshot: DashboardSnapshot) -> some View {
-        dashboardSecondaryCard {
-            VStack(alignment: .leading, spacing: 12) {
-                dashboardSecondaryTitle("Educación Física", systemImage: "figure.run")
-                ForEach(snapshot.peItems, id: \.id) { item in
-                    Button {
-                        inspectorSelection = .pe(item.id)
-                        isInspectorPresented = true
-                    } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(item.title)
-                                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                                Text(item.detail)
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Text(dashboardFilterLabel(item.severity))
-                                .font(.system(size: 10, weight: .bold, design: .rounded))
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(riskTint(item.severity).opacity(0.12), in: Capsule())
-                                .foregroundStyle(riskTint(item.severity))
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                        .background(
-                            appMutedCardBackground(for: colorScheme)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: EvaluationDesign.pillRadius, style: .continuous)
-                                        .stroke(Color.primary.opacity(0.04), lineWidth: 1)
-                                )
-                        )
-                        .cornerRadius(EvaluationDesign.pillRadius)
-                    }
-                    .buttonStyle(ScaleButtonStyle())
-                }
-                if snapshot.peItems.isEmpty {
-                    Text("Sin incidencias EF hoy")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-    }
-
     private func dashboardFilterPicker(
         title: String,
         selection: Binding<DashboardFilterOption>,
@@ -1625,35 +1404,6 @@ struct DashboardView: View {
         .cornerRadius(EvaluationDesign.pillRadius)
     }
 
-    /// Cabecera de un bloque secundario (contexto, no acción). Mismo formato
-    /// en los cinco bloques de `dashboardSecondaryGrid` para que se lean
-    /// como un nivel por debajo de Hoy/Pendiente/Riesgo, sin repetir el
-    /// título en negrita a 16pt que llevan las tarjetas de "hay que actuar".
-    private func dashboardSecondaryTitle(_ title: String, systemImage: String) -> some View {
-        Label(title, systemImage: systemImage)
-            .font(.system(size: 13, weight: .semibold, design: .rounded))
-            .foregroundStyle(.secondary)
-    }
-
-    /// Cromado plano para los bloques de contexto secundario (Resumen por
-    /// grupo, Agenda, EF, Sistema, Auditoría LOMLOE): sin el fondo de
-    /// `.regularMaterial` ni la sombra de color que llevan Hoy/Pendiente/
-    /// Riesgo/Evaluación rápida, para que la pantalla tenga dos niveles de
-    /// importancia en vez de diez tarjetas idénticas.
-    private func dashboardSecondaryCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        // `.thinMaterial` (no `.regularMaterial`) para que el nivel "contexto"
-        // se note más ligero que Hoy/Pendiente/Riesgo sin fundirse con el
-        // `appMutedCardBackground` que ya usan las filas internas.
-        content()
-            .padding(EvaluationDesign.cardSpacing)
-            .background(.thinMaterial)
-            .cornerRadius(EvaluationDesign.innerRadius)
-            .overlay(
-                RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
-                    .stroke(Color.primary.opacity(colorScheme == .dark ? 0.10 : 0.05), lineWidth: 1)
-            )
-    }
-
     private func isPendingAlert(_ alert: AlertItem) -> Bool {
         let haystack = "\(alert.type) \(alert.title) \(alert.detail)".lowercased()
         return haystack.contains("pending")
@@ -1692,28 +1442,11 @@ struct DashboardView: View {
         return "chart.line.downtrend.xyaxis"
     }
 
-    private func riskTint(_ raw: String) -> Color {
-        switch raw.lowercased() {
-        case "high": return .red
-        case "medium": return .orange
-        default: return .yellow
-        }
-    }
-
     private func shortSystemDate(_ date: Date) -> String {
         if Calendar.current.isDateInToday(date) {
             return "Hoy \(date.formatted(date: .omitted, time: .shortened))"
         }
         return date.formatted(date: .abbreviated, time: .shortened)
-    }
-
-    private func dashboardFilterLabel(_ raw: String) -> String {
-        switch raw.lowercased() {
-        case "high": return "Alta"
-        case "medium": return "Media"
-        case "low": return "Baja"
-        default: return raw.isEmpty ? "Sin clasificar" : raw
-        }
     }
 
     private func dashboardSessionStatusLabel(_ raw: String) -> String {
@@ -1981,140 +1714,6 @@ struct DashboardView: View {
 
     private func csv(_ header: String, _ rows: [String]) -> String {
         ([header] + rows).joined(separator: "\n")
-    }
-
-    @ViewBuilder
-    private func dashboardLomloeAuditBlock(snapshot: DashboardSnapshot) -> some View {
-        dashboardSecondaryCard {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    dashboardSecondaryTitle("Auditoría LOMLOE y Alertas del Grupo", systemImage: "text.badge.checkmark")
-                    Spacer()
-                    if isLoadingClassTrends {
-                        ProgressView()
-                            .tint(NotebookStyle.primaryTint)
-                    }
-                }
-
-                if let trends = classTrends {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack(spacing: 8) {
-                            let directionInfo = trendDirectionInfo(trends.trendDirection, delta: trends.averageGradeDelta)
-                            Image(systemName: directionInfo.icon)
-                                .foregroundStyle(directionInfo.color)
-                            Text("Trayectoria: \(directionInfo.label)")
-                                .font(.system(size: 13, weight: .bold, design: .rounded))
-                                .foregroundStyle(directionInfo.color)
-
-                            Spacer()
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(trendBgColor(trends.trendDirection).opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-                        HStack(spacing: 12) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Cobertura Curricular del Grupo")
-                                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                                    .foregroundStyle(.secondary)
-                                Text("\(IosFormatting.decimal(from: trends.curriculumCoveragePct))%")
-                                    .font(.system(size: 24, weight: .black, design: .rounded))
-                                    .foregroundStyle(NotebookStyle.primaryTint)
-                            }
-
-                            Spacer()
-
-                            VStack(alignment: .trailing, spacing: 4) {
-                                Text("Asistencia Media")
-                                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                                    .foregroundStyle(.secondary)
-                                Text("\(IosFormatting.decimal(from: trends.attendanceRate))%")
-                                    .font(.system(size: 24, weight: .black, design: .rounded))
-                                    .foregroundStyle(trends.attendanceRate >= 85 ? Color.primary : Color.orange)
-                            }
-                        }
-
-                        GeometryReader { geo in
-                            ZStack(alignment: .leading) {
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(NotebookStyle.softBorder)
-                                    .frame(height: 8)
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(NotebookStyle.primaryTint)
-                                    .frame(width: geo.size.width * CGFloat(trends.curriculumCoveragePct / 100.0), height: 8)
-                            }
-                        }
-                        .frame(height: 8)
-
-                        if !trends.attendanceCorrelationNote.isEmpty {
-                            Text(trends.attendanceCorrelationNote)
-                                .font(.system(size: 12))
-                                .foregroundStyle(.secondary)
-                        }
-
-                        if !trends.behaviorIncidentSummary.isEmpty {
-                            Text(trends.behaviorIncidentSummary)
-                                .font(.system(size: 12))
-                                .foregroundStyle(.secondary)
-                        }
-
-                        if !trends.missingCompetencyLabels.isEmpty {
-                            Divider()
-                                .background(NotebookStyle.softBorder)
-
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text("Competencias clave sin evidencias en el grupo:")
-                                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                                    .foregroundStyle(.secondary)
-
-                                FlexibleTagRow(
-                                    items: trends.missingCompetencyLabels,
-                                    selected: ""
-                                ) { _ in }
-                                .disabled(true)
-                            }
-                        }
-                    }
-                } else if classTrendsLoadFailed {
-                    HStack(spacing: 10) {
-                        Label("No se pudo cargar la auditoría de este grupo.", systemImage: "exclamationmark.triangle.fill")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(IOSAppStyle.warning)
-                        Spacer()
-                        Button("Reintentar") {
-                            Task { await loadClassTrends() }
-                        }
-                        .font(.system(size: 13, weight: .semibold))
-                    }
-                } else if !isLoadingClassTrends {
-                    Text("No hay datos suficientes para generar la auditoría de cobertura curricular y tendencias de este grupo.")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-    }
-
-    private func trendDirectionInfo(_ direction: String, delta: Double) -> (icon: String, label: String, color: Color) {
-        switch direction {
-        case "UPWARD":
-            return ("arrow.up.right", "Al alza (+ \(IosFormatting.decimal(from: delta)))", .green)
-        case "DOWNWARD":
-            return ("arrow.down.right", "A la baja (- \(IosFormatting.decimal(from: abs(delta))))", .red)
-        case "STABLE":
-            return ("arrow.right", "Estable", .blue)
-        default:
-            return ("questionmark.circle", "Datos insuficientes", .gray)
-        }
-    }
-    
-    private func trendBgColor(_ direction: String) -> Color {
-        switch direction {
-        case "UPWARD": return .green
-        case "DOWNWARD": return .red
-        case "STABLE": return .blue
-        default: return .gray
-        }
     }
 
     private func loadClassTrends() async {

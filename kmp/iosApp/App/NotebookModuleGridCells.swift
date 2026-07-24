@@ -145,14 +145,55 @@ extension NotebookModuleView {
                 isSystemColumn: true
             )
             if fixed == .average {
+                // La cabecera de Media es la única que abre un editor al
+                // tocarla; sin un icono propio se veía idéntica a "Asistencia"
+                // o "Seguimiento" y nadie descubría que era interactiva. El
+                // subtítulo deja de ser un "Promedio" estático y refleja
+                // cuántas columnas cuentan hoy, como recuerdo de que el peso
+                // se configura aquí.
+                let averageColumnCount = data.sheet.columns.filter(\.countsTowardAverage).count
+                let averageSubtitle = averageColumnCount > 0
+                    ? "Ponderada · \(averageColumnCount) col."
+                    : "Sin columnas"
                 return AnyView(
                     Button {
                         isAverageConfigurationPresented = true
                     } label: {
-                        chip
+                        HStack(spacing: 6) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(fixed.title)
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.8)
+                                Text(averageSubtitle)
+                                    .font(NotebookGridStyle.columnMeta)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.75)
+                            }
+                            Spacer(minLength: 4)
+                            Image(systemName: "slider.horizontal.3")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(NotebookStyle.primaryTint)
+                                .padding(6)
+                                .background(NotebookStyle.primaryTint.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.top, 8)
+                        .padding(.bottom, 10)
+                        .frame(width: resolvedFixedWidth(for: fixed), alignment: .leading)
+                        .frame(minHeight: 52, alignment: .topLeading)
+                        .overlay(alignment: .bottom) {
+                            Rectangle()
+                                .fill(NotebookStyle.primaryTint.opacity(0.9))
+                                .frame(height: 3)
+                        }
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Configurar media")
+                    .accessibilityValue(averageSubtitle)
+                    .help("Configurar cómo se calcula la media: \(averageSubtitle)")
                 )
             }
             return AnyView(chip)
@@ -292,55 +333,73 @@ extension NotebookModuleView {
     }
 
     func columnHeaderMeta(for column: NotebookColumnDefinition) -> String {
+        let typeText: String
         if column.inputKind.isStructuredInstrument {
             switch column.inputKind {
             case .structuredChecklist:
-                return "Checklist"
+                typeText = "Checklist"
             case .structuredObservation:
-                return "Observación"
+                typeText = "Observación"
             case .structuredForm:
-                return "Formulario"
+                typeText = "Formulario"
             case .structuredQuiz:
-                return "Quiz"
+                typeText = "Quiz"
             default:
-                break
+                typeText = "Columna"
             }
-        }
-
-        let typeText: String
-        switch column.type {
-        case .numeric:
-            if column.instrumentKind == .physicalTest {
-                switch column.scaleKind {
-                case .time:
-                    typeText = "Tiempo"
-                case .distance:
-                    typeText = "Distancia"
-                case .repetitions:
-                    typeText = "Repeticiones"
-                case .tenPoint:
-                    typeText = "Nota baremada"
-                default:
+        } else {
+            switch column.type {
+            case .numeric:
+                if column.instrumentKind == .physicalTest {
+                    switch column.scaleKind {
+                    case .time:
+                        typeText = "Tiempo"
+                    case .distance:
+                        typeText = "Distancia"
+                    case .repetitions:
+                        typeText = "Repeticiones"
+                    case .tenPoint:
+                        typeText = "Nota baremada"
+                    default:
+                        typeText = "Nota"
+                    }
+                } else {
                     typeText = "Nota"
                 }
-            } else {
-                typeText = "Nota"
+            case .rubric:
+                typeText = "Rúbrica"
+            case .check:
+                typeText = "Lista"
+            case .ordinal:
+                typeText = "Nivel"
+            case .text:
+                typeText = "Texto"
+            case .calculated:
+                typeText = "Fórmula"
+            default:
+                typeText = "Columna"
             }
-        case .rubric:
-            typeText = "Rúbrica"
-        case .check:
-            typeText = "Lista"
-        case .ordinal:
-            typeText = "Nivel"
-        case .text:
-            typeText = "Texto"
-        case .calculated:
-            typeText = "Fórmula"
-        default:
-            typeText = "Columna"
         }
 
-        return typeText
+        guard let weightBadge = columnWeightBadge(for: column) else { return typeText }
+        return "\(typeText) · \(weightBadge)"
+    }
+
+    /// Hace visible en la cabecera lo que hasta ahora solo se veía abriendo
+    /// "Configurar media": si la columna pesa distinto de ×1 o si está
+    /// excluida del cálculo. Sin esto, una columna excluida era indistinguible
+    /// de una que cuenta ×3 con solo mirar la rejilla.
+    func columnWeightBadge(for column: NotebookColumnDefinition) -> String? {
+        if !column.countsTowardAverage {
+            return "no cuenta"
+        }
+        if column.weight == 1 {
+            return nil
+        }
+        if column.weight.truncatingRemainder(dividingBy: 1) == 0 {
+            return "×\(Int(column.weight))"
+        }
+        return "×\(IosFormatting.decimal(from: column.weight))"
     }
 
     func displayTint(for column: NotebookColumnDefinition) -> Color {

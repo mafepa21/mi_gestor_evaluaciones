@@ -797,19 +797,11 @@ struct PESessionsWorkspaceView: View {
     @State var sessions: [KmpBridge.PESessionSnapshot] = []
     @State var selectedSessionId: Int64?
     @State var timerStart = Date()
-    @State var now = Date()
     @State var showingCreateSheet = false
     @State var showingOperationalSheet = false
 
     var selectedSession: KmpBridge.PESessionSnapshot? {
         sessions.first(where: { $0.id == selectedSessionId })
-    }
-
-    var activeDurationText: String {
-        let interval = Int(now.timeIntervalSince(timerStart))
-        let minutes = interval / 60
-        let seconds = interval % 60
-        return String(format: "%02d:%02d", minutes, seconds)
     }
 
     var body: some View {
@@ -844,9 +836,6 @@ struct PESessionsWorkspaceView: View {
                 .environmentObject(bridge)
             }
         }
-        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { tick in
-            now = tick
-        }
         .appOnChange(of: selectedClassId) { _ in
             Task { await reload() }
         }
@@ -858,7 +847,7 @@ struct PESessionsWorkspaceView: View {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                     WorkspaceCompactStat(title: "Sesiones", value: "\(sessions.count)", tint: .blue)
                     WorkspaceCompactStat(title: "Con diario", value: "\(sessions.filter { $0.summary != nil }.count)", tint: .green)
-                    WorkspaceCompactStat(title: "Activa", value: activeDurationText, tint: .orange)
+                    PEActiveDurationStat(timerStart: timerStart)
                     WorkspaceCompactStat(title: "Clase", value: selectedClassId == nil ? "Todas" : "Activa", tint: EvaluationDesign.accent)
                 }
 
@@ -911,7 +900,7 @@ struct PESessionsWorkspaceView: View {
                             )
 
                             LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 16)], spacing: 16) {
-                                WorkspaceMetricCard(title: "Temporizador", value: activeDurationText, systemImage: "timer")
+                                PEActiveDurationMetric(timerStart: timerStart)
                                 WorkspaceMetricCard(title: "Intensidad", value: snapshot.intensityScore == 0 ? "Sin dato" : "\(snapshot.intensityScore)/5", systemImage: "flame.fill")
                                 WorkspaceMetricCard(title: "Estado", value: snapshot.summary?.status.name.capitalized ?? "Sin diario", systemImage: "doc.text.fill")
                                 WorkspaceMetricCard(title: "Sesión", value: sessionStateText(snapshot.session.status), systemImage: "figure.run")
@@ -998,6 +987,49 @@ struct PESessionsWorkspaceView: View {
         case .cancelled: return "Cancelada"
         default: return status.name.capitalized
         }
+    }
+}
+
+/// Aísla el timer de 1s del stat "Activa" en su propia vista para que solo
+/// esta pequeña subvista se reevalúe cada segundo, en vez de forzar el
+/// re-render completo de `PESessionsWorkspaceView` (lista + panel de detalle).
+private struct PEActiveDurationStat: View {
+    let timerStart: Date
+    @State private var now = Date()
+
+    private var activeDurationText: String {
+        let interval = Int(now.timeIntervalSince(timerStart))
+        let minutes = interval / 60
+        let seconds = interval % 60
+        return String(format: "%02d:%02d", minutes, seconds)
+    }
+
+    var body: some View {
+        WorkspaceCompactStat(title: "Activa", value: activeDurationText, tint: .orange)
+            .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { tick in
+                now = tick
+            }
+    }
+}
+
+/// Misma idea que `PEActiveDurationStat`, para el "Temporizador" del panel de
+/// detalle de una sesión EF activa.
+private struct PEActiveDurationMetric: View {
+    let timerStart: Date
+    @State private var now = Date()
+
+    private var activeDurationText: String {
+        let interval = Int(now.timeIntervalSince(timerStart))
+        let minutes = interval / 60
+        let seconds = interval % 60
+        return String(format: "%02d:%02d", minutes, seconds)
+    }
+
+    var body: some View {
+        WorkspaceMetricCard(title: "Temporizador", value: activeDurationText, systemImage: "timer")
+            .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { tick in
+                now = tick
+            }
     }
 }
 

@@ -126,19 +126,24 @@ struct MacRootView: View {
         commandCenter.startIfNeeded()
     }
 
-    @ViewBuilder
+    // Un único `.toolbar { }` para todas las pantallas: antes esto alternaba
+    // estructuralmente entre `.toolbar(id: "notebook.toolbar")` (personalizable)
+    // y `.toolbar { }` (normal) según `selectedFeature`, y ese `if/else` en la
+    // raíz hacía que SwiftUI tratara cada rama como una identidad de vista
+    // distinta. Al cruzar la frontera Cuaderno↔otra pantalla, todo el árbol
+    // (sidebar, detalle y el puente de la NSToolbar) se destruía y reconstruía
+    // a la vez que la transición animada del panel de detalle, y eso disparaba
+    // un bucle de "Update Constraints in Window pass" sobre la ventana de la
+    // toolbar (crash real reportado por el usuario al navegar de Cuaderno a
+    // Cursos/Situaciones). `macToolbar` ya decidía el contenido correcto según
+    // `selectedFeature`; el modificador `.toolbar` en sí solo necesita
+    // permanecer estable. Se pierde la personalización nativa (arrastrar/
+    // ocultar) de la toolbar del Cuaderno a cambio de no crashear.
     private var navigationSplit: some View {
-        if selectedFeature == .notebook {
-            navigationSplitContent
-                .toolbar(id: "notebook.toolbar") {
-                    macNotebookToolbar
-                }
-        } else {
-            navigationSplitContent
-                .toolbar {
-                    macToolbar
-                }
-        }
+        navigationSplitContent
+            .toolbar {
+                macToolbar
+            }
     }
 
     // Esta vista se trocea en subexpresiones a propósito: como una sola cadena

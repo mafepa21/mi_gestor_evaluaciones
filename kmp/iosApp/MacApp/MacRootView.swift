@@ -159,8 +159,14 @@ struct MacRootView: View {
         // Meetings opts out for the same reason: MacMeetingsView brings its own HSplitView
         // (lista + detalle del acta), y superponer el inspector del shell provocaba un bucle
         // de "Update Constraints in Window pass" de AppKit (dos gestores de anchura compitiendo).
+        // Notebook opts out too: NotebookModuleView ya pinta su propio panel lateral en macOS
+        // (shouldUseSideInspector es siempre true fuera de iOS) vía HStack + Divider cuando
+        // isInspectorPresented está activo. Envolverlo además en el inspector nativo del shell
+        // duplicaba la reserva de ancho con una segunda instancia de NotebookMacLayout, y al
+        // navegar fuera de Cuaderno ambas instancias se destruían a la vez en plena animación,
+        // provocando el mismo bucle de constraints de AppKit que crasheaba la app.
         if selectedFeature == .attendance || selectedFeature == .planner || selectedFeature == .diary
-            || selectedFeature == .rubrics || selectedFeature == .meetings {
+            || selectedFeature == .rubrics || selectedFeature == .meetings || selectedFeature == .notebook {
             featureContent(for: selectedFeature)
                 .id(selectedFeature)
                 .transition(uiFeatureFlags.contentSwitchTransition)
@@ -512,18 +518,6 @@ struct MacRootView: View {
     @ViewBuilder
     private func featureInspector(for feature: MacFeatureDescriptor.Feature) -> some View {
         switch feature {
-        case .notebook:
-            NotebookMacLayout(
-                bridge: session.bridge,
-                notebookStore: notebookStore,
-                layoutState: layoutState,
-                toolbarActions: notebookToolbarActions,
-                inspectorState: notebookInspectorState,
-                selectedClassId: studentSelection.selectedClassBinding,
-                selectedStudentId: studentSelection.selectedStudentBinding,
-                onOpenModule: open(module:classId:studentId:),
-                presentation: .inspector
-            )
         case .students:
             MacStudentsView(
                 bridge: session.bridge,

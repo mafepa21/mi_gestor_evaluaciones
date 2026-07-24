@@ -48,8 +48,13 @@ class RubricBulkEvaluationViewModel(
             RubricEvaluationBus.events.collect { event ->
                 val current = _uiState.value
                 val rubricId = current.rubricDetail?.rubric?.id ?: return@collect
-                
-                if (event.rubricId == rubricId) {
+
+                // event.rubricId no basta: una misma rubrica puede estar vinculada a mas
+                // de una evaluacion/columna del cuaderno a la vez. Sin comparar tambien el
+                // columnId, un guardado individual en OTRA evaluacion que comparte esta
+                // rubrica se mezclaba en el estado de esta hoja masiva, y el siguiente
+                // auto-save volcaba esa mezcla en la columna equivocada.
+                if (event.rubricId == rubricId && event.columnId == current.columnId) {
                     val updatedAssessments = current.assessments.toMutableMap()
                     val studentAssessments = updatedAssessments[event.studentId]?.toMutableMap() ?: mutableMapOf()
                     
@@ -205,32 +210,50 @@ class RubricBulkEvaluationViewModel(
 
     fun saveAll() {
         scope.launch {
-            _uiState.update { it.copy(isSaving = true, isSaveSuccessful = false) }
+            _uiState.update { it.copy(isSaving = true, isSaveSuccessful = false, error = null) }
             try {
                 val state = _uiState.value
                 autoSaveJobs.values.forEach { it.cancel() }
                 autoSaveJobs.clear()
-                for (studentId in state.assessments.keys) {
+                // saveStudentEvaluation traga sus propias excepciones (para que el
+                // auto-save de un alumno no tumbe la sesion de evaluacion masiva
+                // de otro), asi que "Guardar todo" no puede fiarse de que una
+                // excepcion aqui signifique fallo: debe comprobar el resultado de
+                // cada alumno explicitamente, o marcaria exito y la hoja se
+                // autocerraria (RubricBulkEvaluationSheet observa isSaveSuccessful)
+                // aunque se hubiera perdido la evaluacion de algun alumno.
+                val failedStudentIds = state.assessments.keys.filterNot { studentId ->
                     saveStudentEvaluation(studentId, emitRefresh = false)
                 }
-                _uiState.update { it.copy(isSaving = false, isSaveSuccessful = true) }
-                NotebookRefreshBus.emitRefresh()
-                delay(350)
-                _uiState.update { it.copy(isSaveSuccessful = false) }
+                if (failedStudentIds.isEmpty()) {
+                    _uiState.update { it.copy(isSaving = false, isSaveSuccessful = true) }
+                    NotebookRefreshBus.emitRefresh()
+                    delay(350)
+                    _uiState.update { it.copy(isSaveSuccessful = false) }
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            isSaving = false,
+                            isSaveSuccessful = false,
+                            error = "No se pudieron guardar ${failedStudentIds.size} evaluación(es). Revisa la conexión e inténtalo de nuevo."
+                        )
+                    }
+                }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isSaving = false, error = "Error al guardar todo: ${e.message}") }
+                _uiState.update { it.copy(isSaving = false, isSaveSuccessful = false, error = "Error al guardar todo: ${e.message}") }
             }
         }
     }
 
-    private suspend fun saveStudentEvaluation(studentId: Long, emitRefresh: Boolean = true) {
+    /** @return `true` si se guardó (o no había nada que guardar), `false` si falló. */
+    private suspend fun saveStudentEvaluation(studentId: Long, emitRefresh: Boolean = true): Boolean {
         val state = _uiState.value
-        val studentAssessments = state.assessments[studentId] ?: return
+        val studentAssessments = state.assessments[studentId] ?: return true
         val score = state.scores[studentId] ?: 0.0
         val selectionsString = studentAssessments.entries.joinToString(",") { "${it.key}:${it.value}" }
 
-        try {
-            val effectiveColumnId = state.columnId?.takeIf { it.isNotBlank() } 
+        return try {
+            val effectiveColumnId = state.columnId?.takeIf { it.isNotBlank() }
                 ?: notebookRepository.getColumnIdForEvaluation(state.evaluationId)
                 ?: "eval_${state.evaluationId}"
 
@@ -258,7 +281,7 @@ class RubricBulkEvaluationViewModel(
             if (emitRefresh) {
                 NotebookRefreshBus.emitRefresh()
             }
-            
+
             // NOTIFICAR AL BUS PARA SINCRONIZACIÓN REACTIVA
             RubricEvaluationBus.emit(
                 RubricEvaluationSavedEvent(
@@ -269,8 +292,10 @@ class RubricBulkEvaluationViewModel(
                     columnId = effectiveColumnId
                 )
             )
+            true
         } catch (e: Exception) {
             _uiState.update { it.copy(error = "Auto-save error: ${e.message}") }
+            false
         }
     }
 

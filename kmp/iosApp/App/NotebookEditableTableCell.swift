@@ -622,8 +622,36 @@ private struct NotebookStatefulEditableTableCell: View {
     let onCellSaved: () -> Void
     let onAttendanceSaved: () -> Void
 
+    /// Ajuste transversal (color semántico + heat de nota), con toggle propio en
+    /// el menú de acciones del cuaderno. Se lee aquí vía `@AppStorage` con la
+    /// misma clave que `NotebookModuleView` en vez de enhebrarla por el init:
+    /// patrón estándar de SwiftUI para un ajuste que cruza muchos tipos de celda.
+    @AppStorage(NotebookGridStyle.semanticGradeColorDefaultsKey) private var semanticGradeColorEnabled = true
+
     private var persistedCell: PersistedNotebookCell? {
         item.row.persistedCells.first(where: { $0.columnId == column.id })
+    }
+
+    /// Banda de la nota (baja/media/alta) para colorear el número y, en modo
+    /// heat, el fondo de la celda. `nil` si el toggle está apagado, la columna
+    /// no es una nota 0–10 (p. ej. tiempo/distancia/repeticiones de pruebas
+    /// físicas: un "6,5" ahí es un dato bruto, no una nota) o el valor no se
+    /// puede interpretar como número.
+    private var gradeBand: NotebookGradeBand? {
+        guard semanticGradeColorEnabled, column.type == .numeric else { return nil }
+        switch column.scaleKind {
+        case .time, .distance, .repetitions:
+            return nil
+        case .fourLevel, .percentage:
+            // Escalas 1–4 (observación) y 0–100 (%): un "4" o un "45" no son notas
+            // sobre 10; colorearlos por banda 0–10 pinta el máximo de 1–4 en rojo y
+            // un 45% suspenso en verde.
+            return nil
+        default:
+            break
+        }
+        guard let score = NotebookFormulaDisplay.parseNumber(numericDraft) else { return nil }
+        return NotebookGradeBand(scoreOutOfTen: score)
     }
 
     @State private var numericDraft = ""
@@ -648,15 +676,19 @@ private struct NotebookStatefulEditableTableCell: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: NotebookGridStyle.Radius.cell, style: .continuous)
                 .fill(editableCellFill)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(
-                            isSelected ? Color.accentColor.opacity(0.85) : editableCellBorder,
-                            lineWidth: isSelected ? 1.4 : 0.6
-                        )
+                    RoundedRectangle(cornerRadius: NotebookGridStyle.Radius.cell, style: .continuous)
+                        .stroke(editableCellBorder, lineWidth: editableCellBorderWidth)
                 )
+                .shadow(
+                    color: isSelected ? NotebookGridStyle.cellSelectionShadow : .clear,
+                    radius: isSelected ? 4 : 0,
+                    x: 0,
+                    y: isSelected ? 1.5 : 0
+                )
+                .padding(2)
 
             content
                 .padding(.horizontal, 8)
@@ -689,6 +721,7 @@ private struct NotebookStatefulEditableTableCell: View {
             }
 
             cellStateOverlay
+            saveFeedbackDot
 
             if isNumericDragging {
                 Text("Desliza para ajustar")
@@ -720,46 +753,51 @@ private struct NotebookStatefulEditableTableCell: View {
         }
     }
 
+    /// Fill del chip interior. Por defecto transparente: el fondo real de la celda
+    /// (zebra, wash de color de columna, selección) ya lo pinta el Rectangle exterior
+    /// en `NotebookModuleGridCells.rowCell`. Este chip solo aparece para estados que
+    /// necesitan su propia señal (bloqueada, calculada, borrador pendiente, selección/edición).
     private var editableCellFill: Color {
+        if isSelected {
+            // Superficie opaca (no tinte de acento): tapa el wash de columna por
+            // debajo para que la celda se eleve limpia con sombra + anillo.
+            return NotebookGridStyle.cellSelectionSurface
+        }
         if column.isLocked {
             return NotebookStyle.surfaceMuted.opacity(0.45)
         }
         if column.type == .calculated {
-            #if os(macOS)
-            return Color.accentColor.opacity(isSelected ? 0.08 : 0.02)
-            #else
-            return Color.accentColor.opacity(isSelected ? 0.10 : 0.04)
-            #endif
-        }
-        if hasColumnColor {
-            return tint.opacity(isSelected ? 0.22 : 0.10)
+            return Color.accentColor.opacity(0.04)
         }
         if hasPendingDraft {
             return NotebookStyle.warningTint.opacity(0.10)
         }
-        return isSelected ? tint.opacity(0.14) : NotebookStyle.surfaceSoft.opacity(column.categoryId == nil ? 0.12 : 0.22)
+        if let gradeBand {
+            // Modo heat (parte del mismo toggle que el color del número): tinte de
+            // fondo suave por banda, para leer la clase entera como mapa de calor.
+            return gradeBand.softFill
+        }
+        return .clear
     }
 
     private var editableCellBorder: Color {
+        if isSelected {
+            return NotebookGridStyle.cellSelectionRing
+        }
         if column.isLocked {
-            return NotebookStyle.softBorder.opacity(0.55)
+            return NotebookGridStyle.gridLineStrong
         }
         if column.type == .calculated {
-            return Color.accentColor.opacity(isSelected ? 0.40 : 0.15)
-        }
-        if saveFeedback == .saving {
-            return NotebookStyle.warningTint.opacity(0.70)
-        }
-        if saveFeedback == .saved {
-            return NotebookStyle.successTint.opacity(0.70)
+            return Color.accentColor.opacity(0.18)
         }
         if hasPendingDraft {
-            return NotebookStyle.warningTint.opacity(0.55)
+            return NotebookStyle.warningTint.opacity(0.45)
         }
-        if hasColumnColor {
-            return tint.opacity(0.28)
-        }
-        return (categoryTint ?? tint).opacity(column.categoryId == nil ? 0.05 : 0.12)
+        return .clear
+    }
+
+    private var editableCellBorderWidth: CGFloat {
+        isSelected ? NotebookGridStyle.cellSelectionRingWidth : 0.6
     }
 
     @ViewBuilder
@@ -788,6 +826,35 @@ private struct NotebookStatefulEditableTableCell: View {
         }
     }
 
+    /// Punto discreto de 6pt en la esquina inferior izquierda: única señal del
+    /// ciclo de guardado transitorio (ámbar mientras guarda, verde con un rebote
+    /// al confirmar). Esquina propia, distinta de la anotación (superior derecha)
+    /// y de los badges persistentes (inferior derecha), para no competir con ellos.
+    @ViewBuilder
+    private var saveFeedbackDot: some View {
+        if saveFeedback == .saving || saveFeedback == .saved {
+            VStack {
+                Spacer()
+                HStack {
+                    Group {
+                        if #available(iOS 18.0, macOS 14.0, *) {
+                            Image(systemName: "circle.fill")
+                                .symbolEffect(.bounce, value: saveFeedback == .saved)
+                        } else {
+                            Image(systemName: "circle.fill")
+                        }
+                    }
+                    .font(.system(size: 6))
+                    .foregroundStyle(saveFeedback == .saving ? NotebookGridStyle.statePending : NotebookStyle.successTint)
+                    .accessibilityHidden(true)
+
+                    Spacer()
+                }
+            }
+            .padding(6)
+        }
+    }
+
     private var cellStateBadges: [NotebookCellStateBadge] {
         if column.isLocked {
             return [NotebookCellStateBadge(id: "locked", systemImage: "lock.fill", label: "Celda bloqueada", tint: .secondary)]
@@ -798,15 +865,10 @@ private struct NotebookStatefulEditableTableCell: View {
             badges.append(NotebookCellStateBadge(id: "excluded", systemImage: "slash.circle", label: "No cuenta para media", tint: .secondary))
         }
 
-        switch saveFeedback {
-        case .saving:
-            badges.append(NotebookCellStateBadge(id: "saving", systemImage: "arrow.triangle.2.circlepath", label: "Guardando", tint: NotebookStyle.warningTint))
-        case .saved:
-            badges.append(NotebookCellStateBadge(id: "saved", systemImage: "checkmark.circle.fill", label: "Sincronizado", tint: NotebookStyle.successTint))
-        case .idle:
-            if hasPendingDraft {
-                badges.append(NotebookCellStateBadge(id: "pending", systemImage: "circle.dotted", label: "Pendiente de guardar", tint: NotebookStyle.warningTint))
-            }
+        // El feedback transitorio de guardado (saving/saved) se muestra aparte,
+        // como un punto discreto (`saveFeedbackDot`), no como badge.
+        if saveFeedback == .idle, hasPendingDraft {
+            badges.append(NotebookCellStateBadge(id: "pending", systemImage: "circle.dotted", label: "Pendiente de guardar", tint: NotebookStyle.warningTint))
         }
 
         if formulaDisplay?.isError == true {
@@ -859,7 +921,7 @@ private struct NotebookStatefulEditableTableCell: View {
                             Text(numericDraft.isEmpty ? "—" : numericDraft)
                                 .font(.system(size: 13, weight: .bold, design: .rounded))
                                 .monospacedDigit()
-                                .foregroundStyle(numericDraft.isEmpty ? .tertiary : .primary)
+                                .foregroundStyle(numericDraft.isEmpty ? AnyShapeStyle(.tertiary) : (gradeBand.map { AnyShapeStyle($0.color) } ?? AnyShapeStyle(.primary)))
                                 .lineLimit(1)
                             Image(systemName: "keyboard")
                                 .font(.caption.weight(.bold))
@@ -873,7 +935,8 @@ private struct NotebookStatefulEditableTableCell: View {
                     }
                 } else {
                     let field = TextField("", text: $numericDraft)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .textFieldStyle(.plain)
+                        .font(NotebookGridStyle.cellFont)
                         .appKeyboardType(.decimalPad)
                         .focused(focusedCellId, equals: cellId)
                         .submitLabel(.next)
@@ -969,7 +1032,7 @@ private struct NotebookStatefulEditableTableCell: View {
                             .contentShape(Rectangle())
                     } else {
                         TextField("", text: $textDraft)
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .textFieldStyle(.plain)
                             .focused(focusedCellId, equals: cellId)
                             .foregroundStyle(.primary)
                             .submitLabel(.next)
@@ -1040,9 +1103,9 @@ private struct NotebookStatefulEditableTableCell: View {
         TextField("", text: $numericDraft)
             .textFieldStyle(.plain)
             .multilineTextAlignment(.trailing)
-            .monospacedDigit()
+            .font(NotebookGridStyle.cellFont)
+            .foregroundStyle(gradeBand.map { AnyShapeStyle($0.color) } ?? AnyShapeStyle(.primary))
             .focused(focusedCellId, equals: cellId)
-            .foregroundStyle(.primary)
             .onSubmit { saveNumericAndNavigate(navigationDirection) }
             .onKeyPress(.upArrow) { saveNumericAndNavigate(.up); return .handled }
             .onKeyPress(.downArrow) { saveNumericAndNavigate(.down); return .handled }
@@ -1810,15 +1873,19 @@ private struct NotebookReadOnlyCellChrome<Content: View>: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: NotebookGridStyle.Radius.cell, style: .continuous)
                 .fill(cellFill)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(
-                            isSelected ? Color.accentColor.opacity(0.85) : cellBorder,
-                            lineWidth: isSelected ? 1.4 : 0.6
-                        )
+                    RoundedRectangle(cornerRadius: NotebookGridStyle.Radius.cell, style: .continuous)
+                        .stroke(cellBorder, lineWidth: isSelected ? NotebookGridStyle.cellSelectionRingWidth : 0.6)
                 )
+                .shadow(
+                    color: isSelected ? NotebookGridStyle.cellSelectionShadow : .clear,
+                    radius: isSelected ? 4 : 0,
+                    x: 0,
+                    y: isSelected ? 1.5 : 0
+                )
+                .padding(2)
 
             content
                 .padding(.horizontal, 8)
@@ -1857,34 +1924,33 @@ private struct NotebookReadOnlyCellChrome<Content: View>: View {
         .onTapGesture(perform: onSelect)
     }
 
+    /// Fill del chip interior. Transparente por defecto: el fondo real de la celda
+    /// (zebra, wash de color de columna, selección) ya lo pinta el Rectangle exterior
+    /// en `NotebookModuleGridCells.rowCell`.
     private var cellFill: Color {
+        if isSelected {
+            return NotebookGridStyle.cellSelectionSurface
+        }
         if column.isLocked {
             return NotebookStyle.surfaceMuted.opacity(0.45)
         }
         if column.type == .calculated {
-            #if os(macOS)
-            return Color.accentColor.opacity(isSelected ? 0.08 : 0.02)
-            #else
-            return Color.accentColor.opacity(isSelected ? 0.10 : 0.04)
-            #endif
+            return Color.accentColor.opacity(0.04)
         }
-        if hasColumnColor {
-            return tint.opacity(isSelected ? 0.22 : 0.10)
-        }
-        return isSelected ? tint.opacity(0.14) : NotebookStyle.surfaceSoft.opacity(column.categoryId == nil ? 0.12 : 0.22)
+        return .clear
     }
 
     private var cellBorder: Color {
+        if isSelected {
+            return NotebookGridStyle.cellSelectionRing
+        }
         if column.isLocked {
-            return NotebookStyle.softBorder.opacity(0.55)
+            return NotebookGridStyle.gridLineStrong
         }
         if column.type == .calculated {
-            return Color.accentColor.opacity(isSelected ? 0.40 : 0.15)
+            return Color.accentColor.opacity(0.18)
         }
-        if hasColumnColor {
-            return tint.opacity(0.28)
-        }
-        return (categoryTint ?? tint).opacity(column.categoryId == nil ? 0.05 : 0.12)
+        return .clear
     }
 
     @ViewBuilder

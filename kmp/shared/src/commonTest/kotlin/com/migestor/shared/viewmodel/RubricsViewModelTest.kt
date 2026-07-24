@@ -13,6 +13,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 class RubricsViewModelTest {
     @Test
@@ -47,6 +48,138 @@ class RubricsViewModelTest {
         assertEquals(1.0, state.totalWeight)
         assertEquals(0.5, state.criteria[0].weight)
         assertEquals(0.5, state.criteria[1].weight)
+    }
+
+    @Test
+    fun `removeLevel keeps the points of the surviving levels intact`() = runTest {
+        // Regresion: removeLevel reescribia points = idx + 1 para TODOS los niveles
+        // supervivientes segun su nueva posicion, destruyendo cualquier escala
+        // personalizada o descendente (p. ej. Excelente=4, Bien=3, Suficiente=2,
+        // Insuficiente=1: borrar "Bien" dejaba Excelente=1, Suficiente=2,
+        // Insuficiente=3, invertida). reorderLevels ya seguia el criterio correcto
+        // (solo tocar `order`, nunca `points`); removeLevel debe hacer lo mismo.
+        val viewModel = createViewModel()
+
+        viewModel.applyPresetLevels("Estándar") // Excelente=4, Bien=3, Suficiente=2, Insuficiente=1
+        advanceUntilIdle()
+        val before = viewModel.uiState.value.levels
+        assertEquals(listOf("Excelente", "Bien", "Suficiente", "Insuficiente"), before.map { it.name })
+        assertEquals(listOf(4, 3, 2, 1), before.map { it.points })
+
+        viewModel.removeLevel(1) // borra "Bien"
+        advanceUntilIdle()
+
+        val after = viewModel.uiState.value.levels
+        assertEquals(listOf("Excelente", "Suficiente", "Insuficiente"), after.map { it.name })
+        assertEquals(listOf(4, 2, 1), after.map { it.points }, "Los puntos de los niveles supervivientes no deben reescribirse por posicion")
+        assertEquals(listOf(0, 1, 2), after.map { it.order })
+    }
+
+    @Test
+    fun `saveRubric pairs existing levels by id, not by position, after a reorder`() = runTest {
+        // Regresion: saveRubric emparejaba niveles existentes por `order` (posicion), no
+        // por id. Tras reordenar (reorderLevels solo cambia `order`, cada nivel conserva
+        // su propio id/points/name), guardar reescribia en sitio el nombre/puntos del
+        // nivel que HABIA en esa posicion -mismo id de BD, significado distinto- lo que
+        // corrompe en silencio cualquier evaluacion ya guardada que referenciara ese id.
+        val criterionId = 10L
+        val levelExcelenteId = 100L
+        val levelInsuficienteId = 101L
+        val existingLevels = listOf(
+            RubricLevel(id = levelExcelenteId, criterionId = criterionId, name = "Excelente", points = 4, order = 0),
+            RubricLevel(id = levelInsuficienteId, criterionId = criterionId, name = "Insuficiente", points = 1, order = 1),
+        )
+        val existingCriteria = listOf(
+            RubricCriterion(id = criterionId, rubricId = 7L, description = "Ejecución", weight = 1.0, order = 0)
+        )
+        val savedLevelCalls = mutableListOf<Pair<Long?, String>>() // id pasado -> nombre
+
+        val fakeRubrics = object : RubricsTestFakeRubricsRepository() {
+            override suspend fun listCriteriaByRubric(rubricId: Long): List<RubricCriterion> = existingCriteria
+            override suspend fun listLevelsByCriterion(criterionId: Long): List<RubricLevel> = existingLevels
+            override suspend fun saveLevel(
+                id: Long?, criterionId: Long, name: String, points: Int, description: String?,
+                order: Int, updatedAtEpochMs: Long, deviceId: String?, syncVersion: Long,
+            ): Long {
+                savedLevelCalls += id to name
+                return id ?: 999L
+            }
+        }
+
+        val viewModel = createViewModel(rubricsRepository = fakeRubrics)
+        viewModel.loadRubric(
+            RubricDetail(rubric = Rubric(id = 7L, name = "Rubrica", classId = null), criteria = emptyList())
+        )
+        advanceUntilIdle()
+
+        // El usuario reordena: "Insuficiente" (id=101) pasa a la primera posicion.
+        viewModel.reorderLevels(from = 1, to = 0)
+        advanceUntilIdle()
+
+        var completed = false
+        viewModel.saveRubric { completed = true }
+        advanceUntilIdle()
+
+        assertEquals(true, completed)
+        // Cada nivel debe guardarse con SU PROPIO id, sin importar la nueva posicion.
+        assertTrue(
+            savedLevelCalls.contains(levelInsuficienteId to "Insuficiente"),
+            "Insuficiente debe guardarse con su propio id (101), no con el que ocupaba su nueva posicion. Llamadas: $savedLevelCalls"
+        )
+        assertTrue(
+            savedLevelCalls.contains(levelExcelenteId to "Excelente"),
+            "Excelente debe guardarse con su propio id (100). Llamadas: $savedLevelCalls"
+        )
+    }
+
+    @Test
+    fun `saveRubric does not duplicate the linked evaluation on repeated saves`() = runTest {
+        // Regresion: saveRubric creaba SIEMPRE una evaluacion nueva (id = null) cuando
+        // habia clase seleccionada, sin comprobar si ya existia una "RUB-<id>" para esa
+        // rubrica+clase. Editar una rubrica ya asignada (loadRubric fija selectedClassId
+        // al de la rubrica) y guardar dos veces duplicaba la evaluacion vinculada, con
+        // weight=1.0 cada una, desbalanceando la nota final de la clase.
+        val classId = 10L
+        val savedEvaluations = mutableListOf<Evaluation>()
+        var nextEvalId = 500L
+
+        val fakeEvaluations = object : RubricsTestFakeEvaluationsRepository() {
+            override suspend fun listClassEvaluations(classId: Long): List<Evaluation> =
+                savedEvaluations.filter { it.classId == classId }
+            override suspend fun saveEvaluation(
+                id: Long?, classId: Long, code: String, name: String, type: String, weight: Double,
+                formula: String?, rubricId: Long?, description: String?, authorUserId: Long?,
+                createdAtEpochMs: Long, updatedAtEpochMs: Long, associatedGroupId: Long?,
+                deviceId: String?, syncVersion: Long,
+            ): Long {
+                val resolvedId = id ?: nextEvalId++
+                savedEvaluations.removeAll { it.id == resolvedId }
+                savedEvaluations += Evaluation(
+                    id = resolvedId, classId = classId, code = code, name = name,
+                    type = type, weight = weight, rubricId = rubricId,
+                )
+                return resolvedId
+            }
+        }
+
+        val viewModel = createViewModel(evaluationsRepository = fakeEvaluations)
+        viewModel.loadRubric(
+            RubricDetail(rubric = Rubric(id = 7L, name = "Rubrica", classId = classId), criteria = emptyList())
+        )
+        advanceUntilIdle()
+
+        var completedFirst = false
+        viewModel.saveRubric { completedFirst = true }
+        advanceUntilIdle()
+
+        var completedSecond = false
+        viewModel.saveRubric { completedSecond = true }
+        advanceUntilIdle()
+
+        assertEquals(true, completedFirst)
+        assertEquals(true, completedSecond)
+        val linkedEvaluations = savedEvaluations.filter { it.classId == classId && it.rubricId != null }
+        assertEquals(1, linkedEvaluations.size, "Guardar la rubrica dos veces no debe duplicar su evaluacion vinculada: $linkedEvaluations")
     }
 
     @Test
@@ -151,7 +284,7 @@ class RubricsViewModelTest {
     }
 }
 
-private class RubricsTestFakeRubricsRepository(
+private open class RubricsTestFakeRubricsRepository(
     rubrics: List<RubricDetail> = emptyList()
 ) : RubricsRepository {
     private val rubricsFlow = MutableStateFlow(rubrics)
@@ -237,7 +370,7 @@ private class RubricsTestFakeClassesRepository(
     override suspend fun listStudentsInClass(classId: Long): List<Student> = emptyList()
 }
 
-private class RubricsTestFakeEvaluationsRepository(
+private open class RubricsTestFakeEvaluationsRepository(
     private val evaluationsByClass: Map<Long, List<Evaluation>> = emptyMap()
 ) : EvaluationsRepository {
     override fun observeClassEvaluations(classId: Long): Flow<List<Evaluation>> = flowOf(emptyList())

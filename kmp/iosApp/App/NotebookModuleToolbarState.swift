@@ -325,7 +325,8 @@ extension NotebookModuleView {
         let classKey = currentClass?.id ?? -1
         let groupKey = selectedGroupId ?? -1
         let inspectorKey = inspectorSelection?.id ?? "none"
-        return "\(classKey)|\(groupKey)|\(surfaceMode.rawValue)|\(managedColumns(data: data).count)|\(filteredRows(data: data).count)|\(inspectorKey)|\(isInspectorPresented)|\(undoStack.count)|\(isAttendanceQuickMode)|\(bridge.notebookSplitSaveState.state)"
+        let tabKey = bridge.selectedNotebookTabId ?? "all"
+        return "\(classKey)|\(tabKey)|\(groupKey)|\(surfaceMode.rawValue)|\(managedColumns(data: data).count)|\(filteredRows(data: data).count)|\(inspectorKey)|\(isInspectorPresented)|\(undoStack.count)|\(isAttendanceQuickMode)|\(bridge.notebookSplitSaveState.state)|\(searchText)"
     }
 
     var notebookRiskRefreshKey: String {

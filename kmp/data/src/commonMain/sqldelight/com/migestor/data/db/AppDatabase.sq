@@ -1611,10 +1611,21 @@ WHERE learning_situation_id = ?
 ORDER BY class_id;
 
 upsertLearningSituationLink:
-INSERT OR REPLACE INTO learning_situation_links(
+INSERT INTO learning_situation_links(
     id, learning_situation_id, resource_kind, resource_id, class_id, label, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
 )
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateLearningSituationLink:
+UPDATE learning_situation_links
+SET label = ?, updated_at_epoch_ms = ?, device_id = ?, sync_version = sync_version + 1
+WHERE id = ?;
+
+selectLearningSituationLinkId:
+SELECT id FROM learning_situation_links
+WHERE learning_situation_id = ? AND resource_kind = ? AND resource_id = ?
+  AND (class_id = :classId OR (class_id IS NULL AND :classId IS NULL))
+LIMIT 1;
 
 selectLearningSituationLinks:
 SELECT id, learning_situation_id, resource_kind, resource_id, class_id, label, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
@@ -1672,11 +1683,26 @@ deleteInstrumentItemsByTemplate:
 DELETE FROM notebook_instrument_items
 WHERE template_id = ?;
 
+deleteInstrumentItemsNotIn:
+DELETE FROM notebook_instrument_items
+WHERE template_id = ? AND id NOT IN ?;
+
 upsertInstrumentItem:
 INSERT OR REPLACE INTO notebook_instrument_items(
     id, template_id, item_key, title, item_type, options_csv, required, sort_order, help_text, updated_at_epoch_ms, device_id, sync_version
 )
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+insertInstrumentItem:
+INSERT INTO notebook_instrument_items(
+    id, template_id, item_key, title, item_type, options_csv, required, sort_order, help_text, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateInstrumentItem:
+UPDATE notebook_instrument_items
+SET item_key = ?, title = ?, item_type = ?, options_csv = ?, required = ?, sort_order = ?, help_text = ?, updated_at_epoch_ms = ?, device_id = ?, sync_version = ?
+WHERE id = ?;
 
 upsertInstrumentResponse:
 INSERT OR REPLACE INTO notebook_instrument_responses(

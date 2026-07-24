@@ -108,7 +108,9 @@ final class WorkspaceLayoutState: ObservableObject {
             self.notebookInspectorAvailable = inspectorAvailable
             self.isNotebookInspectorPresented = isInspectorPresented
             self.notebookAddColumnAvailable = addColumnAvailable
-            self.notebookSearchText = searchText
+            if self.notebookSearchText != searchText {
+                self.notebookSearchText = searchText
+            }
             self.notebookSurfaceMode = surfaceMode
             self.notebookSelectedGroupId = selectedGroupId
             self.notebookAvailableGroups = availableGroups
@@ -219,24 +221,18 @@ final class WorkspaceLayoutState: ObservableObject {
     }
 
     func setNotebookSearchText(_ value: String) {
-        publishDeferred {
-            self.notebookSearchText = value
-            self.notebookSearchAction?(value)
-            }
+        notebookSearchText = value
+        notebookSearchAction?(value)
     }
 
     func setNotebookSurfaceMode(_ value: String) {
-        publishDeferred {
-            self.notebookSurfaceMode = value
-            self.notebookSurfaceModeAction?(value)
-        }
+        notebookSurfaceMode = value
+        notebookSurfaceModeAction?(value)
     }
 
     func setNotebookGroupFilter(_ value: Int64?) {
-        publishDeferred {
-            self.notebookSelectedGroupId = value
-            self.notebookGroupFilterAction?(value)
-        }
+        notebookSelectedGroupId = value
+        notebookGroupFilterAction?(value)
     }
 
     func openNotebookOrganizationMenu() {
@@ -3163,13 +3159,6 @@ struct ContextualAIAssistantSheet: View {
                 )
             }
         }
-    }
-}
-
-private extension String {
-    var nilIfBlank: String? {
-        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
     }
 }
 

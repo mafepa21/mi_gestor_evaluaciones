@@ -35,5 +35,5 @@ jobs:
         with:
           name: apple-build-logs
           path: |
-            /tmp/mac_build.log
-            /tmp/ios_build.log
+            /tmp/mac_build_*.log
+            /tmp/ios_build_*.log

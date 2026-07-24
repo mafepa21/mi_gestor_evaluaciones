@@ -194,6 +194,7 @@ El formato sigue una variante practica de Keep a Changelog:
 
 ### Data
 
+- Unifica las migraciones de rescate de Apple y desktop en un único `RescueMigrations.kt` compartido en `commonMain` (`runRescueMigrations`), eliminando las copias privadas duplicadas de `AppleDriver.kt` y `DesktopDriver.kt` para que ambas plataformas no puedan volver a divergir en columnas de `notebook_columns`/`notebook_tabs`, tablas de instrumentos estructurados, tablas prerequisito multi-centro y tablas del planner.
 - `AcademicYearsRepository` expone `upsertAcademicYear` y `SqlDelightSyncAdapter` recoge/aplica snapshots de `academic_year` sin cambios de esquema, reutilizando la query SQLDelight existente.
 - SQLDelight añade snapshots ligeros para Dashboard, Cursos, ficha de alumno, Cuaderno paginado, evaluaciones pendientes e histórico EF, evitando abrir el `NotebookSheet` completo en vistas resumidas.
 - SQLDelight añade índices no destructivos para lecturas diarias de calificaciones, celdas del Cuaderno, evaluaciones, asistencia, incidencias y columnas por categoría mediante `34.sqm`.

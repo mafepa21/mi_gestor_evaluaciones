@@ -215,6 +215,7 @@ private struct StructuredInstrumentItemRow: View {
                 case .number:
                     TextField("Valor", text: $item.numberValue)
                         .textFieldStyle(.roundedBorder)
+                        .appKeyboardType(.decimalPad)
                 case .scale14:
                     Picker("Nivel", selection: $item.numberValue) {
                         Text("Sin nivel").tag("")

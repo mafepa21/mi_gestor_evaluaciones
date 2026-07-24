@@ -5,6 +5,9 @@ struct PlannerSessionComposerSheet: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var vm: PlannerWorkspaceViewModel
 
+    @State private var showingSaveTemplateDialog = false
+    @State private var newTemplateTitle = ""
+
     var body: some View {
         #if os(macOS)
         VStack(spacing: 0) {
@@ -154,6 +157,38 @@ struct PlannerSessionComposerSheet: View {
                                 .padding(8)
                                 .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                         }
+
+                        // FEAT-2: Barra de Plantillas
+                        HStack {
+                            if !vm.sessionTemplates.isEmpty {
+                                Menu {
+                                    ForEach(vm.sessionTemplates, id: \.id) { template in
+                                        Button {
+                                            vm.applyTemplate(template)
+                                        } label: {
+                                            Label(template.title, systemImage: "doc.text.fill")
+                                        }
+                                    }
+                                } label: {
+                                    Label("Cargar plantilla", systemImage: "doc.text.magnifyingglass")
+                                        .font(.caption.weight(.semibold))
+                                }
+                            }
+
+                            Spacer()
+
+                            if !vm.composerDraft.activities.isEmpty || !vm.composerDraft.objectives.isEmpty {
+                                Button {
+                                    newTemplateTitle = vm.composerDraft.unitTitle
+                                    showingSaveTemplateDialog = true
+                                } label: {
+                                    Label("Guardar como plantilla", systemImage: "arrow.down.doc")
+                                        .font(.caption.weight(.medium))
+                                }
+                                .buttonStyle(.borderless)
+                            }
+                        }
+                        .padding(.top, 4)
                     }
                 }
 
@@ -198,11 +233,35 @@ struct PlannerSessionComposerSheet: View {
                             }
                         }
                         .pickerStyle(.menu)
+
+                        // FEAT-3: Recurrencia de sesiones
+                        if vm.composerDraft.sessionId == 0 {
+                            Picker("Repetir sesión", selection: $vm.composerDraft.repeatWeeksCount) {
+                                Text("Solo esta semana").tag(1)
+                                Text("2 semanas consecutivas").tag(2)
+                                Text("4 semanas consecutivas").tag(4)
+                                Text("8 semanas consecutivas").tag(8)
+                                Text("12 semanas consecutivas").tag(12)
+                            }
+                            .pickerStyle(.menu)
+                        }
                     }
                 }
             }
             .padding(IOSAppStyle.pagePadding)
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .alert("Guardar como plantilla", isPresented: $showingSaveTemplateDialog) {
+            TextField("Nombre de la plantilla", text: $newTemplateTitle)
+            Button("Guardar") {
+                Task {
+                    _ = await vm.saveCurrentDraftAsTemplate(title: newTemplateTitle)
+                    newTemplateTitle = ""
+                }
+            }
+            Button("Cancelar", role: .cancel) { newTemplateTitle = "" }
+        } message: {
+            Text("Introduce un nombre para reutilizar este contenido en futuras sesiones.")
         }
     }
 
@@ -292,18 +351,4 @@ private extension SessionJournalLinkType {
     }
 }
 
-private extension Optional where Wrapped == String {
-    var nilIfBlank: String? {
-        switch self?.trimmingCharacters(in: .whitespacesAndNewlines) {
-        case .some(let value) where !value.isEmpty: return value
-        default: return nil
-        }
-    }
-}
-
-private extension String {
-    var nilIfBlank: String? {
-        trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : self
-    }
-}
 

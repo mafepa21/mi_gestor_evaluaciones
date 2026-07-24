@@ -30,6 +30,29 @@ Cambios posteriores a `v0.3.0-traceability-baseline`.
   - La columna Media pasa de un badge pequeño con icono a una tarjeta "héroe": nota grande coloreada por banda, medidor de completitud (`ProgressView`) y estado.
 - Cuaderno: se introduce `NotebookGridStyle`, una escala de tokens visuales (hairlines, tipografía de datos, estados de foco unificados hover/columna/selección, radios concéntricos) que sustituye al patrón de opacidades apiladas sobre `NotebookStyle.softBorder`. Es la base plana del rediseño premium del grid; ver `docs/planes/plan_rediseno_cuaderno_2026-07-15.md`.
 - iPadOS/macOS: la toolbar del Cuaderno incorpora `SyncStatusBadge`, un indicador no intrusivo (`✓`/`⏱ N`/`✗`/inactivo) derivado del estado de sync LAN ya publicado por `DashboardBridgeStore`, con `accessibilityLabel` y `accessibilityHint` dinámicos. Sustituye al indicador previo de "N pnd." (que solo cubría el estado de cambios pendientes).
+- Planner: Plantillas de sesión de planificación (FEAT-2): permite guardar cualquier sesión redactada como plantilla reutilizable y cargarla en futuras sesiones desde el creador/editor de sesiones (`PlannerSessionComposerSheet`). Persistencia en SQLDelight (`planner_session_template`) mediante la migración `35.sqm`.
+- Planner: Creación de sesiones recurrentes (FEAT-3): opción de repetir una sesión planificada durante N semanas consecutivas (1, 2, 4, 8 o 12 semanas) desde el creador de sesiones.
+- Planner: Onboarding sutil para drag & drop de sesiones entre franjas horarias con tooltip explicativo persistente en `AppStorage` y handle de arrastre visual al hacer hover sobre celdas con sesión única.
+- Planner: Acción rápida "Duplicar" (copiar a la semana siguiente) añadida directamente a la ficha detallada de la sesión (`PlannerSessionDetailSheet`).
+
+### Changed
+
+- Planner: Vista Secuencia (Gantt) rediseñada con un strip de progreso global superior que muestra de un vistazo la barra visual de avance y métricas compactas (sesiones impartidas, planificadas y sin ubicar), subtítulo reorientado a la acción y empty state descriptivo.
+- Planner: Auto-navegación inteligente a la vista Día en horario lectivo (lunes a viernes de 8:00 a 14:59) pre-seleccionando el día actual al abrir el planificador.
+- Planner: Celdas de días festivos en la vista Semana con fondo rojo tenue distintivo, icono descriptivo y etiqueta "Festivo" tanto en la celda como en la cabecera del día.
+- Planner: Generación de informe PDF en un solo clic que abre automáticamente la modal de compartición nativa tras la exportación.
+
+### Fixed
+
+- Planner: Eliminado el botón de grabación de audio en macOS que no ofrecía respuesta; ahora muestra un estado deshabilitado con el mensaje claro "Grabación de audio disponible solo en iPad".
+- Planner: Eliminado force unwrap crasheable (`seqIdBySessionId[$0.id]!`) en la vista de Secuencias (`PlannerWorkspaceViewModel+Sequences.swift`), reemplazado por iteración segura.
+- Planner: Eliminado `import Combine` duplicado en `PlannerDayView.swift` y deduplicadas las extensiones privadas `nilIfBlank` hacia `AppleShared/StringHelpers.swift`.
+- Planner: Optimización de rendimiento al desacoplar el cómputo O(N²) de Secuencias hacia `Task.detached` y al aislar el temporizador de 60 segundos de la vista Día en la clase `PlannerDayTimeTick` (`ObservableObject` compatible con iOS 16+).
+- Planner & Attendance: Resueltos errores de compilación para iOS 16 y macOS (`AttendanceWorkspaceView` `.inspector` con `#available(iOS 17.0, macOS 14.0, *)`, aislamiento de actor de `isoWeeks` en `Task`, simplificación de tipos en `sequenceGroups()`, visibilidad pública de `nilIfBlank` en `StringHelpers.swift` añadida a ambos targets de Xcode y migración a `ObservableObject` para `PlannerDayTimeTick`).
+
+### Data
+
+- SQLDelight: Creada la migración `35.sqm` que añade la tabla `planner_session_template` para almacenar plantillas de sesiones de planificación docente.
 
 ### Fixed
 

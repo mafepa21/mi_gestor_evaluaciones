@@ -43,6 +43,11 @@ struct PlannerWorkspaceIOS: View {
                 groupId: context.groupId,
                 sessionId: context.sessionId
             )
+            // UX-3: Si no hay contexto externo específico y es horario lectivo,
+            // abrir automáticamente en la vista Día con el día actual.
+            if context.sessionId == nil, initialSection == .week {
+                autoNavigateToTodayIfSchoolHours()
+            }
             configurePlannerToolbar()
             syncNavigationContext()
         }
@@ -94,6 +99,10 @@ struct PlannerWorkspaceIOS: View {
                     onDelete: {
                         selectedDetailSession = nil
                         Task { await vm.deleteSession(session) }
+                    },
+                    onCopyToNextWeek: {
+                        selectedDetailSession = nil
+                        Task { await vm.copySessionToNextWeek(session) }
                     }
                 )
                 .environmentObject(bridge)
@@ -243,6 +252,30 @@ struct PlannerWorkspaceIOS: View {
                 sessionId: vm.selectedSession?.id
             )
         )
+    }
+
+    /// UX-3: Si es un día lectivo (lunes-viernes) y la hora actual está entre las 8:00
+    /// y las 15:00, navega automáticamente a la vista Día con el día de hoy seleccionado.
+    /// Esto permite que al abrir el Planner durante la jornada escolar, el docente
+    /// vea directamente la cabina de vuelo de su día actual.
+    private func autoNavigateToTodayIfSchoolHours() {
+        let calendar = Calendar.current
+        let now = Date()
+        let hour = calendar.component(.hour, from: now)
+        let weekday = calendar.component(.weekday, from: now)
+
+        // Solo de lunes (2) a viernes (6) y entre las 8:00 y las 14:59
+        let isSchoolDay = (2...6).contains(weekday)
+        let isSchoolHours = (8...14).contains(hour)
+
+        guard isSchoolDay, isSchoolHours else { return }
+
+        // Convertir weekday de Calendar a ISO (lunes=1 ... domingo=7)
+        let isoDayOfWeek = ((weekday + 5) % 7) + 1
+
+        // Pre-seleccionar el día en el grid y cambiar a vista Día
+        vm.dayViewSelectedDay = isoDayOfWeek
+        vm.activeSection = .day
     }
 }
 
@@ -1438,19 +1471,5 @@ private extension SessionJournalLinkType {
         case .family: return "Familias"
         default: return "Enlace"
         }
-    }
-}
-
-private extension Optional where Wrapped == String {
-    var nilIfBlank: String? {
-        switch self?.trimmingCharacters(in: .whitespacesAndNewlines) {
-        case .some(let value) where !value.isEmpty: return value
-        default: return nil
-        }
-    }
-}
-private extension String {
-    var nilIfBlank: String? {
-        trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : self
     }
 }

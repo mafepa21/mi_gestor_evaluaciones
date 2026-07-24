@@ -11,7 +11,8 @@ extension AppWorkspaceShell {
             DashboardView(
                 bridge: bridge,
                 dashboardStore: dashboardStore,
-                selectedClassId: $selectedClassId
+                selectedClassId: $selectedClassId,
+                onOpenModule: open(module:classId:studentId:)
             )
         case .courses:
             CoursesWorkspaceView(
@@ -35,7 +36,8 @@ extension AppWorkspaceShell {
             DashboardView(
                 bridge: bridge,
                 dashboardStore: dashboardStore,
-                selectedClassId: $selectedClassId
+                selectedClassId: $selectedClassId,
+                onOpenModule: open(module:classId:studentId:)
             )
         case .notebook:
             NotebookModuleView(

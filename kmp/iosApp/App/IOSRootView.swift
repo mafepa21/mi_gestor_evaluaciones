@@ -977,7 +977,8 @@ struct IOSWorkspaceContent: View {
             DashboardView(
                 bridge: bridge,
                 dashboardStore: dashboardStore,
-                selectedClassId: $selectionStore.selectedClassId
+                selectedClassId: $selectionStore.selectedClassId,
+                onOpenModule: onOpenModule
             )
         case .courses:
             CoursesWorkspaceView(
@@ -1001,7 +1002,8 @@ struct IOSWorkspaceContent: View {
             DashboardView(
                 bridge: bridge,
                 dashboardStore: dashboardStore,
-                selectedClassId: $selectionStore.selectedClassId
+                selectedClassId: $selectionStore.selectedClassId,
+                onOpenModule: onOpenModule
             )
         case .notebook:
             NotebookModuleView(

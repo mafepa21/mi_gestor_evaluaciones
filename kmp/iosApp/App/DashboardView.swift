@@ -105,6 +105,7 @@ struct DashboardView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 #endif
     @Binding var selectedClassId: Int64?
+    let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
     @AppStorage("dashboard_operational_mode") private var modeRawValue: String = OperationalDashboardMode.office.rawValue
     @State private var severityFilter: DashboardFilterOption = .all
     @State private var priorityFilter: DashboardFilterOption = .all
@@ -129,11 +130,13 @@ struct DashboardView: View {
     init(
         bridge: KmpBridge,
         dashboardStore: DashboardBridgeStore,
-        selectedClassId: Binding<Int64?>
+        selectedClassId: Binding<Int64?>,
+        onOpenModule: @escaping (AppWorkspaceModule, Int64?, Int64?) -> Void = { _, _, _ in }
     ) {
         self.bridge = bridge
         self.dashboardStore = dashboardStore
         self._selectedClassId = selectedClassId
+        self.onOpenModule = onOpenModule
     }
 
     private var mode: OperationalDashboardMode {
@@ -471,6 +474,15 @@ struct DashboardView: View {
                         Text("Horario: \(item.timeLabel)")
                         Text("Espacio: \(item.space)")
                         Text("Estado: \(dashboardSessionStatusLabel(item.sessionStatus))")
+                        inspectorNavigationActions {
+                            let classId = item.classId?.int64Value
+                            inspectorNavigationButton(title: "Pasar lista", systemImage: "checkmark.circle") {
+                                onOpenModule(.attendance, classId, nil)
+                            }
+                            inspectorNavigationButton(title: "Abrir cuaderno", systemImage: "book.closed") {
+                                onOpenModule(.notebook, classId, nil)
+                            }
+                        }
                     } else {
                         Text("Sesión no encontrada")
                     }
@@ -480,6 +492,29 @@ struct DashboardView: View {
                         Text(alert.detail)
                         Text("Severidad: \(dashboardFilterLabel(alert.severity))")
                         Text("Prioridad: \(dashboardFilterLabel(alert.priority))")
+                        inspectorNavigationActions {
+                            let targets = agendaNavigationTargets(for: alert, snapshot: snapshot)
+                            if targets.isEmpty {
+                                if let studentId = alert.studentId?.int64Value {
+                                    inspectorNavigationButton(title: "Ver ficha del alumno", systemImage: "person.crop.circle") {
+                                        onOpenModule(.students, alert.classId?.int64Value, studentId)
+                                    }
+                                    inspectorNavigationButton(title: "Abrir cuaderno", systemImage: "book.closed") {
+                                        onOpenModule(.notebook, alert.classId?.int64Value, studentId)
+                                    }
+                                } else if let classId = alert.classId?.int64Value {
+                                    inspectorNavigationButton(title: "Abrir cuaderno", systemImage: "book.closed") {
+                                        onOpenModule(.notebook, classId, nil)
+                                    }
+                                }
+                            } else {
+                                ForEach(targets, id: \.id) { target in
+                                    inspectorNavigationButton(title: "Evaluar: \(target.label)", systemImage: "checklist") {
+                                        onOpenModule(.rubrics, target.classId?.int64Value, target.studentId?.int64Value)
+                                    }
+                                }
+                            }
+                        }
                     } else {
                         Text("Alerta no encontrada")
                     }
@@ -488,6 +523,13 @@ struct DashboardView: View {
                         Text(item.title).font(.headline)
                         Text(item.detail)
                         Text("Severidad: \(dashboardFilterLabel(item.severity))")
+                        if let destination = peDestination(for: item) {
+                            inspectorNavigationActions {
+                                inspectorNavigationButton(title: "Ir a Educación Física", systemImage: "figure.run") {
+                                    onOpenModule(destination, item.classId?.int64Value, nil)
+                                }
+                            }
+                        }
                     } else {
                         Text("Ítem EF no encontrado")
                     }
@@ -507,6 +549,72 @@ struct DashboardView: View {
                 .stroke(IOSAppStyle.cardBorder, lineWidth: 1)
         )
         .shadow(color: IOSAppStyle.shadow, radius: 12, x: 0, y: 4)
+    }
+
+    @ViewBuilder
+    private func inspectorNavigationActions<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            content()
+        }
+        .padding(.top, 4)
+    }
+
+    private func inspectorNavigationButton(title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+        }
+        .buttonStyle(.bordered)
+    }
+
+    /// Empareja una alerta con el `AgendaItem` ("recordatorio") que el backend
+    /// genera a partir de ella para transportar sus `navigationTargets`
+    /// (rúbrica + alumno pendientes de evaluar). El backend no enlaza ambos
+    /// por id, así que el emparejamiento se hace por contenido (mismo grupo,
+    /// título y detalle), que es información suficiente porque el
+    /// `AgendaItem` "recordatorio" siempre se construye 1:1 desde la alerta.
+    private func agendaNavigationTargets(for alert: AlertItem, snapshot: DashboardSnapshot) -> [AgendaNavigationTarget] {
+        snapshot.agendaItems.first {
+            $0.type == "recordatorio"
+                && $0.title == alert.title
+                && $0.subtitle == alert.detail
+                && $0.classId?.int64Value == alert.classId?.int64Value
+        }?.navigationTargets ?? []
+    }
+
+    private func navigateAgendaItem(_ item: AgendaItem) {
+        if let target = item.navigationTargets.first {
+            onOpenModule(.rubrics, target.classId?.int64Value, target.studentId?.int64Value)
+            return
+        }
+        let classId = item.classId?.int64Value
+        switch item.type {
+        case "sesion":
+            onOpenModule(.attendance, classId, nil)
+        case "revision":
+            onOpenModule(.planner, classId, nil)
+        default:
+            guard let classId else { return }
+            onOpenModule(.notebook, classId, nil)
+        }
+    }
+
+    /// Los `PEOperationalItem` del backend nunca llevan `classId` (se agregan
+    /// a nivel de todas las clases de EF), así que la navegación solo puede
+    /// llevar al módulo relevante, no a un grupo o alumno concretos.
+    private func peDestination(for item: PEOperationalItem) -> AppWorkspaceModule? {
+        switch item.type {
+        case "incidencias_fisicas":
+            return .peIncidents
+        case "exentos_adaptacion":
+            return .students
+        case "prueba_rubrica_activa":
+            return .peRubrics
+        case "material_hoy":
+            return .peMaterial
+        default:
+            return nil
+        }
     }
 
     private var selectedClassLabel: String {
@@ -876,12 +984,14 @@ struct DashboardView: View {
             }
 
             ForEach(pendingAgenda.prefix(max(0, 5 - pendingAlerts.prefix(4).count)), id: \.id) { item in
-                dashboardStaticRow(
+                dashboardActionRow(
                     title: item.title,
                     subtitle: item.subtitle,
                     systemImage: "calendar.badge.exclamationmark",
                     tint: .orange
-                )
+                ) {
+                    navigateAgendaItem(item)
+                }
             }
 
             if pendingAlerts.isEmpty && pendingAgenda.isEmpty && snapshot.pendingCount == 0 {
@@ -1165,29 +1275,41 @@ struct DashboardView: View {
                 Spacer()
             }
             ForEach(snapshot.agendaItems, id: \.id) { item in
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(item.title)
-                            .font(.system(size: 14, weight: .bold, design: .rounded))
-                        Text(item.subtitle)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(.secondary)
+                let isNavigable = !item.navigationTargets.isEmpty || item.classId != nil
+                Button {
+                    navigateAgendaItem(item)
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(item.title)
+                                .font(.system(size: 14, weight: .bold, design: .rounded))
+                            Text(item.subtitle)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Text(item.timeLabel)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.tertiary)
+                        if isNavigable {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(.tertiary)
+                        }
                     }
-                    Spacer()
-                    Text(item.timeLabel)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.tertiary)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(
+                        appMutedCardBackground(for: colorScheme)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: EvaluationDesign.pillRadius, style: .continuous)
+                                    .stroke(Color.primary.opacity(0.04), lineWidth: 1)
+                            )
+                    )
+                    .cornerRadius(EvaluationDesign.pillRadius)
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .background(
-                    appMutedCardBackground(for: colorScheme)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: EvaluationDesign.pillRadius, style: .continuous)
-                                .stroke(Color.primary.opacity(0.04), lineWidth: 1)
-                        )
-                )
-                .cornerRadius(EvaluationDesign.pillRadius)
+                .buttonStyle(ScaleButtonStyle())
+                .disabled(!isNavigable)
             }
             if snapshot.agendaItems.isEmpty {
                 Text("Sin agenda para hoy")

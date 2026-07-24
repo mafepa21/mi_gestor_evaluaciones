@@ -217,19 +217,44 @@ class LearningSituationsRepositorySqlDelight(
     override suspend fun saveLinkedResource(resource: LearningSituationLinkedResource): Long = withContext(Dispatchers.Default) {
         val now = Clock.System.now().toEpochMilliseconds()
         db.transactionWithResult {
-            db.appDatabaseQueries.upsertLearningSituationLink(
-                if (resource.id == 0L) null else resource.id,
-                resource.learningSituationId,
-                resource.kind.name,
-                resource.resourceId,
-                resource.classId,
-                resource.label,
-                if (resource.id == 0L) now else resource.trace.createdAt.toEpochMilliseconds(),
-                now,
-                resource.trace.deviceId,
-                resource.trace.syncVersion,
-            )
-            if (resource.id == 0L) db.appDatabaseQueries.lastInsertedId().executeAsOne() else resource.id
+            // class_id es nullable y SQLite no considera dos NULL iguales a efectos de un
+            // UNIQUE/ON CONFLICT, así que el upsert por clave de negocio se resuelve aquí
+            // (select-then-insert-or-update) en vez de delegarlo a un ON CONFLICT en SQL:
+            // con class_id NULL, un ON CONFLICT nunca dispara y cada guardado insertaría
+            // una fila duplicada.
+            val existingId = if (resource.id != 0L) {
+                resource.id
+            } else {
+                db.appDatabaseQueries.selectLearningSituationLinkId(
+                    resource.learningSituationId,
+                    resource.kind.name,
+                    resource.resourceId,
+                    resource.classId,
+                ).executeAsOneOrNull()
+            }
+            if (existingId != null) {
+                db.appDatabaseQueries.updateLearningSituationLink(
+                    resource.label,
+                    now,
+                    resource.trace.deviceId,
+                    existingId,
+                )
+                existingId
+            } else {
+                db.appDatabaseQueries.upsertLearningSituationLink(
+                    null,
+                    resource.learningSituationId,
+                    resource.kind.name,
+                    resource.resourceId,
+                    resource.classId,
+                    resource.label,
+                    now,
+                    now,
+                    resource.trace.deviceId,
+                    resource.trace.syncVersion,
+                )
+                db.appDatabaseQueries.lastInsertedId().executeAsOne()
+            }
         }
     }
 

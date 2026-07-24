@@ -1551,10 +1551,15 @@ WHERE learning_situation_id = ?
 ORDER BY class_id;
 
 upsertLearningSituationLink:
-INSERT OR REPLACE INTO learning_situation_links(
+INSERT INTO learning_situation_links(
     id, learning_situation_id, resource_kind, resource_id, class_id, label, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
 )
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateLearningSituationLink:
+UPDATE learning_situation_links
+SET label = ?, updated_at_epoch_ms = ?, device_id = ?, sync_version = sync_version + 1
+WHERE id = ?;
 
 selectLearningSituationLinkId:
 SELECT id FROM learning_situation_links

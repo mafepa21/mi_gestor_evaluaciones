@@ -283,16 +283,17 @@ class NotebookViewModel(
                 // Si hay un dirty en curso (usuario editando), preservar sus drafts
                 // para no pisar valores que aún no han disparado su guardado.
                 if (_isDirty.value && currentData != null) {
-                    val mergedNumeric = freshDataState.numericDrafts + _numericDrafts.value
-                    val mergedText = freshDataState.textDrafts + _textDrafts.value
-                    val mergedCheck = freshDataState.checkDrafts + _checkDrafts.value
-                    _numericDrafts.value = mergedNumeric
-                    _textDrafts.value = mergedText
-                    _checkDrafts.value = mergedCheck
+                    // .update{} en vez de leer .value y reasignarlo: si el usuario teclea
+                    // otra celda (updateDraft, en otro hilo) justo entre leer y reasignar,
+                    // una asignacion directa pisaria ese draft nuevo con un merge calculado
+                    // antes de que existiera.
+                    _numericDrafts.update { freshDataState.numericDrafts + it }
+                    _textDrafts.update { freshDataState.textDrafts + it }
+                    _checkDrafts.update { freshDataState.checkDrafts + it }
                     _state.value = freshDataState.copy(
-                        numericDrafts = mergedNumeric,
-                        textDrafts = mergedText,
-                        checkDrafts = mergedCheck
+                        numericDrafts = _numericDrafts.value,
+                        textDrafts = _textDrafts.value,
+                        checkDrafts = _checkDrafts.value
                     ).withActiveTabAverages()
                 } else {
                     _numericDrafts.value = freshDataState.numericDrafts
@@ -340,16 +341,15 @@ class NotebookViewModel(
                         // Esto evita que el eco de nuestras propias escrituras en DB pise
                         // los valores locales de las celdas antes de que el usuario confirme.
                         if (_isDirty.value) {
-                            val mergedNumeric = freshState.numericDrafts + _numericDrafts.value
-                            val mergedText = freshState.textDrafts + _textDrafts.value
-                            val mergedCheck = freshState.checkDrafts + _checkDrafts.value
-                            _numericDrafts.value = mergedNumeric
-                            _textDrafts.value = mergedText
-                            _checkDrafts.value = mergedCheck
+                            // Mismo motivo que en selectClass: .update{} evita pisar un draft
+                            // tecleado justo entre leer _numericDrafts.value y reasignarlo.
+                            _numericDrafts.update { freshState.numericDrafts + it }
+                            _textDrafts.update { freshState.textDrafts + it }
+                            _checkDrafts.update { freshState.checkDrafts + it }
                             _state.value = freshState.copy(
-                                numericDrafts = mergedNumeric,
-                                textDrafts = mergedText,
-                                checkDrafts = mergedCheck
+                                numericDrafts = _numericDrafts.value,
+                                textDrafts = _textDrafts.value,
+                                checkDrafts = _checkDrafts.value
                             ).withActiveTabAverages()
                         } else {
                             _numericDrafts.value = freshState.numericDrafts
@@ -864,19 +864,25 @@ class NotebookViewModel(
         setSyncing(true)
         return try {
             currentState.sheet.rows.forEach { row ->
-                currentState.sheet.columns.forEach { column ->
+                currentState.sheet.columns.forEach columnLoop@{ column ->
                     val key = row.student.id to column.id
                     when (column.type) {
                         NotebookColumnType.NUMERIC,
                         NotebookColumnType.RUBRIC -> {
                             val draft = currentState.numericDrafts[key]
                             if (draft != null) {
+                                val raw = draft.trim()
+                                val numericValue = raw.replace(",", ".").toDoubleOrNull()
+                                // Mismo guard que internalSaveGrade: un draft no vacio que no
+                                // parsea (p. ej. "7,,5") no debe guardarse como null, pisando
+                                // la nota ya existente en BD con un valor vacio.
+                                if (raw.isNotEmpty() && numericValue == null) return@columnLoop
                                 notebookRepository.saveGrade(
                                     classId = classId,
                                     studentId = row.student.id,
                                     columnId = column.id,
                                     evaluationId = column.evaluationId,
-                                    value = draft.replace(",", ".").toDoubleOrNull()
+                                    value = numericValue
                                 )
                             }
                         }
@@ -1845,8 +1851,17 @@ class NotebookViewModel(
 
         calculatedColumns.forEach { column ->
             val formula = column.formula ?: return@forEach
-            val result = runCatching { formulaEvaluator.evaluate(formula, vars) }.getOrNull() ?: return@forEach
-            numericDrafts[studentId to column.id] = result.toString()
+            val result = runCatching { formulaEvaluator.evaluate(formula, vars) }.getOrNull()
+            if (result != null) {
+                numericDrafts[studentId to column.id] = result.toString()
+            } else {
+                // La formula fallo (variable ausente tras borrar la nota que referenciaba,
+                // division por cero, ...): no debe conservarse un valor calculado stale de
+                // un draft/persistencia anterior. Se vacia para que la celda y la media
+                // dejen de contar ese valor caduco, en vez de seguir mostrandolo como si
+                // siguiera siendo valido.
+                numericDrafts.remove(studentId to column.id)
+            }
         }
     }
 

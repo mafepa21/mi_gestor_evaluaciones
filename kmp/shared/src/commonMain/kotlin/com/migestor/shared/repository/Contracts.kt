@@ -32,6 +32,30 @@ interface StudentsRepository {
         deviceId: String? = null,
         syncVersion: Long = 0,
     ): Long
+    /**
+     * Camino de sync (LWW): a diferencia de [saveStudent] -pensado para ediciones
+     * locales, que siempre deben aplicarse-, descarta la escritura si el registro
+     * existente tiene un `updatedAtEpochMs` mas reciente (o empate resuelto por
+     * deviceId). Implementacion por defecto sin guard (delega a [saveStudent]),
+     * pensada para dobles/fakes de test; [StudentsRepositorySqlDelight] la
+     * sobrescribe con el guard real.
+     */
+    suspend fun upsertStudent(
+        id: Long?,
+        firstName: String,
+        lastName: String,
+        email: String? = null,
+        photoPath: String? = null,
+        isInjured: Boolean = false,
+        sex: StudentSex = StudentSex.UNSPECIFIED,
+        sexSource: StudentSexSource = StudentSexSource.UNKNOWN,
+        birthDate: LocalDate? = null,
+        updatedAtEpochMs: Long = 0,
+        deviceId: String? = null,
+        syncVersion: Long = 0,
+    ) {
+        saveStudent(id, firstName, lastName, email, photoPath, isInjured, sex, sexSource, birthDate, updatedAtEpochMs, deviceId, syncVersion)
+    }
     suspend fun deleteStudent(studentId: Long)
 }
 

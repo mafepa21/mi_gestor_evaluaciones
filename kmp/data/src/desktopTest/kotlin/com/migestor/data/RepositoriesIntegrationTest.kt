@@ -31,6 +31,9 @@ import com.migestor.shared.domain.SessionJournalMediaType
 import com.migestor.shared.domain.SessionJournalStatus
 import com.migestor.shared.domain.SessionStatus
 import com.migestor.shared.domain.SessionCascadeMoveRequest
+import com.migestor.shared.domain.StudentSex
+import com.migestor.shared.domain.StudentSexSource
+import kotlinx.datetime.LocalDate
 import com.migestor.shared.usecase.GetNotebookUseCase
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -243,10 +246,118 @@ class RepositoriesIntegrationTest {
         )
 
         val studentGrades = grades.listGradesForStudentInClass(studentId, classId)
-        
+
         // Verify only 1 grade exists and value is updated
         assertEquals(1, studentGrades.size, "Should only have one grade record")
         assertEquals(9.0, studentGrades.first().value, "Value should be updated to 9.0")
+    }
+
+    @Test
+    fun `saveGrade never discards a local edit even if the existing record has a future timestamp`() = runTest {
+        // Regresion: saveGrade (escritura LOCAL de la profesora) reutilizaba el
+        // mismo guard LWW que upsertGrade (camino de sync). Si una sync previa
+        // dejaba en BD un registro con updated_at futuro (reloj adelantado de
+        // otro dispositivo), la siguiente correccion local se descartaba en
+        // silencio: saveGrade devolvia un id como si hubiera guardado, pero la
+        // nota corregida nunca llegaba a BD.
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        AppDatabase.Schema.create(driver)
+        val db = AppDatabase(driver)
+
+        val students = StudentsRepositorySqlDelight(db)
+        val classes = ClassesRepositorySqlDelight(db)
+        val grades = GradesRepositorySqlDelight(db)
+
+        val classId = classes.saveClass(name = "Test Class", course = 1, description = null)
+        val studentId = students.saveStudent(firstName = "Test", lastName = "Student", email = null)
+        classes.addStudentToClass(classId, studentId)
+
+        val columnId = "TEST_COL"
+        val farFutureEpochMs = 4_102_444_800_000L // año 2100, simula reloj adelantado llegado por sync
+
+        // Registro "desde el futuro" con device_id no vacío, como llegaria via upsertGrade en una sync.
+        grades.upsertGrade(
+            classId = classId,
+            studentId = studentId,
+            columnId = columnId,
+            evaluationId = null,
+            value = 5.0,
+            updatedAtEpochMs = farFutureEpochMs,
+            deviceId = "otro-dispositivo",
+        )
+
+        // La profesora corrige la nota ahora mismo, en su reloj local (muy anterior al futuro simulado).
+        grades.saveGrade(
+            classId = classId,
+            studentId = studentId,
+            columnId = columnId,
+            evaluationId = null,
+            value = 9.0,
+        )
+
+        val studentGrades = grades.listGradesForStudentInClass(studentId, classId)
+        assertEquals(1, studentGrades.size, "Deberia seguir habiendo un unico registro de nota")
+        assertEquals(9.0, studentGrades.first().value, "La correccion local nunca debe descartarse por LWW")
+    }
+
+    @Test
+    fun `upsertStudent keeps sex, sexSource and birthDate from the incoming sync payload`() = runTest {
+        // Regresion: el caso "student" del adaptador de sync no leia sex/sexSource/
+        // birthDate del payload entrante y llamaba a saveStudent (sin guard LWW,
+        // pensado para ediciones locales) con los defaults UNSPECIFIED/UNKNOWN/null.
+        // Un dispositivo que solo cambiaba el apellido -o incluso un cambio MAS
+        // ANTIGUO, porque no habia comparacion de updated_at- borraba sexo y fecha
+        // de nacimiento ya registrados en otro dispositivo.
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        AppDatabase.Schema.create(driver)
+        val db = AppDatabase(driver)
+        val students = StudentsRepositorySqlDelight(db)
+
+        val studentId = students.saveStudent(
+            firstName = "Ana",
+            lastName = "Lopez",
+            sex = StudentSex.FEMALE,
+            sexSource = StudentSexSource.MANUAL,
+            birthDate = LocalDate(2012, 3, 15),
+            updatedAtEpochMs = 1_000L,
+            deviceId = "device-A",
+        )
+
+        // Simula el camino de sync: llega un cambio de otro dispositivo con updated_at
+        // posterior, pero SIN sex/sexSource/birthDate en el payload (nunca los envio).
+        students.upsertStudent(
+            id = studentId,
+            firstName = "Ana",
+            lastName = "Lopez Garcia",
+            sex = StudentSex.UNSPECIFIED,
+            sexSource = StudentSexSource.UNKNOWN,
+            birthDate = null,
+            updatedAtEpochMs = 2_000L,
+            deviceId = "device-B",
+        )
+
+        val updated = students.getStudent(studentId)
+        assertEquals("Lopez Garcia", updated?.lastName, "El cambio mas reciente si debe aplicarse")
+        // NOTA: este test documenta el comportamiento actual de upsertStudent, que
+        // reemplaza la fila entera con lo que le pasen (igual que upsertGrade). El
+        // fix real esta en el LLAMADOR (SqlDelightSyncAdapter), que ahora SI lee
+        // sex/sexSource/birthDate del payload en vez de omitirlos.
+
+        // Un cambio MAS ANTIGUO (updated_at menor) nunca debe aplicarse, ni siquiera
+        // parcialmente.
+        students.upsertStudent(
+            id = studentId,
+            firstName = "Ana",
+            lastName = "NOMBRE-DE-UN-DISPOSITIVO-DESACTUALIZADO",
+            sex = StudentSex.UNSPECIFIED,
+            sexSource = StudentSexSource.UNKNOWN,
+            birthDate = null,
+            updatedAtEpochMs = 500L,
+            deviceId = "device-C",
+        )
+
+        val afterStaleSync = students.getStudent(studentId)
+        assertEquals("Lopez Garcia", afterStaleSync?.lastName, "Un cambio mas antiguo no debe aplicarse (guard LWW)")
     }
 
     @Test

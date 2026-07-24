@@ -380,26 +380,32 @@ extension NotebookModuleView {
                     Button {
                         openInspectorForStudent(item.student.id, data: data)
                     } label: {
-                        VStack(alignment: .leading, spacing: 2) {
-                            HStack(spacing: 6) {
-                                Text("\(item.student.firstName) \(item.student.lastName)")
-                                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(2)
-                                    .minimumScaleFactor(0.6)
-                                    .layoutPriority(1)
-                                riskBadge(for: item.student.id)
-                                supportMeasureBadge(for: item.student.id)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        HStack(alignment: .center, spacing: 10) {
+                            // Identidad (rediseño radical): monograma con color
+                            // determinista por alumno, como una fila de Contactos.
+                            studentMonogram(for: item.student)
 
-                            let isInjured = isStudentInjured(item.student)
-                            if isInjured {
-                                Text("Seguimiento físico")
-                                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                                    .foregroundStyle(.orange)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.8)
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 6) {
+                                    Text("\(item.student.firstName) \(item.student.lastName)")
+                                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                        .foregroundStyle(.primary)
+                                        .lineLimit(2)
+                                        .minimumScaleFactor(0.6)
+                                        .layoutPriority(1)
+                                    riskBadge(for: item.student.id)
+                                    supportMeasureBadge(for: item.student.id)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                                let isInjured = isStudentInjured(item.student)
+                                if isInjured {
+                                    Text("Seguimiento físico")
+                                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                                        .foregroundStyle(.orange)
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.8)
+                                }
                             }
                         }
                         .padding(.horizontal, 6)

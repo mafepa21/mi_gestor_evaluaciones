@@ -3621,13 +3621,17 @@ final class KmpBridge: ObservableObject {
             }
     }
 
+    /// `note`/`hasIncident`/`followUpRequired` son `nil` por defecto (no `""`/`false`)
+    /// a proposito: la mayoria de llamadas solo cambian el `status` (toque rapido
+    /// de asistencia) y no deben borrar una observacion o incidencia ya guardada
+    /// ese dia. `nil` conserva el valor existente; un valor explicito lo sustituye.
     func saveAttendance(
         studentId: Int64,
         classId: Int64,
         on date: Date,
         status: String,
-        note: String = "",
-        hasIncident: Bool = false,
+        note: String? = nil,
+        hasIncident: Bool? = nil,
         followUpRequired: Bool? = nil,
         sessionId: Int64? = nil
     ) async throws {
@@ -3639,6 +3643,9 @@ final class KmpBridge: ObservableObject {
         } ?? existingRecords.first { record in
             record.studentId == studentId
         }
+        let resolvedNote = note ?? existing?.note ?? ""
+        let resolvedHasIncident = hasIncident ?? existing?.hasIncident ?? false
+        let resolvedFollowUpRequired = followUpRequired ?? existing?.followUpRequired ?? resolvedHasIncident
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
         _ = try await container.attendanceRepository.saveAttendance(
             id: kotlinLong(existing?.id),
@@ -3646,9 +3653,9 @@ final class KmpBridge: ObservableObject {
             classId: classId,
             dateEpochMs: dateEpochMs,
             status: status,
-            note: note,
-            hasIncident: hasIncident,
-            followUpRequired: followUpRequired ?? hasIncident,
+            note: resolvedNote,
+            hasIncident: resolvedHasIncident,
+            followUpRequired: resolvedFollowUpRequired,
             sessionId: kotlinLong(linkedSessionId),
             updatedAtEpochMs: nowMs,
             deviceId: localDeviceId,
@@ -3663,9 +3670,9 @@ final class KmpBridge: ObservableObject {
                 "classId": classId,
                 "dateEpochMs": dateEpochMs,
                 "status": status,
-                "note": note,
-                "hasIncident": hasIncident,
-                "followUpRequired": followUpRequired ?? hasIncident,
+                "note": resolvedNote,
+                "hasIncident": resolvedHasIncident,
+                "followUpRequired": resolvedFollowUpRequired,
                 "sessionId": linkedSessionId ?? NSNull()
             ]
         )
@@ -12999,9 +13006,5 @@ private extension Array {
 private extension String {
     var nilIfEmpty: String? {
         isEmpty ? nil : self
-    }
-
-    var nilIfBlank: String? {
-        trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : self
     }
 }

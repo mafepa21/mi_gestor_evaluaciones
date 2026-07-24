@@ -174,44 +174,43 @@ private struct ColumnBlueprintCard: View {
     let tint: Color
     let action: () -> Void
 
+    // Mismo idioma de selección que el grid del cuaderno (PR1/PR2): anillo de
+    // acento + fill plano, en vez de rellenar la tarjeta entera con el tinte
+    // (bloque de color demasiado saturado para una hoja de configuración densa).
     var body: some View {
-        let selectedForeground = contrastingTextColor(for: tint)
-
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 16) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(isSelected ? selectedForeground.opacity(0.18) : tint.opacity(0.12))
-                        .frame(width: 44, height: 44)
+            VStack(alignment: .leading, spacing: 12) {
+                Image(systemName: blueprint.icon)
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(tint)
+                    .frame(width: 32, height: 32)
+                    .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .accessibilityHidden(true)
 
-                    Image(systemName: blueprint.icon)
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(isSelected ? selectedForeground : tint)
-                        .accessibilityHidden(true)
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(blueprint.title)
-                        .font(.headline)
-                        .foregroundStyle(isSelected ? selectedForeground : .primary)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
                     Text(blueprint.subtitle)
-                        .font(.subheadline)
-                        .foregroundStyle(isSelected ? selectedForeground.opacity(0.86) : .secondary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .frame(maxWidth: .infinity, minHeight: 144, alignment: .topLeading)
-            .padding(16)
+            .frame(maxWidth: .infinity, minHeight: 108, alignment: .topLeading)
+            .padding(12)
             .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(isSelected ? tint : NotebookStyle.surface)
+                RoundedRectangle(cornerRadius: NotebookGridStyle.Radius.card, style: .continuous)
+                    .fill(isSelected ? NotebookGridStyle.cellSelectionFill : NotebookStyle.surface)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(isSelected ? tint : NotebookStyle.softBorder, lineWidth: 1)
+                RoundedRectangle(cornerRadius: NotebookGridStyle.Radius.card, style: .continuous)
+                    .stroke(
+                        isSelected ? NotebookGridStyle.cellSelectionRing : NotebookStyle.softBorder,
+                        lineWidth: isSelected ? NotebookGridStyle.cellSelectionRingWidth : 1
+                    )
             )
-            .shadow(color: NotebookStyle.shadow.opacity(isSelected ? 0.75 : 0.4), radius: 12, x: 0, y: 4)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(blueprint.title)
@@ -467,65 +466,64 @@ struct AddColumnSheet: View {
 
     var body: some View {
         GeometryReader { geometry in
-            NavigationStack {
-                VStack(alignment: .leading, spacing: 0) {
-                    sheetHeader
+            // Sin NavigationStack: no hay NavigationLink en esta hoja, solo se
+            // usaba para la nav bar con el título, que ahora vive en `sheetHeader`
+            // (evitaba una cabecera doble en iPad: nav bar + header propio).
+            VStack(alignment: .leading, spacing: 0) {
+                sheetHeader
 
-                    Divider()
+                Divider()
 
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 24) {
-                            blueprintSection
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 24) {
+                        blueprintSection
 
-                            if selectedBlueprint != nil {
-                                Divider()
-                                contentLayout(for: geometry.size.width)
-                                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                            }
+                        if selectedBlueprint != nil {
+                            Divider()
+                            contentLayout(for: geometry.size.width)
+                                .transition(.move(edge: .bottom).combined(with: .opacity))
                         }
-                        .padding(24)
                     }
-                    .animation(.spring(duration: 0.25), value: selectedBlueprintId)
+                    .padding(24)
+                }
+                .animation(.spring(duration: 0.25), value: selectedBlueprintId)
 
-                    Divider()
+                Divider()
 
-                    footerActions
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 16)
-                        .background(.ultraThinMaterial)
+                footerActions
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 16)
+                    .background(.ultraThinMaterial)
+            }
+            .background(sheetBackground)
+            .onAppear {
+                selectedCategoryId = initialCategoryId ?? selectedCategoryId ?? suggestedCategoryId
+                categoryPlacementMode = startsCreatingCategory ? .createNew : .existing
+                if selectedBlueprintId == nil {
+                    selectedBlueprintId = blueprints.contains(where: { $0.id == lastBlueprintId }) ? lastBlueprintId : "written_test"
                 }
-                .background(EvaluationBackdrop())
-                .navigationTitle("Nueva columna")
-                .appInlineNavigationBarTitleDisplayMode()
-                .onAppear {
-                    selectedCategoryId = initialCategoryId ?? selectedCategoryId ?? suggestedCategoryId
-                    categoryPlacementMode = startsCreatingCategory ? .createNew : .existing
-                    if selectedBlueprintId == nil {
-                        selectedBlueprintId = blueprints.contains(where: { $0.id == lastBlueprintId }) ? lastBlueprintId : "written_test"
-                    }
-                    syncBlueprintDefaults()
-                    refreshSummaryAvailability()
-                    syncRubricNameIfNeeded()
-                    syncRubricSectionExpansion()
-                    #if os(iOS)
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                        isNameFocused = true
-                    }
-                    #endif
+                syncBlueprintDefaults()
+                refreshSummaryAvailability()
+                syncRubricNameIfNeeded()
+                syncRubricSectionExpansion()
+                #if os(iOS)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    isNameFocused = true
                 }
-                .appOnChange(of: selectedBlueprintId) { _ in
-                    syncBlueprintDefaults()
-                    reapplySelectedSubjectTemplateIfNeeded()
-                    refreshSummaryAvailability()
-                    syncRubricNameIfNeeded()
-                    syncRubricSectionExpansion()
-                    if categoryPlacementMode == .existing, selectedCategoryId == nil {
-                        selectedCategoryId = suggestedCategoryId
-                    }
+                #endif
+            }
+            .appOnChange(of: selectedBlueprintId) { _ in
+                syncBlueprintDefaults()
+                reapplySelectedSubjectTemplateIfNeeded()
+                refreshSummaryAvailability()
+                syncRubricNameIfNeeded()
+                syncRubricSectionExpansion()
+                if categoryPlacementMode == .existing, selectedCategoryId == nil {
+                    selectedCategoryId = suggestedCategoryId
                 }
-                .appOnChange(of: rubricSearchText) { _ in
-                    syncRubricSectionExpansion()
-                }
+            }
+            .appOnChange(of: rubricSearchText) { _ in
+                syncRubricSectionExpansion()
             }
             #if os(iOS)
             .presentationDetents([.large])
@@ -533,44 +531,50 @@ struct AddColumnSheet: View {
             #endif
         }
 #if os(macOS)
-        .frame(minWidth: 520, idealWidth: 560, maxWidth: 640, minHeight: 560, idealHeight: 620)
+        .frame(minWidth: 820, idealWidth: 900, maxWidth: 1000, minHeight: 640, idealHeight: 780)
 #else
         .frame(maxWidth: .infinity, maxHeight: .infinity)
 #endif
     }
 
+    private var sheetHeaderSubtitle: String {
+        selectedBlueprint?.subtitle ?? "Elige el tipo de dato que quieres añadir al cuaderno."
+    }
+
+    /// Cabecera compacta, sin icono de 48pt: en iPad reutiliza `IOSSheetHeader`
+    /// (su botón de cierre sustituye al "Cancelar" del footer, que se retira ahí
+    /// para no duplicar la acción de cerrar). En macOS es un título/subtítulo
+    /// simple; el cierre lo sigue dando el "Cancelar" del footer, convención
+    /// habitual de las hojas de Mac.
+    @ViewBuilder
     private var sheetHeader: some View {
-        HStack(alignment: .top, spacing: 16) {
-            Image(systemName: selectedBlueprint?.icon ?? "tablecells")
-                .font(.system(size: 22, weight: .bold))
-                .foregroundStyle(tintForSelectedBlueprint)
-                .frame(width: 48, height: 48)
-                .background(tintForSelectedBlueprint.opacity(0.14), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Nueva columna")
-                    .font(.title2.weight(.bold))
-                Text(selectedBlueprint?.subtitle ?? "Elige el tipo de dato que quieres añadir al cuaderno.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-
-            Spacer()
-
-            if let selectedBlueprint {
-                NotebookPill(
-                    label: label(for: selectedBlueprint.categoryKind),
-                    systemImage: selectedBlueprint.icon,
-                    active: true,
-                    tint: tintForSelectedBlueprint,
-                    compact: true
-                )
-            }
+        #if os(macOS)
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Nueva columna")
+                .font(.headline)
+            Text(sheetHeaderSubtitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
+        #else
+        IOSSheetHeader(
+            title: "Nueva columna",
+            subtitle: sheetHeaderSubtitle,
+            onClose: { dismiss() }
+        )
+        #endif
+    }
+
+    private var sheetBackground: some View {
+        #if os(macOS)
+        Color(nsColor: .windowBackgroundColor)
+        #else
+        Color(.systemGroupedBackground)
+        #endif
     }
 
     @ViewBuilder
@@ -616,34 +620,34 @@ struct AddColumnSheet: View {
     }
 
     private var blueprintSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        // Rejilla adaptable que aprovecha el ancho extra de la hoja: todos los
+        // tipos básicos se ven a la vez (antes un carrusel horizontal de píldoras
+        // donde no cabían todas las opciones a la vista).
+        // A ~820pt de ancho de hoja el área útil ronda 760pt → 3 columnas
+        // (200×3 + espaciados). Aprovecha el ancho, no deja tarjetas sueltas.
+        let cardColumns = [GridItem(.adaptive(minimum: 200), spacing: 12)]
+
+        return VStack(alignment: .leading, spacing: 16) {
             Text("Tipo de columna")
                 .font(.headline)
 
             subjectTemplateSection
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(basicBlueprints) { blueprint in
-                        NotebookPill(
-                            label: blueprint.title,
-                            systemImage: blueprint.icon,
-                            active: blueprint.id == selectedBlueprint?.id,
-                            tint: color(for: blueprint.categoryKind),
-                            compact: true
-                        )
-                        .onTapGesture {
-                            selectedBlueprintId = blueprint.id
-                        }
+            LazyVGrid(columns: cardColumns, spacing: 12) {
+                ForEach(basicBlueprints) { blueprint in
+                    ColumnBlueprintCard(
+                        blueprint: blueprint,
+                        isSelected: blueprint.id == selectedBlueprint?.id,
+                        tint: color(for: blueprint.categoryKind)
+                    ) {
+                        selectedBlueprintId = blueprint.id
                     }
                 }
-                .padding(.vertical, 2)
             }
 
             DisclosureGroup {
-                let columns = [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)]
                 VStack(alignment: .leading, spacing: 16) {
-                    LazyVGrid(columns: columns, spacing: 16) {
+                    LazyVGrid(columns: cardColumns, spacing: 12) {
                         ForEach(advancedBlueprints) { blueprint in
                             ColumnBlueprintCard(
                                 blueprint: blueprint,
@@ -1042,14 +1046,18 @@ struct AddColumnSheet: View {
 
                 Spacer()
 
+                #if os(macOS)
+                // En iPad el cierre lo da el botón de IOSSheetHeader; duplicar un
+                // "Cancelar" aquí solo añadiría una segunda forma de hacer lo mismo.
                 Button("Cancelar") { dismiss() }
                     .buttonStyle(.bordered)
                     .keyboardShortcut(.cancelAction)
+                #endif
 
                 Button(action: saveColumn) {
                     Label(isSavingColumn ? "Creando..." : primaryActionTitle, systemImage: "plus.circle.fill")
                 }
-                    .buttonStyle(.borderedProminent)
+                    .notebookSheetProminentButtonStyle()
                     .keyboardShortcut(.defaultAction)
                     .disabled(!canSave || isSavingColumn)
             }
@@ -1772,6 +1780,19 @@ struct AddColumnSheet: View {
         case .physicalEducation: return "EF"
         case .custom: return "Categoría"
         default: return "Categoría"
+        }
+    }
+}
+
+private extension View {
+    /// Estilo del botón "Crear": `.glassProminent` en iOS/macOS 26+ (patrón ya
+    /// usado en `PlannerLiquidGlassControls`), con fallback `.borderedProminent`.
+    @ViewBuilder
+    func notebookSheetProminentButtonStyle() -> some View {
+        if #available(iOS 26.0, macOS 26.0, *) {
+            self.buttonStyle(.glassProminent)
+        } else {
+            self.buttonStyle(.borderedProminent)
         }
     }
 }

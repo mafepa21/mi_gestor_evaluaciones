@@ -17,6 +17,7 @@ Cambios posteriores a `v0.3.0-traceability-baseline`.
 
 ### Fixed
 
+- macOS: se elimina el mismo crash de constraints de AppKit ("Update Constraints in Window pass, but it has already had more passes than there are views") de **todos** los `HSplitView` que quedaban tras el fix de Reuniones. Afectaba a **Rúbricas** (`MacRubricsView`, maestro-detalle con tabla + panel de detalle que se relayouta al cambiar de rúbrica seleccionada — el disparador análogo al de reuniones), **Alumnado** (`MacStudentsView`, `HSplitView` de 3 paneles con panel de inspector condicional), **Sync LAN** (`MacSyncView`) y la ventana de **Backups** (`MacBackupsWindowScene`). Todos los `HSplitView` (`NSSplitView`) —anidados en el `NavigationSplitView` raíz o con doble `NSHostingView`— se sustituyen por `HStack` con anchos fijos y `Divider`, sin `NSSplitView`. Ya no queda ningún `HSplitView` en la app macOS. Se pierde el redimensionado manual de paneles a cambio de estabilidad, igual que en Reuniones.
 - Reuniones (macOS): el módulo tumbaba la app con un crash intermitente de AppKit ("Update Constraints in Window pass") al abrirlo o al cambiar de reunión. Lo causaba el `HSplitView` (`NSSplitView`) del maestro-detalle, anidado dentro del `NavigationSplitView` raíz. Se sustituye por un `HStack` con panel de ancho fijo y `Divider`, sin `NSSplitView`. De paso, en el detalle las acciones (exportar, editar, borrar) pasan a solo-icono y el título gana prioridad de layout, para que en un panel estrecho no lo estrujen hasta partirlo carácter a carácter.
 
 ### Added

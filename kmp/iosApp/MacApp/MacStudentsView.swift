@@ -106,22 +106,30 @@ struct MacStudentsView: View {
         Group {
             switch presentation {
             case .full:
-                HSplitView {
+                // HStack con anchos fijos + Divider en vez de HSplitView: el NSSplitView
+                // que respalda a HSplitView, anidado dentro del NavigationSplitView raíz,
+                // entra en un bucle de "Update Constraints in Window pass" de AppKit y tumba
+                // la app (mismo crash ya corregido en el módulo de reuniones). Toggling el
+                // panel de inspector dentro del split era el disparador exacto del bucle.
+                HStack(spacing: 0) {
                     studentsFilters
-                        .frame(minWidth: 220, idealWidth: 250, maxWidth: 300)
+                        .frame(width: 250)
+                    Divider()
                     studentsList
-                        .frame(minWidth: 640)
+                        .frame(minWidth: 480, maxWidth: .infinity)
                     if store.isInspectorPresented {
+                        Divider()
                         studentInspector
-                            .frame(minWidth: 320, idealWidth: 360, maxWidth: 420)
+                            .frame(width: 360)
                     }
                 }
             case .content:
-                HSplitView {
+                HStack(spacing: 0) {
                     studentsFilters
-                        .frame(minWidth: 220, idealWidth: 250, maxWidth: 300)
+                        .frame(width: 250)
+                    Divider()
                     studentsList
-                        .frame(minWidth: 560)
+                        .frame(minWidth: 480, maxWidth: .infinity)
                 }
             case .inspector:
                 studentInspector

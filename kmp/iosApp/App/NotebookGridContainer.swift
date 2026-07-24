@@ -33,7 +33,6 @@ struct NotebookGridContainer<
     let scrollRow: (Int, Row) -> ScrollRow
 
     @State private var hoveredRowId: Row.ID? = nil
-    @Environment(\.uiFeatureFlags) private var uiFeatureFlags
 
     var body: some View {
         if rows.isEmpty {
@@ -86,18 +85,17 @@ struct NotebookGridContainer<
                     .contentShape(Rectangle())
                     #if os(macOS)
                     .onHover { hovering in
-                        withAnimation(uiFeatureFlags.animation(.easeOut(duration: 0.12))) {
-                            hoveredRowId = hovering ? item.id : nil
-                        }
+                        // Sin animación: coincide con el comportamiento nativo de
+                        // NSTableView, que no anima su hover.
+                        hoveredRowId = hovering ? item.id : nil
                     }
                     #endif
                     .overlay(
                         VStack {
                             Spacer()
                             Rectangle()
-                                .fill(NotebookStyle.softBorder.opacity(0.45))
+                                .fill(NotebookGridStyle.gridLine)
                                 .frame(height: 0.5)
-                                .padding(.horizontal, 16)
                         }
                     )
             }
@@ -107,7 +105,7 @@ struct NotebookGridContainer<
 
     private var hoverColor: Color {
         #if os(macOS)
-        return Color.primary.opacity(0.035)
+        return NotebookGridStyle.rowHover
         #else
         return Color.primary.opacity(0.02)
         #endif

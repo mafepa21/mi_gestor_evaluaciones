@@ -24,7 +24,7 @@ struct RubricBulkEvaluationSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                EvaluationBackdrop()
+                RubricEvaluationBackdrop()
 
                 if state?.isLoading ?? true {
                     ProgressView("Cargando evaluación masiva...")
@@ -168,17 +168,16 @@ struct RubricBulkEvaluationSheet: View {
                     tint: cache.totalPendingCriteria == 0 ? EvaluationDesign.success : EvaluationDesign.accent
                 )
 
-                VStack(alignment: .trailing, spacing: 4) {
-                    PrimaryActionButton(label: "Guardar Todo", systemImage: "square.and.arrow.down.fill") {
-                        bridge.bulkSaveAll()
-                    }
-                    .frame(width: 180)
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(state.isSaving ? EvaluationDesign.accent : EvaluationDesign.success)
+                        .frame(width: 8, height: 8)
 
-                    Text(state.isSaving ? "Guardando cambios..." : "Cambios listos para guardar")
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                        .foregroundStyle(state.isSaving ? EvaluationDesign.accent : .secondary.opacity(0.6))
-                        .padding(.trailing, 8)
+                    Text(state.isSaving ? "Guardando…" : "Guardado")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(.secondary)
                 }
+                .padding(.trailing, 8)
             }
         }
         .padding(.bottom, 8)
@@ -189,7 +188,7 @@ struct RubricBulkEvaluationSheet: View {
         rubric: RubricDetail,
         cache: BulkRubricEvaluationCache
     ) -> some View {
-        PremiumCard.glass(cornerRadius: EvaluationDesign.cardRadius, fillOpacity: 0.92) {
+        PremiumCard.glass(cornerRadius: RubricsStyle.cardRadius, fillOpacity: 0.92) {
             VStack(alignment: .leading, spacing: 24) {
                 HStack(spacing: 16) {
                     EvaluationChip(label: "\(state.students.count) alumnos", systemImage: "person.3.fill")
@@ -203,14 +202,24 @@ struct RubricBulkEvaluationSheet: View {
                             .foregroundStyle(.primary)
 
                         ForEach(state.students, id: \.id) { student in
+                            let isInjured = isStudentInjured(student, cache: cache)
+                            let pendingCount = cache.pendingCriteriaCount(for: student.id)
+
                             HStack(alignment: .center, spacing: 12) {
-                                VStack(alignment: .leading, spacing: 4) {
+                                HStack(spacing: 8) {
+                                    Circle()
+                                        .fill(statusDotColor(isInjured: isInjured, pendingCount: pendingCount))
+                                        .frame(width: 8, height: 8)
+
                                     Text(student.firstName + " " + student.lastName)
                                         .font(.subheadline.weight(.bold))
                                         .lineLimit(1)
-                                    scorePill(for: student.id, width: 72, cache: cache)
+
+                                    Spacer(minLength: 4)
+
+                                    scorePill(for: student.id, width: 44, cache: cache)
                                 }
-                                .frame(width: 144, alignment: .leading)
+                                .frame(width: 160, alignment: .leading)
 
                                 inlineCriterionCell(
                                     studentId: student.id,
@@ -242,7 +251,7 @@ struct RubricBulkEvaluationSheet: View {
         let actionsWidth: CGFloat = 96
         let studentWidth: CGFloat = 224
 
-        return PremiumCard.glass(cornerRadius: EvaluationDesign.cardRadius, fillOpacity: 0.92) {
+        return PremiumCard.glass(cornerRadius: RubricsStyle.cardRadius, fillOpacity: 0.92) {
             VStack(alignment: .leading, spacing: 24) {
                 HStack(spacing: 16) {
                     EvaluationChip(
@@ -383,29 +392,20 @@ struct RubricBulkEvaluationSheet: View {
         let pendingCount = cache.pendingCriteriaCount(for: student.id)
 
         return HStack(spacing: 0) {
-            HStack(spacing: 16) {
-                EvaluationAvatar(initials: initials(for: student))
+            HStack(spacing: 12) {
+                ZStack(alignment: .bottomTrailing) {
+                    EvaluationAvatar(initials: initials(for: student))
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(student.firstName + " " + student.lastName)
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-
-                    if isInjured {
-                        Text("Lesionado")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(EvaluationDesign.danger)
-                    } else if pendingCount > 0 {
-                        Text("\(pendingCount) pendiente\(pendingCount == 1 ? "" : "s")")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(EvaluationDesign.accent.opacity(0.9))
-                    } else {
-                        Text("Disponible")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(EvaluationDesign.success.opacity(0.8))
-                    }
+                    Circle()
+                        .fill(statusDotColor(isInjured: isInjured, pendingCount: pendingCount))
+                        .frame(width: 10, height: 10)
+                        .overlay(Circle().stroke(appCardBackground(for: colorScheme), lineWidth: 1.5))
                 }
+
+                Text(student.firstName + " " + student.lastName)
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
             }
             .frame(width: studentWidth, alignment: .leading)
             .padding(.leading, 16)
@@ -441,33 +441,36 @@ struct RubricBulkEvaluationSheet: View {
 
                 scorePill(for: student.id, width: scoreWidth, cache: cache)
 
-                HStack(spacing: 8) {
-                    rowActionButton(
-                        title: isInjured ? "Quitar lesión" : "Marcar lesión",
-                        systemImage: isInjured ? "heart.slash" : "bandage",
-                        tint: isInjured ? EvaluationDesign.danger : EvaluationDesign.success,
-                        isEnabled: !savingInjuryStudentIds.contains(student.id)
-                    ) {
+                Menu {
+                    Button {
                         Task { await toggleInjuryStatus(for: student, classId: state.classId, cache: cache) }
+                    } label: {
+                        Label(
+                            isInjured ? "Quitar lesión" : "Marcar lesión",
+                            systemImage: isInjured ? "heart.slash" : "bandage"
+                        )
                     }
+                    .disabled(savingInjuryStudentIds.contains(student.id))
 
-                    rowActionButton(
-                        title: "Copiar evaluación",
-                        systemImage: "doc.on.doc",
-                        tint: EvaluationDesign.accent
-                    ) {
+                    Button {
                         bridge.bulkCopyAssessment(studentId: student.id)
+                    } label: {
+                        Label("Copiar evaluación", systemImage: "doc.on.doc")
                     }
 
-                    rowActionButton(
-                        title: "Pegar evaluación",
-                        systemImage: "doc.on.clipboard",
-                        tint: EvaluationDesign.success,
-                        isEnabled: state.copiedAssessment != nil
-                    ) {
+                    Button {
                         bridge.bulkPasteAssessment(studentId: student.id)
+                    } label: {
+                        Label("Pegar evaluación", systemImage: "doc.on.clipboard")
                     }
+                    .disabled(state.copiedAssessment == nil)
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 34, height: 34)
                 }
+                .buttonStyle(.plain)
                 .frame(width: actionsWidth, alignment: .center)
             }
             .padding(.trailing, 16)
@@ -567,17 +570,17 @@ struct RubricBulkEvaluationSheet: View {
         }
         .padding(8)
         .frame(width: width)
-        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: RubricsStyle.rowRadius, style: .continuous))
         .onTapGesture {
             focusedBulkStudentId = studentId
             focusedBulkCriterionId = criterion.criterion.id
         }
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: RubricsStyle.rowRadius, style: .continuous)
                 .fill(selectedLevel == nil ? Color.clear : levelColor(for: selectedLevel, in: criterion).opacity(0.08))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: RubricsStyle.rowRadius, style: .continuous)
                 .stroke(isFocused ? EvaluationDesign.accent.opacity(0.65) : Color.clear, lineWidth: 2)
         )
     }
@@ -618,38 +621,49 @@ struct RubricBulkEvaluationSheet: View {
         }
     }
 
+    /// Envoltorio sobre `RubricsStyle.levelColor(points:maxPoints:)` que
+    /// resuelve `maxPoints` a partir del criterio — la lógica de bandas (y por
+    /// qué no es `gradeColor`) vive ahora en `RubricsStyle`, compartida con la
+    /// evaluación individual.
     private func levelColor(for level: RubricLevel?, in criterion: RubricCriterionWithLevels) -> Color {
         guard let level else { return EvaluationDesign.accent }
         let maxPoints = criterion.levels.map(\.points).max() ?? 0
-        guard maxPoints > 0 else { return EvaluationDesign.accent }
-        let ratio = Double(level.points) / Double(maxPoints)
+        return RubricsStyle.levelColor(points: Double(level.points), maxPoints: Double(maxPoints))
+    }
 
-        switch ratio {
-        case 0.8...:
-            return EvaluationDesign.success
-        case 0.6..<0.8:
-            return EvaluationDesign.accent
-        case 0.4..<0.6:
-            return .orange
-        default:
+    private func statusDotColor(isInjured: Bool, pendingCount: Int) -> Color {
+        if isInjured {
             return EvaluationDesign.danger
+        } else if pendingCount > 0 {
+            return Color.gray.opacity(0.5)
+        } else {
+            return EvaluationDesign.success
         }
     }
 
+    /// Nota compacta con separador decimal localizado (coma en es-ES), coherente
+    /// con el resto de la app; `String(format: "%.1f")` forzaba siempre el punto.
+    private static let scorePillFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 1
+        formatter.maximumFractionDigits = 1
+        return formatter
+    }()
+
     private func scorePill(for studentId: Int64, width: CGFloat, cache: BulkRubricEvaluationCache) -> some View {
         let score = cache.score(for: studentId)
-        let scoreText = score.map { String(format: "%.1f", $0) } ?? "—"
-        let tint = (score ?? 0) >= 5 ? EvaluationDesign.success : EvaluationDesign.danger
+        let scoreText = score.map {
+            Self.scorePillFormatter.string(from: NSNumber(value: $0)) ?? String(format: "%.1f", $0)
+        } ?? "—"
+        let tint = score.map { RubricsStyle.gradeColor(forScoreOutOfTen: $0) }
 
         return Text(scoreText)
             .font(.system(size: 20, weight: .black, design: .rounded))
-            .foregroundStyle(score == nil ? .secondary : tint)
+            .foregroundStyle(tint ?? .secondary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
             .frame(width: width, alignment: .center)
-            .frame(minHeight: 44)
-            .background(
-                score == nil ? Color.clear : tint.opacity(0.12),
-                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-            )
     }
 
     private func rowActionButton(
@@ -765,7 +779,7 @@ struct RubricBulkEvaluationSheet: View {
 
     private func injuredSidebar(state: BulkRubricEvaluationUiState) -> some View {
         let injuredStudents = injuredStudents(for: state)
-        return PremiumCard.glass(cornerRadius: 32, fillOpacity: 0.90) {
+        return PremiumCard.glass(cornerRadius: RubricsStyle.cardRadius, fillOpacity: 0.90) {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(spacing: 10) {
                     EvaluationChip(

@@ -2,6 +2,11 @@ import SwiftUI
 import MiGestorKit
 
 extension NotebookModuleView {
+    /// Cabecera plana integrada: sin chip flotante (fill/borde/sombra/cápsula
+    /// propios). La identidad de la columna es una barra de 3pt pegada al borde
+    /// inferior, del ancho completo de la columna, que conecta visualmente la
+    /// cabecera con sus celdas. Columnas de sistema no llevan barra: su
+    /// identidad ya la da la fila de cabecera (`.thinMaterial` + hairline).
     func headerChip(
         title: String,
         subtitle: String,
@@ -13,78 +18,59 @@ extension NotebookModuleView {
         hasColumnColor: Bool = false,
         isHighlighted: Bool = false
     ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 2) {
             Text(title)
-                .font(.caption.weight(isSystemColumn ? .medium : .semibold))
+                .font(isSystemColumn ? .footnote : NotebookGridStyle.columnTitle)
                 .foregroundStyle(isSystemColumn ? .secondary : .primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
 
-            HStack(spacing: 6) {
+            if !subtitle.isEmpty {
                 Text(subtitle)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
+                    .font(NotebookGridStyle.columnMeta)
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
             }
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 8)
+        .padding(.top, 8)
+        .padding(.bottom, 10)
         .frame(width: width, alignment: .leading)
         .frame(minHeight: 52, alignment: .topLeading)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(headerChipFill(tint: tint, folderStyle: folderStyle, hasColumnColor: hasColumnColor, isSystemColumn: isSystemColumn))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(
-                            headerChipStroke(tint: tint, folderStyle: folderStyle, hasColumnColor: hasColumnColor, isSystemColumn: isSystemColumn, isHighlighted: isHighlighted),
-                            lineWidth: isHighlighted ? 1.4 : 0.6
-                        )
-                )
-                .shadow(color: isHighlighted ? tint.opacity(0.12) : Color.black.opacity(0.03), radius: isHighlighted ? 8 : 4, x: 0, y: 2)
-        )
-        .overlay(alignment: .topLeading) {
+        .background(isHighlighted ? NotebookGridStyle.columnActiveWash : Color.clear)
+        .overlay(alignment: .bottom) {
             if !isSystemColumn {
-                Capsule()
-                    .fill(tint.opacity(hasColumnColor || folderStyle ? 0.65 : 0.28))
-                    .frame(width: 42, height: 3)
-                    .padding(.leading, 8)
-                    .padding(.top, 6)
+                // Columna activa → barra de acento (la identidad de "resaltada"
+                // vive aquí, no en un flood de azul sobre las celdas). Con color
+                // propio → tinte de la columna; en reposo → hairline neutro.
+                Rectangle()
+                    .fill(isHighlighted
+                          ? Color.accentColor
+                          : ((hasColumnColor || folderStyle) ? tint.opacity(0.9) : NotebookGridStyle.gridLineStrong))
+                    .frame(height: 3)
             }
         }
-    }
-
-    func headerChipFill(tint: Color, folderStyle: Bool, hasColumnColor: Bool, isSystemColumn: Bool) -> Color {
-        if isSystemColumn { return NotebookStyle.surfaceSoft.opacity(0.50) }
-        if hasColumnColor { return tint.opacity(0.055) }
-        if folderStyle { return NotebookStyle.surfaceSoft.opacity(0.28) }
-        return NotebookStyle.surfaceSoft.opacity(0.20)
-    }
-
-    func headerChipStroke(tint: Color, folderStyle: Bool, hasColumnColor: Bool, isSystemColumn: Bool, isHighlighted: Bool) -> Color {
-        if isHighlighted { return tint.opacity(0.34) }
-        if hasColumnColor { return tint.opacity(0.16) }
-        if isSystemColumn { return NotebookStyle.softBorder.opacity(0.55) }
-        if folderStyle { return tint.opacity(0.10) }
-        return NotebookStyle.softBorder.opacity(0.35)
     }
 
     func headerChip(for segment: NotebookDisplaySegment, data: NotebookUiStateData) -> some View {
         switch segment {
         case .fixed(let fixed):
             if fixed == .name {
+                // Mismo tratamiento plano que `headerChip`: sin fill/sombra/borde
+                // propios (antes tenía su propia caja, inconsistente con el resto
+                // de cabeceras del sistema tras el rediseño de PR3).
                 let chip = HStack(spacing: 8) {
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(fixed.title)
-                            .font(.caption.weight(.semibold))
+                            .font(.footnote.weight(.semibold))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
 
                         Text(fixed.subtitle)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.tertiary)
+                            .font(NotebookGridStyle.columnMeta)
+                            .foregroundStyle(.secondary)
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
                     }
@@ -143,19 +129,11 @@ extension NotebookModuleView {
                 }
                 .padding(.leading, 8)
                 .padding(.trailing, 6)
-                .padding(.vertical, 8)
+                .padding(.top, 8)
+                .padding(.bottom, 10)
                 .frame(width: resolvedFixedWidth(for: fixed), alignment: .leading)
                 .frame(minHeight: 52, alignment: .topLeading)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(NotebookStyle.surfaceSoft.opacity(0.50))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(NotebookStyle.softBorder.opacity(0.55), lineWidth: 0.6)
-                        )
-                        .shadow(color: Color.black.opacity(0.03), radius: 4, x: 0, y: 2)
-                )
-                
+
                 return AnyView(chip)
             }
             
@@ -194,7 +172,7 @@ extension NotebookModuleView {
                         tint: displayTint(for: column),
                         folderStyle: column.categoryId != nil,
                         hasColumnColor: hasCustomColumnColor(column),
-                        isHighlighted: selectedColumnId == column.id || highlightedColumnId == column.id || highlightedCategoryId == column.categoryId
+                        isHighlighted: isColumnHighlighted(column)
                     )
                 }
                 .onTapGesture {
@@ -235,57 +213,44 @@ extension NotebookModuleView {
     ) -> some View {
         let categoryTint = tint(for: category)
         let isEmpty = categoryVisibleColumnCount(columns) == 0 && categoryHiddenColumnCount(columns) == 0
-        let statusText = isEmpty ? "Vacía" : categoryColumnCountText(columns)
         let countText = categoryColumnCountText(columns)
 
-        return VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
+        // Mismo tratamiento plano que `headerChip`: sin fill/sombra/borde propios,
+        // ocupa el mismo slot de la fila de cabecera. La barra inferior en el
+        // tinte de la categoría sustituye al color repartido por icono/texto.
+        return VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
                 Image(systemName: isEmpty ? "folder" : "chevron.right")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(categoryTint)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
 
                 Text(category.name)
-                    .font(.caption.weight(.bold))
+                    .font(NotebookGridStyle.columnTitle)
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
-
-                Spacer(minLength: 0)
-
-                Text(countText)
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(categoryTint)
-                    .monospacedDigit()
-                    .lineLimit(1)
             }
 
-            HStack(spacing: 6) {
-                Text(isEmpty ? "vacía" : "colapsada")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(isEmpty ? Color.secondary.opacity(0.65) : categoryTint.opacity(0.9))
-                    .lineLimit(1)
-
-                Text(statusText)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
+            Text(isEmpty ? "Vacía" : "\(countText) · colapsada")
+                .font(NotebookGridStyle.columnMeta)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .padding(.horizontal, 8)
+        .padding(.top, 8)
+        .padding(.bottom, 10)
+        .frame(width: width, alignment: .leading)
+        .frame(minHeight: 52, alignment: .topLeading)
+        .contentShape(Rectangle())
+        .overlay(alignment: .bottom) {
+            if !isEmpty {
+                Rectangle()
+                    .fill(categoryTint.opacity(0.9))
+                    .frame(height: 3)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .frame(width: width, height: 52, alignment: .leading)
-        .contentShape(Rectangle())
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(isEmpty ? NotebookStyle.surfaceSoft.opacity(0.22) : categoryTint.opacity(0.04))
-                .shadow(color: isEmpty ? Color.clear : categoryTint.opacity(0.08), radius: 6, x: 0, y: 2)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(isEmpty ? NotebookStyle.softBorder.opacity(0.55) : categoryTint.opacity(0.20), lineWidth: 1)
-        )
         .help("\(categoryAccessibilityState(isCollapsed: true, columns: columns)). Haz clic para abrir.")
         .accessibilityLabel("\(category.name). \(categoryAccessibilityState(isCollapsed: true, columns: columns)). Haz clic para abrir.")
     }
@@ -391,20 +356,30 @@ extension NotebookModuleView {
         return normalized != "FFFFFF" && normalized != "FFFFFFFF"
     }
 
-    func notebookColumnCellFill(for column: NotebookColumnDefinition, rowIndex: Int, isActive: Bool) -> Color {
-        if isActive {
-            return Color.accentColor.opacity(0.10)
+    /// La columna está resaltada (menú de columna abierto o selección con foco en
+    /// el inspector): mismo criterio que usa la cabecera (`headerChip(for:)`).
+    func isColumnHighlighted(_ column: NotebookColumnDefinition) -> Bool {
+        if selectedColumnId == column.id || highlightedColumnId == column.id { return true }
+        // Solo se resalta por categoría cuando hay una categoría resaltada activa:
+        // comparar dos `Optional` directamente daría `nil == nil == true`, marcando
+        // como resaltada toda columna sin categoría en reposo (inunda el grid).
+        guard let highlightedCategoryId else { return false }
+        return highlightedCategoryId == column.categoryId
+    }
+
+    /// Fondo de celda: única técnica de separación de filas (zebra plana + wash de
+    /// color de columna o de columna resaltada cuando aplica). La selección **no**
+    /// se pinta aquí: la dibuja la celda editable interior como un chip elevado
+    /// (superficie + sombra + anillo), para que se lea sobre un fondo limpio sin
+    /// doble tinte de acento.
+    func notebookColumnCellFill(for column: NotebookColumnDefinition, rowIndex: Int) -> Color {
+        if isColumnHighlighted(column) {
+            return NotebookGridStyle.columnActiveWash
         }
         if hasCustomColumnColor(column) {
             return displayTint(for: column).opacity(0.035)
         }
-        return rowIndex.isMultiple(of: 2) ? NotebookStyle.surfaceSoft.opacity(0.18) : Color.clear
-    }
-
-    func notebookColumnCellBorder(for column: NotebookColumnDefinition, isActive: Bool) -> Color {
-        if isActive { return Color.accentColor.opacity(0.75) }
-        if hasCustomColumnColor(column) { return displayTint(for: column).opacity(0.10) }
-        return NotebookStyle.softBorder.opacity(0.26)
+        return rowIndex.isMultiple(of: 2) ? NotebookGridStyle.zebra : Color.clear
     }
 
     @MainActor
@@ -427,7 +402,7 @@ extension NotebookModuleView {
             return AnyView(
                 ZStack {
                     Rectangle()
-                        .fill(notebookColumnCellFill(for: column, rowIndex: rowIndex, isActive: isCellSelected))
+                        .fill(notebookColumnCellFill(for: column, rowIndex: rowIndex))
 
                     NotebookEditableTableCell(
                         displaySnapshot: displaySnapshot,
@@ -509,10 +484,6 @@ extension NotebookModuleView {
                     )
                 }
                 .frame(width: resolvedColumnWidth(for: column), height: notebookGridRowHeight)
-                .overlay(
-                    Rectangle()
-                        .stroke(notebookColumnCellBorder(for: column, isActive: isCellSelected), lineWidth: isCellSelected ? 1.4 : 0.5)
-                )
                 .contextMenu {
                     Button("Abrir inspector") {
                         selectedColumnId = nil
@@ -663,41 +634,41 @@ extension NotebookModuleView {
             setCategoryCollapsed(category, collapsed: true)
         } label: {
             HStack(spacing: 8) {
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(categoryTint)
+                Circle()
+                    .fill(categoryTint)
+                    .frame(width: 6, height: 6)
                     .accessibilityHidden(true)
 
                 Text(category.name)
-                    .font(.caption.weight(.bold))
+                    .font(.caption2.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
 
                 Text(countText)
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(categoryTint)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
                     .monospacedDigit()
                     .lineLimit(1)
 
                 Text(statusText)
-                    .font(.caption2.weight(.semibold))
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
 
                 Spacer(minLength: 0)
+
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .frame(width: width, height: 32, alignment: .leading)
             .contentShape(Rectangle())
             .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(categoryTint.opacity(0.04))
-                    .shadow(color: categoryTint.opacity(0.06), radius: 4, x: 0, y: 1)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(categoryTint.opacity(0.16), lineWidth: 1)
+                Capsule(style: .continuous)
+                    .fill(Color.primary.opacity(0.03))
             )
         }
         .buttonStyle(NotebookCategoryHeaderButtonStyle())

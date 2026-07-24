@@ -6,6 +6,7 @@ import AppKit
 struct AppleAppRootView: View {
     @StateObject private var bridge = KmpBridge()
     @ObservedObject private var backupService = AppleBackupService.shared
+    @ObservedObject private var rescueService = AppleDatabaseRescueService.shared
     @State private var lifecycleObserver: AppleLifecycleBridgeObserver?
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @AppStorage("mac_reduce_motion") private var prefersReducedMotion = false
@@ -49,6 +50,7 @@ struct AppleAppRootView: View {
             .environment(\.appleCommandCenterState, commandCenterState)
             .preferredColorScheme(themeMode.colorSchemeOverride)
             .task {
+                rescueService.checkForPendingRescue()
                 await bridge.bootstrap()
                 bridge.onAppDidBecomeActive()
                 if lifecycleObserver == nil {
@@ -60,6 +62,20 @@ struct AppleAppRootView: View {
                 if backupService.needsRestart {
                     RestartRequiredOverlay()
                 }
+            }
+            .alert(
+                "No se pudo abrir la base de datos",
+                isPresented: $rescueService.isAlertPresented,
+                presenting: rescueService.pendingRescue
+            ) { marker in
+                Button("Reintentar apertura") {
+                    rescueService.retryRescuedDatabase()
+                }
+                Button("Seguir con base vacía", role: .destructive) {
+                    rescueService.continueWithEmptyDatabase()
+                }
+            } message: { marker in
+                Text(marker.displayMessage)
             }
             .quarantinedDataNotice(backupService: backupService)
 #endif

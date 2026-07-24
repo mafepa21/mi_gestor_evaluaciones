@@ -9,15 +9,25 @@ import com.migestor.data.repository.EvaluationsRepositorySqlDelight
 import com.migestor.data.repository.GradesRepositorySqlDelight
 import com.migestor.data.repository.NotebookCellsRepositorySqlDelight
 import com.migestor.data.repository.NotebookConfigRepositorySqlDelight
+import com.migestor.data.repository.LearningSituationsRepositorySqlDelight
+import com.migestor.data.repository.NotebookInstrumentsRepositorySqlDelight
 import com.migestor.data.repository.PlannerRepositorySqlDelight
 import com.migestor.data.repository.SessionJournalRepositorySqlDelight
 import com.migestor.data.repository.StudentsRepositorySqlDelight
 import com.migestor.data.repository.TeacherScheduleRepositorySqlDelight
 import com.migestor.data.repository.CalendarRepositorySqlDelight
 import com.migestor.data.repository.queryStrings
+import com.migestor.shared.domain.NotebookCellInputKind
 import com.migestor.shared.domain.NotebookColumnDefinition
 import com.migestor.shared.domain.NotebookColumnType
+import com.migestor.shared.domain.NotebookInstrumentItem
+import com.migestor.shared.domain.NotebookInstrumentItemType
+import com.migestor.shared.domain.NotebookInstrumentTemplate
+import com.migestor.shared.domain.NotebookInstrumentTemplateKind
 import com.migestor.shared.domain.ConfigTemplateKind
+import com.migestor.shared.domain.LearningSituation
+import com.migestor.shared.domain.LearningSituationLinkedResource
+import com.migestor.shared.domain.LearningSituationResourceKind
 import com.migestor.shared.domain.PlanningSession
 import com.migestor.shared.domain.SessionJournal
 import com.migestor.shared.domain.SessionJournalAction
@@ -33,6 +43,7 @@ import com.migestor.shared.domain.SessionStatus
 import com.migestor.shared.domain.SessionCascadeMoveRequest
 import com.migestor.shared.domain.StudentSex
 import com.migestor.shared.domain.StudentSexSource
+import com.migestor.shared.usecase.NotebookSheetMemoryCache
 import kotlinx.datetime.LocalDate
 import com.migestor.shared.usecase.GetNotebookUseCase
 import kotlinx.coroutines.test.runTest
@@ -678,5 +689,158 @@ class RepositoriesIntegrationTest {
         )
 
         assertTrue(indexes.containsAll(expectedIndexes))
+    }
+
+    @Test
+    fun `saveTemplate preserves responses for items that persist across a re-save`() = runTest {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        AppDatabase.Schema.create(driver)
+        val db = AppDatabase(driver)
+        val classes = ClassesRepositorySqlDelight(db)
+        val students = StudentsRepositorySqlDelight(db)
+        val grades = GradesRepositorySqlDelight(db)
+        val sheetCache = NotebookSheetMemoryCache()
+        val instruments = NotebookInstrumentsRepositorySqlDelight(db, grades, sheetCache)
+
+        val classId = classes.saveClass(name = "3 ESO A", course = 3, description = null)
+        val studentId = students.saveStudent(firstName = "Ana", lastName = "López", email = null)
+        classes.addStudentToClass(classId, studentId)
+
+        val templateId = "template_col1"
+        val columnId = "col1"
+        val template = NotebookInstrumentTemplate(
+            id = templateId,
+            classId = classId,
+            columnId = columnId,
+            title = "Checklist",
+            kind = NotebookInstrumentTemplateKind.CHECKLIST,
+            inputKind = NotebookCellInputKind.STRUCTURED_FORM,
+        )
+        val keptItemId = "${templateId}_item_0"
+        val droppedItemId = "${templateId}_item_1"
+        instruments.saveTemplate(
+            template,
+            listOf(
+                NotebookInstrumentItem(
+                    id = keptItemId, templateId = templateId, key = "a", title = "Original",
+                    type = NotebookInstrumentItemType.CHECK, order = 0,
+                ),
+                NotebookInstrumentItem(
+                    id = droppedItemId, templateId = templateId, key = "b", title = "Se elimina",
+                    type = NotebookInstrumentItemType.CHECK, order = 1,
+                ),
+            ),
+        )
+
+        db.appDatabaseQueries.upsertInstrumentResponse(
+            class_id = classId,
+            student_id = studentId,
+            column_id = columnId,
+            item_id = keptItemId,
+            value_text = null,
+            value_bool = 1L,
+            value_number = null,
+            updated_at_epoch_ms = 1L,
+            device_id = null,
+            sync_version = 0,
+        )
+
+        val newItemId = "${templateId}_item_2"
+        instruments.saveTemplate(
+            template,
+            listOf(
+                NotebookInstrumentItem(
+                    id = keptItemId, templateId = templateId, key = "a", title = "Actualizado",
+                    type = NotebookInstrumentItemType.CHECK, order = 0,
+                ),
+                NotebookInstrumentItem(
+                    id = newItemId, templateId = templateId, key = "c", title = "Nuevo",
+                    type = NotebookInstrumentItemType.CHECK, order = 1,
+                ),
+            ),
+        )
+
+        val detail = instruments.getTemplateForColumn(columnId)
+        assertNotNull(detail)
+        assertEquals(setOf(keptItemId, newItemId), detail.items.map { it.id }.toSet())
+        assertEquals("Actualizado", detail.items.first { it.id == keptItemId }.title)
+
+        val responses = instruments.listResponsesForCell(classId, studentId, columnId)
+        assertEquals(listOf(keptItemId), responses.map { it.itemId })
+        assertEquals(true, responses.single().boolValue)
+    }
+
+    @Test
+    fun `saveLinkedResource upserts by business key instead of duplicating rows`() = runTest {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        AppDatabase.Schema.create(driver)
+        val db = AppDatabase(driver)
+        val classes = ClassesRepositorySqlDelight(db)
+        val situations = LearningSituationsRepositorySqlDelight(db)
+
+        val classId = classes.saveClass(name = "3 ESO A", course = 3, description = null)
+        val situationId = situations.saveSituation(LearningSituation(title = "Situación demo"))
+
+        val firstId = situations.saveLinkedResource(
+            LearningSituationLinkedResource(
+                learningSituationId = situationId,
+                kind = LearningSituationResourceKind.EVALUATION,
+                resourceId = "eval_1",
+                classId = classId,
+                label = "Original",
+            )
+        )
+        val firstCreatedAt = situations.listLinkedResources(situationId).single().trace.createdAt
+
+        val secondId = situations.saveLinkedResource(
+            LearningSituationLinkedResource(
+                learningSituationId = situationId,
+                kind = LearningSituationResourceKind.EVALUATION,
+                resourceId = "eval_1",
+                classId = classId,
+                label = "Actualizado",
+            )
+        )
+
+        val links = situations.listLinkedResources(situationId)
+        assertEquals(1, links.size)
+        assertEquals(firstId, secondId)
+        assertEquals("Actualizado", links.single().label)
+        assertEquals(firstCreatedAt, links.single().trace.createdAt)
+    }
+
+    @Test
+    fun `saveLinkedResource upserts by business key when classId is null`() = runTest {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        AppDatabase.Schema.create(driver)
+        val db = AppDatabase(driver)
+        val situations = LearningSituationsRepositorySqlDelight(db)
+
+        val situationId = situations.saveSituation(LearningSituation(title = "Situación demo"))
+
+        val firstId = situations.saveLinkedResource(
+            LearningSituationLinkedResource(
+                learningSituationId = situationId,
+                kind = LearningSituationResourceKind.EVALUATION,
+                resourceId = "eval_1",
+                classId = null,
+                label = "Original",
+            )
+        )
+
+        val secondId = situations.saveLinkedResource(
+            LearningSituationLinkedResource(
+                learningSituationId = situationId,
+                kind = LearningSituationResourceKind.EVALUATION,
+                resourceId = "eval_1",
+                classId = null,
+                label = "Actualizado",
+            )
+        )
+
+        val links = situations.listLinkedResources(situationId)
+        assertEquals(1, links.size)
+        assertEquals(firstId, secondId)
+        assertEquals("Actualizado", links.single().label)
     }
 }

@@ -7,6 +7,7 @@ struct MacRootView: View {
     @ObservedObject private var commandCenter: MacCommandCenterCoordinator
     @ObservedObject private var backupStore: MacBackupStore
     @ObservedObject private var backupService = AppleBackupService.shared
+    @ObservedObject private var rescueService = AppleDatabaseRescueService.shared
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     @Environment(\.openWindow) private var openWindow
     @StateObject private var layoutState = WorkspaceLayoutState()
@@ -76,6 +77,7 @@ struct MacRootView: View {
             isInspectorVisible = storedInspectorVisible && session.inspectorVisible
         }
         .task {
+            rescueService.checkForPendingRescue()
             notebookStore.bind(to: session.bridge)
             dashboardStore.bind(to: session.bridge)
             studentsBridgeStore.bind(to: session.bridge)
@@ -97,6 +99,23 @@ struct MacRootView: View {
             if backupService.needsRestart {
                 RestartRequiredOverlay()
             }
+        }
+        .alert(
+            "No se pudo abrir la base de datos",
+            isPresented: $rescueService.isAlertPresented,
+            presenting: rescueService.pendingRescue
+        ) { marker in
+            Button("Reintentar apertura") {
+                rescueService.retryRescuedDatabase()
+            }
+            Button("Abrir copias de seguridad") {
+                openWindow(id: MacDesktopWindowID.backups.rawValue)
+            }
+            Button("Seguir con base vacía", role: .destructive) {
+                rescueService.continueWithEmptyDatabase()
+            }
+        } message: { marker in
+            Text(marker.displayMessage)
         }
     }
 

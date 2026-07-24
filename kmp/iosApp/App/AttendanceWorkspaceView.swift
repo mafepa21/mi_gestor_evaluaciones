@@ -49,6 +49,7 @@ struct AttendanceWorkspaceView: View {
     @State var incidentHeatmapFacts: KmpBridge.ChartFacts?
     @State var isLoadingIncidentHeatmap = false
     @State var incidentHeatmapTask: Task<Void, Never>?
+    @State var dateReloadTask: Task<Void, Never>?
 
     var boardSummary: (present: Int, absent: Int, late: Int, untracked: Int) {
         let rows = attendanceStore.studentsInClass.map { recordsByStudentId[$0.id] }
@@ -215,8 +216,10 @@ struct AttendanceWorkspaceView: View {
                 incidentHeatmapTask = Task { await reloadIncidentHeatmap() }
             }
             .appOnChange(of: selectedDate) { _ in
-                Task {
+                dateReloadTask?.cancel()
+                dateReloadTask = Task {
                     await reloadClassOverviews()
+                    guard !Task.isCancelled else { return }
                     await reloadAttendance()
                 }
             }
@@ -239,6 +242,17 @@ struct AttendanceWorkspaceView: View {
             }
             .appOnChange(of: layoutState.isFocusModeEnabled) { _ in
                 isAttendanceInspectorPresented = isInspectorPresented
+            }
+            .appOnChange(of: isAttendanceInspectorPresented) { presented in
+                // Si el usuario cierra el inspector con el gesto del sistema (arrastrar
+                // el borde) en vez de "Cerrar ficha", `selectedStudentId`/`historySelection`
+                // seguían activos y volver a tocar el mismo alumno no disparaba el
+                // appOnChange correspondiente, así que la ficha no reabría. Al detectar
+                // ese cierre externo, limpiamos la selección para que quede consistente
+                // con el inspector oculto.
+                guard !presented, isInspectorPresented else { return }
+                selectedStudentId = nil
+                historySelection = nil
             }
             .onAppear(perform: syncAttendanceToolbar)
             .appOnChange(of: toolbarStateKey) { _ in
@@ -866,12 +880,15 @@ struct AttendanceWorkspaceView: View {
     @MainActor
     func reloadClassOverviews() async {
         await bridge.ensureClassesLoaded()
+        guard !Task.isCancelled else { return }
         let range = monthRange(for: selectedDate)
-        classOverviews = (try? await bridge.attendanceOverview(
+        let overviews = (try? await bridge.attendanceOverview(
             for: attendanceStore.classes.map(\.id),
             from: range.start,
             to: range.end
         )) ?? []
+        guard !Task.isCancelled else { return }
+        classOverviews = overviews
     }
 
     func normalizedAttendanceRecords(

@@ -1507,4 +1507,3 @@ private extension SessionJournalLinkType {
         }
     }
 }
-

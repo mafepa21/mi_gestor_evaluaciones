@@ -608,5 +608,3 @@ struct PlannerEmptyState: View {
         .padding(24)
     }
 }
-
-

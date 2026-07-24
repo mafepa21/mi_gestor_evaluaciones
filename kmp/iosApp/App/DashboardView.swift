@@ -362,10 +362,21 @@ struct DashboardView: View {
     @ViewBuilder
     private func dashboardLoadedContent(snapshot: DashboardSnapshot) -> some View {
         VStack(alignment: .leading, spacing: EvaluationDesign.sectionSpacing) {
-            // 1. Hoy — qué requiere atención inmediata
+            // 1. KPIs — la única fila numérica, de un vistazo y arriba del
+            // todo. Antes vivía después de Hoy/Pendiente/Riesgo repitiendo
+            // los mismos contadores que ya llevan esas tarjetas en su
+            // cabecera; ahora es el resumen y las tarjetas dejan de duplicar
+            // el número de la KPI correspondiente.
+            dashboardKpiRow(snapshot: snapshot)
+
+            // 2. Filtros — justo antes de lo que filtran (Hoy/Pendiente/
+            // Riesgo), no varias secciones después.
+            dashboardFilterChips
+
+            // 3. Hoy — qué requiere atención inmediata
             dashboardTodayBlock(snapshot: snapshot)
 
-            // 2. Alertas — accionables, priorizadas
+            // 4. Alertas — accionables, priorizadas
             if loadPhase.includes(.lists) {
                 dashboardAlertsSection(snapshot: snapshot)
             } else {
@@ -377,22 +388,17 @@ struct DashboardView: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
-            // 3. KPIs — contexto cuantitativo
-            dashboardKpiRow(snapshot: snapshot)
-
-            dashboardFilterChips
-
-            // 4. Accesos rápidos — iniciar una tarea
+            // 5. Accesos rápidos — iniciar una tarea
             dashboardQuickEvalBlock(snapshot: snapshot)
 
-            // 5. Insight proactivo — una única tarjeta, descartable
+            // 6. Insight proactivo — una única tarjeta, descartable
             if loadPhase.includes(.ai) {
                 dashboardProactiveRadar(snapshot: snapshot)
             } else {
                 dashboardRadarSkeleton
             }
 
-            // 6. Contexto secundario — agenda y estado del sistema
+            // 7. Contexto secundario — agenda y estado del sistema
             dashboardSecondaryGrid(snapshot: snapshot)
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.82), value: loadPhase.rawValue)
@@ -902,14 +908,10 @@ struct DashboardView: View {
     @ViewBuilder
     private func dashboardTodayBlock(snapshot: DashboardSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Label("Hoy", systemImage: "calendar.badge.clock")
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
-                Spacer()
-                Text("\(snapshot.todaySessions.count)")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundStyle(.secondary)
-            }
+            // El recuento ya vive en la KPI "Hoy" de arriba; repetirlo aquí
+            // era el mismo número dos veces en la misma pantalla.
+            Label("Hoy", systemImage: "calendar.badge.clock")
+                .font(.system(size: 16, weight: .bold, design: .rounded))
             ForEach(snapshot.todaySessions, id: \.id) { item in
                 Button {
                     inspectorSelection = .session(item.id)
@@ -962,14 +964,10 @@ struct DashboardView: View {
         let pendingAlerts = snapshot.alerts.filter { isPendingAlert($0) }
         let pendingAgenda = snapshot.agendaItems.filter { !isClosedAgendaStatus($0.status) }
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Label("Pendiente", systemImage: "tray.full")
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
-                Spacer()
-                Text("\(snapshot.pendingCount)")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .foregroundStyle(.secondary)
-            }
+            // Mismo motivo que en Hoy: el recuento ya está en la KPI
+            // "Pendientes" de arriba.
+            Label("Pendiente", systemImage: "tray.full")
+                .font(.system(size: 16, weight: .bold, design: .rounded))
 
             ForEach(pendingAlerts.prefix(4), id: \.id) { alert in
                 dashboardActionRow(
@@ -1072,39 +1070,29 @@ struct DashboardView: View {
 
     @ViewBuilder
     private func dashboardSystemBlock() -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Label("Sistema", systemImage: "checkmark.shield")
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
-                Spacer()
+        dashboardSecondaryCard {
+            VStack(alignment: .leading, spacing: 12) {
+                dashboardSecondaryTitle("Sistema", systemImage: "checkmark.shield")
+                dashboardStaticRow(
+                    title: dashboardStore.pairedSyncHost == nil ? "Sync LAN inactivo" : "Sync LAN activo",
+                    subtitle: dashboardStore.syncPendingChanges == 0 ? dashboardStore.syncStatusMessage : "\(dashboardStore.syncPendingChanges) cambios pendientes",
+                    systemImage: "arrow.triangle.2.circlepath",
+                    tint: dashboardStore.syncPendingChanges == 0 && dashboardStore.pairedSyncHost != nil ? .green : .orange
+                )
+                dashboardStaticRow(
+                    title: "Última sync",
+                    subtitle: dashboardStore.syncLastRunAt.map(shortSystemDate) ?? "Sin registro",
+                    systemImage: "clock",
+                    tint: .secondary
+                )
+                dashboardStaticRow(
+                    title: "Último backup",
+                    subtitle: "Sin registro local en iPad. Revisa Backups en macOS.",
+                    systemImage: "externaldrive.badge.questionmark",
+                    tint: .secondary
+                )
             }
-            dashboardStaticRow(
-                title: dashboardStore.pairedSyncHost == nil ? "Sync LAN inactivo" : "Sync LAN activo",
-                subtitle: dashboardStore.syncPendingChanges == 0 ? dashboardStore.syncStatusMessage : "\(dashboardStore.syncPendingChanges) cambios pendientes",
-                systemImage: "arrow.triangle.2.circlepath",
-                tint: dashboardStore.syncPendingChanges == 0 && dashboardStore.pairedSyncHost != nil ? .green : .orange
-            )
-            dashboardStaticRow(
-                title: "Última sync",
-                subtitle: dashboardStore.syncLastRunAt.map(shortSystemDate) ?? "Sin registro",
-                systemImage: "clock",
-                tint: .secondary
-            )
-            dashboardStaticRow(
-                title: "Último backup",
-                subtitle: "Sin registro local en iPad. Revisa Backups en macOS.",
-                systemImage: "externaldrive.badge.questionmark",
-                tint: .secondary
-            )
         }
-        .padding(EvaluationDesign.cardSpacing)
-        .background(.regularMaterial)
-        .cornerRadius(EvaluationDesign.innerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
-                .stroke(Color.primary.opacity(colorScheme == .dark ? 0.15 : 0.06), lineWidth: 1)
-        )
-        .shadow(color: Color.green.opacity(colorScheme == .dark ? 0.22 : 0.05), radius: 14, x: 0, y: 8)
     }
 
     @ViewBuilder
@@ -1225,164 +1213,134 @@ struct DashboardView: View {
                 studentsInFollowUp: Int($0.studentsInFollowUp)
             )
         }
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Resumen por grupo")
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
-                Spacer()
-            }
-            if showsWideSummary {
-                Table(rows) {
-                    TableColumn("Grupo") { Text($0.groupName) }
-                    TableColumn("Asist") { Text("\($0.attendancePct)%") }
-                    TableColumn("Eval") { Text("\($0.evaluationCompletedPct)%") }
-                    TableColumn("Media") { Text(IosFormatting.decimal(from: $0.averageScore)) }
-                    TableColumn("Seguim.") { Text("\($0.studentsInFollowUp)") }
-                }
-                .frame(minHeight: 180)
-            } else {
-                ForEach(rows) { summary in
-                    HStack {
-                        Text(summary.groupName).bold()
-                        Spacer()
-                        Text("As \(summary.attendancePct)% · Ev \(summary.evaluationCompletedPct)%")
+        dashboardSecondaryCard {
+            VStack(alignment: .leading, spacing: 12) {
+                dashboardSecondaryTitle("Resumen por grupo", systemImage: "person.3")
+                if showsWideSummary {
+                    Table(rows) {
+                        TableColumn("Grupo") { Text($0.groupName) }
+                        TableColumn("Asist") { Text("\($0.attendancePct)%") }
+                        TableColumn("Eval") { Text("\($0.evaluationCompletedPct)%") }
+                        TableColumn("Media") { Text(IosFormatting.decimal(from: $0.averageScore)) }
+                        TableColumn("Seguim.") { Text("\($0.studentsInFollowUp)") }
                     }
-                    .font(.system(size: 13, weight: .medium))
+                    .frame(minHeight: 180)
+                } else {
+                    ForEach(rows) { summary in
+                        HStack {
+                            Text(summary.groupName).bold()
+                            Spacer()
+                            Text("As \(summary.attendancePct)% · Ev \(summary.evaluationCompletedPct)%")
+                        }
+                        .font(.system(size: 13, weight: .medium))
+                    }
                 }
-            }
-            if snapshot.groupSummaries.isEmpty {
-                Text("Sin datos de grupos")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.secondary)
+                if snapshot.groupSummaries.isEmpty {
+                    Text("Sin datos de grupos")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
             }
         }
-        .padding(EvaluationDesign.cardSpacing)
-        .background(.regularMaterial)
-        .cornerRadius(EvaluationDesign.innerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
-                .stroke(Color.primary.opacity(colorScheme == .dark ? 0.15 : 0.06), lineWidth: 1)
-        )
-        .shadow(color: EvaluationDesign.accent.opacity(colorScheme == .dark ? 0.22 : 0.05), radius: 14, x: 0, y: 8)
     }
 
     @ViewBuilder
     private func dashboardAgendaBlock(snapshot: DashboardSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Agenda docente")
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
-                Spacer()
-            }
-            ForEach(snapshot.agendaItems, id: \.id) { item in
-                let isNavigable = !item.navigationTargets.isEmpty || item.classId != nil
-                Button {
-                    navigateAgendaItem(item)
-                } label: {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(item.title)
-                                .font(.system(size: 14, weight: .bold, design: .rounded))
-                            Text(item.subtitle)
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Text(item.timeLabel)
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.tertiary)
-                        if isNavigable {
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 10, weight: .bold))
+        dashboardSecondaryCard {
+            VStack(alignment: .leading, spacing: 12) {
+                dashboardSecondaryTitle("Agenda docente", systemImage: "list.bullet.clipboard")
+                ForEach(snapshot.agendaItems, id: \.id) { item in
+                    let isNavigable = !item.navigationTargets.isEmpty || item.classId != nil
+                    Button {
+                        navigateAgendaItem(item)
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(item.title)
+                                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                                Text(item.subtitle)
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Text(item.timeLabel)
+                                .font(.system(size: 10, weight: .semibold))
                                 .foregroundStyle(.tertiary)
+                            if isNavigable {
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(.tertiary)
+                            }
                         }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .background(
+                            appMutedCardBackground(for: colorScheme)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: EvaluationDesign.pillRadius, style: .continuous)
+                                        .stroke(Color.primary.opacity(0.04), lineWidth: 1)
+                                )
+                        )
+                        .cornerRadius(EvaluationDesign.pillRadius)
                     }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(
-                        appMutedCardBackground(for: colorScheme)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: EvaluationDesign.pillRadius, style: .continuous)
-                                    .stroke(Color.primary.opacity(0.04), lineWidth: 1)
-                            )
-                    )
-                    .cornerRadius(EvaluationDesign.pillRadius)
+                    .buttonStyle(ScaleButtonStyle())
+                    .disabled(!isNavigable)
                 }
-                .buttonStyle(ScaleButtonStyle())
-                .disabled(!isNavigable)
-            }
-            if snapshot.agendaItems.isEmpty {
-                Text("Sin agenda para hoy")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.secondary)
+                if snapshot.agendaItems.isEmpty {
+                    Text("Sin agenda para hoy")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
             }
         }
-        .padding(EvaluationDesign.cardSpacing)
-        .background(.regularMaterial)
-        .cornerRadius(EvaluationDesign.innerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
-                .stroke(Color.primary.opacity(colorScheme == .dark ? 0.15 : 0.06), lineWidth: 1)
-        )
-        .shadow(color: Color.purple.opacity(colorScheme == .dark ? 0.22 : 0.05), radius: 14, x: 0, y: 8)
     }
 
     @ViewBuilder
     private func dashboardPEBlock(snapshot: DashboardSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Educación Física")
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
-                Spacer()
-            }
-            ForEach(snapshot.peItems, id: \.id) { item in
-                Button {
-                    inspectorSelection = .pe(item.id)
-                    isInspectorPresented = true
-                } label: {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(item.title)
-                                .font(.system(size: 14, weight: .bold, design: .rounded))
-                            Text(item.detail)
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(.secondary)
+        dashboardSecondaryCard {
+            VStack(alignment: .leading, spacing: 12) {
+                dashboardSecondaryTitle("Educación Física", systemImage: "figure.run")
+                ForEach(snapshot.peItems, id: \.id) { item in
+                    Button {
+                        inspectorSelection = .pe(item.id)
+                        isInspectorPresented = true
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(item.title)
+                                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                                Text(item.detail)
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Text(dashboardFilterLabel(item.severity))
+                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(riskTint(item.severity).opacity(0.12), in: Capsule())
+                                .foregroundStyle(riskTint(item.severity))
                         }
-                        Spacer()
-                        Text(dashboardFilterLabel(item.severity))
-                            .font(.system(size: 10, weight: .bold, design: .rounded))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(riskTint(item.severity).opacity(0.12), in: Capsule())
-                            .foregroundStyle(riskTint(item.severity))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .background(
+                            appMutedCardBackground(for: colorScheme)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: EvaluationDesign.pillRadius, style: .continuous)
+                                        .stroke(Color.primary.opacity(0.04), lineWidth: 1)
+                                )
+                        )
+                        .cornerRadius(EvaluationDesign.pillRadius)
                     }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(
-                        appMutedCardBackground(for: colorScheme)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: EvaluationDesign.pillRadius, style: .continuous)
-                                    .stroke(Color.primary.opacity(0.04), lineWidth: 1)
-                            )
-                    )
-                    .cornerRadius(EvaluationDesign.pillRadius)
+                    .buttonStyle(ScaleButtonStyle())
                 }
-                .buttonStyle(ScaleButtonStyle())
-            }
-            if snapshot.peItems.isEmpty {
-                Text("Sin incidencias EF hoy")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.secondary)
+                if snapshot.peItems.isEmpty {
+                    Text("Sin incidencias EF hoy")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
             }
         }
-        .padding(EvaluationDesign.cardSpacing)
-        .background(.regularMaterial)
-        .cornerRadius(EvaluationDesign.innerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
-                .stroke(Color.primary.opacity(colorScheme == .dark ? 0.15 : 0.06), lineWidth: 1)
-        )
-        .shadow(color: Color.green.opacity(colorScheme == .dark ? 0.22 : 0.05), radius: 14, x: 0, y: 8)
     }
 
     private func dashboardFilterPicker(
@@ -1553,6 +1511,35 @@ struct DashboardView: View {
                 )
         )
         .cornerRadius(EvaluationDesign.pillRadius)
+    }
+
+    /// Cabecera de un bloque secundario (contexto, no acción). Mismo formato
+    /// en los cinco bloques de `dashboardSecondaryGrid` para que se lean
+    /// como un nivel por debajo de Hoy/Pendiente/Riesgo, sin repetir el
+    /// título en negrita a 16pt que llevan las tarjetas de "hay que actuar".
+    private func dashboardSecondaryTitle(_ title: String, systemImage: String) -> some View {
+        Label(title, systemImage: systemImage)
+            .font(.system(size: 13, weight: .semibold, design: .rounded))
+            .foregroundStyle(.secondary)
+    }
+
+    /// Cromado plano para los bloques de contexto secundario (Resumen por
+    /// grupo, Agenda, EF, Sistema, Auditoría LOMLOE): sin el fondo de
+    /// `.regularMaterial` ni la sombra de color que llevan Hoy/Pendiente/
+    /// Riesgo/Evaluación rápida, para que la pantalla tenga dos niveles de
+    /// importancia en vez de diez tarjetas idénticas.
+    private func dashboardSecondaryCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        // `.thinMaterial` (no `.regularMaterial`) para que el nivel "contexto"
+        // se note más ligero que Hoy/Pendiente/Riesgo sin fundirse con el
+        // `appMutedCardBackground` que ya usan las filas internas.
+        content()
+            .padding(EvaluationDesign.cardSpacing)
+            .background(.thinMaterial)
+            .cornerRadius(EvaluationDesign.innerRadius)
+            .overlay(
+                RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
+                    .stroke(Color.primary.opacity(colorScheme == .dark ? 0.10 : 0.05), lineWidth: 1)
+            )
     }
 
     private func isPendingAlert(_ alert: AlertItem) -> Bool {
@@ -1886,121 +1873,114 @@ struct DashboardView: View {
 
     @ViewBuilder
     private func dashboardLomloeAuditBlock(snapshot: DashboardSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Label("Auditoría LOMLOE y Alertas del Grupo", systemImage: "text.badge.checkmark")
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
-                Spacer()
-                if isLoadingClassTrends {
-                    ProgressView()
-                        .tint(NotebookStyle.primaryTint)
-                }
-            }
-
-            if let trends = classTrends {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack(spacing: 8) {
-                        let directionInfo = trendDirectionInfo(trends.trendDirection, delta: trends.averageGradeDelta)
-                        Image(systemName: directionInfo.icon)
-                            .foregroundStyle(directionInfo.color)
-                        Text("Trayectoria: \(directionInfo.label)")
-                            .font(.system(size: 13, weight: .bold, design: .rounded))
-                            .foregroundStyle(directionInfo.color)
-                        
-                        Spacer()
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(trendBgColor(trends.trendDirection).opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-                    HStack(spacing: 12) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Cobertura Curricular del Grupo")
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
-                                .foregroundStyle(.secondary)
-                            Text("\(IosFormatting.decimal(from: trends.curriculumCoveragePct))%")
-                                .font(.system(size: 24, weight: .black, design: .rounded))
-                                .foregroundStyle(NotebookStyle.primaryTint)
-                        }
-                        
-                        Spacer()
-                        
-                        VStack(alignment: .trailing, spacing: 4) {
-                            Text("Asistencia Media")
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
-                                .foregroundStyle(.secondary)
-                            Text("\(IosFormatting.decimal(from: trends.attendanceRate))%")
-                                .font(.system(size: 24, weight: .black, design: .rounded))
-                                .foregroundStyle(trends.attendanceRate >= 85 ? Color.primary : Color.orange)
-                        }
-                    }
-
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(NotebookStyle.softBorder)
-                                .frame(height: 8)
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(NotebookStyle.primaryTint)
-                                .frame(width: geo.size.width * CGFloat(trends.curriculumCoveragePct / 100.0), height: 8)
-                        }
-                    }
-                    .frame(height: 8)
-
-                    if !trends.attendanceCorrelationNote.isEmpty {
-                        Text(trends.attendanceCorrelationNote)
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                    }
-
-                    if !trends.behaviorIncidentSummary.isEmpty {
-                        Text(trends.behaviorIncidentSummary)
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                    }
-
-                    if !trends.missingCompetencyLabels.isEmpty {
-                        Divider()
-                            .background(NotebookStyle.softBorder)
-                        
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Competencias clave sin evidencias en el grupo:")
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
-                                .foregroundStyle(.secondary)
-                            
-                            FlexibleTagRow(
-                                items: trends.missingCompetencyLabels,
-                                selected: ""
-                            ) { _ in }
-                            .disabled(true)
-                        }
-                    }
-                }
-            } else if classTrendsLoadFailed {
-                HStack(spacing: 10) {
-                    Label("No se pudo cargar la auditoría de este grupo.", systemImage: "exclamationmark.triangle.fill")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(IOSAppStyle.warning)
+        dashboardSecondaryCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    dashboardSecondaryTitle("Auditoría LOMLOE y Alertas del Grupo", systemImage: "text.badge.checkmark")
                     Spacer()
-                    Button("Reintentar") {
-                        Task { await loadClassTrends() }
+                    if isLoadingClassTrends {
+                        ProgressView()
+                            .tint(NotebookStyle.primaryTint)
                     }
-                    .font(.system(size: 13, weight: .semibold))
                 }
-            } else if !isLoadingClassTrends {
-                Text("No hay datos suficientes para generar la auditoría de cobertura curricular y tendencias de este grupo.")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.secondary)
+
+                if let trends = classTrends {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 8) {
+                            let directionInfo = trendDirectionInfo(trends.trendDirection, delta: trends.averageGradeDelta)
+                            Image(systemName: directionInfo.icon)
+                                .foregroundStyle(directionInfo.color)
+                            Text("Trayectoria: \(directionInfo.label)")
+                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .foregroundStyle(directionInfo.color)
+
+                            Spacer()
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(trendBgColor(trends.trendDirection).opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Cobertura Curricular del Grupo")
+                                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                                    .foregroundStyle(.secondary)
+                                Text("\(IosFormatting.decimal(from: trends.curriculumCoveragePct))%")
+                                    .font(.system(size: 24, weight: .black, design: .rounded))
+                                    .foregroundStyle(NotebookStyle.primaryTint)
+                            }
+
+                            Spacer()
+
+                            VStack(alignment: .trailing, spacing: 4) {
+                                Text("Asistencia Media")
+                                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                                    .foregroundStyle(.secondary)
+                                Text("\(IosFormatting.decimal(from: trends.attendanceRate))%")
+                                    .font(.system(size: 24, weight: .black, design: .rounded))
+                                    .foregroundStyle(trends.attendanceRate >= 85 ? Color.primary : Color.orange)
+                            }
+                        }
+
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(NotebookStyle.softBorder)
+                                    .frame(height: 8)
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(NotebookStyle.primaryTint)
+                                    .frame(width: geo.size.width * CGFloat(trends.curriculumCoveragePct / 100.0), height: 8)
+                            }
+                        }
+                        .frame(height: 8)
+
+                        if !trends.attendanceCorrelationNote.isEmpty {
+                            Text(trends.attendanceCorrelationNote)
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                        }
+
+                        if !trends.behaviorIncidentSummary.isEmpty {
+                            Text(trends.behaviorIncidentSummary)
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                        }
+
+                        if !trends.missingCompetencyLabels.isEmpty {
+                            Divider()
+                                .background(NotebookStyle.softBorder)
+
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Competencias clave sin evidencias en el grupo:")
+                                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                                    .foregroundStyle(.secondary)
+
+                                FlexibleTagRow(
+                                    items: trends.missingCompetencyLabels,
+                                    selected: ""
+                                ) { _ in }
+                                .disabled(true)
+                            }
+                        }
+                    }
+                } else if classTrendsLoadFailed {
+                    HStack(spacing: 10) {
+                        Label("No se pudo cargar la auditoría de este grupo.", systemImage: "exclamationmark.triangle.fill")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(IOSAppStyle.warning)
+                        Spacer()
+                        Button("Reintentar") {
+                            Task { await loadClassTrends() }
+                        }
+                        .font(.system(size: 13, weight: .semibold))
+                    }
+                } else if !isLoadingClassTrends {
+                    Text("No hay datos suficientes para generar la auditoría de cobertura curricular y tendencias de este grupo.")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
             }
         }
-        .padding(EvaluationDesign.cardSpacing)
-        .background(.regularMaterial)
-        .cornerRadius(EvaluationDesign.innerRadius)
-        .overlay(
-            RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
-                .stroke(Color.primary.opacity(colorScheme == .dark ? 0.15 : 0.06), lineWidth: 1)
-        )
-        .shadow(color: EvaluationDesign.accent.opacity(colorScheme == .dark ? 0.22 : 0.05), radius: 14, x: 0, y: 8)
     }
 
     private func trendDirectionInfo(_ direction: String, delta: Double) -> (icon: String, label: String, color: Color) {

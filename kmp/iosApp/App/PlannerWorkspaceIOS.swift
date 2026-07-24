@@ -1292,6 +1292,22 @@ private struct PlannerScheduleBoard: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
     let onOpenSettings: (() -> Void)?
 
+    /// Mapea las franjas al modelo neutro de la rejilla, resolviendo aquí el
+    /// nombre del grupo (la rejilla no conoce el puente KMP).
+    private var scheduleGridEntries: [ScheduleWeekGridView.Entry] {
+        vm.effectiveScheduleSlots.map { slot in
+            ScheduleWeekGridView.Entry(
+                id: slot.id,
+                dayOfWeek: Int(slot.dayOfWeek),
+                startTime: slot.startTime,
+                endTime: slot.endTime,
+                subject: slot.subjectLabel,
+                groupName: vm.groups.first(where: { $0.id == slot.schoolClassId })?.name ?? "Grupo \(slot.schoolClassId)",
+                unit: slot.unitLabel
+            )
+        }
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: IOSAppStyle.sectionSpacing) {
@@ -1337,6 +1353,24 @@ private struct PlannerScheduleBoard: View {
                             Text("Mostrando franjas heredadas del horario original de KMP Desktop.")
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(.secondary)
+                        }
+
+                        // Misma rejilla que el panel de macOS: un horario es
+                        // bidimensional y como lista obliga a reconstruir la
+                        // semana de cabeza. La lista de abajo se conserva
+                        // porque lleva el detalle de cada franja.
+                        if !vm.effectiveScheduleSlots.isEmpty {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                ScheduleWeekGridView(
+                                    entries: scheduleGridEntries,
+                                    activeWeekdays: Array(vm.activeWeekdays),
+                                    dayLabel: vm.dayLabel(for:),
+                                    compact: true
+                                )
+                                .frame(minWidth: 560)
+                            }
+
+                            Divider()
                         }
 
                         ForEach(vm.effectiveScheduleSlots, id: \.id) { slot in

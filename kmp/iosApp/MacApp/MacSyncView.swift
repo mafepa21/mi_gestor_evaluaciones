@@ -62,7 +62,10 @@ struct MacSyncView: View {
     }
 
     var body: some View {
-        HSplitView {
+        // HStack + Divider en vez de HSplitView: evita el NSSplitView que, anidado en el
+        // NavigationSplitView raíz, dispara el bucle de "Update Constraints in Window pass"
+        // de AppKit y tumba la app (mismo crash corregido en reuniones y alumnado).
+        HStack(spacing: 0) {
             // Panel Izquierdo: Observabilidad
             ScrollView {
                 VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
@@ -77,7 +80,9 @@ struct MacSyncView: View {
                 }
                 .padding(MacAppStyle.pagePadding)
             }
-            .frame(minWidth: 440)
+            .frame(minWidth: 440, maxWidth: .infinity)
+
+            Divider()
 
             // Panel Derecho: Emparejamiento y Diagnóstico
             ScrollView {
@@ -87,7 +92,7 @@ struct MacSyncView: View {
                 }
                 .padding(MacAppStyle.pagePadding)
             }
-            .frame(minWidth: 360, maxWidth: 440)
+            .frame(width: 400)
         }
         .background(MacAppStyle.pageBackground)
     }

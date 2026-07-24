@@ -108,6 +108,18 @@
 		404152863CFAC7A84D37B872 /* NotebookClassPickerComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 808AE922E0187FD7FAEA5FFC /* NotebookClassPickerComponents.swift */; };
 		42355FA614EB4F899CB54DBA /* RubricsBuilderScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = CABF3C938060DE09EB0F96BB /* RubricsBuilderScreen.swift */; };
 		428537EEF8A394024D951475 /* AttendanceShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = F42B9FCF55764453E68E5BB6 /* AttendanceShared.swift */; };
+		30391F3F648B4D45BCE7F887 /* TutoringShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 640333E22FB74DC6981E001C /* TutoringShared.swift */; };
+		32CE6F86DE9C33DC5491ED7B /* MeetingsShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47568F8E8704DECBB09A436E /* MeetingsShared.swift */; };
+		C4E2B1D8F3A5690B7D1E2F3A /* MeetingActaPDF.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3D1A0C7E2F4589A6C0D1E2F /* MeetingActaPDF.swift */; };
+		B8C9D0E1F2A3405566778899 /* PlannerPedagogyShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B8C9D0E1F2304556677889 /* PlannerPedagogyShared.swift */; };
+		E2F3A4B5C6D7809900AABBCD /* DashboardRecommendations.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1E2F3A4B5C6708899AABBCC /* DashboardRecommendations.swift */; };
+		F3A4B5C6D7E890AABBCCDDEE /* DashboardRecommendations.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1E2F3A4B5C6708899AABBCC /* DashboardRecommendations.swift */; };
+		C9D0E1F2A3B4506677889900 /* PlannerPedagogyShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B8C9D0E1F2304556677889 /* PlannerPedagogyShared.swift */; };
+		D5F3C2E9A4B6701C8E2F3A4B /* MeetingActaPDF.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3D1A0C7E2F4589A6C0D1E2F /* MeetingActaPDF.swift */; };
+		6A99C09975E50A2E4BC202C4 /* MeetingsShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47568F8E8704DECBB09A436E /* MeetingsShared.swift */; };
+		F8E7F775520519BA87E55E0F /* MacMeetingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F0625FAD874A1699AAFC8CC /* MacMeetingsView.swift */; };
+		67B49945FF8F4757B47E23B6 /* ScheduleGridPDFRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE68D432B0174FD0B007786D /* ScheduleGridPDFRenderer.swift */; };
+		87AA1CEE4BBF49A5BDAA17B6 /* ScheduleWeekGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85E8648625AD46C1947791EA /* ScheduleWeekGridView.swift */; };
 		42B06F3786219357754DA73D /* TeacherRadarStudentInsightRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AD45ACA95D963773FDADD4C /* TeacherRadarStudentInsightRow.swift */; };
 		43101C459EA2DE9D65B9E71B /* PlannerSessionComposerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCB48C7B33C7EB638C18CEF5 /* PlannerSessionComposerSheet.swift */; };
 		4603B95F5E71DE05F5B36F0B /* TournamentModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEB05410ADED16A84A47A761 /* TournamentModule.swift */; };
@@ -192,6 +204,9 @@
 		727DC013672A58DEC4CCB567 /* MiGestorKMPMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7F324EED74CBC624894170D /* MiGestorKMPMacApp.swift */; };
 		733437AB0213E2D83A1686C7 /* ScheduleImportPreviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2383FA2AFCB17CB773F8D8C /* ScheduleImportPreviewSheet.swift */; };
 		7342286FCDBCE94224A61888 /* AttendanceShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = F42B9FCF55764453E68E5BB6 /* AttendanceShared.swift */; };
+		9A0C8C8C15224C088B6C2B5B /* TutoringShared.swift in Sources */ = {isa = PBXBuildFile; fileRef = 640333E22FB74DC6981E001C /* TutoringShared.swift */; };
+		C94C4C0D869B4E1A8605C3AA /* ScheduleGridPDFRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE68D432B0174FD0B007786D /* ScheduleGridPDFRenderer.swift */; };
+		32C24A41862749828019A5A7 /* ScheduleWeekGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85E8648625AD46C1947791EA /* ScheduleWeekGridView.swift */; };
 		738EEEE78B67FE32320DC5E1 /* AppleFoundationContextualAIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 14C238867D14FCB6C59390D5 /* AppleFoundationContextualAIService.swift */; };
 		740FE4946BFED011E3EE355F /* AppleAppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 996E1D0739D88B5507B110B6 /* AppleAppEnvironment.swift */; };
 		753FCA184045EFF02028F2A5 /* NotebookSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 515D5694AA82CA792EE56E33 /* NotebookSettingsView.swift */; };
@@ -224,6 +239,8 @@
 		89A42DAB37443B7552C21222 /* AppleAppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 996E1D0739D88B5507B110B6 /* AppleAppEnvironment.swift */; };
 		8A7FC56C6C04259D4412E15C /* PlannerWorkspaceViewModel+Presentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 392F272D8882F34CB518A60C /* PlannerWorkspaceViewModel+Presentation.swift */; };
 		8A83E0FD7E5A964AAB5A36A1 /* StudentProfilesWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8E171DE6E69C0B8DA060197 /* StudentProfilesWorkspaceView.swift */; };
+		F5C242171041B88FD23E576D /* MeetingsWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA98B198F6AC10FF2B628D27 /* MeetingsWorkspaceView.swift */; };
+		A1B2C3D4E5F60718293A4B5C /* MeetingsWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA98B198F6AC10FF2B628D27 /* MeetingsWorkspaceView.swift */; };
 		8C4327B93009C00C61F6D012 /* PlannerWorkspaceViewModel+Presentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 392F272D8882F34CB518A60C /* PlannerWorkspaceViewModel+Presentation.swift */; };
 		8CDF2E982B870BD83D430A83 /* GeneralSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDF85B72D878968E171D9F9C /* GeneralSettingsView.swift */; };
 		8DD86495D33264D09FE0618C /* AppleAIReadinessFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9066EF34A52C09F07E8CFAE7 /* AppleAIReadinessFixtures.swift */; };
@@ -577,6 +594,7 @@
 		B819027ADD26559CC96B1BDB /* KmpBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KmpBridge.swift; sourceTree = "<group>"; };
 		B8AD3A2E943A41407A974460 /* EvaluationSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvaluationSettingsView.swift; sourceTree = "<group>"; };
 		B8E171DE6E69C0B8DA060197 /* StudentProfilesWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudentProfilesWorkspaceView.swift; sourceTree = "<group>"; };
+		CA98B198F6AC10FF2B628D27 /* MeetingsWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingsWorkspaceView.swift; sourceTree = "<group>"; };
 		B928B856CB84C9E4660F8B34 /* MacPhysicalTestsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacPhysicalTestsView.swift; sourceTree = "<group>"; };
 		B9E628D0904D069E276C888E /* AppleSpreadsheetReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSpreadsheetReader.swift; sourceTree = "<group>"; };
 		BA7EEE397867C9AB1B682637 /* SupportMeasureShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportMeasureShared.swift; sourceTree = "<group>"; };
@@ -617,6 +635,14 @@
 		ED160717C62AAA3AB794905E /* PlannerWorkspaceViewModel+CascadeMove.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerWorkspaceViewModel+CascadeMove.swift"; sourceTree = "<group>"; };
 		F0BFD8699A1E65C7A09163CF /* NotebookAverageEditorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookAverageEditorSheet.swift; sourceTree = "<group>"; };
 		F42B9FCF55764453E68E5BB6 /* AttendanceShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttendanceShared.swift; sourceTree = "<group>"; };
+		640333E22FB74DC6981E001C /* TutoringShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TutoringShared.swift; sourceTree = "<group>"; };
+		47568F8E8704DECBB09A436E /* MeetingsShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingsShared.swift; sourceTree = "<group>"; };
+		B3D1A0C7E2F4589A6C0D1E2F /* MeetingActaPDF.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingActaPDF.swift; sourceTree = "<group>"; };
+		A7B8C9D0E1F2304556677889 /* PlannerPedagogyShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerPedagogyShared.swift; sourceTree = "<group>"; };
+		D1E2F3A4B5C6708899AABBCC /* DashboardRecommendations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardRecommendations.swift; sourceTree = "<group>"; };
+		9F0625FAD874A1699AAFC8CC /* MacMeetingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacMeetingsView.swift; sourceTree = "<group>"; };
+		FE68D432B0174FD0B007786D /* ScheduleGridPDFRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleGridPDFRenderer.swift; sourceTree = "<group>"; };
+		85E8648625AD46C1947791EA /* ScheduleWeekGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleWeekGridView.swift; sourceTree = "<group>"; };
 		F6B44EBC79907A49017DC0CD /* AppleBackupModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleBackupModels.swift; sourceTree = "<group>"; };
 		F7414896A8713DD61AE874FC /* NotebookDynamicCellsRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookDynamicCellsRow.swift; sourceTree = "<group>"; };
 		F7AB7B0DD5ECB7FDBA159F03 /* PhysicalScaleProfileService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhysicalScaleProfileService.swift; sourceTree = "<group>"; };
@@ -679,6 +705,7 @@
 				98A9F35D6CEDD07FCA45EBA5 /* MacSettingsView.swift */,
 				B45DCEB32A99C22B048911B0 /* MacSqliteCompat.c */,
 				9EA0ED7ACCCC1D3A0A73D045 /* MacStudentsView.swift */,
+				9F0625FAD874A1699AAFC8CC /* MacMeetingsView.swift */,
 				926C38D687AB3B3B857DA79A /* MacSyncView.swift */,
 				D7F324EED74CBC624894170D /* MiGestorKMPMacApp.swift */,
 				D2E833F8E8281D5E3F4BFB0F /* NotebookMacLayout.swift */,
@@ -707,6 +734,13 @@
 				75BBE6314E371EFE7E28E853 /* AppSettingsModels.swift */,
 				863347F9ECD4F8B4496AA0AD /* AppSettingsStore.swift */,
 				F42B9FCF55764453E68E5BB6 /* AttendanceShared.swift */,
+				640333E22FB74DC6981E001C /* TutoringShared.swift */,
+				47568F8E8704DECBB09A436E /* MeetingsShared.swift */,
+				B3D1A0C7E2F4589A6C0D1E2F /* MeetingActaPDF.swift */,
+				A7B8C9D0E1F2304556677889 /* PlannerPedagogyShared.swift */,
+				D1E2F3A4B5C6708899AABBCC /* DashboardRecommendations.swift */,
+				FE68D432B0174FD0B007786D /* ScheduleGridPDFRenderer.swift */,
+				85E8648625AD46C1947791EA /* ScheduleWeekGridView.swift */,
 				1027C324D7108B1CD8EB79AC /* BackupCenterView.swift */,
 				5EA2D2AD055252AE33611496 /* BackupHistoryList.swift */,
 				41D847221EF034B6A7ED4339 /* BackupRestorePreviewSheet.swift */,
@@ -889,6 +923,7 @@
 				66C430BD4F07BF647679F179 /* SettingsWorkspaceView.swift */,
 				964764E602D3B6EF684BD755 /* StudentImportSheet.swift */,
 				B8E171DE6E69C0B8DA060197 /* StudentProfilesWorkspaceView.swift */,
+				CA98B198F6AC10FF2B628D27 /* MeetingsWorkspaceView.swift */,
 				26E65AEB66C13E89107AA8BA /* SupportMeasureBulkImportSheet.swift */,
 				6C58CFF01D452588EAF8D687 /* SupportMeasureGroupOverviewSheet.swift */,
 				A708FA79C628B9F04661BFC6 /* SyncStatusBadge.swift */,
@@ -1134,6 +1169,13 @@
 				BEE09F01DFABE9A8498C8B0E /* AppleViewCompatibility.swift in Sources */,
 				DFEEA8B716E874E7C7BE0E8B /* AssignRubricToTabView.swift in Sources */,
 				7342286FCDBCE94224A61888 /* AttendanceShared.swift in Sources */,
+				9A0C8C8C15224C088B6C2B5B /* TutoringShared.swift in Sources */,
+				32CE6F86DE9C33DC5491ED7B /* MeetingsShared.swift in Sources */,
+				C4E2B1D8F3A5690B7D1E2F3A /* MeetingActaPDF.swift in Sources */,
+				B8C9D0E1F2A3405566778899 /* PlannerPedagogyShared.swift in Sources */,
+				E2F3A4B5C6D7809900AABBCD /* DashboardRecommendations.swift in Sources */,
+				C94C4C0D869B4E1A8605C3AA /* ScheduleGridPDFRenderer.swift in Sources */,
+				32C24A41862749828019A5A7 /* ScheduleWeekGridView.swift in Sources */,
 				5AA56A1A703EDF8406F8B991 /* AttendanceWorkspaceView.swift in Sources */,
 				0403F67C7B940442768FE76B /* BackupCenterView.swift in Sources */,
 				C912103268D6101445655180 /* BackupHistoryList.swift in Sources */,
@@ -1186,6 +1228,7 @@
 				BD47B7FB84E4AAC46BCF34DD /* MacSettingsView.swift in Sources */,
 				0D1BC8425E85592907678393 /* MacSqliteCompat.c in Sources */,
 				66F98BF4EEB8D773D5E4C999 /* MacStudentsView.swift in Sources */,
+				F8E7F775520519BA87E55E0F /* MacMeetingsView.swift in Sources */,
 				9546F37A775EA87B30F4F374 /* MacSyncView.swift in Sources */,
 				F6B4E75C853D144083E2E482 /* MacTrackpadSwipeHelper.swift in Sources */,
 				727DC013672A58DEC4CCB567 /* MiGestorKMPMacApp.swift in Sources */,
@@ -1290,6 +1333,7 @@
 				C4D6907F72CCBB50F0B8A8FE /* StringHelpers.swift in Sources */,
 				620D07C339E42E89597D4757 /* StudentImportSheet.swift in Sources */,
 				BC2B7AE09356DAEE25AAB21B /* StudentProfilesWorkspaceView.swift in Sources */,
+				F5C242171041B88FD23E576D /* MeetingsWorkspaceView.swift in Sources */,
 				7F9DEC07FE3E26C70A7F8BAF /* SupportMeasureBulkImport.swift in Sources */,
 				3FF1BF0D16BF0F5C1BDD8354 /* SupportMeasureBulkImportSheet.swift in Sources */,
 				24CE11CD926F694D56F3EAFA /* SupportMeasureGroupOverviewSheet.swift in Sources */,
@@ -1341,6 +1385,13 @@
 				BEE5A4B10ED6EF26DC223E17 /* AppleViewCompatibility.swift in Sources */,
 				1862DCED173C424EA7C21B6F /* AssignRubricToTabView.swift in Sources */,
 				428537EEF8A394024D951475 /* AttendanceShared.swift in Sources */,
+				30391F3F648B4D45BCE7F887 /* TutoringShared.swift in Sources */,
+				6A99C09975E50A2E4BC202C4 /* MeetingsShared.swift in Sources */,
+				D5F3C2E9A4B6701C8E2F3A4B /* MeetingActaPDF.swift in Sources */,
+				C9D0E1F2A3B4506677889900 /* PlannerPedagogyShared.swift in Sources */,
+				F3A4B5C6D7E890AABBCCDDEE /* DashboardRecommendations.swift in Sources */,
+				67B49945FF8F4757B47E23B6 /* ScheduleGridPDFRenderer.swift in Sources */,
+				87AA1CEE4BBF49A5BDAA17B6 /* ScheduleWeekGridView.swift in Sources */,
 				9AA8BC06ED560D826F02901B /* AttendanceWorkspaceView.swift in Sources */,
 				2A06B1A387AF1081E88869D0 /* BackupCenterView.swift in Sources */,
 				C193D2C208233ECEE9B0BDB5 /* BackupHistoryList.swift in Sources */,
@@ -1471,6 +1522,7 @@
 				2B8C387421A1620F71EB8F16 /* StringHelpers.swift in Sources */,
 				107B33FECB5C4C30230B96D1 /* StudentImportSheet.swift in Sources */,
 				8A83E0FD7E5A964AAB5A36A1 /* StudentProfilesWorkspaceView.swift in Sources */,
+				A1B2C3D4E5F60718293A4B5C /* MeetingsWorkspaceView.swift in Sources */,
 				04891C59ED32BF9061BB8EBF /* SupportMeasureBulkImport.swift in Sources */,
 				EBA60E4775B5E9606BA03D00 /* SupportMeasureBulkImportSheet.swift in Sources */,
 				E6AB578A3AAF0FF71FC6ADE9 /* SupportMeasureGroupOverviewSheet.swift in Sources */,

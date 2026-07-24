@@ -1,23 +1,35 @@
 import SwiftUI
 import MiGestorKit
 
+/// Grupo resultante de `sequenceGroups()`. Se usa una estructura nombrada en lugar de una
+/// tupla con 4 etiquetas porque esta última hacía que el inferidor de tipos del compilador
+/// se atascara (timeout de type-check) al inferir el tipo del `compactMap` de más abajo.
+/// Nota: no confundir con `PlannerSequenceGroup` (definida en PlannerModels.swift), que es
+/// un modelo distinto usado por `loadEnrichedSequences()`.
+struct PlannerFilteredSequenceGroup {
+    let key: String
+    let title: String
+    let groupName: String
+    let sessions: [PlanningSession]
+}
+
 @MainActor
 extension PlannerWorkspaceViewModel {
-    func sequenceGroups() -> [(key: String, title: String, groupName: String, sessions: [PlanningSession])] {
+    func sequenceGroups() -> [PlannerFilteredSequenceGroup] {
         let grouped = Dictionary(grouping: filteredPlannerSessions()) { session in
             "\(session.groupId)-\(session.teachingUnitId)-\(normalizedSituationTitle(session.teachingUnitName))"
         }
-        let items: [(key: String, title: String, groupName: String, sessions: [PlanningSession])] = grouped.compactMap { key, sessions in
+        let items: [PlannerFilteredSequenceGroup] = grouped.compactMap { key, sessions in
             guard let first = sessions.first else { return nil }
-            let titleText = first.teachingUnitName.nilIfBlank ?? "Situación sin título"
-            let sortedSessions = sessions.sorted { lhs, rhs in
+            let titleText: String = first.teachingUnitName.nilIfBlank ?? "Situación sin título"
+            let sortedSessions: [PlanningSession] = sessions.sorted { lhs, rhs in
                 if lhs.weekNumber == rhs.weekNumber {
                     if lhs.dayOfWeek == rhs.dayOfWeek { return lhs.period < rhs.period }
                     return lhs.dayOfWeek < rhs.dayOfWeek
                 }
                 return lhs.weekNumber < rhs.weekNumber
             }
-            return (key: key, title: titleText, groupName: first.groupName, sessions: sortedSessions)
+            return PlannerFilteredSequenceGroup(key: key, title: titleText, groupName: first.groupName, sessions: sortedSessions)
         }
         return items.sorted { lhs, rhs in
             lhs.groupName == rhs.groupName ? lhs.title < rhs.title : lhs.groupName < rhs.groupName

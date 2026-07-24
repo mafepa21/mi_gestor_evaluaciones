@@ -13,6 +13,12 @@ public final class AppleBackupService: ObservableObject {
     @Published public var needsRestart: Bool = false
     @Published public var latestEmergencyBackupUrl: URL? = nil
 
+    /// Bases de datos que el arranque puso en cuarentena porque no pudo abrirlas
+    /// (ver `createAppleDriver` en AppleDriver.kt). Cuando esto ocurre la app se abre
+    /// vacía y, hasta 2026-07, no se avisaba de ninguna forma: el usuario veía sus datos
+    /// desaparecer sin saber que seguían en disco y eran recuperables.
+    @Published public var quarantinedDatabases: [AppleQuarantinedDatabase] = []
+
     private let fileManager: FileManager
     public let backupsDirectoryURL: URL
     public let databaseURL: URL
@@ -65,6 +71,59 @@ public final class AppleBackupService: ObservableObject {
         } catch {
             self.lastError = "Error escaneando copias de seguridad: \(error.localizedDescription)"
         }
+
+        scanQuarantinedDatabases()
+    }
+
+    /// Busca bases de datos apartadas por el arranque (`<nombre>.backup_<epoch>`) y las
+    /// publica para que la UI pueda avisar. Sin esto la pérdida es completamente silenciosa.
+    public func scanQuarantinedDatabases() {
+        let appDataURL = databaseURL.deletingLastPathComponent()
+        let dbName = databaseURL.lastPathComponent
+
+        guard let urls = try? fileManager.contentsOfDirectory(
+            at: appDataURL,
+            includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            quarantinedDatabases = []
+            return
+        }
+
+        let prefix = dbName + ".backup_"
+        let found: [AppleQuarantinedDatabase] = urls.compactMap { url in
+            let name = url.lastPathComponent
+            // Los sidecars acompañan al .db en cuarentena; no son entradas propias.
+            guard name.hasPrefix(prefix), !name.hasSuffix("-wal"), !name.hasSuffix("-shm") else {
+                return nil
+            }
+
+            let epochText = String(name.dropFirst(prefix.count))
+            let quarantinedAt = TimeInterval(epochText).map(Date.init(timeIntervalSince1970:))
+                ?? (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
+                ?? Date.distantPast
+            let size = (try? getFileSize(url)) ?? 0
+
+            var summary: AppleBackupSummary? = nil
+            if size > 0 {
+                summary = AppleBackupSummary(
+                    classCount: countRows(in: url.path, table: "classes"),
+                    studentCount: countRows(in: url.path, table: "students"),
+                    notebookColumnCount: countRows(in: url.path, table: "notebook_columns"),
+                    rubricCount: countRows(in: url.path, table: "rubrics"),
+                    attendanceRecordCount: countRows(in: url.path, table: "attendance")
+                )
+            }
+
+            return AppleQuarantinedDatabase(
+                url: url,
+                quarantinedAt: quarantinedAt,
+                sizeBytes: size,
+                summary: summary
+            )
+        }
+
+        quarantinedDatabases = found.sorted { $0.quarantinedAt > $1.quarantinedAt }
     }
 
     public func createBackup(note: String? = nil) async throws -> AppleBackupDescriptor {
@@ -73,7 +132,14 @@ public final class AppleBackupService: ObservableObject {
 
         do {
             try ensureDirectoriesExist()
-            
+
+            // Una base de datos ausente, vacía o sin cabecera SQLite no produce una copia:
+            // produce un paquete que PARECE válido (manifiesto correcto, adjuntos copiados)
+            // con database.sqlite de 0 bytes. Es exactamente lo que ocurrió en macOS mientras
+            // databasePath apuntaba a un fichero fantasma, y dejó al usuario sin copias
+            // utilizables durante meses sin un solo aviso. Fallar aquí es obligatorio.
+            try validateUsableDatabase(at: databaseURL, context: "la base de datos activa")
+
             // Format package path
             let formatter = DateFormatter()
             formatter.dateFormat = "yyyyMMdd_HHmmss"
@@ -134,6 +200,14 @@ public final class AppleBackupService: ObservableObject {
             
             // 4. Compute schema and database size
             let dbSize = try getFileSize(destinationDBURL)
+            guard dbSize > 0 else {
+                try? fileManager.removeItem(at: packageURL)
+                throw NSError(
+                    domain: "AppleBackupService",
+                    code: 422,
+                    userInfo: [NSLocalizedDescriptionKey: "La copia resultante estaba vacía y se ha descartado. No se ha guardado nada."]
+                )
+            }
             let dbChecksum = try calculateSHA256(for: destinationDBURL)
             let schemaVersion = getSchemaVersion(of: databaseURL.path)
             
@@ -272,15 +346,28 @@ public final class AppleBackupService: ObservableObject {
                 throw NSError(domain: "AppleBackupService", code: 400, userInfo: [NSLocalizedDescriptionKey: "No se puede restaurar una copia corrupta o sin validar: \(verified.verificationError ?? "Error desconocido")"])
             }
             
-            // 2. Create Emergency Backup
-            let emergencyNote = "Copia de seguridad de emergencia previa a restauración de \(descriptor.displayName) (\(descriptor.manifest.createdAt.formattedDateText))"
-            let emergencyCopy = try await createBackup(note: emergencyNote)
-            self.latestEmergencyBackupUrl = emergencyCopy.url
-            
-            // 3. Overwrite the database
+            // 2. La verificación por checksum NO basta: el hash de un fichero vacío es
+            // perfectamente válido y coincide con su manifiesto. Restaurar una de esas
+            // copias borraría los datos actuales y los sustituiría por nada.
             let packageURL = descriptor.url
             let sourceDB = packageURL.appendingPathComponent("database.sqlite")
-            
+            try validateUsableDatabase(at: sourceDB, context: "la copia seleccionada")
+
+            // 3. Create Emergency Backup
+            // Best-effort: si la base activa no es utilizable (vacía o corrupta) no hay nada
+            // que proteger, y ese es precisamente el caso en el que el usuario más necesita
+            // restaurar. No lo bloqueamos por no poder hacer una copia de la nada.
+            let emergencyNote = "Copia de seguridad de emergencia previa a restauración de \(descriptor.displayName) (\(descriptor.manifest.createdAt.formattedDateText))"
+            do {
+                let emergencyCopy = try await createBackup(note: emergencyNote)
+                self.latestEmergencyBackupUrl = emergencyCopy.url
+            } catch {
+                self.latestEmergencyBackupUrl = nil
+                print("[AppleBackupService] Sin copia de emergencia previa a restaurar: \(error.localizedDescription)")
+            }
+
+            // 4. Overwrite the database
+
             // Delete active WAL and SHM journal sidecars so they don't apply to the restored database
             for suffix in ["-wal", "-shm"] {
                 let activeSidecar = URL(fileURLWithPath: databaseURL.path + suffix)
@@ -304,7 +391,7 @@ public final class AppleBackupService: ObservableObject {
                 }
             }
             
-            // 4. Restore attachments
+            // 5. Restore attachments
             if fileManager.fileExists(atPath: attachmentsURL.path) {
                 try fileManager.removeItem(at: attachmentsURL)
             }
@@ -324,7 +411,7 @@ public final class AppleBackupService: ObservableObject {
                 try copyDirectoryContents(from: packageLearningSituations, to: learningSituationsURL)
             }
             
-            // 5. Trigger restart requirements flag
+            // 6. Trigger restart requirements flag
             self.needsRestart = true
         } catch {
             self.lastError = "Error restaurando copia: \(error.localizedDescription)"
@@ -439,6 +526,49 @@ public final class AppleBackupService: ObservableObject {
     private func getFileSize(_ url: URL) throws -> Int64 {
         let attributes = try fileManager.attributesOfItem(atPath: url.path)
         return (attributes[.size] as? NSNumber)?.int64Value ?? 0
+    }
+
+    /// Comprueba que la ruta es una base de datos SQLite real y no vacía.
+    ///
+    /// Un fichero de 0 bytes supera cualquier verificación por checksum (el hash del vacío
+    /// es válido y estable), así que el checksum por sí solo no protege de copiar o
+    /// restaurar la nada. Se valida tamaño y la cabecera mágica de SQLite.
+    private func validateUsableDatabase(at url: URL, context: String) throws {
+        guard fileManager.fileExists(atPath: url.path) else {
+            throw NSError(
+                domain: "AppleBackupService",
+                code: 404,
+                userInfo: [NSLocalizedDescriptionKey: "No se encontró \(context) en \(url.path)."]
+            )
+        }
+
+        let size = (try? getFileSize(url)) ?? 0
+        guard size > 0 else {
+            throw NSError(
+                domain: "AppleBackupService",
+                code: 422,
+                userInfo: [NSLocalizedDescriptionKey: "\(context.prefix(1).uppercased())\(context.dropFirst()) está vacía (0 bytes). Operación cancelada para no destruir datos."]
+            )
+        }
+
+        // Cabecera SQLite: los 16 primeros bytes son "SQLite format 3" + NUL.
+        let expectedHeader = Array("SQLite format 3\u{0}".utf8)
+        guard let handle = try? FileHandle(forReadingFrom: url) else {
+            throw NSError(
+                domain: "AppleBackupService",
+                code: 422,
+                userInfo: [NSLocalizedDescriptionKey: "No se pudo leer \(context) para validarla."]
+            )
+        }
+        defer { try? handle.close() }
+        let header = (try? handle.read(upToCount: expectedHeader.count)) ?? Data()
+        guard Array(header) == expectedHeader else {
+            throw NSError(
+                domain: "AppleBackupService",
+                code: 422,
+                userInfo: [NSLocalizedDescriptionKey: "\(context.prefix(1).uppercased())\(context.dropFirst()) no es una base de datos SQLite válida. Operación cancelada."]
+            )
+        }
     }
 
     private func calculateSHA256(for fileURL: URL) throws -> String {

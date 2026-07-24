@@ -1823,12 +1823,22 @@ struct AnalyticsHorizontalBarsView: View {
 struct AnalyticsHeatmapView: View {
     let cells: [KmpBridge.HeatmapCell]
 
+    /// Filas y columnas se derivan por **orden de aparición** en `cells`, no
+    /// alfabéticamente. Ordenar alfabéticamente dejaba los días como
+    /// `D, J, L, M, S, V, X` y no funciona en absoluto para las etiquetas de
+    /// semana, que son fechas (`6/7`, `13/7`, `20/7`). Quien construye las
+    /// celdas ya las genera en el orden correcto: basta con respetarlo.
     var rows: [String] {
-        Array(Set(cells.map(\.rowLabel))).sorted()
+        orderedUnique(cells.map(\.rowLabel))
     }
 
     var columns: [String] {
-        Array(Set(cells.map(\.columnLabel))).sorted()
+        orderedUnique(cells.map(\.columnLabel))
+    }
+
+    private func orderedUnique(_ labels: [String]) -> [String] {
+        var seen = Set<String>()
+        return labels.filter { seen.insert($0).inserted }
     }
 
     var maxValue: Double {

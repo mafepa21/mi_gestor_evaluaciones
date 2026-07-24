@@ -1,0 +1,46 @@
+-- Migration 37: Reuniones de centro y sus actas
+--
+-- Ambito centro, a diferencia de student_tutoring_sessions (migracion 36), que
+-- es de ambito alumno. Una reunion no cuelga de ninguna otra fila.
+--
+-- Los acuerdos van en una tabla hija (meeting_agreements) con responsable y
+-- fecha limite propios, que es justo lo que la migracion 36 anticipo que
+-- llegaria: el valor documental del acta esta en saber quien se hace cargo de
+-- que y para cuando, y en poder marcar cada acuerdo como cumplido por separado.
+CREATE TABLE IF NOT EXISTS meetings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL DEFAULT '',
+    date_iso TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'OTRA',
+    location TEXT NOT NULL DEFAULT '',
+    attendees TEXT NOT NULL DEFAULT '',
+    summary TEXT NOT NULL DEFAULT '',
+    is_closed INTEGER NOT NULL DEFAULT 0,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS meeting_agreements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    meeting_id INTEGER NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    responsible TEXT NOT NULL DEFAULT '',
+    due_iso TEXT,
+    is_done INTEGER NOT NULL DEFAULT 0,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (meeting_id) REFERENCES meetings(id) ON DELETE CASCADE
+);
+
+-- Consulta dominante: el listado de reuniones, de la mas reciente a la mas antigua.
+CREATE INDEX IF NOT EXISTS idx_meetings_date ON meetings(date_iso DESC);
+
+-- Consulta hija: los acuerdos de una reunion, en el orden en que se anotaron.
+CREATE INDEX IF NOT EXISTS idx_meeting_agreements_meeting ON meeting_agreements(meeting_id, id);
+
+-- Consulta secundaria: acuerdos pendientes con fecha limite, para avisar de lo que vence.
+CREATE INDEX IF NOT EXISTS idx_meeting_agreements_due ON meeting_agreements(due_iso) WHERE is_done = 0;

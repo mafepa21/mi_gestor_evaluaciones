@@ -976,7 +976,7 @@ struct IOSWorkspaceContent: View {
     private var moduleContent: some View {
         switch activeModule {
         case .dashboard, .courses, .students, .teacherRadar, .notebook,
-             .attendance, .planner, .situations, .diary, .evaluationHub:
+             .attendance, .planner, .situations, .diary, .meetings, .evaluationHub:
             academicContent
         default:
             evaluationAndPEContent
@@ -1062,6 +1062,9 @@ struct IOSWorkspaceContent: View {
                 onOpenModule: onOpenModule
             )
             .environmentObject(bridge)
+        case .meetings:
+            MeetingsWorkspaceView(bridge: bridge)
+                .environmentObject(bridge)
         default:
             EmptyView()
         }

@@ -115,9 +115,15 @@ struct MacRubricsView: View {
                     description: Text("Aún no hay rúbricas cargadas en el bridge.")
                 )
             } else {
-                HSplitView {
+                // HStack con ancho fijo + Divider en vez de HSplitView: el NSSplitView del
+                // maestro-detalle (tabla de rúbricas + panel de detalle), anidado en el
+                // NavigationSplitView raíz, entra en el bucle de "Update Constraints in Window
+                // pass" de AppKit y tumba la app al cambiar de rúbrica seleccionada (mismo crash
+                // corregido en reuniones/alumnado/sync).
+                HStack(spacing: 0) {
                     rubricsTable
-                        .frame(minWidth: 340, idealWidth: 460, maxWidth: 560)
+                        .frame(width: 460)
+                    Divider()
                     rubricDetailPanel
                         .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }

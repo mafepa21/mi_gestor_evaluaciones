@@ -7,6 +7,12 @@ struct MiGestorKMPMacApp: App {
     @Environment(\.openWindow) private var openWindow
     @AppStorage("theme_mode") private var themeModeRawValue: String = AppThemeMode.system.rawValue
     @StateObject private var session = MacAppSessionController()
+    // Ver `MacAppDelegate` más abajo: desactiva la restauración de estado de ventanas de AppKit.
+    // No es la causa raíz del crash "Update Constraints in Window pass" (esa era el
+    // `.frame(minWidth:minHeight:)` de más abajo, ya sustituido), pero se deja como medida
+    // adicional: con state restoration activa, `defaults` sigue acumulando entradas de autosave
+    // de ventana atadas a nombres de tipo generados que cambian en cada build.
+    @NSApplicationDelegateAdaptor(MacAppDelegate.self) private var appDelegate
 
     private var themeMode: AppThemeMode {
         AppThemeMode(rawValue: themeModeRawValue) ?? .system
@@ -21,7 +27,18 @@ struct MiGestorKMPMacApp: App {
             MacApplicationRootView(session: session)
                 .environment(\.appThemeMode, themeMode)
                 .preferredColorScheme(themeMode.colorSchemeOverride)
-                .frame(minWidth: 900, minHeight: 600)
+                // Antes había un `.frame(minWidth: 900, minHeight: 600)` aquí. Ese modificador,
+                // combinado con la restauración de estado de ventana que Xcode fuerza al lanzar
+                // la app (scheme con `ignoresPersistentStateOnLaunch = "NO"`), hacía que AppKit
+                // entrara en un bucle de layout al arrancar: NSException "The window has been
+                // marked as needing another Update Constraints in Window pass, but it has already
+                // had more Update Constraints in Window passes than there are views in the
+                // window.", que abortaba el proceso mientras aún se veía "Preparando shell
+                // macOS…". Se reprodujo de forma determinista bajo Xcode (Run) y desapareció al
+                // quitar el `.frame(minWidth:minHeight:)`. El tamaño mínimo se fija ahora vía
+                // AppKit puro (`MacWindowMinSizeSetter` más abajo), que no participa en el pase
+                // de Auto Layout de SwiftUI y no reproduce el bucle.
+                .background(MacWindowMinSizeSetter(minSize: NSSize(width: 900, height: 600)))
                 .appOnChange(of: scenePhase) { _, newPhase in
                     handleScenePhase(newPhase)
                 }
@@ -155,12 +172,17 @@ private struct MacBackupsWindowScene: View {
     @ObservedObject var session: MacAppSessionController
 
     var body: some View {
-        HSplitView {
+        // HStack + Divider en vez de HSplitView: se elimina el NSSplitView (mismo antipatrón
+        // de constraints de AppKit corregido en reuniones/alumnado/sync) para descartar el
+        // crash de "Update Constraints in Window pass".
+        HStack(spacing: 0) {
             MacBackupsView(store: session.backupStore)
-                .frame(minWidth: 520)
+                .frame(minWidth: 520, maxWidth: .infinity)
+
+            Divider()
 
             MacBackupInspectorView(store: session.backupStore)
-                .frame(minWidth: 300, idealWidth: 340, maxWidth: 420)
+                .frame(width: 360)
         }
         .background(MacAppStyle.pageBackground)
         .controlSize(.regular)
@@ -216,6 +238,43 @@ private struct MacApplicationRootView: View {
                 \.uiFeatureFlags,
                 UiFeatureFlags.default.withReducedMotion(accessibilityReduceMotion || prefersReducedMotion)
             )
+    }
+}
+
+/// Desactiva la restauración de estado de ventanas de AppKit (`NSWindowRestoration`).
+///
+/// No es la causa raíz del crash de arranque bajo Xcode (esa era el `.frame(minWidth:minHeight:)`
+/// del `WindowGroup`, ver comentario en `MiGestorKMPMacApp.body` y en `MacWindowMinSizeSetter`),
+/// pero el scheme `MiGestorKMPMac` tiene `ignoresPersistentStateOnLaunch = "NO"`, así que Xcode
+/// lanza la app pidiéndole a AppKit que restaure la ventana previa. `defaults` acumula, build
+/// tras build, entradas de autosave de `NSSplitView`/frame de ventana bajo `com.migestor.mac`
+/// atadas a nombres de tipo de Swift generados (que cambian en cada recompilación); desactivar la
+/// restauración evita que esa basura se siga acumulando y se reconcilie con el layout actual.
+final class MacAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
+        false
+    }
+}
+
+/// Fija `NSWindow.minSize` directamente en AppKit, sin pasar por el sistema de constraints de
+/// SwiftUI. Sustituye a `.frame(minWidth:minHeight:)` en el contenido del `WindowGroup` (ver
+/// comentario en `MiGestorKMPMacApp.body`) porque ese modificador es el que disparaba el bucle
+/// de "Update Constraints in Window pass" al restaurar el estado de la ventana bajo Xcode.
+private struct MacWindowMinSizeSetter: NSViewRepresentable {
+    let minSize: NSSize
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            view.window?.minSize = minSize
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            nsView.window?.minSize = minSize
+        }
     }
 }
 

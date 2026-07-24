@@ -644,6 +644,84 @@ interface StudentSupportMeasureRepository {
     suspend fun delete(id: Long)
 }
 
+interface StudentTutoringSessionRepository {
+    suspend fun listByStudent(studentId: Long): List<StudentTutoringSession>
+    /** Seguimientos abiertos cuya revision vence en o antes de `onOrBeforeIso`. */
+    suspend fun listPendingReviews(onOrBeforeIso: String): List<StudentTutoringSession>
+    suspend fun save(
+        id: Long? = null,
+        studentId: Long,
+        dateIso: String,
+        channel: TutoringChannel = TutoringChannel.IN_PERSON,
+        attendees: String = "",
+        topics: String = "",
+        agreements: String = "",
+        reviewDueIso: String? = null,
+        isClosed: Boolean = false,
+        createdAtEpochMs: Long = 0,
+        updatedAtEpochMs: Long = 0,
+        deviceId: String? = null,
+        syncVersion: Long = 0,
+    ): Long
+    suspend fun delete(id: Long)
+}
+
+interface MeetingRepository {
+    /** Todas las reuniones, de la mas reciente a la mas antigua, con sus acuerdos ya cargados. */
+    suspend fun listAll(): List<Meeting>
+    suspend fun getById(id: Long): Meeting?
+    /** Acuerdos sin cerrar cuya fecha limite vence en o antes de `onOrBeforeIso`. */
+    suspend fun listPendingAgreements(onOrBeforeIso: String): List<MeetingAgreement>
+    suspend fun saveMeeting(
+        id: Long? = null,
+        title: String,
+        dateIso: String,
+        type: MeetingType = MeetingType.OTRA,
+        location: String = "",
+        attendees: String = "",
+        summary: String = "",
+        isClosed: Boolean = false,
+        createdAtEpochMs: Long = 0,
+        updatedAtEpochMs: Long = 0,
+        deviceId: String? = null,
+        syncVersion: Long = 0,
+    ): Long
+    /** Borra la reunion; sus acuerdos caen por la cascada del esquema. */
+    suspend fun deleteMeeting(id: Long)
+    suspend fun saveAgreement(
+        id: Long? = null,
+        meetingId: Long,
+        description: String,
+        responsible: String = "",
+        dueIso: String? = null,
+        isDone: Boolean = false,
+        createdAtEpochMs: Long = 0,
+        updatedAtEpochMs: Long = 0,
+        deviceId: String? = null,
+        syncVersion: Long = 0,
+    ): Long
+    suspend fun deleteAgreement(id: Long)
+}
+
+interface PlannerWeekPlanRepository {
+    /** El plan de un grupo en una semana ISO concreta, o `null` si aun no existe. */
+    suspend fun getPlan(classId: Long, year: Int, week: Int): PlannerWeekPlan?
+    suspend fun save(
+        id: Long? = null,
+        classId: Long,
+        year: Int,
+        week: Int,
+        strategies: List<String> = emptyList(),
+        instruments: List<String> = emptyList(),
+        notes: String = "",
+        createdAtEpochMs: Long = 0,
+        updatedAtEpochMs: Long = 0,
+        deviceId: String? = null,
+        syncVersion: Long = 0,
+    ): Long
+    suspend fun delete(id: Long)
+}
+
 interface CompetenciesRepository {
     fun observeCompetencies(): Flow<List<CompetencyCriterion>>
     suspend fun listCompetencies(): List<CompetencyCriterion>

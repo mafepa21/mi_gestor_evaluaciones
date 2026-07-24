@@ -58,6 +58,8 @@ struct MacAttendanceView: View {
     @State private var noteDraft = ""
     @State private var isLoading = false
     @State private var showAllPresent = false
+    @State private var incidentHeatmapFacts: KmpBridge.ChartFacts?
+    @State private var isLoadingIncidentHeatmap = false
 
     private var selectedClass: SchoolClass? {
         selectedClassId.flatMap { id in attendanceStore.classes.first(where: { $0.id == id }) }
@@ -226,6 +228,9 @@ struct MacAttendanceView: View {
         .task(id: selectedDate) {
             await reloadClassOverviews()
             await reloadAttendance()
+        }
+        .task(id: incidentHeatmapKey) {
+            await reloadIncidentHeatmap()
         }
         .appOnChange(of: selectedStudentId) { _, newValue in
             noteDraft = selectedInspectionAttendance?.note ?? ""
@@ -521,37 +526,147 @@ struct MacAttendanceView: View {
     }
 
     private var historyContent: some View {
-        ScrollView([.horizontal, .vertical]) {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 0) {
-                    historyHeaderCell("Alumno", width: 220)
-                    ForEach(monthDates, id: \.self) { date in
-                        historyHeaderCell(Self.dayHeaderString(date), width: 44)
-                    }
-                }
+        // Scroll vertical externo + scroll horizontal solo para la rejilla: así
+        // la tarjeta de patrones no se desplaza lateralmente al recorrer el mes.
+        ScrollView(.vertical) {
+            VStack(alignment: .leading, spacing: MacAppStyle.sectionSpacing) {
+                incidentPatternsCard
 
-                ForEach(visibleHistoryStudents, id: \.id) { student in
-                    HStack(spacing: 0) {
-                        Button {
-                            historySelection = nil
-                            selectedStudentId = student.id
-                        } label: {
-                            Text(student.fullName)
-                                .font(.callout.weight(.medium))
-                                .lineLimit(1)
-                                .frame(width: 220, height: 42, alignment: .leading)
-                                .padding(.horizontal, 10)
+                ScrollView(.horizontal) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack(spacing: 0) {
+                            historyHeaderCell("Alumno", width: 220)
+                            ForEach(monthDates, id: \.self) { date in
+                                historyHeaderCell(Self.dayHeaderString(date), width: 44)
+                            }
                         }
-                        .buttonStyle(MacHoverableButtonStyle(cornerRadius: 0))
-                        .background(MacAppStyle.cardBackground)
-                        .overlay(Rectangle().stroke(MacAppStyle.cardBorder, lineWidth: 0.5))
 
-                        ForEach(monthDates, id: \.self) { date in
-                            historyCell(record: historyRecord(for: student.id, date: date), studentId: student.id, date: date)
+                        ForEach(visibleHistoryStudents, id: \.id) { student in
+                            HStack(spacing: 0) {
+                                Button {
+                                    historySelection = nil
+                                    selectedStudentId = student.id
+                                } label: {
+                                    Text(student.fullName)
+                                        .font(.callout.weight(.medium))
+                                        .lineLimit(1)
+                                        .frame(width: 220, height: 42, alignment: .leading)
+                                        .padding(.horizontal, 10)
+                                }
+                                .buttonStyle(MacHoverableButtonStyle(cornerRadius: 0))
+                                .background(MacAppStyle.cardBackground)
+                                .overlay(Rectangle().stroke(MacAppStyle.cardBorder, lineWidth: 0.5))
+
+                                ForEach(monthDates, id: \.self) { date in
+                                    historyCell(record: historyRecord(for: student.id, date: date), studentId: student.id, date: date)
+                                }
+                            }
                         }
                     }
                 }
             }
+        }
+    }
+
+    /// Heatmap de incidencias por semana y día lectivo. Reutiliza el mismo
+    /// cálculo (`ChartKind.incidentHeatmap`) y el mismo render
+    /// (`AnalyticsHeatmapView`) que Informes: aquí solo se trae al sitio donde
+    /// el docente revisa el histórico del grupo.
+    @ViewBuilder
+    private var incidentPatternsCard: some View {
+        VStack(alignment: .leading, spacing: MacAppStyle.innerPadding) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Patrones de incidencias")
+                    .font(MacAppStyle.sectionTitle)
+                Text(incidentHeatmapFacts?.subtitle ?? "Concentración de incidencias por semana y día lectivo.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if isLoadingIncidentHeatmap {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 16)
+            } else if let facts = incidentHeatmapFacts, Self.hasIncidentData(facts) {
+                HStack(spacing: MacAppStyle.cardSpacing) {
+                    ForEach(facts.metrics) { metric in
+                        MacMetricCard(
+                            label: metric.title,
+                            value: metric.value,
+                            tint: MacAppStyle.warningTint,
+                            systemImage: metric.systemImage
+                        )
+                    }
+                }
+
+                AnalyticsHeatmapView(cells: facts.heatmapCells)
+                    .frame(minHeight: 200)
+
+                ForEach(facts.factLines, id: \.self) { line in
+                    Text(line)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            } else {
+                Text("Sin incidencias registradas en las últimas semanas de este grupo.")
+                    .font(MacAppStyle.bodyText)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 4)
+            }
+        }
+        .padding(MacAppStyle.innerPadding)
+        .frame(maxWidth: 680, alignment: .leading)
+        .background(MacAppStyle.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: MacAppStyle.cardRadius, style: .continuous)
+                .stroke(MacAppStyle.cardBorder, lineWidth: 0.5)
+        )
+    }
+
+    /// `ChartFacts.hasEnoughData` vale `!cells.isEmpty`, y las celdas se generan
+    /// siempre (una por semana y día, aunque valgan 0), así que nunca es falso.
+    /// Para decidir si hay algo que enseñar hace falta mirar los valores: un
+    /// grupo sin incidencias merece un empty state, no una rejilla de ceros con
+    /// un "mayor concentración: S-3 · L con 0 incidencias".
+    private static func hasIncidentData(_ facts: KmpBridge.ChartFacts) -> Bool {
+        facts.hasEnoughData && facts.heatmapCells.contains { $0.value > 0 }
+    }
+
+    /// Clave de recarga del heatmap: modo + grupo. `.task(id:)` cancela la
+    /// carga anterior sola, así que no se queda en pantalla el grupo previo.
+    private var incidentHeatmapKey: String {
+        "\(mode.rawValue)|\(selectedClassId ?? -1)"
+    }
+
+    @MainActor
+    private func reloadIncidentHeatmap() async {
+        guard mode == .history, let classId = selectedClassId else {
+            incidentHeatmapFacts = nil
+            return
+        }
+        isLoadingIncidentHeatmap = true
+        defer { isLoadingIncidentHeatmap = false }
+        do {
+            let facts = try await bridge.buildChartFacts(
+                classId: classId,
+                request: KmpBridge.AnalyticsRequest(
+                    chartKind: .incidentHeatmap,
+                    timeRange: .last30Days,
+                    selectedClassIds: [classId],
+                    selectedClassNames: [],
+                    prompt: nil,
+                    querySummary: "Patrones de incidencias por día de la semana."
+                )
+            )
+            guard !Task.isCancelled else { return }
+            incidentHeatmapFacts = facts
+        } catch {
+            guard !Task.isCancelled else { return }
+            incidentHeatmapFacts = nil
         }
     }
 

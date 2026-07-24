@@ -1,0 +1,28 @@
+-- Migration 36: Registro de tutorias con familias
+--
+-- Ambito alumno, igual que student_support_measures, con la que enlaza de forma
+-- natural: una tutoria suele ser el origen o el seguimiento de una medida de apoyo.
+-- Los acuerdos van en texto libre; si mas adelante hacen falta acuerdos con
+-- responsable y vencimiento propios, seran una tabla hija y no un cambio de esta.
+CREATE TABLE IF NOT EXISTS student_tutoring_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER NOT NULL,
+    date_iso TEXT NOT NULL,
+    channel TEXT NOT NULL DEFAULT 'IN_PERSON',
+    attendees TEXT NOT NULL DEFAULT '',
+    topics TEXT NOT NULL DEFAULT '',
+    agreements TEXT NOT NULL DEFAULT '',
+    review_due_iso TEXT,
+    is_closed INTEGER NOT NULL DEFAULT 0,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+);
+
+-- Consulta dominante: las tutorias de un alumno, de la mas reciente a la mas antigua.
+CREATE INDEX IF NOT EXISTS idx_tutoring_sessions_student ON student_tutoring_sessions(student_id, date_iso DESC);
+
+-- Consulta secundaria: revisiones pendientes para avisar de seguimientos vencidos.
+CREATE INDEX IF NOT EXISTS idx_tutoring_sessions_review ON student_tutoring_sessions(review_due_iso) WHERE is_closed = 0;

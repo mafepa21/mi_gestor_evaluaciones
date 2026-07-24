@@ -6,8 +6,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDate
@@ -135,6 +138,58 @@ class RubricEvaluationViewModelTest {
         assertNotNull(state.rubricDetail)
         assertEquals(10.0, state.totalScore)
         assertEquals(12L, state.selectedLevels[1L])
+    }
+
+    @Test
+    fun `a slower stale load does not overwrite the state written by a faster newer load`() = runTest {
+        // Regresion: abrir la rubrica del alumno A (carga lenta) y luego la de B, sin
+        // cancelacion entre ambas -si A tarda mas en responder que B, A puede terminar
+        // DESPUES y sobrescribir el estado con sus datos mientras state.studentId ya es
+        // B (se fija de forma sincrona al iniciar loadEvaluation)- hacia que "Guardar"
+        // persistiera los niveles de A bajo el id de B.
+        val rubricIdA = 1L
+        val rubricIdB = 2L
+        val rubricDetailA = RubricDetail(rubric = Rubric(id = rubricIdA, name = "Rubrica A"), criteria = emptyList())
+        val rubricDetailB = RubricDetail(rubric = Rubric(id = rubricIdB, name = "Rubrica B"), criteria = emptyList())
+
+        val delaysMs = mutableListOf(500L, 50L) // A (vieja) tarda 500ms, B (nueva) tarda 50ms
+        val fakeRubrics = object : FakeRubricEvalRubricsRepository() {
+            override suspend fun getRubricDetail(rubricId: Long): RubricDetail? {
+                val delayMs = delaysMs.removeFirstOrNull() ?: 0L
+                if (delayMs > 0) kotlinx.coroutines.delay(delayMs)
+                return if (rubricId == rubricIdA) rubricDetailA else rubricDetailB
+            }
+        }
+        val fakeStudents = object : FakeRubricEvalStudentsRepository() {
+            override suspend fun getStudent(studentId: Long): Student? =
+                Student(id = studentId, firstName = "Alumno$studentId", lastName = "Test")
+        }
+        val fakeEvaluations = object : FakeRubricEvalEvaluationsRepository() {
+            override suspend fun getEvaluation(evaluationId: Long): Evaluation? =
+                Evaluation(id = evaluationId, classId = 100L, code = "E$evaluationId", name = "Eval", type = "RUBRIC", weight = 1.0)
+        }
+
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val viewModel = RubricEvaluationViewModel(
+            rubricsRepository = fakeRubrics,
+            studentsRepository = fakeStudents,
+            evaluationsRepository = fakeEvaluations,
+            gradesRepository = FakeRubricEvalGradesRepository(),
+            notebookRepository = FakeRubricEvalNotebookRepository(),
+            scope = scope
+        )
+        try {
+            viewModel.loadEvaluation(studentId = 1L, evaluationId = 10L, rubricId = rubricIdA) // vieja: arranca ya, tardara 500ms
+            advanceTimeBy(10) // deja que arranque sin terminar
+            viewModel.loadEvaluation(studentId = 2L, evaluationId = 20L, rubricId = rubricIdB) // nueva: arranca despues, tardara 50ms
+            advanceUntilIdle()
+
+            val state = viewModel.uiState.value
+            assertEquals(2L, state.studentId, "El studentId debe ser el de la carga mas reciente")
+            assertEquals("Rubrica B", state.rubricName, "Los datos mostrados deben ser los de la carga mas reciente, no los de la vieja que termino despues")
+        } finally {
+            scope.cancel()
+        }
     }
 }
 

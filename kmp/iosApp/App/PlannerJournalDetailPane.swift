@@ -559,6 +559,10 @@ private struct JournalMediaDock: View {
                     Label(recorder.isRecording ? "Detener audio" : "Grabar audio", systemImage: recorder.isRecording ? "stop.circle.fill" : "mic.fill")
                 }
                 .buttonStyle(.borderedProminent)
+#if os(macOS)
+                .disabled(true)
+                .help("Grabación de audio disponible solo en iPad")
+#endif
 
                 Button {
                     vm.journalDraft.media.append(

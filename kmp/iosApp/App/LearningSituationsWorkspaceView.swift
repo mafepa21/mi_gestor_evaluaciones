@@ -2073,6 +2073,7 @@ private struct LearningSituationAssessmentImportPreviewSheet: View {
                         .foregroundStyle(.secondary)
                     TextField("Peso %", text: weightBinding(for: index))
                         .textFieldStyle(.roundedBorder)
+                        .appKeyboardType(.decimalPad)
                 }
                 .frame(maxWidth: 160)
             }

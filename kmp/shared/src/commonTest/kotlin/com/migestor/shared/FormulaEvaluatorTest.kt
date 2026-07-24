@@ -96,4 +96,34 @@ class FormulaEvaluatorTest {
         val result = evaluator.evaluate("REDONDEAR(1+1, 2)", emptyMap())
         assertEquals(2.0, result)
     }
+
+    @Test
+    fun `rounds exact half up, not to the nearest even number`() {
+        // Regresion: kotlin.math.round hace "banker's rounding" (mitad al par):
+        // 7,5 sube a 8 (8 es par) pero 8,5 TAMBIEN baja a 8 (8 es par) en vez de
+        // subir a 9. La convencion docente esperada es "mitad siempre hacia
+        // arriba": un alumno con media exacta 8,5 debe recibir un 9, no un 8.
+        assertEquals(9.0, evaluator.evaluate("REDONDEAR(8,5;0)", emptyMap()))
+        assertEquals(8.0, evaluator.evaluate("REDONDEAR(7,5;0)", emptyMap()))
+        assertEquals(3.0, evaluator.evaluate("REDONDEAR(2,5;0)", emptyMap()))
+        assertEquals(1.0, evaluator.evaluate("REDONDEAR(0,5;0)", emptyMap()))
+    }
+
+    @Test
+    fun `rounds exact half up when the value comes from a weighted average, not just a literal`() {
+        // Misma regresion que el test anterior, pero con la media calculada a partir
+        // de notas reales (0,4/0,6) en vez de un literal "8,5" ya escrito en la
+        // formula, para cubrir el caso realista de una columna Media.
+        val result = evaluator.evaluate(
+            "REDONDEAR(([EX1]*0.5)+([EX2]*0.5);0)",
+            mapOf("EX1" to 8.0, "EX2" to 9.0), // media = 8.5
+        )
+        assertEquals(9.0, result)
+    }
+
+    @Test
+    fun `rounds exact half up with decimal digits`() {
+        assertEquals(8.25, evaluator.evaluate("REDONDEAR(8,245;2)", emptyMap()))
+        assertEquals(-9.0, evaluator.evaluate("REDONDEAR(-8,5;0)", emptyMap()))
+    }
 }

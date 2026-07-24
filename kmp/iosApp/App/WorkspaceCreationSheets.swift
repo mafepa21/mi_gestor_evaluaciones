@@ -553,7 +553,7 @@ struct CreatePhysicalTestSheet: View {
                 )
                 close()
             } catch {
-                errorMessage = "No se pudo crear la prueba física: \(error.localizedDescription)"
+                errorMessage = "No se pudo crear el test físico: \(error.localizedDescription)"
             }
         }
     }
@@ -774,6 +774,7 @@ struct CreatePEMaterialRecordSheet: View {
     @State var status: PEMaterialStatus = .prepared
     @State var note = ""
     @State var selectedSessionId: Int64?
+    @State private var errorMessage: String?
 
     private var isEditing: Bool { existingRecord != nil }
 
@@ -817,6 +818,14 @@ struct CreatePEMaterialRecordSheet: View {
             note = existingRecord.note
             selectedSessionId = existingRecord.sessionId
         }
+        .alert("No se pudo guardar", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("Aceptar", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
+        }
     }
 
     private func save() {
@@ -832,26 +841,30 @@ struct CreatePEMaterialRecordSheet: View {
                 note: note,
                 createdAt: existingRecord?.createdAt ?? Date()
             )
-            if let session = sessions.first(where: { $0.id == selectedSessionId }) {
-                let materialLine = "\(itemName) x\(quantity)" + (note.nilIfBlank.map { " (\($0))" } ?? "")
-                let prepared = status == .prepared ? materialLine : session.materialToPrepareText
-                let used = status == .used ? materialLine : session.materialUsedText
-                try? await bridge.savePESessionOperationalData(
-                    sessionId: session.id,
-                    scheduledSpace: "",
-                    usedSpace: "",
-                    materialToPrepare: prepared,
-                    materialUsed: used,
-                    injuries: session.injuriesText,
-                    unequippedStudents: session.unequippedStudentsText,
-                    intensityScore: session.intensityScore,
-                    stationObservations: session.stationObservationsText,
-                    physicalIncidents: session.physicalIncidentsText,
-                    journalStatus: session.summary?.status ?? .draft
-                )
+            do {
+                if let session = sessions.first(where: { $0.id == selectedSessionId }) {
+                    let materialLine = "\(itemName) x\(quantity)" + (note.nilIfBlank.map { " (\($0))" } ?? "")
+                    let prepared = status == .prepared ? materialLine : session.materialToPrepareText
+                    let used = status == .used ? materialLine : session.materialUsedText
+                    try await bridge.savePESessionOperationalData(
+                        sessionId: session.id,
+                        scheduledSpace: "",
+                        usedSpace: "",
+                        materialToPrepare: prepared,
+                        materialUsed: used,
+                        injuries: session.injuriesText,
+                        unequippedStudents: session.unequippedStudentsText,
+                        intensityScore: session.intensityScore,
+                        stationObservations: session.stationObservationsText,
+                        physicalIncidents: session.physicalIncidentsText,
+                        journalStatus: session.summary?.status ?? .draft
+                    )
+                }
+                onSaved(record)
+                dismiss()
+            } catch {
+                errorMessage = "No se pudo guardar el registro de material: \(error.localizedDescription)"
             }
-            onSaved(record)
-            dismiss()
         }
     }
 }
@@ -1231,12 +1244,5 @@ struct SupportMeasureFormSheet: View {
                 errorMessage = "No se pudo guardar la medida: \(error.localizedDescription)"
             }
         }
-    }
-}
-
-private extension String {
-    var nilIfBlank: String? {
-        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
     }
 }

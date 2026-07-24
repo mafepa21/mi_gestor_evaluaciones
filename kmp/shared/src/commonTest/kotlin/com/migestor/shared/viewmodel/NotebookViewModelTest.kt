@@ -703,6 +703,61 @@ class NotebookViewModelTest {
     }
 
     @Test
+    fun `saveCurrentNotebook does not overwrite a grade when the draft fails to parse`() = runTest {
+        // Regresion: saveCurrentNotebook llamaba a saveGrade con
+        // draft.replace(",", ".").toDoubleOrNull() sin el guard que si tiene
+        // internalSaveGrade; un draft no vacio que no parsea ("7,,5") se
+        // convertia en null y pisaba la nota ya guardada en BD con un valor vacio.
+        val classId = 1L
+        val student = Student(id = 1L, firstName = "Ana", lastName = "Lopez")
+        val column = NotebookColumnDefinition(
+            id = "custom_numeric",
+            title = "Proyecto",
+            type = NotebookColumnType.NUMERIC,
+        )
+        val repository = FakeNotebookRepository(
+            snapshot = NotebookSheet(
+                classId = classId,
+                tabs = emptyList(),
+                columns = listOf(column),
+                rows = listOf(
+                    NotebookRow(
+                        student = student,
+                        cells = emptyList(),
+                        weightedAverage = null,
+                        persistedGrades = listOf(
+                            Grade(
+                                id = 1L,
+                                classId = classId,
+                                studentId = student.id,
+                                columnId = column.id,
+                                evaluationId = null,
+                                value = 7.5,
+                            )
+                        ),
+                    )
+                ),
+            )
+        )
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val viewModel = createViewModel(repository, scope = scope)
+        try {
+            viewModel.selectClass(classId)
+            advanceUntilIdle()
+
+            viewModel.updateDraft(student.id, column.id, NotebookColumnType.NUMERIC, "7,,5")
+
+            val saved = viewModel.saveCurrentNotebook()
+            advanceUntilIdle()
+
+            assertEquals(true, saved)
+            assertEquals(0, repository.saveGradeCalls.size, "No debe llamar a saveGrade con un draft no parseable")
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
     fun `direct evaluation grade save updates local state without observer reload`() = runTest {
         val classId = 1L
         val evaluationId = 9L
@@ -866,6 +921,84 @@ class NotebookViewModelTest {
             check(finalState is NotebookUiState.Data) { "Se esperaba NotebookUiState.Data, fue $finalState" }
             val finalCell = finalState.sheet.rows.single().persistedCells.first { it.columnId == column.id }
             assertEquals("5/7", finalCell.displayValue)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `calculated column clears its draft when the formula can no longer be evaluated`() = runTest {
+        // Regresion: si la formula fallaba (variable ausente, p. ej. tras borrar la nota
+        // que referenciaba), `getOrNull() ?: return@forEach` dejaba el draft calculado
+        // anterior intacto -la celda y la media seguian mostrando el valor caduco en vez
+        // de vaciarse cuando ya no se podia recalcular. Se reproduce con dos snapshots de
+        // BD (antes/despues de borrar la nota base) en vez de updateDraft: el
+        // recalculo optimista de updateDraft usa el sheet en memoria justo antes de su
+        // propio upsertLocalGrade y no ejercita este camino (un detalle no relacionado
+        // con este bug); un reload real desde BD si lo hace.
+        val classId = 1L
+        val student = Student(id = 1L, firstName = "Ana", lastName = "Lopez")
+        val sourceColumn = NotebookColumnDefinition(id = "nota_base", title = "Nota base", type = NotebookColumnType.NUMERIC)
+        val calcColumn = NotebookColumnDefinition(id = "calc_col", title = "Calculada", type = NotebookColumnType.CALCULATED, formula = "[nota_base]*2")
+
+        val initialSnapshot = NotebookSheet(
+            classId = classId,
+            tabs = emptyList(),
+            columns = listOf(sourceColumn, calcColumn),
+            rows = listOf(
+                NotebookRow(
+                    student = student,
+                    cells = emptyList(),
+                    weightedAverage = null,
+                    persistedGrades = listOf(
+                        Grade(id = 1L, classId = classId, studentId = student.id, columnId = "nota_base", evaluationId = null, value = 5.0),
+                    ),
+                )
+            ),
+        )
+        // Tras borrar la nota base: sin grade para "nota_base", pero con el ultimo valor
+        // calculado (10.0) todavia persistido para "calc_col" -asi quedaba antes de este
+        // fix: el reload dejaba ese valor caduco intacto porque la formula ya no podia
+        // resolver [nota_base].
+        val afterDeleteSnapshot = NotebookSheet(
+            classId = classId,
+            tabs = emptyList(),
+            columns = listOf(sourceColumn, calcColumn),
+            rows = listOf(
+                NotebookRow(
+                    student = student,
+                    cells = emptyList(),
+                    weightedAverage = null,
+                    persistedGrades = listOf(
+                        Grade(id = 2L, classId = classId, studentId = student.id, columnId = "calc_col", evaluationId = null, value = 10.0),
+                    ),
+                )
+            ),
+        )
+
+        val repository = FakeNotebookRepository(
+            snapshot = initialSnapshot,
+            snapshotQueue = mutableListOf(initialSnapshot, afterDeleteSnapshot),
+            delayQueueMs = mutableListOf(0L, 0L),
+        )
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val viewModel = createViewModel(repository, scope = scope)
+        try {
+            viewModel.selectClass(classId)
+            advanceUntilIdle()
+
+            val dataBefore = viewModel.state.value as NotebookUiState.Data
+            assertEquals("10.0", dataBefore.numericDrafts[student.id to "calc_col"])
+
+            viewModel.selectClass(classId, force = true)
+            advanceUntilIdle()
+
+            val dataAfter = viewModel.state.value as NotebookUiState.Data
+            assertEquals(
+                null,
+                dataAfter.numericDrafts[student.id to "calc_col"],
+                "El draft calculado debe vaciarse, no quedarse con el valor caduco (10.0)"
+            )
         } finally {
             scope.cancel()
         }

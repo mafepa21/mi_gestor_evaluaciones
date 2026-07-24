@@ -130,7 +130,7 @@ extension PlannerWorkspaceViewModel {
                 status: status
             )
         } catch {
-            bulkSummary = "No se pudo actualizar el estado de la sesión: \(error.localizedDescription)"
+            bulkSummary = "No se pudo actualizar el estado de la sesión."
             return
         }
         updateLocalSession(session, status: status)

@@ -257,6 +257,7 @@ struct PlannerComposerDraft {
     var endTime: String? = nil
     var selectedInstrumentIds: Set<String> = []
     var learningSituationSessionPlanId: Int64? = nil
+    var repeatWeeksCount = 1
 }
 
 enum PlannerSaveState: Equatable {
@@ -400,10 +401,13 @@ final class PlannerAudioRecorder: NSObject, ObservableObject, AVAudioRecorderDel
             ]
             let recorder = try AVAudioRecorder(url: url, settings: settings)
             recorder.delegate = self
-            recorder.record()
-            self.recorder = recorder
-            self.recordedURL = url
-            isRecording = true
+            if recorder.record() {
+                self.recorder = recorder
+                self.recordedURL = url
+                isRecording = true
+            } else {
+                _ = stop(discard: true)
+            }
         } catch {
             _ = stop(discard: true)
         }

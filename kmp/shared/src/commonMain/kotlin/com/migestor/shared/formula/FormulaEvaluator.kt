@@ -209,7 +209,20 @@ class FormulaEvaluator {
 
         private fun round(value: Double, digits: Int): Double {
             val factor = 10.0.pow(digits)
-            return kotlin.math.round(value * factor) / factor
+            val scaled = value * factor
+            // kotlin.math.round redondea "mitad al par" (banker's rounding): 7,5 sube a
+            // 8 pero 8,5 tambien BAJA a 8 en vez de subir a 9. La convencion docente
+            // esperada es "mitad siempre hacia arriba" (7,5->8, 8,5->9), asi que un
+            // alumno con media exacta 8,5 recibia un 8 en el boletin en vez de un 9.
+            //
+            // Epsilon proporcional a la magnitud para compensar el error de
+            // representacion binaria de fracciones decimales que no son potencias de 2
+            // (p. ej. 8,245*100 puede quedar en 824.49999999999994 en vez de 824.5 por
+            // como se representa 0,245 en binario, no por la logica de redondeo).
+            val epsilon = 1e-9 * kotlin.math.max(1.0, kotlin.math.abs(scaled))
+            val nudged = scaled + if (scaled >= 0) epsilon else -epsilon
+            val rounded = if (nudged >= 0) kotlin.math.floor(nudged + 0.5) else kotlin.math.ceil(nudged - 0.5)
+            return rounded / factor
         }
 
         private fun bool(value: Boolean): Double = if (value) 1.0 else 0.0

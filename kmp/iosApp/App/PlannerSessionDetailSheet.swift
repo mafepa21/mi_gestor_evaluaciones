@@ -22,6 +22,7 @@ struct PlannerSessionDetailSheet: View {
     let onOpenDiary: () -> Void
     let onEdit: () -> Void
     var onDelete: (() -> Void)? = nil
+    var onCopyToNextWeek: (() -> Void)? = nil
     var presentation: PlannerSessionDetailPresentation = .sheet
     var onClose: (() -> Void)? = nil
 
@@ -190,6 +191,18 @@ struct PlannerSessionDetailSheet: View {
                     .padding(.vertical, 14)
             }
             .buttonStyle(.bordered)
+
+            if onCopyToNextWeek != nil {
+                Button {
+                    onCopyToNextWeek?()
+                } label: {
+                    Label("Duplicar", systemImage: "doc.on.doc")
+                        .font(.headline.weight(.semibold))
+                        .padding(.vertical, 14)
+                }
+                .buttonStyle(.bordered)
+                .help("Copiar esta sesión a la misma franja de la semana siguiente")
+            }
 
             if onDelete != nil {
                 Button(role: .destructive) {

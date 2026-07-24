@@ -1026,7 +1026,6 @@ struct IOSWorkspaceContent: View {
             PlannerWorkspaceIOS(
                 context: resolvedPlannerContext,
                 onOpenDiary: { ctx in onOpenModule(.diary, ctx.groupId, nil); onUpdatePlannerContext(ctx) },
-                onOpenSettings: { onOpenModule(.settings, selectionStore.selectedClassId, nil) },
                 onNavigationContextChange: onUpdatePlannerContext
             )
             .environmentObject(bridge)

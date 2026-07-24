@@ -17,6 +17,7 @@ struct SettingsSectionDescriptor: Identifiable, Hashable {
 extension SettingsSectionDescriptor {
     static let all: [SettingsSectionDescriptor] = [
         .init(id: "general",     title: "General",          subtitle: "Curso escolar y nombre del centro",         systemImage: "slider.horizontal.3",         tint: .blue),
+        .init(id: "schedule",    title: "Horario docente",  subtitle: "Franjas semanales, curso y evaluaciones",   systemImage: "calendar.badge.clock",         tint: .teal),
         .init(id: "appearance",  title: "Apariencia",        subtitle: "Tema de color y accesibilidad",            systemImage: "paintpalette.fill",            tint: .orange),
         .init(id: "evaluation",  title: "Evaluación",        subtitle: "Escalas, redondeos y cuaderno",            systemImage: "chart.bar.doc.horizontal.fill", tint: .indigo),
         .init(id: "datasec",     title: "Datos y seguridad", subtitle: "Copias de seguridad, restaurar, borrar",   systemImage: "lock.shield.fill",             tint: .green),
@@ -35,6 +36,7 @@ struct SettingsWorkspaceView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     @State private var selectedSection: SettingsSectionDescriptor? = SettingsSectionDescriptor.all.first
+    @State private var scheduleSelectedClassId: Int64?
 
     var body: some View {
         if sizeClass == .regular {
@@ -112,6 +114,11 @@ struct SettingsWorkspaceView: View {
         switch section.id {
         case "general":
             GeneralSettingsView(settings: settings)
+        case "schedule":
+            TeacherScheduleWizard(
+                bridge: bridge,
+                selectedClassId: $scheduleSelectedClassId
+            )
         case "appearance":
             AppearanceSettingsView(settings: settings)
         case "evaluation":

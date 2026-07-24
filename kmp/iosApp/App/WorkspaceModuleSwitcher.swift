@@ -62,9 +62,6 @@ extension AppWorkspaceShell {
                 onOpenDiary: { context in
                     openDiary(context: context)
                 },
-                onOpenSettings: {
-                    open(module: .settings, classId: selectedClassId)
-                },
                 onNavigationContextChange: { context in
                     plannerContext = context
                 }

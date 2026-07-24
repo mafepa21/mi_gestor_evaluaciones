@@ -12,23 +12,25 @@ struct PlannerWorkspaceIOS: View {
     @State private var isClearSchedulelessWeekConfirmationPresented = false
     @StateObject private var cascadeCoordinator = PlannerCascadeDropCoordinator()
     @State private var bannerDismissTask: Task<Void, Never>?
+    /// Sheet local del asistente de horario: antes "Ajustar agenda" navegaba
+    /// a Ajustes (`onOpenSettings`), que ni siquiera tenía una sección de
+    /// horario — un callejón sin salida. Ahora se abre aquí mismo, igual que
+    /// ya hacía macOS.
+    @State private var showingScheduleSettings = false
     private let initialSection: PlannerWorkspaceSection
     private let context: PlannerNavigationContext
     private let onOpenDiary: ((PlannerNavigationContext) -> Void)?
-    private let onOpenSettings: (() -> Void)?
     private let onNavigationContextChange: ((PlannerNavigationContext) -> Void)?
 
     init(
         initialSection: PlannerWorkspaceSection = .week,
         context: PlannerNavigationContext = PlannerNavigationContext(),
         onOpenDiary: ((PlannerNavigationContext) -> Void)? = nil,
-        onOpenSettings: (() -> Void)? = nil,
         onNavigationContextChange: ((PlannerNavigationContext) -> Void)? = nil
     ) {
         self.initialSection = initialSection
         self.context = context
         self.onOpenDiary = onOpenDiary
-        self.onOpenSettings = onOpenSettings
         self.onNavigationContextChange = onNavigationContextChange
     }
 
@@ -71,6 +73,18 @@ struct PlannerWorkspaceIOS: View {
         .appOnChange(of: vm.selectedSession?.id) { _ in syncNavigationContext() }
         .sheet(isPresented: $vm.showingComposer) {
             PlannerSessionComposerSheet(vm: vm)
+        }
+        .sheet(isPresented: $showingScheduleSettings, onDismiss: {
+            Task { await vm.reloadAll() }
+        }) {
+            TeacherScheduleWizard(
+                bridge: bridge,
+                selectedClassId: Binding(
+                    get: { vm.selectedGroupId },
+                    set: { vm.selectGroup($0) }
+                ),
+                onClose: { showingScheduleSettings = false }
+            )
         }
         .sheet(
             isPresented: Binding(
@@ -165,7 +179,8 @@ struct PlannerWorkspaceIOS: View {
                             onOpenSession: openSessionInDiary,
                             onDropSession: { sessionId, day, period in
                                 cascadeCoordinator.handleDrop(sessionId: sessionId, day: day, period: period, vm: vm)
-                            }
+                            },
+                            onOpenSettings: { showingScheduleSettings = true }
                         )
                         .safeAreaInset(edge: .top) {
                             if let message = cascadeCoordinator.transientMessage {
@@ -188,7 +203,7 @@ struct PlannerWorkspaceIOS: View {
                 case .sequence:
                     PlannerSequenceGanttView(vm: vm, onOpenSession: openSessionInDiary)
                 case .summary:
-                    PlannerSummaryDashboard(vm: vm, onOpenSettings: onOpenSettings, onOpenSession: openSessionInDiary)
+                    PlannerSummaryDashboard(vm: vm, onOpenSettings: { showingScheduleSettings = true }, onOpenSession: openSessionInDiary)
                 }
             }
             .background(appPageBackground(for: colorScheme).ignoresSafeArea())
@@ -1285,203 +1300,6 @@ private struct PlannerAgendaSessionRow: View {
         } message: {
             Text("Se eliminará esta sesión planificada.")
         }
-    }
-}
-
-private struct PlannerScheduleBoard: View {
-    @ObservedObject var vm: PlannerWorkspaceViewModel
-    let onOpenSettings: (() -> Void)?
-
-    /// Mapea las franjas al modelo neutro de la rejilla, resolviendo aquí el
-    /// nombre del grupo (la rejilla no conoce el puente KMP).
-    private var scheduleGridEntries: [ScheduleWeekGridView.Entry] {
-        vm.effectiveScheduleSlots.map { slot in
-            ScheduleWeekGridView.Entry(
-                id: slot.id,
-                dayOfWeek: Int(slot.dayOfWeek),
-                startTime: slot.startTime,
-                endTime: slot.endTime,
-                subject: slot.subjectLabel,
-                groupName: vm.groups.first(where: { $0.id == slot.schoolClassId })?.name ?? "Grupo \(slot.schoolClassId)",
-                unit: slot.unitLabel
-            )
-        }
-    }
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: IOSAppStyle.sectionSpacing) {
-                PremiumCard.section(title: "Resumen operativo", systemImage: "calendar.badge.clock") {
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("La configuración editable vive ahora en Ajustes para que Planner conserve una sola tarea principal.")
-                            .font(IOSAppStyle.captionText)
-                            .foregroundStyle(.secondary)
-
-                        HStack(spacing: 12) {
-                            IOSMetricCard(title: "Agenda", value: vm.scheduleName, tint: .blue)
-                            IOSMetricCard(title: "Curso", value: "\(vm.scheduleStartDate) · \(vm.scheduleEndDate)", tint: .indigo)
-                            IOSMetricCard(title: "Franjas", value: "\(vm.visibleScheduleSlotsSummaryCount)", tint: .teal)
-                            IOSMetricCard(title: "Evaluaciones", value: "\(vm.evaluationPeriods.count)", tint: .orange)
-                        }
-
-                        Label(vm.activeWeekdaySummary, systemImage: "calendar.badge.clock")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-
-                        if let onOpenSettings {
-                            Button("Configurar en Ajustes") {
-                                onOpenSettings()
-                            }
-                                .buttonStyle(.borderedProminent)
-                        }
-                    }
-                }
-
-                PremiumCard.section(title: "Franjas activas", systemImage: "clock.fill") {
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("Resumen de las franjas que ya están alimentando el tablero semanal actual.")
-                            .font(IOSAppStyle.captionText)
-                            .foregroundStyle(.secondary)
-
-                        if vm.effectiveScheduleSlots.isEmpty {
-                            Text("Todavía no hay franjas definidas para esta agenda.")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                        }
-
-                        if vm.isUsingLegacyWeeklySlots {
-                            Text("Mostrando franjas heredadas del horario original de KMP Desktop.")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                        }
-
-                        // Misma rejilla que el panel de macOS: un horario es
-                        // bidimensional y como lista obliga a reconstruir la
-                        // semana de cabeza. La lista de abajo se conserva
-                        // porque lleva el detalle de cada franja.
-                        if !vm.effectiveScheduleSlots.isEmpty {
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                ScheduleWeekGridView(
-                                    entries: scheduleGridEntries,
-                                    activeWeekdays: Array(vm.activeWeekdays),
-                                    dayLabel: vm.dayLabel(for:),
-                                    compact: true
-                                )
-                                .frame(minWidth: 560)
-                            }
-
-                            Divider()
-                        }
-
-                        ForEach(vm.effectiveScheduleSlots, id: \.id) { slot in
-                            HStack {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("\(vm.dayLabel(for: Int(slot.dayOfWeek))) · \(slot.startTime)-\(slot.endTime)")
-                                        .font(.body.weight(.semibold))
-                                    Text([
-                                        vm.groups.first(where: { $0.id == slot.schoolClassId })?.name ?? "Grupo \(slot.schoolClassId)",
-                                        slot.subjectLabel,
-                                        slot.unitLabel
-                                    ]
-                                    .compactMap { value in
-                                        guard let string = value?.trimmingCharacters(in: .whitespacesAndNewlines), !string.isEmpty else { return nil }
-                                        return string
-                                    }
-                                    .joined(separator: " · "))
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                                }
-                            }
-                            .padding(.vertical, 6)
-                        }
-                    }
-                }
-
-                PremiumCard.section(title: "Previsión lectiva", systemImage: "calendar.badge.exclamationmark") {
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("Sigue visible en Planner para contrastar lo previsto con lo ya creado, pero se edita desde Ajustes.")
-                            .font(IOSAppStyle.captionText)
-                            .foregroundStyle(.secondary)
-
-                        if vm.evaluationPeriods.isEmpty {
-                            Text("Aún no hay periodos evaluativos configurados.")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                        } else {
-                            ForEach(vm.evaluationPeriods.sorted(by: { ($0.sortOrder, $0.startDateIso) < ($1.sortOrder, $1.startDateIso) }), id: \.id) { period in
-                                VStack(alignment: .leading, spacing: 10) {
-                                    HStack {
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text(period.name)
-                                                .font(.headline)
-                                            Text("\(period.startDateIso) · \(period.endDateIso)")
-                                                .font(.caption.weight(.semibold))
-                                                .foregroundStyle(.secondary)
-                                        }
-                                    }
-
-                                    let periodForecast = vm.forecastRows.filter { $0.periodId == period.id }
-                                    if periodForecast.isEmpty {
-                                        Text("Sin previsión todavía. Añade franjas o revisa las fechas del curso.")
-                                            .font(.caption.weight(.semibold))
-                                            .foregroundStyle(.secondary)
-                                    } else {
-                                        ForEach(Array(periodForecast.enumerated()), id: \.offset) { _, row in
-                                            PlannerForecastRowView(row: row)
-                                        }
-                                    }
-                                }
-                                .padding(14)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                        .fill(EvaluationDesign.surfaceSoft)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-            .padding(IOSAppStyle.pagePadding)
-        }
-    }
-}
-
-// PlannerSummaryMetric removed in favor of IOSMetricCard
-
-private struct PlannerForecastRowView: View {
-    let row: PlannerSessionForecast
-
-    private var deltaColor: Color {
-        row.remainingSessions > 0 ? EvaluationDesign.danger : EvaluationDesign.success
-    }
-
-    private var progress: Double {
-        guard row.expectedSessions > 0 else { return 0 }
-        return min(Double(row.plannedSessions) / Double(row.expectedSessions), 1)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(row.className)
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
-                Text("\(row.plannedSessions) / \(row.expectedSessions)")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(deltaColor)
-            }
-
-            ProgressView(value: progress)
-                .tint(deltaColor)
-
-            if row.remainingSessions > 0 {
-                Label("Faltan \(row.remainingSessions) sesiones para completar la previsión", systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(deltaColor)
-            }
-        }
-        .padding(12)
-        .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 

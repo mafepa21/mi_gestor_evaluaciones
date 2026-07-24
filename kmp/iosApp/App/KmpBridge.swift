@@ -5191,6 +5191,50 @@ final class KmpBridge: ObservableObject {
         )
     }
 
+    func updateLearningSituationStatus(id: Int64, status: LearningSituationStatus) async throws {
+        guard let situation = try await container.learningSituationsRepository.getSituation(id: id) else {
+            throw NSError(domain: "LearningSituations", code: 2, userInfo: [NSLocalizedDescriptionKey: "No se encontró la situación para actualizar su estado."])
+        }
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let updatedTrace = situation.trace.doCopy(
+            authorUserId: situation.trace.authorUserId,
+            createdAt: situation.trace.createdAt,
+            updatedAt: Instant.companion.fromEpochMilliseconds(epochMilliseconds: nowMs),
+            associatedGroupId: situation.trace.associatedGroupId,
+            deviceId: localDeviceId,
+            syncVersion: situation.trace.syncVersion + 1
+        )
+        let updated = situation.doCopy(
+            id: situation.id,
+            title: situation.title,
+            stageLabel: situation.stageLabel,
+            courseLabel: situation.courseLabel,
+            subjectLabel: situation.subjectLabel,
+            termLabel: situation.termLabel,
+            centerLabel: situation.centerLabel,
+            sessionCount: situation.sessionCount,
+            challenge: situation.challenge,
+            finalProduct: situation.finalProduct,
+            payloadJson: situation.payloadJson,
+            status: status,
+            trace: updatedTrace
+        )
+        _ = try await container.learningSituationsRepository.saveSituation(situation: updated)
+        enqueueLocalChange(
+            entity: "learning_situation",
+            id: "\(id)",
+            updatedAtEpochMs: nowMs,
+            payload: [
+                "id": situation.id, "title": situation.title, "stageLabel": situation.stageLabel,
+                "courseLabel": situation.courseLabel, "subjectLabel": situation.subjectLabel,
+                "termLabel": situation.termLabel, "centerLabel": situation.centerLabel,
+                "sessionCount": situation.sessionCount, "challenge": situation.challenge,
+                "finalProduct": situation.finalProduct, "payloadJson": situation.payloadJson,
+                "status": status.name
+            ]
+        )
+    }
+
     func learningSituationVersions(id: Int64) async throws -> [LearningSituationVersion] {
 
         try await container.learningSituationsRepository.listVersions(learningSituationId: id)

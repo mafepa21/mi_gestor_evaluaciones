@@ -1,6 +1,23 @@
 import SwiftUI
 import MiGestorKit
 
+final class PlannerDayTimeTick: ObservableObject {
+    @Published var currentTime = Date()
+    private var timer: Timer?
+    
+    func start() {
+        if timer == nil {
+            timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+                self?.currentTime = Date()
+            }
+        }
+    }
+    func stop() {
+        timer?.invalidate()
+        timer = nil
+    }
+}
+
 private enum PlannerDayTimelineRow: Identifiable {
     case session(PlanningSession)
     case empty(PlannerVisibleSlot)
@@ -21,14 +38,14 @@ struct PlannerDayView: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
     let onOpenSession: (PlanningSession) -> Void
 
-    @State private var currentTime = Date()
+    @StateObject private var timeTick = PlannerDayTimeTick()
+    private var currentTime: Date { timeTick.currentTime }
     @State private var completionUndo: (session: PlanningSession, previousStatus: SessionStatus)?
     @State private var undoDismissTask: Task<Void, Never>?
     @State private var quickNoteSession: PlanningSession?
     @State private var quickNoteText = ""
     @State private var dragTranslation: CGFloat = 0
-
-    private let nowTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
+    @State private var showingQuickJournal = false
 
     private var sessions: [PlanningSession] { vm.daySessions() }
 
@@ -42,7 +59,8 @@ struct PlannerDayView: View {
             .padding(EvaluationDesign.screenPadding)
         }
         .simultaneousGesture(daySwipeGesture)
-        .onReceive(nowTimer) { currentTime = $0 }
+        .onAppear { timeTick.start() }
+        .onDisappear { timeTick.stop() }
         .sheet(
             isPresented: Binding(
                 get: { quickNoteSession != nil },
@@ -62,6 +80,17 @@ struct PlannerDayView: View {
                     }
                 )
             }
+        }
+        .sheet(isPresented: $showingQuickJournal) {
+            PlannerDayQuickJournalSheet(
+                vm: vm,
+                sessions: sessions,
+                onOpenSession: { session in
+                    showingQuickJournal = false
+                    onOpenSession(session)
+                },
+                onClose: { showingQuickJournal = false }
+            )
         }
     }
 
@@ -135,6 +164,13 @@ struct PlannerDayView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                Button {
+                    showingQuickJournal = true
+                } label: {
+                    Label("Diario rápido", systemImage: "bolt.badge.clock")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
                 if let firstPending = firstPendingJournalSession {
                     Button("Cerrar") {
                         onOpenSession(firstPending)
@@ -347,7 +383,7 @@ private struct PlannerDaySessionRow: View {
     @State private var isHovering = false
 
     private var tint: Color { Color(hex: vm.classColorHex(for: session.groupId)) }
-    private var stateTint: Color { vm.sessionStateTint(sessionStatus: session.status, journalStatus: vm.summary(for: session.id)?.status) }
+    private var stateTint: Color { vm.sessionStateTint(for: session) }
 
     var body: some View {
         HStack(alignment: .top, spacing: 16) {
@@ -368,7 +404,7 @@ private struct PlannerDaySessionRow: View {
                     Spacer()
                     PlannerStatusBadge(
                         label: vm.sessionStateLabel(for: session),
-                        systemImage: vm.sessionStateIcon(sessionStatus: session.status, journalStatus: vm.summary(for: session.id)?.status),
+                        systemImage: vm.sessionStateIcon(for: session),
                         tint: stateTint
                     )
                 }
@@ -570,21 +606,5 @@ struct PlannerEmptyState: View {
         }
         .frame(maxWidth: .infinity, minHeight: 280)
         .padding(24)
-    }
-}
-
-
-private extension Optional where Wrapped == String {
-    var nilIfBlank: String? {
-        switch self?.trimmingCharacters(in: .whitespacesAndNewlines) {
-        case .some(let value) where !value.isEmpty: return value
-        default: return nil
-        }
-    }
-}
-
-private extension String {
-    var nilIfBlank: String? {
-        trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : self
     }
 }

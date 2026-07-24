@@ -195,9 +195,3 @@ enum PlannerReportDocument {
         }
     }
 }
-
-private extension String {
-    var nilIfBlank: String? {
-        trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : self
-    }
-}

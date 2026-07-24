@@ -55,6 +55,7 @@ struct NotebookModuleView: View {
     @State var surfaceMode: NotebookSurfaceMode = .grid
     @State var todayAttendanceByStudentId: [Int64: String] = [:]
     @State var incidentCountByStudentId: [Int64: Int] = [:]
+    @State var activeSupportMeasureStudentIds: Set<Int64> = []
     @State var localInjuryStatuses: [Int64: Bool] = [:]
     @State var seatPositions: [Int64: NotebookSeatPosition] = [:]
     @State var highlightedRandomStudentId: Int64? = nil
@@ -68,6 +69,10 @@ struct NotebookModuleView: View {
     var groupByWorkGroup: Bool {
         groupByWorkGroupMode != "none"
     }
+    /// Color semántico de nota + heat de celda (rediseño radical del grid).
+    /// Toggle propio en el menú de acciones; `NotebookStatefulEditableTableCell`
+    /// lee la misma clave con su propio `@AppStorage` (ver `NotebookGridStyle`).
+    @AppStorage(NotebookGridStyle.semanticGradeColorDefaultsKey) var semanticGradeColorEnabled = true
     @State var categoryDraft = ""
     @State var editingCategoryId: String? = nil
     @State var isNotebookTabAlertPresented = false
@@ -229,13 +234,24 @@ struct NotebookModuleView: View {
         activeChoiceCellId = nil
         focusedCellId = nil
         focusMode = .normal
+        searchText = ""
 
         undoStack = []
         todayAttendanceByStudentId = [:]
         incidentCountByStudentId = [:]
+        localInjuryStatuses = [:]
+        seatPositions = [:]
+        seatingGradingColumnId = nil
+        activeSupportMeasureStudentIds = []
         riskLevelCache = [:]
         riskComputationKey = nil
         isPrecomputingRiskLevels = false
+
+        formulaDraft = ""
+        expandedEmptyCategoryIds = []
+        pendingRubricColumnId = nil
+        pendingRubricStudentOrder = []
+        pendingRubricCurrentStudentId = nil
 
         rowReloadRevisions = [:]
         structuralGridRevision += 1
@@ -415,10 +431,29 @@ struct NotebookModuleView: View {
                         },
                         onCreateTab: {
                             presentCreateNotebookTab()
+                        },
+                        onRenameTab: { tab in
+                            presentRenameNotebookTab(tab)
+                        },
+                        onDeleteTab: { tab in
+                            pendingDeleteNotebookTab = tab
                         }
                     )
                 }
                 spreadsheetContent(data: data, rows: rows)
+                    // Tarjeta elevada: el grid flota como superficie redondeada
+                    // sobre el lienzo neutro del módulo (margen a los lados y
+                    // abajo), en vez de ir a sangre completa. Es lo que da el aire
+                    // premium; el clip + borde + sombra separan datos de lienzo.
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(NotebookGridStyle.gridLine, lineWidth: 1)
+                    )
+                    .shadow(color: NotebookGridStyle.gridSurfaceShadow, radius: 14, x: 0, y: 6)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 2)
+                    .padding(.bottom, 16)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
@@ -429,7 +464,7 @@ struct NotebookModuleView: View {
                     .background(.ultraThinMaterial)
             }
         }
-        .background(EvaluationBackdrop())
+        .background(NotebookCanvasBackground())
         .onAppear {
             gridLayoutModel.configure(classId: data.sheet.classId)
             loadClassLearningSituations(classId: data.sheet.classId)
@@ -438,10 +473,12 @@ struct NotebookModuleView: View {
             }
         }
         .appOnChange(of: "\(data.sheet.classId)") { newValue in
+            resetNotebookTransientStateForClassChange()
             gridLayoutModel.configure(classId: data.sheet.classId)
             if let classId = Int64(newValue) {
                 loadClassLearningSituations(classId: classId)
             }
+            Task { await refreshNotebookSignals() }
         }
         .appOnChange(of: toolbarStateKey(data: data)) { _ in
             if !isMacInspectorOnly {
@@ -597,7 +634,7 @@ struct NotebookModuleView: View {
         .background(.thinMaterial)
         .overlay(alignment: .bottom) {
             Rectangle()
-                .fill(NotebookStyle.softBorder)
+                .fill(NotebookGridStyle.gridLineStrong)
                 .frame(height: 1)
         }
     }
@@ -678,6 +715,10 @@ struct NotebookModuleView: View {
                 Label("Plano", systemImage: surfaceMode == .seatingPlan ? "checkmark" : "rectangle.3.group")
             }
             .disabled(focusMode != .normal)
+        }
+
+        Toggle(isOn: $semanticGradeColorEnabled) {
+            Label("Colorear notas por banda", systemImage: "paintpalette")
         }
 
         Menu("Pestañas") {
@@ -1298,7 +1339,7 @@ struct NotebookModuleView: View {
                     RubricEvaluationView()
                         .environmentObject(bridge)
                         #if os(macOS)
-                        .frame(minWidth: 980, minHeight: 700)
+                        .frame(minWidth: 1180, minHeight: 700)
                         #endif
                 }
                 .sheet(isPresented: Binding(
@@ -1322,15 +1363,14 @@ struct NotebookModuleView: View {
                 .onAppear {
                     scheduleActiveNotebookTabSync(data: data)
                     scheduleToolbarStateSync(data: data)
+                    Task { await refreshNotebookSignals() }
                 }
                 .appOnChange(of: layoutState.notebookHiddenColumnsRequestID) { requestID in
                     guard requestID != nil else { return }
                     isOrganizationMenuPresented = false
                     isHiddenColumnsSheetPresented = true
                 }
-                .appOnChange(of: "\(data.sheet.classId)") { _ in
-                    resetNotebookTransientStateForClassChange()
-                }
+
                 .appOnChange(of: notebookTabsStateKey(data: data)) { _ in
                     scheduleActiveNotebookTabSync(data: data)
                 }
@@ -1697,7 +1737,7 @@ struct NotebookModuleView: View {
 
         #if os(macOS)
         content
-            .frame(minWidth: 520, idealWidth: 560, maxWidth: 640, minHeight: 560, idealHeight: 620)
+            .frame(minWidth: 820, idealWidth: 900, maxWidth: 1000, minHeight: 640, idealHeight: 780)
         #else
         content
             .presentationDetents([.large])

@@ -195,6 +195,23 @@ extension NotebookModuleView {
         .frame(width: 36, height: 36)
     }
 
+    /// Monograma de identidad para la celda de Nombre (rediseño radical del
+    /// grid): color determinista por alumno — mismo id, mismo color siempre,
+    /// como en Contactos — para distinguir alumnos de un vistazo en vez de una
+    /// columna de texto suelto. Distinto de `studentAvatar(for:)`, que usa
+    /// siempre el tinte de marca y vive en la columna Foto independiente.
+    func studentMonogram(for student: Student) -> some View {
+        let accent = NotebookGridStyle.studentAccent(for: student.id)
+        return ZStack {
+            Circle().fill(accent.opacity(0.16))
+            Text(initials(for: student))
+                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .foregroundStyle(accent)
+        }
+        .frame(width: 28, height: 28)
+        .accessibilityHidden(true)
+    }
+
     func initials(for student: Student) -> String {
         String(student.firstName.prefix(1)) + String(student.lastName.prefix(1))
     }
@@ -245,23 +262,31 @@ extension NotebookModuleView {
         item.row.averageExplanation?.pendingCells.count ?? 0
     }
 
+    /// La Media como "héroe" del rediseño radical del grid: nota grande
+    /// coloreada por banda (mismo toggle `semanticGradeColorEnabled` que las
+    /// celdas), medidor de completitud y estado — no un badge menudo con icono.
     func averageBadge(for item: NotebookTableRow) -> some View {
         let state = averageState(for: item)
         let pendingCount = averagePendingCount(for: item)
+        let totalCount = item.row.averageExplanation?.includedColumns.count ?? 0
+        let completedFraction: Double = totalCount > 0
+            ? Double(totalCount - pendingCount) / Double(totalCount)
+            : (state == .complete ? 1 : 0)
+
+        let band: NotebookGradeBand? = {
+            guard semanticGradeColorEnabled, let average = item.row.weightedAverage?.doubleValue else { return nil }
+            return NotebookGradeBand(scoreOutOfTen: average)
+        }()
+
         let tint: Color = {
+            if let band { return band.color }
             switch state {
             case .complete: return NotebookStyle.successTint
             case .pending: return NotebookStyle.warningTint
             case .insufficient: return .secondary
             }
         }()
-        let icon: String = {
-            switch state {
-            case .complete: return "checkmark.circle.fill"
-            case .pending: return "clock.fill"
-            case .insufficient: return "minus.circle"
-            }
-        }()
+
         let statusText: String = {
             switch state {
             case .complete: return "Completa"
@@ -270,34 +295,46 @@ extension NotebookModuleView {
             }
         }()
 
-        return VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 5) {
-                Image(systemName: icon)
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(tint)
-                Text(averageText(for: item))
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundStyle(state == .insufficient ? .secondary : .primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.82)
-            }
+        // Sin fill/borde propio: la columna Media ya se distingue como panel fijo
+        // con fondo sólido (`NotebookDataGrid.fixedColumnBackground`); el valor se
+        // destaca por tipografía y tinte semántico, no por otra caja encima.
+        //
+        // El número es el dato más importante de la columna: debe dominar sobre
+        // el medidor y el estado, no competir con ellos. El `ProgressView` nativo
+        // reservaba una altura variable por plataforma que, sumada al resto,
+        // desbordaba la altura de fila (`notebookGridRowHeight`, 50pt en macOS) y
+        // se veía como texto solapado con la fila de abajo; el medidor pasa a una
+        // cápsula propia de 3pt de alto, exacta, para que las tres líneas quepan
+        // siempre dentro de la fila.
+        return VStack(alignment: .leading, spacing: 3) {
+            Text(averageText(for: item))
+                .font(.system(size: 19, weight: .heavy, design: .rounded))
+                .foregroundStyle(state == .insufficient ? .secondary : tint)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+
+            Capsule()
+                .fill(NotebookGridStyle.gridLineStrong)
+                .frame(maxWidth: .infinity)
+                .frame(height: 3)
+                .overlay(alignment: .leading) {
+                    GeometryReader { proxy in
+                        Capsule()
+                            .fill(tint)
+                            .frame(width: max(3, proxy.size.width * completedFraction))
+                    }
+                }
 
             Text(statusText)
-                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                .font(.system(size: 9.5, weight: .semibold, design: .rounded))
                 .foregroundStyle(tint)
                 .lineLimit(1)
-                .minimumScaleFactor(0.75)
+                .minimumScaleFactor(0.8)
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(tint.opacity(state == .insufficient ? 0.08 : 0.12))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(tint.opacity(state == .insufficient ? 0.12 : 0.22), lineWidth: 1)
-        )
+        .padding(.vertical, 3)
+        .frame(maxHeight: .infinity, alignment: .center)
+        .clipped()
         .help(averageHelpText(for: state))
     }
 

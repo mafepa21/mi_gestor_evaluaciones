@@ -63,7 +63,7 @@ class BuildNotebookSheetUseCaseTest {
                 id = "calc_final",
                 title = "Final",
                 type = NotebookColumnType.CALCULATED,
-                formula = "ROUND((EX1 * 0.4) + (TA1 * 0.6), 2)",
+                formula = "ROUND((EX1 * 0.4) + (TA1 * 0.6); 2)",
                 tabIds = listOf("eval"),
                 order = 2,
                 widthDp = 160.0,
@@ -849,6 +849,143 @@ class BuildNotebookSheetUseCaseTest {
         assertEquals(2, insight.evidenceCount)
         assertEquals(listOf(101L), insight.linkedCompetencyIds)
         assertTrue(insight.averageScore != null)
+    }
+
+    @Test
+    fun `four level observation grid values are rescaled to a ten point basis`() = runTest {
+        val classId = 1L
+        val student = Student(id = 1, firstName = "Ana", lastName = "Lopez")
+        val grades = listOf(
+            Grade(id = 1, classId = classId, studentId = 1, columnId = "observation_max", evaluationId = null, value = 4.0),
+        )
+
+        val useCase = BuildNotebookSheetUseCase(
+            getNotebookUseCase = GetNotebookUseCase(
+                classesRepository = FakeClassesRepository2(student, classId),
+                evaluationsRepository = FakeEvaluationsRepository2(emptyList()),
+                gradesRepository = FakeGradesRepository2(grades),
+                notebookCellsRepository = FakeNotebookCellsRepository2()
+            )
+        )
+
+        val sheet = useCase.build(
+            classId = classId,
+            evaluations = emptyList(),
+            students = listOf(student),
+            tabs = listOf(NotebookTab(id = "eval", title = "Evaluación", order = 0)),
+            configuredColumns = listOf(
+                NotebookColumnDefinition(
+                    id = "observation_max",
+                    title = "Rejilla de observación",
+                    type = NotebookColumnType.NUMERIC,
+                    scaleKind = NotebookScaleKind.FOUR_LEVEL,
+                    tabIds = listOf("eval"),
+                    weight = 100.0,
+                ),
+            )
+        )
+
+        // Level 4 (max) on a 1-4 scale maps to 10.0, not 4.0.
+        assertEquals(10.0, sheet.rows.first().weightedAverage)
+        val explanation = sheet.rows.first().averageExplanation
+        assertEquals(10.0, explanation?.included?.single { it.columnId == "observation_max" }?.value)
+    }
+
+    @Test
+    fun `four level minimum and mid values rescale linearly`() = runTest {
+        val classId = 1L
+        val student = Student(id = 1, firstName = "Ana", lastName = "Lopez")
+        val grades = listOf(
+            Grade(id = 1, classId = classId, studentId = 1, columnId = "observation_min", evaluationId = null, value = 1.0),
+            Grade(id = 2, classId = classId, studentId = 1, columnId = "observation_mid", evaluationId = null, value = 3.0),
+        )
+
+        val useCase = BuildNotebookSheetUseCase(
+            getNotebookUseCase = GetNotebookUseCase(
+                classesRepository = FakeClassesRepository2(student, classId),
+                evaluationsRepository = FakeEvaluationsRepository2(emptyList()),
+                gradesRepository = FakeGradesRepository2(grades),
+                notebookCellsRepository = FakeNotebookCellsRepository2()
+            )
+        )
+
+        val sheet = useCase.build(
+            classId = classId,
+            evaluations = emptyList(),
+            students = listOf(student),
+            tabs = listOf(NotebookTab(id = "eval", title = "Evaluación", order = 0)),
+            configuredColumns = listOf(
+                NotebookColumnDefinition(
+                    id = "observation_min",
+                    title = "Nivel mínimo",
+                    type = NotebookColumnType.NUMERIC,
+                    scaleKind = NotebookScaleKind.FOUR_LEVEL,
+                    tabIds = listOf("eval"),
+                    weight = 50.0,
+                ),
+                NotebookColumnDefinition(
+                    id = "observation_mid",
+                    title = "Nivel intermedio",
+                    type = NotebookColumnType.NUMERIC,
+                    scaleKind = NotebookScaleKind.FOUR_LEVEL,
+                    tabIds = listOf("eval"),
+                    weight = 50.0,
+                ),
+            )
+        )
+
+        val explanation = sheet.rows.first().averageExplanation
+        assertEquals(0.0, explanation?.included?.single { it.columnId == "observation_min" }?.value)
+        assertEquals(
+            (3.0 - 1.0) / 3.0 * 10.0,
+            explanation?.included?.single { it.columnId == "observation_mid" }?.value
+        )
+    }
+
+    @Test
+    fun `calculated formulas referencing a four level column see the rescaled value`() = runTest {
+        val classId = 1L
+        val student = Student(id = 1, firstName = "Ana", lastName = "Lopez")
+        val grades = listOf(
+            Grade(id = 1, classId = classId, studentId = 1, columnId = "obs", evaluationId = null, value = 4.0),
+        )
+
+        val useCase = BuildNotebookSheetUseCase(
+            getNotebookUseCase = GetNotebookUseCase(
+                classesRepository = FakeClassesRepository2(student, classId),
+                evaluationsRepository = FakeEvaluationsRepository2(emptyList()),
+                gradesRepository = FakeGradesRepository2(grades),
+                notebookCellsRepository = FakeNotebookCellsRepository2()
+            )
+        )
+
+        val sheet = useCase.build(
+            classId = classId,
+            evaluations = emptyList(),
+            students = listOf(student),
+            tabs = listOf(NotebookTab(id = "eval", title = "Evaluación", order = 0)),
+            configuredColumns = listOf(
+                NotebookColumnDefinition(
+                    id = "obs",
+                    title = "Observación",
+                    type = NotebookColumnType.NUMERIC,
+                    scaleKind = NotebookScaleKind.FOUR_LEVEL,
+                    tabIds = listOf("eval"),
+                    weight = 0.0,
+                    countsTowardAverage = false,
+                ),
+                NotebookColumnDefinition(
+                    id = "calc_obs",
+                    title = "Resultado",
+                    type = NotebookColumnType.CALCULATED,
+                    formula = "=[obs]",
+                    tabIds = listOf("eval"),
+                    weight = 100.0,
+                ),
+            )
+        )
+
+        assertEquals(10.0, sheet.rows.first().weightedAverage)
     }
 }
 

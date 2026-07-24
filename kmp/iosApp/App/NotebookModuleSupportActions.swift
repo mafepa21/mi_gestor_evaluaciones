@@ -20,9 +20,11 @@ extension NotebookModuleView {
         guard let classId = selectedClassId ?? bridge.notebookViewModel.currentClassId?.int64Value else { return }
         async let attendanceResult = try? bridge.attendanceRecords(for: classId, on: Date())
         async let incidentsResult = try? bridge.incidents(for: classId)
+        async let supportMeasureResult = try? bridge.activeSupportMeasureStudentIds()
 
         let attendance = await attendanceResult ?? []
         let incidents = await incidentsResult ?? []
+        let supportMeasureStudentIds = await supportMeasureResult ?? []
 
         await MainActor.run {
             todayAttendanceByStudentId = Dictionary(
@@ -31,6 +33,7 @@ extension NotebookModuleView {
             )
             let counts = Dictionary(grouping: incidents.compactMap { $0.studentId?.int64Value }, by: { $0 }).mapValues(\.count)
             incidentCountByStudentId = counts
+            activeSupportMeasureStudentIds = supportMeasureStudentIds
         }
     }
 

@@ -10,6 +10,10 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
     @Published var teacherSchedule: TeacherSchedule?
     @Published var teacherScheduleSlots: [TeacherScheduleSlot] = []
     @Published var evaluationPeriods: [PlannerEvaluationPeriod] = []
+    @Published var teachingUnits: [TeachingUnit] = []
+    @Published var pendingRenameTeachingUnit: TeachingUnit?
+    @Published var renameTeachingUnitDraft = ""
+    @Published var pendingDeleteTeachingUnitId: Int64?
     @Published var forecastRows: [PlannerSessionForecast] = []
     @Published var nonTeachingEvents: [CalendarEvent] = []
     @Published var scheduleImportPreview: ScheduleImportPreview?
@@ -30,6 +34,7 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
     @Published var scheduleSaveState: PlannerSaveState = .idle
     @Published var editingScheduleSlotId: Int64?
     @Published var editingScheduleSlotWeeklyTemplateId: Int64?
+    @Published var editingEvaluationPeriodId: Int64?
     @Published var evaluationFormName = ""
     @Published var evaluationFormStart = ""
     @Published var evaluationFormEnd = ""
@@ -120,6 +125,7 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
             )
             teacherScheduleSlots = try await bridge.plannerTeacherScheduleSlots(scheduleId: schedule.id)
             evaluationPeriods = try await bridge.plannerEvaluationPeriods(scheduleId: schedule.id)
+            teachingUnits = (try? await bridge.plannerTeachingUnits(for: nil)) ?? []
             nonTeachingEvents = try await bridge.plannerNonTeachingCalendarEvents(classId: selectedClassId)
             await refreshForecastForSelection()
             scheduleError = ""
@@ -308,20 +314,24 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
         }
         syncEvaluationDatesFromPicker()
         scheduleSaveState = .saving
+        let editingId = editingEvaluationPeriodId
+        let sortOrder = editingId.flatMap { id in evaluationPeriods.first(where: { $0.id == id })?.sortOrder }
+            .map(Int.init) ?? evaluationPeriods.count + 1
         do {
             _ = try await bridge.plannerSaveEvaluationPeriod(
-                periodId: 0,
+                periodId: editingId ?? 0,
                 scheduleId: schedule.id,
                 name: normalizedName,
                 startDateIso: evaluationFormStart,
                 endDateIso: evaluationFormEnd,
-                sortOrder: evaluationPeriods.count + 1
+                sortOrder: sortOrder
             )
             evaluationFormName = ""
             evaluationFormStart = ""
             evaluationFormEnd = ""
             evaluationFormStartDateValue = .now
             evaluationFormEndDateValue = .now
+            editingEvaluationPeriodId = nil
             scheduleError = ""
             await reload()
             scheduleSaveState = .saved(Date())
@@ -331,11 +341,55 @@ final class TeacherScheduleSettingsViewModel: ObservableObject {
         }
     }
 
+    func beginEditingEvaluationPeriod(_ period: PlannerEvaluationPeriod) {
+        evaluationFormName = period.name
+        evaluationFormStart = period.startDateIso
+        evaluationFormEnd = period.endDateIso
+        evaluationFormStartDateValue = AppDateTimeSupport.date(fromISO: period.startDateIso)
+        evaluationFormEndDateValue = AppDateTimeSupport.date(fromISO: period.endDateIso)
+        editingEvaluationPeriodId = period.id
+    }
+
+    func cancelEditingEvaluationPeriod() {
+        evaluationFormName = ""
+        evaluationFormStart = ""
+        evaluationFormEnd = ""
+        editingEvaluationPeriodId = nil
+    }
+
     func deleteEvaluationPeriod(_ periodId: Int64) async {
         guard let bridge else { return }
         scheduleSaveState = .saving
         do {
             try await bridge.plannerDeleteEvaluationPeriod(periodId: periodId)
+            await reload()
+            scheduleSaveState = .saved(Date())
+        } catch {
+            scheduleError = error.localizedDescription
+            scheduleSaveState = .failed(scheduleError)
+        }
+    }
+
+    func renameTeachingUnit(_ unit: TeachingUnit, newName: String) async {
+        guard let bridge else { return }
+        scheduleSaveState = .saving
+        do {
+            try await bridge.plannerRenameTeachingUnit(unit, newName: newName)
+            scheduleError = ""
+            await reload()
+            scheduleSaveState = .saved(Date())
+        } catch {
+            scheduleError = error.localizedDescription
+            scheduleSaveState = .failed(scheduleError)
+        }
+    }
+
+    func deleteTeachingUnit(_ unitId: Int64) async {
+        guard let bridge else { return }
+        scheduleSaveState = .saving
+        do {
+            try await bridge.plannerDeleteTeachingUnit(unitId)
+            scheduleError = ""
             await reload()
             scheduleSaveState = .saved(Date())
         } catch {
@@ -523,6 +577,13 @@ struct MacTeacherScheduleSettingsPanel: View {
             macCard {
                 DisclosureGroup("Evaluaciones") {
                     evaluationsContent
+                        .padding(.top, 12)
+                }
+            }
+
+            macCard {
+                DisclosureGroup("Unidades didácticas") {
+                    teachingUnitsContent
                         .padding(.top, 12)
                 }
             }
@@ -785,10 +846,16 @@ struct MacTeacherScheduleSettingsPanel: View {
                     .textFieldStyle(.roundedBorder)
                 labeledDatePicker("Inicio", selection: $vm.evaluationFormStartDateValue)
                 labeledDatePicker("Fin", selection: $vm.evaluationFormEndDateValue)
-                Button("Añadir") {
+                Button(vm.editingEvaluationPeriodId == nil ? "Añadir" : "Guardar") {
                     Task { await vm.addEvaluationPeriod() }
                 }
                 .buttonStyle(.borderedProminent)
+                if vm.editingEvaluationPeriodId != nil {
+                    Button("Cancelar") {
+                        vm.cancelEditingEvaluationPeriod()
+                    }
+                    .buttonStyle(.bordered)
+                }
             }
 
             if vm.evaluationPeriods.isEmpty {
@@ -805,6 +872,12 @@ struct MacTeacherScheduleSettingsPanel: View {
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(.secondary)
                             Spacer()
+                            Button {
+                                vm.beginEditingEvaluationPeriod(period)
+                            } label: {
+                                Image(systemName: "pencil")
+                            }
+                            .buttonStyle(.borderless)
                             Button(role: .destructive) {
                                 Task { await vm.deleteEvaluationPeriod(period.id) }
                             } label: {
@@ -828,6 +901,84 @@ struct MacTeacherScheduleSettingsPanel: View {
                     .background(MacAppStyle.cardBackground.opacity(0.7), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
                 }
             }
+        }
+    }
+
+    private var teachingUnitsContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Se crean automáticamente al planificar una sesión. Aquí puedes renombrarlas o eliminarlas.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            if vm.teachingUnits.isEmpty {
+                Text("Aún no hay unidades didácticas creadas.")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(vm.teachingUnits, id: \.id) { unit in
+                    HStack {
+                        Text(unit.name)
+                            .font(.callout.weight(.semibold))
+                        Spacer()
+                        Button {
+                            vm.pendingRenameTeachingUnit = unit
+                            vm.renameTeachingUnitDraft = unit.name
+                        } label: {
+                            Image(systemName: "pencil")
+                        }
+                        .buttonStyle(.borderless)
+                        Button(role: .destructive) {
+                            vm.pendingDeleteTeachingUnitId = unit.id
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                    .padding(10)
+                    .background(MacAppStyle.cardBackground.opacity(0.7), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+            }
+        }
+        .alert(
+            "Renombrar unidad",
+            isPresented: Binding(
+                get: { vm.pendingRenameTeachingUnit != nil },
+                set: { if !$0 { vm.pendingRenameTeachingUnit = nil } }
+            )
+        ) {
+            TextField("Nombre", text: Binding(
+                get: { vm.renameTeachingUnitDraft },
+                set: { vm.renameTeachingUnitDraft = $0 }
+            ))
+            Button("Guardar") {
+                if let unit = vm.pendingRenameTeachingUnit {
+                    Task { await vm.renameTeachingUnit(unit, newName: vm.renameTeachingUnitDraft) }
+                }
+                vm.pendingRenameTeachingUnit = nil
+            }
+            Button("Cancelar", role: .cancel) {
+                vm.pendingRenameTeachingUnit = nil
+            }
+        }
+        .confirmationDialog(
+            "Eliminar unidad didáctica",
+            isPresented: Binding(
+                get: { vm.pendingDeleteTeachingUnitId != nil },
+                set: { if !$0 { vm.pendingDeleteTeachingUnitId = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Eliminar", role: .destructive) {
+                if let unitId = vm.pendingDeleteTeachingUnitId {
+                    Task { await vm.deleteTeachingUnit(unitId) }
+                }
+                vm.pendingDeleteTeachingUnitId = nil
+            }
+            Button("Cancelar", role: .cancel) {
+                vm.pendingDeleteTeachingUnitId = nil
+            }
+        } message: {
+            Text("Si hay sesiones planificadas usando esta unidad, no se podrá eliminar hasta que las reasignes o borres.")
         }
     }
 
@@ -1304,6 +1455,11 @@ struct TeacherScheduleSettingsPanel: View {
                                 }
                                 Spacer()
                                 if !vm.usingLegacyWeeklySlots {
+                                    Button {
+                                        vm.beginEditingScheduleSlot(slot)
+                                    } label: {
+                                        Image(systemName: "pencil")
+                                    }
                                     Button(role: .destructive) {
                                         pendingScheduleSlotDeletionId = slot.id
                                     } label: {
@@ -1437,10 +1593,16 @@ struct TeacherScheduleSettingsPanel: View {
                             .labelsHidden()
                             .datePickerStyle(.compact)
                         }
-                        Button("Añadir periodo") {
+                        Button(vm.editingEvaluationPeriodId == nil ? "Añadir periodo" : "Guardar periodo") {
                             Task { await vm.addEvaluationPeriod() }
                         }
                         .buttonStyle(.borderedProminent)
+                        if vm.editingEvaluationPeriodId != nil {
+                            Button("Cancelar") {
+                                vm.cancelEditingEvaluationPeriod()
+                            }
+                            .buttonStyle(.bordered)
+                        }
                     }
 
                     Text("Cada evaluación necesita un rango claro. El sistema lo cruzará con las franjas semanales y los días no lectivos para calcular cuántas sesiones tocan.")
@@ -1463,6 +1625,11 @@ struct TeacherScheduleSettingsPanel: View {
                                             .foregroundStyle(.secondary)
                                     }
                                     Spacer()
+                                    Button {
+                                        vm.beginEditingEvaluationPeriod(period)
+                                    } label: {
+                                        Image(systemName: "pencil")
+                                    }
                                     Button(role: .destructive) {
                                         Task { await vm.deleteEvaluationPeriod(period.id) }
                                     } label: {
@@ -1555,6 +1722,7 @@ struct TeacherScheduleSettingsPanel: View {
                     visualIdentityCard
                     nonTeachingCard
                     evaluationPeriodsCard
+                    teachingUnitsCard
                 }
                 .frame(width: 368, alignment: .topLeading)
             }
@@ -1567,12 +1735,13 @@ struct TeacherScheduleSettingsPanel: View {
                 visualIdentityCard
                 nonTeachingCard
                 evaluationPeriodsCard
+                teachingUnitsCard
             }
         }
     }
 
     private var scheduleHeaderCard: some View {
-        EvaluationGlassCard {
+        PremiumCard.glass {
             VStack(alignment: .leading, spacing: 16) {
                 EvaluationSectionTitle(
                     eyebrow: "Planificación docente",
@@ -1626,7 +1795,7 @@ struct TeacherScheduleSettingsPanel: View {
     }
 
     private var courseFrameCard: some View {
-        EvaluationGlassCard {
+        PremiumCard.glass {
             VStack(alignment: .leading, spacing: 16) {
                 EvaluationSectionTitle(
                     eyebrow: "Marco del curso",
@@ -1685,7 +1854,7 @@ struct TeacherScheduleSettingsPanel: View {
     }
 
     private var weeklySlotsCard: some View {
-        EvaluationGlassCard {
+        PremiumCard.glass {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
                     EvaluationSectionTitle(
@@ -1766,6 +1935,11 @@ struct TeacherScheduleSettingsPanel: View {
                             }
                             Spacer()
                             if !vm.usingLegacyWeeklySlots {
+                                Button {
+                                    vm.beginEditingScheduleSlot(slot)
+                                } label: {
+                                    Image(systemName: "pencil")
+                                }
                                 Button(role: .destructive) {
                                     pendingScheduleSlotDeletionId = slot.id
                                 } label: {
@@ -1781,7 +1955,7 @@ struct TeacherScheduleSettingsPanel: View {
     }
 
     private var visualIdentityCard: some View {
-        EvaluationGlassCard {
+        PremiumCard.glass {
             VStack(alignment: .leading, spacing: 16) {
                 EvaluationSectionTitle(
                     eyebrow: "Identidad visual",
@@ -1830,7 +2004,7 @@ struct TeacherScheduleSettingsPanel: View {
     }
 
     private var nonTeachingCard: some View {
-        EvaluationGlassCard {
+        PremiumCard.glass {
             VStack(alignment: .leading, spacing: 16) {
                 EvaluationSectionTitle(
                     eyebrow: "Calendario",
@@ -1870,7 +2044,7 @@ struct TeacherScheduleSettingsPanel: View {
     }
 
     private var evaluationPeriodsCard: some View {
-        EvaluationGlassCard {
+        PremiumCard.glass {
             VStack(alignment: .leading, spacing: 16) {
                 EvaluationSectionTitle(
                     eyebrow: "Evaluaciones",
@@ -1884,10 +2058,16 @@ struct TeacherScheduleSettingsPanel: View {
                     HStack(spacing: 12) {
                         datePickerField("Inicio", selection: $vm.evaluationFormStartDateValue)
                         datePickerField("Fin", selection: $vm.evaluationFormEndDateValue)
-                        Button("Añadir periodo") {
+                        Button(vm.editingEvaluationPeriodId == nil ? "Añadir periodo" : "Guardar periodo") {
                             Task { await vm.addEvaluationPeriod() }
                         }
                         .buttonStyle(.borderedProminent)
+                        if vm.editingEvaluationPeriodId != nil {
+                            Button("Cancelar") {
+                                vm.cancelEditingEvaluationPeriod()
+                            }
+                            .buttonStyle(.bordered)
+                        }
                     }
                 }
 
@@ -1911,6 +2091,11 @@ struct TeacherScheduleSettingsPanel: View {
                                         .foregroundStyle(.secondary)
                                 }
                                 Spacer()
+                                Button {
+                                    vm.beginEditingEvaluationPeriod(period)
+                                } label: {
+                                    Image(systemName: "pencil")
+                                }
                                 Button(role: .destructive) {
                                     Task { await vm.deleteEvaluationPeriod(period.id) }
                                 } label: {
@@ -1937,6 +2122,91 @@ struct TeacherScheduleSettingsPanel: View {
                     }
                 }
             }
+        }
+    }
+
+    private var teachingUnitsCard: some View {
+        PremiumCard.glass {
+            VStack(alignment: .leading, spacing: 16) {
+                EvaluationSectionTitle(
+                    eyebrow: "Planner",
+                    title: "Unidades didácticas",
+                    subtitle: "Se crean automáticamente al planificar una sesión. Aquí puedes renombrarlas o eliminarlas."
+                )
+
+                if vm.teachingUnits.isEmpty {
+                    Text("Aún no hay unidades didácticas creadas.")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(vm.teachingUnits, id: \.id) { unit in
+                        HStack {
+                            Text(unit.name)
+                                .font(.callout.weight(.semibold))
+                            Spacer()
+                            Button {
+                                vm.pendingRenameTeachingUnit = unit
+                                vm.renameTeachingUnitDraft = unit.name
+                            } label: {
+                                Image(systemName: "pencil")
+                            }
+                            .buttonStyle(.borderless)
+                            Button(role: .destructive) {
+                                vm.pendingDeleteTeachingUnitId = unit.id
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                        .padding(10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(EvaluationDesign.surfaceSoft)
+                        )
+                    }
+                }
+            }
+        }
+        .alert(
+            "Renombrar unidad",
+            isPresented: Binding(
+                get: { vm.pendingRenameTeachingUnit != nil },
+                set: { if !$0 { vm.pendingRenameTeachingUnit = nil } }
+            )
+        ) {
+            TextField("Nombre", text: Binding(
+                get: { vm.renameTeachingUnitDraft },
+                set: { vm.renameTeachingUnitDraft = $0 }
+            ))
+            Button("Guardar") {
+                if let unit = vm.pendingRenameTeachingUnit {
+                    Task { await vm.renameTeachingUnit(unit, newName: vm.renameTeachingUnitDraft) }
+                }
+                vm.pendingRenameTeachingUnit = nil
+            }
+            Button("Cancelar", role: .cancel) {
+                vm.pendingRenameTeachingUnit = nil
+            }
+        }
+        .confirmationDialog(
+            "Eliminar unidad didáctica",
+            isPresented: Binding(
+                get: { vm.pendingDeleteTeachingUnitId != nil },
+                set: { if !$0 { vm.pendingDeleteTeachingUnitId = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Eliminar", role: .destructive) {
+                if let unitId = vm.pendingDeleteTeachingUnitId {
+                    Task { await vm.deleteTeachingUnit(unitId) }
+                }
+                vm.pendingDeleteTeachingUnitId = nil
+            }
+            Button("Cancelar", role: .cancel) {
+                vm.pendingDeleteTeachingUnitId = nil
+            }
+        } message: {
+            Text("Si hay sesiones planificadas usando esta unidad, no se podrá eliminar hasta que las reasignes o borres.")
         }
     }
 

@@ -44,7 +44,18 @@ extension PlannerWorkspaceViewModel {
     }
 
     func sessionStateLabel(for session: PlanningSession) -> String {
-        sessionStateLabel(sessionStatus: session.status, journalStatus: summary(for: session.id)?.status)
+        if isPendingConfirmation(session) { return "Confirmar impartida" }
+        return sessionStateLabel(sessionStatus: session.status, journalStatus: summary(for: session.id)?.status)
+    }
+
+    func sessionStateIcon(for session: PlanningSession) -> String {
+        if isPendingConfirmation(session) { return "clock.badge.exclamationmark.fill" }
+        return sessionStateIcon(sessionStatus: session.status, journalStatus: summary(for: session.id)?.status)
+    }
+
+    func sessionStateTint(for session: PlanningSession) -> Color {
+        if isPendingConfirmation(session) { return IOSAppStyle.warning }
+        return sessionStateTint(sessionStatus: session.status, journalStatus: summary(for: session.id)?.status)
     }
 
     func sessionStateLabel(sessionStatus: SessionStatus?, journalStatus: SessionJournalStatus?) -> String {
@@ -91,20 +102,5 @@ extension PlannerWorkspaceViewModel {
         let date = days[day - 1]
         let dayName = dayLabel(for: day)
         return "\(dayName) \(date.dayOfMonth)/\(date.monthNumber)"
-    }
-}
-
-private extension Optional where Wrapped == String {
-    var nilIfBlank: String? {
-        switch self?.trimmingCharacters(in: .whitespacesAndNewlines) {
-        case .some(let value) where !value.isEmpty: return value
-        default: return nil
-        }
-    }
-}
-
-private extension String {
-    var nilIfBlank: String? {
-        trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : self
     }
 }

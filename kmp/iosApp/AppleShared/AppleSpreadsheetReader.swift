@@ -99,6 +99,27 @@ enum AppleSpreadsheetReader {
     }
 
     private static func readXLSX(_ url: URL) throws -> [[String]] {
+        guard let firstSheet = try readAllXLSXSheetsInternal(url).first else {
+            throw AppleSpreadsheetReaderError.emptyWorkbook
+        }
+        return firstSheet.rows
+    }
+
+    /// Lee todas las hojas de un `.xlsx`, sin normalizar filas vacías (a diferencia de
+    /// `readRows`, pensado para tablas de una sola hoja). Útil cuando el archivo real
+    /// tiene varias hojas (p.ej. una de referencia/catálogo y otra con los datos) y hace
+    /// falta decidir cuál usar según su contenido.
+    static func readAllXLSXSheets(from url: URL) throws -> [(name: String, rows: [[String]])] {
+        let didStartAccessing = url.startAccessingSecurityScopedResource()
+        defer {
+            if didStartAccessing {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+        return try readAllXLSXSheetsInternal(url)
+    }
+
+    private static func readAllXLSXSheetsInternal(_ url: URL) throws -> [(name: String, rows: [[String]])] {
         guard let file = XLSXFile(filepath: url.path) else {
             throw AppleSpreadsheetReaderError.unreadableFile
         }
@@ -109,37 +130,39 @@ enum AppleSpreadsheetReader {
         }
 
         let worksheetPaths = try file.parseWorksheetPathsAndNames(workbook: workbook)
-        guard let firstPath = worksheetPaths.first?.path else {
+        guard !worksheetPaths.isEmpty else {
             throw AppleSpreadsheetReaderError.emptyWorkbook
         }
 
-        let worksheet = try file.parseWorksheet(at: firstPath)
-        let rows: [[String]] = worksheet.data?.rows.map { row -> [String] in
-            var valuesByColumn: [Int: String] = [:]
-            let firstColumn = ColumnReference("A")!
+        let sheets: [(name: String, rows: [[String]])] = try worksheetPaths.map { entry in
+            let worksheet = try file.parseWorksheet(at: entry.path)
+            let rows: [[String]] = worksheet.data?.rows.map { row -> [String] in
+                var valuesByColumn: [Int: String] = [:]
+                let firstColumn = ColumnReference("A")!
 
-            for cell in row.cells {
-                let columnIndex = firstColumn.distance(to: cell.reference.column)
-                if let sharedStrings {
-                    valuesByColumn[columnIndex] = cell.stringValue(sharedStrings) ?? cell.value ?? ""
-                } else {
-                    valuesByColumn[columnIndex] = cell.value ?? ""
+                for cell in row.cells {
+                    let columnIndex = firstColumn.distance(to: cell.reference.column)
+                    if let sharedStrings {
+                        valuesByColumn[columnIndex] = cell.stringValue(sharedStrings) ?? cell.value ?? ""
+                    } else {
+                        valuesByColumn[columnIndex] = cell.value ?? ""
+                    }
                 }
-            }
 
-            guard let maxColumnIndex = valuesByColumn.keys.max() else { return [] }
-            return (0...maxColumnIndex).map { valuesByColumn[$0] ?? "" }
-        } ?? []
+                guard let maxColumnIndex = valuesByColumn.keys.max() else { return [] }
+                return (0...maxColumnIndex).map { valuesByColumn[$0] ?? "" }
+            } ?? []
+            return (name: entry.name ?? entry.path, rows: rows.filter { !$0.isEffectivelyEmpty })
+        }
 
-        let normalized = rows.filter { !$0.isEffectivelyEmpty }
-        guard !normalized.isEmpty else {
+        guard sheets.contains(where: { !$0.rows.isEmpty }) else {
             throw AppleSpreadsheetReaderError.emptyWorkbook
         }
-        return normalized
+        return sheets
     }
 }
 
-private extension Array where Element == String {
+extension Array where Element == String {
     var isEffectivelyEmpty: Bool {
         !contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }

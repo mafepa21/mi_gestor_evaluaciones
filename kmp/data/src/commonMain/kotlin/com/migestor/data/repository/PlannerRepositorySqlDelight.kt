@@ -60,6 +60,43 @@ class PlannerRepositorySqlDelight(
         }
     }
 
+    override suspend fun listSessionTemplates(): List<PlannerSessionTemplate> = withContext(Dispatchers.Default) {
+        db.plannerQueries.selectAllPlannerTemplates().executeAsList().map {
+            PlannerSessionTemplate(
+                id = it.id,
+                title = it.title,
+                category = it.category,
+                objectives = it.objectives,
+                activities = it.activities,
+                evaluation = it.evaluation,
+                createdAtEpochMs = it.created_at_epoch_ms
+            )
+        }
+    }
+
+    override suspend fun saveSessionTemplate(template: PlannerSessionTemplate): Long = withContext(Dispatchers.Default) {
+        val now = Clock.System.now().toEpochMilliseconds()
+        db.transactionWithResult {
+            db.plannerQueries.insertPlannerTemplate(
+                id = if (template.id == 0L) null else template.id,
+                title = template.title,
+                category = template.category,
+                objectives = template.objectives,
+                activities = template.activities,
+                evaluation = template.evaluation,
+                created_at_epoch_ms = if (template.createdAtEpochMs == 0L) now else template.createdAtEpochMs
+            )
+            if (template.id == 0L) db.plannerQueries.lastInsertedId().executeAsOne() else template.id
+        }
+    }
+
+    override suspend fun deleteSessionTemplate(templateId: Long): Boolean = withContext(Dispatchers.Default) {
+        db.transactionWithResult {
+            db.plannerQueries.deletePlannerTemplate(templateId)
+            true
+        }
+    }
+
     override suspend fun deleteTeachingUnit(unitId: Long): Boolean = withContext(Dispatchers.Default) {
         // En una implementación real, verificaríamos si hay sesiones antes de borrar
         db.plannerQueries.deleteTeachingUnit(unitId)

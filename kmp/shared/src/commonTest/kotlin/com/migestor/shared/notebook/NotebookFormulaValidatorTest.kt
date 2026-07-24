@@ -14,7 +14,7 @@ class NotebookFormulaValidatorTest {
     @Test
     fun `valid formula returns referenced columns and preview`() {
         val result = validateFormula(
-            formula = "REDONDEAR(PROMEDIO([eval_1],[rubric_1]),2)",
+            formula = "REDONDEAR(PROMEDIO([eval_1];[rubric_1]);2)",
             targetColumnId = "media",
             availableColumns = listOf(exam, rubric),
             formulaColumns = emptyList(),

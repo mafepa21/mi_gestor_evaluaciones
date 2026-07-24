@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AppleAppRootView: View {
     @StateObject private var bridge = KmpBridge()
+    @ObservedObject private var backupService = AppleBackupService.shared
     @State private var lifecycleObserver: AppleLifecycleBridgeObserver?
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @AppStorage("mac_reduce_motion") private var prefersReducedMotion = false
@@ -49,6 +50,32 @@ struct AppleAppRootView: View {
                     lifecycleObserver = AppleLifecycleBridgeObserver(bridge: bridge)
                 }
             }
+            .overlay {
+                if backupService.needsRestart {
+                    RestartRequiredOverlay()
+                }
+            }
 #endif
+    }
+}
+
+struct RestartRequiredOverlay: View {
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "arrow.clockwise.circle.fill")
+                .font(.system(size: 44, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text("Reinicia la aplicación")
+                .font(.title3.weight(.semibold))
+            Text("Los datos se han modificado en el dispositivo. Cierra y vuelve a abrir MiGestor para continuar con normalidad.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+        }
+        .padding(32)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.regularMaterial)
+        .ignoresSafeArea()
     }
 }

@@ -56,4 +56,25 @@ extension PlannerWorkspaceViewModel {
         journalDraft.groupObservations = existing.isEmpty ? trimmed : "\(existing)\n\(trimmed)"
         await saveJournal()
     }
+
+    /// Pulso rápido de la sesión (clima/tiempo útil/dificultad), mismo criterio que
+    /// `SessionJournalQuickPulseCard` en el diario completo, sin abrir esa pantalla.
+    func quickSetPulse(to session: PlanningSession, climate: Int, usefulTime: Int, difficulty: Int) async {
+        if selectedSession?.id != session.id {
+            await select(session: session)
+        }
+        journalDraft.climateScore = climate
+        journalDraft.usefulTimeScore = usefulTime
+        journalDraft.perceivedDifficultyScore = difficulty
+        await saveJournal()
+    }
+
+    /// Participación rápida de la sesión, mismo criterio que `SessionJournalQuickPulseCard`.
+    func quickSetParticipation(to session: PlanningSession, value: Int) async {
+        if selectedSession?.id != session.id {
+            await select(session: session)
+        }
+        journalDraft.participationScore = value
+        await saveJournal()
+    }
 }

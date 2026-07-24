@@ -18,6 +18,7 @@ struct PlannerSequenceGanttView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             header
+            progressSummaryStrip
 
             if vm.sequenceGroupsEnriched.isEmpty {
                 emptyContent
@@ -44,7 +45,7 @@ struct PlannerSequenceGanttView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Secuencia")
                     .font(.title2.weight(.bold))
-                Text("Timeline del trimestre por situación de aprendizaje y grupo.")
+                Text("Progreso de tus situaciones de aprendizaje")
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.secondary)
             }
@@ -90,7 +91,7 @@ struct PlannerSequenceGanttView: View {
                 PlannerEmptyState(
                     title: "Sin secuencias",
                     systemImage: "point.3.connected.trianglepath.dotted",
-                    message: "Selecciona otro grupo o crea sesiones vinculadas a una situación."
+                    message: "Todavía no hay sesiones vinculadas a situaciones de aprendizaje. Crea sesiones desde la vista Semana y vincúlalas a una SA para ver su progreso aquí."
                 )
             }
         }
@@ -173,6 +174,72 @@ struct PlannerSequenceGanttView: View {
         if week == currentWeek { return EvaluationDesign.accent.opacity(0.10) }
         if vacationWeeks.contains(week) { return Color.secondary.opacity(0.14) }
         return EvaluationDesign.surfaceSoft
+    }
+
+    /// Strip de progreso global visible encima del Gantt: muestra de un vistazo
+    /// cuántas sesiones se han impartido, cuántas faltan y cuántas están pendientes de ubicar.
+    @ViewBuilder
+    private var progressSummaryStrip: some View {
+        let rows = situationRows
+        let totalSessions = rows.reduce(0) { $0 + $1.total }
+        let completedSessions = rows.reduce(0) { $0 + $1.completed }
+        let pendingLocate = rows.reduce(0) { $0 + $1.pending }
+        let remaining = max(totalSessions - completedSessions - pendingLocate, 0)
+
+        if totalSessions > 0 {
+            VStack(alignment: .leading, spacing: 10) {
+                // Barra de progreso visual
+                GeometryReader { proxy in
+                    let width = proxy.size.width
+                    let completedWidth = totalSessions > 0 ? width * CGFloat(completedSessions) / CGFloat(totalSessions) : 0
+                    let pendingWidth = totalSessions > 0 ? width * CGFloat(pendingLocate) / CGFloat(totalSessions) : 0
+
+                    HStack(spacing: 0) {
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(EvaluationDesign.success)
+                            .frame(width: max(completedWidth, completedSessions > 0 ? 4 : 0))
+                        RoundedRectangle(cornerRadius: 0, style: .continuous)
+                            .fill(EvaluationDesign.accent.opacity(0.5))
+                            .frame(width: max(width - completedWidth - pendingWidth, 0))
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(IOSAppStyle.warning)
+                            .frame(width: max(pendingWidth, pendingLocate > 0 ? 4 : 0))
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                }
+                .frame(height: 8)
+
+                // Métricas compactas
+                HStack(spacing: 16) {
+                    PlannerProgressMetric(
+                        value: "\(completedSessions)",
+                        label: "impartidas",
+                        tint: EvaluationDesign.success,
+                        icon: "checkmark.circle.fill"
+                    )
+                    PlannerProgressMetric(
+                        value: "\(remaining)",
+                        label: "planificadas",
+                        tint: EvaluationDesign.accent,
+                        icon: "calendar"
+                    )
+                    if pendingLocate > 0 {
+                        PlannerProgressMetric(
+                            value: "\(pendingLocate)",
+                            label: "sin ubicar",
+                            tint: IOSAppStyle.warning,
+                            icon: "exclamationmark.triangle.fill"
+                        )
+                    }
+                    Spacer()
+                    Text("\(completedSessions) de \(totalSessions) sesiones")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(12)
+            .background(EvaluationDesign.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
     }
 
     private var legend: some View {
@@ -718,6 +785,27 @@ private struct PlannerGanttLegendItem: View {
                 .frame(width: 14, height: 14)
             Text(label)
                 .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct PlannerProgressMetric: View {
+    let value: String
+    let label: String
+    let tint: Color
+    let icon: String
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(tint)
+            Text(value)
+                .font(.caption.weight(.black))
+                .foregroundStyle(.primary)
+            Text(label)
+                .font(.caption2.weight(.medium))
                 .foregroundStyle(.secondary)
         }
     }

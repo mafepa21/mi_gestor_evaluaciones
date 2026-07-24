@@ -20,8 +20,10 @@ struct PlannerWeekMiniatureGrid: View {
     @Binding var selectedCell: PlannerCellKey?
     @Binding var selectedDay: Int?
     let onOpenSession: (PlanningSession) -> Void
+    var onOpenDiary: ((PlanningSession) -> Void)? = nil
     var onDropSession: ((Int64, Int, Int) -> Void)? = nil
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
+    @AppStorage("plannerDragDropHintShown") private var plannerDragDropHintShown = false
 
     private let timeAxisWidth: CGFloat = 72
     private let headerHeight: CGFloat = 40
@@ -37,6 +39,8 @@ struct PlannerWeekMiniatureGrid: View {
             // El grid tiene celdas de tamaño fijo calculado geométricamente; a partir de
             // tamaños de accesibilidad grandes el texto rompería el layout, así que se
             // limita el crecimiento de Dynamic Type aquí (el resto del Planner escala libre).
+            let firstDraggableKey = firstDraggableCellKey
+
             VStack(spacing: gridSpacing) {
                 HStack(spacing: gridSpacing) {
                     Text("Franja")
@@ -56,6 +60,11 @@ struct PlannerWeekMiniatureGrid: View {
                                 HStack(spacing: 4) {
                                     Text(vm.dayLabel(for: day))
                                         .font(.caption.weight(.bold))
+                                    if weekBoard.holidayDays.contains(day) {
+                                        Text("· Festivo")
+                                            .font(.system(size: 9, weight: .bold))
+                                            .foregroundStyle(Color.red.opacity(0.8))
+                                    }
                                     if isToday {
                                         Circle()
                                             .fill(selectedDay == day ? Color.white : EvaluationDesign.accent)
@@ -121,11 +130,15 @@ struct PlannerWeekMiniatureGrid: View {
                                     }
                                 },
                                 onOpenSession: onOpenSession,
+                                onOpenDiary: onOpenDiary,
                                 onDropSession: onDropSession.map { handler in
                                     { sessionId in handler(sessionId, day, slot.period) }
-                                }
+                                },
+                                showDragHint: firstDraggableKey == key,
+                                onDismissDragHint: { plannerDragDropHintShown = true }
                             )
                             .frame(width: columnWidth, height: rowHeight)
+                            .zIndex(firstDraggableKey == key ? 10 : 0)
                             .accessibilityLabel(accessibilityLabel(day: day, slot: slot, entries: entries))
                         }
                     }
@@ -133,6 +146,21 @@ struct PlannerWeekMiniatureGrid: View {
             }
         }
         .dynamicTypeSize(...DynamicTypeSize.xLarge)
+    }
+
+    private var firstDraggableCellKey: PlannerCellKey? {
+        if plannerDragDropHintShown { return nil }
+        let slots = weekBoard.weekRenderModel.visibleSlots
+        let days = weekBoard.weekRenderModel.visibleDays
+        for slot in slots {
+            for day in days {
+                let key = PlannerCellKey(day: day, period: slot.period)
+                if let entries = weekBoard.weekRenderModel.entriesByCell[key], entries.count == 1, entries.first?.kind == .session {
+                    return key
+                }
+            }
+        }
+        return nil
     }
 
     private var isCurrentWeek: Bool {
@@ -230,7 +258,10 @@ private struct PlannerWeekMiniatureCell: View {
     let vm: PlannerWorkspaceViewModel
     let onTap: () -> Void
     let onOpenSession: (PlanningSession) -> Void
+    var onOpenDiary: ((PlanningSession) -> Void)? = nil
     var onDropSession: ((Int64) -> Void)? = nil
+    var showDragHint: Bool = false
+    var onDismissDragHint: (() -> Void)? = nil
 
     @State private var isDropTargeted = false
     @State private var isHovering = false
@@ -274,6 +305,16 @@ private struct PlannerWeekMiniatureCell: View {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(fillColor)
 
+                if isHoliday {
+                    VStack(spacing: 2) {
+                        Image(systemName: "calendar.badge.exclamationmark")
+                            .font(.system(size: 10))
+                        Text("Festivo")
+                            .font(.system(size: 9, weight: .bold))
+                    }
+                    .foregroundStyle(Color.red.opacity(0.7))
+                }
+
                 if let entry = primaryEntry, !isHoliday {
                     Text(abbreviation(for: entry))
                         .font(.system(size: 11, weight: .heavy, design: .rounded))
@@ -292,6 +333,16 @@ private struct PlannerWeekMiniatureCell: View {
                         Spacer()
                     }
                     .padding(3)
+                }
+
+                if !isHoliday, isHovering, draggableSessionId != nil {
+                    VStack {
+                        Spacer()
+                        Image(systemName: "line.3.horizontal")
+                            .font(.system(size: 7))
+                            .foregroundStyle(.secondary.opacity(0.6))
+                            .padding(.bottom, 2)
+                    }
                 }
 
                 if entries.count > 1 {
@@ -317,12 +368,41 @@ private struct PlannerWeekMiniatureCell: View {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .stroke(strokeColor, lineWidth: strokeWidth)
             )
+            .overlay(
+                dragHintOverlay, alignment: .bottom
+            )
             .brightness(isHovering && !isSelected ? 0.06 : 0)
             .scaleEffect(isSelected ? 0.96 : (isDropTargeted ? 1.04 : 1))
             .animation(.spring(response: 0.25, dampingFraction: 0.8), value: isDropTargeted)
             .animation(.easeOut(duration: 0.12), value: isHovering)
         }
         .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var dragHintOverlay: some View {
+        if showDragHint {
+            HStack(spacing: 4) {
+                Text("Arrastra sesiones entre franjas")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.white)
+                Button {
+                    onDismissDragHint?()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.8))
+                        .padding(2)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .background(EvaluationDesign.accent, in: RoundedRectangle(cornerRadius: 6))
+            .shadow(radius: 2)
+            .offset(y: 30)
+            .zIndex(10)
+        }
     }
 
     @ViewBuilder
@@ -333,7 +413,11 @@ private struct PlannerWeekMiniatureCell: View {
            let sessionId = entry.sessionId,
            let session = vm.sessions.first(where: { $0.id == sessionId }) {
             Button {
-                onOpenSession(session)
+                if let onOpenDiary {
+                    onOpenDiary(session)
+                } else {
+                    onOpenSession(session)
+                }
             } label: {
                 Label("Abrir diario", systemImage: "book.pages")
             }
@@ -413,7 +497,7 @@ private struct PlannerWeekMiniatureCell: View {
     }
 
     private var fillColor: Color {
-        if isHoliday { return Color.secondary.opacity(0.16) }
+        if isHoliday { return Color.red.opacity(0.08) }
         guard let entry = primaryEntry else { return Color.secondary.opacity(0.12) }
         return groupTint(for: entry).opacity(entry.kind == .scheduledSlot ? 0.14 : 0.22)
     }

@@ -39,6 +39,14 @@ class RubricEvaluationViewModel(
     private val _uiState = MutableStateFlow(RubricEvaluationUiState())
     val uiState: StateFlow<RubricEvaluationUiState> = _uiState.asStateFlow()
 
+    // Abrir la rubrica del alumno A (carga lenta) y luego la de B, sin cancelacion entre
+    // ambas: si A tarda mas en responder que B, A puede terminar DESPUES y sobrescribir el
+    // estado con sus datos mientras state.studentId ya es B (se fija de forma sincrona al
+    // iniciar la carga) -"Guardar" persistiria entonces los niveles de A bajo el id de B.
+    // Mismo patron que loadGeneration en NotebookViewModel: cada carga descarta su
+    // resultado si una carga mas reciente ya se lanzo mientras esperaba.
+    private var loadGeneration: Long = 0
+
     init {
         scope.launch {
             RubricEvaluationBus.events.collect { event ->
@@ -66,6 +74,7 @@ class RubricEvaluationViewModel(
                 shouldDismissDialog = false
             )
         }
+        val myGeneration = ++loadGeneration
         scope.launch {
             try {
                 val evaluationDeferred = async { evaluationsRepository.getEvaluation(evaluationId) }
@@ -79,7 +88,8 @@ class RubricEvaluationViewModel(
                 val rubricDetail = rubricDeferred.await()
                 val initialAssessments = assessmentsDeferred.await()
                 val initialSelectedLevels = initialAssessments.associate { it.criterionId to it.levelId }
-                
+
+                if (loadGeneration != myGeneration) return@launch
                 _uiState.update { state ->
                     state.copy(
                         studentName = student?.fullName ?: "Alumno",
@@ -92,7 +102,9 @@ class RubricEvaluationViewModel(
                 }
                 calculateScore()
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = e.message) }
+                if (loadGeneration == myGeneration) {
+                    _uiState.update { it.copy(isLoading = false, error = e.message) }
+                }
             }
         }
     }
@@ -107,7 +119,8 @@ class RubricEvaluationViewModel(
             isSaveSuccessful = false,
             shouldDismissDialog = false
         ) }
-        
+
+        val myGeneration = ++loadGeneration
         scope.launch {
             try {
                 val evaluationDeferred = async { evaluationsRepository.getEvaluation(evaluationId) }
@@ -120,7 +133,7 @@ class RubricEvaluationViewModel(
                 val student = studentDeferred.await()
                 val rubricDetail = rubricDeferred.await()
                 val previousGrade = gradeDeferred.await()
-                
+
                 // Si hay rubricSelections (JSON/String), parsearlo
                 val initialSelectedLevels = if (!previousGrade?.rubricSelections.isNullOrBlank()) {
                     parseRubricSelections(previousGrade!!.rubricSelections!!)
@@ -130,6 +143,7 @@ class RubricEvaluationViewModel(
                     initialAssessments.associate { it.criterionId to it.levelId }
                 }
 
+                if (loadGeneration != myGeneration) return@launch
                 _uiState.update { state ->
                     state.copy(
                         studentName = student?.fullName ?: "Alumno",
@@ -143,7 +157,9 @@ class RubricEvaluationViewModel(
                 }
                 calculateScore()
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = e.message) }
+                if (loadGeneration == myGeneration) {
+                    _uiState.update { it.copy(isLoading = false, error = e.message) }
+                }
             }
         }
     }

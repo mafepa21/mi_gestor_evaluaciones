@@ -38,6 +38,14 @@ struct StudentProfilesWorkspaceView: View {
     @State private var showFollowUpConfirm = false
     @State private var showIncidentsSheet = false
     @State private var updatingStudentIds: Set<Int64> = []
+    @State private var supportMeasures: [SupportMeasureRow] = []
+    @State private var showSupportMeasureSheet = false
+    @State private var showBulkImportSheet = false
+    @State private var showGroupOverviewSheet = false
+    @State private var pendingDeleteStudent: Student?
+    @State private var pendingDeleteSupportMeasure: SupportMeasureRow?
+    @State private var editingStudent: Student?
+    @State private var editingSupportMeasure: SupportMeasureRow?
 
     // MARK: - Computed
 
@@ -84,6 +92,78 @@ struct StudentProfilesWorkspaceView: View {
             }
             .appOnChange(of: selectedStudentId) { _ in
                 Task { await reloadProfile() }
+            }
+            .sheet(isPresented: $showSupportMeasureSheet) {
+                if let studentId = selectedStudentId {
+                    SupportMeasureFormSheet(studentId: studentId) {
+                        Task { await reloadProfile() }
+                    }
+                    .environmentObject(bridge)
+                }
+            }
+            .sheet(
+                isPresented: Binding(
+                    get: { editingSupportMeasure != nil },
+                    set: { if !$0 { editingSupportMeasure = nil } }
+                )
+            ) {
+                if let studentId = selectedStudentId, let editingSupportMeasure {
+                    SupportMeasureFormSheet(studentId: studentId, existingMeasure: editingSupportMeasure) {
+                        Task { await reloadProfile() }
+                    }
+                    .environmentObject(bridge)
+                }
+            }
+            .sheet(
+                isPresented: Binding(
+                    get: { editingStudent != nil },
+                    set: { if !$0 { editingStudent = nil } }
+                )
+            ) {
+                if let student = editingStudent {
+                    StudentEditorSheet(student: student) { firstName, lastName, email in
+                        Task { await updateStudent(student, firstName: firstName, lastName: lastName, email: email) }
+                    }
+                }
+            }
+            .confirmationDialog(
+                "Eliminar alumno",
+                isPresented: Binding(
+                    get: { pendingDeleteStudent != nil },
+                    set: { if !$0 { pendingDeleteStudent = nil } }
+                ),
+                presenting: pendingDeleteStudent
+            ) { student in
+                if selectedClassId != nil {
+                    Button("Quitar del grupo", role: .destructive) {
+                        Task { await removeStudentFromClass(student) }
+                    }
+                }
+                Button("Eliminar de toda la app", role: .destructive) {
+                    Task { await deleteStudentEverywhere(student) }
+                }
+                Button("Cancelar", role: .cancel) {
+                    pendingDeleteStudent = nil
+                }
+            } message: { student in
+                Text("\(student.firstName) \(student.lastName) tiene evaluaciones, asistencia y medidas vinculadas. Elige si quieres quitarlo solo de este grupo o eliminarlo por completo.")
+            }
+            .confirmationDialog(
+                "Eliminar medida de apoyo",
+                isPresented: Binding(
+                    get: { pendingDeleteSupportMeasure != nil },
+                    set: { if !$0 { pendingDeleteSupportMeasure = nil } }
+                ),
+                presenting: pendingDeleteSupportMeasure
+            ) { measure in
+                Button("Eliminar \(measure.level.displayName) · \(measure.measureType.displayName)", role: .destructive) {
+                    Task { await deleteSupportMeasure(measure) }
+                }
+                Button("Cancelar", role: .cancel) {
+                    pendingDeleteSupportMeasure = nil
+                }
+            } message: { _ in
+                Text("Se eliminará este registro por completo. Si solo quieres cerrarla, usa \"Retirar\".")
             }
     }
 
@@ -173,6 +253,11 @@ struct StudentProfilesWorkspaceView: View {
                         AppleInteractionFeedback.play(.selection)
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button("Eliminar", role: .destructive) {
+                            pendingDeleteStudent = student
+                        }
+                        .tint(IOSAppStyle.danger)
+
                         Button(student.isInjured ? "Quitar lesión" : "Lesión") {
                             Task { await toggleInjuryStatus(for: student) }
                         }
@@ -182,6 +267,24 @@ struct StudentProfilesWorkspaceView: View {
                             Task { await registerIncident(for: student) }
                         }
                         .tint(IOSAppStyle.danger)
+                    }
+                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                        Button("Editar") {
+                            editingStudent = student
+                        }
+                        .tint(.blue)
+                    }
+                    .contextMenu {
+                        Button {
+                            editingStudent = student
+                        } label: {
+                            Label("Editar alumno", systemImage: "pencil")
+                        }
+                        Button(role: .destructive) {
+                            pendingDeleteStudent = student
+                        } label: {
+                            Label("Eliminar alumno", systemImage: "trash")
+                        }
                     }
                     .disabled(updatingStudentIds.contains(student.id))
                     .listRowInsets(EdgeInsets(top: 4, leading: 10, bottom: 4, trailing: 10))
@@ -216,18 +319,54 @@ struct StudentProfilesWorkspaceView: View {
                 .tracking(0.8)
                 .foregroundStyle(.secondary)
 
-            Picker("Grupo", selection: $selectedClassId) {
-                Text("Todos los grupos").tag(Optional<Int64>.none)
-                ForEach(studentsBridgeStore.classes, id: \.id) { schoolClass in
-                    Text(schoolClass.name).tag(Optional(schoolClass.id))
+            HStack(spacing: 8) {
+                Picker("Grupo", selection: $selectedClassId) {
+                    Text("Todos los grupos").tag(Optional<Int64>.none)
+                    ForEach(studentsBridgeStore.classes, id: \.id) { schoolClass in
+                        Text(schoolClass.name).tag(Optional(schoolClass.id))
+                    }
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .tint(IOSAppStyle.info)
+
+                if selectedClassId != nil {
+                    Button {
+                        showBulkImportSheet = true
+                    } label: {
+                        Image(systemName: "tablecells.badge.ellipsis")
+                    }
+                    .help("Importar medidas Nivel III desde Excel")
+
+                    Button {
+                        showGroupOverviewSheet = true
+                    } label: {
+                        Image(systemName: "list.bullet.clipboard")
+                    }
+                    .help("Ver medidas del grupo")
                 }
             }
-            .pickerStyle(.menu)
-            .labelsHidden()
-            .tint(IOSAppStyle.info)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
+        .sheet(isPresented: $showBulkImportSheet) {
+            if let selectedClassId {
+                SupportMeasureBulkImportSheet(
+                    classId: selectedClassId,
+                    roster: studentsBridgeStore.studentsInClass
+                ) {
+                    Task { await reloadProfile() }
+                }
+                .environmentObject(bridge)
+            }
+        }
+        .sheet(isPresented: $showGroupOverviewSheet) {
+            SupportMeasureGroupOverviewSheet(
+                className: studentsBridgeStore.classes.first(where: { $0.id == selectedClassId })?.name ?? "",
+                roster: studentsBridgeStore.studentsInClass
+            )
+            .environmentObject(bridge)
+        }
     }
 
     // MARK: - Right Column
@@ -365,6 +504,13 @@ struct StudentProfilesWorkspaceView: View {
                         isActive: profile.incidentCount > 0,
                         tint: IOSAppStyle.danger
                     )
+                    if let activeLevel = supportMeasures.first(where: \.isActive)?.level {
+                        IOSStatusPill(
+                            label: "Medida \(activeLevel.shortLabel)",
+                            isActive: true,
+                            tint: .indigo
+                        )
+                    }
                     Spacer()
                 }
 
@@ -428,6 +574,27 @@ struct StudentProfilesWorkspaceView: View {
                     }
                 }
 
+                // Medidas de apoyo (Nivel III/IV, Decreto 104/2018 + Orden 20/2019 CV)
+                PremiumCard.section(title: "Medidas de apoyo", systemImage: "person.text.rectangle.fill") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        if supportMeasures.isEmpty {
+                            Text("Sin medidas registradas.")
+                                .font(IOSAppStyle.bodyText)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            ForEach(supportMeasures) { measure in
+                                supportMeasureRow(measure)
+                            }
+                        }
+                        Button {
+                            showSupportMeasureSheet = true
+                        } label: {
+                            Label("Añadir medida", systemImage: "plus.circle.fill")
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                }
+
                 // Contexto pedagógico
                 if profile.adaptationsSummary != nil || profile.familyCommunicationSummary != nil {
                     PremiumCard.section(title: "Contexto pedagógico", systemImage: "person.text.rectangle") {
@@ -481,6 +648,69 @@ struct StudentProfilesWorkspaceView: View {
         }
         .padding(10)
         .background(IOSAppStyle.subtleFill, in: RoundedRectangle(cornerRadius: IOSAppStyle.innerRadius, style: .continuous))
+    }
+
+    private func supportMeasureRow(_ measure: SupportMeasureRow) -> some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text("\(measure.level.displayName) · \(measure.measureType.displayName)")
+                        .font(.subheadline.weight(.bold))
+                    if !measure.isActive {
+                        Text("Retirada")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if let responsible = measure.responsible, !responsible.isEmpty {
+                    Text(responsible)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                switch measure.reviewStatus {
+                case .overdue:
+                    Text("Revisión vencida")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(IOSAppStyle.danger)
+                case .dueSoon:
+                    Text("Revisión próxima")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(IOSAppStyle.warning)
+                case .none:
+                    EmptyView()
+                }
+            }
+            Spacer()
+            if measure.isActive {
+                Button("Editar") {
+                    editingSupportMeasure = measure
+                }
+                .font(.caption.weight(.bold))
+                .buttonStyle(.borderless)
+
+                Button("Retirar") {
+                    Task { await retireSupportMeasure(measure) }
+                }
+                .font(.caption.weight(.bold))
+                .buttonStyle(.borderless)
+            }
+        }
+        .padding(10)
+        .background(IOSAppStyle.subtleFill, in: RoundedRectangle(cornerRadius: IOSAppStyle.innerRadius, style: .continuous))
+        .contextMenu {
+            if measure.isActive {
+                Button {
+                    editingSupportMeasure = measure
+                } label: {
+                    Label("Editar medida", systemImage: "pencil")
+                }
+            }
+            Button(role: .destructive) {
+                pendingDeleteSupportMeasure = measure
+            } label: {
+                Label("Eliminar medida", systemImage: "trash")
+            }
+        }
     }
 
     private func incidentRow(_ incident: Incident) -> some View {
@@ -545,10 +775,12 @@ struct StudentProfilesWorkspaceView: View {
     private func reloadProfile() async {
         guard let studentId = selectedStudentId else {
             profile = nil
+            supportMeasures = []
             return
         }
         isLoadingProfile = true
         profile = try? await bridge.loadStudentProfile(studentId: studentId, classId: selectedClassId)
+        supportMeasures = ((try? await bridge.supportMeasures(for: studentId)) ?? []).map(\.asRow)
         isLoadingProfile = false
     }
 
@@ -571,6 +803,98 @@ struct StudentProfilesWorkspaceView: View {
             AppleInteractionFeedback.play(.success)
         } catch {
             bridge.status = "No se pudo actualizar la lesión: \(error.localizedDescription)"
+            AppleInteractionFeedback.play(.error)
+        }
+    }
+
+    @MainActor
+    private func retireSupportMeasure(_ measure: SupportMeasureRow) async {
+        do {
+            try await bridge.retireSupportMeasure(
+                id: measure.id,
+                endDateIso: AppDateTimeSupport.isoDateFormatter.string(from: Date())
+            )
+            await reloadProfile()
+            bridge.status = "Medida retirada."
+            AppleInteractionFeedback.play(.success)
+        } catch {
+            bridge.status = "No se pudo retirar la medida: \(error.localizedDescription)"
+            AppleInteractionFeedback.play(.error)
+        }
+    }
+
+    @MainActor
+    private func deleteSupportMeasure(_ measure: SupportMeasureRow) async {
+        pendingDeleteSupportMeasure = nil
+        do {
+            try await bridge.deleteSupportMeasure(id: measure.id)
+            await reloadProfile()
+            bridge.status = "Medida eliminada."
+            AppleInteractionFeedback.play(.success)
+        } catch {
+            bridge.status = "No se pudo eliminar la medida: \(error.localizedDescription)"
+            AppleInteractionFeedback.play(.error)
+        }
+    }
+
+    @MainActor
+    private func removeStudentFromClass(_ student: Student) async {
+        pendingDeleteStudent = nil
+        guard !updatingStudentIds.contains(student.id) else { return }
+        updatingStudentIds.insert(student.id)
+        defer { updatingStudentIds.remove(student.id) }
+
+        do {
+            try await bridge.removeStudentFromSelectedClass(studentId: student.id)
+            if selectedStudentId == student.id {
+                selectedStudentId = studentsBridgeStore.studentsInClass.first?.id
+            }
+            await reloadProfile()
+            bridge.status = "\(student.firstName) \(student.lastName) se ha quitado del grupo."
+            AppleInteractionFeedback.play(.success)
+        } catch {
+            bridge.status = "No se pudo quitar al alumno del grupo: \(error.localizedDescription)"
+            AppleInteractionFeedback.play(.error)
+        }
+    }
+
+    @MainActor
+    private func deleteStudentEverywhere(_ student: Student) async {
+        pendingDeleteStudent = nil
+        guard !updatingStudentIds.contains(student.id) else { return }
+        updatingStudentIds.insert(student.id)
+        defer { updatingStudentIds.remove(student.id) }
+
+        do {
+            try await bridge.deleteStudentEverywhere(studentId: student.id)
+            if selectedStudentId == student.id {
+                selectedStudentId = studentsBridgeStore.studentsInClass.first?.id ?? studentsBridgeStore.allStudents.first?.id
+            }
+            await reloadProfile()
+            bridge.status = "\(student.firstName) \(student.lastName) se ha eliminado."
+            AppleInteractionFeedback.play(.success)
+        } catch {
+            bridge.status = "No se pudo eliminar al alumno: \(error.localizedDescription)"
+            AppleInteractionFeedback.play(.error)
+        }
+    }
+
+    @MainActor
+    private func updateStudent(_ student: Student, firstName: String, lastName: String, email: String) async {
+        editingStudent = nil
+        do {
+            try await bridge.updateMacStudent(
+                student: student,
+                firstName: firstName,
+                lastName: lastName,
+                email: email,
+                isInjured: student.isInjured
+            )
+            await reloadProfile()
+            bridge.status = "Alumno actualizado."
+            AppleInteractionFeedback.play(.success)
+        } catch {
+            bridge.status = "No se pudo actualizar el alumno: \(error.localizedDescription)"
             AppleInteractionFeedback.play(.error)
         }
     }
@@ -657,5 +981,66 @@ private struct StudentListRow: View {
 
     private var avatarColor: Color {
         student.isInjured ? IOSAppStyle.warning : IOSAppStyle.info
+    }
+}
+
+// MARK: - StudentEditorSheet
+
+private struct StudentEditorSheet: View {
+    let student: Student
+    let onSave: (String, String, String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var firstName: String
+    @State private var lastName: String
+    @State private var email: String
+
+    init(student: Student, onSave: @escaping (String, String, String) -> Void) {
+        self.student = student
+        self.onSave = onSave
+        _firstName = State(initialValue: student.firstName)
+        _lastName = State(initialValue: student.lastName)
+        _email = State(initialValue: student.email ?? "")
+    }
+
+    private var canSave: Bool {
+        !firstName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Datos del alumno") {
+                    TextField("Nombre", text: $firstName)
+                    TextField("Apellidos", text: $lastName)
+                    TextField("Email", text: $email)
+                        #if os(iOS)
+                        .keyboardType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        #endif
+                }
+            }
+            .navigationTitle("Editar alumno")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancelar") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Guardar") {
+                        onSave(
+                            firstName.trimmingCharacters(in: .whitespacesAndNewlines),
+                            lastName.trimmingCharacters(in: .whitespacesAndNewlines),
+                            email.trimmingCharacters(in: .whitespacesAndNewlines)
+                        )
+                        dismiss()
+                    }
+                    .disabled(!canSave)
+                }
+            }
+        }
+        .presentationDetents([.medium])
     }
 }

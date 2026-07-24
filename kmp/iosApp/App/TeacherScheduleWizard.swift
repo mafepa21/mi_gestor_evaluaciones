@@ -301,59 +301,8 @@ struct TeacherScheduleWizard: View {
 
     private var courseStep: some View {
         VStack(alignment: .leading, spacing: 20) {
-            PremiumCard.glass {
-                VStack(alignment: .leading, spacing: 16) {
-                    EvaluationSectionTitle(
-                        eyebrow: "Marco del curso",
-                        title: "Nombre, fechas y días lectivos",
-                        subtitle: "Planner usa este rango para calcular semanas, no lectivos y la previsión por evaluación."
-                    )
-
-                    TextField("Nombre de agenda", text: $vm.scheduleName)
-                        .textFieldStyle(.roundedBorder)
-
-                    HStack(alignment: .bottom, spacing: 16) {
-                        labeledDatePicker("Inicio de curso", selection: $vm.scheduleStartDateValue)
-                        labeledDatePicker("Fin de curso", selection: $vm.scheduleEndDateValue)
-                        Button("Guardar") {
-                            Task { await vm.saveTeacherSchedule() }
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(vm.scheduleSaveState == .saving)
-                    }
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Días lectivos")
-                            .font(.subheadline.weight(.semibold))
-                        HStack(spacing: 8) {
-                            ForEach([1, 2, 3, 4, 5, 6, 7], id: \.self) { day in
-                                if vm.activeWeekdays.contains(day) {
-                                    Button {
-                                        vm.toggleActiveWeekday(day)
-                                    } label: {
-                                        Text(vm.dayLabel(for: day))
-                                            .font(.caption.weight(.bold))
-                                            .frame(minWidth: 44)
-                                    }
-                                    .buttonStyle(.borderedProminent)
-                                } else {
-                                    Button {
-                                        vm.toggleActiveWeekday(day)
-                                    } label: {
-                                        Text(vm.dayLabel(for: day))
-                                            .font(.caption.weight(.bold))
-                                            .frame(minWidth: 44)
-                                    }
-                                    .buttonStyle(.bordered)
-                                }
-                            }
-                        }
-                        Text(vm.activeWeekdaySummary)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
+            courseHeroCard
+            courseFineTuneCard
 
             if vm.groups.count > 1 {
                 PremiumCard.glass {
@@ -381,6 +330,177 @@ struct TeacherScheduleWizard: View {
                 }
             }
         }
+    }
+
+    /// El rango de fechas es el único dato que de verdad importa en este
+    /// paso (todo lo demás son ajustes finos), así que es lo único que
+    /// recibe peso visual pesado: una cifra grande + una línea de tiempo,
+    /// en vez de competir con el campo de nombre y los date picker dentro
+    /// de la misma tarjeta plana. Los presets resuelven directamente el
+    /// caso común (curso natural, 1 sept - 30 jun): un toque en vez de
+    /// manipular dos selectores de fecha.
+    private var courseHeroCard: some View {
+        PremiumCard.glass {
+            VStack(spacing: 20) {
+                VStack(spacing: 4) {
+                    Text("CURSO ESCOLAR")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .tracking(1.4)
+                        .foregroundStyle(.secondary)
+                    Text(courseYearLabel)
+                        .font(.system(size: 44, weight: .black, design: .rounded))
+                        .foregroundStyle(EvaluationDesign.accent)
+                        .monospacedDigit()
+                }
+
+                VStack(spacing: 6) {
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                colors: [EvaluationDesign.accent.opacity(0.35), EvaluationDesign.accent],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(height: 10)
+                    HStack {
+                        Text("SEPTIEMBRE")
+                        Spacer()
+                        Text("JUNIO")
+                    }
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .tracking(0.6)
+                    .foregroundStyle(.secondary)
+                }
+
+                HStack(spacing: 10) {
+                    presetChip(academicYearBounds(offsetYears: 0))
+                    presetChip(academicYearBounds(offsetYears: 1))
+                }
+            }
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    private func presetChip(_ bounds: AcademicYearBounds) -> some View {
+        let isSelected = isMatchingPreset(bounds)
+        return Button {
+            vm.scheduleStartDateValue = bounds.start
+            vm.scheduleEndDateValue = bounds.end
+        } label: {
+            VStack(spacing: 2) {
+                Text(bounds.label)
+                    .font(.callout.weight(.bold))
+                Text("1 sept – 30 jun")
+                    .font(.caption2)
+                    .opacity(0.8)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(isSelected ? EvaluationDesign.accent : EvaluationDesign.surfaceSoft)
+            )
+            .foregroundStyle(isSelected ? Color.white : Color.primary)
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Selectores finos + días lectivos + nombre: el ajuste, no la decisión
+    /// principal. Deliberadamente más pequeño y por debajo del hero.
+    private var courseFineTuneCard: some View {
+        PremiumCard.glass {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(alignment: .bottom, spacing: 16) {
+                    labeledDatePicker("Inicio de curso", selection: $vm.scheduleStartDateValue)
+                    labeledDatePicker("Fin de curso", selection: $vm.scheduleEndDateValue)
+                    Spacer()
+                    Button("Guardar") {
+                        Task { await vm.saveTeacherSchedule() }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(vm.scheduleSaveState == .saving)
+                }
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Días lectivos")
+                        .font(.subheadline.weight(.semibold))
+                    HStack(spacing: 8) {
+                        ForEach([1, 2, 3, 4, 5, 6, 7], id: \.self) { day in
+                            if vm.activeWeekdays.contains(day) {
+                                Button {
+                                    vm.toggleActiveWeekday(day)
+                                } label: {
+                                    Text(vm.dayLabel(for: day))
+                                        .font(.caption.weight(.bold))
+                                        .frame(minWidth: 44)
+                                }
+                                .buttonStyle(.borderedProminent)
+                            } else {
+                                Button {
+                                    vm.toggleActiveWeekday(day)
+                                } label: {
+                                    Text(vm.dayLabel(for: day))
+                                        .font(.caption.weight(.bold))
+                                        .frame(minWidth: 44)
+                                }
+                                .buttonStyle(.bordered)
+                            }
+                        }
+                    }
+                    Text(vm.activeWeekdaySummary)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+
+                Divider()
+
+                HStack(spacing: 10) {
+                    Text("Nombre")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    TextField("Nombre de agenda", text: $vm.scheduleName)
+                        .textFieldStyle(.roundedBorder)
+                }
+            }
+        }
+    }
+
+    private struct AcademicYearBounds {
+        let start: Date
+        let end: Date
+        let label: String
+    }
+
+    /// `startYear` es septiembre→junio: si hoy es antes de agosto, el curso
+    /// "actual" empezó el septiembre anterior. `offsetYears` mueve el preset
+    /// al curso siguiente sin repetir el cálculo.
+    private func academicYearBounds(offsetYears: Int) -> AcademicYearBounds {
+        let calendar = Calendar(identifier: .iso8601)
+        let today = Date()
+        let currentYear = calendar.component(.year, from: today)
+        let currentMonth = calendar.component(.month, from: today)
+        let baseStartYear = currentMonth >= 8 ? currentYear : currentYear - 1
+        let startYear = baseStartYear + offsetYears
+        let endYear = startYear + 1
+        let start = calendar.date(from: DateComponents(year: startYear, month: 9, day: 1)) ?? today
+        let end = calendar.date(from: DateComponents(year: endYear, month: 6, day: 30)) ?? today
+        return AcademicYearBounds(start: start, end: end, label: "\(startYear)–\(endYear)")
+    }
+
+    private func isMatchingPreset(_ bounds: AcademicYearBounds) -> Bool {
+        let calendar = Calendar.current
+        return calendar.isDate(vm.scheduleStartDateValue, inSameDayAs: bounds.start)
+            && calendar.isDate(vm.scheduleEndDateValue, inSameDayAs: bounds.end)
+    }
+
+    private var courseYearLabel: String {
+        let calendar = Calendar.current
+        let startYear = calendar.component(.year, from: vm.scheduleStartDateValue)
+        let endYear = calendar.component(.year, from: vm.scheduleEndDateValue)
+        return startYear == endYear ? "\(startYear)" : "\(startYear)–\(endYear)"
     }
 
     // MARK: - Paso 2 · Franjas

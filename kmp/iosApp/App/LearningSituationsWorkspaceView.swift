@@ -97,6 +97,9 @@ struct LearningSituationsWorkspaceView: View {
         }
         .background(appPageBackground(for: colorScheme))
         .task { await reload() }
+        .appOnChange(of: selectedSituationId) { _ in
+            Task { await reloadDetail() }
+        }
         .fileImporter(isPresented: $isImporterPresented, allowedContentTypes: [.docx], allowsMultipleSelection: false) { result in
             do {
                 guard let url = try result.get().first else { return }

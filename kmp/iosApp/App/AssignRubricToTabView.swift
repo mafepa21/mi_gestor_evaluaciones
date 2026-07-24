@@ -13,7 +13,7 @@ struct AssignRubricToTabView: View {
     var body: some View {
 #if os(macOS)
         content
-            .frame(width: 720, height: 560)
+            .frame(minWidth: 640, idealWidth: 720, minHeight: 480, idealHeight: 560)
             .background(sheetBackground)
 #else
         content
@@ -131,8 +131,8 @@ struct AssignRubricToTabView: View {
             }
         }
         .padding(16)
-        .background(cardBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(cardStroke(cornerRadius: 12))
+        .background(cardBackground, in: RoundedRectangle(cornerRadius: RubricsStyle.blueprintCardRadius, style: .continuous))
+        .overlay(cardStroke(cornerRadius: RubricsStyle.blueprintCardRadius))
     }
 
     private func classSelectionCard(_ state: AssignRubricDialogState) -> some View {
@@ -161,8 +161,8 @@ struct AssignRubricToTabView: View {
                 .foregroundStyle(.secondary)
         }
         .padding(16)
-        .background(cardBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(cardStroke(cornerRadius: 12))
+        .background(cardBackground, in: RoundedRectangle(cornerRadius: RubricsStyle.blueprintCardRadius, style: .continuous))
+        .overlay(cardStroke(cornerRadius: RubricsStyle.blueprintCardRadius))
     }
 
     private func destinationCard(_ state: AssignRubricDialogState) -> some View {
@@ -221,8 +221,8 @@ struct AssignRubricToTabView: View {
             }
         }
         .padding(16)
-        .background(cardBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(cardStroke(cornerRadius: 12))
+        .background(cardBackground, in: RoundedRectangle(cornerRadius: RubricsStyle.blueprintCardRadius, style: .continuous))
+        .overlay(cardStroke(cornerRadius: RubricsStyle.blueprintCardRadius))
     }
 
     private var footer: some View {

@@ -19,6 +19,7 @@ import com.migestor.data.repository.NotebookCellsRepositorySqlDelight
 import com.migestor.data.repository.NotebookInstrumentsRepositorySqlDelight
 import com.migestor.data.repository.RubricsRepositorySqlDelight
 import com.migestor.data.repository.StudentsRepositorySqlDelight
+import com.migestor.data.repository.StudentSupportMeasureRepositorySqlDelight
 import com.migestor.data.repository.SubjectsRepositorySqlDelight
 import com.migestor.data.repository.NotebookRepositorySqlDelight
 import com.migestor.data.repository.PlannerRepositorySqlDelight
@@ -63,9 +64,15 @@ class KmpContainer(val driver: SqlDriver) {
     val evaluationsRepository = EvaluationsRepositorySqlDelight(database)
     val gradesRepository = GradesRepositorySqlDelight(database)
     val notebookCellsRepository = NotebookCellsRepositorySqlDelight(database)
-    val notebookInstrumentsRepository = NotebookInstrumentsRepositorySqlDelight(database)
+    // Compartida entre NotebookRepositorySqlDelight y NotebookInstrumentsRepositorySqlDelight
+    // para que guardar respuestas estructuradas (checklist/observación/quiz) invalide el mismo
+    // caché de NotebookSheet que usan los guardados de nota normales, y el Cuaderno refleje el
+    // cambio de inmediato en vez de servir una hoja cacheada desactualizada.
+    val notebookSheetCache = NotebookSheetMemoryCache()
+    val notebookInstrumentsRepository = NotebookInstrumentsRepositorySqlDelight(database, gradesRepository, notebookSheetCache)
     val rubricsRepository = RubricsRepositorySqlDelight(database)
     val attendanceRepository = AttendanceRepositorySqlDelight(database)
+    val studentSupportMeasureRepository = StudentSupportMeasureRepositorySqlDelight(database)
     val aiAuditRepository = AIAuditRepositorySqlDelight(database)
     val competenciesRepository = CompetenciesRepositorySqlDelight(database)
     val incidentsRepository = IncidentsRepositorySqlDelight(database)
@@ -112,6 +119,10 @@ class KmpContainer(val driver: SqlDriver) {
     val saveCriterion = SaveCriterionUseCase(rubricsRepository)
     val saveLevel = SaveLevelUseCase(rubricsRepository)
     val saveAttendance = SaveAttendanceUseCase(attendanceRepository)
+    val saveStudentSupportMeasure = SaveStudentSupportMeasureUseCase(studentSupportMeasureRepository)
+    val retireStudentSupportMeasure = RetireStudentSupportMeasureUseCase(studentSupportMeasureRepository)
+    val listStudentSupportMeasures = ListStudentSupportMeasuresUseCase(studentSupportMeasureRepository)
+    val listActiveSupportMeasureStudentIds = ListActiveSupportMeasureStudentIdsUseCase(studentSupportMeasureRepository)
     val saveWeeklyTemplate = SaveWeeklyTemplateUseCase(weeklyTemplateRepository)
     val generateSessionsFromUD = GenerateSessionsFromUDUseCase(weeklyTemplateRepository, plannedSessionRepository)
     val deleteStudent = DeleteStudentUseCase(studentsRepository, classesRepository)
@@ -135,7 +146,8 @@ class KmpContainer(val driver: SqlDriver) {
         notebookConfigRepository = notebookConfigRepository,
         buildNotebookSheetUseCase = buildNotebookSheet,
         gradesRepository = gradesRepository,
-        notebookCellsRepository = notebookCellsRepository
+        notebookCellsRepository = notebookCellsRepository,
+        sheetCache = notebookSheetCache
     )
     val preloadClassWorkspace = PreloadClassWorkspaceUseCase(
         dashboardOperationalRepository = dashboardOperationalRepository,

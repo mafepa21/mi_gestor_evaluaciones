@@ -108,7 +108,9 @@ final class WorkspaceLayoutState: ObservableObject {
             self.notebookInspectorAvailable = inspectorAvailable
             self.isNotebookInspectorPresented = isInspectorPresented
             self.notebookAddColumnAvailable = addColumnAvailable
-            self.notebookSearchText = searchText
+            if self.notebookSearchText != searchText {
+                self.notebookSearchText = searchText
+            }
             self.notebookSurfaceMode = surfaceMode
             self.notebookSelectedGroupId = selectedGroupId
             self.notebookAvailableGroups = availableGroups
@@ -219,24 +221,18 @@ final class WorkspaceLayoutState: ObservableObject {
     }
 
     func setNotebookSearchText(_ value: String) {
-        publishDeferred {
-            self.notebookSearchText = value
-            self.notebookSearchAction?(value)
-            }
+        notebookSearchText = value
+        notebookSearchAction?(value)
     }
 
     func setNotebookSurfaceMode(_ value: String) {
-        publishDeferred {
-            self.notebookSurfaceMode = value
-            self.notebookSurfaceModeAction?(value)
-        }
+        notebookSurfaceMode = value
+        notebookSurfaceModeAction?(value)
     }
 
     func setNotebookGroupFilter(_ value: Int64?) {
-        publishDeferred {
-            self.notebookSelectedGroupId = value
-            self.notebookGroupFilterAction?(value)
-        }
+        notebookSelectedGroupId = value
+        notebookGroupFilterAction?(value)
     }
 
     func openNotebookOrganizationMenu() {
@@ -879,7 +875,7 @@ struct AppWorkspaceShell: View {
             case .bulkRubricEvaluation:
                 RubricBulkEvaluationSheet(bridge: bridge)
                     #if os(macOS)
-                    .frame(width: 1180, height: 760)
+                    .frame(minWidth: 900, idealWidth: 1180, minHeight: 600, idealHeight: 760)
                     #else
                     .presentationDetents([.large])
                     #endif
@@ -1566,19 +1562,13 @@ struct AppWorkspaceShell: View {
             notebookClassSelectorButton
         }
 
-        if bridge.syncPendingChanges > 0 {
-            ToolbarItem(placement: .navigationBarLeading) {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.footnote)
-                    Text("\(bridge.syncPendingChanges) pnd.")
-                        .font(.footnote.weight(.semibold))
-                }
-                .foregroundStyle(IOSAppStyle.warning)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(IOSAppStyle.warning.opacity(0.12), in: Capsule())
-            }
+        ToolbarItem(placement: .navigationBarTrailing) {
+            SyncStatusBadge(
+                syncStatusMessage: dashboardStore.syncStatusMessage,
+                syncPendingChanges: dashboardStore.syncPendingChanges,
+                syncLastRunAt: dashboardStore.syncLastRunAt,
+                pairedSyncHost: dashboardStore.pairedSyncHost
+            )
         }
 
         if !layoutState.notebookAvailableGroups.isEmpty {
@@ -2058,7 +2048,7 @@ struct AttendanceRowCard: View {
                     .background(appMutedCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .overlay(
                         RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
                     )
                 }
                 .buttonStyle(.plain)
@@ -2069,7 +2059,7 @@ struct AttendanceRowCard: View {
         .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(Color.white.opacity(0.05), lineWidth: 1)
+                .stroke(Color.primary.opacity(0.05), lineWidth: 1)
         )
         .listRowInsets(EdgeInsets(top: 12, leading: 24, bottom: 12, trailing: 24))
         .listRowSeparator(.hidden)
@@ -2709,7 +2699,7 @@ struct EditPESessionOperationalSheet: View {
             onCancel: { dismiss() },
             onSave: save
         ) {
-            IOSSectionCard(title: "Espacio y material", systemImage: "sportscourt") {
+            PremiumCard.section(title: "Espacio y material", systemImage: "sportscourt") {
                 VStack(alignment: .leading, spacing: 16) {
                     WorkspaceCreateTextField(title: "Espacio previsto", placeholder: "Pabellón", text: $scheduledSpace)
                     WorkspaceCreateTextField(title: "Espacio usado", placeholder: "Pista exterior", text: $usedSpace)
@@ -2718,7 +2708,7 @@ struct EditPESessionOperationalSheet: View {
                 }
             }
 
-            IOSSectionCard(title: "Seguimiento de clase", systemImage: "waveform.path.ecg") {
+            PremiumCard.section(title: "Seguimiento de clase", systemImage: "waveform.path.ecg") {
                 VStack(alignment: .leading, spacing: 16) {
                     Stepper("Intensidad \(intensity)/5", value: $intensity, in: 0...5)
                     WorkspaceCreateMultilineField(title: "Lesiones", placeholder: "Alumnado lesionado o adaptaciones", text: $injuries)
@@ -2728,7 +2718,7 @@ struct EditPESessionOperationalSheet: View {
                 }
             }
 
-            IOSSectionCard(title: "Diario", systemImage: "book.closed") {
+            PremiumCard.section(title: "Diario", systemImage: "book.closed") {
                 Picker("Estado de diario", selection: $journalStatus) {
                     Text("Vacío").tag(SessionJournalStatus.empty)
                     Text("Borrador").tag(SessionJournalStatus.draft)
@@ -3169,13 +3159,6 @@ struct ContextualAIAssistantSheet: View {
                 )
             }
         }
-    }
-}
-
-private extension String {
-    var nilIfBlank: String? {
-        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
     }
 }
 

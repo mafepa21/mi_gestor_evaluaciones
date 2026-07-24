@@ -37,19 +37,19 @@ struct IOSRootView: View {
 
     // Scene storage keeps state across scene lifecycle
     @SceneStorage("ios.root.sidebarVisible") private var sidebarVisible = true
-    @SceneStorage("ios.root.inspectorVisible") private var inspectorVisible = true
     @AppStorage("workspace.active.module") private var persistedModule = AppWorkspaceModule.dashboard.rawValue
     @AppStorage("workspace.selected.class.id") private var persistedClassId: Int = 0
     @AppStorage("workspace.selected.student.id") private var persistedStudentId: Int = 0
+    @AppStorage("teacher.enabledSubjectProfiles.v1") private var enabledSubjectProfilesRaw = TeacherSubjectProfile.general.rawValue
 
     @State private var activeModule: AppWorkspaceModule = .dashboard
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var banner: IOSRootBanner?
     @State private var bannerDismissTask: Task<Void, Never>?
+    @State private var classSelectionTask: Task<Void, Never>?
     @State private var plannerContext = PlannerNavigationContext()
     @State private var activeSheet: ActiveWorkspaceSheet?
     @State private var showingRubricBuilder = false
-    @State private var searchText = ""
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -64,8 +64,7 @@ struct IOSRootView: View {
                     IOSGlobalContextRow(
                         activeModule: activeModule,
                         layoutState: layoutState,
-                        selectionStore: selectionStore,
-                        searchText: $searchText
+                        selectionStore: selectionStore
                     )
                     Divider().opacity(0.24)
                 }
@@ -80,7 +79,6 @@ struct IOSRootView: View {
                     plannerContext: plannerContext,
                     activeSheet: $activeSheet,
                     showingRubricBuilder: $showingRubricBuilder,
-                    searchText: $searchText,
                     onOpenModule: openModule(_:classId:studentId:),
                     onUpdatePlannerContext: { plannerContext = $0 },
                     onShowBanner: showBanner(_:)
@@ -129,19 +127,31 @@ struct IOSRootView: View {
             try? await bridge.refreshRubricClassLinks()
             
             // Restore class and student selection after KMP data is loaded
-            restorePersistedDataState()
+            await restorePersistedDataState()
         }
         .appOnChange(of: activeModule) { newValue in
             persistedModule = newValue.rawValue
         }
+        .appOnChange(of: enabledSubjectProfilesRaw) { _ in
+            let normalized = normalizedModule(activeModule)
+            if normalized != activeModule {
+                activeModule = normalized
+            }
+        }
         .appOnChange(of: selectionStore.selectedClassId) { newId in
             persistedClassId = Int(newId ?? 0)
             plannerContext.groupId = newId
-            Task {
+            if let newId {
+                bridge.selectClass(id: newId)
+            }
+            classSelectionTask?.cancel()
+            classSelectionTask = Task {
                 await bridge.selectStudentsClass(classId: newId)
+                guard !Task.isCancelled else { return }
                 if let newId = newId {
                     if let studentId = selectionStore.selectedStudentId {
                         let students = (try? await bridge.students(forClassId: newId)) ?? bridge.studentsInClass
+                        guard !Task.isCancelled else { return }
                         if !students.contains(where: { $0.id == studentId }) {
                             await MainActor.run {
                                 selectionStore.selectedStudentId = nil
@@ -153,9 +163,6 @@ struct IOSRootView: View {
                         selectionStore.selectedStudentId = nil
                     }
                 }
-            }
-            if let newId {
-                bridge.selectClass(id: newId)
             }
         }
         .task(id: selectionStore.selectedClassId) {
@@ -192,18 +199,26 @@ struct IOSRootView: View {
     }
 
     private func normalizedModule(_ module: AppWorkspaceModule) -> AppWorkspaceModule {
-        module == .teacherRadar ? .dashboard : module
+        if module == .teacherRadar { return .dashboard }
+        if module.requiresPhysicalEducationProfile {
+            let enabledProfiles = TeacherSubjectProfile.decodeSet(enabledSubjectProfilesRaw)
+            if !enabledProfiles.contains(.physicalEducation) { return .dashboard }
+        }
+        return module
     }
 
-    private func restorePersistedDataState() {
+    private func restorePersistedDataState() async {
         if persistedClassId > 0,
            bridge.classes.contains(where: { $0.id == Int64(persistedClassId) }) {
             selectionStore.selectedClassId = Int64(persistedClassId)
         } else if selectionStore.selectedClassId == nil {
             selectionStore.selectedClassId = bridge.selectedStudentsClassId ?? bridge.classes.first?.id
         }
-        if persistedStudentId > 0 {
-            selectionStore.selectedStudentId = Int64(persistedStudentId)
+        guard persistedStudentId > 0, let classId = selectionStore.selectedClassId else { return }
+        let studentId = Int64(persistedStudentId)
+        let students = (try? await bridge.students(forClassId: classId)) ?? bridge.studentsInClass
+        if students.contains(where: { $0.id == studentId }) {
+            selectionStore.selectedStudentId = studentId
         }
     }
 
@@ -214,7 +229,6 @@ struct IOSRootView: View {
         withAnimation(uiFeatureFlags.animation(.easeOut(duration: 0.22))) {
             activeModule = module
         }
-        searchText = ""
     }
 
     func openModule(_ module: AppWorkspaceModule, classId: Int64? = nil, studentId: Int64? = nil) {
@@ -230,12 +244,10 @@ struct IOSRootView: View {
         if let classId {
             bridge.selectClass(id: classId)
         }
-        searchText = ""
     }
 
     // MARK: Inspector
     private func toggleInspector() {
-        inspectorVisible.toggle()
         // Delegate to module-specific inspector action when available
         switch activeModule {
         case .notebook:  layoutState.toggleNotebookInspector()
@@ -729,7 +741,6 @@ struct IOSGlobalContextRow: View {
     let activeModule: AppWorkspaceModule
     @ObservedObject var layoutState: WorkspaceLayoutState
     @ObservedObject var selectionStore: IOSSelectionStore
-    @Binding var searchText: String
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
@@ -737,14 +748,14 @@ struct IOSGlobalContextRow: View {
                 moduleTitle
                 Spacer(minLength: 12)
                 classMenu
-                searchField
+                if showsSearchField { searchField }
             }
 
             VStack(alignment: .leading, spacing: 12) {
                 moduleTitle
                 HStack(spacing: 12) {
                     classMenu
-                    searchField
+                    if showsSearchField { searchField }
                 }
             }
         }
@@ -822,7 +833,14 @@ struct IOSGlobalContextRow: View {
     }
 
     private var searchPlaceholder: String {
-        activeModule == .notebook ? "Buscar alumno..." : "Buscar módulos, grupos o alumnado..."
+        "Buscar alumno..."
+    }
+
+    /// El campo de búsqueda global solo tiene efecto real en Cuaderno y Asistencia,
+    /// los únicos módulos que consumen `activeSearchBinding`. En el resto no hay
+    /// destino que filtre nada, así que se oculta en lugar de mostrar un control inerte.
+    private var showsSearchField: Bool {
+        activeModule == .notebook || activeModule == .attendance
     }
 
     private var activeSearchBinding: Binding<String> {
@@ -834,7 +852,7 @@ struct IOSGlobalContextRow: View {
                 case .attendance:
                     return layoutState.attendanceSearchText
                 default:
-                    return searchText
+                    return ""
                 }
             },
             set: { newValue in
@@ -844,7 +862,7 @@ struct IOSGlobalContextRow: View {
                 case .attendance:
                     layoutState.setAttendanceSearchText(newValue)
                 default:
-                    searchText = newValue
+                    break
                 }
             }
         )
@@ -941,7 +959,6 @@ struct IOSWorkspaceContent: View {
     var plannerContext: PlannerNavigationContext
     @Binding var activeSheet: ActiveWorkspaceSheet?
     @Binding var showingRubricBuilder: Bool
-    @Binding var searchText: String
 
     let onOpenModule: (AppWorkspaceModule, Int64?, Int64?) -> Void
     let onUpdatePlannerContext: (PlannerNavigationContext) -> Void
@@ -1214,7 +1231,7 @@ struct IOSContextualToolbar: ToolbarContent {
 private extension AppWorkspaceModule {
     var supportsInspector: Bool {
         switch self {
-        case .dashboard, .diary, .students: return true
+        case .dashboard, .diary: return true
         default: return false
         }
     }

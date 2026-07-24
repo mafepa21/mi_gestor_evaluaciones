@@ -1,6 +1,73 @@
 import SwiftUI
 import MiGestorKit
 
+struct EditTournamentSheet: View {
+    @Binding var tournament: TournamentViewState
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var name: String
+    @State private var sport: String
+    @State private var pointsWin: Int
+    @State private var pointsDraw: Int
+    @State private var pointsLoss: Int
+    @State private var tieBreaker: String
+
+    init(tournament: Binding<TournamentViewState>) {
+        self._tournament = tournament
+        _name = State(initialValue: tournament.wrappedValue.name)
+        _sport = State(initialValue: tournament.wrappedValue.sport)
+        _pointsWin = State(initialValue: tournament.wrappedValue.pointsWin)
+        _pointsDraw = State(initialValue: tournament.wrappedValue.pointsDraw)
+        _pointsLoss = State(initialValue: tournament.wrappedValue.pointsLoss)
+        _tieBreaker = State(initialValue: tournament.wrappedValue.tieBreaker)
+    }
+
+    private var canSave: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Identidad") {
+                    TextField("Nombre del torneo", text: $name)
+                    TextField("Deporte / modalidad", text: $sport)
+                }
+                Section("Puntuación") {
+                    Stepper("Puntos por victoria: \(pointsWin)", value: $pointsWin, in: 0...10)
+                    Stepper("Puntos por empate: \(pointsDraw)", value: $pointsDraw, in: 0...10)
+                    Stepper("Puntos por derrota: \(pointsLoss)", value: $pointsLoss, in: 0...10)
+                    TextField("Criterio de desempate", text: $tieBreaker)
+                }
+            }
+            .navigationTitle("Editar torneo")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancelar") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Guardar") {
+                        var updated = tournament
+                        updated.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                        updated.sport = sport.trimmingCharacters(in: .whitespacesAndNewlines)
+                        updated.pointsWin = pointsWin
+                        updated.pointsDraw = pointsDraw
+                        updated.pointsLoss = pointsLoss
+                        updated.tieBreaker = tieBreaker.trimmingCharacters(in: .whitespacesAndNewlines)
+                        tournament = updated
+                        dismiss()
+                    }
+                    .disabled(!canSave)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+}
+
 struct TournamentStudentProfile: Identifiable, Codable {
     let id: Int64
     var level: TournamentStudentLevel
@@ -343,7 +410,7 @@ struct TournamentAutoBalanceSheet: View {
             onCancel: { dismiss() },
             onSave: generateBalancedTournament
         ) {
-            IOSSectionCard(title: "Configuración", systemImage: "person.3.fill") {
+            PremiumCard.section(title: "Configuración", systemImage: "person.3.fill") {
                 VStack(alignment: .leading, spacing: 16) {
                     Stepper("Equipos \(teamCount)", value: $teamCount, in: 2...8)
                     Text("\(students.count) alumnos disponibles")
@@ -352,7 +419,7 @@ struct TournamentAutoBalanceSheet: View {
                 }
             }
 
-            IOSSectionCard(title: "Nivel del alumnado", systemImage: "slider.horizontal.3") {
+            PremiumCard.section(title: "Nivel del alumnado", systemImage: "slider.horizontal.3") {
                 VStack(alignment: .leading, spacing: 12) {
                     ForEach($profiles) { $profile in
                         HStack(spacing: 12) {
@@ -371,7 +438,7 @@ struct TournamentAutoBalanceSheet: View {
                 }
             }
 
-            IOSSectionCard(title: "Incompatibilidades", systemImage: "person.2.slash") {
+            PremiumCard.section(title: "Incompatibilidades", systemImage: "person.2.slash") {
                 VStack(alignment: .leading, spacing: 14) {
                     Picker("Alumno A", selection: $studentA) {
                         Text("Selecciona").tag(Int64?.none)

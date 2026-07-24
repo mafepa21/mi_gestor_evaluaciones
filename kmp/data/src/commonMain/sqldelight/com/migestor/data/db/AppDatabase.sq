@@ -203,6 +203,30 @@ CREATE TABLE IF NOT EXISTS attendance (
 CREATE INDEX IF NOT EXISTS idx_attendance_class_date_student ON attendance(class_id, date_epoch_ms DESC, student_id);
 CREATE INDEX IF NOT EXISTS idx_attendance_class_student_date ON attendance(class_id, student_id, date_epoch_ms DESC);
 
+-- Medidas de respuesta educativa (Nivel III/IV, Decreto 104/2018 + Orden 20/2019 CV).
+-- Cuelga del alumno global (no del curso escolar): una medida NEE/NESE no se archiva
+-- al cerrar el curso, sobrevive igual que el resto del perfil de alumnado.
+CREATE TABLE IF NOT EXISTS student_support_measures (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    student_id INTEGER NOT NULL,
+    level TEXT NOT NULL,
+    measure_type TEXT NOT NULL,
+    start_date_iso TEXT NOT NULL,
+    end_date_iso TEXT,
+    responsible TEXT,
+    intensity TEXT,
+    follow_up_notes TEXT NOT NULL DEFAULT '',
+    document_ref TEXT,
+    review_due_iso TEXT,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0,
+    device_id TEXT,
+    sync_version INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_support_measures_student ON student_support_measures(student_id, is_active);
+
 CREATE TABLE IF NOT EXISTS backup_entries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     path TEXT NOT NULL,
@@ -1204,6 +1228,39 @@ FROM attendance
 WHERE class_id = ? AND date_epoch_ms BETWEEN ? AND ?
 ORDER BY date_epoch_ms DESC, student_id ASC;
 
+selectSupportMeasuresByStudent:
+SELECT id, student_id, level, measure_type, start_date_iso, end_date_iso, responsible, intensity, follow_up_notes, document_ref, review_due_iso, is_active, updated_at_epoch_ms, device_id, sync_version
+FROM student_support_measures
+WHERE student_id = ?
+ORDER BY is_active DESC, start_date_iso DESC;
+
+selectActiveSupportMeasureStudentIds:
+SELECT DISTINCT student_id
+FROM student_support_measures
+WHERE is_active = 1;
+
+upsertSupportMeasure:
+INSERT OR REPLACE INTO student_support_measures(id, student_id, level, measure_type, start_date_iso, end_date_iso, responsible, intensity, follow_up_notes, document_ref, review_due_iso, is_active, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- A diferencia de upsertSupportMeasure (INSERT OR REPLACE, solo para altas), esto
+-- actualiza en el sitio los campos editables sin tocar created_at_epoch_ms ni el estado
+-- de retirada (end_date_iso/is_active): editar una medida no debe resetear su fecha de
+-- alta ni reactivar una medida ya retirada. sync_version se incrementa siempre para
+-- mantener la monotonia que usa la sincronizacion.
+updateSupportMeasure:
+UPDATE student_support_measures
+SET level = ?, measure_type = ?, start_date_iso = ?, responsible = ?, intensity = ?, follow_up_notes = ?, document_ref = ?, review_due_iso = ?, updated_at_epoch_ms = ?, device_id = ?, sync_version = sync_version + 1
+WHERE id = ?;
+
+retireSupportMeasure:
+UPDATE student_support_measures
+SET is_active = 0, end_date_iso = ?, updated_at_epoch_ms = ?, device_id = ?, sync_version = sync_version + 1
+WHERE id = ?;
+
+deleteSupportMeasure:
+DELETE FROM student_support_measures WHERE id = ?;
+
 selectBackupEntries:
 SELECT id, path, created_at_epoch_ms, platform, size_bytes
 FROM backup_entries
@@ -1406,6 +1463,9 @@ INSERT OR REPLACE INTO incidents(
 )
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
+deleteIncident:
+DELETE FROM incidents WHERE id = ?;
+
 selectEventsByClass:
 SELECT id, class_id, title, description, start_epoch_ms, end_epoch_ms, external_provider, external_id, author_user_id, created_at_epoch_ms, updated_at_epoch_ms, associated_group_id, device_id, sync_version
 FROM calendar_events
@@ -1551,10 +1611,21 @@ WHERE learning_situation_id = ?
 ORDER BY class_id;
 
 upsertLearningSituationLink:
-INSERT OR REPLACE INTO learning_situation_links(
+INSERT INTO learning_situation_links(
     id, learning_situation_id, resource_kind, resource_id, class_id, label, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
 )
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateLearningSituationLink:
+UPDATE learning_situation_links
+SET label = ?, updated_at_epoch_ms = ?, device_id = ?, sync_version = sync_version + 1
+WHERE id = ?;
+
+selectLearningSituationLinkId:
+SELECT id FROM learning_situation_links
+WHERE learning_situation_id = ? AND resource_kind = ? AND resource_id = ?
+  AND (class_id = :classId OR (class_id IS NULL AND :classId IS NULL))
+LIMIT 1;
 
 selectLearningSituationLinks:
 SELECT id, learning_situation_id, resource_kind, resource_id, class_id, label, created_at_epoch_ms, updated_at_epoch_ms, device_id, sync_version
@@ -1612,11 +1683,26 @@ deleteInstrumentItemsByTemplate:
 DELETE FROM notebook_instrument_items
 WHERE template_id = ?;
 
+deleteInstrumentItemsNotIn:
+DELETE FROM notebook_instrument_items
+WHERE template_id = ? AND id NOT IN ?;
+
 upsertInstrumentItem:
 INSERT OR REPLACE INTO notebook_instrument_items(
     id, template_id, item_key, title, item_type, options_csv, required, sort_order, help_text, updated_at_epoch_ms, device_id, sync_version
 )
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+insertInstrumentItem:
+INSERT INTO notebook_instrument_items(
+    id, template_id, item_key, title, item_type, options_csv, required, sort_order, help_text, updated_at_epoch_ms, device_id, sync_version
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateInstrumentItem:
+UPDATE notebook_instrument_items
+SET item_key = ?, title = ?, item_type = ?, options_csv = ?, required = ?, sort_order = ?, help_text = ?, updated_at_epoch_ms = ?, device_id = ?, sync_version = ?
+WHERE id = ?;
 
 upsertInstrumentResponse:
 INSERT OR REPLACE INTO notebook_instrument_responses(

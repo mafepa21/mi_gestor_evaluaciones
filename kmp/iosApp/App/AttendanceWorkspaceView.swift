@@ -28,7 +28,7 @@ struct AttendanceWorkspaceView: View {
 
     @State var selectedDate = Date()
     @State var boardMode: AttendanceBoardMode = .day
-    @State var selectedStatusFilter = "TODOS"
+    @State var selectedStatusFilter = AttendanceStatusOption.allFilterId
     @State var searchText = ""
     @State var selectedStudentId: Int64?
     @State var historySelection: AttendanceHistorySelection?
@@ -45,6 +45,8 @@ struct AttendanceWorkspaceView: View {
     @State var noteDraft = ""
     @State var isAttendanceInspectorPresented = false
     @State var showAllPresent = false
+    @State var classSelectionTask: Task<Void, Never>?
+    @State var dateReloadTask: Task<Void, Never>?
 
     var boardSummary: (present: Int, absent: Int, late: Int, untracked: Int) {
         let rows = attendanceStore.studentsInClass.map { recordsByStudentId[$0.id] }
@@ -66,7 +68,7 @@ struct AttendanceWorkspaceView: View {
                 )
             }
             .filter {
-                let matchesStatus = selectedStatusFilter == "TODOS" || $0.record?.status == selectedStatusFilter
+                let matchesStatus = selectedStatusFilter == AttendanceStatusOption.allFilterId || $0.record?.status == selectedStatusFilter
                 let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
                 let fullName = "\($0.student.firstName) \($0.student.lastName)"
                 let matchesSearch = query.isEmpty || fullName.localizedCaseInsensitiveContains(query)
@@ -121,7 +123,7 @@ struct AttendanceWorkspaceView: View {
         attendanceStore.studentsInClass.filter { student in
             let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
             let matchesSearch = query.isEmpty || student.fullName.localizedCaseInsensitiveContains(query)
-            let matchesStatus = selectedStatusFilter == "TODOS" || history.contains {
+            let matchesStatus = selectedStatusFilter == AttendanceStatusOption.allFilterId || history.contains {
                 $0.studentId == student.id && $0.status == selectedStatusFilter
             }
             return matchesSearch && matchesStatus
@@ -173,12 +175,21 @@ struct AttendanceWorkspaceView: View {
 
 
     var body: some View {
-        attendanceWorkspacePrimaryPane
-            .inspector(isPresented: $isAttendanceInspectorPresented) {
-                attendanceInspector
-                    .inspectorColumnWidth(min: 300, ideal: 336, max: 420)
+        Group {
+            if #available(iOS 17.0, macOS 14.0, *) {
+                attendanceWorkspacePrimaryPane
+                    .inspector(isPresented: $isAttendanceInspectorPresented) {
+                        attendanceInspector
+                            .inspectorColumnWidth(min: 300, ideal: 336, max: 420)
+                    }
+            } else {
+                attendanceWorkspacePrimaryPane
+                    .sheet(isPresented: $isAttendanceInspectorPresented) {
+                        attendanceInspector
+                    }
             }
-            .task {
+        }
+        .task {
                 await bridge.ensureClassesLoaded()
                 if selectedClassId == nil {
                     selectedClassId = attendanceStore.classes.first?.id
@@ -191,11 +202,14 @@ struct AttendanceWorkspaceView: View {
                 }
             }
             .appOnChange(of: selectedClassId) { _ in
-                Task { await syncClassSelection() }
+                classSelectionTask?.cancel()
+                classSelectionTask = Task { await syncClassSelection() }
             }
             .appOnChange(of: selectedDate) { _ in
-                Task {
+                dateReloadTask?.cancel()
+                dateReloadTask = Task {
                     await reloadClassOverviews()
+                    guard !Task.isCancelled else { return }
                     await reloadAttendance()
                 }
             }
@@ -214,6 +228,17 @@ struct AttendanceWorkspaceView: View {
             }
             .appOnChange(of: layoutState.isFocusModeEnabled) { _ in
                 isAttendanceInspectorPresented = isInspectorPresented
+            }
+            .appOnChange(of: isAttendanceInspectorPresented) { presented in
+                // Si el usuario cierra el inspector con el gesto del sistema (arrastrar
+                // el borde) en vez de "Cerrar ficha", `selectedStudentId`/`historySelection`
+                // seguían activos y volver a tocar el mismo alumno no disparaba el
+                // appOnChange correspondiente, así que la ficha no reabría. Al detectar
+                // ese cierre externo, limpiamos la selección para que quede consistente
+                // con el inspector oculto.
+                guard !presented, isInspectorPresented else { return }
+                selectedStudentId = nil
+                historySelection = nil
             }
             .onAppear(perform: syncAttendanceToolbar)
             .appOnChange(of: toolbarStateKey) { _ in
@@ -288,7 +313,7 @@ struct AttendanceWorkspaceView: View {
 
     var attendanceContextSummary: String {
         let className = selectedClass?.name ?? "Todos los cursos"
-        let filter = selectedStatusFilter == "TODOS"
+        let filter = selectedStatusFilter == AttendanceStatusOption.allFilterId
             ? nil
             : AttendanceStatusOption.all.first(where: { $0.id == selectedStatusFilter })?.label
         return [className, boardMode.rawValue, filter].compactMap { $0 }.joined(separator: " · ")
@@ -696,8 +721,20 @@ struct AttendanceWorkspaceView: View {
     func syncClassSelection() async {
         selectedStudentId = nil
         historySelection = nil
+        localInjuryStatuses = [:]
+        noteDraft = ""
+        searchText = ""
+        selectedStatusFilter = "TODOS"
+        if selectedClassId == nil {
+            recordsByStudentId = [:]
+            history = []
+            incidents = []
+            sessions = []
+        }
         await bridge.selectStudentsClass(classId: selectedClassId)
+        guard !Task.isCancelled else { return }
         await reloadAttendance()
+        guard !Task.isCancelled else { return }
         syncAttendanceToolbar()
     }
 
@@ -705,11 +742,13 @@ struct AttendanceWorkspaceView: View {
     func reloadAttendance() async {
         guard let selectedClassId else { return }
         let records = (try? await bridge.attendanceRecords(for: selectedClassId, on: selectedDate)) ?? []
+        guard !Task.isCancelled else { return }
         recordsByStudentId = Dictionary(
             uniqueKeysWithValues: normalizedAttendanceRecords(records).map { ($0.studentId, $0) }
         )
         let range = monthRange(for: selectedDate)
         history = (try? await bridge.attendanceHistory(for: selectedClassId, from: range.start, to: range.end)) ?? []
+        guard !Task.isCancelled else { return }
         if let selection = historySelection {
             historySelection = AttendanceHistorySelection(
                 studentId: selection.studentId,
@@ -719,6 +758,7 @@ struct AttendanceWorkspaceView: View {
         }
         incidents = (try? await bridge.incidents(for: selectedClassId)) ?? []
         sessions = (try? await bridge.attendanceSessions(for: selectedClassId, on: selectedDate)) ?? []
+        guard !Task.isCancelled else { return }
         reconcileSelectedAttendanceSession()
         noteDraft = selectedInspectionAttendance?.note ?? ""
         syncAttendanceToolbar()
@@ -727,12 +767,15 @@ struct AttendanceWorkspaceView: View {
     @MainActor
     func reloadClassOverviews() async {
         await bridge.ensureClassesLoaded()
+        guard !Task.isCancelled else { return }
         let range = monthRange(for: selectedDate)
-        classOverviews = (try? await bridge.attendanceOverview(
+        let overviews = (try? await bridge.attendanceOverview(
             for: attendanceStore.classes.map(\.id),
             from: range.start,
             to: range.end
         )) ?? []
+        guard !Task.isCancelled else { return }
+        classOverviews = overviews
     }
 
     func normalizedAttendanceRecords(
@@ -960,7 +1003,7 @@ struct AttendanceWorkspaceView: View {
     }
 
     func attendanceWeekStatusCell(_ status: AttendanceStatusOption) -> some View {
-        let borderColor = Color.white.opacity(0.08)
+        let borderColor = Color.primary.opacity(0.08)
         return Text(status.shortLabel)
             .font(.caption.bold())
             .frame(width: 120, height: 54)

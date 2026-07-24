@@ -21,6 +21,8 @@ struct PlannerSessionDetailSheet: View {
     let session: PlanningSession
     let onOpenDiary: () -> Void
     let onEdit: () -> Void
+    var onDelete: (() -> Void)? = nil
+    var onCopyToNextWeek: (() -> Void)? = nil
     var presentation: PlannerSessionDetailPresentation = .sheet
     var onClose: (() -> Void)? = nil
 
@@ -29,6 +31,7 @@ struct PlannerSessionDetailSheet: View {
     @State private var detailedPlan: LearningSituationSessionPlan?
     @State private var sequenceVersion: LearningSituationSessionSequenceVersion?
     @State private var sourceDocumentURL: URL?
+    @State private var isDeleteConfirmationPresented = false
 
     private var tint: Color {
         Color(hex: session.teachingUnitColor)
@@ -71,6 +74,18 @@ struct PlannerSessionDetailSheet: View {
             await loadLinkedInstruments()
         }
         .quickLookPreview($sourceDocumentURL)
+        .confirmationDialog(
+            "Eliminar sesión",
+            isPresented: $isDeleteConfirmationPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Eliminar sesión", role: .destructive) {
+                onDelete?()
+            }
+            Button("Cancelar", role: .cancel) {}
+        } message: {
+            Text("Se eliminará esta sesión planificada. Los diarios de sesiones ya impartidas no se ven afectados.")
+        }
     }
 
     private var inspectorHeader: some View {
@@ -176,6 +191,30 @@ struct PlannerSessionDetailSheet: View {
                     .padding(.vertical, 14)
             }
             .buttonStyle(.bordered)
+
+            if onCopyToNextWeek != nil {
+                Button {
+                    onCopyToNextWeek?()
+                } label: {
+                    Label("Duplicar", systemImage: "doc.on.doc")
+                        .font(.headline.weight(.semibold))
+                        .padding(.vertical, 14)
+                }
+                .buttonStyle(.bordered)
+                .help("Copiar esta sesión a la misma franja de la semana siguiente")
+            }
+
+            if onDelete != nil {
+                Button(role: .destructive) {
+                    isDeleteConfirmationPresented = true
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.headline.weight(.semibold))
+                        .padding(.vertical, 14)
+                        .padding(.horizontal, 4)
+                }
+                .buttonStyle(.bordered)
+            }
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 16)

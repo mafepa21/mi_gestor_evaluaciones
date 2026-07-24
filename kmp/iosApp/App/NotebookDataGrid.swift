@@ -288,6 +288,10 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, TrailingFi
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        // Superficie sólida del grid: el panel central era transparente y dejaba
+        // ver el lienzo del módulo tras las celdas. Con una superficie propia (más
+        // clara que el lienzo) el área de datos se lee como una tarjeta elevada.
+        .background(appSecondarySystemBackgroundColor())
     }
 
     private static func instrumentBody(
@@ -376,39 +380,15 @@ struct NotebookDataGrid<FixedTopAccessory: View, DividerHandle: View, TrailingFi
         .zIndex(2)
     }
 
-    @ViewBuilder
-    private var fixedColumnBackground: some View {
-        #if os(macOS)
-        if isFixedColumnResizing {
-            appSecondarySystemBackgroundColor().opacity(0.94)
-        } else {
-            Rectangle()
-                .fill(.thinMaterial)
-                .overlay(appSecondarySystemBackgroundColor().opacity(0.72))
-        }
-        #else
-        appSecondarySystemBackgroundColor().opacity(0.94)
-        #endif
+    /// Fondo sólido, sin material: bajo cientos de celdas el `.thinMaterial`
+    /// no aporta profundidad real y vibra visualmente durante el scroll.
+    private var fixedColumnBackground: Color {
+        appSecondarySystemBackgroundColor()
     }
 
-    @ViewBuilder
     private var fixedColumnSeparator: some View {
-        #if os(macOS)
-        LinearGradient(
-            colors: [
-                Color.clear,
-                NotebookStyle.softBorder.opacity(0.70),
-                NotebookStyle.softBorder.opacity(0.70),
-                Color.clear
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-        .frame(width: 1)
-        #else
-        Color.secondary.opacity(0.12)
+        NotebookGridStyle.gridLineStrong
             .frame(width: 1)
-        #endif
     }
 
     private var fixedColumnShadowColor: Color {

@@ -168,7 +168,7 @@ private struct SessionJournalHeaderCard: View {
     let session: PlanningSession
 
     var body: some View {
-        EvaluationGlassCard {
+        PremiumCard.glass {
             VStack(alignment: .leading, spacing: 14) {
                 EvaluationSectionTitle(
                     eyebrow: "Diario",
@@ -218,7 +218,7 @@ private struct SessionJournalQuickPulseCard: View {
     @ObservedObject var vm: PlannerWorkspaceViewModel
 
     var body: some View {
-        EvaluationGlassCard {
+        PremiumCard.glass {
             VStack(alignment: .leading, spacing: 16) {
                 EvaluationSectionTitle(
                     eyebrow: "10 segundos",
@@ -559,6 +559,10 @@ private struct JournalMediaDock: View {
                     Label(recorder.isRecording ? "Detener audio" : "Grabar audio", systemImage: recorder.isRecording ? "stop.circle.fill" : "mic.fill")
                 }
                 .buttonStyle(.borderedProminent)
+#if os(macOS)
+                .disabled(true)
+                .help("Grabación de audio disponible solo en iPad")
+#endif
 
                 Button {
                     vm.journalDraft.media.append(
@@ -713,7 +717,7 @@ private struct SessionJournalSectionCard<Content: View>: View {
     }
 
     var body: some View {
-        EvaluationGlassCard {
+        PremiumCard.glass {
             VStack(alignment: .leading, spacing: 16) {
                 EvaluationSectionTitle(eyebrow: eyebrow, title: title, subtitle: subtitle)
                 content

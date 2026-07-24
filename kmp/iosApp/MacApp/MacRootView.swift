@@ -6,6 +6,7 @@ struct MacRootView: View {
     @ObservedObject var session: MacAppSessionController
     @ObservedObject private var commandCenter: MacCommandCenterCoordinator
     @ObservedObject private var backupStore: MacBackupStore
+    @ObservedObject private var backupService = AppleBackupService.shared
     @Environment(\.uiFeatureFlags) private var uiFeatureFlags
     @Environment(\.openWindow) private var openWindow
     @StateObject private var layoutState = WorkspaceLayoutState()
@@ -27,6 +28,9 @@ struct MacRootView: View {
     @State private var dashboardToolbarActions: MacDashboardToolbarActions? = nil
     @State private var plannerToolbarActions: PlannerMacToolbarActions? = nil
     @State private var plannerInspectorSession: PlanningSession? = nil
+    @State private var pendingPlannerDiarySession: PlanningSession? = nil
+    @State private var plannerDiaryContext = PlannerNavigationContext()
+    @StateObject private var plannerDiaryLayoutState = WorkspaceLayoutState()
     @State private var studentsReloadToken = 0
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var isInspectorVisible = true
@@ -50,11 +54,16 @@ struct MacRootView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(MacAppStyle.pageBackground)
             case .failed(let message):
-                ContentUnavailableView(
-                    "No se pudo iniciar la shell Mac",
-                    systemImage: "exclamationmark.triangle",
-                    description: Text(message)
-                )
+                ContentUnavailableView {
+                    Label("No se pudo iniciar la shell Mac", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(message)
+                } actions: {
+                    Button("Reintentar") {
+                        session.retry()
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(MacAppStyle.pageBackground)
             case .ready:
@@ -84,6 +93,11 @@ struct MacRootView: View {
             session.inspectorVisible = newValue
         }
         .appWritingToolsDisabled()
+        .overlay {
+            if backupService.needsRestart {
+                RestartRequiredOverlay()
+            }
+        }
     }
 
     private func startCommandCenterAfterInitialLayout() async {
@@ -108,42 +122,66 @@ struct MacRootView: View {
         }
     }
 
-    private var navigationSplitContent: some View {
+    // Esta vista se trocea en subexpresiones a propósito: como una sola cadena
+    // (split view + detalle ramificado + overlay + los .onReceive) agota el
+    // tiempo del type-checker de Swift en máquinas lentas.
+    @ViewBuilder
+    private var detailPane: some View {
+        // Attendance applies its own .inspector() internally; wrapping it in the
+        // shell's system inspector too would nest two inspectors and reserve width twice.
+        // Planner opts out too: its session detail needs the same wide layout used on
+        // iPad (760-860pt), which the shell's generic inspector (maxWidth 440) can't give it.
+        // Diary opts out too: DiaryWorkspaceView (shared with iPad/iOS) brings its own
+        // 3-panel layout with an internal inspector.
+        // Rubrics opts out too: featureInspector(for:) has no real case for .rubrics (falls
+        // to the generic MacModuleInspectorPlaceholder), and MacRubricsView already has its
+        // own HSplitView detail panel — the shell inspector was just reserving 320-440pt for
+        // nothing (UI-13 de plan_auditoria_ui_2026-07-15.md).
+        if selectedFeature == .attendance || selectedFeature == .planner || selectedFeature == .diary
+            || selectedFeature == .rubrics {
+            featureContent(for: selectedFeature)
+                .id(selectedFeature)
+                .transition(uiFeatureFlags.contentSwitchTransition)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(MacAppStyle.pageBackground)
+        } else {
+            featureContent(for: selectedFeature)
+                .id(selectedFeature)
+                .transition(uiFeatureFlags.contentSwitchTransition)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(MacAppStyle.pageBackground)
+                .inspector(isPresented: $isInspectorVisible) {
+                    featureInspector(for: selectedFeature)
+                        .frame(minWidth: 320, idealWidth: 360, maxWidth: 440)
+                        .background(.thinMaterial)
+                }
+        }
+    }
+
+    @ViewBuilder
+    private var bannerOverlay: some View {
+        if let banner {
+            MacRootTransientBanner(banner: banner)
+                .padding(.top, 12)
+                .padding(.trailing, 16)
+                .transition(uiFeatureFlags.bannerTransition)
+        }
+    }
+
+    private var splitViewShell: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             macSidebar
         } detail: {
-            // Attendance applies its own .inspector() internally; wrapping it in the
-            // shell's system inspector too would nest two inspectors and reserve width twice.
-            if selectedFeature == .attendance {
-                featureContent(for: selectedFeature)
-                    .id(selectedFeature)
-                    .transition(uiFeatureFlags.contentSwitchTransition)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(MacAppStyle.pageBackground)
-            } else {
-                featureContent(for: selectedFeature)
-                    .id(selectedFeature)
-                    .transition(uiFeatureFlags.contentSwitchTransition)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(MacAppStyle.pageBackground)
-                    .inspector(isPresented: $isInspectorVisible) {
-                        featureInspector(for: selectedFeature)
-                            .frame(minWidth: 320, idealWidth: 360, maxWidth: 440)
-                            .background(.thinMaterial)
-                    }
-            }
+            detailPane
         }
         .navigationSplitViewStyle(.balanced)
         .scrollEdgeEffectStyle(.soft, for: .top)
-        .overlay(alignment: .topTrailing) {
-            if let banner {
-                MacRootTransientBanner(banner: banner)
-                    .padding(.top, 12)
-                    .padding(.trailing, 16)
-                    .transition(uiFeatureFlags.bannerTransition)
-            }
-        }
+        .overlay(alignment: .topTrailing) { bannerOverlay }
         .animation(uiFeatureFlags.interactionAnimation, value: banner?.id)
+    }
+
+    private var navigationSplitContent: some View {
+        splitViewShell
         .onReceive(NotificationCenter.default.publisher(for: .appleAppAddNotebookColumnRequested)) { _ in
             performPrimaryCreation()
         }
@@ -192,9 +230,66 @@ struct MacRootView: View {
             guard newFeature != .notebook else { return }
             isNotebookSearchFocused = false
         }
-        .appOnChange(of: plannerInspectorSession?.id) { newValue in
-            guard newValue != nil else { return }
-            isInspectorVisible = true
+        .sheet(isPresented: isPlannerInspectorSessionPresented, onDismiss: presentPendingPlannerDiarySession) {
+            plannerInspectorSheetContent
+        }
+    }
+
+    // Extraídos como propiedades tipadas (en vez de `Binding(get:set:)` inline en el
+    // modifier chain) porque el type-checker de Swift no resolvía la expresión combinada
+    // en tiempo razonable ("unable to type-check this expression in reasonable time").
+    private var isPlannerInspectorSessionPresented: Binding<Bool> {
+        Binding(
+            get: { plannerInspectorSession != nil },
+            set: { isPresented in
+                if !isPresented { plannerInspectorSession = nil }
+            }
+        )
+    }
+
+    /// SwiftUI no encadena de forma fiable "cerrar un sheet y navegar" si ambas
+    /// mutaciones ocurren en el mismo ciclo (el sheet de detalle todavía no ha
+    /// terminado de cerrarse). Por eso "Abrir ejecución" solo deja aparcada la
+    /// sesión destino y la navegación al módulo Diario de aula ocurre aquí, en el
+    /// `onDismiss` del sheet de detalle, una vez ha cerrado del todo.
+    private func presentPendingPlannerDiarySession() {
+        guard let pending = pendingPlannerDiarySession else { return }
+        pendingPlannerDiarySession = nil
+        plannerDiaryContext = PlannerNavigationContext(
+            week: Int(pending.weekNumber),
+            year: Int(pending.year),
+            groupId: pending.groupId,
+            sessionId: pending.id
+        )
+        selectFeature(.diary)
+    }
+
+    /// Navegación directa al Diario de aula desde el menú contextual de la
+    /// miniatura semanal (sin pasar por la ficha de detalle).
+    private func openDiaryDirect(_ session: PlanningSession) {
+        plannerDiaryContext = PlannerNavigationContext(
+            week: Int(session.weekNumber),
+            year: Int(session.year),
+            groupId: session.groupId,
+            sessionId: session.id
+        )
+        selectFeature(.diary)
+    }
+
+    @ViewBuilder
+    private var plannerInspectorSheetContent: some View {
+        if let plannerSession = plannerInspectorSession {
+            PlannerSessionDetailSheet(
+                session: plannerSession,
+                onOpenDiary: {
+                    plannerToolbarActions?.onOpenDiary(plannerSession)
+                    pendingPlannerDiarySession = plannerSession
+                    plannerInspectorSession = nil
+                },
+                onEdit: { plannerToolbarActions?.onEditSession(plannerSession) },
+                presentation: .sheet
+            )
+            .environmentObject(session.bridge)
         }
     }
 
@@ -353,8 +448,25 @@ struct MacRootView: View {
                 bridge: session.bridge,
                 selectedSessionId: $selectedPlannerSessionId,
                 inspectorSession: $plannerInspectorSession,
-                onToolbarActionsChange: setPlannerToolbarActions
+                onToolbarActionsChange: setPlannerToolbarActions,
+                onOpenDiaryDirect: openDiaryDirect
             )
+        case .diary:
+            DiaryWorkspaceView(
+                selectedClassId: studentSelection.selectedClassBinding,
+                navigationContext: plannerDiaryContext,
+                onOpenModule: open(module:classId:studentId:),
+                onOpenPlanner: { context in
+                    plannerDiaryContext = context
+                    if let sessionId = context.sessionId {
+                        selectedPlannerSessionId = sessionId
+                    }
+                    selectFeature(.planner)
+                },
+                onNavigationContextChange: { plannerDiaryContext = $0 }
+            )
+            .environmentObject(session.bridge)
+            .environmentObject(plannerDiaryLayoutState)
         case .situations:
             LearningSituationsWorkspaceView(
                 selectedClassId: studentSelection.selectedClassBinding,
@@ -414,6 +526,7 @@ struct MacRootView: View {
                     session: plannerSession,
                     onOpenDiary: { plannerToolbarActions?.onOpenDiary(plannerSession) },
                     onEdit: { plannerToolbarActions?.onEditSession(plannerSession) },
+                    onDelete: { plannerToolbarActions?.onDeleteSession(plannerSession) },
                     presentation: .inspector,
                     onClose: { plannerInspectorSession = nil }
                 )
@@ -913,6 +1026,7 @@ struct MacRootView: View {
         case .notebook: return .purple
         case .attendance: return .green
         case .planner: return .orange
+        case .diary: return .pink
         case .situations: return .indigo
         case .students: return .blue
         case .rubrics: return .teal
@@ -1239,8 +1353,14 @@ struct MacRootView: View {
             selectFeature(.physicalTests)
         case .situations:
             selectFeature(.situations)
+        case .diary:
+            selectFeature(.diary)
         default:
-            session.bridge.status = "El módulo \(module.title) todavía no está disponible en la shell Mac."
+            showBanner(
+                "\(module.title) todavía no está disponible en la shell Mac.",
+                systemImage: "exclamationmark.circle",
+                tint: MacAppStyle.warningTint
+            )
         }
     }
 }

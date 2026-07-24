@@ -36,6 +36,19 @@ private struct DashboardGroupRow: Identifiable {
     let studentsInFollowUp: Int
 }
 
+private enum DashboardBlock: Hashable {
+    case today
+    case pending
+    case risk
+    case system
+    case alerts
+    case quickEvaluation
+    case groupSummary
+    case agenda
+    case physicalEducation
+    case lomloeAudit
+}
+
 private enum DashboardLoadPhase: Int {
     case shell
     case metrics
@@ -536,38 +549,6 @@ struct DashboardView: View {
                 dashboardFilterPicker(title: "Severidad", selection: $severityFilter, options: DashboardFilterOption.allCases)
                 dashboardFilterPicker(title: "Prioridad", selection: $priorityFilter, options: DashboardFilterOption.allCases)
                 dashboardSessionFilterPicker(title: "Sesiones", selection: $sessionStatusFilter, options: DashboardSessionFilterOption.allCases)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func dashboardAlertsSection(snapshot: DashboardSnapshot) -> some View {
-        if isCompactWidth {
-            VStack(spacing: EvaluationDesign.cardSpacing) {
-                dashboardPendingBlock(snapshot: snapshot)
-                dashboardRiskBlock(snapshot: snapshot)
-            }
-        } else {
-            HStack(alignment: .top, spacing: EvaluationDesign.cardSpacing) {
-                dashboardPendingBlock(snapshot: snapshot)
-                dashboardRiskBlock(snapshot: snapshot)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func dashboardSecondaryGrid(snapshot: DashboardSnapshot) -> some View {
-        if isCompactWidth {
-            VStack(spacing: EvaluationDesign.cardSpacing) {
-                dashboardAgendaBlock(snapshot: snapshot)
-                dashboardSystemBlock()
-            }
-        } else {
-            HStack(alignment: .top, spacing: EvaluationDesign.cardSpacing) {
-                dashboardAgendaBlock(snapshot: snapshot)
-                    .frame(maxWidth: .infinity, alignment: .top)
-                dashboardSystemBlock()
-                    .frame(maxWidth: .infinity, alignment: .top)
             }
         }
     }
@@ -1962,7 +1943,7 @@ private struct DashboardQuickEvaluationSheet: View {
             onCancel: { dismiss() },
             onSave: { Task { await save() } }
         ) {
-            IOSSectionCard(title: "Contexto", systemImage: "person.crop.rectangle.stack") {
+            PremiumCard.section(title: "Contexto", systemImage: "person.crop.rectangle.stack") {
                 VStack(spacing: 14) {
                     Picker("Clase", selection: $selectedClassId) {
                         Text("Seleccionar").tag(Int64?.none)
@@ -1988,7 +1969,7 @@ private struct DashboardQuickEvaluationSheet: View {
                 .pickerStyle(.menu)
             }
 
-            IOSSectionCard(title: "Nota", systemImage: "number.square") {
+            PremiumCard.section(title: "Nota", systemImage: "number.square") {
                 VStack(alignment: .leading, spacing: 14) {
                     TextField("0-10", text: $scoreText)
                         .font(.title2.weight(.semibold))

@@ -168,7 +168,7 @@ final class MacBackupStore: ObservableObject {
         
         do {
             try await service.restoreBackup(backup.descriptor)
-            lastMessage = "Copia restaurada con éxito. Reiniciando..."
+            lastMessage = "Copia restaurada con éxito. Cerrando la app; vuelve a abrirla para completar la restauración."
             operationState = .saved("Restaurada")
             await loadBackups()
             
@@ -236,6 +236,7 @@ extension Date {
 
     private static let macBackupDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
+        formatter.locale = Locale.current
         formatter.dateStyle = .short
         formatter.timeStyle = .short
         return formatter
@@ -243,6 +244,7 @@ extension Date {
 
     private static let macBackupRelativeFormatter: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
+        formatter.locale = Locale.current
         formatter.unitsStyle = .full
         return formatter
     }()

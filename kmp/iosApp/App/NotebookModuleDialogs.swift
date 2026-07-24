@@ -457,6 +457,9 @@ extension NotebookModuleView {
                     layoutState.clearNotebookToolbar()
                     macToolbarActions?.clear()
                 }
+                if voiceGradeDictationService.isListening {
+                    voiceGradeDictationService.stopListening()
+                }
             }
     }
 

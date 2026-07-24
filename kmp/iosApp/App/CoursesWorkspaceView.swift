@@ -775,7 +775,7 @@ private struct ArchivedAcademicYearDetailSheet: View {
             onCancel: { dismiss() },
             onPrimary: { dismiss() }
         ) {
-            IOSSectionCard(title: "Curso escolar", systemImage: "calendar.badge.clock") {
+            PremiumCard.section(title: "Curso escolar", systemImage: "calendar.badge.clock") {
                 VStack(alignment: .leading, spacing: 12) {
                     LabeledContent("Nombre", value: year.name)
                     LabeledContent("Estado", value: "Archivado")
@@ -786,7 +786,7 @@ private struct ArchivedAcademicYearDetailSheet: View {
                 }
             }
 
-            IOSSectionCard(title: "Exportación", systemImage: "square.and.arrow.up") {
+            PremiumCard.section(title: "Exportación", systemImage: "square.and.arrow.up") {
                 VStack(alignment: .leading, spacing: 12) {
                     if isLoadingExport {
                         ProgressView("Preparando exportacion")
@@ -804,7 +804,7 @@ private struct ArchivedAcademicYearDetailSheet: View {
                 }
             }
 
-            IOSSectionCard(title: "Zona sensible", systemImage: "exclamationmark.triangle") {
+            PremiumCard.section(title: "Zona sensible", systemImage: "exclamationmark.triangle") {
                 VStack(alignment: .leading, spacing: 12) {
                     Button(role: .destructive) {
                         showingDeleteConfirmation = true
@@ -905,7 +905,7 @@ private struct AcademicYearWizardSheet: View {
                 .pickerStyle(.segmented)
 
                 if step == 0 {
-                    IOSSectionCard(title: "Nuevo curso escolar", systemImage: "calendar") {
+                    PremiumCard.section(title: "Nuevo curso escolar", systemImage: "calendar") {
                         VStack(alignment: .leading, spacing: 16) {
                             CourseSheetTextField(title: "Nombre", placeholder: "2026/2027", text: $name)
                         DatePicker("Inicio", selection: $startDate, displayedComponents: .date)
@@ -913,7 +913,7 @@ private struct AcademicYearWizardSheet: View {
                     }
                     }
                 } else if step == 1 {
-                    IOSSectionCard(title: "Estructura", systemImage: "rectangle.stack.badge.plus") {
+                    PremiumCard.section(title: "Estructura", systemImage: "rectangle.stack.badge.plus") {
                         VStack(alignment: .leading, spacing: 16) {
                         Toggle("Copiar grupos de otro curso", isOn: $copyGroups)
                         if copyGroups {
@@ -928,7 +928,7 @@ private struct AcademicYearWizardSheet: View {
                     }
                     }
 
-                    IOSSectionCard(title: "No se copia", systemImage: "lock.doc") {
+                    PremiumCard.section(title: "No se copia", systemImage: "lock.doc") {
                         VStack(alignment: .leading, spacing: 12) {
                         Toggle("Copiar instrumentos como plantillas", isOn: .constant(false))
                             .disabled(true)
@@ -940,7 +940,7 @@ private struct AcademicYearWizardSheet: View {
                         }
                     }
                 } else {
-                    IOSSectionCard(title: "Resumen", systemImage: "checkmark.seal") {
+                    PremiumCard.section(title: "Resumen", systemImage: "checkmark.seal") {
                         VStack(alignment: .leading, spacing: 12) {
                         LabeledContent("Curso", value: name)
                         LabeledContent("Grupos") {
@@ -953,7 +953,7 @@ private struct AcademicYearWizardSheet: View {
                     }
 
                     if activeYear != nil {
-                        IOSSectionCard(title: "Curso actual", systemImage: "archivebox") {
+                        PremiumCard.section(title: "Curso actual", systemImage: "archivebox") {
                             VStack(alignment: .leading, spacing: 12) {
                             Button(role: .destructive) {
                                 onArchiveActive()
@@ -1055,7 +1055,7 @@ private struct CourseClassEditorSheet: View {
             onCancel: { dismiss() },
             onPrimary: save
         ) {
-            IOSSectionCard(title: "Grupo", systemImage: "rectangle.and.pencil.and.ellipsis") {
+            PremiumCard.section(title: "Grupo", systemImage: "rectangle.and.pencil.and.ellipsis") {
                 VStack(alignment: .leading, spacing: 16) {
                     CourseSheetTextField(title: "Nombre", placeholder: "1º ESO A", text: $name)
                     CourseSheetTextField(title: "Curso", placeholder: "1", text: $course)
@@ -1065,7 +1065,7 @@ private struct CourseClassEditorSheet: View {
                 }
             }
 
-            IOSSectionCard(title: "Asignatura", systemImage: "books.vertical") {
+            PremiumCard.section(title: "Asignatura", systemImage: "books.vertical") {
                 VStack(alignment: .leading, spacing: 12) {
                     Picker("Asignatura", selection: $subjectId) {
                         Text("Sin asignatura").tag(Int64?.none)
@@ -1120,7 +1120,7 @@ private struct SubjectCatalogSheet: View {
             onCancel: { dismiss() },
             onPrimary: { dismiss() }
         ) {
-            IOSSectionCard(title: editingSubject == nil ? "Nueva asignatura" : "Editar asignatura", systemImage: "tag") {
+            PremiumCard.section(title: editingSubject == nil ? "Nueva asignatura" : "Editar asignatura", systemImage: "tag") {
                 VStack(alignment: .leading, spacing: 16) {
                     subjectFields
 
@@ -1153,7 +1153,7 @@ private struct SubjectCatalogSheet: View {
                 }
             }
 
-            IOSSectionCard(title: "Catálogo", systemImage: "list.bullet.rectangle") {
+            PremiumCard.section(title: "Catálogo", systemImage: "list.bullet.rectangle") {
                 VStack(alignment: .leading, spacing: 12) {
                     if bridge.subjects.isEmpty {
                         Text("Todavía no hay asignaturas.")

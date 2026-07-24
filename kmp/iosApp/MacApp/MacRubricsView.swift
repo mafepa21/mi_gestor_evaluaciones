@@ -115,11 +115,11 @@ struct MacRubricsView: View {
                     description: Text("Aún no hay rúbricas cargadas en el bridge.")
                 )
             } else {
-                HStack(alignment: .top, spacing: MacAppStyle.sectionSpacing) {
+                HSplitView {
                     rubricsTable
-                        .frame(minWidth: 400, idealWidth: 480, maxWidth: 560)
+                        .frame(minWidth: 340, idealWidth: 460, maxWidth: 560)
                     rubricDetailPanel
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 }
             }
         }
@@ -234,12 +234,12 @@ struct MacRubricsView: View {
                 }
             }
             .padding(20)
-            .frame(width: 400)
+            .frame(minWidth: 340, idealWidth: 400)
         }
         .sheet(isPresented: $showingBuilder) {
             RubricsBuilderScreen()
                 .environmentObject(bridge)
-                .frame(minWidth: 1200, minHeight: 820)
+                .frame(minWidth: 860, idealWidth: 1200, minHeight: 560, idealHeight: 800)
         }
         .fileImporter(
             isPresented: $showingRubricFileImporter,
@@ -288,7 +288,7 @@ struct MacRubricsView: View {
         ) {
             RubricBulkEvaluationSheet(bridge: bridge)
                 .environmentObject(bridge)
-                .frame(minWidth: 1320, minHeight: 860)
+                .frame(minWidth: 900, idealWidth: 1180, minHeight: 600, idealHeight: 760)
         }
     }
 
@@ -311,7 +311,7 @@ struct MacRubricsView: View {
                         Text(schoolClass.name).tag(Optional(schoolClass.id))
                     }
                 }
-                .frame(width: 180)
+                .frame(minWidth: 120, idealWidth: 180)
             }
 
             Picker("Situación de aprendizaje", selection: $selectedTeachingUnitId) {
@@ -321,14 +321,14 @@ struct MacRubricsView: View {
                 }
                 Text("Sin situación asignada").tag(Optional(Int64.min))
             }
-            .frame(width: 220)
+            .frame(minWidth: 160, idealWidth: 220)
 
             Picker("Estado", selection: $selectedStatusFilter) {
                 ForEach(availableStatusFilters, id: \.self) { filter in
                     Text(filter).tag(filter)
                 }
             }
-            .frame(width: 190)
+            .frame(minWidth: 140, idealWidth: 190)
 
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
@@ -339,7 +339,7 @@ struct MacRubricsView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(MacAppStyle.subtleFill, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .frame(width: 220)
+            .frame(minWidth: 160, idealWidth: 220)
         }
     }
 
@@ -446,7 +446,7 @@ struct MacRubricsView: View {
             .padding(.vertical, 12)
             .background(
                 selectedRubricId == rubric.rubric.id
-                    ? Color.accentColor.opacity(0.10)
+                    ? RubricsStyle.selectionFill
                     : Color.clear
             )
         }
@@ -1048,7 +1048,7 @@ private struct RubricImportPreviewSheet: View {
             Divider()
             footer
         }
-        .frame(width: 600, height: 430)
+        .frame(minWidth: 520, idealWidth: 600, minHeight: 380, idealHeight: 430)
         .background(MacAppStyle.pageBackground)
     }
 

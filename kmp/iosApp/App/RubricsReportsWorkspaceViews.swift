@@ -125,13 +125,13 @@ struct RubricsWorkspaceView: View {
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 16)
-                    .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: RubricsStyle.blueprintCardRadius, style: .continuous))
 
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                        WorkspaceCompactStat(title: "Rúbricas", value: "\(rubricMetrics.total)", tint: EvaluationDesign.accent)
-                        WorkspaceCompactStat(title: "Vinculadas", value: "\(rubricMetrics.linked)", tint: EvaluationDesign.success)
-                        WorkspaceCompactStat(title: "Criterios", value: String(format: "%.1f", rubricMetrics.avgCriteria), tint: IOSAppStyle.warning)
-                        WorkspaceCompactStat(title: "Situaciones", value: "\(availableTeachingUnits.count)", tint: .purple)
+                        WorkspaceCompactStat(title: "Rúbricas", value: "\(rubricMetrics.total)", tint: RubricsStyle.statAccent)
+                        WorkspaceCompactStat(title: "Vinculadas", value: "\(rubricMetrics.linked)", tint: RubricsStyle.statSuccess)
+                        WorkspaceCompactStat(title: "Criterios", value: String(format: "%.1f", rubricMetrics.avgCriteria), tint: RubricsStyle.statWarning)
+                        WorkspaceCompactStat(title: "Situaciones", value: "\(availableTeachingUnits.count)", tint: RubricsStyle.statQuaternary)
                     }
 
                     ViewThatFits(in: .horizontal) {
@@ -268,7 +268,7 @@ struct RubricsWorkspaceView: View {
                                                 .foregroundStyle(.secondary)
                                         }
                                         .padding(16)
-                                        .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                        .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: RubricsStyle.blueprintCardRadius, style: .continuous))
                                     }
                                 }
                             } else {
@@ -477,7 +477,7 @@ struct RubricsWorkspaceView: View {
                     .buttonStyle(.plain)
                     .appInteractiveHighlight()
                     .padding(16)
-                    .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .background(appCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: RubricsStyle.blueprintCardRadius, style: .continuous))
                     .accessibilityLabel("Evaluar \(usage.evaluationName) en \(usage.className)")
                 }
             } else {
@@ -519,7 +519,7 @@ struct RubricsWorkspaceView: View {
             }
         }
         .padding(16)
-        .background(background, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(background, in: RoundedRectangle(cornerRadius: RubricsStyle.blueprintCardRadius, style: .continuous))
     }
 
     func fallback(_ value: String, empty placeholder: String) -> String {

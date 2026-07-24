@@ -2674,9 +2674,12 @@ struct WorkspaceActionRow: View {
 struct WorkspaceEmptyState: View {
     let title: String
     let subtitle: String
+    var systemImage = "square.stack.3d.up.slash"
+    var actionTitle: String? = nil
+    var action: (() -> Void)? = nil
 
     var body: some View {
-        PremiumEmptyState(title: title, subtitle: subtitle)
+        PremiumEmptyState(title: title, subtitle: subtitle, systemImage: systemImage, actionTitle: actionTitle, action: action)
     }
 }
 

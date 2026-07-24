@@ -305,8 +305,13 @@ struct LearningSituationsWorkspaceView: View {
         } else {
             WorkspaceEmptyState(
                 title: "Situaciones de aprendizaje",
-                subtitle: "Importa un documento Word y asócialo a tus grupos para programar sesiones y preparar evaluación."
-            )
+                subtitle: "Importa un documento Word y asócialo a tus grupos para programar sesiones y preparar evaluación.",
+                systemImage: "doc.text.magnifyingglass",
+                actionTitle: "Importar situación"
+            ) {
+                importTargetId = nil
+                isImporterPresented = true
+            }
         }
     }
 

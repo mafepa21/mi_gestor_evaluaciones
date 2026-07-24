@@ -350,13 +350,125 @@ struct DashboardView: View {
     private var dashboardContent: some View {
         ScrollView {
             if let snapshot = dashboardStore.dashboardSnapshot {
-                dashboardLoadedContent(snapshot: snapshot)
-                .padding(EvaluationDesign.screenPadding)
+                if dashboardStore.classes.isEmpty {
+                    // Con cero clases, todos los bloques del dashboard cargado
+                    // solo dicen "sin datos" en cada tarjeta: un muro de
+                    // negaciones. En vez de eso, un único estado con una
+                    // salida clara, como ya tiene macOS.
+                    dashboardEmptyState
+                        .padding(EvaluationDesign.screenPadding)
+                } else {
+                    dashboardLoadedContent(snapshot: snapshot)
+                        .padding(EvaluationDesign.screenPadding)
+                }
             } else {
                 dashboardSkeletonContent
                     .padding(EvaluationDesign.screenPadding)
             }
         }
+    }
+
+    private var dashboardEmptyState: some View {
+        VStack(alignment: .leading, spacing: EvaluationDesign.cardSpacing) {
+            HStack(alignment: .top, spacing: 18) {
+                Image(systemName: "person.3.sequence")
+                    .font(.system(size: 28, weight: .semibold))
+                    .foregroundStyle(EvaluationDesign.accent)
+                    .frame(width: 52, height: 52)
+                    .background(EvaluationDesign.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Sin clases todavía")
+                        .font(.system(.title2, design: .rounded).weight(.bold))
+                    Text("Crea tu primera clase para empezar a ver aquí las sesiones, alertas y evaluaciones del día.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            Button("Crear clase") {
+                onOpenModule(.courses, nil, nil)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 12)], alignment: .leading, spacing: 12) {
+                dashboardEmptyActionCard(
+                    title: "Crear grupo",
+                    subtitle: "Empieza por el alumnado y sus clases.",
+                    systemImage: "person.3.sequence",
+                    tint: EvaluationDesign.accent
+                ) {
+                    onOpenModule(.courses, nil, nil)
+                }
+                dashboardEmptyActionCard(
+                    title: "Planificar semana",
+                    subtitle: "Define sesiones aunque no haya grupo aún.",
+                    systemImage: "calendar.badge.plus",
+                    tint: IOSAppStyle.warning
+                ) {
+                    onOpenModule(.planner, nil, nil)
+                }
+                dashboardEmptyActionCard(
+                    title: "Importar situación",
+                    subtitle: "Sube un documento LOMLOE para programarlo después.",
+                    systemImage: "doc.text.magnifyingglass",
+                    tint: EvaluationDesign.success
+                ) {
+                    onOpenModule(.situations, nil, nil)
+                }
+            }
+        }
+        .padding(EvaluationDesign.cardSpacing)
+        .background(.regularMaterial)
+        .cornerRadius(EvaluationDesign.innerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: EvaluationDesign.innerRadius, style: .continuous)
+                .stroke(IOSAppStyle.cardBorder, lineWidth: 1)
+        )
+        .shadow(color: IOSAppStyle.shadow, radius: 14, x: 0, y: 8)
+    }
+
+    private func dashboardEmptyActionCard(
+        title: String,
+        subtitle: String,
+        systemImage: String,
+        tint: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 26, height: 26)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.primary)
+                    Text(subtitle)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, minHeight: 84, alignment: .topLeading)
+            .background(appMutedCardBackground(for: colorScheme), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(tint.opacity(0.18), lineWidth: 1)
+            )
+        }
+        .buttonStyle(ScaleButtonStyle())
     }
 
     @ViewBuilder

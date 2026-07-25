@@ -78,7 +78,9 @@
 		2A132DCD2DEABBDD1A1E8DC8 /* NotebookStructuredInstrumentSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FA4D40A51F6DA104CCFFE1E /* NotebookStructuredInstrumentSupport.swift */; };
 		2B8604AE8668138313FF158A /* PlannerWorkspaceViewModel+DayBoard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8BFCF99CED1D1B0B14F406F /* PlannerWorkspaceViewModel+DayBoard.swift */; };
 		2B8C387421A1620F71EB8F16 /* StringHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBAAEE8EDA2AFF2C273DAC5F /* StringHelpers.swift */; };
+		2C96F0474CC75AB421D42592 /* DashboardSharedBlocks.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8C8563CC96E19042E114CEA /* DashboardSharedBlocks.swift */; };
 		2E0C1B67E85317A3147416FF /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2BAD893EC7E90121671F7BDB /* Assets.xcassets */; };
+		2E86EFB3211146C6C9AC62DA /* TeacherScheduleWizard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 662D4B11E29F193E61400C1F /* TeacherScheduleWizard.swift */; };
 		2F72D4E14B451CD4EE6F131C /* NotebookModuleToolbarState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A4E8D89679CED5E074F1005 /* NotebookModuleToolbarState.swift */; };
 		2FFE8A5486A369FD414EF796 /* PlannerWeekMiniatureGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DA915360711FBD27A37EB78 /* PlannerWeekMiniatureGrid.swift */; };
 		303A136D412D596B99BB06A8 /* MacDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7030138D429F12877D448CD /* MacDashboardView.swift */; };
@@ -182,13 +184,12 @@
 		66D1856D79472CD9836FE1C9 /* WorkspaceSidebar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D4F77F8AE48BC67BBEA1603 /* WorkspaceSidebar.swift */; };
 		66F98BF4EEB8D773D5E4C999 /* MacStudentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EA0ED7ACCCC1D3A0A73D045 /* MacStudentsView.swift */; };
 		67CBBC9A73364CED4EEC1772 /* NotebookEditableTableCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C0B0E3ED2C6BFAF2C222AA3 /* NotebookEditableTableCell.swift */; };
+		6860B9518A5CD2E84C4097F6 /* TeacherScheduleWizard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 662D4B11E29F193E61400C1F /* TeacherScheduleWizard.swift */; };
 		6877F85FFE101D346660E09C /* NotebookModuleSupportActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BA1F288BF073BB3431CF16E /* NotebookModuleSupportActions.swift */; };
 		688E805B2C9FB993411EDAED /* NotebookGroupManagementSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A63C3DA4B9E97ACDAA83D53 /* NotebookGroupManagementSheet.swift */; };
 		68DA9BA9A8E9C409815A83B5 /* BackupRestorePreviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41D847221EF034B6A7ED4339 /* BackupRestorePreviewSheet.swift */; };
 		68FEE2A3C2B71B6C81EEA7E1 /* PlannerWorkspaceViewModel+CascadeMove.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED160717C62AAA3AB794905E /* PlannerWorkspaceViewModel+CascadeMove.swift */; };
 		6AAF153D4D0CBE66F5351178 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C7AB4FB2753F16568E54891 /* DashboardView.swift */; };
-		70AFCFFAD277BF351232F46C /* TeacherScheduleWizard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63F31F946879D46EB4EB75DF /* TeacherScheduleWizard.swift */; };
-		B812E76ACC1DFD4471F1E3AC /* DashboardSharedBlocks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 698BDD4F0F1FC47546E04E07 /* DashboardSharedBlocks.swift */; };
 		6BE839B846E6739DA1A6885C /* AppleRoundedCorner.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC0359FA7FD3BF06A0E300F5 /* AppleRoundedCorner.swift */; };
 		6CDD16F9ECA1589E81197BE4 /* DataSecuritySettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C680A5ECE29A5E0CA5322A5A /* DataSecuritySettingsView.swift */; };
 		6F170E23E65199E795252101 /* NotebookFormulaEvaluator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82F349363D7DF9A0AD8CAD85 /* NotebookFormulaEvaluator.swift */; };
@@ -229,6 +230,7 @@
 		8177D8D46978C81F4594E4B4 /* NotebookSeatingPlanView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5BB221D33601136CB3F7F0F /* NotebookSeatingPlanView.swift */; };
 		8260D6F8F24ABD735B285EBA /* AppleSpreadsheetReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9E628D0904D069E276C888E /* AppleSpreadsheetReader.swift */; };
 		82E4E70524506517472625EB /* EvaluationDesign.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61DBB79CD6256350F830529A /* EvaluationDesign.swift */; };
+		83DB805DBC12FA13994AB6DC /* DataManagementSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C72A84FEEBDA24C73D956D7A /* DataManagementSettingsView.swift */; };
 		864BD267739CF9BC84E41BB1 /* AppleAIOrchestrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D47CE5CC1A1F907BFA2E477 /* AppleAIOrchestrator.swift */; };
 		867593B8E7A8FA4FE268F0B9 /* PlannerWorkspaceViewModel+WeekBoard.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC2F0852F9CAA60482FA9785 /* PlannerWorkspaceViewModel+WeekBoard.swift */; };
 		86BC90A2A4604BC6B4545E27 /* IPadWorkspaceShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74BD0F6DDCBB48B737A44D3C /* IPadWorkspaceShell.swift */; };
@@ -319,6 +321,7 @@
 		C237C005BDDD27D53C8EA5C6 /* NotebookColumnVisibilityRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F06B84E53590F642FC31288 /* NotebookColumnVisibilityRules.swift */; };
 		C29EE7CFDABD680D89230324 /* PlannerWeekMiniatureLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 992519C5A19AC4FD6AA36D33 /* PlannerWeekMiniatureLayout.swift */; };
 		C30F449FC9351644DF8F33D6 /* PlannerSessionDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E409AC49E4C2F349EEC469ED /* PlannerSessionDetailSheet.swift */; };
+		C371E7CCB485B2E8475ABE79 /* DashboardSharedBlocks.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8C8563CC96E19042E114CEA /* DashboardSharedBlocks.swift */; };
 		C3F8BC42806F5865C3CBF99B /* CoursesWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC6FF32972AD484A9FAEABBC /* CoursesWorkspaceView.swift */; };
 		C4D6907F72CCBB50F0B8A8FE /* StringHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBAAEE8EDA2AFF2C273DAC5F /* StringHelpers.swift */; };
 		C5E80A167C7AB5EDD13BCC51 /* IOSPremiumComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ED9DC6173D7A4938D83F2BB /* IOSPremiumComponents.swift */; };
@@ -352,6 +355,7 @@
 		DAE6053C0723B1F6576BE406 /* NotebookHiddenColumnsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B252E2D9B95CDC6CB59B9A3 /* NotebookHiddenColumnsSheet.swift */; };
 		DAFFFE0EB2194B4D025A6406 /* MiGestorKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9B37D82D4C30174CBD843E47 /* MiGestorKit.framework */; };
 		DC3549B40B2B073AB85CAC28 /* TeacherRadarGroupSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A93FFE1CAA3FC3A0F8E74115 /* TeacherRadarGroupSummaryView.swift */; };
+		DCA27168B229DA96EC2E2944 /* DataManagementSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C72A84FEEBDA24C73D956D7A /* DataManagementSettingsView.swift */; };
 		DD5D6CEE951094108091C062 /* PlannerSummaryDashboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1867CC94618A27E645618888 /* PlannerSummaryDashboard.swift */; };
 		DE0B12080EEE1DBB3FB8F826 /* KmpBridgeObservationStores.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F4818F5D8B238485F914767 /* KmpBridgeObservationStores.swift */; };
 		DE342547139A1D6142A7C5B1 /* PlannerJournalDetailPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0176FC5D534ADFA4ACFC6F20 /* PlannerJournalDetailPane.swift */; };
@@ -387,8 +391,6 @@
 		EE0C661D1602554402374D55 /* NotebookSupportViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 834354958EC7B5CE22A3BA07 /* NotebookSupportViews.swift */; };
 		EE21D09A94AB9AA500C3E28D /* SettingsSectionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3AF5F802820D600F56AC6F2D /* SettingsSectionCard.swift */; };
 		EFDFB4479447A7246D91ABCA /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C7AB4FB2753F16568E54891 /* DashboardView.swift */; };
-		2CAF80173F124C428928FB41 /* TeacherScheduleWizard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63F31F946879D46EB4EB75DF /* TeacherScheduleWizard.swift */; };
-		8CC6B8ED0DF8CC33E2E55595 /* DashboardSharedBlocks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 698BDD4F0F1FC47546E04E07 /* DashboardSharedBlocks.swift */; };
 		F068E3CEACB675A1CED9011C /* NotebookModuleDataState.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6144B137C267EC5DEA266F2 /* NotebookModuleDataState.swift */; };
 		F0B171DB64DE32129BFBCE30 /* AppleAppRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BE36C2FC3CA10A0D5E7F322 /* AppleAppRootView.swift */; };
 		F0FD5D3E81213790BCEC6415 /* MacRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4D63DE58BB98EFB94E5B080 /* MacRootView.swift */; };
@@ -530,6 +532,7 @@
 		61BED513E849E7CB7DA762A5 /* LearningSituationDocumentImportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearningSituationDocumentImportService.swift; sourceTree = "<group>"; };
 		61DBB79CD6256350F830529A /* EvaluationDesign.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvaluationDesign.swift; sourceTree = "<group>"; };
 		657CDD06E0754BF4AA3BD7E4 /* PlannerPedagogyShared.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerPedagogyShared.swift; sourceTree = "<group>"; };
+		662D4B11E29F193E61400C1F /* TeacherScheduleWizard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeacherScheduleWizard.swift; sourceTree = "<group>"; };
 		666F9AAA1EB484C6A9C66752 /* PlannerWorkspaceViewModel+AutoStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerWorkspaceViewModel+AutoStatus.swift"; sourceTree = "<group>"; };
 		66C430BD4F07BF647679F179 /* SettingsWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWorkspaceView.swift; sourceTree = "<group>"; };
 		6AB9B92354A1345110A45747 /* MacAttendanceDayRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacAttendanceDayRow.swift; sourceTree = "<group>"; };
@@ -576,8 +579,6 @@
 		996E1D0739D88B5507B110B6 /* AppleAppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleAppEnvironment.swift; sourceTree = "<group>"; };
 		9B37D82D4C30174CBD843E47 /* MiGestorKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MiGestorKit.framework; path = Frameworks/macos/MiGestorKit.framework; sourceTree = "<group>"; };
 		9C7AB4FB2753F16568E54891 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
-		63F31F946879D46EB4EB75DF /* TeacherScheduleWizard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeacherScheduleWizard.swift; sourceTree = "<group>"; };
-		698BDD4F0F1FC47546E04E07 /* DashboardSharedBlocks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardSharedBlocks.swift; sourceTree = "<group>"; };
 		9D93A76DF493650C1B4A2C09 /* ImportPreviewModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportPreviewModels.swift; sourceTree = "<group>"; };
 		9EA0ED7ACCCC1D3A0A73D045 /* MacStudentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacStudentsView.swift; sourceTree = "<group>"; };
 		9F06B84E53590F642FC31288 /* NotebookColumnVisibilityRules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotebookColumnVisibilityRules.swift; sourceTree = "<group>"; };
@@ -623,6 +624,7 @@
 		C66F3C885EB6EAF74EACD0D6 /* MacAppSessionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacAppSessionController.swift; sourceTree = "<group>"; };
 		C680A5ECE29A5E0CA5322A5A /* DataSecuritySettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataSecuritySettingsView.swift; sourceTree = "<group>"; };
 		C6A13EB373B0EE87E425E97C /* ScheduleExcelImportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleExcelImportService.swift; sourceTree = "<group>"; };
+		C72A84FEEBDA24C73D956D7A /* DataManagementSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataManagementSettingsView.swift; sourceTree = "<group>"; };
 		C85AD42D18AFCD452127D549 /* ScheduleImportModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleImportModels.swift; sourceTree = "<group>"; };
 		C8BFCF99CED1D1B0B14F406F /* PlannerWorkspaceViewModel+DayBoard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlannerWorkspaceViewModel+DayBoard.swift"; sourceTree = "<group>"; };
 		CABF3C938060DE09EB0F96BB /* RubricsBuilderScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RubricsBuilderScreen.swift; sourceTree = "<group>"; };
@@ -634,6 +636,7 @@
 		D60E195E650E3C66A0B033A6 /* MiGestorKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MiGestorKit.framework; path = Frameworks/ios/MiGestorKit.framework; sourceTree = "<group>"; };
 		D7030138D429F12877D448CD /* MacDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacDashboardView.swift; sourceTree = "<group>"; };
 		D7F324EED74CBC624894170D /* MiGestorKMPMacApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiGestorKMPMacApp.swift; sourceTree = "<group>"; };
+		D8C8563CC96E19042E114CEA /* DashboardSharedBlocks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardSharedBlocks.swift; sourceTree = "<group>"; };
 		D8E92873CBFFD07EEDF953F4 /* SyncEventListener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncEventListener.swift; sourceTree = "<group>"; };
 		D9892E60A7CF035F7B78B081 /* QRCodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRCodeView.swift; sourceTree = "<group>"; };
 		DBDE22B7BADFF6EE757E8A93 /* DashboardRecommendations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardRecommendations.swift; sourceTree = "<group>"; };
@@ -750,6 +753,7 @@
 				78E88B21BBD0EF622338678A /* BackupStatusHero.swift */,
 				AD1C7AE3703AF328A706E700 /* DashboardProactiveInsight.swift */,
 				DBDE22B7BADFF6EE757E8A93 /* DashboardRecommendations.swift */,
+				C72A84FEEBDA24C73D956D7A /* DataManagementSettingsView.swift */,
 				C680A5ECE29A5E0CA5322A5A /* DataSecuritySettingsView.swift */,
 				B8AD3A2E943A41407A974460 /* EvaluationSettingsView.swift */,
 				DDF85B72D878968E171D9F9C /* GeneralSettingsView.swift */,
@@ -836,9 +840,8 @@
 				0ECAFCB0C2D05856472D5371 /* ClassroomCaptureBar.swift */,
 				574A36D51DB905768D1450DF /* ContentView.swift */,
 				DC6FF32972AD484A9FAEABBC /* CoursesWorkspaceView.swift */,
+				D8C8563CC96E19042E114CEA /* DashboardSharedBlocks.swift */,
 				9C7AB4FB2753F16568E54891 /* DashboardView.swift */,
-				63F31F946879D46EB4EB75DF /* TeacherScheduleWizard.swift */,
-				698BDD4F0F1FC47546E04E07 /* DashboardSharedBlocks.swift */,
 				4ED9D8451FE6172EFBD59BC5 /* DiaryWorkspaceView.swift */,
 				61DBB79CD6256350F830529A /* EvaluationDesign.swift */,
 				2960F7D65E3A8DF5997306CD /* EvaluationHubView.swift */,
@@ -944,6 +947,7 @@
 				A93FFE1CAA3FC3A0F8E74115 /* TeacherRadarGroupSummaryView.swift */,
 				1AD45ACA95D963773FDADD4C /* TeacherRadarStudentInsightRow.swift */,
 				85B8ED1FDFD34D1DF02ACDD8 /* TeacherScheduleSettingsView.swift */,
+				662D4B11E29F193E61400C1F /* TeacherScheduleWizard.swift */,
 				FEB05410ADED16A84A47A761 /* TournamentModule.swift */,
 				0CAE8A67112E3157FC3FFECE /* WeightEditorSheet.swift */,
 				2B295CDB0A0C9F2C1835EF56 /* WorkspaceCreationSheets.swift */,
@@ -1193,9 +1197,9 @@
 				288029144DAFFC789B765F85 /* CoursesWorkspaceView.swift in Sources */,
 				6551733DC8091EED1D575364 /* DashboardProactiveInsight.swift in Sources */,
 				BD022371A577E17589BC398B /* DashboardRecommendations.swift in Sources */,
+				2C96F0474CC75AB421D42592 /* DashboardSharedBlocks.swift in Sources */,
 				6AAF153D4D0CBE66F5351178 /* DashboardView.swift in Sources */,
-				70AFCFFAD277BF351232F46C /* TeacherScheduleWizard.swift in Sources */,
-				B812E76ACC1DFD4471F1E3AC /* DashboardSharedBlocks.swift in Sources */,
+				DCA27168B229DA96EC2E2944 /* DataManagementSettingsView.swift in Sources */,
 				507FE6A1B2C504DD4D7A505D /* DataSecuritySettingsView.swift in Sources */,
 				CAF67FA20CA5E389338EA49A /* DiaryWorkspaceView.swift in Sources */,
 				82E4E70524506517472625EB /* EvaluationDesign.swift in Sources */,
@@ -1361,6 +1365,7 @@
 				A0BE5CCF5560809D240A0327 /* TeacherRadarGroupSummaryView.swift in Sources */,
 				42B06F3786219357754DA73D /* TeacherRadarStudentInsightRow.swift in Sources */,
 				0E1FCE13DF847EFA7D44E0AD /* TeacherScheduleSettingsView.swift in Sources */,
+				2E86EFB3211146C6C9AC62DA /* TeacherScheduleWizard.swift in Sources */,
 				4603B95F5E71DE05F5B36F0B /* TournamentModule.swift in Sources */,
 				EB0DA30115D7B0863E94E1D1 /* TutoringShared.swift in Sources */,
 				C0C03EC5C394E3592FA171D9 /* WeightEditorSheet.swift in Sources */,
@@ -1412,9 +1417,9 @@
 				C3F8BC42806F5865C3CBF99B /* CoursesWorkspaceView.swift in Sources */,
 				B1EDD894F23E2AEA15628F17 /* DashboardProactiveInsight.swift in Sources */,
 				5B6B1EAFC967383C3D39C47F /* DashboardRecommendations.swift in Sources */,
+				C371E7CCB485B2E8475ABE79 /* DashboardSharedBlocks.swift in Sources */,
 				EFDFB4479447A7246D91ABCA /* DashboardView.swift in Sources */,
-				2CAF80173F124C428928FB41 /* TeacherScheduleWizard.swift in Sources */,
-				8CC6B8ED0DF8CC33E2E55595 /* DashboardSharedBlocks.swift in Sources */,
+				83DB805DBC12FA13994AB6DC /* DataManagementSettingsView.swift in Sources */,
 				6CDD16F9ECA1589E81197BE4 /* DataSecuritySettingsView.swift in Sources */,
 				E11C883BCE69B05FE0FBC324 /* DiaryWorkspaceView.swift in Sources */,
 				63DB1711AD7BF3AFA2B8B305 /* EvaluationDesign.swift in Sources */,
@@ -1553,6 +1558,7 @@
 				DC3549B40B2B073AB85CAC28 /* TeacherRadarGroupSummaryView.swift in Sources */,
 				15B5C7443B2944C59942F07A /* TeacherRadarStudentInsightRow.swift in Sources */,
 				6439B3815A09D0F867D1FE88 /* TeacherScheduleSettingsView.swift in Sources */,
+				6860B9518A5CD2E84C4097F6 /* TeacherScheduleWizard.swift in Sources */,
 				5765367BFF3B25A005AD911A /* TournamentModule.swift in Sources */,
 				1DD64E29F1E15C07CF123EA7 /* TutoringShared.swift in Sources */,
 				BD77C5642785F0039E37C2E7 /* WeightEditorSheet.swift in Sources */,

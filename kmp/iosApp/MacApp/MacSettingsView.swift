@@ -21,6 +21,7 @@ struct MacSettingsView: View {
                     settingsRow("Evaluación", systemImage: "chart.bar.doc.horizontal", route: .evaluation)
                     settingsRow("Cuaderno", systemImage: "text.book.closed", route: .notebook)
                     settingsRow("Datos y Seguridad", systemImage: "lock.shield", route: .dataSecurity)
+                    settingsRow("Gestión de datos", systemImage: "trash", route: .dataManagement)
                     settingsRow("Sincronización", systemImage: "arrow.triangle.2.circlepath", route: .sync)
                     settingsRow("IA Apple", systemImage: "sparkles", route: .appleAI)
                     settingsRow("Apariencia", systemImage: "paintpalette", route: .appearance)
@@ -77,6 +78,9 @@ struct MacSettingsView: View {
             NotebookSettingsView(settings: settings)
         case .dataSecurity:
             DataSecuritySettingsView(settings: settings)
+        case .dataManagement:
+            DataManagementSettingsView()
+                .environmentObject(session.bridge)
         case .sync:
             SyncSettingsView(settings: settings)
                 .environmentObject(session.bridge)

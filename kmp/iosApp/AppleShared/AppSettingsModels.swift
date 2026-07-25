@@ -235,6 +235,7 @@ public enum SettingsRoute: Hashable, Identifiable {
     case evaluation
     case notebook
     case dataSecurity
+    case dataManagement
     case sync
     case appleAI
     case appearance
@@ -247,6 +248,7 @@ public enum SettingsRoute: Hashable, Identifiable {
         case .evaluation: return "evaluation"
         case .notebook: return "notebook"
         case .dataSecurity: return "dataSecurity"
+        case .dataManagement: return "dataManagement"
         case .sync: return "sync"
         case .appleAI: return "appleAI"
         case .appearance: return "appearance"

@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 struct SettingsDangerZoneView: View {
     @ObservedObject var settings: AppSettingsStore
@@ -131,7 +134,34 @@ struct SettingsDangerZoneView: View {
         // needsRestart es observado en la raíz de la app (iOS: AppleAppRootView, macOS: MacRootView)
         // para bloquear la UI con un aviso de reinicio en lugar de dejar datos en memoria obsoletos.
         AppleBackupService.shared.needsRestart = true
+        #if os(macOS)
+        scheduleAutomaticRelaunch()
+        #endif
     }
+
+    #if os(macOS)
+    /// En macOS sí se puede relanzar la app: `wipeAllData()` borra los ficheros
+    /// en disco pero la conexión SQLite y el estado en memoria del proceso
+    /// actual siguen siendo los antiguos, así que un reinicio manual era el
+    /// único modo de ver los cambios reflejados. El retardo deja ver el aviso
+    /// de `RestartRequiredOverlay` antes de que el proceso termine.
+    ///
+    /// iOS/iPadOS no tiene equivalente: Apple no permite que una app se
+    /// autorelance (rechazado en App Review), así que ahí se mantiene el
+    /// aviso de reinicio manual sin cambios.
+    private func scheduleAutomaticRelaunch() {
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.createsNewApplicationInstance = true
+            NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: configuration) { _, _ in
+                DispatchQueue.main.async {
+                    NSApp.terminate(nil)
+                }
+            }
+        }
+    }
+    #endif
 }
 
 private enum DangerZoneAction: String, Identifiable {

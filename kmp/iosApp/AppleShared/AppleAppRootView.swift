@@ -140,6 +140,17 @@ private extension View {
 struct RestartRequiredOverlay: View {
     var body: some View {
         VStack(spacing: 16) {
+            #if os(macOS)
+            ProgressView()
+                .controlSize(.large)
+            Text("Reiniciando MiGestor…")
+                .font(.title3.weight(.semibold))
+            Text("Los datos se han modificado en el dispositivo. La aplicación se reiniciará automáticamente en unos segundos.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+            #else
             Image(systemName: "arrow.clockwise.circle.fill")
                 .font(.system(size: 44, weight: .semibold))
                 .foregroundStyle(.secondary)
@@ -150,6 +161,7 @@ struct RestartRequiredOverlay: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
+            #endif
         }
         .padding(32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

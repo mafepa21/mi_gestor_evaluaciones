@@ -42,14 +42,27 @@ struct MacSettingsView: View {
                 )
                 .background(Color(NSColor.windowBackgroundColor))
             } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
-                        detailViewForRoute(selectedRoute)
+                // `detailViewForRoute` puede navegar con `NavigationLink` (p.ej.
+                // Datos y Seguridad → Zona de Riesgo). Sin un `NavigationStack`
+                // propio aquí, ese push se resuelve contra un contexto de
+                // navegación implícito ligado a la ventana en vez de a esta
+                // vista: al cambiar de `selectedRoute` (o de sección en la
+                // barra lateral principal) el push queda huérfano y sigue
+                // tapando el panel de detalle aunque el resto de la app haya
+                // navegado a otro sitio. `.id(selectedRoute)` fuerza además a
+                // resetear el push al cambiar de sección de Ajustes sin salir
+                // de Ajustes.
+                NavigationStack {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 20) {
+                            detailViewForRoute(selectedRoute)
+                        }
+                        .padding(24)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
                     }
-                    .padding(24)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .background(Color(NSColor.windowBackgroundColor))
                 }
-                .background(Color(NSColor.windowBackgroundColor))
+                .id(selectedRoute)
             }
         }
     }
@@ -77,6 +90,7 @@ struct MacSettingsView: View {
             NotebookSettingsView(settings: settings)
         case .dataSecurity:
             DataSecuritySettingsView(settings: settings)
+                .environmentObject(session.bridge)
         case .sync:
             SyncSettingsView(settings: settings)
                 .environmentObject(session.bridge)

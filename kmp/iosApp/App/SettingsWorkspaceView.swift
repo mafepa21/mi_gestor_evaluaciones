@@ -125,6 +125,7 @@ struct SettingsWorkspaceView: View {
             EvaluationSettingsView(settings: settings)
         case "datasec":
             DataSecuritySettingsView(settings: settings)
+                .environmentObject(bridge)
         case "synclan":
             SyncSettingsView(settings: settings)
                 .environmentObject(bridge)

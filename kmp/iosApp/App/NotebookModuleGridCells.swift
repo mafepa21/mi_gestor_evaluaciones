@@ -295,13 +295,13 @@ extension NotebookModuleView {
         if column.inputKind.isStructuredInstrument {
             switch column.inputKind {
             case .structuredChecklist:
-                return "Checklist"
+                return appendingWeightBadge("Checklist", to: column)
             case .structuredObservation:
-                return "Observación"
+                return appendingWeightBadge("Observación", to: column)
             case .structuredForm:
-                return "Formulario"
+                return appendingWeightBadge("Formulario", to: column)
             case .structuredQuiz:
-                return "Quiz"
+                return appendingWeightBadge("Quiz", to: column)
             default:
                 break
             }
@@ -340,7 +340,36 @@ extension NotebookModuleView {
             typeText = "Columna"
         }
 
-        return typeText
+        return appendingWeightBadge(typeText, to: column)
+    }
+
+    /// D1: `ensureNotebookColumnForAssessmentInstrument` (KmpBridge.swift) guarda
+    /// `weight = weightPercent / 100` para los instrumentos importados de una SA (0,4 para un
+    /// instrumento del 40 %), y antes se enseñaba tal cual (`×0,4`), que para el docente no
+    /// significa nada. Se pinta como porcentaje cuando el peso es una fracción entre 0 y 1;
+    /// se mantiene `×N` para los multiplicadores enteros manuales y "no cuenta" para las
+    /// columnas excluidas de la media. Limitación conocida (no se cambia aquí): si en la misma
+    /// pestaña conviven columnas importadas con peso porcentual (0,4) y columnas manuales con
+    /// peso ×1, las importadas siguen pesando mucho menos de lo que sugiere su porcentaje en el
+    /// cálculo real de la media — este badge solo corrige la lectura visual del peso.
+    private func appendingWeightBadge(_ typeText: String, to column: NotebookColumnDefinition) -> String {
+        guard let badge = weightBadgeText(for: column) else { return typeText }
+        return "\(typeText) · \(badge)"
+    }
+
+    private func weightBadgeText(for column: NotebookColumnDefinition) -> String? {
+        guard column.type == .numeric || column.type == .rubric else { return nil }
+        if !column.countsTowardAverage {
+            return "no cuenta"
+        }
+        guard column.weight > 0 else { return nil }
+        if column.weight < 1 {
+            let percent = Int((column.weight * 100).rounded())
+            return "\(percent)%"
+        }
+        let roundedMultiplier = column.weight.rounded()
+        guard abs(column.weight - roundedMultiplier) < 0.001, roundedMultiplier > 1 else { return nil }
+        return "×\(Int(roundedMultiplier))"
     }
 
     func displayTint(for column: NotebookColumnDefinition) -> Color {

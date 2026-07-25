@@ -367,29 +367,15 @@ public final class AppleBackupService: ObservableObject {
             }
 
             // 4. Overwrite the database
-
-            // Delete active WAL and SHM journal sidecars so they don't apply to the restored database
-            for suffix in ["-wal", "-shm"] {
-                let activeSidecar = URL(fileURLWithPath: databaseURL.path + suffix)
-                if fileManager.fileExists(atPath: activeSidecar.path) {
-                    try fileManager.removeItem(at: activeSidecar)
-                }
-            }
-            
-            // Replace main database file
-            if fileManager.fileExists(atPath: databaseURL.path) {
-                try fileManager.removeItem(at: databaseURL)
-            }
-            try fileManager.copyItem(at: sourceDB, to: databaseURL)
-            
-            // Restore sidecars from package if they exist
-            for suffix in ["-wal", "-shm"] {
-                let packageSidecar = packageURL.appendingPathComponent("database.sqlite" + suffix)
-                let activeSidecar = URL(fileURLWithPath: databaseURL.path + suffix)
-                if fileManager.fileExists(atPath: packageSidecar.path) {
-                    try fileManager.copyItem(at: packageSidecar, to: activeSidecar)
-                }
-            }
+            //
+            // El reemplazo es atómico a propósito. La versión anterior hacía
+            // `removeItem` y después `copyItem`, lo que deja una ventana — corta pero
+            // real — en la que la base activa no existe en disco mientras el driver de
+            // SQLDelight la tiene abierta: exactamente la situación que hacía abortar el
+            // proceso en el borrado total (`vnode unlinked while in use` → `SQLITE_IOERR`).
+            // Con `replaceItemAt` la ruta nunca se queda sin fichero, y si la copia falla
+            // a mitad no destruye la base que había.
+            try replaceDatabaseAtomically(with: sourceDB, packageURL: packageURL)
             
             // 5. Restore attachments
             if fileManager.fileExists(atPath: attachmentsURL.path) {
@@ -416,6 +402,44 @@ public final class AppleBackupService: ObservableObject {
         } catch {
             self.lastError = "Error restaurando copia: \(error.localizedDescription)"
             throw error
+        }
+    }
+
+    /// Sustituye la base activa por `sourceDB` sin que la ruta se quede nunca sin fichero.
+    ///
+    /// `replaceItemAt` consume el elemento de origen, así que primero se hace una copia
+    /// temporal en el mismo directorio (mismo volumen, requisito de la API) y es esa copia
+    /// la que se mueve a su sitio. Los sidecars `-wal`/`-shm` activos se eliminan antes:
+    /// pertenecen a la base anterior y aplicarlos sobre la restaurada la corrompería.
+    private func replaceDatabaseAtomically(with sourceDB: URL, packageURL: URL) throws {
+        let stagingURL = databaseURL
+            .deletingLastPathComponent()
+            .appendingPathComponent("restore-\(UUID().uuidString).sqlite", isDirectory: false)
+
+        try fileManager.copyItem(at: sourceDB, to: stagingURL)
+        defer { try? fileManager.removeItem(at: stagingURL) }
+
+        for suffix in ["-wal", "-shm"] {
+            let activeSidecar = URL(fileURLWithPath: databaseURL.path + suffix)
+            if fileManager.fileExists(atPath: activeSidecar.path) {
+                try fileManager.removeItem(at: activeSidecar)
+            }
+        }
+
+        if fileManager.fileExists(atPath: databaseURL.path) {
+            _ = try fileManager.replaceItemAt(databaseURL, withItemAt: stagingURL)
+        } else {
+            // Primera restauración sobre una instalación sin base: no hay nada que
+            // reemplazar, así que basta con mover la copia a su sitio.
+            try fileManager.moveItem(at: stagingURL, to: databaseURL)
+        }
+
+        for suffix in ["-wal", "-shm"] {
+            let packageSidecar = packageURL.appendingPathComponent("database.sqlite" + suffix)
+            let activeSidecar = URL(fileURLWithPath: databaseURL.path + suffix)
+            if fileManager.fileExists(atPath: packageSidecar.path) {
+                try fileManager.copyItem(at: packageSidecar, to: activeSidecar)
+            }
         }
     }
 

@@ -41,6 +41,12 @@ Cambios posteriores a `v0.3.0-traceability-baseline`.
 
 ### Fixed
 
+- Copias de seguridad y rescate: restaurar una copia (`AppleBackupService.restoreBackup`) y reintentar una base rescatada (`AppleDatabaseRescueService.retryRescuedDatabase`) sustituían la base activa con `removeItem` seguido de `copyItem`, dejando una ventana en la que la ruta de la base **no existía en disco** mientras el driver de SQLDelight la tenía abierta: exactamente la situación que hacía abortar el proceso en el borrado total (`vnode unlinked while in use` → `SQLITE_IOERR` → SIGABRT). Sobrevivían por suerte (hay menos actividad de fondo en ese instante), no por diseño. Además, si la copia fallaba a mitad, la base anterior ya estaba borrada y la docente se quedaba sin ninguna. Ambas rutas usan ahora un reemplazo atómico: se copia primero a un fichero temporal en el mismo directorio (mismo volumen, requisito de `replaceItemAt`) y se mueve a su sitio en una sola operación, de modo que la ruta nunca se queda vacía y un fallo a mitad no destruye lo que había.
+
+### Verification
+
+- `xcodebuild -scheme MiGestorKMPMac -configuration Debug -destination 'platform=macOS,arch=arm64'`: `BUILD SUCCEEDED`.
+
 - Ajustes (macOS): "Limpiar caché de la app" borraba la caché **del usuario entera**, no la de MiGestor. `clearAppCache()` recorría `FileManager.urls(for: .cachesDirectory, in: .userDomainMask)` y eliminaba todo su contenido; en iOS eso es el contenedor de la app y es correcto, pero la app de macOS no está en sandbox (la base vive en `~/Library/Application Support/MiGestor`, no en un contenedor), así que ese directorio es `~/Library/Caches` completo: se borraban las cachés de Safari, Xcode, y de cualquier otra app instalada, desde un botón cuyo texto de confirmación dice literalmente "Se eliminarán los archivos temporales de la app. No afecta a tus datos". En macOS la limpieza se acota ahora al subdirectorio propio (`~/Library/Caches/<bundle id>`); iOS mantiene el comportamiento anterior, donde ya estaba aislado por el sandbox.
 
 ### Verification

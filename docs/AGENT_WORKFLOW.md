@@ -19,6 +19,8 @@ Las skills locales viven en:
 .agents/skills/
 ```
 
+`.claude/skills` es un symlink a `.agents/skills/` para que Claude Code las cargue igual que Codex (fuente única, sin copias que puedan desincronizarse — cierra el riesgo de paridad señalado en el issue #121).
+
 Skills tecnicas frecuentes:
 
 - `swiftui-polish`: mejoras visuales SwiftUI.

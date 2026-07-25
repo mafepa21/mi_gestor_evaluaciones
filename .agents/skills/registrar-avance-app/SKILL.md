@@ -11,6 +11,7 @@ Dejar cada avance de Mi Gestor Evaluaciones trazable, revisable y util para esca
 
 ## Workflow obligatorio
 
+0. Rama y worktree: nunca trabajar ni commitear sobre `main`. `git fetch` y crear rama nueva desde `origin/main` actualizado (`fix/...`, `feat/...`, `docs/...`, `ui/...`, `build/...`), en un `git worktree` propio y aislado — el checkout principal suele tener otras sesiones en paralelo. Verificar `git status --short --branch` antes de tocar nada.
 1. Revisar el alcance real del cambio con `git status --short` y `git diff --stat`.
 2. Clasificar el cambio por intencion principal:
    - `docs`: documentacion, procesos, plantillas.
@@ -21,14 +22,18 @@ Dejar cada avance de Mi Gestor Evaluaciones trazable, revisable y util para esca
    - `data`: SQLDelight, repositorios, migraciones o persistencia.
    - `build`: Gradle, Xcode, scripts, CI o configuracion.
    - `test`: pruebas o fixtures.
-3. Actualizar `docs/CHANGELOG.md` si el cambio afecta producto, datos, arquitectura, UX, build, pruebas o documentacion relevante.
+   - `refactor`: cambio interno sin cambio funcional esperado.
+
+   Commits atomicos: un commit por bug o intencion, formato `tipo(ambito): descripcion en español`. No mezclar bugs ni ambitos (UI / KMP / SQLDelight / docs) en un mismo commit salvo dependencia real.
+3. Actualizar `docs/CHANGELOG.md` **en el mismo commit** que el cambio que documenta, bajo `## Unreleased`, en la seccion correcta (ver "Criterio de changelog").
 4. Actualizar `docs/ROADMAP.md` si cambia una prioridad, se cierra una fase o aparece una deuda relevante.
 5. Crear o actualizar un ADR en `kmp/docs/architecture/` si la decision condiciona arquitectura, persistencia, KMP, Apple targets, sync, backups o distribucion.
-6. Registrar evidencias de verificacion:
+6. Si la tarea agrupa varios bugs, dejar el plan en la raiz como `plan_correccion_bugs_<tema>_<fecha>.md` y commitearlo con `docs(plan): ...`.
+7. Registrar evidencias de verificacion:
    - comando ejecutado,
    - resultado,
-   - si no se pudo ejecutar, motivo concreto.
-7. Preparar resumen de PR con:
+   - si no se pudo ejecutar, motivo concreto (fallo preexistente de CI, entorno, etc.). Nunca afirmar que algo compilo o paso tests si no se ejecuto.
+8. Push de la rama y apertura o actualizacion de PR contra `main` con la plantilla `.github/pull_request_template.md`, con todas las secciones rellenas:
    - resumen,
    - alcance,
    - archivos modificados,
@@ -40,9 +45,7 @@ Dejar cada avance de Mi Gestor Evaluaciones trazable, revisable y util para esca
 
 ## Reglas del repo
 
-- Mantener cambios pequeños y revisables.
-- No mezclar documentación, UI, KMP y SQLDelight en el mismo commit salvo que el cambio lo exija.
-- No tocar `kmp/iosApp/App/KmpBridge.swift`, `kmp/iosApp/App/EvaluationDesign.swift`, `kmp/shared/domain/`, `kmp/data/src/commonMain/sqldelight/` ni `kmp/desktopApp/` sin justificarlo.
+- Archivos protegidos: ver `AGENTS.md`.
 - Si hay cambios previos del usuario en el working tree, no revertirlos ni reordenarlos destructivamente.
 - Si el working tree ya esta mezclado, proponer o ejecutar commits por grupos solo cuando los archivos pertenezcan claramente a una misma intencion.
 
